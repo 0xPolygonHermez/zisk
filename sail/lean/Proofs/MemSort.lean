@@ -274,6 +274,45 @@ theorem reads_last_write {v₀ : V} {L : List (Lane V)} (h : Sorted v₀ L) :
   obtain ⟨p, -, hinv⟩ := h.inv
   exact hinv.ok
 
+/-- **One write per address and step.** Along a sorted log, two writes at the
+same address and step are the same write: each lane's write comes strictly
+after every access to its address before it. -/
+theorem Sorted.writes_unique {v₀ : V} {L : List (Lane V)} (h : Sorted v₀ L) :
+    ∀ w ∈ writes L, ∀ w' ∈ writes L, w.addr = w'.addr → w.step = w'.step → w = w' := by
+  induction h with
+  | one q _ _ =>
+    intro w hw w' hw' _ _
+    have hW : writes [q] = q.writes := by simp [writes]
+    rw [hW] at hw hw'
+    obtain ⟨-, rfl⟩ := Lane.mem_writes hw
+    obtain ⟨-, rfl⟩ := Lane.mem_writes hw'
+    rfl
+  | snoc l p q hs _ hf ih =>
+    obtain ⟨p, hp, hinv⟩ := hs.inv
+    simp at hp
+    subst hp
+    -- A write of `q` is newer than every earlier access at its address.
+    have hnew : ∀ w ∈ writes (l ++ [p]), ∀ w' ∈ q.writes, w.addr = w'.addr → w.step < w'.step := by
+      intro w hw w' hw' ha
+      obtain ⟨hwr, rfl⟩ := Lane.mem_writes hw'
+      have hb := hinv.below w (List.mem_append_right _ hw)
+      unfold Follows at hf
+      simp only [hwr, ↓reduceIte] at hf
+      simp only at ha ⊢
+      rcases hf with ⟨hqa, hql, -⟩ | ⟨hlt, -⟩
+      · have := hb.2 (by omega); omega
+      · omega
+    have hW : writes (l ++ [p] ++ [q]) = writes (l ++ [p]) ++ q.writes := writes_snoc _ _
+    intro w hw w' hw' ha hst
+    rw [hW] at hw hw'
+    rcases List.mem_append.mp hw with hw | hw <;> rcases List.mem_append.mp hw' with hw' | hw'
+    · exact ih w hw w' hw' ha hst
+    · have := hnew w hw w' hw' ha; omega
+    · have := hnew w' hw' w hw ha.symm; omega
+    · obtain ⟨-, rfl⟩ := Lane.mem_writes hw
+      obtain ⟨-, rfl⟩ := Lane.mem_writes hw'
+      rfl
+
 /-! ### Growing a sorted log -/
 
 theorem Sorted.snoc' {v₀ : V} {L : List (Lane V)} {p q : Lane V} (h : Sorted v₀ L)

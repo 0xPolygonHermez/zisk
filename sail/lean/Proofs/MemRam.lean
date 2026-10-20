@@ -626,6 +626,21 @@ theorem ram_reads_last_write {segs : List (RamSeg F)} (hc : RamChain segs) :
     exact reads_last_write this
 
 
+/-- **One RAM write per address and step.** -/
+theorem ram_writes_unique {segs : List (RamSeg F)} (hc : RamChain segs) :
+    ∀ w ∈ writes (ramLog segs), ∀ w' ∈ writes (ramLog segs), w.addr = w'.addr → w.step = w'.step →
+      w = w' := by
+  cases hl : segs.length with
+  | zero =>
+    have : segs = [] := List.eq_nil_of_length_eq_zero hl
+    subst this
+    intro w hw
+    simp [ramLog, writes] at hw
+  | succ k =>
+    have := (ramLog_sorted hc k (by omega)).1
+    rw [List.take_of_length_le (by omega)] at this
+    exact this.writes_unique
+
 /-! ### The addresses, from the AIR -/
 
 /-- A 16-bit air value of the RAM, by a sound range check. -/

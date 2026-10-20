@@ -180,8 +180,9 @@ reached through the ROM lookup. See
 | `lean/Proofs/MemEnd.lean` | The run to the end with the register file and memory (`run_to_end_memory`). |
 | `lean/Proofs/MemCount.lean` | Counting a tuple on a sum bus, in integers: an assumed tuple is proved, a proved one assumed (`SumHolds.proved_of_assumed`). |
 | `lean/Proofs/MemRamBus.lean` | The RAM's arguments on the memory bus, in its lanes' terms: a read, write or dual tuple at a row is an emission of the sorted log. |
-| `lean/Proofs/MemWorld.lean` | The memory bus around Main: the other AIRs split into the RAM's, InputData's and the rest, and `NoOtherMem`, what the census is to prove of the rest. |
-| `lean/Proofs/MemFromBus.lean` | `MemAnswers` from the memory bus: Main's stores (`mainStores`), the RAM's writes as those stores, its reads as `memVal`, InputData as the initial memory (`InWorld.init`), and `MemBusWorld.answers`. |
+| `lean/Proofs/MemWorld.lean` | The memory bus around Main: the other AIRs split into the RAM's, InputData's, the Rom's, RomData's and the rest (`Quiet`: none), every count an integer, and who proves and assumes a load or a store. |
+| `lean/Proofs/MemRomData.lean` | RomData's values: every read returns a word of the Rom's data (`MemBusWorld.rd_value`). |
+| `lean/Proofs/MemFromBus.lean` | `MemAnswers` from the memory bus: Main's stores (`mainStores`), the RAM's writes as those stores and the Rom's data, its reads as `memVal`, the initial memory by region (`MemBusWorld.init`), and `MemBusWorld.answers`. |
 | `lean/Proofs/MemSystem.lean` | The run to the end over the operation bus's provers and the memory bus (`run_to_end_memory_bus`). |
 | `lean/Proofs/RegEnd.lean` | The program's end with the register file: the model runs to an end instruction of any op, source and store, with the chain's registers, and stops (`run_to_end_mem`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
@@ -368,7 +369,7 @@ make proofs
 ```
 
 ```
-✔ [118/119] Built Proofs
+✔ [119/120] Built Proofs
 Build completed successfully.
 ```
 
@@ -1410,78 +1411,114 @@ integer count — a sender of bits counts a tuple as how many of its rows send
 it (`Sender.count_of_bits`). Main's side: each access's step element, whatever its op, is
 the lane's memory step (`lane_step_l_κ`, generated with the pairs in
 `MainRegs.lean`). And [`lean/Proofs/MemWorld.lean`](lean/Proofs/MemWorld.lean)
-splits the other AIRs on the bus three ways — the RAM's instances,
-InputData's, the rest — and states what the census is to prove of the rest,
-`NoOtherMem`: none sends a load or a store with a nonzero count. Over the
-whole bus — Main's senders and every other AIR's, `MemBusWorld` bundling the
-bus's soundness, the global updates balancing loads and stores among
-themselves, the RAM's padding range checks, `NoOtherMem` and a bound on the
-rows — every sender counts a load or store tuple as a small integer
-(`MemBusWorld.counts`): Main's arguments, the RAM's lanes and dual reads, and
-InputData's are bits; the rest, 0; the RAM's padding, minus its size, below
-`2^32`, on its own tuple alone. So a load or store some Main access sends is
-proved by some sender, at one of its rows (`MemBusWorld.proved`), and one a
-prover sends, other than a padding tuple, is assumed by some sender
-(`MemBusWorld.assumed`). That bounds the RAM's steps: a lane's tuple, unless it is a
-padding tuple — whose step is the last step, range-checked below `2^38` — is
-assumed by some Main access, whose step element is its lane's memory step
-(`mainTags_cur`, generated), so every lane's step and every set dual read's
-is a natural below `2^48` (`MemBusWorld.ram_steps`): what `RamSteps` asks. So
+splits the other AIRs on the bus five ways — the RAM's instances,
+InputData's, the Rom's, RomData's, and the rest. The rest are the
+precompiles, the DMA and `MemAlign` AIRs and `JumpDest`: they load and store
+on the RAM, but only when Main calls them or accesses memory other than as an
+aligned word, so for the programs in scope the hypothesis is that they have
+no instance (`MemOthers.Quiet`). The Rom and RomData are not optional: the
+Rom's data rows send the program's data, `(flags, line, 3, 8, value)` with
+`flags` 2 — a RAM write, the `.data` section — or 4 — a ROM word, the
+`.rodata` section — and RomData proves Main's loads from the ROM.
+
+Over the whole bus — Main's senders and every other AIR's, `MemBusWorld`
+bundling the bus's soundness, the global updates balancing every tuple of the
+memory proper (ops 1, 2 and 4, `MemTuple`) among themselves, the RAM's and
+RomData's padding range checks, `Quiet`, and a bound on the rows — every
+sender counts every tuple as a small integer (`MemBusWorld.counts`): Main's
+arguments, the RAM's lanes and dual reads, InputData's, the Rom's and
+RomData's lanes are bits; a padding cancellation (`IsPad`), the RAM's or
+RomData's, minus its size, on its own tuple alone. So a tuple of the memory
+proper some sender assumes is proved by some sender, at one of its rows
+(`MemBusWorld.proved`), and one a prover sends, other than a padding tuple,
+is assumed by some sender (`MemBusWorld.assumed`). That bounds the RAM's
+steps: a lane's tuple, unless it is a padding tuple — whose step is the last
+step, range-checked below `2^38`, or 3 — is assumed by some Main access,
+whose step element is its lane's memory step (`mainTags_cur`, generated), or
+a Rom data row, at step 3; so every lane's step and every set dual read's is
+a natural below `2^48` (`MemBusWorld.ram_steps`): what `RamSteps` asks. So
 each RAM instance, with its fixed columns and range checks (`RamInst`), is a
 segment of the sorted log, its addresses from its range checks and its steps
-from the bus (`MemBusWorld.seg`). And a load or store tuple a prover sends
-with a positive count is a RAM lane's access or dual read, or an InputData
-row (`MemBusWorld.who`): Main proves only register tuples, the padding counts
-non-positively — a sender's integer count being unique (`MemBusWorld.z_eq`) —
-and the rest send none. Taken in the order `S.mem` lists them, the segments make
-one log (`MemBusWorld.segs`), and every lane's reads and writes are its
-(`emit_mem`); so a load Main assumes is a read of that log, its bus address
-`8·addr`, its step and value the read's, or an InputData row
-(`MemBusWorld.load_read`), and a store Main assumes is a write of it
-(`MemBusWorld.store_write`). Conversely, every write of the log is a Main store
-(`MemBusWorld.write_is_store`): its tuple, op 2 and so no padding's, is
-assumed by some sender, and the only senders that assume an op-2 tuple are
-Main's store accesses of lanes that store to memory (`MemBusWorld.main_store`;
-an `a` or `b` access's op is its count plus twice its register bit, a store's
-twice its count plus its register bit, `mainTags_op`, generated). [`lean/Proofs/MemFromBus.lean`](lean/Proofs/MemFromBus.lean)
-begins the assembly: Main's stores as a list (`mainStores`), one per lane
-that stores to memory, indexed globally so a store's step is `4n + 3` — their
+from the bus (`MemBusWorld.seg`). And a tuple of the memory proper a prover
+sends with a positive count is a RAM lane's access or dual read, an InputData
+row, or a RomData lane (`MemBusWorld.who`): Main proves only register tuples,
+the paddings count non-positively — a sender's integer count being unique
+(`MemBusWorld.z_eq`) — and the Rom assumes. Taken in the order `S.mem` lists
+them, the segments make one log (`MemBusWorld.segs`), and every lane's reads
+and writes are its (`emit_mem`); so a load Main assumes is a read of that
+log, its bus address `8·addr`, its step and value the read's, an InputData
+row, or a RomData lane (`MemBusWorld.load_read`), and a store Main assumes is
+a write of it (`MemBusWorld.store_write`). Conversely, every write of the log
+is a Main store or the Rom's data, at step 3 (`MemBusWorld.write_is_store`):
+its tuple, op 2 and so no padding's, is assumed by some sender, and the only
+senders that assume an op-2 tuple are Main's store accesses of lanes that
+store to memory (`MemBusWorld.main_store`; an `a` or `b` access's op is its
+count plus twice its register bit, a store's twice its count plus its
+register bit, `mainTags_op`, generated) and the Rom's data rows.
+
+[`lean/Proofs/MemRomData.lean`](lean/Proofs/MemRomData.lean) gives RomData's
+values. RomData has no ordering of its addresses: each of its two lanes a
+row keeps the address and value of the lane before, or changes address, when
+it sends op 4 at step 3 — the ROM's initialization. Along a chain of its
+segments (`RdWorld`), every lane repeats the latest lane at or before it that
+changed address (`RdWorld.origin`), and that lane's op-4 tuple is assumed by
+a Rom data row: Main assumes no op 4 (`MemBusWorld.main_not4`), and the RAM,
+InputData and RomData prove. So a RomData read returns a word of the Rom's
+data at its address (`MemBusWorld.rd_value`, `RomWord`).
+
+[`lean/Proofs/MemFromBus.lean`](lean/Proofs/MemFromBus.lean) assembles
+`MemAnswers`. Main's stores, as a list (`mainStores`), are one per lane that
+stores to memory, indexed globally so a store's step is `4n + 3` — their
 steps distinct (`mainStores_nodup`), each at its lane's store step
-(`mem_mainStores`, `mainStores_mem`) — and a load's width, 8, since its
-prover sends 8 (`MemBusWorld.load_width`). And the RAM's writes are Main's stores, as sets, at byte
-addresses `8·addr`: each write of the log is one of `mainStores`
-(`MemBusWorld.write_in_stores`), and each of `mainStores` a write of the log
-(`MemBusWorld.store_in_writes`) — a store row's count is 1 and its op 2, its
-register bit being 0, and its width 8, its prover's (`store_width`). So a
-read of the RAM's log returns `memVal` of Main's stores at its byte address
-(`MemBusWorld.read_memVal`): the latest write before it, by
-`ram_reads_last_write`, is the latest store — a store's step is never a
-load's, `≡ 3 (mod 4)` — or, if there is none, the initial value, 0.
+(`mem_mainStores`, `mainStores_mem`). A load's width is 8, since its prover
+sends 8 (`MemBusWorld.load_width`). The RAM's writes are Main's stores, at
+byte addresses `8·addr`, and the Rom's data at step 3: each write of the log
+is one of `mainStores` or at step 3 (`MemBusWorld.write_in_stores`), and each
+of `mainStores` a write of the log (`MemBusWorld.store_in_writes`) — a store
+row's count is 1 and its op 2, its register bit being 0, and its width 8,
+its prover's (`store_width`). The writes at step 3 that are not Main's are
+the RAM's initial memory (`MemBusWorld.ramInit`); a sorted log has one write
+per address and step (`Sorted.writes_unique`, `ram_writes_unique`), so it is
+well defined. A read of the RAM's log after step 3 then returns `memVal` of
+Main's stores over it, at its byte address (`MemBusWorld.read_memVal`): the
+latest write before it, by `ram_reads_last_write`, is the latest store — a
+store's step is never a load's, `≡ 3 (mod 4)` — or the Rom's data, or, if
+there is none, 0.
 
 Main's loads complete it. A lane's `a` load (`A_MEM`) or `b` load (`B_MEM` or
 `B_IND`) sends count 1 and op 1 — its register bit is 0 — at its memory step,
-so it is a read of the RAM's log or an InputData row (`MemBusWorld.a_access`,
-`b_access`). Every emission of the RAM's log lies in the RAM's region
-(`MemBusWorld.log_region`), above the input region. InputData's instances,
-taken as a chain of its segments (`InWorld`), give the initial memory
-(`InWorld.init`): at a byte address the input memory holds, its value there,
-the same at every read by `input_consistent`; elsewhere 0. An InputData row
-reads it, away from the region's base, where free reads return fresh values
-(`InWorld.row`); no store lands in the input region, so a load there returns
-the initial value. Two facts stay with Main, as a hypothesis (`MainAvoids`):
-its memory accesses avoid the register file, which the model asserts of
-every access, and the free-input base. The domain is then the 32-bit words
-off both (`busD`), and `MemBusWorld.answers` proves `MemAnswers` over
-`busD`, `IW.init` and `mainStores`. With it,
+so it is a read of the RAM's log, an InputData row or a RomData lane
+(`MemBusWorld.a_access`, `b_access`). Every emission of the RAM's log lies in
+the RAM's region (`MemBusWorld.log_region`), so no store lands below it.
+InputData's instances, taken as a chain of its segments (`InWorld`), give
+the input memory (`InWorld.init`): at a byte address the input memory holds,
+its value there, the same at every read by `input_consistent`; elsewhere 0.
+An InputData row reads it, away from the region's base, where free reads
+return fresh values (`InWorld.row`). The initial memory is then the input
+memory below the ROM, the Rom's data in the ROM (`romInit`) and in the RAM
+(`MemBusWorld.init`). Four facts stay as hypotheses:
+
+- `RomOk`: the Rom's ROM words are at word addresses of the ROM region, one
+  value each — a property of the setup's fixed data;
+- `MainAvoids`: Main's memory accesses avoid the register file, which the
+  model asserts of every access, and the free-input base;
+- `FirstNoLoad`: Main's first lane loads nothing — its loads, at steps 1 and
+  2, would come before the Rom's data reaches the RAM, at step 3;
+- `Quiet`, inside `MemBusWorld`.
+
+The domain is the 32-bit words off the register file and the free-input base
+(`busD`), and `MemBusWorld.answers` proves `MemAnswers` over `busD`,
+`W.init` and `mainStores`. With it,
 [`lean/Proofs/MemSystem.lean`](lean/Proofs/MemSystem.lean) states the run to
 the end over the operation bus's provers and the memory bus
 (`run_to_end_memory_bus`): `MemAnswers` is no longer assumed; in its place
-are `MemBusWorld`, the RAM's and InputData's chains, `MainAvoids`, and the
-model's initial memory being the input memory.
+are `MemBusWorld`, the RAM's, InputData's and RomData's chains, the
+hypotheses above, and the model's initial memory being the bus's.
 
-Still to come: the memory bus's census for loads and stores (`NoOtherMem`),
-as `MemBus.lean` did for register tuples; the continuation buses'
-guarantees (`RamChain`, `InChain`); `MemAlign`; and `MainAvoids`.
+Still to come: the continuation buses' guarantees (`RamChain`, `InChain`,
+`RdWorld`); `Quiet`, from the operation bus — the precompiles and DMA run only
+when Main calls them; `MemAlign`, for byte and unaligned accesses;
+`MainAvoids` and `FirstNoLoad`; and `RomOk`, from the setup's ROM.
 
 ## The operation bus's provers
 
