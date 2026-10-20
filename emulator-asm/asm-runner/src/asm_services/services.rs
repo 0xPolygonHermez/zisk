@@ -1,8 +1,8 @@
 use super::segments::{ActiveProgram, SegmentsClaim, SetOnDrop, SharedSegments};
 use super::stdio::StdioService;
 use crate::{
-    sem_prefix_for, shm_prefix_for, AsmRunError, AsmRunnerOptions, MemoryOperationsResponse,
-    MinimalTraceResponse, RomHistogramResponse,
+    process_prefix_for, sem_prefix_for, shm_prefix_for, AsmRunError, AsmRunnerOptions,
+    MemoryOperationsResponse, MinimalTraceResponse, RomHistogramResponse,
 };
 
 use anyhow::{Context, Result};
@@ -287,6 +287,22 @@ impl AsmServices {
     pub fn cleanup_stale_shmem() {
         super::janitor::cleanup_stale();
     }
+
+    /// Kill every service this process started and unlink every segment and semaphore it
+    /// named, waiting at most `timeout` for the services to exit.
+    ///
+    /// For a process about to exit without running its destructors, which would otherwise
+    /// do this program by program, such as the distributed worker on a requested stop.
+    /// Nothing in the process may use the services afterwards.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    pub fn release_all_for_exit(timeout: Duration) {
+        super::janitor::release_process(&process_prefix_for(std::process::id()), timeout);
+    }
+
+    /// Kill every service this process started and unlink every segment and semaphore it
+    /// named. No-op off Linux-x86_64, where the ASM services never run.
+    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+    pub fn release_all_for_exit(_timeout: std::time::Duration) {}
 
     /// Create all of the shared-memory segments.
     ///

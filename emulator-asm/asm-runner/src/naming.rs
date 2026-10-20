@@ -41,6 +41,13 @@ pub(crate) fn sem_prefix_for(
     format!("{NAMESPACE}_{pid}_{hash}_{local_rank}{}", hints_marker(with_hints))
 }
 
+/// What begins every segment and semaphore name of the process `pid`, whatever its rank,
+/// program or hints mode: `{NAMESPACE}_{pid}_`. The trailing `_` keeps it prefix-free across
+/// pids (12 against 123).
+pub(crate) fn process_prefix_for(pid: u32) -> String {
+    format!("{NAMESPACE}_{pid}_")
+}
+
 /// The marker that ends every prefix; see [`shm_prefix_for`] for why it is never empty.
 fn hints_marker(with_hints: bool) -> &'static str {
     if with_hints {
@@ -145,6 +152,20 @@ mod tests {
         assert_eq!(shm_prefix_for(123, 2, true), "ZISK_123_2_h1");
         let hash = "0123456789abcdef".repeat(4);
         assert_eq!(sem_prefix_for(123, &hash, 0, false), format!("ZISK_123_{}_0_h0", &hash[..32]));
+    }
+
+    /// Everything a process names begins with its process prefix, and nothing another
+    /// process names does, a pid whose digits it begins included.
+    #[test]
+    fn a_process_prefix_begins_every_name_of_its_process_and_no_other() {
+        let hash = "0123456789abcdef".repeat(4);
+        let ours = process_prefix_for(12);
+        for with_hints in [false, true] {
+            assert!(shm_prefix_for(12, 3, with_hints).starts_with(&ours));
+            assert!(sem_prefix_for(12, &hash, 3, with_hints).starts_with(&ours));
+            assert!(!shm_prefix_for(123, 3, with_hints).starts_with(&ours));
+            assert!(!sem_prefix_for(123, &hash, 3, with_hints).starts_with(&ours));
+        }
     }
 
     /// The C side refuses a prefix of `MAX_SHM_PREFIX_LENGTH` (64) bytes or more.

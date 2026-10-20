@@ -373,6 +373,10 @@ sudo systemctl enable --now zisk-worker@2
 - A worker that cannot recover in-process aborts every one of its MPI ranks with status 75 (`EX_TEMPFAIL`), so that its service manager restarts it. That happens when a cancelled or failed job's recovery fails or does not complete within 300 s, which a rank left in another MPI collective causes, and on any panic in a worker of several ranks. The worker's log says why, followed by `aborting the worker so that it restarts`.
 - The provided systemd unit (`Restart=on-failure`) and launchd job (`KeepAlive`) restart it with no action needed; elsewhere, restart it yourself.
 
+**Stopping a worker:**
+- On SIGTERM, SIGINT or SIGUSR1, every rank cancels its job in flight (the coordinator reassigns it), kills its ASM services, unlinks their `/dev/shm` segments and semaphores, and exits with status 0 within seconds, without waiting on any other rank.
+- Under `mpirun`, signal `mpirun` with SIGUSR1, which it forwards to every rank, and run it with `--mca orte_allowed_exit_without_sync 1`, so that ranks ending without `MPI_Finalize` count as a normal end: `mpirun` then exits with status 0. On SIGTERM `mpirun` aborts the job instead, and exits with status 1 whatever the ranks do. The provided systemd unit does both (`KillMode=mixed`, `KillSignal=SIGUSR1`).
+
 **Debug logging:**
 
 ```bash

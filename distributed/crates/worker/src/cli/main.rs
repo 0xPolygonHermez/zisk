@@ -107,6 +107,7 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    zisk_worker::stop::stop_on_signals()?;
     let cli = Cli::parse();
 
     let worker_config = WorkerServiceConfig::load(
@@ -155,26 +156,10 @@ async fn main() -> Result<()> {
 
     if prover_config.emulator {
         let mut worker = WorkerNode::<Emu>::new_emu(worker_config, prover_config).await?;
-        run_with_signals(worker.run()).await
+        worker.run().await
     } else {
         let mut worker = WorkerNode::<Asm>::new_asm(worker_config, prover_config).await?;
-        run_with_signals(worker.run()).await
-    }
-}
-
-async fn run_with_signals(fut: impl std::future::Future<Output = Result<()>>) -> Result<()> {
-    use tokio::signal::unix::{signal, SignalKind};
-    let mut sigterm = signal(SignalKind::terminate())?;
-    tokio::select! {
-        res = fut => res,
-        _ = tokio::signal::ctrl_c() => {
-            tracing::info!("Received SIGINT, shutting down gracefully");
-            Ok(())
-        }
-        _ = sigterm.recv() => {
-            tracing::info!("Received SIGTERM, shutting down gracefully");
-            Ok(())
-        }
+        worker.run().await
     }
 }
 

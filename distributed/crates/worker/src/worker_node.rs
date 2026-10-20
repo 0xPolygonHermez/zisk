@@ -1,4 +1,5 @@
 use crate::{
+    stop,
     worker::{CancelledWork, ComputationResult, LoopEvent, LoopEventSender},
     ProverConfig, Worker,
 };
@@ -136,6 +137,12 @@ pub(crate) const WEDGED_EXIT_CODE: i32 = 75;
 /// worker, as after any failed exit, and the coordinator, seeing it disconnect, no
 /// longer waits for its recovery.
 fn abort_wedged_worker<T: ZiskBackend + 'static>(prover: &ZiskProver<T>, why: &str) -> ! {
+    if stop::is_stopping() {
+        // A stop kills the services under the job in flight, which may fail it on the way
+        // out; the stop ends every rank by itself, and an abort would only fail its exit.
+        warn!("{why}; the worker is stopping");
+        stop::wait_for_exit();
+    }
     error!("{why}; aborting the worker so that it restarts");
     // Also on stderr, unbuffered: a log file's writer thread may never write the line.
     eprintln!("zisk-worker: {why}; aborting the worker so that it restarts");
@@ -168,6 +175,17 @@ fn abort_every_rank_on_panic<T: ZiskBackend + 'static>(worker: &Worker<T>) {
     }
 }
 
+/// A requested stop cancels the job in flight, as the coordinator's cancel does; see
+/// [`crate::stop`].
+fn cancel_job_on_stop<T: ZiskBackend + 'static>(worker: &Worker<T>) {
+    let prover = worker.prover_arc();
+    stop::cancel_on_stop(move || {
+        if let Err(e) = prover.cancel() {
+            warn!("Cancelling the job in flight on a stop failed: {e:#}");
+        }
+    });
+}
+
 /// A worker process, specialized by MPI role: rank 0 talks to the coordinator
 /// over gRPC, secondary ranks only service MPI broadcasts.
 pub enum WorkerNode<T: ZiskBackend + 'static> {
@@ -195,6 +213,7 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
     ) -> Result<WorkerNode<Emu>> {
         let worker = Worker::<Emu>::new_emu(prover_config)?;
         abort_every_rank_on_panic(&worker);
+        cancel_job_on_stop(&worker);
 
         if worker.local_rank() == 0 {
             Ok(WorkerNode::WorkerGrpc(WorkerNodeGrpc::<Emu>::new(worker_config, worker).await?))
@@ -210,6 +229,7 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
     ) -> Result<WorkerNode<Asm>> {
         let worker = Worker::<Asm>::new_asm(prover_config)?;
         abort_every_rank_on_panic(&worker);
+        cancel_job_on_stop(&worker);
 
         if worker.local_rank() == 0 {
             Ok(WorkerNode::WorkerGrpc(WorkerNodeGrpc::<Asm>::new(worker_config, worker).await?))
@@ -350,14 +370,13 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     ))
                     .await;
                 }
-                _ => {
-                    // Should not reach here
-                    break;
+                state => {
+                    // Not an Ok: under `mpirun` with `orte_allowed_exit_without_sync`, a rank 0
+                    // ending with status 0 would leave the peer ranks waiting for it for ever.
+                    return Err(anyhow!("the worker left its connection loop in state {state:?}"));
                 }
             }
         }
-
-        Ok(())
     }
 
     async fn connect_and_run(
