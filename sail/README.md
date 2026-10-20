@@ -181,7 +181,8 @@ reached through the ROM lookup. See
 | `lean/Proofs/MemCount.lean` | Counting a tuple on a sum bus, in integers: an assumed tuple is proved, a proved one assumed (`SumHolds.proved_of_assumed`). |
 | `lean/Proofs/MemRamBus.lean` | The RAM's arguments on the memory bus, in its lanes' terms: a read, write or dual tuple at a row is an emission of the sorted log. |
 | `lean/Proofs/MemWorld.lean` | The memory bus around Main: the other AIRs split into the RAM's, InputData's and the rest, and `NoOtherMem`, what the census is to prove of the rest. |
-| `lean/Proofs/MemFromBus.lean` | `MemAnswers` from the memory bus: Main's stores (`mainStores`), its accesses' columns, a load's width. |
+| `lean/Proofs/MemFromBus.lean` | `MemAnswers` from the memory bus: Main's stores (`mainStores`), the RAM's writes as those stores, its reads as `memVal`, InputData as the initial memory (`InWorld.init`), and `MemBusWorld.answers`. |
+| `lean/Proofs/MemSystem.lean` | The run to the end over the operation bus's provers and the memory bus (`run_to_end_memory_bus`). |
 | `lean/Proofs/RegEnd.lean` | The program's end with the register file: the model runs to an end instruction of any op, source and store, with the chain's registers, and stops (`run_to_end_mem`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
@@ -367,7 +368,7 @@ make proofs
 ```
 
 ```
-✔ [117/118] Built Proofs
+✔ [118/119] Built Proofs
 Build completed successfully.
 ```
 
@@ -1457,12 +1458,30 @@ read of the RAM's log returns `memVal` of Main's stores at its byte address
 `ram_reads_last_write`, is the latest store — a store's step is never a
 load's, `≡ 3 (mod 4)` — or, if there is none, the initial value, 0.
 
-Still to come: the RAM's steps, which need the memory bus — every lane's
-tuple is one some AIR assumes, with a bounded step; the continuation buses'
-guarantees (`RamChain`, `InChain`); the memory bus's census for
-loads and stores, as `MemBus.lean` did for register tuples; `MemAlign`; and
-Main's memory sources and stores against the model's byte-addressed
-`read_mem` and `write_mem`.
+Main's loads complete it. A lane's `a` load (`A_MEM`) or `b` load (`B_MEM` or
+`B_IND`) sends count 1 and op 1 — its register bit is 0 — at its memory step,
+so it is a read of the RAM's log or an InputData row (`MemBusWorld.a_access`,
+`b_access`). Every emission of the RAM's log lies in the RAM's region
+(`MemBusWorld.log_region`), above the input region. InputData's instances,
+taken as a chain of its segments (`InWorld`), give the initial memory
+(`InWorld.init`): at a byte address the input memory holds, its value there,
+the same at every read by `input_consistent`; elsewhere 0. An InputData row
+reads it, away from the region's base, where free reads return fresh values
+(`InWorld.row`); no store lands in the input region, so a load there returns
+the initial value. Two facts stay with Main, as a hypothesis (`MainAvoids`):
+its memory accesses avoid the register file, which the model asserts of
+every access, and the free-input base. The domain is then the 32-bit words
+off both (`busD`), and `MemBusWorld.answers` proves `MemAnswers` over
+`busD`, `IW.init` and `mainStores`. With it,
+[`lean/Proofs/MemSystem.lean`](lean/Proofs/MemSystem.lean) states the run to
+the end over the operation bus's provers and the memory bus
+(`run_to_end_memory_bus`): `MemAnswers` is no longer assumed; in its place
+are `MemBusWorld`, the RAM's and InputData's chains, `MainAvoids`, and the
+model's initial memory being the input memory.
+
+Still to come: the memory bus's census for loads and stores (`NoOtherMem`),
+as `MemBus.lean` did for register tuples; the continuation buses'
+guarantees (`RamChain`, `InChain`); `MemAlign`; and `MainAvoids`.
 
 ## The operation bus's provers
 
