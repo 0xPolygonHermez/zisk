@@ -1,17 +1,17 @@
 //! Without CUDA there is no planner: every query says the device memory witness is unavailable,
-//! with the same surface as `gpu_ram_witness.rs`.
+//! with the same surface as `gpu_mem_witness.rs`.
 
-use crate::mem_witness_types::RamFillResult;
+use crate::mem_witness_types::MemFillResult;
 
 const UNAVAILABLE: &str = "built without CUDA";
 
-pub fn clear_gpu_ram_witness() {}
+pub fn clear_gpu_mem_witness() {}
 
 pub fn gpu_ram_witness_fill(
     _inst: u32,
     _out_rows: &mut [u64],
     _n_rows: u32,
-) -> Result<RamFillResult, String> {
+) -> Result<MemFillResult, String> {
     Err(UNAVAILABLE.to_string())
 }
 
@@ -19,7 +19,7 @@ pub fn gpu_rom_witness_fill(
     _inst: u32,
     _out_rows: &mut [u64],
     _n_rows: u32,
-) -> Result<RamFillResult, String> {
+) -> Result<MemFillResult, String> {
     Err(UNAVAILABLE.to_string())
 }
 
@@ -27,7 +27,7 @@ pub fn gpu_input_witness_fill(
     _inst: u32,
     _out_rows: &mut [u64],
     _n_rows: u32,
-) -> Result<RamFillResult, String> {
+) -> Result<MemFillResult, String> {
     Err(UNAVAILABLE.to_string())
 }
 

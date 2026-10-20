@@ -144,18 +144,19 @@ static_assert(sizeof(AlignPlanDesc) == 24 && sizeof(AlignChunkEntry) == 44, "ali
 constexpr uint32_t RAM_W_ADDR_BASE = ZISK_RAM_ADDR_BASE >> 3;
 constexpr uint32_t RAM_W_ADDR_LAST = (ZISK_RAM_ADDR_END - 8u) >> 3;
 
-// What prepare_ram_fill established for the block. POD, mirrored in gpu_bindings.rs.
-struct RamFillPrepared {
+// What the block's preparation (prepare_fills) established, every family together. POD, mirrored
+// in mem_witness_types.rs.
+struct MemFillPrepared {
     int32_t  status;             // 0 ok
     uint32_t n_instances;        // RAM instances (lanes / instance_rows, rounded up)
     uint64_t n_accesses;         // retained RAM accesses
     uint64_t n_lanes;            // lanes after dual pairing
     uint32_t reserved[2];
 };
-static_assert(sizeof(RamFillPrepared) == 32, "RamFillPrepared layout changed: update gpu_bindings.rs");
+static_assert(sizeof(MemFillPrepared) == 32, "MemFillPrepared layout changed: update gpu_bindings.rs");
 
 // One filled RAM instance. POD, mirrored in gpu_bindings.rs.
-struct RamFillResult {
+struct MemFillResult {
     int32_t  status;
     uint32_t n_lanes;            // lanes the instance's accesses occupy (before padding)
     uint32_t prev_addr_w;        // last lane of the previous instance (continuation)
@@ -165,14 +166,14 @@ struct RamFillResult {
     uint64_t last_step;
     uint64_t last_value;
 };
-static_assert(sizeof(RamFillResult) == 48, "RamFillResult layout changed: update gpu_bindings.rs");
+static_assert(sizeof(MemFillResult) == 48, "MemFillResult layout changed: update gpu_bindings.rs");
 
 // A row image the preparation staged on the device. POD, mirrored in gpu_bindings.rs.
 struct StagedRows {
     const uint64_t* ptr;
     uint64_t        words;
     uint32_t        family, air_id, segment, n_rows;
-    RamFillResult   res;
+    MemFillResult   res;
 };
 static_assert(sizeof(StagedRows) == 80, "StagedRows layout changed: update gpu_bindings.rs");
 
@@ -190,7 +191,7 @@ constexpr uint32_t MAX_CHUNKS            = MEM_GPU_MAX_META_CHUNKS; // 16384
 constexpr uint32_t MAX_POT_PER_PIECE   = 1u << 20;
 constexpr uint32_t MAX_WORDS_PER_PIECE = MAX_POT_PER_PIECE + 128;
 constexpr uint32_t MAX_SORT_PER_PIECE  = 2 * MAX_POT_PER_PIECE;
-// Accesses the fills can retain per block: the arrival index of a sort key (ram_fill.cu).
+// Accesses the fills can retain per block: the arrival index of a sort key (mem_fill.cu).
 constexpr uint64_t MAX_RETAINED_ACCESSES = 1ull << 30;
 
 // Internal compile-time toggle for the add_chunk worker pool 
@@ -267,7 +268,7 @@ public:
     bool prepare_fills(const void* image, size_t image_bytes, const AlignPlanDesc* plans, uint32_t n_plans,
                        const AlignChunkEntry* entries, uint32_t n_entries, const uint32_t* ram, uint32_t n_ram,
                        const uint32_t* rom, uint32_t n_rom, const uint32_t* input, uint32_t n_input,
-                       RamFillPrepared* prepared);
+                       MemFillPrepared* prepared);
     // The staged images, as the preparation publishes them (another thread may be preparing):
     // `staged_wait` returns 1 with `out` filled, 0 when the preparation ended without that image
     // (build it with `fill_host`), -1 after `timeout_ms`. `copy_staged` copies an image to host
@@ -276,7 +277,7 @@ public:
     int  staged_wait(uint32_t family, uint32_t air_id, uint32_t segment, uint32_t timeout_ms, StagedRows* out);
     bool copy_staged(uint32_t family, uint32_t air_id, uint32_t segment, uint64_t* dst, uint64_t words);
     bool fill_host(uint32_t family, uint32_t air_id, uint32_t segment, uint32_t n_rows, uint64_t* out_rows,
-                   RamFillResult* res);
+                   MemFillResult* res);
     // Marks the arena released and waits for the copies still reading its images: no fill or copy
     // touches it afterwards.
     void quiesce();
@@ -404,11 +405,11 @@ private:
     unsigned long long* d_ram_nwrites_ = nullptr;             // writes among the retained accesses
     uint64_t           ram_writes_     = 0;                   // read back by prepare_ram_fill
     uint32_t           chunk_size_bits_ = 18;
-    // Prepared lane table (see ram_fill.cu).
-    bool prepare_ram_fill(RamFillPrepared* out);
-    bool fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res,
+    // Prepared lane table (see mem_fill.cu).
+    bool prepare_ram_fill(MemFillPrepared* out);
+    bool fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t n_rows, MemFillResult* res,
                            uint64_t* d_out = nullptr);
-    bool fill_all_ram_instances(uint32_t n_rows, RamFillPrepared* prepared);
+    bool fill_all_ram_instances(uint32_t n_rows, MemFillPrepared* prepared);
     bool               ram_prepared_    = false;    // every instance resolved; totals valid
     bool               ram_tables_ready_ = false;   // per-instance fill tables built
     uint32_t*          d_rf_chunk_base_ = nullptr;  // chunk -> first record index
@@ -427,7 +428,7 @@ private:
     // Retained ROM and input accesses: records of the same stack, one run per piece in arrival order.
     std::vector<RamRun>        other_runs_;
     uint32_t*                  d_other_rank_[N_STREAMS] = {nullptr};
-    // RomData fill (see ram_fill.cu).
+    // RomData fill (see mem_fill.cu).
     uint32_t                   rom_col_widths_[64] = {0};
     uint32_t                   rom_n_cols_ = 0, rom_words_per_row_ = 0, rom_lanes_x_row_ = 0;
     bool                       rom_prepared_ = false;
@@ -443,19 +444,19 @@ private:
                          std::vector<uint32_t>& ext_first, std::vector<size_t>& extra);
     bool other_sorted_(struct ScratchCursor& sc, uint32_t first, uint32_t last, size_t expect,
                        uint32_t** addr_sorted, uint32_t** idx, size_t* n_out);
-    bool fill_rom_instance(uint32_t inst, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res,
+    bool fill_rom_instance(uint32_t inst, uint64_t* out_rows, uint32_t n_rows, MemFillResult* res,
                            uint64_t* d_out = nullptr);
-    bool fill_all_rom_instances(uint32_t n_rows, RamFillPrepared* prepared);
-    // InputData fill (see ram_fill.cu).
+    bool fill_all_rom_instances(uint32_t n_rows, MemFillPrepared* prepared);
+    // InputData fill (see mem_fill.cu).
     uint32_t                   input_col_widths_[64] = {0};
     uint32_t                   input_n_cols_ = 0, input_words_per_row_ = 0, input_lanes_x_row_ = 0;
     bool                       input_prepared_ = false;
     std::vector<size_t>        h_input_inst_skip_, h_input_inst_count_, h_input_inst_extra_;
     std::vector<uint32_t>      h_input_inst_first_, h_input_inst_last_, h_input_inst_ext_first_;
     bool fill_input_instance(uint32_t inst, const uint64_t* d_image, const uint64_t* h_image, size_t image_words,
-                             uint8_t* scratch, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res,
+                             uint8_t* scratch, uint64_t* out_rows, uint32_t n_rows, MemFillResult* res,
                              uint64_t* d_out = nullptr);
-    bool fill_all_input_instances(uint32_t n_rows, const void* image, size_t image_bytes, RamFillPrepared* prepared);
+    bool fill_all_input_instances(uint32_t n_rows, const void* image, size_t image_bytes, MemFillPrepared* prepared);
     // The input image on the device, and the per-instance scratch after it.
     uint64_t*                  d_image_ = nullptr;
     std::vector<uint64_t>      h_image_;
@@ -468,7 +469,7 @@ private:
     std::vector<AlignChunkEntry> fill_align_entries_;
     // Row images the preparation built, staged below the retained accesses; `copy_staged` copies
     // them to the host. The per-instance scratch ends at `stage_low_` while any is staged.
-    struct Staged { uint32_t family, air_id, segment, n_rows; uint64_t* ptr; size_t words; RamFillResult res; };
+    struct Staged { uint32_t family, air_id, segment, n_rows; uint64_t* ptr; size_t words; MemFillResult res; };
     std::vector<Staged>        staged_;              // under staged_mtx_
     std::vector<bool>          stage_wanted_[3];     // per family (RAM, ROM, input): instances to stage
     bool stage_wanted_at_(uint32_t family, uint32_t inst) const;
@@ -476,7 +477,7 @@ private:
     std::condition_variable    staged_cv_;
     bool                       prep_done_ = false;   // the preparation published its last image
     bool                       prep_failed_ = false; // ... and failed: no image is served
-    RamFillPrepared            prepared_info_{};     // what the preparation reported
+    MemFillPrepared            prepared_info_{};     // what the preparation reported
     uint32_t                   copies_in_flight_ = 0; // copy_staged calls reading the images
     bool find_staged_(uint32_t family, uint32_t air_id, uint32_t segment, StagedRows* out) const;
     uint8_t*                   stage_low_ = nullptr;
@@ -508,8 +509,8 @@ private:
     bool prepare_input_image_(const void* image, size_t image_bytes);
     template <class Fill>
     bool fill_staged_(uint32_t family, uint32_t air_id, uint32_t segment, uint32_t n_rows, size_t words,
-                      RamFillResult* res, Fill&& fill);
-    // MemAlign retention (count_and_plan.cu) and fill (ram_fill.cu).
+                      MemFillResult* res, Fill&& fill);
+    // MemAlign retention (count_and_plan.cu) and fill (mem_fill.cu).
     AlignRecord*               d_align_ = nullptr;           // region at the arena top, align_cap_ records
     size_t                     align_cap_ = 0;
     uint32_t*                  d_align_cursor_ = nullptr;    // records reserved (device atomic)
@@ -530,7 +531,7 @@ private:
     uint8_t*                   align_scratch_ = nullptr;
     bool prepare_align_index_();
     bool fill_align_instance(const AlignPlanDesc& plan, const AlignChunkEntry* entries, uint8_t* scratch,
-                             uint64_t* out_rows, RamFillResult* res, uint64_t* d_out = nullptr);
+                             uint64_t* out_rows, MemFillResult* res, uint64_t* d_out = nullptr);
     uint32_t           mem_col_widths_[64] = {0};
     uint32_t           mem_n_cols_ = 0, mem_words_per_row_ = 0, mem_lanes_x_row_ = 0;
 

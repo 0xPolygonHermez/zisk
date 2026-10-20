@@ -185,7 +185,7 @@ impl Drop for MOShmemReader {
         #[cfg(gpu)]
         {
             zisk_sm_mem_planner::gpu_mem_witness_release_now();
-            zisk_sm_mem_planner::clear_gpu_ram_witness();
+            zisk_sm_mem_planner::clear_gpu_mem_witness();
         }
         if let Some(handle_mo) = self.handle_mo.take() {
             match handle_mo.join() {
@@ -399,7 +399,7 @@ impl AsmRunnerMO {
         };
         // A new block: the previous block's RAM witness source is gone.
         #[cfg(gpu)]
-        zisk_sm_mem_planner::clear_gpu_ram_witness();
+        zisk_sm_mem_planner::clear_gpu_mem_witness();
         zisk_common::MEM_ROWS_ON_DEVICE.store(false, Ordering::Release);
         // Take the optional GPU planner for this block.
         #[cfg(gpu)]
@@ -609,7 +609,7 @@ impl AsmRunnerMO {
             if gpu_metas_view.is_none() || !device_witness_available {
                 return None;
             }
-            zisk_sm_mem_planner::register_gpu_ram_witness(gpu_count_and_plan, chunk_size)
+            zisk_sm_mem_planner::register_gpu_mem_witness(gpu_count_and_plan, chunk_size)
                 .then(|| DeviceMemWitness { shm_prefix: shm_prefix.clone() })
         });
         #[cfg(gpu)]

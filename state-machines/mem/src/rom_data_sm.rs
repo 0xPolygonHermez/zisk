@@ -303,7 +303,7 @@ impl<F: PrimeField64> RomDataSM<F> {
 
     /// The device's scalars of an instance as its fill output and continuation.
     fn from_result(
-        res: &zisk_sm_mem_planner::RamFillResult,
+        res: &zisk_sm_mem_planner::MemFillResult,
         n_rows: usize,
     ) -> (RomDataFillOutput, MemPreviousSegment) {
         let num_slots = n_rows * zisk_sm_mem_common::rom_data_lanes_x_row();
