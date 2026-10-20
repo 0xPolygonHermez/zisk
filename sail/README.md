@@ -183,6 +183,8 @@ reached through the ROM lookup. See
 | `lean/Proofs/MemWorld.lean` | The memory bus around Main: the other AIRs split into the RAM's, InputData's, the Rom's, RomData's and the rest (`Quiet`: none), every count an integer, and who proves and assumes a load or a store. |
 | `lean/Proofs/MemRomData.lean` | RomData's values: every read returns a word of the Rom's data (`MemBusWorld.rd_value`). |
 | `lean/Proofs/MemFromBus.lean` | `MemAnswers` from the memory bus: Main's stores (`mainStores`), the RAM's writes as those stores and the Rom's data, its reads as `memVal`, the initial memory by region (`MemBusWorld.init`), and `MemBusWorld.answers`. |
+| `lean/Proofs/Continuation.lean` | Continuation buses, in the abstract: on a balanced bus, the segments form one chain from the global update's tuple (`ContBal.chain`). |
+| `lean/Proofs/MemCont.lean` | The RAM's, InputData's and RomData's continuation buses (11 and 12): their chains (`MemBusWorld.ram_chain`, `in_world`, `rd_world`), and `MemAnswers` from all the buses (`MemBusWorld.answers_cont`). |
 | `lean/Proofs/MemSystem.lean` | The run to the end over the operation bus's provers and the memory bus (`run_to_end_memory_bus`). |
 | `lean/Proofs/RegEnd.lean` | The program's end with the register file: the model runs to an end instruction of any op, source and store, with the chain's registers, and stops (`run_to_end_mem`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
@@ -369,7 +371,7 @@ make proofs
 ```
 
 ```
-✔ [119/120] Built Proofs
+✔ [121/122] Built Proofs
 Build completed successfully.
 ```
 
@@ -1495,8 +1497,10 @@ the input memory (`InWorld.init`): at a byte address the input memory holds,
 its value there, the same at every read by `input_consistent`; elsewhere 0.
 An InputData row reads it, away from the region's base, where free reads
 return fresh values (`InWorld.row`). The initial memory is then the input
-memory below the ROM, the Rom's data in the ROM (`romInit`) and in the RAM
-(`MemBusWorld.init`). Four facts stay as hypotheses:
+memory below the ROM (`inInit`), the Rom's data in the ROM (`romInit`) and
+in the RAM (`ramInit`, the words the Rom writes there, one value each since
+a sorted log has one write per address and step) — `busInit`, defined from
+the instances and the Rom alone. Four facts stay as hypotheses:
 
 - `RomOk`: the Rom's ROM words are at word addresses of the ROM region, one
   value each — a property of the setup's fixed data;
@@ -1508,15 +1512,34 @@ memory below the ROM, the Rom's data in the ROM (`romInit`) and in the RAM
 
 The domain is the 32-bit words off the register file and the free-input base
 (`busD`), and `MemBusWorld.answers` proves `MemAnswers` over `busD`,
-`W.init` and `mainStores`. With it,
+`busInit` and `mainStores`, given the RAM's segments chained (`RamSegs`,
+`RamChain`) and InputData's and RomData's chains (`InWorld`, `RdWorld`).
+
+The chains come from the continuation buses. Each area's segment assumes
+`(tag, id, is_first, previous state)` and, unless it is the last, proves
+`(tag, id + 1, 0, last state)`; a global update proves the opening tuple
+`(tag, 0, 1, initial state)` once. [`lean/Proofs/Continuation.lean`](lean/Proofs/Continuation.lean)
+shows, in the abstract, that on a balanced bus the segments form one chain
+from the opening tuple (`ContBal.chain`): each segment's assumption is proved
+by the global update or a segment one id below; following them back reaches
+the global update, as ids would otherwise repeat around a loop shorter than
+the characteristic (a pigeonhole); and the counts allow one segment per id.
+[`lean/Proofs/MemCont.lean`](lean/Proofs/MemCont.lean) applies it to bus 11,
+which carries the RAM's and InputData's chains under their own tags, and bus
+12, RomData's (`MemBusWorld.ram_chain`, `in_world`, `rd_world`): their
+senders are the areas' two arguments a segment, by the census of the buses,
+and their global updates (`GlobalCont`, `GlobalRd`) are written from
+`mem.pil` and `rom_data.pil`, as the global updates are not extracted.
+`ContWorld` bundles them with each instance's fixed columns and range
+checks, and `MemBusWorld.answers_cont` proves `MemAnswers` from all the
+buses. With it,
 [`lean/Proofs/MemSystem.lean`](lean/Proofs/MemSystem.lean) states the run to
 the end over the operation bus's provers and the memory bus
 (`run_to_end_memory_bus`): `MemAnswers` is no longer assumed; in its place
-are `MemBusWorld`, the RAM's, InputData's and RomData's chains, the
-hypotheses above, and the model's initial memory being the bus's.
+are `MemBusWorld`, `ContWorld`, the hypotheses above, and the model's
+initial memory being the bus's.
 
-Still to come: the continuation buses' guarantees (`RamChain`, `InChain`,
-`RdWorld`); `Quiet`, from the operation bus — the precompiles and DMA run only
+Still to come: `Quiet`, from the operation bus — the precompiles and DMA run only
 when Main calls them; `MemAlign`, for byte and unaligned accesses;
 `MainAvoids` and `FirstNoLoad`; and `RomOk`, from the setup's ROM.
 

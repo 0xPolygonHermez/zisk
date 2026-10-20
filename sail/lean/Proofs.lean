@@ -45,4 +45,6 @@ import Proofs.MemRamBus
 import Proofs.MemWorld
 import Proofs.MemRomData
 import Proofs.MemFromBus
+import Proofs.Continuation
+import Proofs.MemCont
 import Proofs.MemSystem

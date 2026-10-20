@@ -186,7 +186,7 @@ theorem mainStores_mem {M : MainSegs F} {k m l : Nat} (hk : k < M.K) (hm : m < M
 open Classical in
 /-- Every emission of the RAM's log has an address and a step below `2^48`. -/
 theorem MemBusWorld.log_bounds {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {e : Emit (F × F)}
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) {e : Emit (F × F)}
     (he : e ∈ MemSort.reads (ramLog (W.segs hram)) ∨ e ∈ MemSort.writes (ramLog (W.segs hram))) :
     e.addr < 2 ^ 48 ∧ e.step < 2 ^ 48 := by
   obtain ⟨lane, hlane, hel⟩ : ∃ lane ∈ ramLog (W.segs hram), e ∈ lane.reads ∨ e ∈ lane.writes := by
@@ -201,7 +201,7 @@ theorem MemBusWorld.log_bounds {M : MainSegs F} {S : MemOthers F} {gp ga : List 
     have : Mem.numRows = 4194304 := rfl
     rw [this] at hn ⊢; omega
   have hL : n % 4 < 4 := Nat.mod_lt _ (by omega)
-  let N := (W.seg hI (hram I hI)).nat
+  let N := (W.seg hI (hram.inst I hI)).nat
   have ha := (N.addr ((n / 4 : Nat) : Int) (n % 4) (inRows_nat hm) hL).1
   have hs := (N.step ((n / 4 : Nat) : Int) (n % 4) (inRows_nat hm) hL).1
   rcases hel with h | h
@@ -218,7 +218,7 @@ theorem MemBusWorld.log_bounds {M : MainSegs F} {S : MemOthers F} {gp ga : List 
           cases hd
           rw [List.mem_singleton.mp h']
           exact ⟨ha, (N.dual ((n / 4 : Nat) : Int) (n % 4) (inRows_nat hm) hL (by
-            show ((W.seg hI (hram I hI)).t _).sel_dual (n % 4) ≠ 0
+            show ((W.seg hI (hram.inst I hI)).t _).sel_dual (n % 4) ≠ 0
             rw [h1]; exact one_ne_zero')).1⟩
         · exact nomatch hd
       · exact nomatch h'
@@ -273,10 +273,11 @@ theorem memBase_lt {M : MainSegs F} {k m l : Nat} (hk : k < M.K) (hK : M.K < 104
   simp only [memBase, Main.numRows] at hm ⊢; omega
 
 /-- **Every write of the RAM's log is one of Main's stores**, at its byte
-address, **or the Rom's data**, at step 3. -/
+address, **or the Rom's data**, at step 3: a word the Rom writes. -/
 theorem MemBusWorld.write_in_stores {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {w : Emit (F × F)}
-    (hw : w ∈ MemSort.writes (ramLog (W.segs hram))) : toByte w ∈ mainStores M ∨ w.step = 3 := by
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) {w : Emit (F × F)}
+    (hw : w ∈ MemSort.writes (ramLog (W.segs hram))) :
+    toByte w ∈ mainStores M ∨ (w.step = 3 ∧ RamWord S ((8 * w.addr : Nat) : F) w.val) := by
   rcases W.write_is_store hram hw with ⟨k, hk, m, hm, l, hl, hst, ht⟩ | h3
   rotate_left
   · exact .inr h3
@@ -349,7 +350,7 @@ theorem reg_zero {x y : F} (hx : x = 1) (hb : x + y = 0 ∨ x + y = 1) (hy : y =
 /-- **A lane that stores to memory writes the RAM's log**, at its byte
 address, at its store step. -/
 theorem MemBusWorld.store_at {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {k m l : Nat} (hk : k < M.K)
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) {k m l : Nat} (hk : k < M.K)
     (hm : m < Main.numRows) (hl : l < 4) (hst : StoresAt M k m l) :
     ∃ e ∈ MemSort.writes (ramLog (W.segs hram)),
       e.val = (el 4 (tupleOf ⟨(PairTag.lane l 2).curArg, (M.seg k).1, (M.seg k).2⟩ (m : Int)),
@@ -384,7 +385,7 @@ theorem MemBusWorld.store_at {M : MainSegs F} {S : MemOthers F} {gp ga : List (L
 /-- **Every store of Main's is a write of the RAM's log**, at its byte
 address. -/
 theorem MemBusWorld.store_in_writes {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {w' : Emit (F × F)}
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) {w' : Emit (F × F)}
     (hw' : w' ∈ mainStores M) : ∃ w ∈ MemSort.writes (ramLog (W.segs hram)), toByte w = w' := by
   obtain ⟨k, hk, m, hm, l, hl, hst, -, rfl⟩ := mem_mainStores hw'
   obtain ⟨e, he, hv, hX, hstep⟩ := W.store_at hram hk hm hl hst
@@ -398,77 +399,6 @@ theorem MemBusWorld.store_in_writes {M : MainSegs F} {S : MemOthers F} {gp ga : 
 theorem mainStores_step3 {M : MainSegs F} {w : Emit (F × F)} (hw : w ∈ mainStores M) : w.step % 4 = 3 := by
   obtain ⟨k, -, m, -, l, -, -, hst, -⟩ := mem_mainStores hw
   rw [hst]; simp only [memBase]; omega
-
-open Classical in
-/-- **The RAM's initial memory**: at a byte address the Rom's data writes, at
-step 3, its value — a write of the log at step 3 that is not Main's — and 0
-elsewhere. -/
-noncomputable def MemBusWorld.ramInit {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) (A : Nat) : F × F :=
-  if h : ∃ w ∈ MemSort.writes (ramLog (W.segs hram)), 8 * w.addr = A ∧ w.step = 3 ∧ toByte w ∉ mainStores M
-  then (Classical.choose h).val else (0, 0)
-
-/-- **A read of the RAM's log after step 3 returns `memVal` of Main's stores**
-over the RAM's initial memory, at its byte address, when its step is not a
-store's: the latest write before it, by `ram_reads_last_write`, is the latest
-store — a store's step is never a load's, `≡ 3 (mod 4)` — or the Rom's data,
-the only write at its address and step 3, or, if there is none, 0. -/
-theorem MemBusWorld.read_memVal {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) (hc : RamChain (W.segs hram))
-    {init : Nat → F × F} {e : Emit (F × F)} (he : e ∈ MemSort.reads (ramLog (W.segs hram)))
-    (hs : e.step % 4 ≠ 3) (h3 : 3 < e.step) (hinit : init (8 * e.addr) = W.ramInit hram (8 * e.addr)) :
-    e.val = memVal init (mainStores M) (8 * e.addr) e.step := by
-  have hnd := mainStores_nodup M
-  have huniq := ram_writes_unique hc
-  rcases ram_reads_last_write hc e he with ⟨w, hw, ha, hle, hv, hmax⟩ | ⟨hv, hnone⟩
-  · have hw3 : w.step % 4 = 3 := by
-      rcases W.write_in_stores hram hw with h | h
-      · have := mainStores_step3 h; simpa [toByte] using this
-      · omega
-    have hlt : w.step < e.step := by omega
-    by_cases hst : toByte w ∈ mainStores M
-    · -- The latest write, a store of Main's.
-      rw [memVal_of_latest hnd (w := toByte w)]
-      · exact hv.symm
-      · refine ⟨hst, by simp [toByte, ha], hlt, fun w'' hw'' ha'' hs'' => ?_⟩
-        obtain ⟨w₀, hw₀, rfl⟩ := W.store_in_writes hram hw''
-        simp only [toByte] at ha'' hs'' ⊢
-        exact hmax w₀ hw₀ (by omega) (by omega)
-    · -- The latest write, the Rom's data, at step 3: no store comes before it.
-      have hw3' : w.step = 3 := by
-        rcases W.write_in_stores hram hw with h | h
-        · exact absurd h hst
-        · exact h
-      rw [memVal_of_none, hinit]
-      · unfold MemBusWorld.ramInit
-        have hex : ∃ w' ∈ MemSort.writes (ramLog (W.segs hram)), 8 * w'.addr = 8 * e.addr ∧
-            w'.step = 3 ∧ toByte w' ∉ mainStores M := ⟨w, hw, by rw [ha], hw3', hst⟩
-        rw [dif_pos hex]
-        obtain ⟨hw1, ha1, hs1, -⟩ := Classical.choose_spec hex
-        rw [huniq _ hw1 w hw (by omega) (by omega)]
-        exact hv.symm
-      · intro w'' hw'' ha'' hs''
-        obtain ⟨w₀, hw₀, rfl⟩ := W.store_in_writes hram hw''
-        simp only [toByte] at ha'' hs''
-        have := hmax w₀ hw₀ (by omega) (by omega)
-        have h3' : w₀.step = 3 := by
-          have := mainStores_step3 hw''; simp only [toByte] at this; omega
-        have := huniq w₀ hw₀ w hw (by omega) (by omega)
-        subst this
-        exact hst hw''
-  · -- No write before it: the initial value, 0.
-    rw [memVal_of_none, hinit]
-    · unfold MemBusWorld.ramInit
-      rw [dif_neg]
-      · exact hv
-      · rintro ⟨w', hw', ha', hs', -⟩
-        exact hnone w' hw' (by omega) (by omega)
-    · intro w'' hw'' ha'' hs''
-      obtain ⟨w₀, hw₀, rfl⟩ := W.store_in_writes hram hw''
-      simp only [toByte] at ha'' hs''
-      exact hnone w₀ hw₀ (by omega) (by omega)
-
-/-! ### Main's loads, from the bus -/
 
 theorem Lane.emit_addr {V : Type} {q : Lane V} {e : Emit V} (h : e ∈ q.reads ∨ e ∈ q.writes) :
     e.addr = q.addr := by
@@ -488,7 +418,7 @@ theorem Lane.emit_addr {V : Type} {q : Lane V} {e : Emit V} (h : e ∈ q.reads �
 
 /-- **Every emission of the RAM's log is in the RAM's region.** -/
 theorem MemBusWorld.log_region {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {e : Emit (F × F)}
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) {e : Emit (F × F)}
     (he : e ∈ MemSort.reads (ramLog (W.segs hram)) ∨ e ∈ MemSort.writes (ramLog (W.segs hram))) :
     335544320 ≤ e.addr ∧ e.addr ≤ 402653183 := by
   obtain ⟨lane, hlane, hel⟩ : ∃ lane ∈ ramLog (W.segs hram), e ∈ lane.reads ∨ e ∈ lane.writes := by
@@ -500,10 +430,118 @@ theorem MemBusWorld.log_region {M : MainSegs F} {S : MemOthers F} {gp ga : List 
   obtain ⟨n, hn, rfl⟩ := List.mem_map.mp hls
   rw [List.mem_range] at hn
   rw [Lane.emit_addr hel]
-  show 335544320 ≤ (hram I hI).trace.AA (4 * ((n / 4 : Nat) : Int).toNat + n % 4) ∧
-    (hram I hI).trace.AA (4 * ((n / 4 : Nat) : Int).toNat + n % 4) ≤ 402653183
+  show 335544320 ≤ (hram.inst I hI).trace.AA (4 * ((n / 4 : Nat) : Int).toNat + n % 4) ∧
+    (hram.inst I hI).trace.AA (4 * ((n / 4 : Nat) : Int).toNat + n % 4) ≤ 402653183
   rw [Int.toNat_natCast]
-  exact (hram I hI).trace.AA_region (by omega)
+  exact (hram.inst I hI).trace.AA_region (by omega)
+
+/-- **A word the Rom writes to the RAM is a write of the RAM's log**, at
+step 3. -/
+theorem MemBusWorld.ram_word_write {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) {X : F} {v : F × F} (h : RamWord S X v) :
+    ∃ e ∈ MemSort.writes (ramLog (W.segs hram)), X = ((8 * e.addr : Nat) : F) ∧ e.step = 3 ∧ e.val = v := by
+  obtain ⟨I, hI, s, hs, j, hj, hr, ht⟩ := h
+  have hsb : s ∈ busSenders M S :=
+    List.mem_append_right _ (S.rom_sub (List.mem_flatMap.mpr ⟨I, hI, hs⟩))
+  have hp := (rom_counts I [] s hs).1
+  have hbit : ∀ j, (I.t j).is_data = 0 ∨ (I.t j).is_data = 1 := fun j => bit_or (by
+    have e := (I.rows j).c1
+    simp only [Rom.c1] at e
+    generalize (I.t j).is_data = d at e ⊢
+    grind)
+  have hb : ∀ j ∈ s.at, s.p.arg.reps s.p.x s.p.t j = 0 ∨ s.p.arg.reps s.p.x s.p.t j = 1 :=
+    fun j _ => by rw [(rom_tuple I hs j).1]; exact hbit j
+  have hr1 : s.p.arg.reps s.p.x s.p.t j = 1 := by
+    rcases hb j hj with h0 | h1
+    · exact absurd h0 hr
+    · exact h1
+  obtain ⟨e, he, hv, hX, hst⟩ := W.store_write hram hsb hp hb hj ht hr1
+  have hbd := W.log_bounds hram (.inr he)
+  refine ⟨e, he, hX, ?_, hv⟩
+  have h3 : ((e.step : Nat) : F) = ((3 : Nat) : F) := by rw [← hst]; exact natCast_ofNat' (F := F) 3
+  exact natCast_inj49 (F := F) (by omega) (by omega) h3
+
+/-- **One value per word the Rom writes to the RAM**: two are writes of the
+log at the same address and step. -/
+theorem MemBusWorld.ram_word_unique {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) (hc : RamChain (W.segs hram)) {X : F} {v v' : F × F}
+    (h : RamWord S X v) (h' : RamWord S X v') : v = v' := by
+  obtain ⟨e, he, hX, h3, hv⟩ := W.ram_word_write hram h
+  obtain ⟨e', he', hX', h3', hv'⟩ := W.ram_word_write hram h'
+  have r := W.log_region hram (.inr he)
+  have r' := W.log_region hram (.inr he')
+  have ha := natCast_inj49 (F := F) (by omega) (by omega) (hX.symm.trans hX')
+  rw [← hv, ← hv', ram_writes_unique hc e he e' he' (by omega) (by omega)]
+
+open Classical in
+/-- **The RAM's initial memory**: the words the Rom's data writes to it, at
+step 3, and 0 elsewhere. -/
+noncomputable def ramInit (S : MemOthers F) (A : Nat) : F × F :=
+  if h : ∃ v, RamWord S ((A : Nat) : F) v then Classical.choose h else (0, 0)
+
+/-- **A read of the RAM's log after step 3 returns `memVal` of Main's stores**
+over the RAM's initial memory, at its byte address, when its step is not a
+store's: the latest write before it, by `ram_reads_last_write`, is the latest
+store — a store's step is never a load's, `≡ 3 (mod 4)` — or a word the Rom
+writes, the only write at its address and step 3, or, if there is none, 0. -/
+theorem MemBusWorld.read_memVal {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) (hc : RamChain (W.segs hram))
+    {init : Nat → F × F} {e : Emit (F × F)} (he : e ∈ MemSort.reads (ramLog (W.segs hram)))
+    (hs : e.step % 4 ≠ 3) (h3 : 3 < e.step) (hinit : init (8 * e.addr) = ramInit S (8 * e.addr)) :
+    e.val = memVal init (mainStores M) (8 * e.addr) e.step := by
+  have hnd := mainStores_nodup M
+  have huniq := ram_writes_unique hc
+  have hre := W.log_region hram (.inl he)
+  rcases ram_reads_last_write hc e he with ⟨w, hw, ha, hle, hv, hmax⟩ | ⟨hv, hnone⟩
+  · have hw3 : w.step % 4 = 3 := by
+      rcases W.write_in_stores hram hw with h | h
+      · have := mainStores_step3 h; simpa [toByte] using this
+      · omega
+    have hlt : w.step < e.step := by omega
+    by_cases hst : toByte w ∈ mainStores M
+    · -- The latest write, a store of Main's.
+      rw [memVal_of_latest hnd (w := toByte w)]
+      · exact hv.symm
+      · refine ⟨hst, by simp [toByte, ha], hlt, fun w'' hw'' ha'' hs'' => ?_⟩
+        obtain ⟨w₀, hw₀, rfl⟩ := W.store_in_writes hram hw''
+        simp only [toByte] at ha'' hs'' ⊢
+        exact hmax w₀ hw₀ (by omega) (by omega)
+    · -- The latest write, a word the Rom writes, at step 3: no store comes before it.
+      obtain ⟨hw3', hword⟩ : w.step = 3 ∧ RamWord S ((8 * w.addr : Nat) : F) w.val := by
+        rcases W.write_in_stores hram hw with h | h
+        · exact absurd h hst
+        · exact h
+      rw [memVal_of_none, hinit]
+      · unfold ramInit
+        rw [ha] at hword
+        have hex : ∃ v, RamWord S ((8 * e.addr : Nat) : F) v := ⟨_, hword⟩
+        rw [dif_pos hex, ← W.ram_word_unique hram hc hword (Classical.choose_spec hex)]
+        exact hv.symm
+      · intro w'' hw'' ha'' hs''
+        obtain ⟨w₀, hw₀, rfl⟩ := W.store_in_writes hram hw''
+        simp only [toByte] at ha'' hs''
+        have := hmax w₀ hw₀ (by omega) (by omega)
+        have h3' : w₀.step = 3 := by
+          have := mainStores_step3 hw''; simp only [toByte] at this; omega
+        have := huniq w₀ hw₀ w hw (by omega) (by omega)
+        subst this
+        exact hst hw''
+  · -- No write before it: the initial value, 0.
+    rw [memVal_of_none, hinit]
+    · unfold ramInit
+      rw [dif_neg]
+      · exact hv
+      · rintro ⟨v, hword⟩
+        obtain ⟨e', he', hX, h3', -⟩ := W.ram_word_write hram hword
+        have r' := W.log_region hram (.inr he')
+        have := natCast_inj49 (F := F) (by omega) (by omega) hX
+        exact hnone e' he' (by omega) (by omega)
+    · intro w'' hw'' ha'' hs''
+      obtain ⟨w₀, hw₀, rfl⟩ := W.store_in_writes hram hw''
+      simp only [toByte] at ha'' hs''
+      exact hnone w₀ hw₀ (by omega) (by omega)
+
+/-! ### Main's loads, from the bus -/
 
 /-- A lane's access `κ` is among the memory bus's senders, assuming, a sender
 of bits, at every row. -/
@@ -555,7 +593,7 @@ def OtherLoad (S : MemOthers F) (X : F) (s : Nat) (v : F × F) : Prop :=
 /-- **A load a lane assumes is a read of the RAM's log, or an InputData or
 RomData row**, at the access's step. -/
 theorem MemBusWorld.access_load {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {k m l κ : Nat} (hk : k < M.K)
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) {k m l κ : Nat} (hk : k < M.K)
     (hm : m < Main.numRows) (hl : l < 4) (hκ : κ < 3) {τ : List F}
     (hτ : tupleOf ⟨(PairTag.lane l κ).curArg, (M.seg k).1, (M.seg k).2⟩ (m : Int) = τ)
     (hr1 : ((PairTag.lane l κ).curArg (F := F)).reps (M.seg k).1 (M.seg k).2 (m : Int) = 1)
@@ -584,7 +622,7 @@ theorem MemBusWorld.access_load {M : MainSegs F} {S : MemOthers F} {gp ga : List
 /-- **A lane's `a` load**, from the bus: a read of the RAM's log at its
 address, or an InputData or RomData row. -/
 theorem MemBusWorld.a_access {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {k m l : Nat} (hk : k < M.K)
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) {k m l : Nat} (hk : k < M.K)
     (hm : m < Main.numRows) (hl : l < 4) (ha : ((M.seg k).2 m).a_src_mem l = 1) :
     (∃ e ∈ MemSort.reads (ramLog (W.segs hram)),
       (((M.seg k).2 m).a l 0, ((M.seg k).2 m).a l 1) = e.val ∧
@@ -608,7 +646,7 @@ theorem MemBusWorld.a_access {M : MainSegs F} {S : MemOthers F} {gp ga : List (L
 /-- **A lane's `b` load**, from the bus: a read of the RAM's log at its
 address, or an InputData or RomData row. -/
 theorem MemBusWorld.b_access {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {k m l : Nat} (hk : k < M.K)
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) {k m l : Nat} (hk : k < M.K)
     (hm : m < Main.numRows) (hl : l < 4)
     (hbm : ((M.seg k).2 m).b_src_mem l + ((M.seg k).2 m).b_src_ind l = 1) :
     (∃ e ∈ MemSort.reads (ramLog (W.segs hram)),
@@ -644,71 +682,107 @@ structure InWorld (S : MemOthers F) where
 noncomputable def InWorld.log {S : MemOthers F} (IW : InWorld S) (n : Nat) : MemImm.ILane (F × F) :=
   inLog (fun k => (IW.seg k).toSeg) n
 
-open Classical in
-/-- **The initial memory**: at a byte address the input memory holds, its value
-there; elsewhere 0. -/
-noncomputable def InWorld.init {S : MemOthers F} (IW : InWorld S) (A : Nat) : F × F :=
-  if h : ∃ n, n < IW.K * InputData.numRows ∧ 8 * (IW.log n).addr = A then
-    (IW.log (Classical.choose h)).val else (0, 0)
-
 theorem InWorld.log_region {S : MemOthers F} (IW : InWorld S) (n : Nat) :
     134217728 ≤ (IW.log n).addr ∧ (IW.log n).addr ≤ 268435455 :=
   (IW.seg (n / InputData.numRows)).A_region (Nat.mod_lt _ (by simp [InputData.numRows]))
 
-/-- Above the input region, the initial memory is 0. -/
-theorem InWorld.init_ram {S : MemOthers F} (IW : InWorld S) {a : Nat} (ha : 268435455 < a) :
-    IW.init (8 * a) = (0, 0) := by
-  unfold InWorld.init
-  rw [dif_neg]
-  rintro ⟨n, -, hn⟩
-  have := (IW.log_region n).2
-  omega
-
-/-- **An InputData row reads the initial memory**: its byte address is `8a`,
-`a` in the input region, and, away from the region's base, the initial memory
-there is its value. -/
-theorem InWorld.row {S : MemOthers F} (IW : InWorld S) {I : InputDataOnMem F} (hI : I ∈ S.inputData)
-    {r : Nat} (hr : r < InputData.numRows) {X st v0 v1 : F}
-    (ht : tupleOf (⟨InputData.bus26, I.x, I.t⟩ : Prover F) r = [1, X, st, 8, v0, v1]) :
-    ∃ a, 134217728 ≤ a ∧ a ≤ 268435455 ∧ X = ((8 * a : Nat) : F) ∧
-      (a ≠ 134217728 → IW.init (8 * a) = (v0, v1)) := by
+/-- An InputData row is a lane of the chain: its address the lane's, a
+natural, and its value the lane's. -/
+theorem InWorld.lane_of {S : MemOthers F} (IW : InWorld S) {I : InputDataOnMem F} (hI : I ∈ S.inputData)
+    {r : Nat} (hr : r < InputData.numRows) :
+    ∃ n, n < IW.K * InputData.numRows ∧ (I.t r).addr 0 = (((IW.log n).addr : Nat) : F) ∧
+      (IW.log n).val = inVal (I.t r) := by
   obtain ⟨k, hk, -, hxt⟩ := IW.inst I hI
-  simp only [tupleOf, InputData.bus26, List.map_cons, List.map_nil, List.cons.injEq] at ht
-  have hX := ht.2.1
-  have hv0 := ht.2.2.2.2.1
-  have hv1 := ht.2.2.2.2.2.1
-  rw [hxt] at hX hv0 hv1
   have hN : InputData.numRows = 4194304 := rfl
   obtain ⟨n, hn_def⟩ : ∃ n, n = k * InputData.numRows + r := ⟨_, rfl⟩
   have hnk : n / InputData.numRows = k := by rw [hn_def]; rw [hN] at hr ⊢; omega
   have hnr : n % InputData.numRows = r := by rw [hn_def]; rw [hN] at hr ⊢; omega
   have hlog : IW.log n = inLaneOf ((IW.seg k).t r) ((IW.seg k).A r) := by
     simp only [InWorld.log, inLog, hnk, hnr]; rfl
-  have hreg := (IW.seg k).A_region hr
-  refine ⟨(IW.seg k).A r, hreg.1, hreg.2, ?_, fun hb => ?_⟩
-  · rw [← hX, (IW.seg k).addr_eq r hr, Lean.Grind.Semiring.natCast_mul, natCast_ofNat' 8]
+  have hn : n < IW.K * InputData.numRows := by
+    have : (k + 1) * InputData.numRows ≤ IW.K * InputData.numRows := Nat.mul_le_mul_right _ hk
+    rw [Nat.add_mul, Nat.one_mul] at this; omega
+  refine ⟨n, hn, ?_, ?_⟩
+  · rw [hlog, hxt]; exact (IW.seg k).addr_eq r hr
+  · rw [hlog, hxt]; rfl
+
+/-- **Two InputData rows at one address, other than the base, hold one
+value**: they are lanes of the chain. -/
+theorem InWorld.same {S : MemOthers F} (IW : InWorld S) {I I' : InputDataOnMem F} (hI : I ∈ S.inputData)
+    (hI' : I' ∈ S.inputData) {r r' : Nat} (hr : r < InputData.numRows) (hr' : r' < InputData.numRows)
+    (ha : (I.t r).addr 0 = (I'.t r').addr 0) (hb : (I.t r).addr 0 ≠ ((134217728 : Nat) : F)) :
+    inVal (I.t r) = inVal (I'.t r') := by
+  obtain ⟨n, hn, ea, ev⟩ := IW.lane_of hI hr
+  obtain ⟨n', hn', ea', ev'⟩ := IW.lane_of hI' hr'
+  have r1 := IW.log_region n
+  have r2 := IW.log_region n'
+  have hA : (IW.log n).addr = (IW.log n').addr :=
+    natCast_inj33 (by omega) (by omega) (ea.symm.trans (ha.trans ea'))
+  have hB : (IW.log n).addr ≠ 134217728 := fun h => hb (by rw [ea, h])
+  rw [← ev, ← ev']
+  rcases Nat.le_total n n' with h | h
+  · exact input_consistent IW.chain h hn' hA (fun h' => hB (hA.trans h'))
+  · exact (input_consistent IW.chain h hn hA.symm hB).symm
+
+/-- **A word of the input memory**: an InputData row at bus address `X`, with
+value `v`. -/
+def InWord (S : MemOthers F) (X : F) (v : F × F) : Prop :=
+  ∃ I ∈ S.inputData, ∃ r : Nat, r < InputData.numRows ∧ (I.t r).addr 0 * 8 = X ∧ inVal (I.t r) = v
+
+open Classical in
+/-- **The input memory**: at a byte address InputData's rows hold, their
+value there; elsewhere 0. -/
+noncomputable def inInit (S : MemOthers F) (A : Nat) : F × F :=
+  if h : ∃ v, InWord S ((A : Nat) : F) v then Classical.choose h else (0, 0)
+
+/-- One value per word of the input memory, away from the base. -/
+theorem InWorld.word_unique {S : MemOthers F} (IW : InWorld S) {a : Nat} (ha : a ≠ 134217728)
+    (hab : a < 2 ^ 30) {v v' : F × F} (h : InWord S ((8 * a : Nat) : F) v)
+    (h' : InWord S ((8 * a : Nat) : F) v') : v = v' := by
+  obtain ⟨I, hI, r, hr, hX, rfl⟩ := h
+  obtain ⟨I', hI', r', hr', hX', rfl⟩ := h'
+  obtain ⟨n, -, ea, -⟩ := IW.lane_of hI hr
+  obtain ⟨n', -, ea', -⟩ := IW.lane_of hI' hr'
+  have r1 := IW.log_region n
+  have r2 := IW.log_region n'
+  have e1 : ((8 * (IW.log n).addr : Nat) : F) = ((8 * a : Nat) : F) := by
+    rw [← hX, ea, Lean.Grind.Semiring.natCast_mul, natCast_ofNat' 8]
     exact Lean.Grind.CommSemiring.mul_comm _ _
-  · have hn : n < IW.K * InputData.numRows := by
-      have : (k + 1) * InputData.numRows ≤ IW.K * InputData.numRows := Nat.mul_le_mul_right _ hk
-      rw [Nat.add_mul, Nat.one_mul] at this; omega
-    have hadn : (IW.log n).addr = (IW.seg k).A r := by rw [hlog]; rfl
-    have hex : ∃ n, n < IW.K * InputData.numRows ∧ 8 * (IW.log n).addr = 8 * (IW.seg k).A r :=
-      ⟨n, hn, by rw [hadn]⟩
-    unfold InWorld.init
-    rw [dif_pos hex]
-    obtain ⟨hc, hca⟩ := Classical.choose_spec hex
-    have hval : (IW.log n).val = (v0, v1) := by
-      rw [hlog]
-      show inVal _ = _
-      simp only [inVal]
-      rw [hv0, hv1]
-    have hsame : (IW.log (Classical.choose hex)).addr = (IW.log n).addr := by omega
-    have hbn : (IW.log n).addr ≠ 134217728 := by omega
-    have hbc : (IW.log (Classical.choose hex)).addr ≠ 134217728 := by omega
-    rw [← hval]
-    rcases Nat.le_total (Classical.choose hex) n with h | h
-    · exact input_consistent IW.chain h hn hsame hbn
-    · exact (input_consistent IW.chain h hc hsame.symm hbc).symm
+  have e2 : ((8 * (IW.log n').addr : Nat) : F) = ((8 * a : Nat) : F) := by
+    rw [← hX', ea', Lean.Grind.Semiring.natCast_mul, natCast_ofNat' 8]
+    exact Lean.Grind.CommSemiring.mul_comm _ _
+  have h1 := natCast_inj33 (F := F) (by omega) (by omega) e1
+  have h2 := natCast_inj33 (F := F) (by omega) (by omega) e2
+  refine IW.same hI hI' hr hr' (by rw [ea, ea']; congr 1; omega) ?_
+  rw [ea]
+  intro h
+  have := natCast_inj33 (F := F) (by omega) (by omega) h
+  omega
+
+/-- **An InputData row reads the input memory**: its byte address is `8a`,
+`a` in the input region, and, away from the region's base, the input memory
+there is its value. -/
+theorem InWorld.row {S : MemOthers F} (IW : InWorld S) {I : InputDataOnMem F} (hI : I ∈ S.inputData)
+    {r : Nat} (hr : r < InputData.numRows) {X st v0 v1 : F}
+    (ht : tupleOf (⟨InputData.bus26, I.x, I.t⟩ : Prover F) r = [1, X, st, 8, v0, v1]) :
+    ∃ a, 134217728 ≤ a ∧ a ≤ 268435455 ∧ X = ((8 * a : Nat) : F) ∧
+      (a ≠ 134217728 → inInit S (8 * a) = (v0, v1)) := by
+  simp only [tupleOf, InputData.bus26, List.map_cons, List.map_nil, List.cons.injEq] at ht
+  have hX := ht.2.1
+  have hv0 := ht.2.2.2.2.1
+  have hv1 := ht.2.2.2.2.2.1
+  obtain ⟨n, -, ea, -⟩ := IW.lane_of hI hr
+  have hreg := IW.log_region n
+  have hX' : X = ((8 * (IW.log n).addr : Nat) : F) := by
+    rw [← hX, ea, Lean.Grind.Semiring.natCast_mul, natCast_ofNat' 8]
+    exact Lean.Grind.CommSemiring.mul_comm _ _
+  refine ⟨(IW.log n).addr, hreg.1, hreg.2, hX', fun hb => ?_⟩
+  have hw : InWord S ((8 * (IW.log n).addr : Nat) : F) (v0, v1) :=
+    ⟨I, hI, r, hr, hX.trans hX', by simp only [inVal]; rw [hv0, hv1]⟩
+  unfold inInit
+  have hex : ∃ v, InWord S ((8 * (IW.log n).addr : Nat) : F) v := ⟨_, hw⟩
+  rw [dif_pos hex]
+  exact IW.word_unique hb (by omega) (Classical.choose_spec hex) hw
 
 /-! ### `MemAnswers` -/
 
@@ -748,9 +822,8 @@ noncomputable def romInit (S : MemOthers F) (A : Nat) : F × F :=
 
 /-- **The initial memory**, by region: the input memory below the ROM, the
 Rom's data in the ROM, and the Rom's data written to the RAM above. -/
-noncomputable def MemBusWorld.init {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) (IW : InWorld S) (A : Nat) : F × F :=
-  if A < 2147483648 then IW.init A else if A < 2684354560 then romInit S A else W.ramInit hram A
+noncomputable def busInit (S : MemOthers F) (A : Nat) : F × F :=
+  if A < 2147483648 then inInit S A else if A < 2684354560 then romInit S A else ramInit S A
 
 /-- **The first lane loads nothing**, a hypothesis: its loads, at steps 1 and
 2, would come before the Rom's data reaches the RAM, at step 3. -/
@@ -760,7 +833,7 @@ def FirstNoLoad (M : MainSegs F) : Prop :=
 
 /-- No store of Main's lands below the RAM region. -/
 theorem MemBusWorld.no_store_below {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {A s : Nat} (hA : A < 2684354560) :
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) {A s : Nat} (hA : A < 2684354560) :
     ∀ w ∈ mainStores M, w.addr = A → ¬ w.step < s := by
   intro w hw ha _
   obtain ⟨w₀, hw₀, rfl⟩ := W.store_in_writes hram hw
@@ -772,12 +845,13 @@ theorem MemBusWorld.no_store_below {M : MainSegs F} {S : MemOthers F} {gp ga : L
 value is `memVal` of Main's stores over the initial memory, at its address and
 step. -/
 theorem MemBusWorld.load_answer {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) (hc : RamChain (W.segs hram))
-    (IW : InWorld S) (R : RdWorld S) (hrom : RomOk S) {X v0 v1 : F} {s : Nat} (hs4 : s % 4 ≠ 3)
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) (hc : RamChain (W.segs hram))
+    (hIW : S.inputData ≠ [] → Nonempty (InWorld S)) (hR : S.romData ≠ [] → Nonempty (RdWorld S))
+    (hrom : RomOk S) {X v0 v1 : F} {s : Nat} (hs4 : s % 4 ≠ 3)
     (h3 : 3 < s) (havoid : ∀ A : Nat, A < 2 ^ 32 → X = ((A : Nat) : F) → Avoids A)
     (h : (∃ e ∈ MemSort.reads (ramLog (W.segs hram)), (v0, v1) = e.val ∧
         X = ((8 * e.addr : Nat) : F) ∧ e.step = s) ∨ OtherLoad S X s (v0, v1)) :
-    ∃ A, busD A ∧ X = ((A : Nat) : F) ∧ (v0, v1) = memVal (W.init hram IW) (mainStores M) A s := by
+    ∃ A, busD A ∧ X = ((A : Nat) : F) ∧ (v0, v1) = memVal (busInit S) (mainStores M) A s := by
   rcases h with ⟨e, he, hv, hX, hst⟩ | ⟨I, hI, r, hr, -, ht⟩ | ⟨I, hI, r, hr, ht⟩
   · -- The RAM.
     have hreg := W.log_region hram (.inl he)
@@ -785,22 +859,24 @@ theorem MemBusWorld.load_answer {M : MainSegs F} {S : MemOthers F} {gp ga : List
     refine ⟨8 * e.addr, ⟨by omega, by omega, hav⟩, hX, ?_⟩
     rw [hv, ← hst]
     refine W.read_memVal hram hc he (by omega) (by omega) ?_
-    unfold MemBusWorld.init
+    unfold busInit
     rw [if_neg (by omega), if_neg (by omega)]
   · -- InputData.
+    obtain ⟨IW⟩ := hIW (List.ne_nil_of_mem hI)
     obtain ⟨a, ha1, ha2, hX, hinit⟩ := IW.row hI hr ht
     have hav := havoid (8 * a) (by omega) hX
     refine ⟨8 * a, ⟨by omega, by omega, hav⟩, hX, ?_⟩
     rw [memVal_of_none (W.no_store_below hram (by omega))]
-    unfold MemBusWorld.init
+    unfold busInit
     rw [if_pos (by omega), hinit (by have := hav.2; omega)]
   · -- RomData: a word of the Rom's data.
+    obtain ⟨R⟩ := hR (List.ne_nil_of_mem hI)
     have hw := W.rd_value R hI hr ht
     obtain ⟨A, h8, hlo, hhi, hXA⟩ := hrom.addr _ _ hw
     have hav := havoid A (by omega) hXA
     refine ⟨A, ⟨h8, by omega, hav⟩, hXA, ?_⟩
     rw [memVal_of_none (W.no_store_below hram hhi)]
-    unfold MemBusWorld.init romInit
+    unfold busInit romInit
     rw [if_neg (by omega), if_pos hhi]
     have hw' : RomWord S ((A : Nat) : F) (v0, v1) := by rw [← hXA]; exact hw
     have hex : ∃ v, RomWord S ((A : Nat) : F) v := ⟨_, hw'⟩
@@ -826,15 +902,16 @@ of their own, the Rom's data ROM words (`RomOk`), Main's accesses avoiding the
 register file and the free-input base, and its first lane loading nothing,
 Main's loads return `memVal` of Main's stores over the initial memory. -/
 theorem MemBusWorld.answers {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) (hc : RamChain (W.segs hram))
-    (IW : InWorld S) (R : RdWorld S) (hrom : RomOk S) (hav : MainAvoids M) (hfirst : FirstNoLoad M) :
-    MemAnswers M busD (W.init hram IW) (mainStores M) where
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) (hc : RamChain (W.segs hram))
+    (hIW : S.inputData ≠ [] → Nonempty (InWorld S)) (hR : S.romData ≠ [] → Nonempty (RdWorld S))
+    (hrom : RomOk S) (hav : MainAvoids M) (hfirst : FirstNoLoad M) :
+    MemAnswers M busD (busInit S) (mainStores M) where
   nodup := mainStores_nodup M
   a_load k m l hk hm hl ha := by
     have h3 : 3 < memBase k m l := memBase_gt3 (by
       rintro ⟨rfl, rfl, rfl⟩
       exact hfirst.1 ha)
-    exact W.load_answer hram hc IW R hrom (s := memBase k m l) (by simp only [memBase]; omega) h3
+    exact W.load_answer hram hc hIW hR hrom (s := memBase k m l) (by simp only [memBase]; omega) h3
       (fun A hA hX => (hav k m l hk hm hl A hA).1 ha hX) (W.a_access hram hk hm hl ha)
   b_load k m l hk hm hl hb := by
     have h3 : 3 < memBase k m l + 1 := by
@@ -842,7 +919,7 @@ theorem MemBusWorld.answers {M : MainSegs F} {S : MemOthers F} {gp ga : List (Li
       · obtain ⟨rfl, rfl, rfl⟩ := h0
         exact absurd hb hfirst.2
       · have := memBase_gt3 h0; omega
-    exact W.load_answer hram hc IW R hrom (s := memBase k m l + 1) (by simp only [memBase]; omega) h3
+    exact W.load_answer hram hc hIW hR hrom (s := memBase k m l + 1) (by simp only [memBase]; omega) h3
       (fun A hA hX => (hav k m l hk hm hl A hA).2.1 hb hX) (W.b_access hram hk hm hl hb)
   store k m l hk hm hl hst := by
     obtain ⟨e, he, hv, hX, hstep⟩ := W.store_at hram hk hm hl hst

@@ -541,6 +541,12 @@ theorem rom_tuple (I : RomOnMem F) {s : Sender F} (hs : s ∈ I.senders) (j : In
     by simp [tupleOf, el, Rom.bus1, Rom.bus2, Rom.bus3, Rom.bus4, Lean.Grind.Semiring.add_zero],
     by simp [tupleOf, el, Rom.bus1, Rom.bus2, Rom.bus3, Rom.bus4]⟩
 
+/-- **A word the Rom's data writes to the RAM**: a Rom data row sends the
+RAM's initialization tuple `(2, X, 3, 8, v)`. -/
+def RamWord (S : MemOthers F) (X : F) (v : F × F) : Prop :=
+  ∃ I ∈ S.rom, ∃ s ∈ I.senders, ∃ j ∈ s.at, s.p.arg.reps s.p.x s.p.t j ≠ 0 ∧
+    tupleOf s.p j = [2, X, 3, 8, v.1, v.2]
+
 theorem lane_sender_mem (I : MemOnMem F) {L : Nat} (hL : L < 4) :
     (⟨⟨ramLaneArg L, I.x, I.t⟩, Mem.numRows⟩ : Sender F) ∈ I.senders ∧
       (⟨⟨ramDualArg L, I.x, I.t⟩, Mem.numRows⟩ : Sender F) ∈ I.senders := by
@@ -833,10 +839,18 @@ theorem MemBusWorld.who {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F
 
 /-! ### Main's loads as reads of the log -/
 
-/-- The RAM's segments, in the order `S.mem` lists them. -/
+/-- **The RAM's instances**, with their fixed columns and range checks
+(`RamInst`), in an order that lists every one: the order the continuation bus
+chains them in. -/
+structure RamSegs (S : MemOthers F) where
+  inst : ∀ I ∈ S.mem, RamInst I
+  order : List {I // I ∈ S.mem}
+  all : ∀ I, I ∈ order
+
+/-- The RAM's segments, in the order `hram` lists them. -/
 noncomputable def MemBusWorld.segs {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) : List (RamSeg F) :=
-  S.mem.attach.map fun I => W.seg I.2 (hram I.1 I.2)
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) : List (RamSeg F) :=
+  hram.order.map fun I => W.seg I.2 (hram.inst I.1 I.2)
 
 theorem lanes_mem {x : Mem.Ctx F} {t : Mem.Trace F} (N : RamNat x t) {m : Nat} (hm : m < Mem.numRows)
     {L : Nat} (hL : L < 4) : N.lane (m : Int) L ∈ N.lanes := by
@@ -846,15 +860,15 @@ theorem lanes_mem {x : Mem.Ctx F} {t : Mem.Trace F} (N : RamNat x t) {m : Nat} (
 
 /-- A lane's reads and writes are the log's. -/
 theorem MemBusWorld.emit_mem {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {I : MemOnMem F} (hI : I ∈ S.mem)
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) {I : MemOnMem F} (hI : I ∈ S.mem)
     {m : Nat} (hm : m < Mem.numRows) {L : Nat} (hL : L < 4) :
-    (∀ e ∈ ((W.seg hI (hram I hI)).nat.lane (m : Int) L).reads, e ∈ MemSort.reads (ramLog (W.segs hram))) ∧
-      (∀ e ∈ ((W.seg hI (hram I hI)).nat.lane (m : Int) L).writes,
+    (∀ e ∈ ((W.seg hI (hram.inst I hI)).nat.lane (m : Int) L).reads, e ∈ MemSort.reads (ramLog (W.segs hram))) ∧
+      (∀ e ∈ ((W.seg hI (hram.inst I hI)).nat.lane (m : Int) L).writes,
         e ∈ MemSort.writes (ramLog (W.segs hram))) := by
-  have hseg : W.seg hI (hram I hI) ∈ W.segs hram :=
-    List.mem_map.mpr ⟨⟨I, hI⟩, List.mem_attach _ _, rfl⟩
-  have hlane := lanes_mem (W.seg hI (hram I hI)).nat hm hL
-  have hlog : (W.seg hI (hram I hI)).nat.lane (m : Int) L ∈ ramLog (W.segs hram) :=
+  have hseg : W.seg hI (hram.inst I hI) ∈ W.segs hram :=
+    List.mem_map.mpr ⟨⟨I, hI⟩, hram.all _, rfl⟩
+  have hlane := lanes_mem (W.seg hI (hram.inst I hI)).nat hm hL
+  have hlog : (W.seg hI (hram.inst I hI)).nat.lane (m : Int) L ∈ ramLog (W.segs hram) :=
     List.mem_flatMap.mpr ⟨_, hseg, hlane⟩
   exact ⟨fun e he => List.mem_flatMap.mpr ⟨_, hlog, he⟩, fun e he => List.mem_flatMap.mpr ⟨_, hlog, he⟩⟩
 
@@ -878,7 +892,7 @@ theorem rd_op (I : RomDataOnMem F) (m : Int) :
 /-- **A load Main assumes is a read of the RAM's log, an InputData row, or a
 RomData lane.** -/
 theorem MemBusWorld.load_read {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {X st v0 v1 : F}
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) {X st v0 v1 : F}
     {s₀ : Sender F} (hs₀ : s₀ ∈ busSenders M S) (hside : s₀.proving = false)
     (hb : ∀ j ∈ s₀.at, s₀.p.arg.reps s₀.p.x s₀.p.t j = 0 ∨ s₀.p.arg.reps s₀.p.x s₀.p.t j = 1)
     {j : Int} (hj : j ∈ s₀.at) (ht : tupleOf s₀.p j = [1, X, st, 8, v0, v1])
@@ -894,11 +908,11 @@ theorem MemBusWorld.load_read {M : MainSegs F} {S : MemOthers F} {gp ga : List (
   obtain ⟨s, hs, hp, h1, j', hj', ht', hr'⟩ := W.proved hop hs₀ hside hb hj ht hr
   rcases W.who hop hs hp h1 hj' ht' hr' with ⟨I, hI, m, hm, L, hL, h | ⟨hsel, h⟩⟩ | hin | hrd
   · left
-    let N := (W.seg hI (hram I hI)).nat
+    let N := (W.seg hI (hram.inst I hI)).nat
     obtain ⟨he, hX, hst⟩ := N.read_emit hm hL (ram_wr_bit (I.rows m) hL) (by exact h)
     exact ⟨_, (W.emit_mem hram hI hm hL).1 _ he, rfl, hX, hst⟩
   · left
-    let N := (W.seg hI (hram I hI)).nat
+    let N := (W.seg hI (hram.inst I hI)).nat
     have hbit : (I.t m).sel_dual L * (1 - (I.t m).sel_dual L) = 0 := by
       rcases L with _ | _ | _ | _ | L
       · exact (I.rows m).c3
@@ -913,7 +927,7 @@ theorem MemBusWorld.load_read {M : MainSegs F} {S : MemOthers F} {gp ga : List (
 
 /-- **A store Main assumes is a write of the RAM's log.** -/
 theorem MemBusWorld.store_write {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {X st v0 v1 : F}
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) {X st v0 v1 : F}
     {s₀ : Sender F} (hs₀ : s₀ ∈ busSenders M S) (hside : s₀.proving = false)
     (hb : ∀ j ∈ s₀.at, s₀.p.arg.reps s₀.p.x s₀.p.t j = 0 ∨ s₀.p.arg.reps s₀.p.x s₀.p.t j = 1)
     {j : Int} (hj : j ∈ s₀.at) (ht : tupleOf s₀.p j = [2, X, st, 8, v0, v1])
@@ -925,7 +939,7 @@ theorem MemBusWorld.store_write {M : MainSegs F} {S : MemOthers F} {gp ga : List
   obtain ⟨s, hs, hp, h1, j', hj', ht', hr'⟩ := W.proved hop hs₀ hside hb hj ht hr
   rcases W.who hop hs hp h1 hj' ht' hr' with ⟨I, hI, m, hm, L, hL, h | ⟨-, h⟩⟩ | ⟨I, -, m, -, -, h⟩ |
       ⟨I, -, m, -, h | h⟩
-  · let N := (W.seg hI (hram I hI)).nat
+  · let N := (W.seg hI (hram.inst I hI)).nat
     obtain ⟨he, hX, hst⟩ := N.write_emit hm hL (ram_wr_bit (I.rows m) hL) (by exact h)
     exact ⟨_, (W.emit_mem hram hI hm hL).2 _ he, rfl, hX, hst⟩
   · -- A dual read sends op 1.
@@ -1024,11 +1038,12 @@ open Classical in
 sender assumes its tuple, a Main store access or a Rom data row, whose step
 is 3. -/
 theorem MemBusWorld.write_is_store {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
-    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {w : MemSort.Emit (F × F)}
+    (W : MemBusWorld M S gp ga) (hram : RamSegs S) {w : MemSort.Emit (F × F)}
     (hw : w ∈ MemSort.writes (ramLog (W.segs hram))) :
     (∃ k < M.K, ∃ m < Main.numRows, ∃ l < 4, StoresAt M k m l ∧
       tupleOf ⟨(PairTag.lane l 2).curArg, (M.seg k).1, (M.seg k).2⟩ (m : Int) =
-        [2, ((8 * w.addr : Nat) : F), ((w.step : Nat) : F), 8, w.val.1, w.val.2]) ∨ w.step = 3 := by
+        [2, ((8 * w.addr : Nat) : F), ((w.step : Nat) : F), 8, w.val.1, w.val.2]) ∨
+    (w.step = 3 ∧ RamWord S ((8 * w.addr : Nat) : F) w.val) := by
   -- The lane the write is.
   obtain ⟨lane, hlane, hwl⟩ := List.mem_flatMap.mp hw
   obtain ⟨seg, hseg, hls⟩ := List.mem_flatMap.mp hlane
@@ -1038,7 +1053,7 @@ theorem MemBusWorld.write_is_store {M : MainSegs F} {S : MemOthers F} {gp ga : L
   have hN : Mem.numRows = 4194304 := rfl
   have hm : n / 4 < Mem.numRows := by rw [hN] at hn ⊢; omega
   have hL : n % 4 < 4 := Nat.mod_lt _ (by omega)
-  let N := (W.seg hI (hram I hI)).nat
+  let N := (W.seg hI (hram.inst I hI)).nat
   have hwl' : w ∈ (N.lane ((n / 4 : Nat) : Int) (n % 4)).writes := hwl
   unfold MemSort.Lane.writes at hwl'
   split at hwl'
@@ -1091,14 +1106,16 @@ theorem MemBusWorld.write_is_store {M : MainSegs F} {S : MemOthers F} {gp ga : L
       rw [hp] at this; exact nomatch this
     · -- A Rom data row, at step 3.
       right
-      obtain ⟨I', -, hs''⟩ := List.mem_flatMap.mp hro
+      obtain ⟨I', hI', hs''⟩ := List.mem_flatMap.mp hro
       have h2 := (rom_tuple I' hs'' j').2.2
       rw [ht'] at h2
       have e3 : ((w.step : Nat) : F) = ((3 : Nat) : F) := by
         rw [← natCast_ofNat' (F := F) 3]; exact h2
       have hb := (N.step ((n / 4 : Nat) : Int) (n % 4) (inRows_nat hm) hL).1
       have hws : w.step = N.S ((n / 4 : Nat) : Int) (n % 4) := by rw [hwe]
-      exact natCast_inj49 (F := F) (by omega) (by omega) e3
+      have h3 : w.step = 3 := natCast_inj49 (F := F) (by omega) (by omega) e3
+      refine ⟨h3, I', hI', s, hs'', j', hj', hr', ?_⟩
+      rw [ht', h3, ← natCast_ofNat' (F := F) 3]
     · obtain ⟨I', hI', hs''⟩ := List.mem_flatMap.mp hrd
       have := (rd_counts I' (W.rdPad I' hI') [] s hs'').1
       rw [hp] at this; exact nomatch this
