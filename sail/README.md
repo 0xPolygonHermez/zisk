@@ -1410,7 +1410,17 @@ the lane's memory step (`lane_step_l_κ`, generated with the pairs in
 `MainRegs.lean`). And [`lean/Proofs/MemWorld.lean`](lean/Proofs/MemWorld.lean)
 splits the other AIRs on the bus three ways — the RAM's instances,
 InputData's, the rest — and states what the census is to prove of the rest,
-`NoOtherMem`: none sends a load or a store with a nonzero count.
+`NoOtherMem`: none sends a load or a store with a nonzero count. Over the
+whole bus — Main's senders and every other AIR's, `MemBusWorld` bundling the
+bus's soundness, the global updates balancing loads and stores among
+themselves, the RAM's padding range checks, `NoOtherMem` and a bound on the
+rows — every sender counts a load or store tuple as a small integer
+(`MemBusWorld.counts`): Main's arguments, the RAM's lanes and dual reads, and
+InputData's are bits; the rest, 0; the RAM's padding, minus its size, below
+`2^32`, on its own tuple alone. So a load or store some Main access sends is
+proved by some sender, at one of its rows (`MemBusWorld.proved`), and one a
+prover sends, other than a padding tuple, is assumed by some sender
+(`MemBusWorld.assumed`).
 
 Still to come: the RAM's steps, which need the memory bus — every lane's
 tuple is one some AIR assumes, with a bounded step; the continuation buses'
