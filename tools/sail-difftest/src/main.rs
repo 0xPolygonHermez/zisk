@@ -83,7 +83,7 @@ fn prepare(zisk: &Path, input: Option<&Path>, out: &Path, max_steps: u64) -> Res
     let (trace, steps) = reference_trace(&rom, input, max_steps)?;
     fs::write(out.join("ziskemu.trace"), trace)?;
 
-    let (rows, data_rows) = check_rom_rows(&rom)?;
+    let (rows, data_rows, rom_words) = check_rom_rows(&rom)?;
 
     println!(
         "wrote {}: {} instructions, {} opcodes ({}), {} steps on ziskemu",
@@ -95,6 +95,9 @@ fn prepare(zisk: &Path, input: Option<&Path>, out: &Path, max_steps: u64) -> Res
     );
     println!("RomHolds: the committed ROM row of all {rows} instructions is RomRowEncodes");
     println!("RomDataFlags: all {data_rows} data rows initialize memory with flags 2 or 4");
+    println!(
+        "RomOk: all {rom_words} ROM words are at word addresses of the ROM region, one value each"
+    );
     Ok(())
 }
 
@@ -246,9 +249,14 @@ fn inst_to_sail(i: &ZiskInst) -> Result<String> {
 ///
 /// And `RomDataFlags` (`sail/lean/Proofs/MemBus.lean`): every data row sends
 /// its `flags` as the op of a memory-bus tuple, so they must be 2 (RAM) or 4
-/// (ROM initialization), never a register's 3. Returns the number of
-/// instruction rows and of data rows.
-fn check_rom_rows(rom: &ZiskRom) -> Result<(usize, usize)> {
+/// (ROM initialization), never a register's 3.
+///
+/// And `RomOk` (`sail/lean/Proofs/MemFromBus.lean`): every word a data row
+/// initializes the ROM with (`flags` 4), at `line`, `line + 8`, `line + 16`
+/// and `line + 24`, is at a word address of the ROM region
+/// `[0x8000_0000, 0xA000_0000)`, and no address gets two values. Returns the
+/// number of instruction rows, of data rows, and of ROM words.
+fn check_rom_rows(rom: &ZiskRom) -> Result<(usize, usize, usize)> {
     const P: u64 = 0xFFFF_FFFF_0000_0001;
     let signed = |v: i64| if v >= 0 { v as u64 } else { P - v.unsigned_abs() };
     let trace = CustomRom::build_trace::<Goldilocks>(rom).map_err(|e| anyhow!("{e}"))?;
@@ -283,6 +291,8 @@ fn check_rom_rows(rom: &ZiskRom) -> Result<(usize, usize)> {
         }
     }
     let mut data_rows = 0;
+    let mut rom_words: std::collections::BTreeMap<u64, (u64, u64)> =
+        std::collections::BTreeMap::new();
     for (j, row) in trace.buffer.iter().enumerate() {
         if row.is_data.as_canonical_u64() == 0 {
             continue;
@@ -292,8 +302,35 @@ fn check_rom_rows(rom: &ZiskRom) -> Result<(usize, usize)> {
         if flags != 2 && flags != 4 {
             bail!("ROM data row {j}: flags is {flags:#x}, RomDataFlags says 2 or 4");
         }
+        if flags != 4 {
+            continue;
+        }
+        let line = row.line.as_canonical_u64();
+        let words = [
+            (row.a_offset_imm0, row.a_imm1),
+            (row.b_offset_imm0, row.b_imm1),
+            (row.ind_width, row.op),
+            (row.store_offset, row.jmp_offset1),
+        ];
+        for (i, (lo, hi)) in words.iter().enumerate() {
+            let addr = line + 8 * i as u64;
+            if addr % 8 != 0 || !(0x8000_0000..0xA000_0000).contains(&addr) {
+                bail!(
+                    "ROM data row {j}: word {i} at {addr:#x}; RomOk says a word address in \
+                     [0x8000_0000, 0xA000_0000)"
+                );
+            }
+            let v = (lo.as_canonical_u64(), hi.as_canonical_u64());
+            if let Some(w) = rom_words.insert(addr, v) {
+                if w != v {
+                    bail!(
+                        "ROM word at {addr:#x} has two values, {w:x?} and {v:x?}; RomOk says one"
+                    );
+                }
+            }
+        }
     }
-    Ok((rom.insts.len(), data_rows))
+    Ok((rom.insts.len(), data_rows, rom_words.len()))
 }
 
 /// `Correspondence.opcode` in `sail/lean/Proofs/Slot.lean`.
@@ -395,4 +432,47 @@ fn reference_trace(rom: &ZiskRom, input: Vec<u8>, max_steps: u64) -> Result<(Str
         writeln!(s, "out {k} {}", hex(w))?;
     }
     Ok((s, n))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zisk_core::zisk_rom::DataSection64;
+
+    fn rom_with(ro: Vec<DataSection64>, rw: Vec<DataSection64>) -> ZiskRom {
+        ZiskRom { ro_data_64: ro, rw_data_64: rw, ..Default::default() }
+    }
+
+    #[test]
+    fn rom_ok_counts_rom_words() {
+        let rom =
+            rom_with(vec![DataSection64 { addr: 0x8000_0000, data: (1..=8).collect() }], vec![]);
+        let (_, data_rows, words) = check_rom_rows(&rom).unwrap();
+        assert_eq!((data_rows, words), (2, 8));
+    }
+
+    #[test]
+    fn rom_ok_skips_ram_words() {
+        let rom = rom_with(vec![], vec![DataSection64 { addr: 0xA000_0000, data: vec![7; 4] }]);
+        let (_, data_rows, words) = check_rom_rows(&rom).unwrap();
+        assert_eq!((data_rows, words), (1, 0));
+    }
+
+    #[test]
+    fn rom_ok_rejects_two_values_at_one_address() {
+        let rom = rom_with(
+            vec![
+                DataSection64 { addr: 0x8000_0000, data: vec![1, 2, 3, 4] },
+                DataSection64 { addr: 0x8000_0000, data: vec![1, 2, 3, 5] },
+            ],
+            vec![],
+        );
+        assert!(check_rom_rows(&rom).is_err());
+    }
+
+    #[test]
+    fn rom_ok_rejects_unaligned_words() {
+        let rom = rom_with(vec![DataSection64 { addr: 0x8000_0004, data: vec![1; 4] }], vec![]);
+        assert!(check_rom_rows(&rom).is_err());
+    }
 }

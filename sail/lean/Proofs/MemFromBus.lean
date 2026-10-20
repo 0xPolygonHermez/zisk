@@ -809,7 +809,9 @@ theorem busD_domain : MemDomain busD := ⟨fun _ h => h.1, fun _ h => h.2.1, fun
 
 /-- **The Rom's data is ROM words**, a hypothesis on the setup's fixed data:
 every word the Rom initializes the ROM with is at a word address of the ROM
-region, `[0x8000_0000, 0xA000_0000)`, and has one value. -/
+region, `[0x8000_0000, 0xA000_0000)`, and has one value. `make difftest`
+checks it on the Rom trace the setup builds (`tools/sail-difftest`,
+`check_rom_rows`). -/
 structure RomOk (S : MemOthers F) : Prop where
   addr : ∀ X v, RomWord S X v →
     ∃ A : Nat, A % 8 = 0 ∧ 2147483648 ≤ A ∧ A < 2684354560 ∧ X = ((A : Nat) : F)

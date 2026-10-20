@@ -1505,7 +1505,9 @@ a sorted log has one write per address and step) — `busInit`, defined from
 the instances and the Rom alone. Four facts stay as hypotheses:
 
 - `RomOk`: the Rom's ROM words are at word addresses of the ROM region, one
-  value each — a property of the setup's fixed data;
+  value each — a property of the setup's fixed data, which `make difftest`
+  checks on the Rom trace `CustomRom::build_trace` builds, with `RomHolds`
+  and `RomDataFlags` (`tools/sail-difftest`, `check_rom_rows`);
 - `MainAvoids`: Main's memory accesses avoid the register file, which the
   model asserts of every access, and the free-input base;
 - `FirstNoLoad`: Main's first lane loads nothing — its loads, at steps 1 and
@@ -1544,8 +1546,11 @@ are `MemBusWorld`, `ContWorld`, `RomOk`, `MainAvoids`, `BootNoLoad`, and
 the model's initial memory being the bus's.
 
 Still to come: `Quiet`, from the operation bus — the precompiles and DMA run only
-when Main calls them; `MemAlign`, for byte and unaligned accesses;
-`MainAvoids`; and `RomOk`, from the setup's ROM.
+when Main calls them; and `MemAlign`, for byte and unaligned accesses.
+`MainAvoids` stays a hypothesis on the run: most programs' accesses are
+indirect, and what it rules out — the register file, which the model asserts
+no access touches, and the free-input base, where ZisK's reads return fresh
+values — is where ZisK and the model differ.
 
 ## The operation bus's provers
 
