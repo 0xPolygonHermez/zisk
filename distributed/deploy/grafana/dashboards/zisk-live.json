@@ -1083,6 +1083,33 @@
       "type": "prometheus",
       "uid": "prometheus"
      }
+    },
+    {
+     "refId": "E",
+     "expr": "vector(NaN)",
+     "legendFormat": "┃ worker restarted",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "F",
+     "expr": "vector(NaN)",
+     "legendFormat": "┃ job cancelled",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "G",
+     "expr": "vector(NaN)",
+     "legendFormat": "┃ job failed",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
     }
    ],
    "fieldConfig": {
@@ -1283,6 +1310,75 @@
        {
         "id": "custom.showPoints",
         "value": "always"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "┃ worker restarted"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": false,
+         "tooltip": true,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "┃ job cancelled"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "dark-blue"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": false,
+         "tooltip": true,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "┃ job failed"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": false,
+         "tooltip": true,
+         "viz": false
+        }
        }
       ]
      }
@@ -3636,7 +3732,7 @@
      "uid": "prometheus"
     },
     "enable": true,
-    "hide": true,
+    "hide": false,
     "expr": "sum(((last_over_time(coordinator_worker_registrations_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",reconnect=\"false\"}[1m]) - last_over_time(coordinator_worker_registrations_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",reconnect=\"false\"}[1m] offset $__interval)) > 0))",
     "iconColor": "purple",
     "step": "2s",
@@ -3650,7 +3746,7 @@
      "uid": "prometheus"
     },
     "enable": true,
-    "hide": true,
+    "hide": false,
     "expr": "sum(((last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"cancelled\"}[1m]) - last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"cancelled\"}[1m] offset $__interval)) > 0))",
     "iconColor": "dark-blue",
     "step": "2s",
@@ -3664,7 +3760,7 @@
      "uid": "prometheus"
     },
     "enable": true,
-    "hide": true,
+    "hide": false,
     "expr": "label_replace(label_replace(sum by (reason) (((last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m]) - last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m] offset $__interval)) > 0)), \"outcome\", \"failed\", \"\", \"\"), \"outcome\", \"failed: $1\", \"reason\", \"(.+)\")",
     "iconColor": "red",
     "step": "2s",

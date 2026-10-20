@@ -1221,7 +1221,7 @@
      "uid": "prometheus"
     },
     "enable": true,
-    "hide": true,
+    "hide": false,
     "expr": "sum(((last_over_time(coordinator_worker_registrations_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",reconnect=\"false\"}[1m]) - last_over_time(coordinator_worker_registrations_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",reconnect=\"false\"}[1m] offset $__interval)) > 0))",
     "iconColor": "purple",
     "step": "2s",
@@ -1235,7 +1235,7 @@
      "uid": "prometheus"
     },
     "enable": true,
-    "hide": true,
+    "hide": false,
     "expr": "sum(((last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"cancelled\"}[1m]) - last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"cancelled\"}[1m] offset $__interval)) > 0))",
     "iconColor": "dark-blue",
     "step": "2s",
@@ -1249,7 +1249,7 @@
      "uid": "prometheus"
     },
     "enable": true,
-    "hide": true,
+    "hide": false,
     "expr": "label_replace(label_replace(sum by (reason) (((last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m]) - last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m] offset $__interval)) > 0)), \"outcome\", \"failed\", \"\", \"\"), \"outcome\", \"failed: $1\", \"reason\", \"(.+)\")",
     "iconColor": "red",
     "step": "2s",

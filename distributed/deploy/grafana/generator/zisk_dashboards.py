@@ -530,6 +530,7 @@ def live():
             if name.endswith("(total)") else [])
          + ([{"id": "custom.lineWidth", "value": 2}] if name == "total" else [])}
         for name, color in colors.items()] + extra_overrides
+    annotation_legend(p)
     l.add(p, 16, 12)
     base_y = p["gridPos"]["y"]
     # Beside the chart, a 2 x 3 grid of small boxes, one statistic each: a single box with
@@ -640,9 +641,25 @@ def host_variable():
             "includeAll": True, "multi": True, "current": {"text": "All", "value": "$__all"}}
 
 
+# The job annotations' vertical lines, as they read in a chart's legend: (legend name, colour).
+ANNOTATION_LEGEND = [("┃ worker restarted", "purple"), ("┃ job cancelled", "dark-blue"), ("┃ job failed", "red")]
+
+
+def annotation_legend(panel):
+    """Names the annotations' vertical lines in a chart's legend: one empty series each (all NaN, so
+    nothing is drawn), in the annotation's colour. Grafana itself lists annotations only in the
+    dashboard's header. Hidden from the chart, Grafana would dim their legend entries."""
+    first = len(panel["targets"])
+    for i, (name, color) in enumerate(ANNOTATION_LEGEND):
+        panel["targets"].append({"refId": chr(65 + first + i), "expr": "vector(NaN)", "legendFormat": name, "datasource": DS})
+        panel["fieldConfig"]["overrides"].append({"matcher": {"id": "byName", "options": name}, "properties": [
+            {"id": "color", "value": {"mode": "fixed", "fixedColor": color}},
+            {"id": "custom.hideFrom", "value": {"legend": False, "tooltip": True, "viz": False}}]})
+
+
 def job_annotations():
     """The job and worker events every time chart marks: worker restarts, cancellations and failures."""
-    ann = lambda name, expr, color, title: {"name": name, "datasource": DS, "enable": True, "hide": True, "expr": expr,
+    ann = lambda name, expr, color, title: {"name": name, "datasource": DS, "enable": True, "hide": False, "expr": expr,
                                              "iconColor": color, "step": "2s", "titleFormat": title, "useValueForTime": False}
 
     # Grafana evaluates annotations at a step of its own for the range ("step" is only its minimum: 2 min
