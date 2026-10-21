@@ -420,11 +420,7 @@ impl ProverBackend {
 
                 // Freshly proven vadcop_final proof — stamp the default
                 // vadcop_final verkey (no override).
-                let snark_proof = self
-                    .snark_wrapper
-                    .as_ref()
-                    .unwrap()
-                    .generate_final_snark_proof(&vadcop_proof, None)?;
+                let snark_proof = self.final_snark_proof(&vadcop_proof, None)?;
 
                 let program_vk = ProgramVK::new_from_publics_with_mode(
                     &vadcop_proof.public_values,
@@ -571,11 +567,7 @@ impl ProverBackend {
         };
         let verkey_override = matches!(source_kind, VadcopKind::Recurser).then(|| rootc.as_slice());
 
-        let snark_proof = self
-            .snark_wrapper
-            .as_ref()
-            .unwrap()
-            .generate_final_snark_proof(&vadcop_final_proof, verkey_override)?;
+        let snark_proof = self.final_snark_proof(&vadcop_final_proof, verkey_override)?;
 
         let time = start.elapsed();
 
@@ -740,6 +732,23 @@ impl ProverBackend {
         };
         prove_recurser_aggregator(&self.proofman, &opts)
             .map_err(|e| anyhow::anyhow!("recurser proof generation failed: {e:#}"))
+    }
+
+    /// The final SNARK of a vadcop_final proof. It goes through `ProofMan`, not the wrapper
+    /// directly: a blake3 key's wrapper takes a recursivef proof, which `ProofMan` proves first.
+    fn final_snark_proof(
+        &self,
+        vadcop_final_proof: &VadcopFinalProof,
+        verkey_override: Option<&[u64]>,
+    ) -> Result<SnarkProof> {
+        let snark_wrapper = self.snark_wrapper.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Snark wrapper is not initialized. Cannot generate snark proof.")
+        })?;
+        Ok(self.proofman.generate_final_snark_proof(
+            snark_wrapper,
+            vadcop_final_proof,
+            verkey_override,
+        )?)
     }
 
     pub(crate) fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
