@@ -8,7 +8,7 @@ by a search for its mnemonic in the transpiler's source, so approximate — and
 whether the model specifies it. The equivalence with sail-riscv needs the ones
 the transpiler emits.
 
-130 operations; the transpiler emits 116; the model specifies 102.
+130 operations; the transpiler emits 116; the model specifies 130.
 
 
 ## Internal (3 of 3)
@@ -138,11 +138,11 @@ the transpiler emits.
 |---|---|---|---|
 | `jump_dest` | 0xc0 | yes | yes |
 
-## Poseidon2KoalaBear (0 of 1)
+## Poseidon2KoalaBear (1 of 1)
 
 | op | opcode | emitted by riscv2zisk | in the model |
 |---|---|---|---|
-| `poseidon2_koalabear` | 0xc1 | yes | — |
+| `poseidon2_koalabear` | 0xc1 | yes | yes |
 
 ## Dma (6 of 6)
 
@@ -161,76 +161,76 @@ the transpiler emits.
 |---|---|---|---|
 | `profile` | 0xe0 | yes | yes |
 
-## Poseidon (0 of 2)
+## Poseidon (2 of 2)
 
 | op | opcode | emitted by riscv2zisk | in the model |
 |---|---|---|---|
-| `poseidon2` | 0xeb | yes | — |
-| `poseidon1` | 0xec | yes | — |
+| `poseidon2` | 0xeb | yes | yes |
+| `poseidon1` | 0xec | yes | yes |
 
-## ArithEq384 (0 of 6)
-
-| op | opcode | emitted by riscv2zisk | in the model |
-|---|---|---|---|
-| `arith384_mod` | 0xe2 | yes | — |
-| `bls12_381_curve_add` | 0xe3 | yes | — |
-| `bls12_381_curve_dbl` | 0xe4 | yes | — |
-| `bls12_381_complex_add` | 0xe5 | yes | — |
-| `bls12_381_complex_sub` | 0xe6 | yes | — |
-| `bls12_381_complex_mul` | 0xe7 | yes | — |
-
-## BigInt (0 of 1)
+## ArithEq384 (6 of 6)
 
 | op | opcode | emitted by riscv2zisk | in the model |
 |---|---|---|---|
-| `add256` | 0xf0 | yes | — |
+| `arith384_mod` | 0xe2 | yes | yes |
+| `bls12_381_curve_add` | 0xe3 | yes | yes |
+| `bls12_381_curve_dbl` | 0xe4 | yes | yes |
+| `bls12_381_complex_add` | 0xe5 | yes | yes |
+| `bls12_381_complex_sub` | 0xe6 | yes | yes |
+| `bls12_381_complex_mul` | 0xe7 | yes | yes |
 
-## TwistedEdwards (0 of 2)
-
-| op | opcode | emitted by riscv2zisk | in the model |
-|---|---|---|---|
-| `babyjubjub_add` | 0xed | yes | — |
-| `ed25519_add` | 0xe1 | yes | — |
-
-## Keccak (0 of 1)
+## BigInt (1 of 1)
 
 | op | opcode | emitted by riscv2zisk | in the model |
 |---|---|---|---|
-| `keccak` | 0xf1 | yes | — |
+| `add256` | 0xf0 | yes | yes |
 
-## ArithEq (0 of 11)
-
-| op | opcode | emitted by riscv2zisk | in the model |
-|---|---|---|---|
-| `arith256` | 0xf2 | yes | — |
-| `arith256_mod` | 0xf3 | yes | — |
-| `secp256k1_add` | 0xf4 | yes | — |
-| `secp256k1_dbl` | 0xf5 | yes | — |
-| `secp256r1_add` | 0xe8 | yes | — |
-| `secp256r1_dbl` | 0xe9 | yes | — |
-| `bn254_curve_add` | 0xfa | yes | — |
-| `bn254_curve_dbl` | 0xfb | yes | — |
-| `bn254_complex_add` | 0xfc | yes | — |
-| `bn254_complex_sub` | 0xfd | yes | — |
-| `bn254_complex_mul` | 0xfe | yes | — |
-
-## Blake2b (0 of 1)
+## TwistedEdwards (2 of 2)
 
 | op | opcode | emitted by riscv2zisk | in the model |
 |---|---|---|---|
-| `blake2b` | 0xea | yes | — |
+| `babyjubjub_add` | 0xed | yes | yes |
+| `ed25519_add` | 0xe1 | yes | yes |
 
-## Blake3 (0 of 1)
-
-| op | opcode | emitted by riscv2zisk | in the model |
-|---|---|---|---|
-| `blake3` | 0xee | yes | — |
-
-## Blake2s (0 of 1)
+## Keccak (1 of 1)
 
 | op | opcode | emitted by riscv2zisk | in the model |
 |---|---|---|---|
-| `blake2s` | 0xef | yes | — |
+| `keccak` | 0xf1 | yes | yes |
+
+## ArithEq (11 of 11)
+
+| op | opcode | emitted by riscv2zisk | in the model |
+|---|---|---|---|
+| `arith256` | 0xf2 | yes | yes |
+| `arith256_mod` | 0xf3 | yes | yes |
+| `secp256k1_add` | 0xf4 | yes | yes |
+| `secp256k1_dbl` | 0xf5 | yes | yes |
+| `secp256r1_add` | 0xe8 | yes | yes |
+| `secp256r1_dbl` | 0xe9 | yes | yes |
+| `bn254_curve_add` | 0xfa | yes | yes |
+| `bn254_curve_dbl` | 0xfb | yes | yes |
+| `bn254_complex_add` | 0xfc | yes | yes |
+| `bn254_complex_sub` | 0xfd | yes | yes |
+| `bn254_complex_mul` | 0xfe | yes | yes |
+
+## Blake2b (1 of 1)
+
+| op | opcode | emitted by riscv2zisk | in the model |
+|---|---|---|---|
+| `blake2b` | 0xea | yes | yes |
+
+## Blake3 (1 of 1)
+
+| op | opcode | emitted by riscv2zisk | in the model |
+|---|---|---|---|
+| `blake3` | 0xee | yes | yes |
+
+## Blake2s (1 of 1)
+
+| op | opcode | emitted by riscv2zisk | in the model |
+|---|---|---|---|
+| `blake2s` | 0xef | yes | yes |
 
 ## Fcall (3 of 3)
 
@@ -240,8 +240,8 @@ the transpiler emits.
 | `fcall` | 0xf7 | yes | yes |
 | `fcall_get` | 0xf8 | yes | yes |
 
-## Sha256 (0 of 1)
+## Sha256 (1 of 1)
 
 | op | opcode | emitted by riscv2zisk | in the model |
 |---|---|---|---|
-| `sha256` | 0xf9 | yes | — |
+| `sha256` | 0xf9 | yes | yes |

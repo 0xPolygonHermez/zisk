@@ -43,7 +43,7 @@ ELF   ?=
 NAME  ?= $(if $(ELF),$(basename $(notdir $(ELF))),$(notdir $(firstword $(PROG))))
 DIFF_DIR = build/difftest/$(NAME)
 
-.PHONY: all check ops compliance lean lean-build riscv riscv-lean equiv emu difftest difftest-all optest opsdoc sail-version clean
+.PHONY: all check ops compliance lean lean-build riscv riscv-lean equiv emu difftest difftest-all constants optest opsdoc sail-version clean
 
 all: check ops
 
@@ -58,9 +58,10 @@ check: sail-version
 	@mkdir -p build
 	$(SAIL) $(SAILFLAGS) $(ROMFLAG) --project $(PROJECT) main
 
-## Fail if the model names an opcode that no longer exists in Rust.
+## Fail if the model names an opcode that no longer exists in Rust, numbers
+## one differently, or lacks one: every operation is specified.
 ops:
-	@python3 check_ops.py
+	@python3 check_ops.py --strict
 
 ## Generate Lean definitions of the model (without the C main) into build/lean.
 lean: sail-version
@@ -118,18 +119,29 @@ compliance:
 	python3 test/compliance/run.py --arch-test '$(ARCH_TEST)' --gcc '$(RISCV_GCC)' $(SUITES)
 
 ## Every program the model is difftested on.
-# The ziskasm diagnostics test/programs/memops calls: fcall's and DMA's.
+# ziskasm's diagnostic program: every family of operations, each checked
+# in-program; output[0] = 0 when all pass.
 DIAG = ../ziskasm/programs/diagnostic
-MEMOPS_DIAG = $(wildcard $(DIAG)/fcall*.zisk) $(DIAG)/dma.zisk
+# Random operands for every precompile: how many per precompile, and the seed.
+PRECOMP_VECTORS ?= 8
+PRECOMP_SEED    ?= 1
 
 difftest-all:
 	$(MAKE) --no-print-directory difftest
 	$(MAKE) --no-print-directory difftest PROG=test/programs/halt INPUT=
 	@grep -q '^end 1 0x0000000000000003$$' build/difftest/halt/sail.trace || { \
 	  echo "FAIL: test/programs/halt no longer ends in error with code 3 — has the BIOS's mtvec moved?" >&2; exit 1; }
-	$(MAKE) --no-print-directory difftest PROG="test/programs/memops $(MEMOPS_DIAG)" INPUT=
-	@grep -q '^out 0 0x0000000000000000$$' build/difftest/memops/sail.trace || { \
-	  echo "FAIL: a diagnostic test/programs/memops runs reports an error (output[0] in build/difftest/memops)" >&2; exit 1; }
+	$(MAKE) --no-print-directory difftest PROG=test/programs/memops INPUT=
+	$(MAKE) --no-print-directory difftest PROG=$(DIAG) INPUT=
+	@grep -q '^out 0 0x0000000000000000$$' build/difftest/diagnostic/sail.trace || { \
+	  echo "FAIL: ziskasm's diagnostic reports an error (output[0] in build/difftest/diagnostic)" >&2; exit 1; }
+	@mkdir -p build/precompiles
+	python3 test/gen_precompile_test.py build/precompiles/precompiles.zisk $(PRECOMP_VECTORS) $(PRECOMP_SEED)
+	$(MAKE) --no-print-directory difftest PROG=build/precompiles INPUT=
+
+## Regenerate model/zisk_poseidon_constants.sail from the Rust sources.
+constants:
+	python3 gen_poseidon_constants.py
 
 ## Check every operation the model specifies against ZisK's own op functions
 ## (ZiskOp::call_ab) on edge-case and random vectors. The checks run on the

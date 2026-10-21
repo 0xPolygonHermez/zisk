@@ -1,41 +1,10 @@
-; The model's memory and fcall operations, difftested: ziskasm's own
-; diagnostics for fcall and DMA (ziskasm/programs/diagnostic), which check
-; their results in-program, then memops.zisk, the cases they leave out, whose
-; results the trace compares register by register.
-;
-; Run with the diagnostic files it calls, as `make difftest-all` does:
-;   make difftest PROG="test/programs/memops ../ziskasm/programs/diagnostic/fcall*.zisk \
-;     ../ziskasm/programs/diagnostic/dma.zisk" INPUT=
-;
-; output[0] is 0 when every diagnostic passes, else the first one's error
-; code, as ziskasm/programs/diagnostic/main.zisk reports it.
-
-define OUTPUT_ADDR 0xa0410000
+; The memory and fcall operations on the cases ziskasm's diagnostic leaves
+; out: memops.zisk, whose results the trace compares register by register.
+; ziskasm's own fcall and DMA checks run in the whole diagnostic, which
+; `make difftest-all` difftests too.
 
 main:
-	copyb(0, r1) -> r9              ; save return address (our `call`s clobber r1)
-
-	call fcall                      ; 0x28xx
-	ltu(0, r10), j(_report)
-	call fcall_int                  ; 0x29xx
-	ltu(0, r10), j(_report)
-	call fcall_uint256              ; 0x2axx
-	ltu(0, r10), j(_report)
-	call fcall_secp256k1            ; 0x2bxx
-	ltu(0, r10), j(_report)
-	call fcall_secp256r1            ; 0x2cxx
-	ltu(0, r10), j(_report)
-	call fcall_bn254                ; 0x2dxx
-	ltu(0, r10), j(_report)
-	call fcall_bls12_381            ; 0x2exx
-	ltu(0, r10), j(_report)
-	call dma                        ; 0x2fxx
-	ltu(0, r10), j(_report)
-	call memops                     ; no checks: the trace has the results
-	copyb(0, 0) -> r10
-
-_report:
-	copyb(0, OUTPUT_ADDR) -> r11
-	copyb(r11, r10) -> 8[a + 0]
+	copyb(0, r1) -> r9              ; save return address (our `call` clobbers r1)
+	call memops
 	copyb(0, r9) -> r1
 	ret

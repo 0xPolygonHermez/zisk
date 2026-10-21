@@ -103,8 +103,8 @@ The ZisK instruction set as `core/` defines it:
 
 - the instruction record (`ZiskInst`): sources a and b, the op, the store,
   and the jumps;
-- every operation of `ZiskOp` (`core/src/zisk_ops.rs`), the precompiles as
-  pure Sail functions, fcall and free input as an oracle;
+- every operation of `ZiskOp` (`core/src/zisk_ops.rs`), the precompiles by
+  their mathematical definitions, fcall and free input as an oracle;
 - the memory map: ROM, input, RAM, and the registers mapped into memory.
 
 On the RISC-V side, the profile the transpiler supports: RV64IMA with
@@ -114,22 +114,25 @@ runs them through a software float library, for Go compatibility only.
 
 ## Status
 
-**Early.** 102 of the 130 operations are specified
+**Early.** All 130 operations are specified
 ([`doc/ops.md`](doc/ops.md)): every one that is a pure function of a and b —
 the internal ones, Binary, BinaryE and Arith, each checked against ZisK's own
 op functions on 320 vectors (`make optest`) — and the ones that work on
-memory or on the free input, short of the precompiles: DMA, fcall,
-`jump_dest` and `profile`. Still to come: the 28 precompiles; the memory
-map's regions; and the equivalence proofs, whose shape depends on how the transpiler is represented
+memory or on the free input: DMA, fcall, `jump_dest`, and the 28
+precompiles — the hashes, the Poseidon permutations, the elliptic-curve and
+big-integer arithmetic. Still to come: the memory map's regions; and the
+equivalence proofs, whose shape depends on how the transpiler is represented
 — a hand-written spec, differentially tested against the Rust, or the Rust
 itself translated to Lean — which is still to be decided.
 
 The model runs: compiled to C, it executes `ziskasm/examples/doubler-min` —
-BIOS, launcher and program, 253 steps — `test/programs/halt`,
-`test/programs/memops` — ziskasm's fcall and DMA diagnostics, and the cases
-they leave out — and the RISC-V architectural tests, transpiled: all 169 of
-the I, M, A, C and B suites ZisK runs, up to 22 926 steps each, agree with
-`ziskemu` step by step (`make compliance`). So does a Rust guest,
+BIOS, launcher and program, 253 steps — `test/programs/halt`, ziskasm's
+diagnostic program, which checks every family of operations, precompiles
+included, in 7 692 steps; `test/programs/memops`, the memory and fcall cases
+the diagnostic leaves out; every precompile on random operands
+(`test/gen_precompile_test.py`); and the RISC-V architectural tests,
+transpiled: all 169 of the I, M, A, C and B suites ZisK runs, up to 22 926
+steps each, agree with `ziskemu` step by step (`make compliance`). So does a Rust guest,
 `examples/fibonacci`, built with `cargo-zisk`: 2 706 steps, through fcall and
 DMA. Both models' Lean builds,
 side by side, in `lean/`.
@@ -149,7 +152,9 @@ As sail-riscv's:
 | `model/zisk_types.sail` | Register indices, sources and stores. |
 | `model/zisk_regs.sail` | The architectural state and the register file. |
 | `model/zisk_mem.sail` | Memory. |
-| `model/zisk_insts_begin.sail`, `zisk_insts_<family>.sail`, `zisk_insts_end.sail` | The operations, a file per family: `internal`, `binary`, `binary_ext`, `arith`, `system`, `dma`, `fcall`, `evm`. |
+| `model/zisk_insts_begin.sail`, `zisk_insts_<family>.sail`, `zisk_insts_end.sail` | The operations, a file per family: `internal`, `binary`, `binary_ext`, `arith`, `system`, `dma`, `fcall`, `evm`, and the precompiles' `bigint`, `curves`, `hash`, `poseidon`. |
+| `model/zisk_precompiles.sail` | What the precompiles share: big integers in memory, arithmetic modulo a prime. |
+| `model/zisk_poseidon_constants.sail` | The Poseidon constants, generated from the Rust sources by `gen_poseidon_constants.py` (`make constants`). |
 | `model/zisk_inst.sail` | The instruction record. |
 | `model/zisk_rom.sail` | The default ROM, with no program, for the typecheck and the Lean build. |
 | `model/zisk_rom_table.sail` | The C emulator's ROM: any program's, read from a table in memory. |
@@ -158,7 +163,7 @@ As sail-riscv's:
 | `lean/` | The equivalence proofs: a Lake package importing both generated models. |
 | `test/` | The per-operation checks (`make optest`); `programs/`, the ZisK assembly programs `make difftest-all` runs besides the doubler; and `compliance/`, the RISC-V architectural tests' harness for ZisK (`make compliance`). |
 | `doc/ops.md` | Every ZisK operation: whether the transpiler emits it, whether the model specifies it. |
-| `check_ops.py` | The opcode-name guard (`make ops`). |
+| `check_ops.py` | The opcode guard (`make ops`). |
 
 ## Building
 
@@ -171,6 +176,7 @@ make check         # typecheck the model
 make ops           # check the model's opcode names against core/src/zisk_ops.rs
 make optest        # check every operation against ZisK's own op functions
 make opsdoc        # regenerate doc/ops.md
+make constants     # regenerate model/zisk_poseidon_constants.sail
 make emu           # build the C emulator, which runs any program
 make difftest      # run PROG (one or more; or ELF=…) on ziskemu and on the C emulator, and diff the traces
 make difftest-all  # every program the model is difftested on
@@ -237,25 +243,22 @@ has nothing to say.
 make check
 ```
 
-**2. Check the opcode names against Rust.**
+**2. Check the opcodes against Rust.**
 
 ```sh
 make ops
 ```
 
 ```
-Rust ops: 130   Sail clauses: 102   modeled: 102/130 (78%)
-
-UNMODELED -- 28 Rust ops with no Sail clause:
-  add256, arith256, arith256_mod, arith384_mod, babyjubjub_add, ...
+Rust ops: 130   Sail clauses: 130   modeled: 130/130 (100%)
 
 OK: no stale opcodes, and every opcode number agrees.
 ```
 
-The UNMODELED list is informational and shrinks as the model fills in; the
-last line is the one that matters. A **STALE** entry is the real failure — it
-means the model describes a machine ZisK no longer ships — and so is a
-**WRONG CODE** one, an opcode the model numbers differently from Rust. See
+It fails on a **STALE** entry — the model describes a machine ZisK no longer
+ships — on a **WRONG CODE** one, an opcode the model numbers differently
+from Rust, and on an **UNMODELED** one, an operation Rust has and the model
+does not. See
 [Why `check_ops.py` exists](#why-check_opspy-exists).
 
 **3. Check every operation against ZisK's own op functions.** The first run
@@ -278,8 +281,8 @@ OK: every operation agrees with the emulator on every vector
 On a mismatch it prints each failing vector — the op, a, b, and both
 results — and fails.
 
-**4. Run the model against ziskemu.** A few seconds, most of it building the
-C emulator, once.
+**4. Run the model against ziskemu.** Under a minute, about half of it
+building the C emulator, once.
 
 ```sh
 make difftest-all
@@ -290,8 +293,13 @@ wrote build/difftest/doubler-min: 52 instructions, 8 opcodes (add, and, copyb, e
 OK: 253 steps and the output agree with ziskemu
 wrote build/difftest/halt: 42 instructions, 6 opcodes (add, copyb, eq, flag, halt, pubout), 15 steps on ziskemu
 OK: 15 steps and the output agree with ziskemu
-wrote build/difftest/memops: 530 instructions, 19 opcodes (add, and, copyb, dma_inputcpy, dma_memcmp, ...), 2073 steps on ziskemu
-OK: 2073 steps and the output agree with ziskemu
+wrote build/difftest/memops: 117 instructions, 18 opcodes (add, and, copyb, dma_inputcpy, dma_memcmp, ...), 269 steps on ziskemu
+OK: 269 steps and the output agree with ziskemu
+wrote build/difftest/diagnostic: 1424 instructions, 108 opcodes (add, add256, add_w, and, andn, arith256, ...), 7692 steps on ziskemu
+OK: 7692 steps and the output agree with ziskemu
+wrote build/precompiles/precompiles.zisk: 8 vectors for each of 28 precompiles
+wrote build/difftest/precompiles: 3000 instructions, 35 opcodes (add, add256, and, arith256, ...), 3152 steps on ziskemu
+OK: 3152 steps and the output agree with ziskemu
 ```
 
 On a divergence it prints the first lines of the diff and fails; the two
@@ -299,8 +307,13 @@ traces are left in `build/difftest/<prog>/`. `test/programs/halt` must also end
 the way it is written to — in error, with code 3, through the BIOS's `halt` —
 or `difftest-all` fails: the program jumps to the BIOS's trap handler at a
 fixed address, so a BIOS whose `mtvec` moves would otherwise make it end
-normally, with both emulators still agreeing. And `test/programs/memops`
-must report its diagnostics passed, `output[0] = 0`.
+normally, with both emulators still agreeing. And ziskasm's diagnostic must
+report every check passed, `output[0] = 0`.
+
+The precompile program is generated: `PRECOMP_VECTORS` random operands for
+each precompile (8 by default), from `PRECOMP_SEED` (1); each result word is
+loaded into a register, so the trace compares it with `ziskemu`'s. A longer
+run is `make difftest-all PRECOMP_VECTORS=40 PRECOMP_SEED=7`.
 
 A RISC-V ELF runs the same way, with `ELF=` instead of `PROG=`, and its
 input; a Rust guest needs ZisK's Rust toolchain and this checkout's
@@ -501,7 +514,7 @@ the op by its opcode, which is part of the model: each operation's
 
 **Operations that work on memory are a second function.** `zisk_exec(op, a,
 b)` is pure, so that a proof about an ALU op needs no state. DMA, fcall,
-`jump_dest` — and the precompiles, to come — are clauses of
+`jump_dest` and the precompiles are clauses of
 `zisk_exec_mem(op, a, b, ext)` instead, which reads and writes memory and the
 fcall state, and gets the instruction's extended argument: `jmp_off1`, which
 the emulator hands such an op as `extended_arg`, and which never serves as a
@@ -527,6 +540,18 @@ input — what an 8-byte read of `INPUT_ADDR` returns, as `Mem::read` has it —
 is the result's current word; `fcall_get` and `dma_inputcpy` move along it.
 A proof takes the tape as part of the initial state, like the input;
 `tools/sail-difftest` records it from `ziskemu`'s own answers.
+
+**A precompile is its mathematical definition.** The emulator computes the
+hashes and the field arithmetic with optimised code — arkworks, sha2, x86
+assembly; the model states what they compute: the Keccak-f permutation, the
+SHA-256 compression, the curve formulas over integers modulo the field's
+prime, `(x * y + z) mod m` over Sail's unbounded integers. Where the emulator
+panics, the model asserts: an operand that is not a canonical field element,
+a division by zero — adding a point to itself, say — a modulus of 0, an
+unaligned operand. The Poseidon permutations are the exception that follows
+its source step by step: their constants are generated from it, and
+Poseidon1 is in the optimised form, with sparse partial-round matrices, that
+proofman-fields computes.
 
 Two simplifications, both of which hold today but which the model does not
 check:
@@ -638,8 +663,9 @@ that class of failure immediate:
 
 - **STALE** — the model names an operation that no longer exists in Rust.
   Hard error: the model is describing a machine we do not ship.
-- **UNMODELED** — an operation in Rust with no Sail clause. Informational
-  while the model is being filled in; `--strict` turns it into an error once
-  coverage is meant to be complete.
+- **WRONG CODE** — the model numbers an operation differently from Rust.
+- **UNMODELED** — an operation in Rust with no Sail clause. An error now
+  that the model specifies every operation: `make ops` runs
+  `check_ops.py --strict`.
 
 Run it in CI alongside the typecheck.
