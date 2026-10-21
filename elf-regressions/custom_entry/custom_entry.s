@@ -1,12 +1,12 @@
 # Test case demonstrating custom entry point with program headers
-# Program headers occupy 0x80000000-0x80000FFF (4096 bytes)
-# "Actual" code starts at 0x80001000
+# Program headers occupy 0x90000000-0x90000FFF (4096 bytes)
+# "Actual" code starts at 0x90001000
 
 .section .header, "a"
-    # Program header/metadata starting at 0x80000000
-    .word 0xDEADBEEF   # Magic number at 0x80000000
+    # Program header/metadata starting at 0x90000000
+    .word 0xDEADBEEF   # Magic number at 0x90000000
     .word 0x00000001   # Version
-    .word 0x80001000   # Entry point address (where _start is)
+    .word 0x90001000   # Entry point address (where _start is)
     .word 0x00000100   # Program size
     
     # Fill rest of the page with zeros
@@ -15,7 +15,7 @@
 .section .text.init
 .global _start
 
-# This will be placed at 0x80001000 due to linker script
+# This will be placed at 0x90001000 due to linker script
 _start:
     # Add some code so that theres code
     li a0, 42

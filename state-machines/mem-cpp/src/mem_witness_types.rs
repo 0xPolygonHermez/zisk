@@ -5,7 +5,7 @@
 /// `Copy`.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default)]
-pub struct RamFillPrepared {
+pub struct MemFillPrepared {
     /// 0 when the preparation succeeded, else the planner's reason code.
     pub status: i32,
     /// Instances the preparation covered, every family together.
@@ -16,13 +16,13 @@ pub struct RamFillPrepared {
     pub n_lanes: u64,
     pub reserved: [u32; 2],
 }
-const _: () = assert!(core::mem::size_of::<RamFillPrepared>() == 32);
+const _: () = assert!(core::mem::size_of::<MemFillPrepared>() == 32);
 
 /// One filled instance: its scalars for the air values, and its status.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default)]
-pub struct RamFillResult {
-    /// 0 ok; a negative is a failure (ram_fill.cu: -1 not available, -2 geometry, -3 no room, -4 the
+pub struct MemFillResult {
+    /// 0 ok; a negative is a failure (mem_fill.cu: -1 not available, -2 geometry, -3 no room, -4 the
     /// device disagrees with the plan).
     pub status: i32,
     /// Lanes the instance's accesses occupy, before padding (MemAlign: rows used).
@@ -36,7 +36,7 @@ pub struct RamFillResult {
     pub last_step: u64,
     pub last_value: u64,
 }
-const _: () = assert!(core::mem::size_of::<RamFillResult>() == 48);
+const _: () = assert!(core::mem::size_of::<MemFillResult>() == 48);
 
 /// The family numbering of the planner's fills.
 pub const MEM_FAMILY_RAM: u32 = 0;

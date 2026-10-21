@@ -179,6 +179,15 @@ for _ in range(2 if FAST else 3):
     C, Pr = be(compress_G1(Cp), 48), be(compress_G1(Pp), 48)
     case('kzg', [C, be(z_, 32), be(y_, 32), Pr], 2, b'\x00\x01')
     case('kzg', [C, be(z_, 32), be((y_ + 1) % LN, 32), Pr], 2, b'\x00\x00')
+# Edge scalars z, y (0, 1, R-1, the 128-bit lambda = x^2-1) and proof = O. A fixed a_ keeps the
+# random sequence of the later vectors unchanged.
+for z_, y_, a_ in [(0, 0, 0x1234567), (1, 0, 0x1234567), (0, 1, 0x1234567), (LN - 1, LN - 1, 0x1234567),
+                   (LN - 1, 0, 0x1234567), (0xac45a4010001a40200000000ffffffff, 1, 0x1234567),
+                   (0xac45a4010001a40200000000ffffffff + 1, LN - 1, 0x1234567), (5, 7, 0)]:
+    Cp = bl.add(bl.multiply(bl.G1, y_), bl.multiply(bl.add(TAU1, bl.neg(bl.multiply(bl.G1, z_))), a_))
+    C, Pr = be(compress_G1(Cp), 48), be(compress_G1(bl.multiply(bl.G1, a_)), 48)
+    case('kzg', [C, be(z_, 32), be(y_, 32), Pr], 2, b'\x00\x01')
+    case('kzg', [C, be(z_, 32), be((y_ + 1) % LN, 32), Pr], 2, b'\x00\x00')
 for n in (9, 17):
     P, Q = bn_rg1(), bn_rg2()
     ks = [random.randrange(1, BN) for _ in range(n - 1)]

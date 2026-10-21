@@ -14,24 +14,27 @@
 //! `|`
 //! `|---------------`
 //! `      ...`
-//! `|--------------- INPUT_ADDR                          (0x40000000)`
+//! `|--------------- INPUT_ADDR = FREE_INPUT_ADDR       (0x10000000)`
 //! `|`
-//! `| Contains program input data.`
+//! `| Contains program input data (2GB).`
+//! `| A load from FREE_INPUT_ADDR returns the free input (fcall result).`
 //! `|`
-//! `|--------------- ROM_ADDR: first program instruction (0x80000000)`
+//! `|--------------- ROM_ADDR: first program instruction (0x90000000)`
 //! `|`
-//! `| Contains program instructions.`
+//! `| Contains program instructions and read-only data (ROM data).`
 //! `| Calls ecalls/system calls when required.`
 //! `|`
-//! `|--- FLOAT_LIB_ROM_ADDR: first float lib instruction (0x87F00000)`
+//! `|--- ZISKLIB_ROM_ADDR: first ZisK lib instruction    (0x97E00000)`
+//! `|`
+//! `|--- FLOAT_LIB_ROM_ADDR: first float lib instruction (0x97F00000)`
 //! `|`
 //! `| Contains float library instructions. 1M before ROM_ADDR_MAX.`
 //! `|`
 //! `| Initial value of the float library stack pointer.`
 //! `|`
-//! `|--- STACK_GUARD_ADDR (= ROM_ADDR + ROM_SIZE)       (0x88000000)`
+//! `|--- STACK_GUARD_ADDR (= ROM_ADDR + ROM_SIZE)       (0x98000000)`
 //! `|`
-//! `| UNMAPPED stack guard region, 384MB, running up to the stack bottom.`
+//! `| UNMAPPED stack guard region, 128MB, running up to the stack bottom.`
 //! `| EF standard 6 requires >= 4kB here; any access traps. The assembly`
 //! `| emulator reserves this same span PROT_NONE (see constants.hpp).`
 //! `|`
@@ -111,9 +114,9 @@ use crate::{M16, M3, M32, M8, REG_FIRST, REG_LAST};
 use core::fmt;
 
 /// Fist input data memory address
-pub const INPUT_ADDR: u64 = 0x4000_0000;
+pub const INPUT_ADDR: u64 = 0x1000_0000;
 /// Maximum size of the input data
-pub const MAX_INPUT_SIZE: u64 = 0x4000_0000; // 128M,
+pub const MAX_INPUT_SIZE: u64 = 0x8000_0000; // 2GB
 /// Free input data memory address = first input address
 pub const FREE_INPUT_ADDR: u64 = INPUT_ADDR;
 /// First global RW memory address
@@ -132,7 +135,7 @@ pub const STACK_GUARD_MIN_SIZE: u64 = 0x1000; // 4KB
 /// First address of the stack guard region.
 ///
 /// The guard is the *entire* unmapped span between the top of ROM and the bottom of
-/// the stack -- 384MB, far more than the 4 kB the standard requires. It satisfies EF
+/// the stack -- 128MB, far more than the 4 kB the standard requires. It satisfies EF
 /// standard 6: not mapped readable or writable, contiguous with the stack bottom and
 /// with no gap between them, and any access aborts.
 ///
@@ -168,10 +171,12 @@ const _: () = {
         STACK_GUARD_SIZE >= STACK_GUARD_MIN_SIZE,
         "ROM now reaches into the stack guard: fewer than the 4 kB EF standard 6 requires remain"
     );
-    // The input window must stay below the guard.
+    // The input window must stay above the BIOS ROM and below the program ROM (and so
+    // below the guard, which starts where the program ROM ends).
+    assert!(MAX_ZISK_OS_ROM_ADDR < INPUT_ADDR, "the input window now overlaps the BIOS ROM");
     assert!(
-        INPUT_ADDR + MAX_INPUT_SIZE <= STACK_GUARD_ADDR,
-        "the input window now reaches into the stack guard region"
+        INPUT_ADDR + MAX_INPUT_SIZE <= ROM_ADDR,
+        "the input window now reaches into the program ROM"
     );
 };
 
@@ -194,7 +199,7 @@ pub const ROM_EXIT: u64 = 0x1004;
 /// Maximum Zisk OS ROM instruction address, i.e. last instruction of the BIOS
 pub const MAX_ZISK_OS_ROM_ADDR: u64 = 0x10000000 - 1;
 /// First program ROM instruction address, i.e. first RISC-V transpiled instruction
-pub const ROM_ADDR: u64 = 0x80000000;
+pub const ROM_ADDR: u64 = 0x9000_0000;
 /// Size of the program ROM instruction area
 pub const ROM_SIZE: u64 = 0x08000000; // 128M
 /// Maximum program ROM instruction address

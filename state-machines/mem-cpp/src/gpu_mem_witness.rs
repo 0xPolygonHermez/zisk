@@ -1,9 +1,15 @@
-//! The memory witness the GPU planner builds from the accesses it retained.
+//! The memory witness the GPU planner builds from the accesses it retained, for the four memory
+//! families: Mem (RAM), RomData, InputData and the MemAlign airs.
 //!
-//! The runner registers its planner here once the plan is closed and starts the block's
-//! preparation on its own thread; the memory instances of the block then take their rows
-//! (`gpu_*_witness_fill`) from the images the preparation staged on the device, or have them
-//! built on demand, into their host trace buffers. The planner object lives in the runner's
+//! Three pieces, in the order a block uses them. The registry: the runner registers its planner
+//! here once the plan is closed and hands it the airs' packed layouts. The preparation: the
+//! executor starts it on its own thread for the instances this process owns; it resolves the
+//! reads and stages the owned instances' images on the device. The release: a counter armed with
+//! the number of owned instances, whose last fill hands the arena back to the prover; every
+//! other end of a block (a failure, the proof's end, the next block) runs the same release once.
+//!
+//! The memory instances take their rows (`gpu_*_witness_fill`) from the staged images, or have
+//! them built on demand, into their host trace buffers. The planner object lives in the runner's
 //! preloaded state, so it outlives the witness phase; the registration is cleared when the next
 //! block starts.
 //!
@@ -15,11 +21,11 @@ use std::sync::{Mutex, MutexGuard};
 
 use crate::gpu_bindings::{AlignChunkEntry, AlignPlanDesc, StagedRows};
 use crate::mem_witness_types::{
-    RamFillPrepared, RamFillResult, MEM_FAMILY_ALIGN, MEM_FAMILY_INPUT, MEM_FAMILY_RAM,
+    MemFillPrepared, MemFillResult, MEM_FAMILY_ALIGN, MEM_FAMILY_INPUT, MEM_FAMILY_RAM,
     MEM_FAMILY_ROM,
 };
 
-/// A registered planner. The raw handle is only ever used under [`GPU_RAM_WITNESS`]'s lock, which
+/// A registered planner. The raw handle is only ever used under [`GPU_MEM_WITNESS`]'s lock, which
 /// serialises every device call, and only while the runner keeps the planner alive.
 struct Registered {
     inner: *mut crate::gpu_bindings::CountAndPlanHandle,
@@ -29,14 +35,14 @@ struct Registered {
 // destroyed only by its Rust owner, after the registration was cleared.
 unsafe impl Send for Registered {}
 
-static GPU_RAM_WITNESS: Mutex<Option<Registered>> = Mutex::new(None);
+static GPU_MEM_WITNESS: Mutex<Option<Registered>> = Mutex::new(None);
 
 /// Calls inside [`rows_into`]: the registration waits for them to end before it is cleared
-/// (`clear_gpu_ram_witness`).
+/// (`clear_gpu_mem_witness`).
 static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
 
 fn registry() -> MutexGuard<'static, Option<Registered>> {
-    GPU_RAM_WITNESS.lock().unwrap_or_else(|e| e.into_inner())
+    GPU_MEM_WITNESS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 fn planner() -> Result<*mut crate::gpu_bindings::CountAndPlanHandle, String> {
@@ -133,7 +139,7 @@ fn align_layout(kind: u32) -> Option<(Vec<u32>, u32)> {
 /// Registers the runner's planner for the block and hands it the packed layouts of the memory
 /// airs. False (with the reason logged) when the planner takes none of them or a layout is
 /// rejected: the block keeps the CPU witness.
-pub fn register_gpu_ram_witness(planner: &crate::GpuCountAndPlan, chunk_size: u64) -> bool {
+pub fn register_gpu_mem_witness(planner: &crate::GpuCountAndPlan, chunk_size: u64) -> bool {
     let inner = planner.raw_handle();
     let Some((widths, words, lanes)) = mem_layout() else {
         tracing::warn!("[gpu] Mem air is not packed; the memory witness stays on the CPU");
@@ -220,7 +226,7 @@ pub fn register_gpu_ram_witness(planner: &crate::GpuCountAndPlan, chunk_size: u6
 }
 
 /// Forgets the registered planner (the next block is starting), once no call still uses it.
-pub fn clear_gpu_ram_witness() {
+pub fn clear_gpu_mem_witness() {
     while IN_FLIGHT.load(Ordering::Acquire) > 0 {
         std::thread::sleep(std::time::Duration::from_millis(1));
     }
@@ -283,21 +289,23 @@ fn align_tables(
 /// The block's preparation, running on its own thread; joined by the first consumer that needs
 /// it complete, or by the arena's release.
 struct Prepare {
-    handle: Option<std::thread::JoinHandle<Result<RamFillPrepared, String>>>,
-    done: Option<Result<RamFillPrepared, String>>,
+    handle: Option<std::thread::JoinHandle<Result<MemFillPrepared, String>>>,
+    done: Option<Result<MemFillPrepared, String>>,
 }
 static PREPARE: Mutex<Prepare> = Mutex::new(Prepare { handle: None, done: None });
 
 /// The block's rows are on the device (the preparation runs or its images stand): the fills take
-/// them from there. Cleared when the arena goes back; a fill after that fails.
+/// them from there. Cleared when the arena goes back; a fill after that fails. This is the
+/// planner crate's own flag; `zisk_common::MEM_ROWS_ON_DEVICE` is the executor's view of it.
 static ROWS_ON_DEVICE: AtomicBool = AtomicBool::new(false);
 
 /// Starts the block's preparation on its own thread, off the executor's path: it runs beside the
 /// registration of the secondaries and the first commits, and each instance waits only for its
 /// own image. The host-side checks stay synchronous, so a block the device cannot serve at all
 /// falls back before any instance is built; a preparation that fails on its thread fails every
-/// fill, and the first one sends the block's memory instances to the CPU witness. `ram`, `rom` and `input` (segment ids) and
-/// `align_plans` are the owned instances, the ones that get a staged image.
+/// fill, and the first one sends the block's memory instances to the CPU witness. `ram`, `rom`
+/// and `input` (segment ids) and `align_plans` are the owned instances, the ones that get a
+/// staged image.
 pub fn gpu_mem_witness_prepare_async(
     image: Vec<u8>,
     ram: Vec<u32>,
@@ -329,7 +337,7 @@ pub fn gpu_mem_witness_prepare_async(
         .name("mem-witness-prepare".into())
         .spawn(move || {
             let inner = inner as *mut crate::gpu_bindings::CountAndPlanHandle;
-            let mut prepared = RamFillPrepared::default();
+            let mut prepared = MemFillPrepared::default();
             // SAFETY: the planner outlives the block (the next block's runner clears the
             // registration only after the release joined this thread). The registry lock is not
             // held: the only other planner calls while this runs are `staged_wait` and
@@ -375,7 +383,7 @@ pub fn gpu_mem_witness_prepare_async(
 
 /// Waits for the block's preparation; its failure is every fill's failure. The lock is held
 /// through the join, so a second waiter blocks until the result is known.
-fn prepare_join() -> Result<RamFillPrepared, String> {
+fn prepare_join() -> Result<MemFillPrepared, String> {
     let mut g = PREPARE.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(h) = g.handle.take() {
         g.done = Some(match h.join() {
@@ -483,7 +491,7 @@ fn rows_into(
     segment: u32,
     n_rows: u32,
     out_rows: &mut [u64],
-) -> Result<RamFillResult, String> {
+) -> Result<MemFillResult, String> {
     let _guard = FillGuard::enter();
     let inner = planner()?;
     if !ROWS_ON_DEVICE.load(Ordering::Acquire) {
@@ -536,7 +544,7 @@ fn rows_into(
             prepare_join()?;
             let reg = registry();
             let r = reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
-            let mut res = RamFillResult::default();
+            let mut res = MemFillResult::default();
             // SAFETY: registered handle, under the lock; `out_rows` holds `n_rows` rows of the
             // instance's layout (checked by the fill); `res` is a valid out-parameter.
             let ok = unsafe {
@@ -569,12 +577,12 @@ fn check_len(out_len: usize, n_rows: u32, words: u32) -> Result<(), String> {
     Ok(())
 }
 
-/// The rows of Mem instance `inst` into `out_rows` (`n_rows` rows of the packed layout).
+/// The rows of Mem (RAM) instance `inst` into `out_rows` (`n_rows` rows of the packed layout).
 pub fn gpu_ram_witness_fill(
     inst: u32,
     out_rows: &mut [u64],
     n_rows: u32,
-) -> Result<RamFillResult, String> {
+) -> Result<MemFillResult, String> {
     check_len(out_rows.len(), n_rows, mem_layout().ok_or("Mem air is not packed")?.1)?;
     rows_into(MEM_FAMILY_RAM, 0, inst, n_rows, out_rows)
 }
@@ -584,7 +592,7 @@ pub fn gpu_rom_witness_fill(
     inst: u32,
     out_rows: &mut [u64],
     n_rows: u32,
-) -> Result<RamFillResult, String> {
+) -> Result<MemFillResult, String> {
     check_len(out_rows.len(), n_rows, rom_layout().ok_or("RomData air is not packed")?.1)?;
     rows_into(MEM_FAMILY_ROM, 0, inst, n_rows, out_rows)
 }
@@ -594,7 +602,7 @@ pub fn gpu_input_witness_fill(
     inst: u32,
     out_rows: &mut [u64],
     n_rows: u32,
-) -> Result<RamFillResult, String> {
+) -> Result<MemFillResult, String> {
     check_len(out_rows.len(), n_rows, input_layout().ok_or("InputData air is not packed")?.1)?;
     rows_into(MEM_FAMILY_INPUT, 0, inst, n_rows, out_rows)
 }

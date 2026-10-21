@@ -322,8 +322,8 @@ bool CountAndPlan::set_mem_layout(const uint32_t* col_widths, uint32_t n_cols, u
 // there is dead once run() returned; the fixed regions below it keep the prefix the fills read):
 // the record runs' bases and counts (one run per piece of a chunk), every RAM instance's address
 // range, the (run, instance) bounds and the per-instance run prefixes.
-bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
-    if (out) *out = RamFillPrepared{};
+bool CountAndPlan::prepare_ram_fill(MemFillPrepared* out) {
+    if (out) *out = MemFillPrepared{};
     if (!out) return false;
     cudaSetDevice(gpu_device_);
     const size_t n = ram_cursor_.load(std::memory_order_relaxed);
@@ -368,6 +368,11 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
         d_rf_bound_      = (uint32_t*)take((size_t)nc * 2 * n_inst * 4);
         d_rf_pref_       = (uint32_t*)take((size_t)nc * n_inst * 4);
         rf_scratch_      = (uint8_t*)take(0);
+        if (rf_scratch_ > arena_ + ram_low_edge_bytes(n)) {
+            fprintf(stderr, "ram_fill: no room for the run tables below the retained accesses; RAM witness off\n");
+            out->status = -3;
+            return false;
+        }
         std::vector<uint32_t> h_base(nc), h_n(nc), h_ids(n_inst);
         for (uint32_t c = 0; c < nc; ++c) { h_base[c] = runs[c].base; h_n[c] = runs[c].n; }
         for (uint32_t i = 0; i < n_inst; ++i) h_ids[i] = i;
@@ -428,9 +433,9 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
 // `out_rows == nullptr`: resolve the instance's values (and scatter the MemAlign old words) without
 // building or copying its rows, for an instance this process does not own.
 // `d_out`: the rows go to this device buffer (a staged image) instead of `out_rows`.
-bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res,
+bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t n_rows, MemFillResult* res,
                                      uint64_t* d_out) {
-    if (res) *res = RamFillResult{};
+    if (res) *res = MemFillResult{};
     if (!res) return false;
     cudaSetDevice(gpu_device_);
     if (!ram_tables_ready_) { res->status = -1; return false; }
@@ -610,14 +615,14 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
 
 // Resolves every RAM instance (its scalars, and the old words the MemAlign records need), staging
 // the rows of the owned ones (`stage_wanted_`) as device images while they fit. Prepares if needed.
-bool CountAndPlan::fill_all_ram_instances(uint32_t n_rows, RamFillPrepared* prepared) {
+bool CountAndPlan::fill_all_ram_instances(uint32_t n_rows, MemFillPrepared* prepared) {
     if (!prepare_ram_fill(prepared)) return false;
     if (ram_prepared_) return true;
     const uint32_t n_inst = prepared->n_instances;
     const size_t stride = (size_t)n_rows * mem_words_per_row_;
     ram_n_lanes_ = 0;
     for (uint32_t i = 0; i < n_inst; ++i) {
-        RamFillResult r{};
+        MemFillResult r{};
         const bool ok = stage_wanted_at_(0, i)
             ? fill_staged_(0, 0, i, n_rows, stride, &r, [&](uint64_t* d_out) { return fill_ram_instance(i, nullptr, n_rows, &r, d_out); })
             : fill_ram_instance(i, nullptr, n_rows, &r);
@@ -795,7 +800,7 @@ uint64_t* CountAndPlan::stage_take_(size_t words) {
 // then, if the plain fill does not fit either, with every image dropped.
 template <class Fill>
 bool CountAndPlan::fill_staged_(uint32_t family, uint32_t air_id, uint32_t segment, uint32_t n_rows, size_t words,
-                                RamFillResult* res, Fill&& fill) {
+                                MemFillResult* res, Fill&& fill) {
     uint8_t* const low = stage_low_;
     if (uint64_t* d_out = stage_take_(words)) {
 #ifdef ZISK_MEM_TEST
@@ -852,6 +857,10 @@ bool CountAndPlan::other_geometry_(int region, std::vector<uint32_t>& first, std
     // Scratch past every table once the preparation laid them out (the input image follows
     // the access table), else just past the access table.
     uint32_t* d_ids = (uint32_t*)(fill_scratch_ ? fill_scratch_ : other_scratch_); uint32_t* d_first = d_ids + n_inst; uint32_t* d_last = d_first + n_inst;
+    if ((uint8_t*)(d_last + n_inst) > arena_ + ram_low_edge_bytes(ram_cursor_.load(std::memory_order_relaxed))) {
+        fprintf(stderr, "rom_fill: no room for the instance bounds below the retained accesses; witness off\n");
+        return false;
+    }
     std::vector<uint32_t> h_ids(n_inst);
     for (uint32_t i = 0; i < n_inst; ++i) h_ids[i] = i;
     RF_TRY(cudaMemcpyAsync(d_ids, h_ids.data(), (size_t)n_inst * 4, cudaMemcpyHostToDevice, fill_stream_));
@@ -996,9 +1005,9 @@ __global__ void rom_rows_kernel(RowPackLayout layout, uint32_t lanes_x_row, size
     for (uint32_t k = 0; k < layout.words_per_row; ++k) dst[k] = w[k];
 }
 
-bool CountAndPlan::fill_rom_instance(uint32_t inst, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res,
+bool CountAndPlan::fill_rom_instance(uint32_t inst, uint64_t* out_rows, uint32_t n_rows, MemFillResult* res,
                                      uint64_t* d_out) {
-    if (res) *res = RamFillResult{};
+    if (res) *res = MemFillResult{};
     if (!res) return false;
     const size_t R = instance_rows_[RF_REGION_ROM];
     if ((size_t)n_rows * rom_lanes_x_row_ != R) {
@@ -1110,8 +1119,8 @@ bool CountAndPlan::fill_rom_instance(uint32_t inst, uint64_t* out_rows, uint32_t
 }
 
 // Resolves every RomData instance, staging the rows of the owned ones while they fit.
-bool CountAndPlan::fill_all_rom_instances(uint32_t n_rows, RamFillPrepared* prepared) {
-    if (prepared) *prepared = RamFillPrepared{};
+bool CountAndPlan::fill_all_rom_instances(uint32_t n_rows, MemFillPrepared* prepared) {
+    if (prepared) *prepared = MemFillPrepared{};
     if (!prepared) return false;
     cudaSetDevice(gpu_device_);
     if (!ram_retention_enabled_.load(std::memory_order_relaxed) || rom_n_cols_ == 0) { prepared->status = -1; return false; }
@@ -1129,7 +1138,7 @@ bool CountAndPlan::fill_all_rom_instances(uint32_t n_rows, RamFillPrepared* prep
     }
     const size_t stride = (size_t)n_rows * rom_words_per_row_;
     for (uint32_t i = 0; i < n_inst; ++i) {
-        RamFillResult r{};
+        MemFillResult r{};
         const bool ok = stage_wanted_at_(1, i)
             ? fill_staged_(1, 0, i, n_rows, stride, &r, [&](uint64_t* d_out) { return fill_rom_instance(i, nullptr, n_rows, &r, d_out); })
             : fill_rom_instance(i, nullptr, n_rows, &r);
@@ -1229,9 +1238,9 @@ __global__ void input_rows_kernel(RowPackLayout layout, uint32_t lanes_x_row, si
 }
 
 bool CountAndPlan::fill_input_instance(uint32_t inst, const uint64_t* d_image, const uint64_t* h_image, size_t image_words,
-                                       uint8_t* scratch, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res,
+                                       uint8_t* scratch, uint64_t* out_rows, uint32_t n_rows, MemFillResult* res,
                                        uint64_t* d_out) {
-    if (res) *res = RamFillResult{};
+    if (res) *res = MemFillResult{};
     if (!res) return false;
     const size_t R = instance_rows_[RF_REGION_INPUT];
     if ((size_t)n_rows * input_lanes_x_row_ != R) {
@@ -1325,8 +1334,8 @@ bool CountAndPlan::fill_input_instance(uint32_t inst, const uint64_t* d_image, c
 
 // Resolves every InputData instance, staging the rows of the owned ones while they fit.
 bool CountAndPlan::fill_all_input_instances(uint32_t n_rows, const void* image, size_t image_bytes,
-                                            RamFillPrepared* prepared) {
-    if (prepared) *prepared = RamFillPrepared{};
+                                            MemFillPrepared* prepared) {
+    if (prepared) *prepared = MemFillPrepared{};
     if (!prepared) return false;
     cudaSetDevice(gpu_device_);
     if (!ram_retention_enabled_.load(std::memory_order_relaxed) || input_n_cols_ == 0) { prepared->status = -1; return false; }
@@ -1352,7 +1361,7 @@ bool CountAndPlan::fill_all_input_instances(uint32_t n_rows, const void* image, 
     std::vector<uint64_t>& h_image = h_image_;
     const size_t stride = (size_t)n_rows * input_words_per_row_;
     for (uint32_t i = 0; i < n_inst; ++i) {
-        RamFillResult r{};
+        MemFillResult r{};
         auto fill = [&](uint64_t* d_out) {
             return fill_input_instance(i, d_image, h_image.data(), image_words, sc.cur, nullptr, n_rows, &r, d_out);
         };
@@ -1706,8 +1715,8 @@ bool CountAndPlan::prepare_align_index_() {
 }
 
 bool CountAndPlan::fill_align_instance(const AlignPlanDesc& plan, const AlignChunkEntry* entries, uint8_t* scratch,
-                                       uint64_t* out_rows, RamFillResult* res, uint64_t* d_out) {
-    if (res) *res = RamFillResult{};
+                                       uint64_t* out_rows, MemFillResult* res, uint64_t* d_out) {
+    if (res) *res = MemFillResult{};
     if (!res || (!out_rows && !d_out) || plan.entry_n == 0 || plan.air_kind >= 4 || align_n_cols_[plan.air_kind] == 0) {
         if (res) res->status = -2;
         return false;
@@ -1830,8 +1839,8 @@ bool CountAndPlan::fill_align_instance(const AlignPlanDesc& plan, const AlignChu
 bool CountAndPlan::prepare_fills(const void* image, size_t image_bytes, const AlignPlanDesc* plans, uint32_t n_plans,
                                  const AlignChunkEntry* entries, uint32_t n_entries, const uint32_t* ram,
                                  uint32_t n_ram, const uint32_t* rom, uint32_t n_rom, const uint32_t* input,
-                                 uint32_t n_input, RamFillPrepared* prepared) {
-    if (prepared) *prepared = RamFillPrepared{};
+                                 uint32_t n_input, MemFillPrepared* prepared) {
+    if (prepared) *prepared = MemFillPrepared{};
     if (!prepared) return false;
     cudaSetDevice(gpu_device_);
     if (fills_prepared_) { *prepared = prepared_info_; return true; }
@@ -1886,7 +1895,7 @@ bool CountAndPlan::prepare_fills(const void* image, size_t image_bytes, const Al
     // no image ever covers a table.
     fill_scratch_ = nullptr;
     {
-        RamFillPrepared q{};
+        MemFillPrepared q{};
         if (!prepare_ram_fill(&q)) { prepared->status = q.status ? q.status : -1; return false; }
     }
     // The ROM, input and MemAlign tables, for the families with instances.
@@ -1955,7 +1964,7 @@ bool CountAndPlan::prepare_fills(const void* image, size_t image_bytes, const Al
             stage_wanted_[f][inst] = true;
         }
     }
-    RamFillPrepared p{};
+    MemFillPrepared p{};
     const uint32_t ram_rows = (uint32_t)(instance_rows_[RF_REGION_RAM] / mem_lanes_x_row_);
     if (!fill_all_ram_instances(ram_rows, &p)) { prepared->status = p.status; return false; }
     prepared->n_accesses = p.n_accesses;
@@ -1981,7 +1990,7 @@ bool CountAndPlan::prepare_fills(const void* image, size_t image_bytes, const Al
         prepared->n_instances += n_plans;
         // The plans are staged in order while the images fit; the rest are built on demand.
         for (const AlignPlanDesc& plan : fill_align_plans_) {
-            RamFillResult r{};
+            MemFillResult r{};
             const size_t words = (size_t)plan.n_rows * align_words_per_row_[plan.air_kind];
             uint8_t* const low = stage_low_;
             uint64_t* d_out = stage_take_(words);
@@ -2079,8 +2088,8 @@ bool CountAndPlan::copy_staged(uint32_t family, uint32_t air_id, uint32_t segmen
 }
 
 bool CountAndPlan::fill_host(uint32_t family, uint32_t air_id, uint32_t segment, uint32_t n_rows, uint64_t* out_rows,
-                             RamFillResult* res) {
-    if (res) *res = RamFillResult{};
+                             MemFillResult* res) {
+    if (res) *res = MemFillResult{};
     if (!res || !out_rows) return false;
     cudaSetDevice(gpu_device_);
     if (!fills_prepared_) { res->status = -1; return false; }

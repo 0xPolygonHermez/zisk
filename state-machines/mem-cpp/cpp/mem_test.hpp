@@ -63,10 +63,9 @@ public:
                 for (int32_t i = 0; i < chunk_size; i += mops_record_len(words[i])) {
                     const MemCountersBusData rec = mops_decode_record(words + i);
                     const uint32_t addr = rec.addr;
-                    if (addr < 0x40000000 || addr >= 0x80000000) continue;
+                    if (addr < INPUT_ADDR || addr >= ROM_ADDR) continue;
                     const uint8_t bytes = rec.flags & 0x0F;
                     const uint8_t is_write = (rec.flags & MOPS_WRITE_FLAG) != 0;
-                    if (addr == 0x80000000) printf("=================> ADDR 0x80000000\n");
                     if ((addr & 0x7) == 0 && bytes == 8) {
                         printf("MEM_OP 0x%08X %04d:%07d:0\n", addr, chunk_id, i);
                     } else if ((addr & 0x7) != 0 || bytes != 8) {

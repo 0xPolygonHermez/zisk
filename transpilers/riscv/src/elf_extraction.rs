@@ -529,35 +529,35 @@ mod tests {
     #[test]
     fn test_entry_point_inside_exec_is_ok() {
         // Entry in the interior of an executable segment.
-        let p = payload_with_exec(0x8000_0010, &[(0x8000_0000, 0x100)]);
+        let p = payload_with_exec(ROM_ADDR + 0x10, &[(ROM_ADDR, 0x100)]);
         assert!(validate_entry_point(&p).is_ok());
     }
 
     #[test]
     fn test_entry_point_at_segment_start_is_ok() {
-        let p = payload_with_exec(0x8000_0000, &[(0x8000_0000, 0x100)]);
+        let p = payload_with_exec(ROM_ADDR, &[(ROM_ADDR, 0x100)]);
         assert!(validate_entry_point(&p).is_ok());
     }
 
     #[test]
     fn test_entry_point_at_last_instruction_is_ok() {
         // Last addressable IALIGN-aligned slot in the segment [start, start+len).
-        let last = 0x8000_0100 - INSTRUCTION_ALIGN;
-        let p = payload_with_exec(last, &[(0x8000_0000, 0x100)]);
+        let last = ROM_ADDR + 0x100 - INSTRUCTION_ALIGN;
+        let p = payload_with_exec(last, &[(ROM_ADDR, 0x100)]);
         assert!(validate_entry_point(&p).is_ok());
     }
 
     #[test]
     fn test_entry_point_at_segment_end_is_rejected() {
         // start + len is one past the segment; the range is half-open, so this is out.
-        let p = payload_with_exec(0x8000_0100, &[(0x8000_0000, 0x100)]);
+        let p = payload_with_exec(ROM_ADDR + 0x100, &[(ROM_ADDR, 0x100)]);
         assert!(validate_entry_point(&p).is_err());
     }
 
     #[test]
     fn test_entry_point_misaligned_is_rejected() {
         // Odd address: not 2-byte aligned.
-        let p = payload_with_exec(0x8000_0011, &[(0x8000_0000, 0x100)]);
+        let p = payload_with_exec(ROM_ADDR + 0x11, &[(ROM_ADDR, 0x100)]);
         assert!(validate_entry_point(&p).is_err());
     }
 
@@ -567,7 +567,7 @@ mod tests {
     #[cfg(feature = "compressed")]
     fn test_entry_point_two_byte_aligned_is_ok() {
         // A compressed-instruction entry (2-byte, not 4-byte aligned) must be accepted.
-        let p = payload_with_exec(0x8000_000a, &[(0x8000_0000, 0x100)]);
+        let p = payload_with_exec(ROM_ADDR + 0x0a, &[(ROM_ADDR, 0x100)]);
         assert!(validate_entry_point(&p).is_ok());
     }
 
@@ -577,20 +577,20 @@ mod tests {
     #[test]
     #[cfg(not(feature = "compressed"))]
     fn test_entry_point_two_byte_aligned_is_rejected_without_compressed() {
-        let p = payload_with_exec(0x8000_000a, &[(0x8000_0000, 0x100)]);
+        let p = payload_with_exec(ROM_ADDR + 0x0a, &[(ROM_ADDR, 0x100)]);
         assert!(validate_entry_point(&p).is_err());
     }
 
     #[test]
     fn test_entry_point_outside_any_exec_segment_is_rejected() {
         // Aligned, but not within any executable segment (e.g. points into RO/RW).
-        let p = payload_with_exec(0x9000_0000, &[(0x8000_0000, 0x100)]);
+        let p = payload_with_exec(ROM_ADDR + 0x1000, &[(ROM_ADDR, 0x100)]);
         assert!(validate_entry_point(&p).is_err());
     }
 
     #[test]
     fn test_entry_point_no_exec_segments_is_rejected() {
-        let p = payload_with_exec(0x8000_0000, &[]);
+        let p = payload_with_exec(ROM_ADDR, &[]);
         assert!(validate_entry_point(&p).is_err());
     }
 }

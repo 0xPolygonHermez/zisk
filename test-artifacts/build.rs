@@ -38,6 +38,7 @@ const PROGRAMS: &[&str] = &[
     "ed25519_verify",
     "fib_mod",
     "hashes",
+    "input_2gb",
     "keccak",
     "keccakf_cache",
     "liveness",

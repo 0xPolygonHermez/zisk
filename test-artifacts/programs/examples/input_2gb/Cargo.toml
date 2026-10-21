@@ -1,0 +1,7 @@
+[package]
+name = "input_2gb"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ziskos.workspace = true

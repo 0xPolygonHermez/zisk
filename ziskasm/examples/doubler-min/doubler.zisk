@@ -19,8 +19,8 @@
 
 ; ---- Definitions ----
 
-define INPUT_COUNT   0x40000008       ; address of N (the value count)
-define INPUT_VALUES  0x40000010       ; address of value[0]
+define INPUT_COUNT   0x10000008       ; address of N (the value count)
+define INPUT_VALUES  0x10000010       ; address of value[0]
 define OUTPUT_ADDR   0xa0410000       ; address of result[0]
 
 

@@ -303,7 +303,7 @@ impl<F: PrimeField64> RomDataSM<F> {
 
     /// The device's scalars of an instance as its fill output and continuation.
     fn from_result(
-        res: &zisk_sm_mem_planner::RamFillResult,
+        res: &zisk_sm_mem_planner::MemFillResult,
         n_rows: usize,
     ) -> (RomDataFillOutput, MemPreviousSegment) {
         let num_slots = n_rows * zisk_sm_mem_common::rom_data_lanes_x_row();
@@ -329,6 +329,10 @@ impl<F: PrimeField64> RomDataSM<F> {
             usize::from(segment_id) as u32,
             rows,
             n_rows as u32,
+        )?;
+        crate::mem_gpu_fill::check_scalars(
+            &res,
+            n_rows * zisk_sm_mem_common::rom_data_lanes_x_row(),
         )?;
         Ok(Self::from_result(&res, n_rows))
     }

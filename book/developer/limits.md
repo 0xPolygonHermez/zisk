@@ -12,7 +12,7 @@ Current usage examples are based on an Ethereum client block validation.
 
 | Name | Limit | Max usage | Percentage |
 | :---- | :---- | :---- | :---- |
-| INPUT SIZE | < 1 GB | 20 MB (ETH) | 2 % |
+| INPUT SIZE | < 2 GB | 20 MB (ETH) | 1 % |
 | ROM SIZE | 127 MB | 4 MB (ETH) | 3 % |
 | RAM SIZE | 507.75 MB | 256 MB (ETH) | 50 % |
 | TRACE SIZE | 32 GB | 7 GB (ETH) | 22 % |
@@ -26,9 +26,9 @@ Current usage examples are based on an Ethereum client block validation.
 
 This limit consists of the maximum input binary data size in bytes.
 
-In order to inject the input data into the assembly emulator a shared memory mechanism is used.  Shared memory provides the maximum performance, and it allows consuming the input data with zero-copy.  The input shared memory size is 1 GB.  There is an overhead due to the use of some headers to manage the input data chunks, but they are very small, so in practice, the input data size is limited to almost 1 GB.
+In order to inject the input data into the assembly emulator a shared memory mechanism is used.  Shared memory provides the maximum performance, and it allows consuming the input data with zero-copy.  The input shared memory size is 2 GB.  There is an overhead due to the use of some headers to manage the input data chunks, but they are very small, so in practice, the input data size is limited to almost 2 GB.
 
-An Ethereum client block verification normally needs an input data size of 15 MB to 20 MB.  This is approximately 2 % of the maximum input data size.
+An Ethereum client block verification normally needs an input data size of 15 MB to 20 MB.  This is approximately 1 % of the maximum input data size.
 
 Some very specific programs might require a higher input data size.  Increasing the input data size would require PIL modification, assigning a larger virtual address space for the assembly, and it would consume more physical memory.
 
@@ -38,7 +38,7 @@ We have plans to add to ZisK the support to consume input data as a stream.  Thi
 
 This limit consists of the maximum ROM address space size in bytes.  Another way to describe it is the maximum size of the program code and the program constant data, together.  In essence, we are referring to the program size.
 
-Currently, ZisK maps the ROM to the virtual address space between addresses 0x8000_0000 and 0x87FF_FFFF, i.e. 128 MB.  The top 1 MB of that region, from 0x87F0_0000 to 0x87FF_FFFF, is used by the float library ROM.  This leaves an effective limit of 127 MB for the program.
+Currently, ZisK maps the ROM to the virtual address space between addresses 0x9000_0000 and 0x97FF_FFFF, i.e. 128 MB.  The top 1 MB of that region, from 0x97F0_0000 to 0x97FF_FFFF, is used by the float library ROM, and the 1 MB below it, from 0x97E0_0000 to 0x97EF_FFFF, by the ZisK library ROM.  This leaves an effective limit of 126 MB for the program.
 
 An Ethereum client normally uses about 4 MB.  This is approximately 3 % of the maximum ROM size.
 
