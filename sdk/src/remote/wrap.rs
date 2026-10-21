@@ -40,6 +40,8 @@ impl RemoteClient {
 
         let remote_job = self.gw.submit_job(job_kind).map_err(SdkError::backend)?;
 
-        Ok(JobHandle::new_remote(remote_job, subs, timeout, None, None))
+        let mut handle = JobHandle::new_remote(remote_job, subs, timeout, None, None);
+        self.check_snark(&mut handle, proof_kind);
+        Ok(handle)
     }
 }

@@ -15,11 +15,11 @@ pub struct EmbeddedOpts {
     /// Path to the proving key directory.
     pub proving_key: Option<PathBuf>,
 
-    /// Path to the PLONK proving key directory.
+    /// Path to the SNARK proving key directory, set up for one final SNARK protocol.
     pub proving_key_snark: Option<PathBuf>,
 
-    /// Eagerly preload PLONK/SNARK proving keys at startup.
-    pub preload_plonk: bool,
+    /// Eagerly preload the SNARK proving key at startup.
+    pub preload_snark: bool,
 
     /// Maximum memory (bytes) for witness storage during proving.
     pub max_witness_stored: Option<usize>,
@@ -49,18 +49,25 @@ impl EmbeddedOpts {
         self
     }
 
-    /// Set the path to the PLONK proving key directory.
+    /// Set the path to the SNARK proving key directory.
     #[must_use]
     pub fn proving_key_snark(mut self, path: impl Into<PathBuf>) -> Self {
         self.proving_key_snark = Some(path.into());
         self
     }
 
-    /// Eagerly preload PLONK/SNARK proving keys at startup.
+    /// Eagerly preload the SNARK proving key at startup.
     #[must_use]
-    pub fn preload_plonk(mut self) -> Self {
-        self.preload_plonk = true;
+    pub fn preload_snark(mut self) -> Self {
+        self.preload_snark = true;
         self
+    }
+
+    /// Eagerly preload the SNARK proving key at startup.
+    #[deprecated(note = "the key may be of any final SNARK: use `preload_snark`")]
+    #[must_use]
+    pub fn preload_plonk(self) -> Self {
+        self.preload_snark()
     }
 
     /// Set the maximum memory (bytes) for witness storage during proving.
@@ -91,7 +98,8 @@ impl EmbeddedOpts {
         self
     }
 
-    pub(crate) fn into_backend_opts(self, gpu: bool) -> BackendProverOpts {
+    /// The backend options of these, for a prover that runs the final SNARK when `final_snark`.
+    pub(crate) fn into_backend_opts(self, gpu: bool, final_snark: bool) -> BackendProverOpts {
         let mut opts = BackendProverOpts::default().aggregation(true);
 
         if self.minimal_memory {
@@ -106,8 +114,11 @@ impl EmbeddedOpts {
             opts = opts.proving_key_plonk(pk_snark);
         }
 
-        if self.preload_plonk {
-            opts = opts.plonk(true);
+        // A final SNARK (pilfflonk, or PLONK: the protocol of the SNARK proving key) is declared to
+        // proofman, as the worker and `cargo-zisk-dev prove` do: proofman sets the GPU arena up for
+        // the wrap, and a blake3 key needs it to prove the recursivef its SNARK wraps.
+        if final_snark || self.preload_snark {
+            opts = opts.plonk(self.preload_snark);
         }
 
         if gpu {
@@ -131,5 +142,30 @@ impl EmbeddedOpts {
         }
 
         opts
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EmbeddedOpts;
+
+    #[test]
+    fn a_final_snark_is_declared_to_proofman() {
+        let opts = EmbeddedOpts::default().into_backend_opts(false, true);
+        assert!(opts.build_proofman_options().final_snark);
+        assert!(!opts.preload_plonk());
+    }
+
+    #[test]
+    fn a_preloaded_snark_key_is_a_final_snark() {
+        let opts = EmbeddedOpts::default().preload_snark().into_backend_opts(false, true);
+        assert!(opts.build_proofman_options().final_snark);
+        assert!(opts.preload_plonk());
+    }
+
+    #[test]
+    fn a_stark_prover_runs_no_final_snark() {
+        let opts = EmbeddedOpts::default().into_backend_opts(false, false);
+        assert!(!opts.build_proofman_options().final_snark);
     }
 }
