@@ -283,12 +283,16 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// program's services; and run on its resources.
     ///
     /// Nothing is rewound here: the previous job's end did that ([`AsmJob`]), so what a
-    /// caller registered or streamed for this job since is kept. Register the job's
-    /// streams and run it while the returned job is alive.
+    /// caller registered or streamed for this job since is kept. Only the cancellation
+    /// flag is cleared: a cancel that landed after that end (the worker cancels whatever
+    /// it may still be running as each task arrives) would otherwise abort this job at its
+    /// first wait for input or hints. Register the job's streams and run it while the
+    /// returned job is alive.
     pub fn begin_asm_job(&self, resources: Arc<AsmResources>) -> ExecutorResult<AsmJob> {
         let claim = resources.claim();
         self.drain_rh();
         resources.activate(&claim)?;
+        resources.clear_cancellation()?;
         self.set_asm_resources(Arc::clone(&resources))?;
         Ok(AsmJob::new(resources, self.rom_histogram(), claim))
     }

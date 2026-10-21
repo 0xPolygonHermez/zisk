@@ -117,10 +117,18 @@ impl InputsShmemWriter {
     /// the correct order: flag first, then post. A child that wakes from a
     /// post with `flag == 0` goes back to sleep and would never see a later
     /// `set_reset_flag()`, so the two steps must always run together.
-    /// Cleared by the next job's `reset()`.
+    /// Cleared by the job's end (`reset()`), and again as the next job begins
+    /// (`clear_reset()`).
     pub fn signal_reset(&self) -> Result<()> {
         self.control_writer.set_reset_flag()?;
         self.notify_all_services()
+    }
+
+    /// Clears the C-side `ResetFlag` alone. A cancel that lands after a job's end
+    /// sets it again, and the next job must not begin with it: its first wait for
+    /// input or hints would abort the emulation.
+    pub fn clear_reset(&self) -> Result<()> {
+        self.control_writer.clear_reset_flag()
     }
 
     /// Resets the shared memory and control flags, and drains any stale semaphore posts.

@@ -53,6 +53,12 @@ impl InputsShmemWriter {
         );
     }
 
+    pub fn clear_reset(&self) -> Result<()> {
+        unreachable!(
+            "InputsShmemWriter::clear_reset() is not supported on this platform. Only Linux x86_64 is supported."
+        );
+    }
+
     pub fn reset(&self) {
         unreachable!(
             "InputsShmemWriter::reset() is not supported on this platform. Only Linux x86_64 is supported."

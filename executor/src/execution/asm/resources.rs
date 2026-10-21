@@ -354,6 +354,12 @@ impl AsmResources {
         self.shared.shmem_inputs.signal_reset().map_err(ExecutorError::asm_backend)
     }
 
+    /// Clears what [`signal_cancellation`](Self::signal_cancellation) leaves in the
+    /// segments, so that a cancel which lands after a job's end cannot abort the next one.
+    pub fn clear_cancellation(&self) -> ExecutorResult<()> {
+        self.shared.shmem_inputs.clear_reset().map_err(ExecutorError::asm_backend)
+    }
+
     /// Rewinds the hints and the input, the shared memory and the streams registered for
     /// them alike, preparing for the next execution.
     ///
