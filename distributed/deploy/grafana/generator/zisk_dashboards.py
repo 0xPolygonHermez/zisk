@@ -130,6 +130,8 @@ def state_timeline(title, exprs):
             "options": {"showValue": "never", "mergeValues": True, "rowHeight": 0.8, "legend": {"showLegend": False}}}
 
 
+# The bar of links on every dashboard. zisk-overview.json is written by hand, not here: it carries the same
+# links, which must follow this list.
 NAV = [("zisk-live", "🔴 LIVE"), ("zisk-overview", "Overview"), ("zisk-proofs", "Executions & proofs"),
        ("zisk-recovery", "Cancellations & recovery"), ("zisk-resources", "Worker resources"),
        ("zisk-gpus", "GPUs"), ("zisk-host", "Host")]
