@@ -8,7 +8,7 @@ use colored::Colorize;
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
-    SnarkProtocol, SnarkWrapper, WitnessInfo,
+    SnarkProof, SnarkProtocol, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{ProofCtx, ProofOptions, RowInfo};
 use proofman_fields::Goldilocks;
@@ -426,49 +426,17 @@ impl ProverBackend {
                     .unwrap()
                     .generate_final_snark_proof(&vadcop_proof, None)?;
 
-                let publics = PublicValues::new_from_u64(&vadcop_proof.public_values);
                 let program_vk = ProgramVK::new_from_publics_with_mode(
                     &vadcop_proof.public_values,
                     self.hash_mode()?,
                 );
-                if snark_proof.protocol_id == SnarkProtocol::Plonk.protocol_id() {
-                    let proving_key_snark =
-                        self.proving_key_snark_path.as_ref().ok_or_else(|| {
-                            anyhow::anyhow!("Proving key snark path is required for Plonk proofs")
-                        })?;
-                    let verkey_path = PathBuf::from(format!(
-                        "{}/{}/{}.verkey.json",
-                        proving_key_snark.display(),
-                        "final",
-                        "final"
-                    ));
-                    let plonk_vkey = PlonkVkey::load(&verkey_path)?;
-                    Ok(ProveOutput::new(
-                        execution_result,
-                        start.elapsed(),
-                        Proof::new(
-                            ProofBody::Plonk {
-                                proof_bytes: snark_proof.proof_bytes,
-                                plonk_vk: Box::new(PlonkVkBlob {
-                                    vadcop_vk: vadcop_vk_u64.clone(),
-                                    plonk_vkey,
-                                }),
-                                publics,
-                                // Canonical flag-free view, matching every other
-                                // `ProofBody::Plonk` producer. Storing the raw 69-word
-                                // vector here left consumers to strip the flag themselves.
-                                publics_full: program_publics(&vadcop_proof.public_values).to_vec(),
-                                rootc: vadcop_vk_u64,
-                            },
-                            program_vk,
-                        ),
-                    ))
-                } else {
-                    Err(anyhow::anyhow!(
-                        "Unsupported snark protocol id: {}",
-                        snark_proof.protocol_id
-                    ))
-                }
+                let body =
+                    self.snark_proof_body(snark_proof, &vadcop_proof.public_values, vadcop_vk_u64)?;
+                Ok(ProveOutput::new(
+                    execution_result,
+                    start.elapsed(),
+                    Proof::new(body, program_vk),
+                ))
             }
             (_, Some(p)) => Ok(ProveOutput::new(
                 execution_result,
@@ -611,28 +579,9 @@ impl ProverBackend {
 
         let time = start.elapsed();
 
-        let proving_key_snark = self.proving_key_snark_path.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Proving key snark path is required for Plonk proofs")
-        })?;
-        let verkey_path = PathBuf::from(format!(
-            "{}/{}/{}.verkey.json",
-            proving_key_snark.display(),
-            "final",
-            "final"
-        ));
-        let plonk_vkey = PlonkVkey::load(&verkey_path)?;
-
+        let body = self.snark_proof_body(snark_proof, &vadcop_final_proof.public_values, rootc)?;
         let proof = Proof::new(
-            ProofBody::Plonk {
-                proof_bytes: snark_proof.proof_bytes.clone(),
-                plonk_vk: Box::new(PlonkVkBlob { vadcop_vk: rootc.clone(), plonk_vkey }),
-                publics: PublicValues::new_from_u64(&vadcop_final_proof.public_values),
-                // Store the canonical flag-free view.
-                publics_full: program_publics(&vadcop_final_proof.public_values).to_vec(),
-                // The key RecursiveF verified under, so `Proof::verify` reproduces
-                // the circuit's `publicsHash` preimage.
-                rootc,
-            },
+            body,
             ProgramVK::new_from_publics_with_mode(
                 &vadcop_final_proof.public_values,
                 self.hash_mode()?,
@@ -642,6 +591,54 @@ impl ProverBackend {
         // No guest runs here; the result keeps the seed of the execution the source proof
         // attests to.
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof).with_random_seed(seed))
+    }
+
+    /// The proof body of a final SNARK proof, by the protocol that proved it: the key sets the
+    /// protocol up, so the caller does not choose it. `rootc` is the key the recursivef verified
+    /// under, which the SNARK's public digest commits to.
+    fn snark_proof_body(
+        &self,
+        snark_proof: SnarkProof,
+        vadcop_public_values: &[u64],
+        rootc: Vec<u64>,
+    ) -> Result<ProofBody> {
+        let proving_key_snark = self.proving_key_snark_path.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Proving key snark path is required for SNARK proofs")
+        })?;
+        let publics = PublicValues::new_from_u64(vadcop_public_values);
+        // The canonical flag-free view, matching every producer of a SNARK body. Storing the
+        // raw 69-word vector left consumers to strip the flag themselves.
+        let publics_full = program_publics(vadcop_public_values).to_vec();
+
+        match snark_proof.protocol_id {
+            id if id == SnarkProtocol::Plonk.protocol_id() => {
+                let verkey_path = proving_key_snark.join("final").join("final.verkey.json");
+                let plonk_vkey = PlonkVkey::load(&verkey_path)?;
+                Ok(ProofBody::Plonk {
+                    proof_bytes: snark_proof.proof_bytes,
+                    plonk_vk: Box::new(PlonkVkBlob { vadcop_vk: rootc.clone(), plonk_vkey }),
+                    publics,
+                    publics_full,
+                    // The key RecursiveF verified under, so `Proof::verify` reproduces the
+                    // circuit's `publicsHash` preimage.
+                    rootc,
+                })
+            }
+            id if id == SnarkProtocol::Pilfflonk.protocol_id() => {
+                let vkey_path = pilfflonk_vkey_path(proving_key_snark)?;
+                let vkey_json = std::fs::read_to_string(&vkey_path).map_err(|e| {
+                    anyhow::anyhow!("Cannot read the pilfflonk vkey {}: {e}", vkey_path.display())
+                })?;
+                Ok(ProofBody::Pilfflonk {
+                    proof_bytes: snark_proof.proof_bytes,
+                    vkey_json,
+                    publics,
+                    publics_full,
+                    rootc,
+                })
+            }
+            id => Err(anyhow::anyhow!("Unsupported snark protocol id: {id}")),
+        }
     }
 
     pub(crate) fn prove_phase(
@@ -760,5 +757,88 @@ impl ProverBackend {
 
     pub(crate) fn cluster_barrier(&self) {
         self.proofman.set_barrier();
+    }
+}
+
+/// The `pilfflonk.vkey.json` of a key set up with `--final-snark pilfflonk`, in
+/// `provingKeySnark/final/provingKey/<name>/pilfflonk/`. There is one `<name>`, the setup's.
+fn pilfflonk_vkey_path(proving_key_snark: &std::path::Path) -> Result<PathBuf> {
+    let dir = proving_key_snark.join("final").join("provingKey");
+    let mut found: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .map_err(|e| anyhow::anyhow!("Cannot read {}: {e}", dir.display()))?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path().join("pilfflonk").join("pilfflonk.vkey.json"))
+        .filter(|path| path.is_file())
+        .collect();
+    match found.len() {
+        1 => Ok(found.remove(0)),
+        n => Err(anyhow::anyhow!(
+            "Expected one pilfflonk.vkey.json under {}/<name>/pilfflonk/, found {n}",
+            dir.display()
+        )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pilfflonk_vkey_path;
+    use std::path::{Path, PathBuf};
+
+    /// A `provingKeySnark/` in a fresh directory, removed on drop.
+    struct SnarkKeyDir(PathBuf);
+
+    impl SnarkKeyDir {
+        fn new(tag: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "pilfflonk_vkey_{tag}_{}_{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+
+        fn add_vkey(&self, name: &str) {
+            let dir = self.0.join("final").join("provingKey").join(name).join("pilfflonk");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("pilfflonk.vkey.json"), "{}").unwrap();
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for SnarkKeyDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn the_pilfflonk_vkey_is_the_one_under_the_setups_name() {
+        let key = SnarkKeyDir::new("one");
+        key.add_vkey("zisk");
+        let path = pilfflonk_vkey_path(key.path()).unwrap();
+        assert!(path.ends_with("final/provingKey/zisk/pilfflonk/pilfflonk.vkey.json"), "{path:?}");
+    }
+
+    #[test]
+    fn a_plonk_key_has_no_pilfflonk_vkey() {
+        let key = SnarkKeyDir::new("none");
+        std::fs::create_dir_all(key.path().join("final")).unwrap();
+        std::fs::write(key.path().join("final").join("final.zkey"), "").unwrap();
+        assert!(pilfflonk_vkey_path(key.path()).is_err());
+    }
+
+    /// Two names would mean two setups in one key, and picking one would verify against the wrong vkey.
+    #[test]
+    fn two_pilfflonk_vkeys_are_refused() {
+        let key = SnarkKeyDir::new("two");
+        key.add_vkey("zisk");
+        key.add_vkey("other");
+        let err = pilfflonk_vkey_path(key.path()).unwrap_err().to_string();
+        assert!(err.contains("found 2"), "{err}");
     }
 }

@@ -45,7 +45,7 @@ pub(crate) struct ZiskEmbeddedSetup {
     #[arg(short = 'k', long)]
     proving_key: Option<PathBuf>,
 
-    /// Path to a precomputed PLONK proving key
+    /// Path to a precomputed SNARK proving key
     #[arg(short = 'w', long)]
     proving_key_plonk: Option<PathBuf>,
 

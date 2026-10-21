@@ -61,17 +61,6 @@ main() {
     # it. Exported so the setup_build.sh child process inherits it.
     export HASH_MODE="${HASH_MODE:-blake3}"
 
-    # The BN128 wrap is poseidon-only, and HASH_MODE is what the STARK setup below will
-    # build the key with — so this pairing is already decided here, before any work. Checked
-    # at the top rather than beside the snark step so the run does not spend a full STARK
-    # setup to arrive at a conflict that was knowable in the first second.
-    if [[ "${INCLUDE_SNARK}" == "1" ]]; then
-        if [[ "$(printf '%s' "$HASH_MODE" | tr '[:upper:]' '[:lower:]')" == "blake3" ]]; then
-            err "INCLUDE_SNARK=1 needs a poseidon HASH_MODE; the BN128 wrap has no blake3 path (HASH_MODE=${HASH_MODE})"
-            return 1
-        fi
-    fi
-
     current_step=1
     total_steps=2   # clearing build/ + building setup
     [[ "${INCLUDE_SNARK}" == "1" ]] && total_steps=$((total_steps + 1))

@@ -4,7 +4,7 @@
 //! and dev command trees, and makes it unit-testable in isolation.
 
 use anyhow::Result;
-use zisk_sdk::ProofKind;
+use zisk_sdk::{Proof, ProofBody, ProofKind};
 
 /// Select the proof kind for a *prove* request.
 ///
@@ -36,19 +36,21 @@ pub(crate) fn select_wrap_kind(plonk: bool, minimal: bool) -> Result<ProofKind> 
     }
 }
 
-/// Label for a wrapped proof, used in the `wrap` summary line ("PLONK" / "minimal").
+/// Label for a wrapped proof, used in the `wrap` summary line ("SNARK" / "minimal").
 pub(crate) fn wrap_kind_label(kind: ProofKind) -> &'static str {
     match kind {
-        ProofKind::Plonk => "PLONK",
+        ProofKind::Plonk => "SNARK",
         _ => "minimal",
     }
 }
 
-/// Proof-family label used by `verify` ("STARK" for VADCOP proofs, "PLONK" otherwise).
-pub(crate) fn verify_kind_label(kind: ProofKind) -> &'static str {
-    match kind {
-        ProofKind::VadcopFinal | ProofKind::VadcopFinalMinimal => "STARK",
-        ProofKind::Plonk => "PLONK",
+/// Proof-family label used by `verify` ("STARK" for VADCOP proofs, "PILFFLONK" or "PLONK" for the
+/// SNARK of that protocol). Both SNARKs have the `Plonk` kind, so the body says which.
+pub(crate) fn verify_kind_label(proof: &Proof) -> &'static str {
+    match (proof.kind(), &proof.body) {
+        (ProofKind::VadcopFinal | ProofKind::VadcopFinalMinimal, _) => "STARK",
+        (ProofKind::Plonk, ProofBody::Pilfflonk { .. }) => "PILFFLONK",
+        (ProofKind::Plonk, _) => "PLONK",
     }
 }
 
@@ -81,16 +83,29 @@ mod tests {
     }
 
     #[test]
-    fn wrap_label_maps_plonk_else_minimal() {
-        assert_eq!(wrap_kind_label(ProofKind::Plonk), "PLONK");
+    fn wrap_label_maps_snark_else_minimal() {
+        assert_eq!(wrap_kind_label(ProofKind::Plonk), "SNARK");
         assert_eq!(wrap_kind_label(ProofKind::VadcopFinalMinimal), "minimal");
         assert_eq!(wrap_kind_label(ProofKind::VadcopFinal), "minimal");
     }
 
+    fn proof_of(body: ProofBody) -> Proof {
+        Proof::new(body, zisk_sdk::ProgramVK::new_empty())
+    }
+
     #[test]
-    fn verify_label_groups_vadcop_as_stark() {
-        assert_eq!(verify_kind_label(ProofKind::VadcopFinal), "STARK");
-        assert_eq!(verify_kind_label(ProofKind::VadcopFinalMinimal), "STARK");
-        assert_eq!(verify_kind_label(ProofKind::Plonk), "PLONK");
+    fn verify_label_names_the_protocol_of_the_proof() {
+        let vadcop = proof_of(ProofBody::default());
+        assert_eq!(verify_kind_label(&vadcop), "STARK");
+
+        let pilfflonk = proof_of(ProofBody::Pilfflonk {
+            proof_bytes: vec![],
+            vkey_json: "{}".to_string(),
+            publics: zisk_sdk::PublicValues::new_empty(),
+            publics_full: vec![],
+            rootc: vec![],
+        });
+        assert_eq!(pilfflonk.kind(), ProofKind::Plonk);
+        assert_eq!(verify_kind_label(&pilfflonk), "PILFFLONK");
     }
 }

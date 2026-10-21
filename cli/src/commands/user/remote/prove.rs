@@ -48,7 +48,7 @@ pub(crate) struct ZiskRemoteProve {
     #[arg(short = 'c', long, conflicts_with = "plonk")]
     minimal: bool,
 
-    /// PLONK proof. Required for on-chain verification via the EVM verifier. Mutually exclusive with --minimal
+    /// SNARK proof, of the protocol of the proving key (pilfflonk, or PLONK). Mutually exclusive with --minimal. Only a PLONK proof can be exported for the on-chain EVM verifier for now
     #[arg(long, conflicts_with = "minimal")]
     plonk: bool,
 

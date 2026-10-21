@@ -11,7 +11,7 @@ use crate::ux::{print_banner, print_banner_command};
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-/// Generate a PLONK/minimal proof from a STARK (VADCOP) proof
+/// Generate a SNARK/minimal proof from a STARK (VADCOP) proof
 pub(crate) struct WrapCmd {
     /// Path to the STARK (VADCOP) proof file
     #[arg(short = 'p', long)]
@@ -21,7 +21,7 @@ pub(crate) struct WrapCmd {
     #[arg(short = 'k', long)]
     proving_key: Option<PathBuf>,
 
-    /// Path to a precomputed PLONK proving key
+    /// Path to a precomputed SNARK proving key
     #[arg(short = 'w', long)]
     proving_key_plonk: Option<PathBuf>,
 
@@ -29,7 +29,7 @@ pub(crate) struct WrapCmd {
     #[arg(short = 'c', long, conflicts_with = "plonk")]
     minimal: bool,
 
-    /// PLONK proof for on-chain verification via the EVM verifier. Mutually exclusive with --minimal
+    /// SNARK proof, of the protocol of the proving key (pilfflonk, or PLONK). Mutually exclusive with --minimal. Only a PLONK proof can be exported for the on-chain EVM verifier for now
     #[arg(long, conflicts_with = "minimal")]
     plonk: bool,
 
@@ -90,7 +90,7 @@ impl WrapCmd {
             anyhow::anyhow!("Failed to save proof to {}: {}", output_file.display(), e)
         })?;
 
-        let kind_label = if self.plonk { "PLONK" } else { "minimal" };
+        let kind_label = if self.plonk { "SNARK" } else { "minimal" };
         info!("Final {} proof generated.", kind_label);
 
         Ok(())

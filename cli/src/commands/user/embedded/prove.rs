@@ -58,7 +58,7 @@ pub(crate) struct ZiskEmbeddedProve {
     #[arg(short = 'k', long)]
     proving_key: Option<PathBuf>,
 
-    /// Path to a precomputed PLONK proving key
+    /// Path to a precomputed SNARK proving key
     #[arg(short = 'w', long)]
     proving_key_plonk: Option<PathBuf>,
 
@@ -78,7 +78,7 @@ pub(crate) struct ZiskEmbeddedProve {
     #[arg(short = 'c', long, conflicts_with = "plonk")]
     minimal: bool,
 
-    /// PLONK proof. Required for on-chain verification via the EVM verifier. Mutually exclusive with --minimal
+    /// SNARK proof, of the protocol of the proving key (pilfflonk, or PLONK). Mutually exclusive with --minimal. Only a PLONK proof can be exported for the on-chain EVM verifier for now
     #[arg(long, conflicts_with = "minimal")]
     plonk: bool,
 
