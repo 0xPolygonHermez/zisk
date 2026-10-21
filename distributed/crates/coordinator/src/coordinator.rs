@@ -961,6 +961,10 @@ impl Coordinator {
         request: LaunchProofRequestDto,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
         let seed = self.resolve_random_seed(request.random_seed)?;
+        // A worker holds only the programs set up on it: sent any other, it fails the task.
+        if !self.is_set_up(&request.hash_id).await {
+            return Err(CoordinatorError::ProgramNotSetup(request.hash_id.clone()));
+        }
         let (requested, minimum) = self.resolve_capacity(&request).await?;
 
         // Generate job_id up-front so we can atomically reserve workers
@@ -1054,6 +1058,12 @@ impl Coordinator {
         info!("[Phase1] Started with {} workers for {}", active_workers.len(), job_id);
 
         Ok(LaunchProofResponseDto { job_id })
+    }
+
+    /// Whether `hash_id` is set up on the workers, in any mode: what a worker checks before it
+    /// runs one of its tasks.
+    async fn is_set_up(&self, hash_id: &str) -> bool {
+        self.active_setups.read().await.keys().any(|key| key.hash_id == hash_id)
     }
 
     /// Resolve the compute capacity for an incoming job request.
@@ -1629,7 +1639,7 @@ impl Coordinator {
                     JobPhase::Recurse if job.phase_start_time(phase).is_none() => &JobPhase::Prove,
                     _ => phase,
                 };
-                let timeout_secs = self.phase_timeout_secs(phase);
+                let timeout_secs = self.phase_timeout_secs(phase, job.execution_only);
                 if timeout_secs == 0 {
                     continue;
                 }
@@ -1658,10 +1668,15 @@ impl Coordinator {
         }
     }
 
-    /// Returns the configured timeout in seconds for a given phase.
-    fn phase_timeout_secs(&self, phase: &JobPhase) -> u64 {
+    /// Returns the configured timeout in seconds for a given phase. An
+    /// execution-only job runs in `Running(Contributions)` (`JobPhase::Execution`
+    /// is only a timing key), so its timeout is told apart by `execution_only`.
+    fn phase_timeout_secs(&self, phase: &JobPhase, execution_only: bool) -> u64 {
         match phase {
             JobPhase::Execution => self.config.coordinator.execution_timeout_seconds,
+            JobPhase::Contributions if execution_only => {
+                self.config.coordinator.execution_timeout_seconds
+            }
             JobPhase::Contributions
             | JobPhase::ContributionsInputsStream
             | JobPhase::ContributionsHintsStream => self.config.coordinator.phase1_timeout_seconds,
@@ -2043,6 +2058,36 @@ mod tests {
         assert_eq!(entry.read().await.state, JobState::Failed);
     }
 
+    /// An execution-only job runs in `Running(Contributions)`, yet is bound by the
+    /// execution timeout, not phase 1's.
+    #[tokio::test]
+    async fn test_check_phase_timeouts_execution_only_job() {
+        let (coordinator, _workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |c| {
+                c.coordinator.execution_timeout_seconds = 60;
+                c.coordinator.phase1_timeout_seconds = 300;
+            })
+            .await;
+
+        {
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            let mut job = entry.write().await;
+            job.execution_only = true;
+            job.phase_timings.insert(
+                JobPhase::Contributions,
+                PhaseTimings {
+                    start_time: Utc::now() - chrono::Duration::seconds(120),
+                    end_time: None,
+                },
+            );
+        }
+
+        coordinator.check_phase_timeouts().await;
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
     #[tokio::test]
     async fn test_check_phase_timeouts_no_false_positive() {
         let (coordinator, _workers, job_id) =
@@ -2159,6 +2204,58 @@ mod tests {
 
         let state = coordinator.workers_pool.worker_state(&w0_id).await;
         assert_eq!(state, Some(WorkerState::SettingUp));
+        assert!(coordinator.pending_recovery.read().await.contains_key(&w0_id));
+    }
+
+    /// A worker that fails a task before starting it (`worker_in_recovery` false) sends no
+    /// `WorkerRecoveryComplete`: parked, it would wait for the stuck-recovery sweep.
+    #[tokio::test]
+    async fn a_worker_that_failed_without_starting_is_ready_again() {
+        use zisk_cluster_common::ExecuteTaskResponseDto;
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+        let failure = ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: w0_id.clone(),
+            success: false,
+            error_message: Some("Guest program not found".into()),
+            result_data: None,
+            worker_in_recovery: false,
+        };
+
+        let result = coordinator.handle_stream_execute_task_response(failure).await;
+
+        assert!(matches!(result, Err(CoordinatorError::WorkerError(_))));
+        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
+        assert!(!coordinator.pending_recovery.read().await.contains_key(&w0_id));
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
+    #[tokio::test]
+    async fn a_worker_that_failed_in_recovery_stays_parked_for_it() {
+        use zisk_cluster_common::ExecuteTaskResponseDto;
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+        let failure = ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: w0_id.clone(),
+            success: false,
+            error_message: Some("contribution failed".into()),
+            result_data: None,
+            worker_in_recovery: true,
+        };
+
+        let _ = coordinator.handle_stream_execute_task_response(failure).await;
+
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0_id).await,
+            Some(WorkerState::SettingUp)
+        );
         assert!(coordinator.pending_recovery.read().await.contains_key(&w0_id));
     }
 
@@ -3228,12 +3325,19 @@ mod tests {
         let hash_id = coordinator.register_guest_program(elf_bytes).unwrap();
         assert!(fs::metadata(zisk_common::ZiskPaths::global().elf_cache(&hash_id)).is_ok());
 
+        // The proof is of another program, set up earlier: the two race for the worker only.
+        let proven = "proven-hash".to_string();
+        coordinator.active_setups.write().await.insert(
+            SetupKey::new(proven.clone(), false, false),
+            ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() },
+        );
+
         let coord_a = coordinator.clone();
         let coord_b = coordinator.clone();
         let hash_id_a = hash_id.clone();
         let prove_req = LaunchProofRequestDto {
             data_id: "data".to_string().into(),
-            hash_id,
+            hash_id: proven,
             compute_capacity: Some(1),
             minimal_compute_capacity: Some(1),
             inputs_mode: zisk_cluster_common::InputsModeDto::InputsNone,
@@ -5012,6 +5116,24 @@ mod tests {
         let result = coordinator.launch_proof(request).await;
 
         assert!(matches!(result, Err(CoordinatorError::ClientRandomSeedNotAllowed)));
+        let w0 = WorkerId::from("w0".to_string());
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(coordinator.jobs.read().await.is_empty());
+    }
+
+    /// A worker has only the programs set up on it; a job for any other would fail on it.
+    #[tokio::test]
+    async fn launch_proof_refuses_a_program_that_is_not_set_up_before_reserving_workers() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
+        add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
+        coordinator.active_setups.write().await.insert(
+            SetupKey::new("another-program".to_string(), false, false),
+            ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() },
+        );
+
+        let result = coordinator.launch_proof(capacity_request(None, None)).await;
+
+        assert!(matches!(result, Err(CoordinatorError::ProgramNotSetup(ref h)) if h == "hash"));
         let w0 = WorkerId::from("w0".to_string());
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
         assert!(coordinator.jobs.read().await.is_empty());

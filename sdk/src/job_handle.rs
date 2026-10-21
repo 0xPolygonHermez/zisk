@@ -207,7 +207,31 @@ impl<T> JobHandle<T> {
     }
 }
 
+/// Cancels a remote job while its [`JobHandle`] is awaited, which consumes the
+/// handle. Obtained from [`JobHandle::canceller`].
+#[derive(Clone)]
+pub struct JobCanceller(Job);
+
+impl JobCanceller {
+    /// Cancel the job. Returns `true` if the coordinator cancelled it, `false` if
+    /// it had already reached a terminal state.
+    pub async fn cancel(&self) -> Result<bool> {
+        self.0.cancel_async().await.map_err(SdkError::backend)
+    }
+}
+
 impl<T> JobHandle<T> {
+    /// A [`JobCanceller`] for this job, to cancel it while the handle is awaited.
+    /// `None` for an embedded job, which cannot be cancelled yet.
+    pub fn canceller(&self) -> Option<JobCanceller> {
+        match &self.inner {
+            Some(JobHandleInner::Remote { remote_job, .. }) => {
+                Some(JobCanceller(remote_job.clone()))
+            }
+            _ => None,
+        }
+    }
+
     /// Cancel the in-flight job.
     ///
     /// - Embedded: aborts the blocking task (the thread runs to completion but the

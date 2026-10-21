@@ -460,7 +460,11 @@ impl AsmRunnerMO {
         };
 
         let loop_result: Result<u64> = loop {
-            match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
+            match crate::wait_for_chunk(
+                &mut sem_chunk_done,
+                || handle.is_finished(),
+                SEM_CHUNK_DONE_WAIT_DURATION,
+            ) {
                 Ok(()) => {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
@@ -524,17 +528,18 @@ impl AsmRunnerMO {
                         (data_ptr as *mut u64).add(chunk.mem_ops_size as usize) as *const AsmMOChunk
                     };
                 }
-                Err(named_sem::Error::WaitFailed(e))
-                    if e.kind() == std::io::ErrorKind::Interrupted =>
-                {
-                    continue
-                }
-                Err(e) => {
-                    error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
+                Err(stop) => {
+                    error!("MO chunk stream on '{sem_chunk_done_name}' stopped: {stop}");
 
                     signal_runner_failure();
 
-                    break Ok(preloaded.output_shmem.map_header().exit_code);
+                    // A stream that never reached its last chunk must not plan the block, even
+                    // if the header, which a run that never started leaves as the previous
+                    // run's, says the run went fine.
+                    break Ok(match preloaded.output_shmem.map_header().exit_code {
+                        0 => 1,
+                        exit_code => exit_code,
+                    });
                 }
             }
         };
@@ -623,6 +628,12 @@ impl AsmRunnerMO {
         let result: Result<Vec<Plan>> = (|| -> Result<Vec<Plan>> {
             let exit_code = loop_result?;
             if exit_code != 0 {
+                // A service that died says how in its answer: that is the cause to report.
+                if let Ok(Err(e)) = joined {
+                    return Err(AsmRunError::ServiceError(e)).with_context(|| {
+                        format!("MO stream ended before its last chunk (exit code {exit_code})")
+                    });
+                }
                 return Err(AsmRunError::ExitCode(exit_code as u32))
                     .context("Child process returned error");
             }

@@ -10,6 +10,8 @@
 
 /// Worker configuration.
 pub mod config;
+/// A requested stop (SIGTERM, SIGINT, SIGUSR1): every rank cleans up and exits with status 0.
+pub mod stop;
 mod stream_ordering;
 /// Prover-facing worker: runs the proving work for assigned jobs.
 pub mod worker;

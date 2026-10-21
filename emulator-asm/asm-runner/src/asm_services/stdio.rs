@@ -132,28 +132,31 @@ impl StdioHandle {
     }
 }
 
+/// What a program's services are started with, kept to start one again; see
+/// [`StdioService::restart`].
+pub(super) struct Launch {
+    pub(super) trimmed_path: String,
+    pub(super) options: AsmRunnerOptions,
+    pub(super) shm_prefix: String,
+    pub(super) sem_prefix: String,
+}
+
 pub(super) struct StdioService {
     state: [Mutex<StdioHandle>; 3],
+    launch: Launch,
     pub(super) world_rank: i32,
     pub(super) local_rank: i32,
 }
 
 impl StdioService {
-    pub(super) fn start_services(
-        world_rank: i32,
-        local_rank: i32,
-        trimmed_path: &str,
-        options: &AsmRunnerOptions,
-        shm_prefix: &str,
-        sem_prefix: &str,
-    ) -> Result<Self> {
+    pub(super) fn start_services(world_rank: i32, local_rank: i32, launch: Launch) -> Result<Self> {
         // On a failure, every service that did start is stopped before the caller's
         // claim on the segments ends with it: dropping their handles kills them.
         let handles = AsmServices::SERVICES
             .iter()
             .map(|service| {
                 debug!(">>> [{}] Starting ASM service (stdio): {}", world_rank, service);
-                Self::start_service(service, trimmed_path, options, shm_prefix, sem_prefix)
+                Self::start_service(service, &launch)
             })
             .collect::<Result<Vec<_>>>()?;
 
@@ -164,18 +167,34 @@ impl StdioService {
             .try_into()
             .expect("expected exactly 3 services");
 
-        Ok(Self { state: handles, world_rank, local_rank })
+        Ok(Self { state: handles, launch, world_rank, local_rank })
     }
 
-    fn start_service(
-        asm_service: &AsmService,
-        trimmed_path: &str,
-        options: &AsmRunnerOptions,
-        shm_prefix: &str,
-        sem_prefix: &str,
-    ) -> Result<StdioHandle> {
-        let mut command =
-            asm_service.build_service_command(trimmed_path, options, shm_prefix, sem_prefix);
+    /// Start `service` again in place of a process that can serve no more requests, and
+    /// wait until the new one answers a ping. On a failure the old handle stays, so every
+    /// request still fails with why it stopped, and a later restart can try again.
+    ///
+    /// The new process writes the shared segments as it starts, its guest RAM and ROM
+    /// among them, and recreates the service's semaphores. So the caller holds the
+    /// segments' claim, has quiesced the program they serve, and binds the writers to the
+    /// semaphores and resets the guest memory afterwards: [`AsmServices::activate`].
+    pub(super) fn restart(&self, service: &AsmService) -> Result<()> {
+        debug!(">>> [{}] Restarting ASM service (stdio): {}", self.world_rank, service);
+        let fresh = Self::start_service(service, &self.launch)?;
+        // Dropping the old handle reaps its process.
+        *self.handle(service) = fresh;
+        self.send_status_request(service)
+            .map(|_| ())
+            .with_context(|| format!("Restarted service {service} failed to respond to ping"))
+    }
+
+    fn start_service(asm_service: &AsmService, launch: &Launch) -> Result<StdioHandle> {
+        let mut command = asm_service.build_service_command(
+            &launch.trimmed_path,
+            &launch.options,
+            &launch.shm_prefix,
+            &launch.sem_prefix,
+        );
         command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
 
         let mut child = super::spawner::spawn(command)
@@ -216,6 +235,12 @@ impl StdioService {
             .unwrap_or_else(|poisoned| StdioHandle::recover(service, poisoned.into_inner()))
     }
 
+    /// The process serving `service`.
+    #[cfg(test)]
+    pub(super) fn pid(&self, service: &AsmService) -> u32 {
+        self.handle(service).child.id()
+    }
+
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub(super) fn close(&self, service: &AsmService) {
         self.handle(service).kill_and_reap();
@@ -229,15 +254,13 @@ impl StdioService {
             .collect()
     }
 
-    /// Fails with [`AsmRunError::ServiceDied`] for the first service found to have exited.
-    /// Busy services count as alive and are not waited for.
-    pub(super) fn check_alive(&self) -> Result<()> {
-        for service in &AsmServices::SERVICES {
-            if let Some(how) = self.has_exited(service) {
-                return Err(StdioHandle::died(service, &how));
-            }
-        }
-        Ok(())
+    /// The services that can serve no more requests, each with why. Busy services count as
+    /// alive and are not waited for.
+    pub(super) fn exited(&self) -> Vec<(AsmService, String)> {
+        AsmServices::SERVICES
+            .iter()
+            .filter_map(|service| self.has_exited(service).map(|how| (*service, how)))
+            .collect()
     }
 
     /// Why `service` can serve no request, if it can serve none. A handle busy with a
@@ -341,10 +364,16 @@ mod tests {
         handle_running("exit 3")
     }
 
-    /// Three services idling, one per [`AsmService`].
+    /// Three services idling, one per [`AsmService`]. None can be started again.
     fn idle_services() -> StdioService {
         StdioService {
             state: [(); 3].map(|()| Mutex::new(handle_running("exec sleep 60"))),
+            launch: Launch {
+                trimmed_path: "/nonexistent/prog".to_string(),
+                options: AsmRunnerOptions::new(),
+                shm_prefix: String::new(),
+                sem_prefix: String::new(),
+            },
             world_rank: 0,
             local_rank: 0,
         }
@@ -423,8 +452,26 @@ mod tests {
         };
         assert!(died(&error), "the request fails as to a dead service: {error:#}");
         assert!(!alive(pid), "the service must be stopped");
-        assert!(services.check_alive().is_err());
+        let exited: Vec<_> = services.exited().into_iter().map(|(service, _)| service).collect();
+        assert_eq!(exited, [AsmService::MO]);
         assert_eq!(services.running_services(), [AsmService::MT, AsmService::RH]);
+    }
+
+    /// A restart that cannot start the service leaves the old handle, which still says why
+    /// it stopped, so a later restart can try again.
+    #[test]
+    fn a_failed_restart_keeps_the_stopped_service() {
+        let services = idle_services();
+        let rh = &services.state[AsmService::RH.as_index()];
+        *rh.lock().unwrap() = handle_of_an_exited_process();
+        rh.lock().unwrap().child.wait().unwrap();
+        assert!(services.has_exited(&AsmService::RH).is_some());
+
+        assert!(services.restart(&AsmService::RH).is_err(), "no binary, no restart");
+        let Err(error) = services.send_status_request(&AsmService::RH) else {
+            panic!("a request to the stopped service must still fail");
+        };
+        assert!(died(&error), "it still says why it stopped: {error:#}");
     }
 
     #[test]

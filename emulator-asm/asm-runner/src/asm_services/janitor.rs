@@ -111,6 +111,100 @@ pub(super) fn cleanup_sem_prefix(sem_prefix: &str) {
     });
 }
 
+/// Kill the services of this process whose names begin with `process_prefix`, and unlink
+/// every segment and semaphore so named, waiting at most `timeout` for the services to exit.
+///
+/// For a process about to exit without its teardown, which does this program by program:
+/// nothing in it may use them afterwards. A service is a child of this process given a
+/// `--shm_prefix` in that namespace, the helpers that create the segments included. It is
+/// killed outright, since one busy with a request reads nothing else, and is not reaped: its
+/// `Child` belongs to whoever started it. The names are unlinked as soon as it is signalled,
+/// in case the process is killed while waiting, and again once it is gone, since a service
+/// still running then may have created an output segment in between.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub(super) fn release_process(process_prefix: &str, timeout: std::time::Duration) {
+    let services = services_of(process_prefix);
+    for &pid in &services {
+        unsafe { libc::kill(pid, libc::SIGKILL) };
+    }
+    cleanup_shm_prefix(process_prefix);
+    cleanup_sem_prefix(process_prefix);
+
+    let running = wait_until_exited(services.clone(), timeout);
+    cleanup_shm_prefix(process_prefix);
+    cleanup_sem_prefix(process_prefix);
+
+    if running.is_empty() {
+        tracing::info!(
+            "Killed {} ASM service process(es); unlinked every {process_prefix}* segment and \
+             semaphore",
+            services.len()
+        );
+    } else {
+        tracing::warn!(
+            "ASM service processes {running:?} had not exited within {timeout:?}; unlinked \
+             every {process_prefix}* segment and semaphore regardless"
+        );
+    }
+}
+
+/// The children of this process whose `--shm_prefix` begins with `process_prefix`.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn services_of(process_prefix: &str) -> Vec<libc::pid_t> {
+    let Ok(entries) = std::fs::read_dir("/proc") else { return Vec::new() };
+    let me = std::process::id();
+    entries
+        .flatten()
+        .filter_map(|entry| entry.file_name().to_str()?.parse::<libc::pid_t>().ok())
+        .filter(|&pid| parent_of(pid) == Some(me))
+        .filter(|&pid| shm_prefix_of(pid).is_some_and(|prefix| prefix.starts_with(process_prefix)))
+        .collect()
+}
+
+/// The parent pid of `pid`, from `/proc/{pid}/stat`: `pid (comm) state ppid ...`, where
+/// `comm` may hold spaces and parentheses, hence the split at the last `)`.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn parent_of(pid: libc::pid_t) -> Option<u32> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    stat.rsplit_once(')')?.1.split_whitespace().nth(1)?.parse().ok()
+}
+
+/// The value of `pid`'s `--shm_prefix` argument, if it has one.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn shm_prefix_of(pid: libc::pid_t) -> Option<String> {
+    let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+    let mut args = cmdline.split(|&byte| byte == 0);
+    args.by_ref().find(|&arg| arg == b"--shm_prefix")?;
+    args.next().map(|prefix| String::from_utf8_lossy(prefix).into_owned())
+}
+
+/// Wait until each of `pids`, children of this process, has exited, without reaping it.
+/// Returns those still running at `timeout`.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn wait_until_exited(mut pids: Vec<libc::pid_t>, timeout: std::time::Duration) -> Vec<libc::pid_t> {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        pids.retain(|&pid| !has_exited(pid));
+        if pids.is_empty() || std::time::Instant::now() >= deadline {
+            return pids;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+/// Whether the child `pid` has exited, leaving it to be reaped (`WNOWAIT`). One already
+/// reaped by its owner is no longer a child (`ECHILD`).
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn has_exited(pid: libc::pid_t) -> bool {
+    // Zeroed, as `si_pid` stays 0 when `WNOHANG` finds nothing to report.
+    let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+    let options = libc::WEXITED | libc::WNOHANG | libc::WNOWAIT;
+    if unsafe { libc::waitid(libc::P_PID, pid as libc::id_t, &mut info, options) } != 0 {
+        return std::io::Error::last_os_error().raw_os_error() == Some(libc::ECHILD);
+    }
+    unsafe { info.si_pid() != 0 }
+}
+
 fn for_each_dev_shm_entry(mut f: impl FnMut(&str)) {
     let entries = match std::fs::read_dir(std::path::Path::new("/dev/shm")) {
         Ok(e) => e,
@@ -185,6 +279,56 @@ mod tests {
             survivors.iter().all(|s| *s),
             "neighbours must survive: {neighbour_segs:?} {survivors:?}"
         );
+    }
+
+    /// A shell waiting on its stdin, with the arguments a service gets for `shm_prefix`.
+    fn service_on(shm_prefix: &str) -> std::process::Child {
+        std::process::Command::new("sh")
+            .args(["-c", "read line", "sh", "--shm_prefix", shm_prefix, "--sem_prefix", shm_prefix])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn a stand-in service")
+    }
+
+    /// Releasing a process kills every service of its, on any rank and hints mode, and
+    /// unlinks every segment and semaphore it named; another process's are left alone.
+    #[test]
+    fn releasing_a_process_kills_its_services_and_unlinks_its_names() {
+        use std::os::unix::process::ExitStatusExt;
+
+        // Pids above Linux's limit, apart from the other tests', so no real name is touched.
+        let pid = 420_000_000 + std::process::id();
+        let (ours, theirs) = (crate::process_prefix_for(pid), crate::process_prefix_for(pid + 1));
+        let mut services = [service_on(&format!("{ours}0_h0")), service_on(&format!("{ours}1_h1"))];
+        let mut neighbour = service_on(&format!("{theirs}0_h0"));
+        let segments = [format!("{ours}0_h0_MT_output_0"), format!("{ours}1_h1_input")];
+        let neighbour_segment = format!("{theirs}0_h0_input");
+        segments.iter().chain([&neighbour_segment]).for_each(|segment| shm_create(segment));
+        let semaphore = format!("{ours}{}_0_h0_MT_chunk_done", "a".repeat(32));
+        let _semaphore = named_sem::NamedSemaphore::create(format!("/{semaphore}"), 0).unwrap();
+
+        release_process(&ours, std::time::Duration::from_secs(10));
+
+        let killed: Vec<_> = services
+            .iter_mut()
+            .map(|service| service.try_wait().unwrap().and_then(|status| status.signal()))
+            .collect();
+        let spared = neighbour.try_wait().unwrap().is_none();
+        let _ = neighbour.kill();
+        let _ = neighbour.wait();
+        let neighbour_segment_kept = shm_exists(&neighbour_segment);
+        let _ = unlink_shmem(&neighbour_segment);
+
+        assert_eq!(killed, [Some(libc::SIGKILL); 2], "every service of the process is killed");
+        assert!(spared, "another process's service must be left running");
+        for segment in &segments {
+            assert!(!shm_exists(segment), "{segment} must be unlinked");
+        }
+        assert!(
+            !std::path::Path::new(&format!("/dev/shm/sem.{semaphore}")).exists(),
+            "the semaphore must be unlinked"
+        );
+        assert!(neighbour_segment_kept, "another process's segment must be left alone");
     }
 
     #[test]

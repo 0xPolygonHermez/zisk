@@ -36,6 +36,10 @@ pub enum CoordinatorError {
     #[error("Workers are connected but setup has not been done; call setup() first")]
     WorkersNotSetup,
 
+    /// The program is not set up on the workers (never, or not since the coordinator started).
+    #[error("Program {0} is not set up on the workers; call setup() first")]
+    ProgramNotSetup(String),
+
     /// The request provided a random seed but the coordinator does not accept client random seeds.
     #[error("Client-supplied random seeds are not allowed by this coordinator")]
     ClientRandomSeedNotAllowed,
@@ -76,6 +80,10 @@ impl From<CoordinatorError> for Status {
             CoordinatorError::WorkersNotSetup => Status::new(
                 Code::FailedPrecondition,
                 "Workers connected but setup not done; call setup() first",
+            ),
+            CoordinatorError::ProgramNotSetup(ref hash_id) => Status::new(
+                Code::FailedPrecondition,
+                format!("Program {hash_id} is not set up on the workers; call setup() first"),
             ),
             CoordinatorError::ClientRandomSeedNotAllowed => Status::new(
                 Code::PermissionDenied,

@@ -1,8 +1,8 @@
 use super::segments::{ActiveProgram, SegmentsClaim, SetOnDrop, SharedSegments};
-use super::stdio::StdioService;
+use super::stdio::{Launch, StdioService};
 use crate::{
-    sem_prefix_for, shm_prefix_for, AsmRunError, AsmRunnerOptions, MemoryOperationsResponse,
-    MinimalTraceResponse, RomHistogramResponse,
+    process_prefix_for, sem_prefix_for, shm_prefix_for, AsmRunError, AsmRunnerOptions,
+    MemoryOperationsResponse, MinimalTraceResponse, RomHistogramResponse,
 };
 
 use anyhow::{Context, Result};
@@ -254,15 +254,14 @@ impl AsmServices {
 
         // Phase 2: start services and wait for them to be ready.
         // The services that started before one failed have created their semaphores.
-        let stdio_service = StdioService::start_services(
-            world_rank,
-            local_rank,
-            stripped_path,
-            &options,
-            &shm_prefix,
-            &sem_prefix,
-        )
-        .inspect_err(|_| super::janitor::cleanup_sem_prefix(&sem_prefix))?;
+        let launch = Launch {
+            trimmed_path: stripped_path.to_string(),
+            options,
+            shm_prefix,
+            sem_prefix: sem_prefix.clone(),
+        };
+        let stdio_service = StdioService::start_services(world_rank, local_rank, launch)
+            .inspect_err(|_| super::janitor::cleanup_sem_prefix(&sem_prefix))?;
 
         let inner = AsmServicesInner {
             service: stdio_service,
@@ -287,6 +286,22 @@ impl AsmServices {
     pub fn cleanup_stale_shmem() {
         super::janitor::cleanup_stale();
     }
+
+    /// Kill every service this process started and unlink every segment and semaphore it
+    /// named, waiting at most `timeout` for the services to exit.
+    ///
+    /// For a process about to exit without running its destructors, which would otherwise
+    /// do this program by program, such as the distributed worker on a requested stop.
+    /// Nothing in the process may use the services afterwards.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    pub fn release_all_for_exit(timeout: Duration) {
+        super::janitor::release_process(&process_prefix_for(std::process::id()), timeout);
+    }
+
+    /// Kill every service this process started and unlink every segment and semaphore it
+    /// named. No-op off Linux-x86_64, where the ASM services never run.
+    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+    pub fn release_all_for_exit(_timeout: std::time::Duration) {}
 
     /// Create all of the shared-memory segments.
     ///
@@ -424,8 +439,13 @@ impl AsmServices {
     /// a second handoff could find no program recorded while the first waits for
     /// the outgoing one, skip that wait, and reset the guest memory under it.
     ///
-    /// Fails with [`AsmRunError::ServiceDied`] if one of this program's services
-    /// has exited: it would fail the job anyway, later and less clearly.
+    /// A service of this program that can serve no more requests, because its process
+    /// exited or was stopped, is started again here, so that a crash costs the job it
+    /// happened in and not every later one. A restart is a switch even when this program
+    /// is the active one: the new process writes its guest memory and recreates its
+    /// semaphores as it starts, so it starts only once the active program is quiesced,
+    /// and the writers are bound again and the guest memory reset after it. Fails if a
+    /// service cannot be started again; the next activation tries again.
     pub fn activate(&self, claim: &SegmentsClaim, bind: impl FnOnce() -> Result<()>) -> Result<()> {
         let segments = &self.inner.segments;
         if !Arc::ptr_eq(claim.segments(), segments) {
@@ -435,11 +455,22 @@ impl AsmServices {
                 claim.segments().shm_prefix()
             ));
         }
-        self.inner.service.check_alive()?;
-        if segments.is_active(&self.inner) {
+        let exited = self.inner.service.exited();
+        if exited.is_empty() && segments.is_active(&self.inner) {
             return Ok(());
         }
         Self::quiesce_active(segments);
+        for (service, how) in &exited {
+            tracing::warn!(
+                "[{}] Restarting ASM service {service} of {}: it can serve no more requests ({how})",
+                self.inner.service.world_rank,
+                self.inner.sem_prefix
+            );
+            self.inner
+                .service
+                .restart(service)
+                .with_context(|| format!("Failed to restart ASM service {service}"))?;
+        }
         bind()?;
         self.reset_services()?;
 
@@ -817,6 +848,22 @@ done
             .expect("the stand-in services start")
     }
 
+    /// Kill the process `pid` as a crash would, and wait until it is gone.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn kill(pid: u32) {
+        assert_eq!(unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) }, 0, "kill {pid}");
+        // A zombie still exists for `kill(pid, 0)`, so ask the kernel for its state.
+        let dead = || {
+            std::fs::read_to_string(format!("/proc/{pid}/stat"))
+                .map_or(true, |stat| stat.rsplit(") ").next().is_some_and(|s| s.starts_with('Z')))
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !dead() {
+            assert!(std::time::Instant::now() < deadline, "{pid} must die");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
     const PING: u64 = super::super::CMD_PING_REQUEST_ID;
     const RESET: u64 = super::super::CMD_RESET_REQUEST_ID;
 
@@ -895,7 +942,8 @@ done
 
     /// A program whose reset fails, as one whose binary predates the reset request,
     /// fails its activation with `ServiceDied` and says what fixes it; no program is
-    /// recorded as active, and a later activation fails at once.
+    /// recorded as active, and a later activation starts its services again, to fail
+    /// the same way.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     #[test]
     fn a_program_that_cannot_reset_is_never_recorded_as_active() {
@@ -914,7 +962,81 @@ done
         assert!(program.segments().take_active().is_none(), "no program is recorded as active");
 
         let again = program.activate(&claim, || Ok(())).unwrap_err();
-        assert!(format!("{again:#}").contains("can serve no more requests"), "{again:#}");
+        assert!(format!("{again:#}").contains("clear the cached ASM binaries"), "{again:#}");
+        for service in AsmServices::SERVICES {
+            assert_eq!(
+                requests(&stale.path(), service),
+                [PING, RESET, PING, RESET],
+                "{service} is started again, and exits on the reset again"
+            );
+        }
+        assert!(program.segments().take_active().is_none(), "no program is recorded as active");
+    }
+
+    /// A service that dies is started again by its program's next activation, as the
+    /// active program or not, and the program then serves requests as before: a crash
+    /// costs the job it happened in, not every later one.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[test]
+    fn a_service_that_died_is_started_again_by_the_next_activation() {
+        let rank = 105;
+        let (a_program, b_program) =
+            (fake_program("restart_a", false), fake_program("restart_b", false));
+        let (a_path, b_path) = (a_program.path(), b_program.path());
+
+        let (a, claim) = start(&a_path, rank, 'e');
+        a.activate(&claim, || Ok(())).unwrap();
+        drop(claim);
+
+        // A's MT dies while A is active, as by a crash; the job running then fails.
+        let killed = a.inner.service.pid(&AsmService::MT);
+        kill(killed);
+        let Err(error) = a.inner.service.send_status_request(&AsmService::MT) else {
+            panic!("a request to a dead service must fail");
+        };
+        assert!(format!("{error:#}").contains("can serve no more requests"), "{error:#}");
+
+        // The next job's activation starts it again and rebuilds A's guest memory.
+        let binds = std::cell::Cell::new(0);
+        let claim = a.claim();
+        a.activate(&claim, || {
+            binds.set(binds.get() + 1);
+            Ok(())
+        })
+        .expect("the activation restarts the dead service");
+        drop(claim);
+        assert_ne!(a.inner.service.pid(&AsmService::MT), killed, "a new process serves MT");
+        assert_eq!(binds.get(), 1, "the new process's semaphores are bound");
+        assert_eq!(
+            requests(&a_path, AsmService::MT),
+            [PING, RESET, PING, RESET],
+            "MT is started (and pinged) again, then reset"
+        );
+        for service in [AsmService::MO, AsmService::RH] {
+            assert_eq!(
+                requests(&a_path, service),
+                [PING, RESET, PING, RESET],
+                "A's {service} is waited for before the restart, then reset"
+            );
+        }
+        a.inner.service.send_status_request(&AsmService::MT).expect("the new MT serves requests");
+        assert!(a.segments().is_active(&a.inner), "A is recorded as active again");
+
+        // B takes the segments; then A's RH dies while A is not the active program.
+        let (b, claim) = start(&b_path, rank, 'f');
+        b.activate(&claim, || Ok(())).unwrap();
+        drop(claim);
+        kill(a.inner.service.pid(&AsmService::RH));
+
+        let claim = a.claim();
+        a.activate(&claim, || Ok(())).expect("A's RH is started again on a switch back to A");
+        drop(claim);
+        assert_eq!(
+            requests(&b_path, AsmService::MT),
+            [PING, RESET, PING],
+            "B's services are waited for before A's RH starts"
+        );
+        a.inner.service.send_status_request(&AsmService::RH).expect("the new RH serves requests");
     }
 
     /// A claim holds the segments it was taken on, and no others.

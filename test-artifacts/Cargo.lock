@@ -6895,6 +6895,7 @@ dependencies = [
  "blake3",
  "borsh",
  "colored",
+ "mpi",
  "proofman",
  "proofman-common",
  "proofman-fields",
