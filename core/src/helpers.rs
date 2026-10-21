@@ -3,6 +3,9 @@ use sha2::compress256;
 #[allow(deprecated)]
 use sha2::digest::generic_array::{typenum::U64, GenericArray};
 
+pub use ::zisk_definitions::{
+    BLAKE2B_GAP_SHIFT, BLAKE2B_RD_CHAIN, BLAKE2B_ROUND_MASK, BLAKE2B_WR_CHAIN,
+};
 use zisk_precomp_helpers::{blake2b_round, blake2s_f, blake3_f};
 
 #[allow(deprecated)]
@@ -12,13 +15,6 @@ pub fn sha256f(state: &mut [u64; 4], input: &[u64; 8]) {
         unsafe { &*(input.as_ptr() as *const [GenericArray<u8, U64>; 1]) };
     compress256(state_u32, input_u8);
 }
-
-/// blake2b `extended_arg`: round index (bits 0..3), state and m from the previous round of the
-/// call (`BLAKE2B_RD_CHAIN`), to the next one (`BLAKE2B_WR_CHAIN`), steps back to it (bits 6..).
-pub const BLAKE2B_ROUND_MASK: u64 = 0xF;
-pub const BLAKE2B_RD_CHAIN: u64 = 1 << 4;
-pub const BLAKE2B_WR_CHAIN: u64 = 1 << 5;
-pub const BLAKE2B_GAP_SHIFT: u64 = 6;
 
 #[allow(deprecated)]
 pub fn blake2br(index: u64, state: &mut [u64; 16], input: &[u64; 16]) {
