@@ -454,7 +454,8 @@ fn write_fcall_tape(tape: &[u64], out: &Path) -> Result<String> {
 /// Run the program on ziskemu one step at a time, and print what
 /// `model/zisk_main.sail` prints: per step, the pc it ran at, c, flag, and
 /// every register the step changed; then how the run ended, and the output
-/// region, and the words of `dump`. Also returns the fcall tape: each fcall's
+/// region, and the words of `dump`; or, if a step panics, the steps before
+/// it and `fault <message>`. Also returns the fcall tape: each fcall's
 /// result, as its length and its words, in the order the run made them.
 fn reference_trace(
     rom: &ZiskRom,
@@ -465,6 +466,8 @@ fn reference_trace(
     let options = EmuOptions::default();
     let mut emu = Emu::new(rom);
     emu.ctx = emu.create_emu_context(input, &options);
+    // A panic is a fault the trace records, not an error of this tool.
+    std::panic::set_hook(Box::new(|_| {}));
 
     let mut s = String::new();
     let mut tape = Vec::new();
@@ -476,7 +479,20 @@ fn reference_trace(
         let pc = emu.ctx.inst_ctx.pc;
         let before = emu.ctx.inst_ctx.regs;
         let is_fcall = rom.get_instruction(pc).op == ZiskOp::Fcall.code();
-        emu.step(&options, &None::<fn(EmuTrace)>);
+        // A step ZisK refuses — an access outside its memory map, say —
+        // panics. The trace ends there, with why: the model must stop at
+        // the same step.
+        if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            emu.step(&options, &None::<fn(EmuTrace)>)
+        })) {
+            let why = e
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| e.downcast_ref::<&str>().map(|m| m.to_string()))
+                .unwrap_or_default();
+            writeln!(s, "fault {}", why.lines().next().unwrap_or(""))?;
+            return Ok((s, n, tape));
+        }
         let ctx = &emu.ctx.inst_ctx;
         if is_fcall {
             let n = ctx.fcall.result_size as usize;

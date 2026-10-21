@@ -43,6 +43,8 @@ ELF   ?=
 # A memory range to trace after the run, `<begin>,<end>` in hex: a test's
 # signature, say.
 DUMP  ?=
+# Set for a program ZisK must refuse: the runs must both stop on a fault.
+EXPECT_FAULT ?=
 NAME  ?= $(if $(ELF),$(basename $(notdir $(ELF))),$(notdir $(firstword $(PROG))))
 DIFF_DIR = build/difftest/$(NAME)
 
@@ -118,11 +120,9 @@ $(EMU): $(MODEL_SRCS) | sail-version
 difftest: $(EMU)
 	cargo run --release -q -p zisk-sail-difftest -- prepare $(if $(ELF),-e $(ELF),$(foreach p,$(PROG),-z $(p))) \
 	  $(if $(INPUT),-i $(INPUT)) $(if $(DUMP),--dump $(DUMP)) -o $(DIFF_DIR)
-	$(EMU) $$(cat $(DIFF_DIR)/mem.args) > $(DIFF_DIR)/sail.trace
-	@diff -u $(DIFF_DIR)/ziskemu.trace $(DIFF_DIR)/sail.trace | head -40; \
-	  if cmp -s $(DIFF_DIR)/ziskemu.trace $(DIFF_DIR)/sail.trace; then \
-	    echo "OK: $$(grep -vEc '^(out|end|dump) ' $(DIFF_DIR)/sail.trace) steps and the output agree with ziskemu"; \
-	  else echo "FAIL: the model diverges from ziskemu (traces in $(DIFF_DIR))" >&2; exit 1; fi
+	$(EMU) $$(cat $(DIFF_DIR)/mem.args) > $(DIFF_DIR)/sail.trace 2> $(DIFF_DIR)/sail.err; \
+	  echo $$? > $(DIFF_DIR)/sail.status
+	@python3 test/compare_traces.py $(DIFF_DIR) $(if $(EXPECT_FAULT),--expect-fault)
 
 ## The RISC-V architectural tests, transpiled: every test of SUITES compiled
 ## for ZisK's memory map and difftested, and, once `make riscv-sim` has built
@@ -153,6 +153,10 @@ difftest-all:
 	$(MAKE) --no-print-directory difftest PROG=$(DIAG) INPUT=
 	@grep -q '^out 0 0x0000000000000000$$' build/difftest/diagnostic/sail.trace || { \
 	  echo "FAIL: ziskasm's diagnostic reports an error (output[0] in build/difftest/diagnostic)" >&2; exit 1; }
+	$(MAKE) --no-print-directory difftest PROG=test/programs/memmap/edges.zisk NAME=memmap-edges INPUT=
+	@for p in $(filter-out %/edges.zisk,$(wildcard test/programs/memmap/*.zisk)); do \
+	  $(MAKE) --no-print-directory difftest PROG=$$p NAME=memmap-$$(basename $$p .zisk) INPUT= EXPECT_FAULT=1 || exit 1; \
+	done
 	@mkdir -p build/precompiles
 	python3 test/gen_precompile_test.py build/precompiles/precompiles.zisk $(PRECOMP_VECTORS) $(PRECOMP_SEED)
 	$(MAKE) --no-print-directory difftest PROG=build/precompiles INPUT=

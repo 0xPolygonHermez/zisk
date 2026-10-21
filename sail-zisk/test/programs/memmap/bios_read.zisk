@@ -1,0 +1,4 @@
+; A read below the input, where the BIOS's code is: no data there.
+main:
+	copyb(0, [0x2000]) -> r5
+	ret

@@ -127,7 +127,8 @@ the internal ones, Binary, BinaryE and Arith, each checked against ZisK's own
 op functions on 320 vectors (`make optest`) — and the ones that work on
 memory or on the free input: DMA, fcall, `jump_dest`, and the 28
 precompiles — the hashes, the Poseidon permutations, the elliptic-curve and
-big-integer arithmetic. Still to come: the memory map's regions; and the
+big-integer arithmetic. So is the memory map: what may be read and what
+written. Still to come: the
 equivalence proofs, whose shape depends on how the transpiler is represented
 — a hand-written spec, differentially tested against the Rust, or the Rust
 itself translated to Lean — which is still to be decided.
@@ -171,7 +172,7 @@ As sail-riscv's:
 | `model/zisk_step.sail` | The execution step. |
 | `model/main.sail` | The C emulator's main loop and trace. |
 | `lean/` | The equivalence proofs: a Lake package importing both generated models. |
-| `test/` | The per-operation checks (`make optest`); `programs/`, the ZisK assembly programs `make difftest-all` runs besides the doubler; and `compliance/`, the RISC-V architectural tests' harness for ZisK (`make compliance`). |
+| `test/` | The per-operation checks (`make optest`); `programs/`, the ZisK assembly programs `make difftest-all` runs besides the doubler, `memmap/` among them, the accesses ZisK refuses; and `compliance/`, the RISC-V architectural tests' harness for ZisK (`make compliance`). |
 | `riscv/` | `zisk_profile.py`: sail-riscv's configuration for the RISC-V ZisK runs (`make riscv-sim`). |
 | `doc/ops.md` | Every ZisK operation: whether the transpiler emits it, whether the model specifies it. |
 | `check_ops.py` | The opcode guard (`make ops`). |
@@ -311,6 +312,11 @@ wrote build/difftest/memops: 117 instructions, 18 opcodes (add, and, copyb, dma_
 OK: 269 steps and the output agree with ziskemu
 wrote build/difftest/diagnostic: 1424 instructions, 108 opcodes (add, add256, add_w, and, andn, arith256, ...), 7692 steps on ziskemu
 OK: 7692 steps and the output agree with ziskemu
+wrote build/difftest/memmap-edges: 46 instructions, 7 opcodes (add, and, copyb, eq, flag, halt, pubout), 198 steps on ziskemu
+OK: 198 steps and the output agree with ziskemu
+wrote build/difftest/memmap-bios_read: 41 instructions, 7 opcodes (add, and, copyb, eq, flag, halt, pubout), 9 steps on ziskemu
+OK: 9 steps agree with ziskemu, then both stop: ziskemu panics (Mem::read() section not found for addr: 8192=2000 with width: 8), the model asserts (memory read outside ZisK's memory map)
+...
 wrote build/precompiles/precompiles.zisk: 8 vectors for each of 28 precompiles
 wrote build/difftest/precompiles: 3000 instructions, 35 opcodes (add, add256, and, arith256, ...), 3152 steps on ziskemu
 OK: 3152 steps and the output agree with ziskemu
@@ -323,6 +329,13 @@ or `difftest-all` fails: the program jumps to the BIOS's trap handler at a
 fixed address, so a BIOS whose `mtvec` moves would otherwise make it end
 normally, with both emulators still agreeing. And ziskasm's diagnostic must
 report every check passed, `output[0] = 0`.
+
+`test/programs/memmap` holds, besides `edges.zisk` — the last word of the RAM
+and of the input window, a ROM constant — a program for each access ZisK
+refuses: a write to the ROM or the input, by a store, by DMA and by a
+precompile; a read of the BIOS's area or of the stack guard; a write past
+the RAM, and a read straddling its end. Each must stop both: `ziskemu`
+panics, the model asserts, after the same steps (`EXPECT_FAULT=1`).
 
 The precompile program is generated: `PRECOMP_VECTORS` random operands for
 each precompile (8 by default), from `PRECOMP_SEED` (1); each result word is
@@ -506,6 +519,25 @@ registers 40–63 are plain memory, above `REG_LAST`, and the register file is
 the 39 registers the main trace holds: a `vector(40, bits(64))` whose slot 0
 is never used, indexed by 6 bits.
 
+**Memory is three regions.** As the circuits prove memory — one RAM air,
+InputData and RomData, in `pil/zisk.pil` — and `core/src/mem.rs` lays it
+out:
+
+| Region | Addresses | Access |
+|---|---|---|
+| input | `[0x1000_0000, +2 GB)` | read-only: the free input, then the input |
+| ROM | `[0x9000_0000, +128 MB)` | read-only: the program's code and constants |
+| RAM | `[0xA000_0000, +512 MB)` | read-write: stack, registers, CSRs, output, data, heap |
+
+An access outside them, or a write outside the RAM, is one no circuit
+proves; `ziskemu` panics on it, and the model asserts. An access lies wholly
+inside one region, or is refused. The emulator is stricter on the ROM: it
+reads only the bytes the program's data sections define, where RomData
+proves any address of the region; the model follows the circuits. The
+tables the C emulator alone reads — the ROM table, the fcall tape, the dump
+range — sit far above all three, and are read directly, not through
+`read_mem`.
+
 **Memory is a little-endian byte map, apart from the registers.** `read_mem`
 and `write_mem` go through Sail's `read_ram`/`write_ram` builtins, which
 Sail's C runtime implements for the C emulator and its Lean library over
@@ -574,15 +606,13 @@ its source step by step: their constants are generated from it, and
 Poseidon1 is in the optimised form, with sparse partial-round matrices, that
 proofman-fields computes.
 
-Two simplifications, both of which hold today but which the model does not
+One simplification, which holds today but which the model does not
 check:
 
 - **No stack pointer.** The emulator adds `sp` to a `SRC_MEM`/`STORE_MEM`
   address when the instruction's `use_sp` bit is set. Nothing in the
   transpilers sets it, and `sp` starts at 0 and is never written, so the
   model leaves it out.
-- **No memory regions.** ZisK's memory map has read-only and input regions;
-  the model lets any address outside the register file be read and written.
 
 And one difference between the backends: an unwritten byte reads as 0 in C,
 but throws `OutOfMemoryRange` in Lean. A proof states which bytes its initial
@@ -610,7 +640,11 @@ The pipeline:
    recorded by stepping `Emu` directly.
 2. The model's C emulator, built once, runs with the memory sections loaded
    through `-b addr,file`.
-3. The two traces are diffed.
+3. [`test/compare_traces.py`](test/compare_traces.py) compares the two runs.
+   They agree when the traces are equal and the model ran to its end; or,
+   when `ziskemu` panicked on a step — the trace's last line is then
+   `fault <message>` — when the model ran the same steps before it and then
+   stopped on an assertion.
 
 Each line of the trace is a step: the pc it ran at, `c`, `flag`, and every
 register the step changed. After the last step comes how the run ended and

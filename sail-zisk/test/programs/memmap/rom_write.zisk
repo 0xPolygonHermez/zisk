@@ -1,0 +1,5 @@
+; A write to the ROM: its constants are read-only.
+const u64 K[1] = 7
+main:
+	copyb(0, 1) -> [K]
+	ret
