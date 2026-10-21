@@ -11,9 +11,14 @@
  *
  *   end <error> <code>
  *
- * and the output region as 32 words:
+ * the output region as 32 words:
  *
  *   out <k> <word at OUTPUT_ADDR + 8k>
+ *
+ * and, when the 16 bytes at DUMP_RANGE hold a range [begin, end) — written
+ * by tools/sail-difftest's --dump — the 32-bit words in it:
+ *
+ *   dump <address> <word>
  *
  * The initial state is ziskemu's: pc at ROM_ENTRY, everything else zero,
  * and no fcall made yet, the tape at its start. Memory comes from the
@@ -26,6 +31,7 @@ $include <string.sail>
 let ROM_ENTRY   : bits(64) = 0x0000_0000_0000_1000
 let OUTPUT_ADDR : bits(64) = 0x0000_0000_a041_0000
 let MAX_STEPS   : int      = 10000000
+let DUMP_RANGE  : bits(64) = 0x0003_0000_0000_0000
 
 val flag_str : bool -> string
 function flag_str(f) = if f then "1" else "0"
@@ -72,5 +78,12 @@ function main() = {
   foreach (k from 0 to 31) {
     let w = read_mem(OUTPUT_ADDR + 8 * k, 8);
     print_endline(concat_str(concat_str("out ", dec_str(k)), concat_str(" ", bits_str(w))))
+  };
+
+  let lo = unsigned(__read_ram(64, 8, zeros(), DUMP_RANGE));
+  let hi = unsigned(__read_ram(64, 8, zeros(), DUMP_RANGE + 8));
+  foreach (k from 0 to ((hi - lo) / 4 - 1)) {
+    let addr = to_bits(64, lo + 4 * k);
+    print_endline(concat_str(concat_str("dump ", bits_str(addr)), concat_str(" ", bits_str(read_mem(addr, 4)))))
   }
 }

@@ -54,7 +54,10 @@ function next_pc (inst : zisk_inst, c : bits(64), flag : bool) -> bits(64) =
 function zisk_execute (inst : zisk_inst) -> bool = {
   let a    = source_a(inst);
   let b    = source_b(inst, a);
-  let (c, flag) : (bits(64), bool) = match zisk_exec_mem(inst.op, a, b, inst.jmp_off1) {
+  /* The extended argument: jmp_off1 for an op that reads memory as a
+     precompile, else 0 (Emu::step). */
+  let ext = if zisk_op_is_precompiled(inst.op) then inst.jmp_off1 else zeros();
+  let (c, flag) : (bits(64), bool) = match zisk_exec_mem(inst.op, a, b, ext) {
     Some(r) => r,
     None()  => zisk_exec(inst.op, a, b)
   };

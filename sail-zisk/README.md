@@ -107,10 +107,17 @@ The ZisK instruction set as `core/` defines it:
   their mathematical definitions, fcall and free input as an oracle;
 - the memory map: ROM, input, RAM, and the registers mapped into memory.
 
-On the RISC-V side, the profile the transpiler supports: RV64IMA with
-compressed instructions, machine mode only, no interrupts, `ecall` as a ZisK
-syscall, and the CSRs the transpiler emulates. F and D are out of scope: ZisK
-runs them through a software float library, for Go compatibility only.
+On the RISC-V side, the profile the transpiler supports in its default
+build: RV64IMA with Zba, Zbb, Zbs and Zbkb, Zicsr and Zifencei, machine mode
+only, no interrupts, `ecall` as a ZisK syscall, and the CSRs the transpiler
+emulates. Compressed instructions are out: the transpiler's `compressed`
+feature is off by default, to match the EF RISC-V target standard
+(IALIGN = 32), and a 2-byte instruction transpiles to an error. F and D are
+out of scope: ZisK runs them through a software float library, for Go
+compatibility only. [`riscv/zisk_profile.py`](riscv/zisk_profile.py) writes
+sail-riscv's configuration for this profile; see
+[ZisK's RISC-V](#zisks-risc-v) for how ZisK departs from RISC-V on `ecall`
+and the CSRs.
 
 ## Status
 
@@ -131,8 +138,10 @@ diagnostic program, which checks every family of operations, precompiles
 included, in 7 692 steps; `test/programs/memops`, the memory and fcall cases
 the diagnostic leaves out; every precompile on random operands
 (`test/gen_precompile_test.py`); and the RISC-V architectural tests,
-transpiled: all 169 of the I, M, A, C and B suites ZisK runs, up to 22 926
-steps each, agree with `ziskemu` step by step (`make compliance`). So does a Rust guest,
+transpiled: all 126 of the I, M, A, B and Zbkb tests in ZisK's profile, up
+to 22 926 steps each, agree with `ziskemu` step by step, reach their end,
+and leave the signature sail-riscv's C emulator leaves running the RISC-V
+program itself (`make compliance`). So does a Rust guest,
 `examples/fibonacci`, built with `cargo-zisk`: 2 706 steps, through fcall and
 DMA. Both models' Lean builds,
 side by side, in `lean/`.
@@ -154,6 +163,7 @@ As sail-riscv's:
 | `model/zisk_mem.sail` | Memory. |
 | `model/zisk_insts_begin.sail`, `zisk_insts_<family>.sail`, `zisk_insts_end.sail` | The operations, a file per family: `internal`, `binary`, `binary_ext`, `arith`, `system`, `dma`, `fcall`, `evm`, and the precompiles' `bigint`, `curves`, `hash`, `poseidon`. |
 | `model/zisk_precompiles.sail` | What the precompiles share: big integers in memory, arithmetic modulo a prime. |
+| `model/zisk_op_attrs.sail` | Each operation's type, input and output sizes and `m32`, generated from `zisk_ops.rs` by `gen_op_attrs.py` (`make constants`). |
 | `model/zisk_poseidon_constants.sail` | The Poseidon constants, generated from the Rust sources by `gen_poseidon_constants.py` (`make constants`). |
 | `model/zisk_inst.sail` | The instruction record. |
 | `model/zisk_rom.sail` | The default ROM, with no program, for the typecheck and the Lean build. |
@@ -162,6 +172,7 @@ As sail-riscv's:
 | `model/main.sail` | The C emulator's main loop and trace. |
 | `lean/` | The equivalence proofs: a Lake package importing both generated models. |
 | `test/` | The per-operation checks (`make optest`); `programs/`, the ZisK assembly programs `make difftest-all` runs besides the doubler; and `compliance/`, the RISC-V architectural tests' harness for ZisK (`make compliance`). |
+| `riscv/` | `zisk_profile.py`: sail-riscv's configuration for the RISC-V ZisK runs (`make riscv-sim`). |
 | `doc/ops.md` | Every ZisK operation: whether the transpiler emits it, whether the model specifies it. |
 | `check_ops.py` | The opcode guard (`make ops`). |
 
@@ -176,7 +187,7 @@ make check         # typecheck the model
 make ops           # check the model's opcode names against core/src/zisk_ops.rs
 make optest        # check every operation against ZisK's own op functions
 make opsdoc        # regenerate doc/ops.md
-make constants     # regenerate model/zisk_poseidon_constants.sail
+make constants     # regenerate model/zisk_op_attrs.sail and model/zisk_poseidon_constants.sail
 make emu           # build the C emulator, which runs any program
 make difftest      # run PROG (one or more; or ELF=…) on ziskemu and on the C emulator, and diff the traces
 make difftest-all  # every program the model is difftested on
@@ -184,6 +195,7 @@ make compliance    # the RISC-V architectural tests, transpiled, difftested (ARC
 make lean          # generate Lean definitions into build/lean
 make lean-build    # elaborate them
 make riscv         # fetch sail-riscv at the pinned commit and generate its Lean
+make riscv-sim     # build its C emulator, and its configuration for ZisK's profile (~15 min)
 make riscv-lean    # elaborate it (~12 min)
 make equiv         # build lean/, both models side by side
 ```
@@ -253,12 +265,14 @@ make ops
 Rust ops: 130   Sail clauses: 130   modeled: 130/130 (100%)
 
 OK: no stale opcodes, and every opcode number agrees.
+OK: model/zisk_op_attrs.sail has every operation's attributes, as zisk_ops.rs gives them.
 ```
 
 It fails on a **STALE** entry — the model describes a machine ZisK no longer
 ships — on a **WRONG CODE** one, an opcode the model numbers differently
 from Rust, and on an **UNMODELED** one, an operation Rust has and the model
-does not. See
+does not; and when `model/zisk_op_attrs.sail` is not what `make constants`
+would generate from `zisk_ops.rs` now. See
 [Why `check_ops.py` exists](#why-check_opspy-exists).
 
 **3. Check every operation against ZisK's own op functions.** The first run
@@ -334,25 +348,30 @@ OK: 2706 steps and the output agree with ziskemu
 ```
 
 **5. Run the RISC-V architectural tests, transpiled.** Each test of the I, M,
-A, C and B suites is compiled for ZisK's memory map, transpiled as `ziskemu -e`
-transpiles it, and difftested; under a minute for all of them.
+A, B suites and of K's Zbkb tests is compiled for ZisK's memory map,
+transpiled as `ziskemu -e` transpiles it, and difftested; and, once
+`make riscv-sim` has built sail-riscv's C emulator (after `make riscv`; about
+15 minutes, once), run on sail-riscv too, whose signature must be the
+model's. Under a minute for all of them.
 
 ```sh
+make riscv-sim
 make compliance ARCH_TEST=…/riscv-arch-test RISCV_GCC=…/riscv-none-elf-gcc
 ```
 
 ```
-PASS  A-amoadd.d-01                    4603 steps
+PASS  A-amoadd.d-01                    4603 steps; signature = sail-riscv's (536 words)
 ...
 SKIP  B-clmul-01                       skipped: the transpiler's default build has no Zbc (its zbc feature)
 ...
-169 of 169 tests agree with ziskemu: A 18/18, B 40/40, C 47/47, I 51/51, M 13/13; 3 skipped
+126 of 126 tests agree with ziskemu and sail-riscv: A 18/18, B 40/40, I 51/51, K 4/4, M 13/13; 3 skipped
 ```
 
 The results are also in `build/compliance/results.txt`. `SUITES=…` picks
-others: Zicond and Zifencei are known to the runner, and skipped for the same
-kind of reason — the transpiler's default build has no Zicond, and Fence.i's
-test rewrites its own code, which ZisK's read-only ROM does not allow. See
+others: C, Zicond and Zifencei are known to the runner, and skipped for the
+same kind of reason — the transpiler's default build has no compressed
+instructions and no Zicond, and Fence.i's test rewrites its own code, which
+ZisK's read-only ROM does not allow. See
 [Compliance testing](#compliance-testing).
 
 **6. Generate and elaborate the model's Lean.** The first build fetches the
@@ -516,9 +535,11 @@ the op by its opcode, which is part of the model: each operation's
 b)` is pure, so that a proof about an ALU op needs no state. DMA, fcall,
 `jump_dest` and the precompiles are clauses of
 `zisk_exec_mem(op, a, b, ext)` instead, which reads and writes memory and the
-fcall state, and gets the instruction's extended argument: `jmp_off1`, which
-the emulator hands such an op as `extended_arg`, and which never serves as a
-jump, since these ops leave `flag` false. `zisk_execute` asks
+fcall state, and gets the instruction's extended argument: `jmp_off1` when
+the op reads memory as a precompile (its `input_size`, in
+`model/zisk_op_attrs.sail`, is not 0), else 0, as the emulator hands it
+`extended_arg`; `jmp_off1` never serves as a jump then, since these ops leave
+`flag` false. `zisk_execute` asks
 `zisk_exec_mem` first; `None` means a pure op.
 
 **DMA works byte by byte.** The machine splits an unaligned copy into a
@@ -613,8 +634,8 @@ model does not specify".
 the model, as ZisK runs them: compiled for ZisK, transpiled, and difftested
 against `ziskemu`, every step. They are what the transpiler turns RISC-V into,
 so they check the model on the instructions the equivalence will be about —
-loads and stores of every width, sign extension, the atomics, the compressed
-instructions — and not only on hand-written ZisK.
+loads and stores of every width, sign extension, the atomics, the bit
+manipulation — and not only on hand-written ZisK.
 
 [`test/compliance/env`](test/compliance/env) is the tests' harness for ZisK,
 from [ziskof](https://github.com/0xPolygonHermez/ziskof)'s, for the current
@@ -626,11 +647,52 @@ compiles each test of the chosen suites with the suite's `-march`, runs them
 in parallel through `make difftest`, and prints a line per test and a
 summary.
 
+A test passes on three counts:
+
+- **The model agrees with ZisK.** Every step of the model's run, and the
+  test's signature (`DUMP=` its `begin_signature`, `end_signature`), is
+  `ziskemu`'s.
+- **The test runs to its end.** The run reaches `exit_cleanup`, the test's
+  halt. Agreeing is not enough: a test both emulators abandon at the same
+  instruction — one ZisK does not run, which transpiles to an error — agrees
+  too. That is how the compressed suite passed, hollowly, until this check:
+  every test stopped at its first 2-byte instruction, on both. How the run
+  ends does not tell, since ZisK's exit syscall ends a run through `halt` as
+  well.
+- **The signature is RISC-V's.** sail-riscv's C emulator, configured for
+  ZisK's profile (`riscv/zisk_profile.py`), runs the RISC-V program itself up
+  to `exit_cleanup`, and its signature must be the model's: the transpiled
+  program computes what the RISC-V one does, which is the equivalence to be
+  proved, checked on these tests. Without `make riscv-sim`'s build, this
+  check is left out.
+
 Tests of instructions ZisK does not run are skipped, each with its reason:
-carry-less multiplication and Zicond, which the transpiler's default build
-does not have, and Fence.i's test, which rewrites its own code. A test that
-fails is either a difference between the model and ZisK, or an instruction
-ZisK does not run that the skip list should name.
+the compressed instructions, carry-less multiplication and Zicond, which the
+transpiler's default build does not have, and Fence.i's test, which rewrites
+its own code. A test that fails is either a difference between the model and
+ZisK or RISC-V, or an instruction ZisK does not run that the skip list
+should name.
+
+## ZisK's RISC-V
+
+What the transpiler does is not always what RISC-V specifies, on purpose:
+
+- **`ecall` is a call into the BIOS.** It stores pc + 4 in `x1` (`ra`) and
+  jumps to the BIOS's syscall handler at a fixed address, ZisK code with no
+  RISC-V counterpart; RISC-V would trap to `mtvec`, setting `mepc` and
+  `mcause` and leaving `ra` alone. (With the `float` feature, the jump goes
+  to `mtvec` instead.)
+- **A CSR is a memory cell.** Every CSR is 8 bytes at `CSR_ADDR + 8·csr`,
+  read and written with none of RISC-V's side effects or legal values: no
+  WARL fields, no counters. A write to a read-only CSR, which `unimp` is,
+  ends the run in error; and `csrs` on the precompile and DMA CSR numbers,
+  with the instructions that follow, becomes a precompile call.
+- **`ebreak` ends the run in error.**
+
+The architectural tests stay clear of these: their harness's CSR accesses
+set up a trap handler no test takes, and they end before the exit syscall.
+The equivalence will have to state them: what a RISC-V program may rely on,
+and what ZisK's `ecall` and CSRs mean for it.
 
 ## Per-operation testing
 
@@ -649,6 +711,15 @@ each operation on its own:
 
 It catches what it should: replacing `add` with `or` fails 209 vectors, the
 first at `a = b = 1`.
+
+It also checks what `m32` promises. The circuit hands an `m32` operation —
+the 31 whose names contain `_w` — only the low 32 bits of a, zeroed above
+(`pil/operations.pil`), while the emulator, and so the model, hand it all of
+a. The two agree only if the operation ignores a's high half, which nothing
+in ZisK checks: a new `_w` operation that read it would be proven on other
+operands than it runs on, with every test still passing. So for each `m32`
+operation and vector, `check_op` also runs it with a's high half zeroed and
+requires the same result. Marking `add` `m32` fails it at once.
 
 ## Why `check_ops.py` exists
 

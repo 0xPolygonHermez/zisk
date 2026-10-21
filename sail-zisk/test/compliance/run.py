@@ -5,12 +5,18 @@ Compiles every test of the chosen suites of riscv-arch-test
 (riscv-test-suite/rv64i_m/<suite>/src/*.S) for ZisK's memory map, with
 test/compliance/env, then runs each through `make difftest ELF=...`: ziskemu
 and the model's C emulator run the transpiled program, and every step must
-agree. Prints a line per test and a summary, and writes it to
+agree, the test's signature included. With --riscv-sim, sail-riscv's C
+emulator also runs the RISC-V program itself, in ZisK's profile
+(build/riscv/zisk_rv64.json, from riscv/zisk_profile.py), up to the halt (exit_cleanup), and its signature
+must be the model's. Prints a line per test and a summary, and writes it to
 build/compliance/results.txt. Exit status 1 if any test fails.
 
-Usage: run.py [--arch-test DIR] [--gcc GCC] [-j N] [SUITE ...]   (`make compliance`)
+Usage: run.py [--arch-test DIR] [--gcc GCC] [--riscv-sim SIM] [-j N] [SUITE ...]
+    (`make compliance`)
 
-SUITE is a directory of rv64i_m: I, M, A, C and B by default.
+SUITE is a directory of rv64i_m: I, M, A, B and K's Zbkb tests by default,
+ZisK's profile. C, Zicond and Zifencei are known, and skipped for want of
+the transpiler features they need.
 """
 
 import argparse
@@ -24,6 +30,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 OUT = os.path.join(ROOT, 'build', 'compliance')
+RISCV_CONFIG = os.path.join(ROOT, 'build', 'riscv', 'zisk_rv64.json')
 
 # The -march each suite is compiled with: the extension, and Zicsr, which
 # the tests' framework uses.
@@ -35,6 +42,18 @@ MARCH = {
     'Zicond': 'rv64i_zicsr_zicond',
     'Zifencei': 'rv64i_zicsr_zifencei',
     'B': 'rv64i_zicsr_zba_zbb_zbc_zbs',
+    'K': 'rv64i_zicsr_zbkb',
+}
+
+# The tests of a suite that are in ZisK's profile, when not all of them are:
+# of the scalar crypto suite, Zbkb's (the rest of Zbkb is in B).
+ONLY = {
+    'K': {'brev8-01', 'pack-01', 'packh-01', 'packw-01'},
+}
+
+# Suites of instructions ZisK does not run, and why: skipped, not failed.
+SKIP_SUITE = {
+    'C': "the transpiler's default build has no compressed instructions (its compressed feature)",
 }
 
 
@@ -62,14 +81,65 @@ def compile_test(gcc, arch_test, suite, src):
     return name, elf, r.returncode == 0, r.stderr
 
 
-def difftest(suite, name, elf):
+def symbols(nm, elf):
+    """The ELF's symbols, by name."""
+    out = subprocess.run([nm, elf], check=True, capture_output=True, text=True).stdout
+    return {f[2]: int(f[0], 16) for f in (line.split() for line in out.splitlines()) if len(f) == 3}
+
+
+def riscv_signature(sim, elf, stop, tag):
+    """The test's signature as sail-riscv computes it, a 32-bit word a line,
+    run in ZisK's profile up to `stop`; or why there is none."""
+    sig = os.path.join(OUT, 'riscv', tag + '.sig')
+    os.makedirs(os.path.dirname(sig), exist_ok=True)
+    r = subprocess.run([sim, '--config', RISCV_CONFIG, '--stop-at-pc', hex(stop), '--inst-limit', '10000000',
+                        '--test-signature', sig, elf], capture_output=True, text=True)
+    if r.returncode != 0 or not os.path.exists(sig):
+        return None, f'sail-riscv fails: {(r.stderr or r.stdout).strip().splitlines()[-1:]}'
+    return [int(w, 16) for w in open(sig).read().split()], None
+
+
+def ending(tag, halt):
+    """None if the model's run of a test reached the test's halt, `halt`
+    (exit_cleanup); else where it stopped instead. The end of the run does
+    not tell: the exit syscall ends a ZisK run through `halt`, as an error
+    with the exit code, just as an instruction ZisK does not run does."""
+    trace = open(os.path.join(ROOT, 'build', 'difftest', tag, 'sail.trace')).read()
+    if re.search(r'^\d+ 0x%016X ' % halt, trace, re.M):
+        return None
+    steps = [l for l in trace.splitlines() if re.match(r'\d+ ', l)]
+    risc = [l.split()[1] for l in steps if int(l.split()[1], 16) >= 0x90000000]
+    at = risc[-1] if risc else '?'
+    return f'stops before the test\'s halt, after {len(steps)} steps, last in the program at {at}'
+
+
+def difftest(suite, name, elf, nm, sim):
     tag = f'{suite}-{name}'
-    r = subprocess.run(['make', '--no-print-directory', 'difftest', f'ELF={elf}', f'NAME={tag}', 'INPUT='],
+    sym = symbols(nm, elf)
+    begin, end = sym['begin_signature'], sym['end_signature']
+    r = subprocess.run(['make', '--no-print-directory', 'difftest', f'ELF={elf}', f'NAME={tag}', 'INPUT=',
+                        f'DUMP={begin:x},{end:x}'],
                        cwd=ROOT, capture_output=True, text=True)
     out = r.stdout + r.stderr
     m = re.search(r'OK: (\d+) steps', out)
     if r.returncode == 0 and m:
-        return tag, True, f'{m.group(1)} steps'
+        # Agreeing is not enough: a test both emulators abandon at the same
+        # instruction agrees too.
+        why = ending(tag, sym['exit_cleanup'])
+        if why:
+            return tag, False, why
+        if not sim:
+            return tag, True, f'{m.group(1)} steps'
+        trace = open(os.path.join(ROOT, 'build', 'difftest', tag, 'sail.trace')).read()
+        zisk = [int(w, 16) for w in re.findall(r'^dump \S+ (0x[0-9A-F]+)$', trace, re.M)]
+        riscv, why = riscv_signature(sim, elf, sym['exit_cleanup'], tag)
+        if riscv is None:
+            return tag, False, why
+        if riscv != zisk:
+            k = next((i for i, (x, y) in enumerate(zip(riscv, zisk)) if x != y), min(len(riscv), len(zisk)))
+            return tag, False, (f'signature differs from sail-riscv\'s at word {k} of {len(zisk)}'
+                                f' ({begin + 4 * k:#x})')
+        return tag, True, f'{m.group(1)} steps; signature = sail-riscv\'s ({len(zisk)} words)'
     # The first line that says why.
     for pat in (r'^FAIL.*$', r'panicked at.*$', r'^.*(?:Error|error)[^\n]*$', r'^@@.*$'):
         f = re.search(pat, out, re.M)
@@ -84,19 +154,25 @@ def main():
                     help='a riscv-arch-test checkout (ARCH_TEST)')
     ap.add_argument('--gcc', default=os.environ.get('RISCV_GCC', 'riscv-none-elf-gcc'),
                     help='a RISC-V GCC (RISCV_GCC)')
+    ap.add_argument('--riscv-sim', default=os.environ.get('RISCV_SIM', ''),
+                    help="sail-riscv's sail_riscv_sim, to compare signatures with (RISCV_SIM)")
     ap.add_argument('-j', type=int, default=os.cpu_count() or 4)
-    ap.add_argument('suites', nargs='*', default=['I', 'M', 'A', 'C', 'B'])
+    ap.add_argument('suites', nargs='*', default=['I', 'M', 'A', 'B', 'K'])
     args = ap.parse_args()
     if not args.arch_test or not os.path.isdir(os.path.join(args.arch_test, 'riscv-test-suite')):
         sys.exit('ARCH_TEST must name a riscv-arch-test checkout')
     if not shutil.which(args.gcc):
         sys.exit(f'cannot run {args.gcc}: RISCV_GCC must name a RISC-V GCC')
+    # binutils' nm, beside the GCC
+    nm = re.sub(r'gcc$', 'nm', args.gcc)
+    if args.riscv_sim and not shutil.which(args.riscv_sim):
+        sys.exit(f'cannot run {args.riscv_sim}: RISCV_SIM must name sail-riscv\'s sail_riscv_sim')
 
     jobs = []
     for suite in args.suites:
         d = os.path.join(args.arch_test, 'riscv-test-suite', 'rv64i_m', suite, 'src')
         for src in sorted(os.listdir(d)):
-            if src.endswith('.S'):
+            if src.endswith('.S') and (suite not in ONLY or src[:-len('.S')] in ONLY[suite]):
                 jobs.append((suite, os.path.join(d, src)))
 
     # One emulator runs every test: build it before they start.
@@ -108,10 +184,12 @@ def main():
         compiled = list(pool.map(lambda j: (j[0],) + compile_test(args.gcc, args.arch_test, *j), jobs))
         runs = []
         for suite, name, elf, ok, err in compiled:
-            if f'{suite}-{name}' in SKIP:
+            if suite in SKIP_SUITE:
+                results.append((f'{suite}-{name}', None, 'skipped: ' + SKIP_SUITE[suite]))
+            elif f'{suite}-{name}' in SKIP:
                 results.append((f'{suite}-{name}', None, 'skipped: ' + SKIP[f'{suite}-{name}']))
             elif ok:
-                runs.append(pool.submit(difftest, suite, name, elf))
+                runs.append(pool.submit(difftest, suite, name, elf, nm, args.riscv_sim))
             else:
                 results.append((f'{suite}-{name}', False, 'does not compile: ' + err.strip().split('\n')[0][:120]))
         for f in concurrent.futures.as_completed(runs):
@@ -129,7 +207,8 @@ def main():
         by_suite.setdefault(s, [0, 0])
         by_suite[s][0] += ok
         by_suite[s][1] += 1
-    summary = f'{passed} of {len(run)} tests agree with ziskemu: ' + ', '.join(
+    against = 'ziskemu and sail-riscv' if args.riscv_sim else 'ziskemu'
+    summary = f'{passed} of {len(run)} tests agree with {against}: ' + ', '.join(
         f'{s} {p}/{n}' for s, (p, n) in by_suite.items()) + (f'; {skipped} skipped' if skipped else '')
     text = '\n'.join(lines + ['', summary]) + '\n'
     os.makedirs(OUT, exist_ok=True)

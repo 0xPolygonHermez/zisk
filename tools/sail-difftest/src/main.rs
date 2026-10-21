@@ -64,6 +64,10 @@ enum Command {
         /// Stop the reference run after this many steps.
         #[arg(long, default_value_t = 10_000_000)]
         max_steps: u64,
+        /// Also trace the 32-bit words of memory in [begin, end) after the run,
+        /// as `<begin>,<end>` (hex): a test's signature, say.
+        #[arg(long, value_parser = parse_range)]
+        dump: Option<(u64, u64)>,
     },
     /// Write test vectors for every pure operation: `<op> <a> <b> <c> <flag>`.
     Ops {
@@ -78,7 +82,7 @@ enum Command {
 
 fn main() -> Result<()> {
     match Cli::parse().command {
-        Command::Prepare { zisk, elf, input, out, max_steps } => {
+        Command::Prepare { zisk, elf, input, out, max_steps, dump } => {
             let rom = match elf {
                 None => {
                     let mut files = Vec::new();
@@ -96,7 +100,7 @@ fn main() -> Result<()> {
                     zisk_transpiler_common::program2rom(&bytes).map_err(|e| anyhow!("{e}"))?
                 }
             };
-            prepare(rom, input.as_deref(), &out, max_steps)
+            prepare(rom, input.as_deref(), &out, max_steps, dump)
         }
         Command::Ops { out, random } => op_vectors(&out, random),
     }
@@ -166,7 +170,24 @@ fn op_vectors(out: &Path, random: usize) -> Result<()> {
     Ok(())
 }
 
-fn prepare(rom: ZiskRom, input: Option<&Path>, out: &Path, max_steps: u64) -> Result<()> {
+/// `<begin>,<end>`, in hex, with or without `0x`.
+fn parse_range(s: &str) -> std::result::Result<(u64, u64), String> {
+    let hex = |t: &str| u64::from_str_radix(t.trim().trim_start_matches("0x"), 16).map_err(|e| e.to_string());
+    let (a, b) = s.split_once(',').ok_or("expected <begin>,<end>")?;
+    let (a, b) = (hex(a)?, hex(b)?);
+    if a > b || (b - a) % 4 != 0 {
+        return Err(format!("[{a:#x}, {b:#x}) is not a range of whole 32-bit words"));
+    }
+    Ok((a, b))
+}
+
+fn prepare(
+    rom: ZiskRom,
+    input: Option<&Path>,
+    out: &Path,
+    max_steps: u64,
+    dump: Option<(u64, u64)>,
+) -> Result<()> {
     let input = match input {
         Some(p) => fs::read(p).with_context(|| format!("reading {}", p.display()))?,
         None => Vec::new(),
@@ -180,9 +201,14 @@ fn prepare(rom: ZiskRom, input: Option<&Path>, out: &Path, max_steps: u64) -> Re
     let mut args = write_memory(&rom, &input, out)?;
     args.push_str(&write_rom_table(&rom, out)?);
 
-    let (trace, steps, tape) = reference_trace(&rom, input, max_steps)?;
+    let (trace, steps, tape) = reference_trace(&rom, input, max_steps, dump)?;
     fs::write(out.join("ziskemu.trace"), trace)?;
     args.push_str(&write_fcall_tape(&tape, out)?);
+    if let Some((begin, end)) = dump {
+        let file = out.join("mem").join("dump-range.bin");
+        fs::write(&file, [begin.to_le_bytes(), end.to_le_bytes()].concat())?;
+        writeln!(args, "-b {DUMP_RANGE:#x},{}", fs::canonicalize(&file)?.display())?;
+    }
     fs::write(out.join("mem.args"), args)?;
 
     println!(
@@ -340,6 +366,10 @@ const ROM_TABLE: u64 = 0x0001_0000_0000_0000;
 /// sail-zisk/model/zisk_insts_fcall.sail.
 const FCALL_TAPE: u64 = 0x0002_0000_0000_0000;
 
+/// Where the C emulator finds the range `--dump` asks for: `DUMP_RANGE` in
+/// sail-zisk/model/main.sail.
+const DUMP_RANGE: u64 = 0x0003_0000_0000_0000;
+
 /// The ROM table entry of one instruction, as sail-zisk/model/zisk_rom_table.sail
 /// decodes it: eight little-endian words.
 fn rom_entry(i: &ZiskInst) -> Result<[u64; 8]> {
@@ -424,12 +454,13 @@ fn write_fcall_tape(tape: &[u64], out: &Path) -> Result<String> {
 /// Run the program on ziskemu one step at a time, and print what
 /// `model/zisk_main.sail` prints: per step, the pc it ran at, c, flag, and
 /// every register the step changed; then how the run ended, and the output
-/// region. Also returns the fcall tape: each fcall's result, as its length
-/// and its words, in the order the run made them.
+/// region, and the words of `dump`. Also returns the fcall tape: each fcall's
+/// result, as its length and its words, in the order the run made them.
 fn reference_trace(
     rom: &ZiskRom,
     input: Vec<u8>,
     max_steps: u64,
+    dump: Option<(u64, u64)>,
 ) -> Result<(String, u64, Vec<u64>)> {
     let options = EmuOptions::default();
     let mut emu = Emu::new(rom);
@@ -466,6 +497,12 @@ fn reference_trace(
     for (k, w) in emu.get_output_8().chunks(8).enumerate() {
         let w = u64::from_le_bytes(w.try_into().context("output is not a whole number of u64")?);
         writeln!(s, "out {k} {}", hex(w))?;
+    }
+    if let Some((begin, end)) = dump {
+        for addr in (begin..end).step_by(4) {
+            let w = emu.ctx.inst_ctx.mem.read(addr, 4);
+            writeln!(s, "dump {} 0x{w:08X}", hex(addr))?;
+        }
     }
     Ok((s, n, tape))
 }

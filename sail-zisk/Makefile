@@ -40,10 +40,13 @@ MODEL_SRCS = $(PROJECT) $(wildcard model/*.sail)
 PROG  ?= ../ziskasm/examples/doubler-min
 INPUT ?= ../ziskasm/examples/doubler/input.bin
 ELF   ?=
+# A memory range to trace after the run, `<begin>,<end>` in hex: a test's
+# signature, say.
+DUMP  ?=
 NAME  ?= $(if $(ELF),$(basename $(notdir $(ELF))),$(notdir $(firstword $(PROG))))
 DIFF_DIR = build/difftest/$(NAME)
 
-.PHONY: all check ops compliance lean lean-build riscv riscv-lean equiv emu difftest difftest-all constants optest opsdoc sail-version clean
+.PHONY: all check ops compliance lean lean-build riscv riscv-sim riscv-lean equiv emu difftest difftest-all constants optest opsdoc sail-version clean
 
 all: check ops
 
@@ -59,9 +62,11 @@ check: sail-version
 	$(SAIL) $(SAILFLAGS) $(ROMFLAG) --project $(PROJECT) main
 
 ## Fail if the model names an opcode that no longer exists in Rust, numbers
-## one differently, or lacks one: every operation is specified.
+## one differently, or lacks one: every operation is specified; or if the
+## operations' attributes are stale.
 ops:
 	@python3 check_ops.py --strict
+	@python3 gen_op_attrs.py --check
 
 ## Generate Lean definitions of the model (without the C main) into build/lean.
 lean: sail-version
@@ -81,6 +86,16 @@ riscv: sail-version
 	cd $(SAIL_RISCV_DIR) && git fetch -q origin && git checkout -q $(SAIL_RISCV_REV)
 	$(CMAKE) -S $(SAIL_RISCV_DIR) -B $(SAIL_RISCV_DIR)/build -DCMAKE_BUILD_TYPE=RelWithDebInfo > /dev/null
 	$(CMAKE) --build $(SAIL_RISCV_DIR)/build --target generated_lean_rv64d
+
+## Build sail-riscv's C emulator, sail_riscv_sim, for `make compliance` to
+## compare signatures with, and its configuration for ZisK's RISC-V profile
+## (riscv/zisk_profile.py). Run `make riscv` first; long (~15 min).
+RISCV_SIM ?= $(SAIL_RISCV_DIR)/build/c_emulator/sail_riscv_sim
+riscv-sim:
+	$(CMAKE) --build $(SAIL_RISCV_DIR)/build --target sail_riscv_sim
+	@mkdir -p build/riscv
+	python3 riscv/zisk_profile.py $(RISCV_SIM) build/riscv/zisk_rv64.json
+	$(RISCV_SIM) --config build/riscv/zisk_rv64.json --validate-config
 
 ## Elaborate sail-riscv's generated Lean. Run `make riscv` first; long (~12 min).
 riscv-lean:
@@ -102,21 +117,24 @@ $(EMU): $(MODEL_SRCS) | sail-version
 ## Run PROG on ziskemu and on the model's C emulator, and diff the two traces.
 difftest: $(EMU)
 	cargo run --release -q -p zisk-sail-difftest -- prepare $(if $(ELF),-e $(ELF),$(foreach p,$(PROG),-z $(p))) \
-	  $(if $(INPUT),-i $(INPUT)) -o $(DIFF_DIR)
+	  $(if $(INPUT),-i $(INPUT)) $(if $(DUMP),--dump $(DUMP)) -o $(DIFF_DIR)
 	$(EMU) $$(cat $(DIFF_DIR)/mem.args) > $(DIFF_DIR)/sail.trace
 	@diff -u $(DIFF_DIR)/ziskemu.trace $(DIFF_DIR)/sail.trace | head -40; \
 	  if cmp -s $(DIFF_DIR)/ziskemu.trace $(DIFF_DIR)/sail.trace; then \
-	    echo "OK: $$(grep -vEc '^(out|end) ' $(DIFF_DIR)/sail.trace) steps and the output agree with ziskemu"; \
+	    echo "OK: $$(grep -vEc '^(out|end|dump) ' $(DIFF_DIR)/sail.trace) steps and the output agree with ziskemu"; \
 	  else echo "FAIL: the model diverges from ziskemu (traces in $(DIFF_DIR))" >&2; exit 1; fi
 
 ## The RISC-V architectural tests, transpiled: every test of SUITES compiled
-## for ZisK's memory map and difftested. Needs a riscv-arch-test checkout
-## (ARCH_TEST) and a RISC-V GCC (RISCV_GCC). See test/compliance/run.py.
+## for ZisK's memory map and difftested, and, once `make riscv-sim` has built
+## sail-riscv's emulator (RISCV_SIM), its signature compared with sail-riscv's.
+## Needs a riscv-arch-test checkout (ARCH_TEST) and a RISC-V GCC (RISCV_GCC).
+## See test/compliance/run.py.
 ARCH_TEST ?=
 RISCV_GCC ?= riscv-none-elf-gcc
-SUITES    ?= I M A C B
+SUITES    ?= I M A B K
 compliance:
-	python3 test/compliance/run.py --arch-test '$(ARCH_TEST)' --gcc '$(RISCV_GCC)' $(SUITES)
+	python3 test/compliance/run.py --arch-test '$(ARCH_TEST)' --gcc '$(RISCV_GCC)' \
+	  $(if $(wildcard $(RISCV_SIM)),--riscv-sim '$(RISCV_SIM)') $(SUITES)
 
 ## Every program the model is difftested on.
 # ziskasm's diagnostic program: every family of operations, each checked
@@ -139,8 +157,10 @@ difftest-all:
 	python3 test/gen_precompile_test.py build/precompiles/precompiles.zisk $(PRECOMP_VECTORS) $(PRECOMP_SEED)
 	$(MAKE) --no-print-directory difftest PROG=build/precompiles INPUT=
 
-## Regenerate model/zisk_poseidon_constants.sail from the Rust sources.
+## Regenerate what the model takes from the Rust sources: the operations'
+## attributes and the Poseidon constants.
 constants:
+	python3 gen_op_attrs.py
 	python3 gen_poseidon_constants.py
 
 ## Check every operation the model specifies against ZisK's own op functions
