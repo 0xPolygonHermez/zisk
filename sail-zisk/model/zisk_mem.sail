@@ -28,10 +28,14 @@ val hits_registers : forall 'n, 'n > 0. (bits(64), int('n)) -> bool
 function hits_registers(addr, n) =
   unsigned(addr) < unsigned(REG_END) & unsigned(addr) + n > unsigned(REG_FIRST)
 
+/* The free input's address: an 8-byte read there returns FreeInput, not
+ * memory (Mem::read). The input data itself starts 8 bytes later. */
+let INPUT_ADDR : bits(64) = 0x0000_0000_1000_0000
+
 val read_mem : forall 'n, 'n in {1, 2, 4, 8}. (bits(64), int('n)) -> bits(8 * 'n)
 function read_mem(addr, n) = {
   assert(not_bool(hits_registers(addr, n)), "memory read overlaps the register file");
-  __read_ram(64, n, zeros(), addr)
+  if addr == INPUT_ADDR & n == 8 then FreeInput else __read_ram(64, n, zeros(), addr)
 }
 
 val write_mem : forall 'n, 'n in {1, 2, 4, 8}. (bits(64), int('n), bits(8 * 'n)) -> unit

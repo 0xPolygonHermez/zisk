@@ -1,0 +1,132 @@
+; The memory and fcall operations on what the diagnostics leave out:
+; unaligned and overlapping DMA, memcmp's sign, empty counts, jump_dest, and
+; reading a fcall result to its end and past it. Each case loads what it
+; wrote into r12..r31, so the trace, register by register, says whether the
+; model agrees with ziskemu.
+
+define EXTRA_PARAMS_ADDR 0xa0400f00
+define FREE_INPUT        0x10000000
+define MSB_POS_256_ID    17
+
+const u64 SRC[4] =
+	0x0706050403020100, 0x0f0e0d0c0b0a0908, 0x1716151413121110, 0x1f1e1d1c1b1a1918
+const u64 LESS[2] =
+	0x0706050403020100, 0x0f0e0d0c0b0a0807
+; jump_dest's bytecode: JUMPDESTs at 0, 3, 37, 50 and 67; 0x5b bytes inside
+; PUSH1, PUSH32, PUSH2 and PUSH3 data (the PUSH3 crossing a bitmap word) and
+; past the 70 bytes walked, which are not.
+const u64 JD_CODE[9] =
+	0x0000007f5b5b605b, 0x00000000005b0000, 0x0000005b00000000, 0x0000000000000000,
+	0x5b615b5b00000000, 0x0000000000000000, 0x00000000005b0000, 0x6200000000000000,
+	0x5b5b60005b005b00
+const u64 MSB_IN[5] =
+	1, 0, 0, 0, 0x8000000000000000
+
+u64 BUF[3] = 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff
+u64 OVL[4] = 0x0706050403020100, 0x0f0e0d0c0b0a0908, 0x1716151413121110, 0x1f1e1d1c1b1a1918
+u64 OVR[4] = 0x0706050403020100, 0x0f0e0d0c0b0a0908, 0x1716151413121110, 0x1f1e1d1c1b1a1918
+u64 SET[3] = 0, 0, 0
+u64 JD_BM[2] = 0xffffffffffffffff, 0xffffffffffffffff
+u64 IC[3] = 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff
+
+memops:
+	; dma_memcpy, unaligned on both sides: 13 bytes from SRC + 5 to BUF + 3.
+	copyb(0, 13) -> [EXTRA_PARAMS_ADDR]
+	copyb(0, BUF) -> r4
+	add(r4, 3) -> r5
+	copyb(0, SRC) -> r6
+	add(r6, 5) -> r6
+	dma_memcpy(r5, r6) -> r7
+	copyb(r4, 8[a + 0]) -> r12
+	copyb(r4, 8[a + 8]) -> r13
+	copyb(r4, 8[a + 16]) -> r14
+
+	; and of no bytes, which writes nothing.
+	copyb(0, 0) -> [EXTRA_PARAMS_ADDR]
+	dma_memcpy(r4, SRC) -> r7
+	copyb(r4, 8[a + 0]) -> r15
+
+	; dma_xmemcpy over itself, forwards: 20 bytes from OVL to OVL + 3.
+	copyb(0, OVL) -> r4
+	add(r4, 3) -> r5
+	dma_xmemcpy(r5, r4) -> r7, j(20, 4)
+	copyb(r4, 8[a + 0]) -> r16
+	copyb(r4, 8[a + 8]) -> r17
+	copyb(r4, 8[a + 16]) -> r18
+
+	; and backwards: 21 bytes from OVR + 5 to OVR + 1.
+	copyb(0, OVR) -> r4
+	add(r4, 5) -> r5
+	add(r4, 1) -> r6
+	dma_xmemcpy(r6, r5) -> r7, j(21, 4)
+	copyb(r4, 8[a + 0]) -> r19
+	copyb(r4, 8[a + 8]) -> r20
+	copyb(r4, 8[a + 16]) -> r21
+
+	; dma_memcmp: a byte less (0x07 against 0x08, so -1), a byte greater
+	; (+1), unaligned and equal (0), and no bytes (0).
+	copyb(0, 16) -> [EXTRA_PARAMS_ADDR]
+	dma_memcmp(LESS, SRC) -> r22
+	dma_memcmp(SRC, LESS) -> r23
+	copyb(0, SRC) -> r4
+	add(r4, 1) -> r5
+	copyb(0, LESS) -> r6
+	add(r6, 1) -> r6
+	dma_xmemcmp(r5, r6) -> r24, j(7, 4)
+	dma_xmemcmp(SRC, LESS) -> r25, j(0, 4)
+	; differing in the first byte: 0x00 against 0x01.
+	copyb(0, SRC) -> r4
+	add(r4, 1) -> r5
+	dma_xmemcmp(r4, r5) -> r26, j(8, 4)
+
+	; dma_xmemset, unaligned: 13 bytes of 0x5a at SET + 1; then none.
+	copyb(0, SET) -> r4
+	add(r4, 1) -> r5
+	dma_xmemset(r5, 13) -> r7, j(0x15a, 4)
+	dma_xmemset(r4, 0) -> r7, j(0x77, 4)
+	copyb(r4, 8[a + 0]) -> r27
+	copyb(r4, 8[a + 8]) -> r28
+
+	; jump_dest over 70 bytes: two bitmap words.
+	copyb(0, 70) -> [EXTRA_PARAMS_ADDR]
+	jump_dest(JD_BM, JD_CODE) -> r7
+	copyb(0, JD_BM) -> r4
+	copyb(r4, 8[a + 0]) -> r29
+	copyb(r4, 8[a + 8]) -> r30
+
+	; A fcall result, word by word, to its end and past it: msb_pos_256 of
+	; one value with only its top bit set, [limb, bit] = [3, 63].
+	fcall_param(5, MSB_IN) -> r4
+	fcall(MSB_POS_256_ID, 0) -> r4
+	copyb(0, [FREE_INPUT]) -> r31
+	fcall_get(0, 0) -> r4
+	copyb(0, [FREE_INPUT]) -> r12
+	fcall_get(0, 0) -> r4
+	copyb(0, [FREE_INPUT]) -> r13
+
+	; dma_inputcpy to an unaligned address, from the result's second word,
+	; then the free input past the end.
+	fcall_param(5, MSB_IN) -> r4
+	fcall(MSB_POS_256_ID, 0) -> r4
+	fcall_get(0, 0) -> r4
+	copyb(0, IC) -> r4
+	add(r4, 3) -> r5
+	dma_inputcpy(r5, 8) -> r7
+	copyb(r4, 8[a + 0]) -> r14
+	copyb(r4, 8[a + 8]) -> r15
+	copyb(0, [FREE_INPUT]) -> r16
+
+	; dma_inputcpy of the whole result, aligned.
+	fcall_param(5, MSB_IN) -> r4
+	fcall(MSB_POS_256_ID, 0) -> r4
+	dma_inputcpy(IC, 16) -> r7
+	copyb(0, IC) -> r4
+	copyb(r4, 8[a + 0]) -> r17
+	copyb(r4, 8[a + 8]) -> r18
+	copyb(0, [FREE_INPUT]) -> r19
+
+	; profile: c = 0, and nothing else.
+	profile(0, 0) -> r20
+
+	copyb(0, 0) -> r10
+	ret

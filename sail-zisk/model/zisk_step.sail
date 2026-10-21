@@ -2,7 +2,8 @@
  *
  * Every instruction has the same shape: (c, flag) = op(a, b). There is
  * one step function, not one per opcode -- the per-opcode content lives
- * entirely in zisk_exec. Mirrors Emu::step in emulator/src/emu.rs.
+ * entirely in zisk_exec, and in zisk_exec_mem for the ops that work on
+ * memory. Mirrors Emu::step in emulator/src/emu.rs.
  */
 
 function source_a (inst : zisk_inst) -> bits(64) =
@@ -53,7 +54,10 @@ function next_pc (inst : zisk_inst, c : bits(64), flag : bool) -> bits(64) =
 function zisk_execute (inst : zisk_inst) -> bool = {
   let a    = source_a(inst);
   let b    = source_b(inst, a);
-  let (c, flag) = zisk_exec(inst.op, a, b);
+  let (c, flag) : (bits(64), bool) = match zisk_exec_mem(inst.op, a, b, inst.jmp_off1) {
+    Some(r) => r,
+    None()  => zisk_exec(inst.op, a, b)
+  };
   store_c(inst, a, c);
   match inst.op {
     ZOP_HALT() => { Zerror = true; Zerror_code = a },

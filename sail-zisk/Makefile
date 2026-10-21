@@ -33,13 +33,14 @@ ROMFLAG = --variable 'ROM=$(ROM)'
 EMU = build/c/zisk_emu
 MODEL_SRCS = $(PROJECT) $(wildcard model/*.sail)
 
-# The program to difftest: ZisK assembly (PROG, as `ziskemu -z` takes it) or
+# The program to difftest: ZisK assembly (PROG, as `ziskemu -z` takes it, or
+# several of them, assembled together) or
 # a RISC-V ELF (ELF, as `ziskemu -e` takes it, with NAME for its directory),
 # and its input, as `ziskemu -i` takes it.
 PROG  ?= ../ziskasm/examples/doubler-min
 INPUT ?= ../ziskasm/examples/doubler/input.bin
 ELF   ?=
-NAME  ?= $(if $(ELF),$(basename $(notdir $(ELF))),$(notdir $(PROG)))
+NAME  ?= $(if $(ELF),$(basename $(notdir $(ELF))),$(notdir $(firstword $(PROG))))
 DIFF_DIR = build/difftest/$(NAME)
 
 .PHONY: all check ops compliance lean lean-build riscv riscv-lean equiv emu difftest difftest-all optest opsdoc sail-version clean
@@ -99,7 +100,7 @@ $(EMU): $(MODEL_SRCS) | sail-version
 
 ## Run PROG on ziskemu and on the model's C emulator, and diff the two traces.
 difftest: $(EMU)
-	cargo run --release -q -p zisk-sail-difftest -- prepare $(if $(ELF),-e $(ELF),-z $(PROG)) \
+	cargo run --release -q -p zisk-sail-difftest -- prepare $(if $(ELF),-e $(ELF),$(foreach p,$(PROG),-z $(p))) \
 	  $(if $(INPUT),-i $(INPUT)) -o $(DIFF_DIR)
 	$(EMU) $$(cat $(DIFF_DIR)/mem.args) > $(DIFF_DIR)/sail.trace
 	@diff -u $(DIFF_DIR)/ziskemu.trace $(DIFF_DIR)/sail.trace | head -40; \
@@ -117,11 +118,18 @@ compliance:
 	python3 test/compliance/run.py --arch-test '$(ARCH_TEST)' --gcc '$(RISCV_GCC)' $(SUITES)
 
 ## Every program the model is difftested on.
+# The ziskasm diagnostics test/programs/memops calls: fcall's and DMA's.
+DIAG = ../ziskasm/programs/diagnostic
+MEMOPS_DIAG = $(wildcard $(DIAG)/fcall*.zisk) $(DIAG)/dma.zisk
+
 difftest-all:
 	$(MAKE) --no-print-directory difftest
 	$(MAKE) --no-print-directory difftest PROG=test/programs/halt INPUT=
 	@grep -q '^end 1 0x0000000000000003$$' build/difftest/halt/sail.trace || { \
 	  echo "FAIL: test/programs/halt no longer ends in error with code 3 — has the BIOS's mtvec moved?" >&2; exit 1; }
+	$(MAKE) --no-print-directory difftest PROG="test/programs/memops $(MEMOPS_DIAG)" INPUT=
+	@grep -q '^out 0 0x0000000000000000$$' build/difftest/memops/sail.trace || { \
+	  echo "FAIL: a diagnostic test/programs/memops runs reports an error (output[0] in build/difftest/memops)" >&2; exit 1; }
 
 ## Check every operation the model specifies against ZisK's own op functions
 ## (ZiskOp::call_ab) on edge-case and random vectors. The checks run on the

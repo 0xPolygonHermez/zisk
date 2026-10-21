@@ -114,19 +114,24 @@ runs them through a software float library, for Go compatibility only.
 
 ## Status
 
-**Early.** 91 of the 130 operations are specified — every one that is a pure
-function of a and b: the internal ones, Binary, BinaryE and Arith
-([`doc/ops.md`](doc/ops.md)). Each is checked against ZisK's own op functions
-on 320 vectors (`make optest`). Still to come: the precompiles, DMA and fcall,
-which work on memory; the memory map's regions; and the equivalence proofs, whose shape depends on how the transpiler is represented
+**Early.** 102 of the 130 operations are specified
+([`doc/ops.md`](doc/ops.md)): every one that is a pure function of a and b —
+the internal ones, Binary, BinaryE and Arith, each checked against ZisK's own
+op functions on 320 vectors (`make optest`) — and the ones that work on
+memory or on the free input, short of the precompiles: DMA, fcall,
+`jump_dest` and `profile`. Still to come: the 28 precompiles; the memory
+map's regions; and the equivalence proofs, whose shape depends on how the transpiler is represented
 — a hand-written spec, differentially tested against the Rust, or the Rust
 itself translated to Lean — which is still to be decided.
 
 The model runs: compiled to C, it executes `ziskasm/examples/doubler-min` —
-BIOS, launcher and program, 253 steps — `test/programs/halt`, and the RISC-V
-architectural tests, transpiled: all 169 of the I, M, A, C and B suites ZisK
-runs, up to 22 926 steps each, agree with `ziskemu` step by step
-(`make compliance`). Both models' Lean builds,
+BIOS, launcher and program, 253 steps — `test/programs/halt`,
+`test/programs/memops` — ziskasm's fcall and DMA diagnostics, and the cases
+they leave out — and the RISC-V architectural tests, transpiled: all 169 of
+the I, M, A, C and B suites ZisK runs, up to 22 926 steps each, agree with
+`ziskemu` step by step (`make compliance`). So does a Rust guest,
+`examples/fibonacci`, built with `cargo-zisk`: 2 706 steps, through fcall and
+DMA. Both models' Lean builds,
 side by side, in `lean/`.
 
 An earlier model of 8 operations, and Lean proofs that ZisK's circuits
@@ -144,7 +149,7 @@ As sail-riscv's:
 | `model/zisk_types.sail` | Register indices, sources and stores. |
 | `model/zisk_regs.sail` | The architectural state and the register file. |
 | `model/zisk_mem.sail` | Memory. |
-| `model/zisk_insts_begin.sail`, `zisk_insts_<family>.sail`, `zisk_insts_end.sail` | The operations, a file per family: `internal`, `binary`, `binary_ext`, `arith`, `system`. |
+| `model/zisk_insts_begin.sail`, `zisk_insts_<family>.sail`, `zisk_insts_end.sail` | The operations, a file per family: `internal`, `binary`, `binary_ext`, `arith`, `system`, `dma`, `fcall`, `evm`. |
 | `model/zisk_inst.sail` | The instruction record. |
 | `model/zisk_rom.sail` | The default ROM, with no program, for the typecheck and the Lean build. |
 | `model/zisk_rom_table.sail` | The C emulator's ROM: any program's, read from a table in memory. |
@@ -167,7 +172,7 @@ make ops           # check the model's opcode names against core/src/zisk_ops.rs
 make optest        # check every operation against ZisK's own op functions
 make opsdoc        # regenerate doc/ops.md
 make emu           # build the C emulator, which runs any program
-make difftest      # run PROG (or ELF=…) on ziskemu and on the C emulator, and diff the traces
+make difftest      # run PROG (one or more; or ELF=…) on ziskemu and on the C emulator, and diff the traces
 make difftest-all  # every program the model is difftested on
 make compliance    # the RISC-V architectural tests, transpiled, difftested (ARCH_TEST=…, RISCV_GCC=…)
 make lean          # generate Lean definitions into build/lean
@@ -239,17 +244,18 @@ make ops
 ```
 
 ```
-Rust ops: 130   Sail clauses: 91   modeled: 91/130 (70%)
+Rust ops: 130   Sail clauses: 102   modeled: 102/130 (78%)
 
-UNMODELED -- 39 Rust ops with no Sail clause:
+UNMODELED -- 28 Rust ops with no Sail clause:
   add256, arith256, arith256_mod, arith384_mod, babyjubjub_add, ...
 
-OK: no stale opcodes.
+OK: no stale opcodes, and every opcode number agrees.
 ```
 
 The UNMODELED list is informational and shrinks as the model fills in; the
 last line is the one that matters. A **STALE** entry is the real failure — it
-means the model describes a machine ZisK no longer ships. See
+means the model describes a machine ZisK no longer ships — and so is a
+**WRONG CODE** one, an opcode the model numbers differently from Rust. See
 [Why `check_ops.py` exists](#why-check_opspy-exists).
 
 **3. Check every operation against ZisK's own op functions.** The first run
@@ -259,6 +265,8 @@ compile of the 28 800 checks.
 ```sh
 make optest
 ```
+
+Every pure operation but `profile`, which has no `op_profile` to call.
 
 ```
 wrote build/optest/vectors.txt: 28800 vectors for 90 operations
@@ -282,6 +290,8 @@ wrote build/difftest/doubler-min: 52 instructions, 8 opcodes (add, and, copyb, e
 OK: 253 steps and the output agree with ziskemu
 wrote build/difftest/halt: 42 instructions, 6 opcodes (add, copyb, eq, flag, halt, pubout), 15 steps on ziskemu
 OK: 15 steps and the output agree with ziskemu
+wrote build/difftest/memops: 530 instructions, 19 opcodes (add, and, copyb, dma_inputcpy, dma_memcmp, ...), 2073 steps on ziskemu
+OK: 2073 steps and the output agree with ziskemu
 ```
 
 On a divergence it prints the first lines of the diff and fails; the two
@@ -289,7 +299,26 @@ traces are left in `build/difftest/<prog>/`. `test/programs/halt` must also end
 the way it is written to — in error, with code 3, through the BIOS's `halt` —
 or `difftest-all` fails: the program jumps to the BIOS's trap handler at a
 fixed address, so a BIOS whose `mtvec` moves would otherwise make it end
-normally, with both emulators still agreeing.
+normally, with both emulators still agreeing. And `test/programs/memops`
+must report its diagnostics passed, `output[0] = 0`.
+
+A RISC-V ELF runs the same way, with `ELF=` instead of `PROG=`, and its
+input; a Rust guest needs ZisK's Rust toolchain and this checkout's
+`cargo-zisk` to build it — an older `cargo-zisk` links it for an older
+memory map — so `difftest-all` leaves it out. For the fibonacci example,
+with n = 20 as `ziskos::io::read` expects it, an 8-byte length and the data:
+
+```sh
+cargo-zisk build --release            # in examples/fibonacci/guest
+printf '\x01\0\0\0\0\0\0\0\x14\0\0\0\0\0\0\0' > fib20.bin
+make difftest ELF=../examples/target/riscv64ima-zisk-zkvm-elf/release/fibonacci-guest INPUT=fib20.bin
+```
+
+```
+fibonacci(20) => 6765
+wrote build/difftest/fibonacci-guest: 11763 instructions, 40 opcodes (...), 2706 steps on ziskemu
+OK: 2706 steps and the output agree with ziskemu
+```
 
 **5. Run the RISC-V architectural tests, transpiled.** Each test of the I, M,
 A, C and B suites is compiled for ZisK's memory map, transpiled as `ziskemu -e`
@@ -470,6 +499,35 @@ RISC-V test of 8 000 instructions; reading it takes nothing. The table names
 the op by its opcode, which is part of the model: each operation's
 `zisk_op_of_code` clause, which `make ops` checks against `zisk_ops.rs`.
 
+**Operations that work on memory are a second function.** `zisk_exec(op, a,
+b)` is pure, so that a proof about an ALU op needs no state. DMA, fcall,
+`jump_dest` — and the precompiles, to come — are clauses of
+`zisk_exec_mem(op, a, b, ext)` instead, which reads and writes memory and the
+fcall state, and gets the instruction's extended argument: `jmp_off1`, which
+the emulator hands such an op as `extended_arg`, and which never serves as a
+jump, since these ops leave `flag` false. `zisk_execute` asks
+`zisk_exec_mem` first; `None` means a pure op.
+
+**DMA works byte by byte.** The machine splits an unaligned copy into a
+head, aligned words and a tail, and proves each part separately; that is how
+it proves the operation, not what the operation does, so the model copies,
+compares and fills one byte at a time. A copy is a `memmove`: overlapping
+ranges come out as if copied through a buffer, as `Mem::memcpy` does. So is
+`jump_dest`: the machine walks the bytecode a word at a time, skipping the
+words a `PUSH` covers; the model walks it a byte at a time, to the same
+bitmap.
+
+**fcall is an oracle.** A guest asks the host for values it cannot compute
+cheaply — an inverse, a square root — and checks them itself, so nothing
+relies on the host answering truthfully, and the model does not say how it
+answers. The answers are a tape in memory, at `FCALL_TAPE`: each `fcall`
+takes the tape's next entry, a length and that many words, as its result,
+and the parameters `fcall_param` passed do not matter to the model. The free
+input — what an 8-byte read of `INPUT_ADDR` returns, as `Mem::read` has it —
+is the result's current word; `fcall_get` and `dma_inputcpy` move along it.
+A proof takes the tape as part of the initial state, like the input;
+`tools/sail-difftest` records it from `ziskemu`'s own answers.
+
 Two simplifications, both of which hold today but which the model does not
 check:
 
@@ -499,8 +557,9 @@ The pipeline:
    `ELF` with the same code `ziskemu -e` uses — and writes three things into
    `build/difftest/<name>/`. `mem/` holds the initial memory sections: the
    ROM's data and the input behind its 8-byte header, as
-   `Emu::create_emu_context` lays them out, and the ROM itself, as the table
-   the emulator reads. `rom.sail` holds every instruction of the ROM, BIOS
+   `Emu::create_emu_context` lays them out; the ROM itself, as the table the
+   emulator reads; and the fcall tape, `ziskemu`'s answers to the program's
+   fcalls. `rom.sail` holds every instruction of the ROM, BIOS
    included, as a `rom_fetch`, to read. `ziskemu.trace` is the reference run,
    recorded by stepping `Emu` directly.
 2. The model's C emulator, built once, runs with the memory sections loaded
@@ -517,8 +576,7 @@ value is read back, or in the output.
 
 The exporter refuses what the model does not describe, rather than exporting
 something the model would get subtly wrong: an instruction that uses the
-stack pointer or takes extended arguments (the precompiles), or a source or
-store kind with no Sail counterpart. An operation with no Sail clause gets
+stack pointer, or a source or store kind with no Sail counterpart. An operation with no Sail clause gets
 through the exporter, then stops the emulator when it reaches it: its opcode
 has no `zisk_op_of_code` clause, and `rom_fetch` fails with "an opcode the
 model does not specify".

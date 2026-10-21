@@ -15,8 +15,10 @@
  *
  *   out <k> <word at OUTPUT_ADDR + 8k>
  *
- * The initial state is ziskemu's: pc at ROM_ENTRY, everything else zero.
- * Memory comes from the command line (`-b addr,file`, see mem.args).
+ * The initial state is ziskemu's: pc at ROM_ENTRY, everything else zero,
+ * and no fcall made yet, the tape at its start. Memory comes from the
+ * command line (`-b addr,file`, see mem.args), the ROM table and the fcall
+ * tape included.
  */
 
 $include <string.sail>
@@ -49,6 +51,11 @@ function main() = {
   Zerror      = false;
   Zerror_code = zeros();
   foreach (r from 0 to 39) { Xs[r] = zeros() };
+  FreeInput = zeros();
+  FcallNext = FCALL_TAPE;
+  FcallBase = zeros();
+  FcallSize = zeros();
+  FcallGot  = zeros();
 
   var n : int = 0;
   var done : bool = false;

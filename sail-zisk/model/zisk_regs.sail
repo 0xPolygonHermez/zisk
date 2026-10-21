@@ -43,3 +43,13 @@ function wX(r, v) = {
   assert(i < 40, "a register beyond r39 is encoded as memory, never as ST_REG");
   Xs[i] = v
 }
+
+/* The free input: what an 8-byte read of INPUT_ADDR returns (Mem::read), the
+ * current word of the last fcall's result. fcall, fcall_get and dma_inputcpy
+ * set it, from the result the fcall registers below locate on the fcall tape
+ * (zisk_insts_fcall.sail). */
+register FreeInput  : bits(64)
+register FcallNext  : bits(64)  /* the tape's next, unused answer          */
+register FcallBase  : bits(64)  /* the last fcall's result on the tape     */
+register FcallSize  : bits(64)  /* its length in words: result_size        */
+register FcallGot   : bits(64)  /* words consumed, plus one: result_got    */

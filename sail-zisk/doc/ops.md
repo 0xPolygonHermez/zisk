@@ -8,7 +8,7 @@ by a search for its mnemonic in the transpiler's source, so approximate — and
 whether the model specifies it. The equivalence with sail-riscv needs the ones
 the transpiler emits.
 
-130 operations; the transpiler emits 116; the model specifies 91.
+130 operations; the transpiler emits 116; the model specifies 102.
 
 
 ## Internal (3 of 3)
@@ -132,11 +132,11 @@ the transpiler emits.
 | `div_w` | 0xbe | yes | yes |
 | `rem_w` | 0xbf | yes | yes |
 
-## Evm (0 of 1)
+## Evm (1 of 1)
 
 | op | opcode | emitted by riscv2zisk | in the model |
 |---|---|---|---|
-| `jump_dest` | 0xc0 | yes | — |
+| `jump_dest` | 0xc0 | yes | yes |
 
 ## Poseidon2KoalaBear (0 of 1)
 
@@ -144,22 +144,22 @@ the transpiler emits.
 |---|---|---|---|
 | `poseidon2_koalabear` | 0xc1 | yes | — |
 
-## Dma (0 of 6)
+## Dma (6 of 6)
 
 | op | opcode | emitted by riscv2zisk | in the model |
 |---|---|---|---|
-| `dma_memcpy` | 0xd0 | yes | — |
-| `dma_memcmp` | 0xd1 | yes | — |
-| `dma_inputcpy` | 0xd2 | yes | — |
-| `dma_xmemcpy` | 0xd6 | yes | — |
-| `dma_xmemcmp` | 0xd7 | yes | — |
-| `dma_xmemset` | 0xd9 | yes | — |
+| `dma_memcpy` | 0xd0 | yes | yes |
+| `dma_memcmp` | 0xd1 | yes | yes |
+| `dma_inputcpy` | 0xd2 | yes | yes |
+| `dma_xmemcpy` | 0xd6 | yes | yes |
+| `dma_xmemcmp` | 0xd7 | yes | yes |
+| `dma_xmemset` | 0xd9 | yes | yes |
 
-## Profile (0 of 1)
+## Profile (1 of 1)
 
 | op | opcode | emitted by riscv2zisk | in the model |
 |---|---|---|---|
-| `profile` | 0xe0 | yes | — |
+| `profile` | 0xe0 | yes | yes |
 
 ## Poseidon (0 of 2)
 
@@ -232,13 +232,13 @@ the transpiler emits.
 |---|---|---|---|
 | `blake2s` | 0xef | yes | — |
 
-## Fcall (0 of 3)
+## Fcall (3 of 3)
 
 | op | opcode | emitted by riscv2zisk | in the model |
 |---|---|---|---|
-| `fcall_param` | 0xf6 | yes | — |
-| `fcall` | 0xf7 | yes | — |
-| `fcall_get` | 0xf8 | yes | — |
+| `fcall_param` | 0xf6 | yes | yes |
+| `fcall` | 0xf7 | yes | yes |
+| `fcall_get` | 0xf8 | yes | yes |
 
 ## Sha256 (0 of 1)
 

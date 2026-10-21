@@ -10,7 +10,9 @@
 //!   the ROM as the table the emulator reads it from
 //!   (sail-zisk/model/zisk_rom_table.sail);
 //! - `ziskemu.trace`, the run on ziskemu, in the format `model/zisk_main.sail`
-//!   prints.
+//!   prints;
+//! - `mem/fcall-tape.bin`, ziskemu's answers to the program's fcalls, the
+//!   oracle the model reads them from (sail-zisk/model/zisk_insts_fcall.sail).
 //!
 //! The ROM is built and the memory laid out exactly as `ziskemu -z` does, by
 //! the same code: `ziskasm::assemble_files` and `Emu::create_emu_context`.
@@ -46,9 +48,10 @@ struct Cli {
 enum Command {
     /// Write rom.sail, the initial memory and the reference trace into a directory.
     Prepare {
-        /// A `.zisk` file or a directory of them, as `ziskemu -z` takes.
+        /// A `.zisk` file or a directory of them, as `ziskemu -z` takes; repeat
+        /// it to assemble several into one program.
         #[arg(short = 'z', long, conflicts_with = "elf", required_unless_present = "elf")]
-        zisk: Option<PathBuf>,
+        zisk: Vec<PathBuf>,
         /// A RISC-V ELF, transpiled as `ziskemu -e` transpiles it.
         #[arg(short = 'e', long)]
         elf: Option<PathBuf>,
@@ -76,18 +79,22 @@ enum Command {
 fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Prepare { zisk, elf, input, out, max_steps } => {
-            let rom = match (zisk, elf) {
-                (Some(zisk), _) => {
-                    let files = ziskasm::collect_zisk_files(&zisk.to_string_lossy())
-                        .map_err(anyhow::Error::msg)?;
+            let rom = match elf {
+                None => {
+                    let mut files = Vec::new();
+                    for z in &zisk {
+                        files.extend(
+                            ziskasm::collect_zisk_files(&z.to_string_lossy())
+                                .map_err(anyhow::Error::msg)?,
+                        );
+                    }
                     ziskasm::assemble_files(&files).map_err(anyhow::Error::msg)?
                 }
-                (None, Some(elf)) => {
+                Some(elf) => {
                     let bytes =
                         fs::read(&elf).with_context(|| format!("reading {}", elf.display()))?;
                     zisk_transpiler_common::program2rom(&bytes).map_err(|e| anyhow!("{e}"))?
                 }
-                (None, None) => bail!("a program is needed: -z or -e"),
             };
             prepare(rom, input.as_deref(), &out, max_steps)
         }
@@ -172,10 +179,11 @@ fn prepare(rom: ZiskRom, input: Option<&Path>, out: &Path, max_steps: u64) -> Re
 
     let mut args = write_memory(&rom, &input, out)?;
     args.push_str(&write_rom_table(&rom, out)?);
-    fs::write(out.join("mem.args"), args)?;
 
-    let (trace, steps) = reference_trace(&rom, input, max_steps)?;
+    let (trace, steps, tape) = reference_trace(&rom, input, max_steps)?;
     fs::write(out.join("ziskemu.trace"), trace)?;
+    args.push_str(&write_fcall_tape(&tape, out)?);
+    fs::write(out.join("mem.args"), args)?;
 
     println!(
         "wrote {}: {} instructions, {} opcodes ({}), {} steps on ziskemu",
@@ -246,9 +254,6 @@ struct ModelInst {
 /// The model's view of one instruction. Fails on what the model does not
 /// describe, rather than exporting something it would silently get wrong.
 fn model_inst(i: &ZiskInst) -> Result<ModelInst> {
-    if i.input_size > 0 || i.is_precompiled {
-        bail!("op {} takes extended arguments, which the model does not describe", i.op_str);
-    }
     // The model has no stack pointer; see "Registers and memory" in sail-zisk/README.md.
     let a_sp = i.a_src != SRC_IMM && i.a_use_sp_imm1 != 0;
     let b_sp = i.b_src != SRC_IMM && i.b_use_sp_imm1 != 0;
@@ -331,6 +336,10 @@ fn inst_to_sail(i: &ZiskInst) -> Result<String> {
 /// Where the ROM table starts: `ROM_TABLE` in sail-zisk/model/zisk_rom_table.sail.
 const ROM_TABLE: u64 = 0x0001_0000_0000_0000;
 
+/// Where the model reads fcall results from: `FCALL_TAPE` in
+/// sail-zisk/model/zisk_insts_fcall.sail.
+const FCALL_TAPE: u64 = 0x0002_0000_0000_0000;
+
 /// The ROM table entry of one instruction, as sail-zisk/model/zisk_rom_table.sail
 /// decodes it: eight little-endian words.
 fn rom_entry(i: &ZiskInst) -> Result<[u64; 8]> {
@@ -404,16 +413,30 @@ fn write_memory(rom: &ZiskRom, input: &[u8], out: &Path) -> Result<String> {
     Ok(args)
 }
 
+/// Write the fcall tape (sail-zisk/model/zisk_insts_fcall.sail) at
+/// `FCALL_TAPE`, and return the `-b` argument that loads it.
+fn write_fcall_tape(tape: &[u64], out: &Path) -> Result<String> {
+    let file = out.join("mem").join("fcall-tape.bin");
+    fs::write(&file, tape.iter().flat_map(|w| w.to_le_bytes()).collect::<Vec<u8>>())?;
+    Ok(format!("-b {FCALL_TAPE:#x},{}\n", fs::canonicalize(&file)?.display()))
+}
+
 /// Run the program on ziskemu one step at a time, and print what
 /// `model/zisk_main.sail` prints: per step, the pc it ran at, c, flag, and
 /// every register the step changed; then how the run ended, and the output
-/// region.
-fn reference_trace(rom: &ZiskRom, input: Vec<u8>, max_steps: u64) -> Result<(String, u64)> {
+/// region. Also returns the fcall tape: each fcall's result, as its length
+/// and its words, in the order the run made them.
+fn reference_trace(
+    rom: &ZiskRom,
+    input: Vec<u8>,
+    max_steps: u64,
+) -> Result<(String, u64, Vec<u64>)> {
     let options = EmuOptions::default();
     let mut emu = Emu::new(rom);
     emu.ctx = emu.create_emu_context(input, &options);
 
     let mut s = String::new();
+    let mut tape = Vec::new();
     let mut n = 0u64;
     while !emu.ctx.inst_ctx.end {
         if n >= max_steps {
@@ -421,8 +444,14 @@ fn reference_trace(rom: &ZiskRom, input: Vec<u8>, max_steps: u64) -> Result<(Str
         }
         let pc = emu.ctx.inst_ctx.pc;
         let before = emu.ctx.inst_ctx.regs;
+        let is_fcall = rom.get_instruction(pc).op == ZiskOp::Fcall.code();
         emu.step(&options, &None::<fn(EmuTrace)>);
         let ctx = &emu.ctx.inst_ctx;
+        if is_fcall {
+            let n = ctx.fcall.result_size as usize;
+            tape.push(n as u64);
+            tape.extend_from_slice(&ctx.fcall.result[..n]);
+        }
         write!(s, "{n} {} {} {}", hex(pc), hex(ctx.c), ctx.flag as u8)?;
         for (r, (now, was)) in ctx.regs.iter().zip(&before).enumerate().skip(1) {
             if now != was {
@@ -438,5 +467,5 @@ fn reference_trace(rom: &ZiskRom, input: Vec<u8>, max_steps: u64) -> Result<(Str
         let w = u64::from_le_bytes(w.try_into().context("output is not a whole number of u64")?);
         writeln!(s, "out {k} {}", hex(w))?;
     }
-    Ok((s, n))
+    Ok((s, n, tape))
 }

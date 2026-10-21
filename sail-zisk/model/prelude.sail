@@ -7,6 +7,7 @@
 
 default Order dec
 $include <prelude.sail>
+$include <smt.sail>
 
 infix 4 <_u
 infix 4 <_s
@@ -56,6 +57,12 @@ val operator <=_s : forall 'n, 'n > 0. (bits('n), bits('n)) -> bool
 
 function operator <=_u (x, y) = unsigned(x) <= unsigned(y)
 function operator <=_s (x, y) = signed(x)   <= signed(y)
+
+/* Integer division and remainder, rounding toward negative infinity, as
+ * sail-riscv's prelude defines them. */
+infixl 7 %
+overload operator / = {ediv_int}
+overload operator % = {emod_int}
 
 /* An integer as a bitvector, truncated to the width: sail-riscv's
  * to_bits_truncate. */

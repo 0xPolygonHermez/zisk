@@ -12,3 +12,8 @@ function clause zisk_exec (ZOP_PUBOUT(), _, b) = (b, false)
 union clause zisk_op = ZOP_HALT : unit
 function clause zisk_op_of_code (0xff) = Some(ZOP_HALT())
 function clause zisk_exec (ZOP_HALT(), _, _) = (zeros(), false)
+
+/* profile: c = 0. A marker for the emulator's profiler, with no effect. */
+union clause zisk_op = ZOP_PROFILE : unit
+function clause zisk_op_of_code (0xe0) = Some(ZOP_PROFILE())
+function clause zisk_exec (ZOP_PROFILE(), _, _) = (zeros(), false)
