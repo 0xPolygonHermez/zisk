@@ -24,7 +24,6 @@ u64 DC_P[1] = 0
 u64 DC_PR[1] = 0
 u64 SMX_P[1] = 0
 u64 SMX_R[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-u64 SMX_RR[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 SMX_PRSLOT[1] = 0
 u64 SUB_P[1] = 0
 u64 SUB_XP[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
@@ -341,27 +340,20 @@ smx_run:
 	copyb(0, 16) -> r12
 	copyb(0, 1) -> r13
 smx_loop:
+	; R = 2R (+ P), in place: the twist dbl/add copy their inputs before writing
 	eq(r13, 63), j(smx_done)
 	copyb(0, SMX_R) -> r10
-	copyb(0, SMX_RR) -> r11
+	copyb(0, SMX_R) -> r11
 	call zisklib_dbl_complete_twist_bn254
-	dma_xmemcpy(SMX_R, SMX_RR) -> r5, j(128, 4)
 	sll(r13, 3) -> r6
 	copyb(0, BN_X_BIN_BE) -> r5
 	add(r5, r6) -> r5
 	copyb(r5, 1[a + 0]) -> r6
-	copyb(0, SMX_RR) -> r10
-	copyb(0, SMX_R) -> r11
-	copyb(0, 16) -> r12
 	eq(r6, 0), j(smx_next)
 	copyb(0, SMX_R) -> r10
 	copyb(0, [SMX_P]) -> r11
-	copyb(0, SMX_RR) -> r12
+	copyb(0, SMX_R) -> r12
 	call zisklib_add_complete_twist_bn254
-	dma_xmemcpy(SMX_R, SMX_RR) -> r5, j(128, 4)
-	copyb(0, SMX_RR) -> r10
-	copyb(0, SMX_R) -> r11
-	copyb(0, 16) -> r12
 smx_next:
 	add(r13, 1) -> r13
 	jump(smx_loop)
