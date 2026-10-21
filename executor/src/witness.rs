@@ -26,7 +26,7 @@ use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use zisk_asm_runner::AsmRunnerRH;
 use zisk_common::{
-    CheckPoint, Instance, InstanceCtx, InstanceType, LateJoinHandle, Plan, StatsScope,
+    CheckPoint, Instance, InstanceCtx, InstanceType, LateJoinHandle, LateValue, Plan, StatsScope,
 };
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
@@ -140,9 +140,10 @@ impl<F: PrimeField64> WitnessPhase<F> {
         self.sm_bundle.arm_frops_cross_check()
     }
 
-    /// Retires a ROM-histogram runner a previous execution left unconsumed.
-    pub fn drain_rh(&self) {
-        self.sm_bundle.drain_rh();
+    /// The cell the ROM-histogram runner is parked in; see
+    /// [`StaticSMBundle::rom_histogram`].
+    pub fn rom_histogram(&self) -> Option<Arc<LateValue<AsmRunnerRH>>> {
+        self.sm_bundle.rom_histogram()
     }
 
     /// Selects where the FROPS multiplicity column comes from; see

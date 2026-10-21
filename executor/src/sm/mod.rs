@@ -26,7 +26,7 @@ use zisk_common::{Instance, InstanceCtx, Plan};
 use zisk_pil::ZISK_AIRGROUP_ID;
 
 use zisk_asm_runner::AsmRunnerRH;
-use zisk_common::LateJoinHandle;
+use zisk_common::{LateJoinHandle, LateValue};
 
 use zisk_core::ZiskRom;
 use zisk_sm_rom::RomSM;
@@ -179,12 +179,10 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         .map_err(|e| ExecutorError::Internal(format!("ROM histogram unavailable: {e}")))?
     }
 
-    /// Retires a runner a previous execution left unconsumed, and releases its
-    /// histogram. Must run before the next execution touches the ASM shared memory.
-    pub(crate) fn drain_rh(&self) {
-        if let Some(rom_sm) = self.rom_sm() {
-            rom_sm.rh().drain();
-        }
+    /// The cell the bundle's `RomSM` parks the ROM-histogram runner in, or `None`
+    /// if the bundle has no `RomSM`.
+    pub(crate) fn rom_histogram(&self) -> Option<Arc<LateValue<AsmRunnerRH>>> {
+        self.rom_sm().map(|rom_sm| rom_sm.rh())
     }
 
     /// The bundle's `RomSM`, or `None` if it has none. The one place that knows where

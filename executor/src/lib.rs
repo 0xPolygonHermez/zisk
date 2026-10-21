@@ -17,7 +17,7 @@ mod state;
 mod witness;
 
 // External API
-pub use execution::asm::{AsmResources, AsmSharedResources, EmulatorAsm}; // (Linux x86_64) / stub elsewhere
+pub use execution::asm::{AsmJob, AsmResources, AsmSharedResources, EmulatorAsm}; // (Linux x86_64) / stub elsewhere
 pub use executor::*; // ZiskExecutor
 pub use sm::frops::{from_asm_requested as frops_from_asm_requested, FROM_ASM_ENV};
 pub use witness::AirClassifier;
