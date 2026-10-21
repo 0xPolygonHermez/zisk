@@ -7,11 +7,12 @@ pub(crate) mod setup;
 pub(crate) mod upload;
 pub(crate) mod wrap;
 
+use crate::snark::{ensure_snark_proof, SnarkProtocol};
 use crate::{Result, SdkError};
 use std::time::Duration;
 use zisk_common::io::StreamRead;
 use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues, RandomSeed};
-use zisk_coordinator_api::dto::DomainInputKind;
+use zisk_coordinator_api::dto::{DomainInputKind, DomainJobKindResponse, TerminalStatus};
 use zisk_coordinator_client::CoordinatorClient;
 use zisk_prover_backend::GuestProgram;
 
@@ -48,6 +49,7 @@ pub struct RemoteClientBuilder<Out = RemoteClient> {
     url: String,
     connect_timeout: Duration,
     request_timeout: Duration,
+    snark: Option<SnarkProtocol>,
     _out: std::marker::PhantomData<fn() -> Out>,
 }
 
@@ -57,8 +59,31 @@ impl<Out> RemoteClientBuilder<Out> {
             url: url.into(),
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             request_timeout: DEFAULT_REQUEST_TIMEOUT,
+            snark: None,
             _out: std::marker::PhantomData,
         }
+    }
+
+    /// Ask for final SNARK proofs of `protocol`, wrapped with [`ProofKind::Plonk`]. The workers'
+    /// SNARK proving key sets the protocol up, which this client cannot see: a final SNARK proof
+    /// of another protocol fails the job's result. Unset, the proof is the workers' SNARK.
+    #[must_use]
+    pub fn snark(mut self, protocol: SnarkProtocol) -> Self {
+        self.snark = Some(protocol);
+        self
+    }
+
+    /// Ask for PLONK final SNARK proofs: [`snark`](Self::snark) of [`SnarkProtocol::Plonk`].
+    #[must_use]
+    pub fn plonk(self) -> Self {
+        self.snark(SnarkProtocol::Plonk)
+    }
+
+    /// Ask for pilfflonk final SNARK proofs: [`snark`](Self::snark) of
+    /// [`SnarkProtocol::Pilfflonk`].
+    #[must_use]
+    pub fn pilfflonk(self) -> Self {
+        self.snark(SnarkProtocol::Pilfflonk)
     }
 
     /// Override the connection timeout. Default: 10 s.
@@ -84,7 +109,7 @@ impl<Out: From<RemoteClient>> RemoteClientBuilder<Out> {
         crate::client::ensure_single_instance();
         let gw = CoordinatorClient::connect(self.url, self.connect_timeout, self.request_timeout)
             .map_err(SdkError::backend)?;
-        Ok(RemoteClient { gw })
+        Ok(RemoteClient { gw, snark: self.snark })
     }
 
     /// Build the client.
@@ -112,6 +137,8 @@ impl<Out: From<RemoteClient>> RemoteClientBuilder<Out> {
 #[derive(Clone)]
 pub struct RemoteClient {
     pub(crate) gw: CoordinatorClient,
+    /// The protocol final SNARK proofs must be of, if asked for.
+    pub(crate) snark: Option<SnarkProtocol>,
 }
 
 impl Client for RemoteClient {
@@ -207,6 +234,27 @@ impl Client for RemoteClient {
 }
 
 impl RemoteClient {
+    /// On completion, fail a final SNARK proof that is not of the protocol this client asks for.
+    pub(crate) fn check_snark(
+        &self,
+        handle: &mut JobHandle<crate::prove::ProveResult>,
+        proof_kind: ProofKind,
+    ) {
+        let Some(protocol) = self.snark.filter(|_| proof_kind == ProofKind::Plonk) else {
+            return;
+        };
+        handle.set_pre_process(move |status: &TerminalStatus| match status {
+            TerminalStatus::Completed(DomainJobKindResponse::Prove { proof, .. })
+            | TerminalStatus::Completed(DomainJobKindResponse::Wrap(proof)) => {
+                let proof = Proof::from_bytes(&proof.data).map_err(|e| {
+                    SdkError::Serialization(format!("failed to deserialize remote proof: {e}"))
+                })?;
+                ensure_snark_proof(protocol, &proof)
+            }
+            _ => Ok(()),
+        });
+    }
+
     /// Submit a prove request.
     #[must_use]
     pub fn prove<'a>(

@@ -117,6 +117,9 @@ impl RemoteClient {
             }
         }
 
-        Ok(JobHandle::new_remote(remote_job, subs, timeout, maybe_stream, maybe_hints_stream))
+        let mut handle =
+            JobHandle::new_remote(remote_job, subs, timeout, maybe_stream, maybe_hints_stream);
+        self.check_snark(&mut handle, proof_kind);
+        Ok(handle)
     }
 }
