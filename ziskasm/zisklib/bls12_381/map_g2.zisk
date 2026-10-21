@@ -188,7 +188,7 @@ zisklib_simple_swu_g2_bls12_381:
 	bls12_381_complex_mul(BLS_M2_T2, BLS_M2_Z2)
 	dma_xmemcpy(BLS_M2_T, BLS_M2_T2) -> r5, j(96, 4)
 	bls12_381_complex_add(BLS_M2_T, BLS_M2_ZU2)
-	dma_xmemcmp(BLS_M2_T, BLS_ZERO) -> r5, j(96, 4)
+	dma_xmemcmp(BLS_M2_T, BLS_F2_ZERO) -> r5, j(96, 4)
 	eq(r5, 0) -> r10
 	copyb(0, BLS_ZERO) -> r11
 	copyb(0, 12) -> r12

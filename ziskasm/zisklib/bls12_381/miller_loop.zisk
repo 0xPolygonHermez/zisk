@@ -181,7 +181,7 @@ zisklib_ml_is_tangent_bls12_381:
 	push r1
 	copyb(0, r10) -> [BLS_ML_WP2]
 	add(r10, 96) -> r5
-	dma_xmemcmp(r5, BLS_ZERO) -> r5, j(96, 4)
+	dma_xmemcmp(r5, BLS_F2_ZERO) -> r5, j(96, 4)
 	eq(r5, 0) -> r10
 	copyb(0, BLS_ZERO) -> r11
 	copyb(0, 12) -> r12
