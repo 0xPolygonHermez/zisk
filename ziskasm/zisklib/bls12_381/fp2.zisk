@@ -7,10 +7,10 @@
 ; Fp2 element = 12 u64: real (0..5) ‖ imag (6..11).
 ; ============================================================================
 
+u64 BLS_F2_ISQR[1]  = 0     ; sqrt hint: is_qr, then the root in BLS_F2_INV (one inputcpy)
 u64 BLS_F2_INV[12]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 BLS_F2_PROD[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 BLS_F2_WB[12]   = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-u64 BLS_F2_ISQR[1]  = 0
 ; scalar operand b‖0 (imag half stays 0) and conjugate operand 0‖a_imag (real half stays 0)
 u64 BLS_F2_SB[12]   = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 BLS_F2_CB[12]   = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
@@ -89,18 +89,7 @@ zisklib_inv_fp2_bls12_381:
 	eq(r5, 0), j(lf2_inv_zero)
 	fcall_param(12, r10)
 	fcall(FCALL_BLS12_381_FP2_INV, 0)
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 8]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 16]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 24]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 32]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 40]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 48]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 56]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 64]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 72]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 80]
-	copyb(0, [FREE_INPUT]) -> [BLS_F2_INV + 88]
+	dma_inputcpy(BLS_F2_INV, 96) -> r5
 	ltu([BLS_F2_INV + 40], [BLS_P + 40]), j(lf2_inv_c1)
 	ltu([BLS_P + 40], [BLS_F2_INV + 40]), j(lf2_inv_panic)
 	ltu([BLS_F2_INV + 32], [BLS_P + 32]), j(lf2_inv_c1)
@@ -149,19 +138,7 @@ lf2_inv_zero:
 zisklib_sqrt_fp2_bls12_381:
 	fcall_param(12, r10)
 	fcall(FCALL_BLS12_381_FP2_SQRT, 0)
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_ISQR]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 8]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 16]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 24]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 32]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 40]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 48]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 56]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 64]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 72]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_F2_INV + 80]
-	copyb(0, [FREE_INPUT]) -> [BLS_F2_INV + 88]
+	dma_inputcpy(BLS_F2_ISQR, 104) -> r5
 	ltu([BLS_F2_INV + 40], [BLS_P + 40]), j(lf2_sq_c1)
 	ltu([BLS_P + 40], [BLS_F2_INV + 40]), j(lf2_sq_panic)
 	ltu([BLS_F2_INV + 32], [BLS_P + 32]), j(lf2_sq_c1)
