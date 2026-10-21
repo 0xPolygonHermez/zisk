@@ -124,12 +124,13 @@ equivalence proofs, whose shape depends on how the transpiler is represented
 itself translated to Lean — which is still to be decided.
 
 The model runs: compiled to C, it executes `ziskasm/examples/doubler-min` —
-BIOS, launcher and program, 245 steps — and `difftest/halt`, and
+BIOS, launcher and program, 245 steps — and `test/programs/halt`, and
 `make difftest` checks every step against `ziskemu`. Both models' Lean builds,
 side by side, in `lean/`.
 
-`../sail/` holds the earlier model and the Lean proofs that ZisK's circuits
-implement it; it is kept as it was.
+An earlier model of 8 operations, and Lean proofs that ZisK's circuits
+implement it, lived in `../sail/`; they are at the git tag `sail-air-v0`, for
+when the proofs move to this model.
 
 ## Layout
 
@@ -148,7 +149,7 @@ As sail-riscv's:
 | `model/zisk_step.sail` | The execution step. |
 | `model/main.sail` | The C emulator's main loop and trace. |
 | `lean/` | The equivalence proofs: a Lake package importing both generated models. |
-| `test/` | The per-operation checks (`make optest`). |
+| `test/` | The per-operation checks (`make optest`), and `programs/`, the ZisK assembly programs `make difftest-all` runs besides the doubler. |
 | `doc/ops.md` | Every ZisK operation: whether the transpiler emits it, whether the model specifies it. |
 | `check_ops.py` | The opcode-name guard (`make ops`). |
 
@@ -273,11 +274,8 @@ make difftest-all
 
 ```
 wrote build/difftest/doubler-min: 44 instructions, 8 opcodes (add, and, copyb, eq, flag, halt, ltu, pubout), 245 steps on ziskemu
-RomHolds: the committed ROM row of all 44 instructions is RomRowEncodes
-...
 OK: 245 steps and the output agree with ziskemu
 wrote build/difftest/halt: 34 instructions, 6 opcodes (add, copyb, eq, flag, halt, pubout), 15 steps on ziskemu
-...
 OK: 15 steps and the output agree with ziskemu
 ```
 
@@ -480,10 +478,6 @@ stack pointer or takes extended arguments (the precompiles), or a source or
 store kind with no Sail counterpart. An operation with no Sail clause gets
 through the exporter, then fails the Sail typecheck with the operation's
 name.
-
-The same run checks what the setup commits to the ROM: every instruction's
-row, as `CustomRom::build_trace` builds it, and every data row — the facts
-`../sail/`'s circuit proofs assume (`RomHolds`, `RomDataFlags`, `RomOk`).
 
 ## Per-operation testing
 

@@ -8111,11 +8111,9 @@ version = "1.4.0-alpha"
 dependencies = [
  "anyhow",
  "clap",
- "proofman-fields",
  "zisk-asm",
  "zisk-common",
  "zisk-core",
- "zisk-sm-rom",
  "zisk-transpiler-common",
  "ziskemu",
 ]

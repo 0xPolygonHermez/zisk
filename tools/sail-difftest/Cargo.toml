@@ -19,8 +19,6 @@ zisk-common = { workspace = true }
 zisk-core = { workspace = true }
 ziskemu = { workspace = true }
 ziskasm = { workspace = true }
-zisk-sm-rom = { workspace = true }
 zisk-transpiler-common = { workspace = true }
-proofman-fields = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }

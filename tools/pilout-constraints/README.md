@@ -3,6 +3,12 @@
 Reads the AIR constraints out of a `.pilout` and writes them as a JSON IR, as
 Lean 4 definitions, or as a listing.
 
+Its Lean output is for proving that ZisK's circuits implement the Sail model.
+The first such proofs, against an earlier 8-op model, lived in `sail/`, which
+has since been removed: they are at the tag `sail-air-v0`. The model has moved
+on to [`sail-zisk/`](../../sail-zisk/README.md), and the proofs will move to it
+once it is complete; until then nothing in the tree builds this tool's Lean.
+
 ```
                     ┌─→ Main.json   the IR: constraints, columns, expression DAG
   zisk.pilout ────→ ├─→ Pil/Main.lean   Lean definitions, one per constraint
@@ -47,12 +53,11 @@ cargo run -p zisk-pilout-constraints -- list --pilout pil/zisk.pilout
 # One AIR to stdout, or every AIR to a directory.
 cargo run -p zisk-pilout-constraints -- text    --pilout pil/zisk.pilout --air Main
 cargo run -p zisk-pilout-constraints -- extract --pilout pil/zisk.pilout --air Main --out build/pil
-cargo run -p zisk-pilout-constraints -- lean    --pilout pil/zisk.pilout --all  --out sail/build/pil
+cargo run -p zisk-pilout-constraints -- lean    --pilout pil/zisk.pilout --all  --out build/pil
 ```
 
 `--air` defaults to `Main`; `--all` takes every AIR in the pilout. `--airgroup`
-disambiguates if a pilout ever has more than one. From `sail/`, `make pil` runs
-the `lean` step with the repo's paths already filled in.
+disambiguates if a pilout ever has more than one.
 
 ## What the listing looks like
 
@@ -82,9 +87,7 @@ line produces four constraints. Six decisions shape the output.
 identity, so what it needs is a commutative ring. Lean's core ships one —
 `Lean.Grind.CommRing` — with the laws attached and the `grind` tactic able to
 reason with it, so `Pil/Prelude.lean` is a one-line abbreviation over it and
-**no Mathlib is needed**, for the AIRs or for proofs about them. (The Lean Sail
-generates into `sail/build/lean/out` has no dependencies either, and its
-toolchain is a PR release that Mathlib would not match anyway.)
+**no Mathlib is needed**, for the AIRs or for proofs about them.
 
 Leaving the ring abstract also sidesteps a question the pilout does not answer:
 stage-2 columns and the challenges are elements of the cubic extension, while
@@ -131,15 +134,10 @@ to have no duplicates.
 
 ## Typechecking the output
 
-The generated Lean is checked by the lake package in [`sail/lean`](../../sail/lean),
-which points at `sail/build/pil` rather than holding sources of its own:
-
-```sh
-cd sail && make pil    # generate
-cd sail && make pil-build   # typecheck
-```
-
-Needs a Lean toolchain — install [elan](https://lean-lang.org/install/). All 54
+At `sail-air-v0`, the generated Lean was checked by the lake package in
+`sail/lean`, which pointed at `sail/build/pil` rather than holding sources of
+its own (`make pil`, then `make pil-build`, from `sail/`). Needs a Lean
+toolchain — install [elan](https://lean-lang.org/install/). All 54
 AIRs of the ZisK pilout elaborate: about 87s for the set from cold, the two
 widest taking about 49s (Keccakf) and 30s (Main) each on their own. That is the check that matters for this tool — an expression
 printed with the wrong precedence, a reference to a column that was never
@@ -153,10 +151,10 @@ every later field access fails with it — 2 real errors became 16520.
 
 ## What the output can prove
 
-Elaborating is not the same as being usable, so [`sail/lean/Proofs/Main.lean`](../../sail/lean/Proofs/Main.lean)
-proves six things from the generated Main and nothing else — `cd sail && make proofs`.
-The first proof that relates Main to the Sail model, a single slot against a
-single step, is in [`Proofs/Slot.lean`](../../sail/lean/Proofs/Slot.lean).
+Elaborating is not the same as being usable, so `sail/lean/Proofs/Main.lean`, at
+the tag `sail-air-v0`, proves six things from the generated Main and nothing
+else. The first proof that relates Main to the Sail model, a single slot
+against a single step, is `Proofs/Slot.lean` there.
 
 ```lean
 /-- `main.pil:224` determines `addr1`, so the column can be eliminated. -/
@@ -268,8 +266,8 @@ They are data, not constraints: what an argument guarantees is stated by the
 proof that relies on it, in terms of these. The ranges the range checks use come
 the same way, from the `range_def` hints, as a `ranges` list per AIR: bus 104
 is `[0, 65535]`, for instance. A bound can stand for a negative number (its
-flag is set and the bound is its field element), as on bus 107. `sail/lean/Proofs/Rom.lean` does
-that for the ROM lookup. All 1629 such hints in the ZisK pilout are extracted;
+flag is set and the bound is its field element), as on bus 107. `sail/lean/Proofs/Rom.lean`, at
+the tag `sail-air-v0`, does that for the ROM lookup. All 1629 such hints in the ZisK pilout are extracted;
 one whose shape is not the expected one would be listed in a comment rather
 than guessed at. The columns a bus tuple names are declared in `Row`/`Ctx` even
 when no constraint uses them.

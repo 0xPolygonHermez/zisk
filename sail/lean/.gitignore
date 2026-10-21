@@ -1,4 +1,0 @@
-.lake/
-# No dependencies, so the manifest carries nothing worth pinning and churns
-# with the lake version.
-lake-manifest.json

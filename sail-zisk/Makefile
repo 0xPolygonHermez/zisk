@@ -106,7 +106,7 @@ difftest:
 ## Every program the model is difftested on.
 difftest-all:
 	$(MAKE) --no-print-directory difftest
-	$(MAKE) --no-print-directory difftest PROG=../sail/difftest/halt INPUT=
+	$(MAKE) --no-print-directory difftest PROG=test/programs/halt INPUT=
 
 ## Check every operation the model specifies against ZisK's own op functions
 ## (ZiskOp::call_ab) on edge-case and random vectors. The checks run on the

@@ -1,8 +1,7 @@
 //! [`Ir`] -> Lean 4 definitions.
 //!
-//! The output is deliberately independent of Mathlib, because the Lean the
-//! Sail model generates is too: `sail/build/lean/out` has no dependencies at
-//! all. What the constraints need is the arithmetic of a field and nothing
+//! The output is deliberately independent of Mathlib, as the Lean the Sail
+//! model generates is too. What the constraints need is the arithmetic of a field and nothing
 //! else, so the emitted prelude declares exactly that as a class and every
 //! definition stays polymorphic in it.
 
