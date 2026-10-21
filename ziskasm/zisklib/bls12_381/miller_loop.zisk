@@ -40,30 +40,7 @@ u64 BLS_ML_ILQ2[1] = 0
 zisklib_ml_dbl_coeffs_bls12_381:
 	fcall_param(24, r10)
 	fcall(FCALL_BLS12_381_TWIST_DBL_LINE_COEFFS, 0)
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 8]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 16]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 24]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 32]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 40]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 48]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 56]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 64]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 72]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 80]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 88]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 96]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 104]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 112]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 120]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 128]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 136]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 144]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 152]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 160]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 168]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 176]
-	copyb(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 184]
+	dma_inputcpy(BLS_ML_LAMMU, 192) -> r5
 	ret
 
 ; void zisklib_ml_add_coeffs_bls12_381(const u64* r, const u64* q)  -> BLS_ML_LAMMU
@@ -71,30 +48,7 @@ zisklib_ml_add_coeffs_bls12_381:
 	fcall_param(24, r10)
 	fcall_param(24, r11)
 	fcall(FCALL_BLS12_381_TWIST_ADD_LINE_COEFFS, 0)
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 8]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 16]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 24]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 32]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 40]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 48]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 56]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 64]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 72]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 80]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 88]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 96]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 104]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 112]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 120]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 128]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 136]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 144]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 152]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 160]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 168]
-	fcall_get(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 176]
-	copyb(0, [FREE_INPUT]) -> [BLS_ML_LAMMU + 184]
+	dma_inputcpy(BLS_ML_LAMMU, 192) -> r5
 	ret
 
 ; void zisklib_ml_line_eval_bls12_381()  uses LAMMU, XPP, NEGYPP -> BLS_ML_L

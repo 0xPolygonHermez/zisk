@@ -44,22 +44,7 @@ u64 ML_ILQ2[1] = 0
 zisklib_ml_dbl_coeffs_bn254:
 	fcall_param(16, r10)
 	fcall(FCALL_BN254_TWIST_DBL_LINE_COEFFS, 0)
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 8]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 16]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 24]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 32]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 40]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 48]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 56]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 64]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 72]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 80]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 88]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 96]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 104]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 112]
-	copyb(0, [FREE_INPUT]) -> [ML_LAMMU + 120]
+	dma_inputcpy(ML_LAMMU, 128) -> r5
 	ret
 
 ; void zisklib_ml_add_coeffs_bn254(const u64* r, const u64* qp)  [r10,r11] -> ML_LAMMU
@@ -67,22 +52,7 @@ zisklib_ml_add_coeffs_bn254:
 	fcall_param(16, r10)
 	fcall_param(16, r11)
 	fcall(FCALL_BN254_TWIST_ADD_LINE_COEFFS, 0)
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 8]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 16]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 24]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 32]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 40]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 48]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 56]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 64]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 72]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 80]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 88]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 96]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 104]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 112]
-	copyb(0, [FREE_INPUT]) -> [ML_LAMMU + 120]
+	dma_inputcpy(ML_LAMMU, 128) -> r5
 	ret
 
 ; void zisklib_ml_line_eval_bn254()  uses ML_LAMMU, ML_XPP, ML_NEGYPP -> ML_L
