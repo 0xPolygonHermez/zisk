@@ -7531,6 +7531,7 @@ dependencies = [
  "proofman",
  "proofman-common",
  "serde",
+ "sysinfo 0.38.4",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",

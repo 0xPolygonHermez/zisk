@@ -90,4 +90,10 @@ pub trait BackendService: Send + Sync + 'static {
     /// returns `true` if the job was cancelled, or `false` if it was already
     /// in a terminal state when the request arrived.
     async fn cancel_job(&self, job_id: Uuid) -> ApiResult<bool>;
+
+    /// Prometheus text read from the backend's state when `/metrics` is scraped, appended to
+    /// the recorder's output. Called before the recorder renders, so it can set gauges first.
+    async fn render_metrics(&self) -> String {
+        String::new()
+    }
 }

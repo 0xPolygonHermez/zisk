@@ -54,6 +54,15 @@ impl Coordinator {
                 ack.error_message.as_deref().unwrap_or("unknown error")
             );
         }
+        // How long this worker took, if the setup was sent to it.
+        let setup_seconds = self.take_setup_sent(&ack.worker_id, &ack.hash_id).await;
+        crate::metrics::record_setup_ack(
+            &ack.worker_id,
+            &ack.hash_id,
+            ack.success,
+            ack.error_message.as_deref(),
+            setup_seconds,
+        );
 
         // A successful SetupProgramAck proves the prover is healthy; any
         // lingering pending_recovery entry is stale (WRC will never arrive).
@@ -405,7 +414,12 @@ impl Coordinator {
         &self,
         worker_id: &WorkerId,
     ) -> CoordinatorResult<()> {
-        let was_pending = self.pending_recovery.write().await.remove(worker_id).is_some();
+        let parked_at = self.pending_recovery.write().await.remove(worker_id);
+        let was_pending = parked_at.is_some();
+        if let Some(parked_at) = parked_at {
+            let seconds = (Utc::now() - parked_at).num_milliseconds().max(0) as f64 / 1000.0;
+            crate::metrics::record_worker_recovered(worker_id, seconds);
+        }
         let state = self.workers_pool.worker_state(worker_id).await;
         let parked = state == Some(WorkerState::SettingUp);
 
@@ -513,8 +527,15 @@ impl Coordinator {
 
         match registered {
             Ok(()) => {
+                if let Some(exit) = req.previous_exit {
+                    self.record_worker_exit(&worker_id, exit);
+                }
+                if let Some(setup) = &first_setup {
+                    self.note_setup_sent(&worker_id, &setup.hash_id).await;
+                }
                 // Send any additional known setups (beyond the first) as messages.
                 for setup in setups {
+                    self.note_setup_sent(&worker_id, &setup.hash_id).await;
                     let msg = CoordinatorMessageDto::SetupProgram(setup);
                     if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
                         warn!("[Setup] Failed to send additional setup to {}: {}", worker_id, e);
@@ -642,8 +663,12 @@ impl Coordinator {
             }
         }
 
+        if let Some(setup) = &first_setup {
+            self.note_setup_sent(&worker_id, &setup.hash_id).await;
+        }
         // Send any additional known setups (beyond the first) as messages.
         for setup in setups {
+            self.note_setup_sent(&worker_id, &setup.hash_id).await;
             let msg = CoordinatorMessageDto::SetupProgram(setup);
             if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
                 warn!(
@@ -826,6 +851,9 @@ impl Coordinator {
         &self,
         message: HeartbeatAckDto,
     ) -> CoordinatorResult<()> {
+        if let Some(telemetry) = message.telemetry {
+            self.store_worker_telemetry(&message.worker_id, telemetry).await;
+        }
         self.workers_pool.update_last_heartbeat(&message.worker_id).await
     }
 
