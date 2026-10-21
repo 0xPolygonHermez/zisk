@@ -256,8 +256,3 @@ pub fn plan_sec<F: PrimeField64>(
 
     plans
 }
-
-/// Appends mem-related plans (from the ASM MO runner) into the mem slot.
-pub fn extend_mem_plans(planning: &mut BTreeMap<usize, Vec<Plan>>, plans: Vec<Plan>) {
-    planning.entry(MEM_POSITION).or_default().extend(plans);
-}

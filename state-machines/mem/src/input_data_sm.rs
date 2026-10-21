@@ -37,8 +37,8 @@ const _: () = {
         "INPUT_DATA memory exceeds the 32-bit addressable range"
     );
     assert!(
-        (MAX_INPUT_SIZE - 1) <= (1024 << 20),
-        "INPUT_DATA is too large. Input size must be <= 1024MB"
+        (MAX_INPUT_SIZE - 1) <= (2048 << 20),
+        "INPUT_DATA is too large. Input size must be <= 2048MB"
     );
 };
 
@@ -70,6 +70,65 @@ fn set_input_data_padding_lane<F: PrimeField64, R: InputDataTraceRowOps<F>>(
     row.set_addr_changes(lane, false);
     for (index, &word) in value_words.iter().enumerate() {
         row.set_value_word(lane, index, word);
+    }
+}
+
+/// The scalars an InputData instance's air values are built from: the last lane and the padding.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct InputDataFillOutput {
+    last_addr: u32,
+    last_step: u64,
+    last_value: u64,
+    padding_size: u32,
+}
+
+impl InputDataFillOutput {
+    /// The scalars of the row-hash dump (`mem-witness-test`).
+    #[cfg(feature = "mem-witness-test")]
+    fn scalars(
+        &self,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+    ) -> [u64; 9] {
+        [
+            usize::from(segment_id) as u64,
+            is_last_segment as u64,
+            previous_segment.addr as u64,
+            previous_segment.step,
+            previous_segment.value,
+            self.last_addr as u64,
+            self.last_step,
+            self.last_value,
+            self.padding_size as u64,
+        ]
+    }
+
+    fn air_values<F: PrimeField64>(
+        &self,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+    ) -> InputDataAirValues<'static, F> {
+        let mut air_values = InputDataAirValues::<F>::new();
+        air_values.segment_id = F::from_usize(segment_id.into());
+        air_values.is_first_segment = F::from_bool(segment_id == 0);
+        air_values.is_last_segment = F::from_bool(is_last_segment);
+        air_values.previous_segment_step = F::from_u64(previous_segment.step);
+        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
+        air_values.segment_last_addr = F::from_u32(self.last_addr);
+        air_values.segment_last_step = F::from_u64(self.last_step);
+        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
+        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
+        air_values.segment_last_value[0] = F::from_u32(self.last_value as u32);
+        air_values.segment_last_value[1] = F::from_u32((self.last_value >> 32) as u32);
+        let distance_base = previous_segment.addr - INPUT_DATA_W_ADDR_INIT;
+        let distance_end = INPUT_DATA_W_ADDR_END - self.last_addr;
+        air_values.distance_base[0] = F::from_u16(distance_base as u16);
+        air_values.distance_base[1] = F::from_u16((distance_base >> 16) as u16);
+        air_values.distance_end[0] = F::from_u16(distance_end as u16);
+        air_values.distance_end[1] = F::from_u16((distance_end >> 16) as u16);
+        air_values
     }
 }
 
@@ -402,6 +461,53 @@ impl<F: PrimeField64> InputDataSM<F> {
             )
         }
     }
+
+    /// The bits a packed InputData row uses.
+    #[cfg(feature = "mem-witness-test")]
+    fn packed_used_bits() -> usize {
+        crate::mem_gpu_fill::packed_used_bits(
+            InputDataTrace::<()>::AIRGROUP_ID,
+            InputDataTrace::<()>::AIR_ID,
+        )
+        .unwrap_or(InputDataTraceRowPacked::<F>::PACKED_WORDS * 64)
+    }
+
+    /// The device's scalars of an instance as its fill output and continuation.
+    fn from_result(
+        res: &zisk_sm_mem_planner::MemFillResult,
+        n_rows: usize,
+    ) -> (InputDataFillOutput, MemPreviousSegment) {
+        let num_slots = n_rows * zisk_sm_mem_common::input_data_lanes_x_row();
+        let out = InputDataFillOutput {
+            last_addr: res.last_addr_w,
+            last_step: res.last_step,
+            last_value: res.last_value,
+            padding_size: (num_slots - res.n_lanes as usize) as u32,
+        };
+        let prev = MemPreviousSegment {
+            addr: res.prev_addr_w,
+            step: res.prev_step,
+            value: res.prev_value,
+        };
+        (out, prev)
+    }
+
+    fn device_rows(
+        rows: &mut [u64],
+        n_rows: usize,
+        segment_id: SegmentId,
+    ) -> Result<(InputDataFillOutput, MemPreviousSegment), String> {
+        let res = zisk_sm_mem_planner::gpu_input_witness_fill(
+            usize::from(segment_id) as u32,
+            rows,
+            n_rows as u32,
+        )?;
+        crate::mem_gpu_fill::check_scalars(
+            &res,
+            n_rows * zisk_sm_mem_common::input_data_lanes_x_row(),
+        )?;
+        Ok(Self::from_result(&res, n_rows))
+    }
     /// Fills the witness trace using a precomputed **offset table** (GPU path).
     ///
     /// `mem_ops` does not need to be sorted. Each operation is placed directly
@@ -581,32 +687,30 @@ impl<F: PrimeField64> InputDataSM<F> {
             }
         }
 
-        let mut air_values = InputDataAirValues::<F>::new();
-        air_values.segment_id = F::from_usize(segment_id.into());
-        air_values.is_first_segment = F::from_bool(segment_id == 0);
-        air_values.is_last_segment = F::from_bool(is_last_segment);
-        air_values.previous_segment_step = F::from_u64(previous_segment.step);
-        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
-        air_values.segment_last_addr = F::from_u32(last_addr);
-        air_values.segment_last_step = F::from_u64(last_step);
-
-        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
-        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
-
-        air_values.segment_last_value[0] = F::from_u32(value_0 as u32 + ((value_1 as u32) << 16));
-        air_values.segment_last_value[1] = F::from_u32(value_2 as u32 + ((value_3 as u32) << 16));
-
-        let distance_end = (INPUT_DATA_W_ADDR_END - last_addr) as i64;
-        let distance_base = previous_segment.addr - INPUT_DATA_W_ADDR_INIT;
-
-        let distance_base_chunks = [distance_base as u16, (distance_base >> 16) as u16];
-        let distance_end_chunks = [distance_end as u16, (distance_end >> 16) as u16];
-
-        air_values.distance_base[0] = F::from_u16(distance_base_chunks[0]);
-        air_values.distance_base[1] = F::from_u16(distance_base_chunks[1]);
-
-        air_values.distance_end[0] = F::from_u16(distance_end_chunks[0]);
-        air_values.distance_end[1] = F::from_u16(distance_end_chunks[1]);
+        let out = InputDataFillOutput {
+            last_addr,
+            last_step,
+            last_value: value_0 as u64
+                | ((value_1 as u64) << 16)
+                | ((value_2 as u64) << 32)
+                | ((value_3 as u64) << 48),
+            padding_size: padding_size as u32,
+        };
+        #[cfg(feature = "mem-witness-test")]
+        {
+            use proofman_common::trace::TraceRow;
+            let used_bits =
+                if R::IS_PACKED { Self::packed_used_bits() } else { std::mem::size_of::<R>() * 8 };
+            crate::mem_trace_hash::dump_scalars(
+                self.get_mem_name(),
+                usize::from(segment_id),
+                crate::mem_gpu_fill::rows_as_words(&trace.buffer),
+                &out.scalars(segment_id, is_last_segment, previous_segment),
+                std::mem::size_of::<R>() / 8,
+                used_bits,
+            );
+        }
+        let mut air_values = out.air_values::<F>(segment_id, is_last_segment, previous_segment);
 
         #[cfg(feature = "debug_mem")]
         {
@@ -622,6 +726,50 @@ impl<F: PrimeField64> InputDataSM<F> {
 }
 
 impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
+    fn compute_witness_gpu_arena(
+        &self,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> zisk_common::WitnessResult<F> {
+        if !packed {
+            return Err(zisk_common::WitnessError::with_buffer(
+                proofman_common::ProofmanError::InvalidParameters(
+                    "the device memory witness needs the packed InputData trace".to_string(),
+                ),
+                trace_buffer,
+            ));
+        }
+        let seg_idx = usize::from(segment_id);
+        // The device rows cover every row of the instance, padding included.
+        let mut trace = InputDataTrace::<InputDataTraceRowPacked<F>>::new_from_vec(trace_buffer)?;
+        let n_rows = trace.num_rows();
+        let (out, previous_segment) = {
+            let words = crate::mem_gpu_fill::rows_as_words_mut(&mut trace.buffer);
+            Self::device_rows(words, n_rows, segment_id)
+        }
+        .map_err(|e| {
+            let error = proofman_common::ProofmanError::InvalidParameters(format!(
+                "InputData[{seg_idx}] witness from the GPU planner failed: {e}"
+            ));
+            zisk_common::WitnessError::with_buffer(error, trace.get_buffer())
+        })?;
+        #[cfg(feature = "mem-witness-test")]
+        crate::mem_trace_hash::dump_scalars(
+            self.get_mem_name(),
+            seg_idx,
+            crate::mem_gpu_fill::rows_as_words(&trace.buffer),
+            &out.scalars(segment_id, is_last_segment, &previous_segment),
+            InputDataTraceRowPacked::<F>::PACKED_WORDS,
+            Self::packed_used_bits(),
+        );
+        let mut air_values = out.air_values::<F>(segment_id, is_last_segment, &previous_segment);
+        Ok(Some(AirInstance::new_from_trace(
+            FromTrace::new(&mut trace).with_air_values(&mut air_values),
+        )))
+    }
+
     fn get_addr_range(&self) -> (u32, u32) {
         (INPUT_DATA_W_ADDR_INIT, INPUT_DATA_W_ADDR_END)
     }

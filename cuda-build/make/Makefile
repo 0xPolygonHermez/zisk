@@ -133,7 +133,10 @@ endif # NEED_CUDA_ARCH
 
 all: $(OUT_DIR)/$(TARGET)
 
+# Recreated, not updated: `ar r` keeps members no longer in SRCS (a renamed or removed source),
+# which the final link then sees twice.
 $(OUT_DIR)/$(TARGET): $(OBJS)
+	rm -f $@
 	ar rcs $@ $^
 
 $(OUT_DIR)/%.o: $(SRC_DIR)/%.cu $(HEADERS)

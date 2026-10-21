@@ -51,7 +51,18 @@ impl AsmService {
     }
 
     /// Returns the command path for a given service based on the trimmed base path.
+    ///
+    /// The memory-ops emulator comes in two forms with their own names, so a cache shared with
+    /// a build that knows only the plain `-mo` form never hands either one the other's stream:
+    /// `-moh` (values and steps, what the device witness needs) and `-mol` (one word per record).
     pub fn command_path_for(&self, trimmed_path: &str) -> String {
+        if *self == AsmService::MO {
+            return if crate::mops_light() {
+                format!("{trimmed_path}-mol.bin")
+            } else {
+                format!("{trimmed_path}-moh.bin")
+            };
+        }
         format!("{}-{}.bin", trimmed_path, self)
     }
 
@@ -108,6 +119,9 @@ impl AsmService {
 
         if options.verbose {
             command.arg("-v");
+        }
+        if options.metrics {
+            command.arg("-m");
         }
 
         command.stderr(if options.verbose { Stdio::inherit() } else { Stdio::null() });
@@ -529,7 +543,12 @@ mod tests {
         // names the shmem segments. Keeping them distinct is deliberate.
         assert_eq!(AsmService::MO.to_string(), "mo");
         assert_eq!(AsmService::RH.to_string(), "rh");
-        assert_eq!(AsmService::MO.command_path_for("/x/ziskemuasm"), "/x/ziskemuasm-mo.bin");
+        // The memory-ops emulator has a form of its own either way, never the plain `-mo`.
+        let mo = AsmService::MO.command_path_for("/x/ziskemuasm");
+        assert_eq!(
+            mo,
+            if crate::mops_light() { "/x/ziskemuasm-mol.bin" } else { "/x/ziskemuasm-moh.bin" }
+        );
         assert_eq!(AsmService::RH.command_path_for("base"), "base-rh.bin");
     }
 

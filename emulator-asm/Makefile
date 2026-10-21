@@ -25,6 +25,10 @@ else ifeq ($(TRACE_TARGET),RH)
     CFLAGS += -DTRACE_TARGET_RH
     ASMFLAGS += --defsym TRACE_TARGET=2
 endif
+# Light memory-ops stream: one word per record, no values and no steps.
+ifeq ($(MOPS_LIGHT),1)
+    ASMFLAGS += --defsym MOPS_LIGHT=1
+endif
 
 # Default EMU_PATH and OUT_PATH
 EMU_PATH ?= src/emu.asm
@@ -82,11 +86,12 @@ build/evm/%.o: src/evm/%.asm src/evm/jump_dest_macro.inc src/dma/dma_constants.i
 build/evm.o: $(EVM_OBJS)
 	ld -r $(EVM_OBJS) -o $@
 
-build/zisk.ld:
+# Regenerated when this Makefile changes, so a stale script never keeps an old .zisk_region
+build/zisk.ld: Makefile
 	mkdir -p build
 	ld --verbose 2>/dev/null | \
 	    awk '/^=+$$/{found++; next} found==1{print}' | \
-	    sed '/\/DISCARD\//i\  .zisk_region 0x40000000 (NOLOAD) : { . = . + 0x890000000; }' \
+	    sed '/\/DISCARD\//i\  .zisk_region 0x0FF00000 (NOLOAD) : { . = . + 0x8C0100000; }' \
 	    > build/zisk.ld
 
 # Compile the final executable

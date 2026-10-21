@@ -238,9 +238,9 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "arc-swap"
-version = "1.9.2"
+version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c049c0be4daef0b145cb3555416b3b8ef5b7888a38aea1a3a155801fe7b0810b"
+checksum = "380962b3d93b99642e50b9febf72c071e97e8b32d86eae9cf4ef582bb960ae6e"
 dependencies = [
  "rustversion",
 ]
@@ -842,7 +842,7 @@ dependencies = [
  "bitflags 2.13.2",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.10.5",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -1141,9 +1141,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.8.0"
+version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6651c9ed80effdc7db0ff72512157f901af5e3549e341e24b1dd4887d836d838"
+checksum = "877bf67ac8e52449eb2f9e98a344ea163beb70dd1f9eebe3cc5357dcfeaee4df"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -1318,7 +1318,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1954,7 +1954,7 @@ checksum = "ad5208a115eaba24916f7456929832e310a81518c641f93fee4f89aa93aa3675"
 dependencies = [
  "cfg-if",
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2120,7 +2120,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2186,9 +2186,9 @@ dependencies = [
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.14"
+version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aedcfb3409746eddb02b9e19ebda1c3394f759a152e48ee875a0844d1b955484"
+checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
 
 [[package]]
 name = "fixed-cache"
@@ -3020,15 +3020,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "itertools"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
-dependencies = [
- "either",
-]
-
-[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3242,9 +3233,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.190"
+version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
+checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "libffi"
@@ -3690,9 +3681,9 @@ dependencies = [
 
 [[package]]
 name = "num_threads"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c7398b9c8b70908f6371f47ed36737907c87c52af34c268fed0bf0ceb92ead9"
+checksum = "cabcc654086861f9e1bc5115258de62ef92c79b20f4615a1b0cc57c4e82027d4"
 dependencies = [
  "libc",
 ]
@@ -3992,7 +3983,7 @@ dependencies = [
 [[package]]
 name = "pil-info"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 dependencies = [
  "indexmap 2.14.2",
  "num-bigint",
@@ -4006,7 +3997,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4017,7 +4008,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -4032,7 +4023,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 dependencies = [
  "anyhow",
  "clap",
@@ -4041,9 +4032,11 @@ dependencies = [
  "pil-info",
  "pil2-pilout",
  "pil2-stark-recurser",
+ "pilfflonk-setup",
  "proofman-common",
  "proofman-exps-codegen",
  "proofman-fields",
+ "proofman-pilfflonk",
  "proofman-starks-lib-c",
  "proofman-util",
  "prost 0.13.5",
@@ -4059,7 +4052,7 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 dependencies = [
  "colored",
  "proofman-common",
@@ -4072,6 +4065,42 @@ dependencies = [
  "rustc-hash",
  "serde",
  "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "pilfflonk-setup"
+version = "1.4.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
+dependencies = [
+ "anyhow",
+ "num-bigint",
+ "pil-info",
+ "pil2-pilout",
+ "proofman-pilfflonk",
+ "proofman-starks-lib-c",
+ "prost 0.13.5",
+ "serde",
+ "serde_json",
+ "tera",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
+name = "pilfflonk-wrap-witness"
+version = "1.4.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
+dependencies = [
+ "cc",
+ "proofman-common",
+ "proofman-fields",
+ "proofman-pilfflonk",
+ "proofman-util",
+ "rayon",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
  "tracing",
 ]
 
@@ -4278,7 +4307,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 dependencies = [
  "bincode",
  "blake3",
@@ -4291,11 +4320,13 @@ dependencies = [
  "mpi",
  "num-traits",
  "pil2-std-lib",
+ "pilfflonk-wrap-witness",
  "proofman-common",
  "proofman-curves",
  "proofman-fields",
  "proofman-hints",
  "proofman-macros",
+ "proofman-pilfflonk",
  "proofman-starks-lib-c",
  "proofman-util",
  "proofman-verifier",
@@ -4311,7 +4342,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 dependencies = [
  "borsh",
  "colored",
@@ -4341,7 +4372,7 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 dependencies = [
  "proofman-fields",
 ]
@@ -4349,9 +4380,10 @@ dependencies = [
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 dependencies = [
  "anyhow",
+ "num-bigint",
  "proofman-starks-src",
  "rayon",
  "regex",
@@ -4363,7 +4395,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -4375,7 +4407,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -4387,7 +4419,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4395,9 +4427,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "proofman-pilfflonk"
+version = "1.4.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
+dependencies = [
+ "libloading",
+ "num-bigint",
+ "proofman-fields",
+ "proofman-starks-lib-c",
+ "rayon",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "proofman-starks-lib-c"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
@@ -4406,12 +4454,12 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 
 [[package]]
 name = "proofman-util"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4420,7 +4468,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 dependencies = [
  "bincode",
  "num-traits",
@@ -4433,7 +4481,7 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#babea6133a30f760eaa1636d9405583552bfdce0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#51173b5504a6a82bae629e45bef90ef4d9093067"
 dependencies = [
  "libloading",
  "proofman-common",
@@ -4483,7 +4531,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
  "heck",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "log",
  "multimap",
  "once_cell",
@@ -4503,7 +4551,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "03da047801ff44bb6a4d407d4860c05fd70bb81714e6b2f3812603d5b145b042"
 dependencies = [
  "heck",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "log",
  "multimap",
  "petgraph 0.8.3",
@@ -4524,7 +4572,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -4537,7 +4585,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -4660,7 +4708,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5138,7 +5186,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5151,7 +5199,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5210,7 +5258,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5263,9 +5311,9 @@ dependencies = [
 
 [[package]]
 name = "schannel"
-version = "0.1.29"
+version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91c1b7e4904c873ef0710c1f407dde2e6287de2bebc1bbbf7d430bb7cbffd939"
+checksum = "9cb23c424d8ee841bb4d813677ca237e2a610067d594fec130f87d6093495ab5"
 dependencies = [
  "windows-sys 0.61.2",
 ]
@@ -5914,10 +5962,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.5",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6905,7 +6953,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -7945,6 +7993,7 @@ dependencies = [
 name = "zisk-precomp-poseidon"
 version = "1.4.0-alpha"
 dependencies = [
+ "paste",
  "pil2-std-lib",
  "proofman-common",
  "proofman-fields",
@@ -7955,6 +8004,7 @@ dependencies = [
  "zisk-core",
  "zisk-pil",
  "zisk-precomp-common",
+ "zisk-precomp-helpers",
  "zisk-test-artifacts",
 ]
 
@@ -8226,6 +8276,7 @@ dependencies = [
  "zisk-core",
  "zisk-pil",
  "zisk-sm-mem-common",
+ "zisk-sm-mem-planner",
 ]
 
 [[package]]
@@ -8246,6 +8297,7 @@ dependencies = [
 name = "zisk-sm-mem-planner"
 version = "1.4.0-alpha"
 dependencies = [
+ "proofman-fields",
  "proofman-util",
  "tracing",
  "zisk-common",

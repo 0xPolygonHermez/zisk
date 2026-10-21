@@ -33,6 +33,9 @@
   "Blake2s": {
     "hasCompressor": true
   },
+  "Poseidon2KoalaBear": {
+    "hasCompressor": true
+  },
   "Arith256": {
     "hasCompressor": true
   },

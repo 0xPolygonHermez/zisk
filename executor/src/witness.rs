@@ -296,7 +296,6 @@ impl<F: PrimeField64> WitnessPhase<F> {
                 ctx.pctx,
                 ctx.sctx,
                 global_id,
-                ctx.buffer_pool,
                 stats_scope_id,
             ),
             InstanceType::Instance => {
@@ -312,6 +311,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
                         global_id,
                         ctx.buffer_pool,
                         stats_scope_id,
+                        !AirClassifier::mem_collected_on_device(air_id),
                     )
                 }
             }
@@ -366,16 +366,18 @@ impl<F: PrimeField64> WitnessPhase<F> {
         let trace_buffer =
             std::mem::take(&mut *self.trace_buffer_rom.lock_or_poison("trace_buffer_rom")?);
 
-        self.witness_generator.compute_secn_witness(
-            ctx.pctx,
-            ctx.sctx,
-            ctx.state,
-            global_id,
-            instance,
-            collectors,
-            trace_buffer,
-            stats_scope_id,
-        )?;
+        self.witness_generator
+            .compute_secn_witness(
+                ctx.pctx,
+                ctx.sctx,
+                ctx.state,
+                global_id,
+                instance,
+                collectors,
+                trace_buffer,
+                stats_scope_id,
+            )
+            .map_err(|(e, _)| e)?;
 
         // After the trace is handed over, so the ROM proof does not wait on the copy.
         if !self.frops_published.swap(true, Ordering::Relaxed) {
@@ -406,6 +408,11 @@ impl<F: PrimeField64> WitnessPhase<F> {
         for &global_id in global_ids {
             let info = registry.instance_info(GlobalId(global_id))?;
 
+            // Filled on the device: nothing to collect, ready as is.
+            if AirClassifier::mem_collected_on_device(info.air_id) {
+                registry.announce_witness_ready(GlobalId(global_id));
+                continue;
+            }
             if AirClassifier::is_main(info.air_id) {
                 registry.announce_witness_ready(GlobalId(global_id));
             } else if AirClassifier::is_rom(info.airgroup_id, info.air_id) {

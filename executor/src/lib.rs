@@ -21,7 +21,7 @@ pub use execution::asm::{AsmResources, AsmSharedResources, EmulatorAsm}; // (Lin
 pub use executor::*; // ZiskExecutor
 pub use sm::frops::{from_asm_requested as frops_from_asm_requested, FROM_ASM_ENV};
 pub use witness::AirClassifier;
-pub use zisk_asm_runner::GpuBufferSource; // AIR id → display name (used to label remote execution plans)
+pub use zisk_asm_runner::GpuBufferSource;
 
 pub(crate) use adapters::*;
 pub(crate) use bus::*;

@@ -16,6 +16,7 @@ pub const TWISTED_EDWARDS_COST: u64 = 109 * 16;
 pub const BLAKE2B_COST: u64 = 8 * 237;
 pub const BLAKE3_COST: u64 = 56 * 221 / 2;
 pub const BLAKE2S_COST: u64 = 80 * 115;
+pub const POSEIDON2_KOALABEAR_COST: u64 = 30 * 499;
 pub const MAIN_COST: u64 = 68;
 
 // Zba costs. sh<n>add and slli.uw are proven natively (a single Binary / BinaryExtension

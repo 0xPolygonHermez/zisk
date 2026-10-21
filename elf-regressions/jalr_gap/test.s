@@ -1,18 +1,18 @@
 # Test JALR with gap/padding before actual code
-# Program section starts at 0x80001000 but first real instruction is later
+# Program section starts at 0x90001000 but first real instruction is later
 # This tests that min_program_pc is correctly found even with padding
 
 .section .text
 .global _start
 
-# Start with padding at 0x80001000
+# Start with padding at 0x90001000
 .align 4
-    nop                 # 0x80001000: padding
-    nop                 # 0x80001004: padding
-    nop                 # 0x80001008: padding
-    j _start            # 0x8000100c: jump to actual start
+    nop                 # 0x90001000: padding
+    nop                 # 0x90001004: padding
+    nop                 # 0x90001008: padding
+    j _start            # 0x9000100c: jump to actual start
 
-# Actual code starts here at 0x80001010
+# Actual code starts here at 0x90001010
 _start:
     # Simple JALR test
     la t0, target       # Load address of target

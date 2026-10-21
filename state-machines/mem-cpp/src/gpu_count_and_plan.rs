@@ -10,9 +10,7 @@ use zisk_sm_mem_common::{
 
 use crate::gpu_bindings;
 
-pub use crate::gpu_bindings::{
-    GpuMemAlignCounter, InstanceMeta as GpuInstanceMeta, MemOp as GpuMemOp,
-};
+pub use crate::gpu_bindings::{GpuMemAlignCounter, InstanceMeta as GpuInstanceMeta};
 
 /// Serialize GPU-produced metas to `path` in the canonical `metas.bin`
 /// format (the one `load_instance_metas` / the standalone runner use).
@@ -74,6 +72,7 @@ impl GpuCountAndPlan {
         n_workers: u32,
         worker_id: u32,
         gpu_id: i32,
+        retain_rows: bool,
     ) -> bool {
         // Rows per instance for {ROM, INPUT, RAM}, from the PIL trace sizes
         // so the GPU planner never hardcodes them.
@@ -96,14 +95,26 @@ impl GpuCountAndPlan {
                 worker_id,
                 gpu_id,
                 instance_rows.as_ptr(),
+                retain_rows,
             )
         }
     }
 
+    /// Whether the setup gave the device memory witness its room: the planner retains the block's
+    /// accesses and holds the MemAlign region. False after a setup without that room, for the run.
+    pub fn retains_rows(&self) -> bool {
+        unsafe { gpu_bindings::count_and_plan_retains_rows(self.inner) }
+    }
+
     pub fn add_chunk(&self, len: u64, data: *const c_void) -> bool {
         unsafe {
-            gpu_bindings::count_and_plan_add_chunk(self.inner, data as *const GpuMemOp, len as u32)
+            gpu_bindings::count_and_plan_add_chunk(self.inner, data as *const u64, len as u32)
         }
+    }
+
+    /// The C++ planner, for the RAM witness registry. Valid while `self` lives.
+    pub fn raw_handle(&self) -> *mut gpu_bindings::CountAndPlanHandle {
+        self.inner
     }
 
     /// Bytes of the borrowed GPU arena used for the current block.

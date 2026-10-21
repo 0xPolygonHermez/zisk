@@ -51,7 +51,8 @@ indistinguishable from a harness that never compared anything.
 
 [`u256_semantics_guest.c`](u256_semantics_guest.c) covers the sign-sensitive half of
 the U256 ABI that the aliasing guest does not touch: `slt`, `sgt`, `sdiv`, `smod`,
-`sar` and `signextend`. These are where EVM semantics are easiest to get subtly wrong
+`sar` and `signextend`, plus unsigned `mod` at its edge divisors. These are where EVM
+semantics are easiest to get subtly wrong
 — truncate-toward-zero rather than floor division, the modulo taking the sign of the
 *dividend*, the `-2^255 / -1` overflow that wraps to itself, arithmetic vs logical
 right shift, and shift counts ≥ 256 saturating to `0` or `-1`.
@@ -62,11 +63,11 @@ riscv64-unknown-elf-gcc -march=rv64ima_zicsr -mabi=lp64 -mcmodel=medany -nostdli
     ../src/_start.s u256_semantics_guest.c ../src/zkvm_calls.s
 : > /tmp/empty.bin
 ../../../../target/release/ziskemu -e /tmp/u256sem.elf -i /tmp/empty.bin -o /tmp/sem.bin
-xxd -p -l 43 -c 43 /tmp/sem.bin
+xxd -p -l 59 -c 59 /tmp/sem.bin
 ```
 
-41 cases, self-checking as above: `00` = pass, `01` = wrong value **or** a non-`EOK`
-status. Expected output: **41 zero bytes, then `0100`** (the same negative control).
+57 cases, self-checking as above: `00` = pass, `01` = wrong value **or** a non-`EOK`
+status. Expected output: **57 zero bytes, then `0100`** (the same negative control).
 
 The expected values are golden vectors from an *independent* Python model of the EVM
 semantics — deliberately not transcribed from this backend, so the test cannot agree

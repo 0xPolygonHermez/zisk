@@ -358,7 +358,7 @@ fails; idempotent) and `void write_output(const uint8_t* output, size_t size)`
 
 **ZisK.** Both functions are implemented in the ZisK library (`zisklib_read_input`,
 `zisklib_write_output`) and reached through zkvmcalls (0x863, 0x864). Input is exposed at the memory-mapped
-free-input region (`INPUT_ADDR = 0x4000_0000`); output is written to the public
+free-input region (`INPUT_ADDR = 0x1000_0000`); output is written to the public
 output region (`OUTPUT_ADDR = 0xa041_0000`). Reads are non-failing and side-effect
 free; successive `write_output` calls concatenate. C guests get both from
 [`zkvm_io.h`](../../ziskasm/lang/c/include/zkvm_io.h) and the zkvmcall thunks in
@@ -381,8 +381,8 @@ linker script (`ziskbuild/zisk_linker_script.ld`):
 
 | Region | Address |
 |--------|---------|
-| Free input | `0x4000_0000` |
-| ROM (program) | `0x8000_0000` (len `0x0800_0000`) |
+| Free input | `0x1000_0000` (len `0x8000_0000`) |
+| ROM (program) | `0x9000_0000` (len `0x0800_0000`) |
 | RAM base / stack | `0xa000_0000` (stack 4 MB) |
 | System reserved | `0xa040_0000` |
 | Public output | `0xa041_0000` |
@@ -402,26 +402,29 @@ of at least 4 kB immediately below the stack bottom, contiguous with no gap.
 **ZisK.** Both guard regions are satisfied by the address map, and the invariant is
 now enforced rather than incidental.
 
-**Null-pointer trap.** Nothing below `ROM_ADDR = 0x8000_0000` is mapped, so the whole
-of `0x0000`–`0x0FFF` is unmapped and any access fails the `Mem` section bounds check
-and aborts.
+**Null-pointer trap.** The lowest data area is the input window at
+`INPUT_ADDR = 0x1000_0000`. Below it there is only the BIOS ROM (`0x1000`–`0x0fff_ffff`),
+which holds instructions and is never a data area: no `Mem` or `RomData` section covers
+any address below `INPUT_ADDR`. So a load or store anywhere in `0x0000`–`0x0FFF` fails the
+`Mem` section bounds check and aborts, and since no instruction lives there either, a jump
+into it aborts too.
 
 **Stack guard.** The stack bottom is `STACK_ADDR = RAM_ADDR = 0xa000_0000` — the
 lowest mapped RAM address — with the stack growing down from `0xa040_0000`. ROM ends
-at `0x87ff_ffff`, so the span `0x8800_0000`–`0x9fff_ffff` (384 MB) is unmapped. That
+at `0x97ff_ffff`, so the span `0x9800_0000`–`0x9fff_ffff` (128 MB) is unmapped. That
 region therefore begins at the byte immediately below the stack bottom, which is
 exactly the standard's "contiguous and adjacent to the bottom of the stack with no
 gap between them", and it is far larger than the required 4 kB.
 
 `core/src/mem.rs` names the region — `STACK_GUARD_ADDR` = `ROM_ADDR + ROM_SIZE`,
-`STACK_GUARD_SIZE` = `STACK_ADDR - STACK_GUARD_ADDR` (384 MB) — with
+`STACK_GUARD_SIZE` = `STACK_ADDR - STACK_GUARD_ADDR` (128 MB) — with
 `STACK_GUARD_MIN_SIZE` recording the 4 kB the standard demands. The assembly
 emulator's `GUARD_ADDR`/`GUARD_SIZE` are the same span, derived the same way, so the
 two cannot drift.
 
 The invariant is enforced at compile time: the stack must start at `RAM_ADDR`, the
 guard must be adjacent to it, at least `STACK_GUARD_MIN_SIZE`, and the input window
-must stay below it. Each failure mode was checked by making the change and observing
+must stay below the program ROM, which ends where the guard starts. Each failure mode was checked by making the change and observing
 the build stop — growing `ROM_SIZE` until under 4 kB remains, growing it past
 `RAM_ADDR` (which underflows the size computation and fails const evaluation),
 widening `MAX_INPUT_SIZE`, and moving `STACK_ADDR` off the RAM base.
@@ -440,7 +443,7 @@ and if anything landed in the span, a guest access into the guard would silently
 *succeed*.
 
 `server_setup()` (`emulator-asm/src/server.c`) therefore reserves the whole span
-`GUARD_ADDR`..`RAM_ADDR` (0x8800_0000–0x9fff_ffff, 384 MB) as
+`GUARD_ADDR`..`RAM_ADDR` (0x9800_0000–0x9fff_ffff, 128 MB) as
 `PROT_NONE | MAP_FIXED | MAP_NORESERVE`: the range is claimed so nothing else can be
 placed in it, any access faults, and `MAP_NORESERVE` keeps it off the commit charge
 (a single VMA, no backing pages). Measured before and after in a standalone harness:

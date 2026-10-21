@@ -3532,9 +3532,10 @@ impl Stats {
             // In-place operands read directly from `ctx.b`.
             ZiskOp::Keccak => &[Direct { words: 25 }][..],
             ZiskOp::Poseidon1 | ZiskOp::Poseidon2 => &[Direct { words: 16 }][..],
-            ZiskOp::Secp256k1Dbl | ZiskOp::Secp256r1Dbl | ZiskOp::Bn254CurveDbl => {
-                &[Direct { words: 8 }][..]
-            }
+            ZiskOp::Secp256k1Dbl
+            | ZiskOp::Secp256r1Dbl
+            | ZiskOp::Bn254CurveDbl
+            | ZiskOp::Poseidon2KoalaBear => &[Direct { words: 8 }][..],
             ZiskOp::Bls12_381CurveDbl => &[Direct { words: 12 }][..],
             // Indirected operands: `ctx.b` holds pointers to the operand buffers.
             ZiskOp::Sha256 => {

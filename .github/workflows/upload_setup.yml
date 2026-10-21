@@ -132,8 +132,8 @@ jobs:
           echo "include_dylib=$INCLUDE_DYLIB" >> "$GITHUB_OUTPUT"
           echo "include_dylib: $INCLUDE_DYLIB"
 
-          # SNARK setup: only when asked for on workflow_dispatch.
-          # Only the Poseidon1 round builds it — blake3 has no SNARK support.
+          # SNARK setup: only when asked for on workflow_dispatch. Both rounds build it,
+          # each with the pilfflonk SNARK of its hash mode (zisk-provingkey-pilfflonk-<VER>[-blake3]).
           INCLUDE_SNARK="${{ inputs.include_snark && '1' || '0' }}"
           echo "include_snark=$INCLUDE_SNARK" >> "$GITHUB_OUTPUT"
           echo "include_snark: $INCLUDE_SNARK"
@@ -213,8 +213,9 @@ jobs:
         if: ${{ steps.resolve.outputs.build_blake3 == '1' }}
         env:
           HASH_MODE: blake3
-          INCLUDE_SNARK: "0"
+          INCLUDE_SNARK: ${{ steps.resolve.outputs.include_snark }}
           DYLIB_INPUT_FILES: ${{ steps.resolve.outputs.include_dylib }}
+          PTAU_PATH: /home/ziskuser/output/powersOfTau28_hez_final_24.ptau
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
@@ -222,6 +223,7 @@ jobs:
             -e HASH_MODE="$HASH_MODE" \
             -e INCLUDE_SNARK="$INCLUDE_SNARK" \
             -e DYLIB_INPUT_FILES="$DYLIB_INPUT_FILES" \
+            -e PTAU_PATH="$PTAU_PATH" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./build_setup.sh

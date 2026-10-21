@@ -3,7 +3,7 @@ OUTPUT_ARCH("riscv")
 ENTRY(_start)
 
 MEMORY {
-  rom   (xa) : ORIGIN = 0x80000000, LENGTH = 0x08000000
+  rom   (xa) : ORIGIN = 0x90000000, LENGTH = 0x08000000
   ram   (wxa) : ORIGIN = 0xa0000000, LENGTH = 0x20000000
 }
 
@@ -28,16 +28,16 @@ _zisklib_ram_data_size       = 0x30000;   /* 192 KB reserved (ZisK library scrat
 
 /*
 
-0x4000_0000  ┌────────────────────┐← free input entry
+0x1000_0000  ┌────────────────────┐← free input entry
              │    input data      │
-             │       (1GB)        │
-0x7FFF_FFFF  └────────────────────┘
-0x8000_0000  ┌────────────────────┐
-             │     ROM data       │             
+             │       (2GB)        │
+0x8FFF_FFFF  └────────────────────┘
+0x9000_0000  ┌────────────────────┐
+             │     ROM data       │
              │      (128MB)       │
-0x87FF_FFFF  └────────────────────┘
+0x97FF_FFFF  └────────────────────┘
                        ↑
-                    384 MB
+                    128 MB (stack guard)
                        ↓
 0xA000_0000  ┌────────────────────┐← _init_stack_bottom
              │                    │
