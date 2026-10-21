@@ -4,7 +4,8 @@
 //!
 //! Run: `cargo run --release -p recurser-l2-host`
 //!
-//! Set `ZISK_L2_PLONK=1` to also wrap the final folded proof into a PLONK/SNARK
+//! Set `ZISK_L2_PLONK=1` (a PLONK SNARK proving key) or `ZISK_L2_PILFFLONK=1` (a
+//! pilfflonk one, the default) to also wrap the final folded proof into that SNARK
 //! and verify it (heavy — needs the `provingKeySnark` artifacts).
 
 use std::error::Error;
@@ -14,7 +15,7 @@ use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use recurser_l2_common::{segment, BlocksInfoStruct};
 use zisk_sdk::{
     load_aggregation_program, load_program, AggregationProgram, GuestProgram, ProofKind,
-    ProverClient, ZiskStdin,
+    ProverClient, SnarkProtocol, ZiskStdin,
 };
 
 static LEAF: GuestProgram = load_program!("recurser_l2_guest");
@@ -43,11 +44,17 @@ async fn prove_segment(
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // PLONK must be enabled at client-build time, so opt in up front.
-    let plonk = std::env::var_os("ZISK_L2_PLONK").is_some();
+    // The final SNARK must be enabled at client-build time, so opt in up front.
+    let snark = if std::env::var_os("ZISK_L2_PLONK").is_some() {
+        Some(SnarkProtocol::Plonk)
+    } else if std::env::var_os("ZISK_L2_PILFFLONK").is_some() {
+        Some(SnarkProtocol::Pilfflonk)
+    } else {
+        None
+    };
     let mut builder = ProverClient::embedded();
-    if plonk {
-        builder = builder.plonk();
+    if let Some(protocol) = snark {
+        builder = builder.snark(protocol);
     }
     #[cfg(feature = "gpu")]
     {
@@ -106,14 +113,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     assert!(rejected.is_err(), "folding a non-allow-listed leaf must be rejected");
     println!("Foreign programVK correctly rejected by the allow-list.");
 
-    // Optional (ZISK_L2_PLONK=1): wrap the folded proof into a PLONK/SNARK.
-    if plonk {
-        timer_start_info!(WRAP_PLONK);
-        let plonk_proof =
+    // Optional (ZISK_L2_PLONK=1 or ZISK_L2_PILFFLONK=1): wrap the folded proof into that SNARK.
+    if let Some(protocol) = snark {
+        timer_start_info!(WRAP_SNARK);
+        let snark_proof =
             client.wrap_proof(&abc, ProofKind::Plonk).run()?.await?.get_proof().clone();
-        timer_stop_and_log_info!(WRAP_PLONK);
-        plonk_proof.verify()?;
-        println!("PLONK proof verified.");
+        timer_stop_and_log_info!(WRAP_SNARK);
+        snark_proof.verify()?;
+        println!("{protocol:?} proof verified.");
     }
 
     Ok(())
