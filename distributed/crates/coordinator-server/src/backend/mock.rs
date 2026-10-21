@@ -780,6 +780,7 @@ mod tests {
                 random_seed: None,
                 proof_timeout: None,
                 proof_dest: DomainProofKind::Stark,
+                snark_protocol: None,
             }))
             .await
             .unwrap()
@@ -859,6 +860,7 @@ mod tests {
             .submit_job(DomainJobKind::Wrap(DomainWrapRequest {
                 proof: src_proof,
                 proof_dest: DomainProofKind::Plonk,
+                snark_protocol: None,
                 wrap_timeout: None,
             }))
             .await

@@ -425,6 +425,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     compute_capacity: Some(self.worker_config.worker.compute_capacity.into()),
                     last_known_job_id: Some(job.lock().await.job_id.as_string()),
                     aggregation_arity: self.worker.aggregation_arity() as u32,
+                    snark_protocol: SnarkProtocol::from(self.worker.snark_protocol()) as i32,
                 })),
             }
         } else {
@@ -433,6 +434,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     worker_id: self.worker_config.worker.worker_id.as_string(),
                     compute_capacity: Some(self.worker_config.worker.compute_capacity.into()),
                     aggregation_arity: self.worker.aggregation_arity() as u32,
+                    snark_protocol: SnarkProtocol::from(self.worker.snark_protocol()) as i32,
                     previous_exit: self
                         .worker_config
                         .telemetry

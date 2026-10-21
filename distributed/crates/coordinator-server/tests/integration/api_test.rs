@@ -208,6 +208,7 @@ async fn prove_job_wait_result_completes() {
                     random_seed: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
+                    snark_protocol: None,
                 })),
             }),
         })
@@ -253,6 +254,7 @@ async fn prove_job_watch_stream_receives_all_events() {
                     random_seed: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
+                    snark_protocol: None,
                 })),
             }),
         })
@@ -382,6 +384,7 @@ async fn wrap_job_completes() {
                     random_seed: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
+                    snark_protocol: None,
                 })),
             }),
         })
@@ -419,6 +422,7 @@ async fn wrap_job_completes() {
                     proof: Some(stark_proof),
                     proof_dest: ProofKind::Plonk as i32,
                     wrap_timeout: None,
+                    snark_protocol: None,
                 })),
             }),
         })
@@ -466,6 +470,7 @@ async fn cancel_running_job_returns_true() {
                     random_seed: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
+                    snark_protocol: None,
                 })),
             }),
         })
@@ -578,6 +583,7 @@ async fn wait_result_timeout_returns_current_status() {
                     random_seed: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
+                    snark_protocol: None,
                 })),
             }),
         })
@@ -614,6 +620,7 @@ async fn push_input_multi_chunk_completes() {
                     random_seed: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
+                    snark_protocol: None,
                 })),
             }),
         })
@@ -722,6 +729,7 @@ async fn push_hints_input_chunks_are_stored() {
                     random_seed: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
+                    snark_protocol: None,
                 })),
             }),
         })

@@ -180,6 +180,33 @@ impl TryFrom<i32> for DomainProofKind {
     }
 }
 
+impl From<zisk_common::SnarkProtocol> for SnarkProtocol {
+    fn from(protocol: zisk_common::SnarkProtocol) -> Self {
+        match protocol {
+            zisk_common::SnarkProtocol::Plonk => SnarkProtocol::Plonk,
+            zisk_common::SnarkProtocol::Pilfflonk => SnarkProtocol::Pilfflonk,
+        }
+    }
+}
+
+/// Encodes an optional SNARK protocol for the wire.
+fn snark_protocol_to_wire(protocol: Option<zisk_common::SnarkProtocol>) -> Option<i32> {
+    protocol.map(|protocol| SnarkProtocol::from(protocol).into())
+}
+
+/// Decodes an optional wire SNARK protocol: unset or unspecified asks for any, and an unknown one
+/// is rejected rather than taken for any.
+fn snark_protocol_from_wire(
+    protocol: Option<i32>,
+) -> std::result::Result<Option<zisk_common::SnarkProtocol>, String> {
+    match protocol.map(SnarkProtocol::try_from) {
+        None | Some(Ok(SnarkProtocol::Unspecified)) => Ok(None),
+        Some(Ok(SnarkProtocol::Plonk)) => Ok(Some(zisk_common::SnarkProtocol::Plonk)),
+        Some(Ok(SnarkProtocol::Pilfflonk)) => Ok(Some(zisk_common::SnarkProtocol::Pilfflonk)),
+        Some(Err(unknown)) => Err(format!("invalid snark_protocol {}", unknown.0)),
+    }
+}
+
 impl From<DomainJobPhase> for JobPhase {
     fn from(phase: DomainJobPhase) -> Self {
         match phase {
@@ -302,8 +329,14 @@ impl TryFrom<JobKind> for DomainJobKind {
                 .map_err(|e| format!("invalid wrap.proof: {e}"))?;
                 let proof_dest = DomainProofKind::try_from(r.proof_dest)
                     .map_err(|_| "invalid proof_dest".to_string())?;
+                let snark_protocol = snark_protocol_from_wire(r.snark_protocol)?;
                 let wrap_timeout = r.wrap_timeout.and_then(ts_to_datetime);
-                Ok(DomainJobKind::Wrap(DomainWrapRequest { proof, proof_dest, wrap_timeout }))
+                Ok(DomainJobKind::Wrap(DomainWrapRequest {
+                    proof,
+                    proof_dest,
+                    snark_protocol,
+                    wrap_timeout,
+                }))
             }
             job_kind::Kind::Execute(r) => Ok(DomainJobKind::Execute(r.try_into()?)),
             job_kind::Kind::SetupAggregationProgram(r) => {
@@ -355,6 +388,7 @@ impl From<DomainJobKind> for JobKind {
                 proof: Some(r.proof.into()),
                 proof_dest: ProofKind::from(r.proof_dest).into(),
                 wrap_timeout: r.wrap_timeout.map(datetime_to_ts),
+                snark_protocol: snark_protocol_to_wire(r.snark_protocol),
             }),
             DomainJobKind::Execute(r) => Kind::Execute(r.into()),
             DomainJobKind::SetupAggregationProgram(r) => {
@@ -394,6 +428,7 @@ impl From<DomainProveRequest> for ProveRequest {
             proof_dest: ProofKind::from(r.proof_dest).into(),
             hints: r.hints.map(InputKind::from),
             random_seed: random_seed_to_wire(r.random_seed),
+            snark_protocol: snark_protocol_to_wire(r.snark_protocol),
         }
     }
 }
@@ -407,6 +442,7 @@ impl TryFrom<ProveRequest> for DomainProveRequest {
         let proof_dest = DomainProofKind::try_from(r.proof_dest).unwrap_or(DomainProofKind::Stark);
         let hints = r.hints.map(|h| h.try_into()).transpose()?;
         let seed = random_seed_from_wire(r.random_seed)?;
+        let snark_protocol = snark_protocol_from_wire(r.snark_protocol)?;
         Ok(DomainProveRequest {
             hash_id: r.hash_id,
             input,
@@ -414,6 +450,7 @@ impl TryFrom<ProveRequest> for DomainProveRequest {
             random_seed: seed,
             proof_timeout,
             proof_dest,
+            snark_protocol,
         })
     }
 }
@@ -868,7 +905,70 @@ mod tests {
             random_seed: seed,
             proof_timeout: None,
             proof_dest: DomainProofKind::Stark,
+            snark_protocol: None,
         }
+    }
+
+    const SNARK_PROTOCOLS: [Option<zisk_common::SnarkProtocol>; 3] = [
+        None,
+        Some(zisk_common::SnarkProtocol::Plonk),
+        Some(zisk_common::SnarkProtocol::Pilfflonk),
+    ];
+
+    #[test]
+    fn prove_request_snark_protocol_round_trips() {
+        for protocol in SNARK_PROTOCOLS {
+            let request = DomainProveRequest {
+                proof_dest: DomainProofKind::Plonk,
+                snark_protocol: protocol,
+                ..prove_request(None)
+            };
+            let wire = ProveRequest::from(request);
+            assert_eq!(DomainProveRequest::try_from(wire).unwrap().snark_protocol, protocol);
+        }
+    }
+
+    #[test]
+    fn wrap_request_snark_protocol_round_trips() {
+        for protocol in SNARK_PROTOCOLS {
+            let request = DomainWrapRequest {
+                proof: DomainProof {
+                    proof_id: Uuid::nil(),
+                    hash_id: String::new(),
+                    verification_key: vec![],
+                    proof_kind: DomainProofKind::Plonk,
+                    data: vec![1, 2, 3],
+                    public_inputs: vec![],
+                    started_at: None,
+                    completed_at: None,
+                    random_seed: None,
+                },
+                proof_dest: DomainProofKind::Plonk,
+                snark_protocol: protocol,
+                wrap_timeout: None,
+            };
+            let wire = JobKind::from(DomainJobKind::Wrap(request));
+            match DomainJobKind::try_from(wire).unwrap() {
+                DomainJobKind::Wrap(decoded) => assert_eq!(decoded.snark_protocol, protocol),
+                other => panic!("expected a wrap request, got {other:?}"),
+            }
+        }
+    }
+
+    /// A client older than the field sends none, and 0 is unspecified: both ask for any protocol.
+    #[test]
+    fn an_unspecified_snark_protocol_asks_for_any() {
+        let mut wire = ProveRequest::from(prove_request(None));
+        assert_eq!(wire.snark_protocol, None);
+        wire.snark_protocol = Some(SnarkProtocol::Unspecified.into());
+        assert_eq!(DomainProveRequest::try_from(wire).unwrap().snark_protocol, None);
+    }
+
+    #[test]
+    fn an_unknown_snark_protocol_is_rejected() {
+        let mut wire = ProveRequest::from(prove_request(None));
+        wire.snark_protocol = Some(99);
+        assert!(DomainProveRequest::try_from(wire).is_err());
     }
 
     #[test]

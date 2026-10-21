@@ -1,4 +1,4 @@
-use super::{hints_to_input_kind, stdin_to_input_kind, RemoteClient};
+use super::{hints_to_input_kind, requested_snark, stdin_to_input_kind, RemoteClient};
 use crate::{
     hints::HintsSource,
     input_source::InputSource,
@@ -97,6 +97,7 @@ impl RemoteClient {
             random_seed: seed,
             proof_timeout,
             proof_dest,
+            snark_protocol: requested_snark(self.snark, proof_kind),
         });
 
         let remote_job = match metadata {

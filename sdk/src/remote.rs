@@ -65,8 +65,9 @@ impl<Out> RemoteClientBuilder<Out> {
     }
 
     /// Ask for final SNARK proofs of `protocol`, wrapped with [`ProofKind::Plonk`]. The workers'
-    /// SNARK proving key sets the protocol up, which this client cannot see: a final SNARK proof
-    /// of another protocol fails the job's result. Unset, the proof is the workers' SNARK.
+    /// SNARK proving key sets the protocol up: the coordinator refuses a job when theirs is of
+    /// another, and a final SNARK proof of another still fails the job's result. Unset, the proof
+    /// is the workers' SNARK.
     #[must_use]
     pub fn snark(mut self, protocol: SnarkProtocol) -> Self {
         self.snark = Some(protocol);
@@ -233,6 +234,15 @@ impl Client for RemoteClient {
     }
 }
 
+/// The protocol a job of `proof_kind` asks the coordinator for, of the client's `snark`: a final
+/// SNARK's only.
+pub(crate) fn requested_snark(
+    snark: Option<SnarkProtocol>,
+    proof_kind: ProofKind,
+) -> Option<SnarkProtocol> {
+    snark.filter(|_| proof_kind == ProofKind::Plonk)
+}
+
 impl RemoteClient {
     /// On completion, fail a final SNARK proof that is not of the protocol this client asks for.
     pub(crate) fn check_snark(
@@ -240,7 +250,7 @@ impl RemoteClient {
         handle: &mut JobHandle<crate::prove::ProveResult>,
         proof_kind: ProofKind,
     ) {
-        let Some(protocol) = self.snark.filter(|_| proof_kind == ProofKind::Plonk) else {
+        let Some(protocol) = requested_snark(self.snark, proof_kind) else {
             return;
         };
         handle.set_pre_process(move |status: &TerminalStatus| match status {
@@ -419,6 +429,21 @@ pub(crate) fn hints_to_input_kind(
             }
             source.close().map_err(SdkError::backend)?;
             Ok((Some(DomainInputKind::try_inline(data).map_err(SdkError::backend)?), None))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{requested_snark, ProofKind, SnarkProtocol};
+
+    #[test]
+    fn a_final_snark_job_asks_for_the_client_protocol() {
+        let pilfflonk = Some(SnarkProtocol::Pilfflonk);
+        assert_eq!(requested_snark(pilfflonk, ProofKind::Plonk), pilfflonk);
+        assert_eq!(requested_snark(None, ProofKind::Plonk), None);
+        for stark in [ProofKind::VadcopFinal, ProofKind::VadcopFinalMinimal] {
+            assert_eq!(requested_snark(pilfflonk, stark), None);
         }
     }
 }
