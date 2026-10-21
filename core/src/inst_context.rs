@@ -130,6 +130,12 @@ pub struct InstContext {
     /// this context, i.e. as long as the execution it belongs to
     pub keccakf_cache: KeccakfCache,
 
+    /// Output state and m of the last blake2b round handed to the chain, valid once cached in the
+    /// current minimal-trace chunk, and the step of the last blake2b round
+    pub blake2b_chain: [u64; 32],
+    pub blake2b_chain_cached: bool,
+    pub blake2b_step: u64,
+
     /// DataExt 64 bytes size. With this information it is possible to specify which variable part of the minimal trace
     /// is associated with the current instruction. Used by DMA precompile.
     pub data_ext_len: usize,
@@ -170,6 +176,9 @@ impl InstContext {
             precompiled: PrecompiledInstContext::default(),
             fcall: FcallInstContext::default(),
             keccakf_cache: KeccakfCache::default(),
+            blake2b_chain: [0; 32],
+            blake2b_chain_cached: false,
+            blake2b_step: 0,
             data_ext_len: 0,
             extended_arg: 0,
             stats_hint: 0,

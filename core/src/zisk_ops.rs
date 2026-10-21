@@ -22,6 +22,7 @@ use crate::{
     MAX_INPUT_SIZE, POSEIDON2_KOALABEAR_COST, POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST,
     SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR, TWISTED_EDWARDS_COST,
 };
+use crate::{BLAKE2B_GAP_SHIFT, BLAKE2B_RD_CHAIN, BLAKE2B_WR_CHAIN};
 use paste::paste;
 use proofman_fields::{
     poseidon1_hash, poseidon2_hash, Goldilocks, Poseidon1_16, Poseidon2_16, PrimeField64,
@@ -995,11 +996,36 @@ pub fn opc_blake2b(ctx: &mut InstContext) {
     const WORDS: usize = 1 + 2 * 16; // index (static argument), state[16] (at a), input[16] (at b)
     let mut data = [0u64; WORDS];
 
-    // The round index travels as the static argument of the instruction
+    // The round index and chain mode travel as the static argument of the instruction
     let index = ctx.extended_arg as u64;
-    precompiled_load_abx_data(ctx, &[index], 16, 16, &mut data, "blake2b");
+    let rd_chain = index & BLAKE2B_RD_CHAIN != 0;
+    let wr_chain = index & BLAKE2B_WR_CHAIN != 0;
+    let replay = ctx.emulation_mode == EmulationMode::ConsumeMemReads;
+    let gap = index >> BLAKE2B_GAP_SHIFT;
+    if rd_chain && !replay && ctx.step.wrapping_sub(gap) != ctx.blake2b_step {
+        panic!(
+            "[blake2b] chained round without a blake2b round {gap} steps back at PC:0x{:08X} STEP:{}",
+            ctx.pc,
+            ctx.step
+        );
+    }
+    ctx.blake2b_step = ctx.step;
 
-    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+    // A chained round logs its input only if the chunk does not have it yet (see min_trace_words)
+    let cached = rd_chain && ctx.blake2b_chain_cached;
+    if cached && replay {
+        data[0] = index;
+        data[1..].copy_from_slice(&ctx.blake2b_chain);
+        ctx.precompiled.input_data.clear();
+        ctx.precompiled.input_data.extend_from_slice(&data);
+    } else {
+        precompiled_load_abx_data(ctx, &[index], 16, 16, &mut data, "blake2b");
+        if cached {
+            ctx.precompiled.input_data.clear();
+        }
+    }
+
+    if !replay || wr_chain {
         // Get the state and input slices (data[0] is the index)
         let (_, rest) = data.split_at_mut(1);
         let (state_slice, input_slice) = rest.split_at_mut(16);
@@ -1009,9 +1035,17 @@ pub fn opc_blake2b(ctx: &mut InstContext) {
         // Compute the blake2br output with the fastest implementation available
         blake2br(index, state, input);
 
+        if wr_chain {
+            ctx.blake2b_chain[..16].copy_from_slice(state);
+            ctx.blake2b_chain[16..].copy_from_slice(input);
+            ctx.blake2b_chain_cached = true;
+        }
+
         // the new state overwrites the old one (address a)
-        for (i, d) in state.iter().enumerate() {
-            ctx.mem.write(ctx.a + (8 * i as u64), *d, 8);
+        if !replay {
+            for (i, d) in state.iter().enumerate() {
+                ctx.mem.write(ctx.a + (8 * i as u64), *d, 8);
+            }
         }
     }
 
@@ -1113,8 +1147,10 @@ pub fn ops_blake2s(ctx: &InstContext, stats: &mut dyn OpStats) {
 #[inline(always)]
 pub fn ops_blake2b(ctx: &InstContext, stats: &mut dyn OpStats) {
     // State (at a) is read and written back (16 words), input (at b) is read only (16 words); the
-    // round index is a static argument and touches no memory.
-    precompiled_stats_ab_data(ctx, stats, 16, 16, 16);
+    // round index is a static argument and touches no memory, nor does a chained state.
+    let rd = if ctx.extended_arg as u64 & BLAKE2B_RD_CHAIN != 0 { 0 } else { 16 };
+    let wr = if ctx.extended_arg as u64 & BLAKE2B_WR_CHAIN != 0 { 0 } else { 16 };
+    precompiled_stats_ab_data(ctx, stats, rd, rd, wr);
 }
 
 #[allow(clippy::too_many_arguments)]

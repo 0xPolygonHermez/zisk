@@ -158,7 +158,7 @@ airgroup Zisk {
     virtual KeccakfChiTable(KECCAKF_CHI_TABLE_SIZE);
     virtual KeccakfXor5Table(KECCAKF_XOR5_TABLE_SIZE);
 
-    Sha256f(N: 2**18);
+    Sha256f(N: 2**19);
 
     Poseidon(N: 2**17);
     Poseidon2NonNative(N: 2**20, OP: OP_POSEIDON2_KOALABEAR, P: KB_P, n: 16, SBOX_DEG: 3, RF: 8, RP: 20,
@@ -166,7 +166,7 @@ airgroup Zisk {
                        IO_SCALE: KB_IO_SCALE)
         alias Poseidon2KoalaBear;
 
-    Blake2br(N: 2**18);
+    Blake2br(N: 2**20);
     Blake3f(N: 2**20, LANES: 2);
     Blake2s(N: 2**20);
     virtual BlakeTable(BLAKE_TABLE_SIZE);

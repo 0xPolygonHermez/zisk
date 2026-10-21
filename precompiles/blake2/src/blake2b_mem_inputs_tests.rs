@@ -77,3 +77,38 @@ fn blake2b_mem_inputs_take_the_operands_from_a_and_b_and_the_index_from_the_payl
     assert_eq!((decoded.index, decoded.step_main), (index, step));
     assert_eq!((decoded.state, decoded.input), (state, input));
 }
+
+#[test]
+fn blake2b_mem_inputs_skip_the_chained_state() {
+    use zisk_core::{BLAKE2B_RD_CHAIN, BLAKE2B_WR_CHAIN};
+    let (a, b, step) = (0xA001_0000u64, 0xA002_0080u64, 77u64);
+    // (index, reads, writes): first round, middle round, last round
+    for (index, reads, writes) in [
+        (BLAKE2B_WR_CHAIN, 32, 0),
+        (3 | BLAKE2B_RD_CHAIN | BLAKE2B_WR_CHAIN | (1 << 6), 0, 0),
+        (4 | BLAKE2B_RD_CHAIN | (1 << 6), 0, 16),
+    ] {
+        let mut data =
+            vec![ZiskOp::BLAKE2B as u64, ZiskOperationType::Blake2b as u64, a, b, step, index];
+        data.extend_from_slice(&[1u64; 32]);
+        let mut recorder = Recorder::default();
+        <Blake2bSM<Goldilocks> as PrecompileMemInputs>::generate(
+            b as u32,
+            step,
+            &data,
+            false,
+            &mut recorder,
+        );
+        let mut expected = Recorder::default();
+        for i in 0..reads {
+            let addr = if i < 16 { a + 8 * i } else { b + 8 * (i - 16) };
+            MemBusHelpers::mem_aligned_read(addr as u32, step, 1, &mut expected);
+        }
+        let mut state = [1u64; 16];
+        blake2br(index, &mut state, &[1u64; 16]);
+        for (i, value) in state.iter().enumerate().take(writes) {
+            MemBusHelpers::mem_aligned_write(a as u32 + 8 * i as u32, step, *value, &mut expected);
+        }
+        assert_eq!(recorder.rows, expected.rows, "index {index:#x}");
+    }
+}
