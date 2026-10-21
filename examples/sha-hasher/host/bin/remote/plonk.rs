@@ -14,7 +14,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Create a `ProverClient` method.
     println!("Building prover client with SNARK support...");
-    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
+    // The workers' SNARK proving key must be set up for PLONK: the client checks the proof.
+    let client = ProverClient::remote("http://127.0.0.1:7000").plonk().build()?;
 
     println!("Setting up program and generating verification key...");
     client.upload(&ELF_SHA_HASHER).run()?;

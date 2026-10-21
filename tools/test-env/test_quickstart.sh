@@ -20,7 +20,7 @@ GUEST_INPUT="samples/example-input.bin"
 EXPECTED_GUEST_OUTPUT="sha256('Hello World!') => 0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069"
 EXPECTED_PROOF_SAVED="INFO: Proof saved to proof.bin"
 EXPECTED_STARK_VERIFIED="STARK proof was verified"
-EXPECTED_PLONK_VERIFIED="PILFFLONK proof was verified"
+EXPECTED_PILFFLONK_VERIFIED="PILFFLONK proof was verified"
 EXPECTED_SDK_OUTPUT="sha256('Hello Zisk!') => 0xd3e33ed651e7c8d8d4e30ce9a3e4a40e9f089f22435e279a84ea5f8ae234eead"
 
 # check_output: Fail when the expected fixed string is not present in a log file
@@ -45,7 +45,7 @@ check_output() {
 #
 # Arguments:
 #   $1 (label)        — Backend combination label, used in the step title and log names
-#   $2 (prove_flags)  — Extra flags for `cargo-zisk prove` (e.g. "--asm --plonk")
+#   $2 (prove_flags)  — Extra flags for `cargo-zisk prove` (e.g. "--asm --pilfflonk")
 #   $3 (verified_str) — Verification line expected from `cargo-zisk verify`
 prove_and_verify() {
     local label="$1"
@@ -100,9 +100,9 @@ run_combinations() {
     if [[ ${has_asm} -eq 1 ]]; then
         prove_and_verify "${label} asm" "--asm ${gpu_flag}" "${EXPECTED_STARK_VERIFIED}" || return 1
     fi
-    prove_and_verify "${label} emulator plonk" "--plonk ${gpu_flag}" "${EXPECTED_PLONK_VERIFIED}" || return 1
+    prove_and_verify "${label} emulator pilfflonk" "--pilfflonk ${gpu_flag}" "${EXPECTED_PILFFLONK_VERIFIED}" || return 1
     if [[ ${has_asm} -eq 1 ]]; then
-        prove_and_verify "${label} asm plonk" "--asm --plonk ${gpu_flag}" "${EXPECTED_PLONK_VERIFIED}" || return 1
+        prove_and_verify "${label} asm pilfflonk" "--asm --pilfflonk ${gpu_flag}" "${EXPECTED_PILFFLONK_VERIFIED}" || return 1
     fi
 
     cd "${EXAMPLE_DIR}/host" || return 1
@@ -123,7 +123,7 @@ main() {
     load_env ZISK_REPO_DIR ONLY_CPU ONLY_GPU || return 1
 
     # The ASM backend is Linux-only, so its three combinations (prove, prove with
-    # PLONK and run via the SDK) are skipped on macOS.
+    # pilfflonk and run via the SDK) are skipped on macOS.
     local has_asm=1
     if [[ "${PLATFORM}" == "darwin" ]]; then
         has_asm=0
