@@ -8116,6 +8116,7 @@ dependencies = [
  "zisk-common",
  "zisk-core",
  "zisk-sm-rom",
+ "zisk-transpiler-common",
  "ziskemu",
 ]
 

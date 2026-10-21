@@ -53,8 +53,14 @@ check:
 	@mkdir -p build
 	$(SAIL) $(SAILFLAGS) $(MODEL)
 
-## Generate Lean definitions into build/lean/out.
+## Generate Lean definitions into build/lean/out. Needs Sail 0.19: lean/ and
+## the proofs build against its output, which embeds Sail's Lean runtime, on
+## lean/lean-toolchain; Sail 0.20 emits a dependency on lean-sail and Lean
+## v4.29 instead. ../sail-zisk is where the model moves on.
 lean:
+	@case "$$($(SAIL) --version)" in "Sail 0.19"*) ;; *) \
+	  echo "make lean here needs Sail 0.19 (found $$($(SAIL) --version | cut -d' ' -f2)): the proofs in lean/" >&2; \
+	  echo "build against its output, which build/lean/out already holds. See ../sail-zisk." >&2; exit 1;; esac
 	@mkdir -p build/lean
 	$(SAIL) $(SAILFLAGS) --lean --lean-output-dir build/lean --lean-force-output $(MODEL)
 

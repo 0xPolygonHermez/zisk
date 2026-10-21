@@ -194,7 +194,13 @@ reached through the ROM lookup. See
 
 ## Building
 
-Needs Sail 0.19+ (`opam install sail`). This section is the per-target
+Needs Sail 0.19+ (`opam install sail`), but `make lean` needs Sail 0.19
+exactly: `lean/` and its proofs build against 0.19's Lean output, which embeds
+Sail's Lean runtime, on the toolchain `lean/lean-toolchain` pins. Sail 0.20
+emits a dependency on the `lean-sail` package and Lean v4.29 instead, so with
+it installed the Makefile refuses to regenerate `build/lean/out` and the
+proofs keep building against the output already there. The model moves on in
+[`../sail-zisk`](../sail-zisk/README.md), on Sail 0.20.3. This section is the per-target
 reference; for the whole path from a fresh clone, with the output each command
 produces, see [Verifying ZisK from a fresh clone](#verifying-zisk-from-a-fresh-clone).
 

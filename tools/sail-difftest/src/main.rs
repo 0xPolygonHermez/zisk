@@ -1,6 +1,7 @@
 //! Prepare a step-by-step differential test of the Sail model against ziskemu.
 //!
-//! From one ZisK program, `prepare` writes everything the Sail side needs and
+//! From one ZisK program — ZisK assembly, or a RISC-V ELF transpiled as
+//! ziskemu transpiles it — `prepare` writes everything the Sail side needs and
 //! the trace it must reproduce:
 //!
 //! - `rom.sail`, the program as a `rom_fetch` function, for `make ROM=…`;
@@ -11,6 +12,10 @@
 //!
 //! The ROM is built and the memory laid out exactly as `ziskemu -z` does, by
 //! the same code: `ziskasm::assemble_files` and `Emu::create_emu_context`.
+//!
+//! And `ops` writes test vectors for every operation that is a pure function
+//! of `a` and `b`: `<mnemonic> <a> <b> <c> <flag>`, with `(c, flag)` what
+//! `ZiskOp::call_ab` returns, the emulator's own op functions.
 
 use std::{
     collections::BTreeSet,
@@ -24,8 +29,8 @@ use clap::{Parser, Subcommand};
 use proofman_fields::{Goldilocks, PrimeField64};
 use zisk_common::EmuTrace;
 use zisk_core::{
-    ZiskInst, ZiskRom, INPUT_ADDR, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND,
-    STORE_MEM, STORE_NONE, STORE_REG,
+    zisk_ops::ZiskOp, ZiskInst, ZiskRom, INPUT_ADDR, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG,
+    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 use zisk_sm_rom::CustomRom;
 use ziskemu::{Emu, EmuOptions};
@@ -42,8 +47,11 @@ enum Command {
     /// Write rom.sail, the initial memory and the reference trace into a directory.
     Prepare {
         /// A `.zisk` file or a directory of them, as `ziskemu -z` takes.
-        #[arg(short = 'z', long)]
-        zisk: PathBuf,
+        #[arg(short = 'z', long, conflicts_with = "elf", required_unless_present = "elf")]
+        zisk: Option<PathBuf>,
+        /// A RISC-V ELF, transpiled as `ziskemu -e` transpiles it.
+        #[arg(short = 'e', long)]
+        elf: Option<PathBuf>,
         /// The program input, as `ziskemu -i` takes.
         #[arg(short, long)]
         input: Option<PathBuf>,
@@ -54,19 +62,104 @@ enum Command {
         #[arg(long, default_value_t = 10_000_000)]
         max_steps: u64,
     },
+    /// Write test vectors for every pure operation: `<op> <a> <b> <c> <flag>`.
+    Ops {
+        /// Output file.
+        #[arg(short, long)]
+        out: PathBuf,
+        /// Random vectors per operation, besides the edge cases.
+        #[arg(short, long, default_value_t = 64)]
+        random: usize,
+    },
 }
 
 fn main() -> Result<()> {
     match Cli::parse().command {
-        Command::Prepare { zisk, input, out, max_steps } => {
-            prepare(&zisk, input.as_deref(), &out, max_steps)
+        Command::Prepare { zisk, elf, input, out, max_steps } => {
+            let rom = match (zisk, elf) {
+                (Some(zisk), _) => {
+                    let files = ziskasm::collect_zisk_files(&zisk.to_string_lossy())
+                        .map_err(anyhow::Error::msg)?;
+                    ziskasm::assemble_files(&files).map_err(anyhow::Error::msg)?
+                }
+                (None, Some(elf)) => {
+                    let bytes =
+                        fs::read(&elf).with_context(|| format!("reading {}", elf.display()))?;
+                    zisk_transpiler_common::program2rom(&bytes).map_err(|e| anyhow!("{e}"))?
+                }
+                (None, None) => bail!("a program is needed: -z or -e"),
+            };
+            prepare(rom, input.as_deref(), &out, max_steps)
         }
+        Command::Ops { out, random } => op_vectors(&out, random),
     }
 }
 
-fn prepare(zisk: &Path, input: Option<&Path>, out: &Path, max_steps: u64) -> Result<()> {
-    let files = ziskasm::collect_zisk_files(&zisk.to_string_lossy()).map_err(anyhow::Error::msg)?;
-    let rom = ziskasm::assemble_files(&files).map_err(anyhow::Error::msg)?;
+/// The values every operation is tested on, pairwise: the bounds of the
+/// signed and unsigned ranges at 8, 16, 32 and 64 bits, and shift amounts.
+const EDGES: [u64; 16] = [
+    0,
+    1,
+    2,
+    63,
+    64,
+    0x7f,
+    0x80,
+    0xff,
+    0x7fff,
+    0x8000,
+    0x7fff_ffff,
+    0x8000_0000,
+    0xffff_ffff,
+    0x7fff_ffff_ffff_ffff,
+    0x8000_0000_0000_0000,
+    0xffff_ffff_ffff_ffff,
+];
+
+/// Writes `<mnemonic> <a> <b> <c> <flag>` for every operation `call_ab`
+/// computes — every one but the precompiles, DMA and fcall, which work on
+/// memory — on the edge cases pairwise and `random` random pairs.
+fn op_vectors(out: &Path, random: usize) -> Result<()> {
+    // xorshift64*, seeded, so the vectors are the same on every run.
+    let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+    let mut next = move || {
+        state ^= state >> 12;
+        state ^= state << 25;
+        state ^= state >> 27;
+        state.wrapping_mul(0x2545_f491_4f6c_dd1d)
+    };
+    // The probes below panic on purpose; keep their messages off the terminal.
+    std::panic::set_hook(Box::new(|_| {}));
+    let mut text = String::new();
+    let (mut ops, mut lines) = (0, 0);
+    for code in 0..=u8::MAX {
+        let Ok(op) = ZiskOp::try_from_code(code) else { continue };
+        if op.is_precompiled() {
+            continue;
+        }
+        let mut pairs: Vec<(u64, u64)> =
+            EDGES.iter().flat_map(|&a| EDGES.iter().map(move |&b| (a, b))).collect();
+        pairs.extend((0..random).map(|_| (next(), next())));
+        // Ops that need memory or a context panic in `call_ab`; skip them.
+        let probe = std::panic::catch_unwind(|| op.call_ab(1, 1));
+        if probe.is_err() {
+            continue;
+        }
+        ops += 1;
+        for (a, b) in pairs {
+            let Ok((c, flag)) = std::panic::catch_unwind(|| op.call_ab(a, b)) else {
+                bail!("{} panics on a = {a:#x}, b = {b:#x}", op.name());
+            };
+            writeln!(text, "{} {a:#018x} {b:#018x} {c:#018x} {}", op.name(), flag as u8)?;
+            lines += 1;
+        }
+    }
+    fs::write(out, text)?;
+    println!("wrote {}: {lines} vectors for {ops} operations", out.display());
+    Ok(())
+}
+
+fn prepare(rom: ZiskRom, input: Option<&Path>, out: &Path, max_steps: u64) -> Result<()> {
     let input = match input {
         Some(p) => fs::read(p).with_context(|| format!("reading {}", p.display()))?,
         None => Vec::new(),
