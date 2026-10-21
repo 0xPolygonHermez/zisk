@@ -418,9 +418,6 @@ zisklib_ml_batch_push_bls12_381:
 	copyb(0, r10) -> [BMLB_SP]
 	copyb(0, r11) -> [BMLB_SQ]
 	copyb(0, [BMLB_N]) -> r6
-	eq(r6, 8), j(bmlb_push_full)
-bmlb_push_add:
-	copyb(0, [BMLB_N]) -> r6
 	sll(r6, 3) -> r6
 	copyb(0, BMLB_BP) -> r7
 	add(r7, r6) -> r7
@@ -433,11 +430,14 @@ bmlb_push_add:
 	copyb(0, [BMLB_N]) -> r6
 	add(r6, 1) -> r6
 	copyb(0, r6) -> [BMLB_N]
+	; fold as soon as 8 pairs are pending, so slot [BMLB_N] is always free to reuse
+	eq(r6, 8), j(bmlb_push_full)
 	pop r1
 	ret
 bmlb_push_full:
 	call bmlb_fold
-	jump(bmlb_push_add)
+	pop r1
+	ret
 
 ; void zisklib_ml_batch_finish_bls12_381(u64* dst)  [r10=dst]
 zisklib_ml_batch_finish_bls12_381:

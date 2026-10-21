@@ -82,6 +82,11 @@ case('bn_pair', bn_pairs([(bn.Z1, bn.Z2)]), 2, b'\x00\x01', n=1)
 c = random.randrange(1, BN)
 case('bn_pair', bn_pairs([(bn.multiply(P, a), Q), (bn.multiply(P, c), Q), (bn.neg(bn.multiply(P, (a + c) % BN)), Q)]), 2, b'\x00\x01', n=3)
 case('bn_pair', [bn_g1(P) + bn_g2(Q)[:127] + bytes([bn_g2(Q)[127] ^ 1])], 2, n=1)   # G2 off curve
+# more pairs than the old 32-pair buffers: sum of k_i * P over 33 pairs is 0
+ks = [random.randrange(1, BN) for _ in range(32)]
+many = [(bn.multiply(P, k), Q) for k in ks] + [(bn.neg(bn.multiply(P, sum(ks) % BN)), Q)]
+case('bn_pair', bn_pairs(many), 2, b'\x00\x01', n=33)
+case('bn_pair', bn_pairs(many + [(P, Q)]), 2, b'\x00\x00', n=34)
 case('bn_pair', [bn_g1(P)[:63] + bytes([bn_g1(P)[63] ^ 1]) + bn_g2(Q)], 2, n=1)     # G1 off curve
 
 # ---- bls g1 / g2 add ----
@@ -142,6 +147,10 @@ if not FAST:
     c = random.randrange(1, LN)
     case('bl_pair', bl_pairs([(bl.multiply(P, a), Q), (bl.multiply(P, c), Q), (bl.neg(bl.multiply(P, (a + c) % LN)), Q)]), 2, b'\x00\x01', n=3)
 case('bl_pair', [bl_g1(P) + bl_g2(Q)[:191] + bytes([bl_g2(Q)[191] ^ 1])], 2, n=1)
+ks = [random.randrange(1, LN) for _ in range(32)]
+many = [(bl.multiply(P, k), Q) for k in ks] + [(bl.neg(bl.multiply(P, sum(ks) % LN)), Q)]
+case('bl_pair', bl_pairs(many), 2, b'\x00\x01', n=33)
+case('bl_pair', [bl_pairs(many)[0] + bl_g1(P) + bl_g2(Q)[:191] + bytes([bl_g2(Q)[191] ^ 1])], 2, n=34)   # pair 34 off curve
 # ---- bls map ----
 def map1(u): return bl_g1(clear_cofactor_G1(map_to_curve_G1(bl.FQ(u))))
 def map2(u0, u1): return bl_g2(clear_cofactor_G2(map_to_curve_G2(bl.FQ2([u0, u1]))))
