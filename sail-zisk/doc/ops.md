@@ -8,7 +8,7 @@ by a search for its mnemonic in the transpiler's source, so approximate — and
 whether the model specifies it. The equivalence with sail-riscv needs the ones
 the transpiler emits.
 
-129 operations; the transpiler emits 115; the model specifies 91.
+130 operations; the transpiler emits 116; the model specifies 91.
 
 
 ## Internal (3 of 3)
@@ -137,6 +137,12 @@ the transpiler emits.
 | op | opcode | emitted by riscv2zisk | in the model |
 |---|---|---|---|
 | `jump_dest` | 0xc0 | yes | — |
+
+## Poseidon2KoalaBear (0 of 1)
+
+| op | opcode | emitted by riscv2zisk | in the model |
+|---|---|---|---|
+| `poseidon2_koalabear` | 0xc1 | yes | — |
 
 ## Dma (0 of 6)
 

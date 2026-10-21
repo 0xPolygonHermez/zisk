@@ -107,6 +107,8 @@ difftest:
 difftest-all:
 	$(MAKE) --no-print-directory difftest
 	$(MAKE) --no-print-directory difftest PROG=test/programs/halt INPUT=
+	@grep -q '^end 1 0x0000000000000003$$' build/difftest/halt/sail.trace || { \
+	  echo "FAIL: test/programs/halt no longer ends in error with code 3 — has the BIOS's mtvec moved?" >&2; exit 1; }
 
 ## Check every operation the model specifies against ZisK's own op functions
 ## (ZiskOp::call_ab) on edge-case and random vectors. The checks run on the

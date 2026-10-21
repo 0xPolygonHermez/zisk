@@ -114,7 +114,7 @@ runs them through a software float library, for Go compatibility only.
 
 ## Status
 
-**Early.** 91 of the 129 operations are specified — every one that is a pure
+**Early.** 91 of the 130 operations are specified — every one that is a pure
 function of a and b: the internal ones, Binary, BinaryE and Arith
 ([`doc/ops.md`](doc/ops.md)). Each is checked against ZisK's own op functions
 on 320 vectors (`make optest`). Still to come: the precompiles, DMA and fcall,
@@ -124,7 +124,7 @@ equivalence proofs, whose shape depends on how the transpiler is represented
 itself translated to Lean — which is still to be decided.
 
 The model runs: compiled to C, it executes `ziskasm/examples/doubler-min` —
-BIOS, launcher and program, 245 steps — and `test/programs/halt`, and
+BIOS, launcher and program, 253 steps — and `test/programs/halt`, and
 `make difftest` checks every step against `ziskemu`. Both models' Lean builds,
 side by side, in `lean/`.
 
@@ -234,9 +234,9 @@ make ops
 ```
 
 ```
-Rust ops: 129   Sail clauses: 91   modeled: 91/129 (70%)
+Rust ops: 130   Sail clauses: 91   modeled: 91/130 (70%)
 
-UNMODELED -- 38 Rust ops with no Sail clause:
+UNMODELED -- 39 Rust ops with no Sail clause:
   add256, arith256, arith256_mod, arith384_mod, babyjubjub_add, ...
 
 OK: no stale opcodes.
@@ -273,14 +273,18 @@ make difftest-all
 ```
 
 ```
-wrote build/difftest/doubler-min: 44 instructions, 8 opcodes (add, and, copyb, eq, flag, halt, ltu, pubout), 245 steps on ziskemu
-OK: 245 steps and the output agree with ziskemu
-wrote build/difftest/halt: 34 instructions, 6 opcodes (add, copyb, eq, flag, halt, pubout), 15 steps on ziskemu
+wrote build/difftest/doubler-min: 52 instructions, 8 opcodes (add, and, copyb, eq, flag, halt, ltu, pubout), 253 steps on ziskemu
+OK: 253 steps and the output agree with ziskemu
+wrote build/difftest/halt: 42 instructions, 6 opcodes (add, copyb, eq, flag, halt, pubout), 15 steps on ziskemu
 OK: 15 steps and the output agree with ziskemu
 ```
 
 On a divergence it prints the first lines of the diff and fails; the two
-traces are left in `build/difftest/<prog>/`.
+traces are left in `build/difftest/<prog>/`. `test/programs/halt` must also end
+the way it is written to — in error, with code 3, through the BIOS's `halt` —
+or `difftest-all` fails: the program jumps to the BIOS's trap handler at a
+fixed address, so a BIOS whose `mtvec` moves would otherwise make it end
+normally, with both emulators still agreeing.
 
 **5. Generate and elaborate the model's Lean.** The first build fetches the
 Lean toolchain and Sail's Lean library (`lake update`); after that, about 20 s.
