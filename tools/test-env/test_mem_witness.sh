@@ -24,6 +24,7 @@
 #   ZISK_MEM_TEST_SCRATCH_OVERFLOW=1 a fill retried without its image, then with the images dropped
 #   ZISK_MEM_TEST_UNSTAGED=<f>.<i> an owned instance without an image: built on demand
 #   ZISK_MEM_TEST_PIECE_POTENTIALS=<n> smaller pieces: block records split into sub-records
+#   ZISK_MEM_TEST_PAGES_WINDOW=<n>  the offset pages go through a window of n pages: batched
 
 source "./test_elf.sh"
 
@@ -114,6 +115,7 @@ main() {
     run_case unstaged 0 "" ZISK_MEM_TEST_UNSTAGED=0.1 || return 1
     # Pieces of fewer potentials: block records get split into sub-records.
     run_case split_records 0 "" ZISK_MEM_TEST_PIECE_POTENTIALS=65536 || return 1
+    run_case pages_window 0 "offset pages:" ZISK_MEM_TEST_PAGES_WINDOW=4096 || return 1
     # A planner fault: the CPU planner replays the chunks, the CPU witness follows.
     run_case plan_fail 0 "${plan_fail}" ZISK_MEM_TEST_PLAN_FAIL=1 || return 1
     # A chunk the planner rejects: the block is planned on the CPU.
