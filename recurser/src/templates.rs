@@ -121,16 +121,17 @@ impl CircomTemplates {
 
     /// Whether NormalizePublics takes the leaf's allow-list position (required with 2+ programs).
     fn program_index(&self) -> bool {
-        self.normalize.as_ref().is_some_and(|n| declares_input(&n.body, "programIndex"))
+        self.normalize
+            .as_ref()
+            .is_some_and(|n| template_declares_input(&n.body, "NormalizePublics", "programIndex"))
     }
 }
 
 /// A program VK as Goldilocks field elements, so "01" and "1" are the same key.
 fn canonical_vk(vk: &[String; 4]) -> Option<[u64; 4]> {
-    const GOLDILOCKS_P: u64 = 0xFFFF_FFFF_0000_0001;
     let mut out = [0u64; 4];
     for (o, limb) in out.iter_mut().zip(vk) {
-        *o = limb.trim().parse::<u64>().ok().filter(|v| *v < GOLDILOCKS_P)?;
+        *o = limb.trim().parse::<u64>().ok().filter(|v| *v < zisk_verifier::GOLDILOCKS_ORDER)?;
     }
     Some(out)
 }
@@ -172,10 +173,43 @@ pub fn expect_template_arity(body: &str, template: &str, n_free: usize) -> Resul
     Ok(())
 }
 
+/// Structural check: does `template <template>(...)` itself declare the scalar
+/// `signal input <name>` (comments ignored)? Inputs of other templates in the body do not count.
+fn template_declares_input(body: &str, template: &str, name: &str) -> bool {
+    template_body(&strip_comments(body), template).is_some_and(|b| declares_input(b, name))
+}
+
+/// The text between the braces of `template <template>(...) { ... }`.
+fn template_body<'b>(body: &'b str, template: &str) -> Option<&'b str> {
+    let start = body.find(&format!("template {template}("))?;
+    let open = start + body[start..].find('{')? + 1;
+    let mut depth = 1usize;
+    for (i, c) in body[open..].char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&body[open..open + i]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 /// Structural check: does the body declare the scalar `signal input <name>` (comments ignored)?
+/// A statement may follow a block's brace (`{ signal input x;`, `} signal input x;`).
 fn declares_input(body: &str, name: &str) -> bool {
     strip_comments(body).split(';').any(|stmt| {
-        let Some(rest) = stmt.trim().strip_prefix("signal") else { return false };
+        // The statement proper starts after the last block brace before `signal`.
+        let Some(at) = stmt.rfind("signal") else { return false };
+        let before = stmt[..at].trim_end();
+        if !(before.is_empty() || before.ends_with('{') || before.ends_with('}')) {
+            return false;
+        }
+        let rest = &stmt[at + "signal".len()..];
         let Some(rest) = rest.trim_start().strip_prefix("input") else { return false };
         // An optional tag list, then comma-separated names.
         let rest = rest.trim_start();
@@ -280,7 +314,7 @@ pub fn gen_recurser(
 
 #[cfg(test)]
 mod tests {
-    use super::{declares_input, split_includes};
+    use super::{declares_input, split_includes, template_declares_input};
 
     #[test]
     fn declares_input_matches_a_whole_scalar_signal_name() {
@@ -292,6 +326,24 @@ mod tests {
         assert!(!declares_input("// signal input programIndex;", "programIndex"));
         assert!(!declares_input("/* signal input programIndex; */", "programIndex"));
         assert!(!declares_input("signal output programIndex;", "programIndex"));
+        assert!(declares_input("template T() {\n signal input programIndex;", "programIndex"));
+        assert!(declares_input(
+            "for (var i = 0; i < 2; i++) { x[i] <== 0; } signal input programIndex;",
+            "programIndex"
+        ));
+        assert!(declares_input("signal input {binary} a, programIndex;", "programIndex"));
+    }
+
+    #[test]
+    fn only_the_template_s_own_inputs_count() {
+        let body = "template NormalizePublics() {\n    signal input programIndex;\n}";
+        assert!(template_declares_input(body, "NormalizePublics", "programIndex"));
+        let helper = "template Helper() { signal input programIndex; }\n\
+                      template NormalizePublics() { signal input publics[2]; }";
+        assert!(!template_declares_input(helper, "NormalizePublics", "programIndex"));
+        let nested =
+            "template NormalizePublics() { if (1) { x <== 0; } signal input programIndex; }";
+        assert!(template_declares_input(nested, "NormalizePublics", "programIndex"));
     }
 
     #[test]

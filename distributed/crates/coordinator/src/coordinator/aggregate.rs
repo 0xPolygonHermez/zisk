@@ -129,6 +129,13 @@ impl Coordinator {
         let zisk_proof = Proof::from_bincode(&proof_data.proof_data).map_err(|e| {
             CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e))
         })?;
+        // A proof that cannot be saved would complete the job with no proof for its webhook.
+        if let Err(e) = zisk_proof.ensure_saveable() {
+            drop(job);
+            let reason = format!("Final proof from worker {agg_worker_id} is malformed: {e}");
+            let _ = self.fail_job(job_id, &reason).await;
+            return Err(CoordinatorError::Internal(reason));
+        }
 
         let scheduler = job.agg.as_mut().expect("checked above");
         scheduler.take_live(&agg_worker_id);

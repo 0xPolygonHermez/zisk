@@ -369,35 +369,38 @@ impl Coordinator {
 
         let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
 
-        if !ack.success {
-            let reason = ack.error_message.unwrap_or_else(|| "(no detail)".to_string());
-            {
-                let mut job = job_entry.write().await;
-                job.change_state(JobState::Failed);
+        // The ack carries `Proof::to_bincode` (see the worker's handle_run_aggregate_proofs).
+        // A proof that does not decode, or cannot be saved, fails the job like a failed ack:
+        // a completed job must own its proof, as on every other completion path.
+        let proof = if ack.success {
+            Proof::from_bincode(&ack.proof)
+                .and_then(|p| p.ensure_saveable().map(|()| p))
+                .map_err(|e| format!("its aggregate proof is malformed: {e}"))
+        } else {
+            Err(ack.error_message.unwrap_or_else(|| "(no detail)".to_string()))
+        };
+        let proof = match proof {
+            Ok(proof) => proof,
+            Err(reason) => {
+                {
+                    let mut job = job_entry.write().await;
+                    job.change_state(JobState::Failed);
+                }
+                self.fire_job_event(
+                    &job_id,
+                    CoordinatorJobEvent::Failed(format!(
+                        "Recurser prove failed on worker {worker_id}: {reason}"
+                    )),
+                )
+                .await;
+                return Ok(());
             }
-            self.fire_job_event(
-                &job_id,
-                CoordinatorJobEvent::Failed(format!(
-                    "Recurser prove failed on worker {worker_id}: {reason}"
-                )),
-            )
-            .await;
-            return Ok(());
-        }
+        };
 
         {
             let mut job = job_entry.write().await;
             job.change_state(JobState::Completed);
-            // The ack carries `Proof::to_bincode` (see the worker's
-            // handle_run_aggregate_proofs); decode it so the completed job owns
-            // its proof like every other completion path does.
-            match Proof::from_bincode(&ack.proof) {
-                Ok(proof) => job.proof = Some(proof),
-                Err(e) => warn!(
-                    "[Recurser] Failed to deserialize aggregate proof for job {}: {}",
-                    job_id, e
-                ),
-            }
+            job.proof = Some(proof);
         }
         self.fire_job_event(
             &job_id,

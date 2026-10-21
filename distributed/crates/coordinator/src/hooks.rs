@@ -14,7 +14,7 @@ use zisk_common::RandomSeed;
 ///   will be appended to the URL as a path segment.
 /// * `job_id` - The ID of the job that has completed or failed.
 /// * `duration_ms` - Duration of the job in milliseconds.
-/// * `proof_data` - Optional proof to include in the payload, as `Proof::to_bytes`.
+/// * `proof_data` - Optional proof to include in the payload, as `Proof::to_bytes_without_seed_trailer`.
 /// * `seed` - The job's host randomness seed, if it ran one.
 pub async fn send_completion_webhook(
     webhook_url: String,

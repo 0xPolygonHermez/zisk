@@ -19,9 +19,9 @@ use crate::{HashMode, RandomSeed};
 /// minimal marker, so no Vadcop file starts with this.
 pub const PLONK_FILE_MAGIC: &[u8; 8] = b"ZISKPLNK";
 
-/// Ceiling on what decoding a PLONK file may allocate. A real one (proof, vkey, publics)
-/// is a few KB.
-const PLONK_FILE_MAX_BYTES: usize = 1 << 20;
+/// Ceiling on a SNARK file after its magic, checked on save and on load. A PLONK one (proof,
+/// vkey, publics) is a few KB; a pilfflonk one carries its vkey JSON, about 0.5 MB.
+const PLONK_FILE_MAX_BYTES: usize = 16 << 20;
 
 /// A BN254 PLONK proof: 9 G1 points (64 bytes each) and 6 field evaluations (32 each).
 /// The native verifier aborts the process on any other length rather than failing.
@@ -34,6 +34,38 @@ const BN254_R_BE: [u8; 32] = [
     0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
     0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01,
 ];
+
+/// The `digest` of each family's release `pilfflonk.vkey.json`: `keccak256` of the rest of the
+/// key, which pilfflonk's verifier checks and absorbs into its transcript, so pinning the digest
+/// pins the whole key without bundling its ~0.5 MB. Empty until the release setup is generated.
+const RELEASE_PILFFLONK_VKEY_DIGESTS: &[(&str, &str)] = &[];
+
+/// The pilfflonk key a proof of family `hash` verifies under when the caller passes none: the one
+/// it carries, if its digest is the release's (`digests`).
+fn release_pilfflonk_vkey<'v>(
+    hash: &str,
+    carried: &'v str,
+    digests: &[(&str, &str)],
+) -> Result<&'v str> {
+    let Some(&(_, release)) = digests.iter().find(|(family, _)| *family == hash) else {
+        return Err(CommonError::InvalidProof(format!(
+            "no published pilfflonk key for {hash:?}; pass one with with_pilfflonk_vkey \
+             (`--pilfflonk-vk`)"
+        )));
+    };
+    let digest = serde_json::from_str::<serde_json::Value>(carried)
+        .ok()
+        .and_then(|vkey| vkey.get("digest")?.as_str().map(str::to_owned));
+    if digest.as_deref() == Some(release) {
+        Ok(carried)
+    } else {
+        tracing::warn!(
+            "the pilfflonk key the proof carries is not this release's; a proof from a \
+             non-release setup verifies under that setup's pilfflonk.vkey.json (`--pilfflonk-vk`)"
+        );
+        Err(CommonError::NotVerified)
+    }
+}
 
 /// The PLONK circuit key the release's `PlonkVerifier.sol` was generated from, for the
 /// families that have a PLONK wrap. `rootc` is a public input of that circuit, so one key
@@ -862,8 +894,8 @@ impl<'a> ZiskVerifyBuilder<'a> {
         self
     }
 
-    /// Trusted pilfflonk key, the JSON of its `pilfflonk.vkey.json`. No release publishes one
-    /// yet, so a pilfflonk proof needs it; the key the proof carries is never used.
+    /// Trusted pilfflonk key, the JSON of its `pilfflonk.vkey.json`. If unset, the key the proof
+    /// carries is used only if its digest is the release's for the proof's family.
     pub fn with_pilfflonk_vkey(mut self, vkey_json: &'a str) -> Self {
         self.trusted_pilfflonk_vkey = Some(vkey_json);
         self
@@ -1097,7 +1129,13 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     e => CommonError::Invalid(format!("PLONK verification could not run: {e}")),
                 })
             }
-            ProofBody::Pilfflonk { proof_bytes, publics_full, rootc: stored_rootc, .. } => {
+            ProofBody::Pilfflonk {
+                proof_bytes,
+                vkey_json,
+                publics_full,
+                rootc: stored_rootc,
+                ..
+            } => {
                 if self.trusted_plonk_vk.is_some() {
                     return Err(CommonError::InvalidProof(
                         "a PLONK verification key was pinned (with_plonk_vk) for a pilfflonk proof"
@@ -1106,14 +1144,14 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 }
                 let public_snark_bytes =
                     self.snark_public_digest(publics_full, stored_rootc, "pilfflonk")?;
-                // The key the proof carries is metadata only, as for PLONK.
-                let vkey_json = self.trusted_pilfflonk_vkey.ok_or_else(|| {
-                    CommonError::InvalidProof(
-                        "no published pilfflonk key; pass one with with_pilfflonk_vkey \
-                         (`--pilfflonk-vk`)"
-                            .to_string(),
-                    )
-                })?;
+                // The caller's key, else the one the proof carries if it is the release's.
+                let hash = self.proof_with_values.program_vk.hash_mode.as_str();
+                let vkey_json = match self.trusted_pilfflonk_vkey {
+                    Some(vkey) => vkey,
+                    None => {
+                        release_pilfflonk_vkey(hash, vkey_json, RELEASE_PILFFLONK_VKEY_DIGESTS)?
+                    }
+                };
 
                 let snark_proof = SnarkProof {
                     proof_bytes: proof_bytes.clone(),
@@ -1160,7 +1198,9 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     )));
                 }
 
-                let declared = &program_publics(publics_full)[..PROGRAM_VK_LEN];
+                // The domain of the statement verified, overrides included, as for a SNARK.
+                let statement = self.statement(publics_full);
+                let declared = &statement[..PROGRAM_VK_LEN];
                 let setup_vk = self.setup_vk_to_verify_under(
                     hash,
                     kind.is_minimal(),
@@ -1169,7 +1209,7 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 let setup_vk: &[u64; PROGRAM_VK_LEN] = setup_vk.as_ref().try_into().unwrap();
 
                 // The STARK transcript is over `[flag? | program_vk | inputs]`.
-                let pubs_u64 = kind.stark_publics(&self.statement(publics_full));
+                let pubs_u64 = kind.stark_publics(&statement);
                 let vadcop_final_proof =
                     VadcopFinalProof::new(proof.clone(), pubs_u64, kind.is_minimal(), hash.clone());
 
@@ -1307,20 +1347,47 @@ impl Proof {
     /// to (the flat layout derives it from them); otherwise the errors of
     /// [`get_proof_u64`](Self::get_proof_u64).
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
+        self.encode(true)
+    }
+
+    /// [`to_bytes`](Self::to_bytes) without a Vadcop proof's seed trailer: the bytes a guest
+    /// verifies. A SNARK proof's bytes are the same as `to_bytes`'s.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`to_bytes`](Self::to_bytes).
+    pub fn to_bytes_without_seed_trailer(&self) -> Result<Vec<u8>> {
+        self.encode(false)
+    }
+
+    /// Errors unless [`to_bytes`](Self::to_bytes) can write this proof, and so
+    /// [`load`](Self::load) read it back, without encoding it.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`to_bytes`](Self::to_bytes).
+    pub fn ensure_saveable(&self) -> Result<()> {
+        // A flagged or non-canonical vector would be written as a file `load` refuses.
+        ensure_stored_body(&self.body)?;
+        self.ensure_program_vk_committed()?;
+        if let ProofBody::Vadcop { hash, .. } = &self.body {
+            if self.program_vk.hash_mode.as_str() != hash {
+                return Err(CommonError::InvalidProof(
+                    "program_vk's hash mode differs from the proof's hash family, which the \
+                     saved form cannot carry"
+                        .to_string(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn encode(&self, seed_trailer_too: bool) -> Result<Vec<u8>> {
+        self.ensure_saveable()?;
         match &self.body {
-            ProofBody::Vadcop { hash, .. } => {
-                // A flagged or non-canonical vector would be written as a file `load` refuses.
-                ensure_stored_body(&self.body)?;
-                self.ensure_program_vk_committed()?;
-                if self.program_vk.hash_mode.as_str() != hash {
-                    return Err(CommonError::InvalidProof(
-                        "program_vk's hash mode differs from the proof's hash family, which the \
-                         saved form cannot carry"
-                            .to_string(),
-                    ));
-                }
+            ProofBody::Vadcop { .. } => {
                 let mut words = self.get_proof_u64()?;
-                if let Some(seed) = &self.random_seed {
+                if let Some(seed) = self.random_seed.as_ref().filter(|_| seed_trailer_too) {
                     words.extend(seed_trailer(seed.to_le_words()));
                 }
                 let mut bytes = Vec::with_capacity(words.len() * 8);
@@ -1330,10 +1397,17 @@ impl Proof {
                 Ok(bytes)
             }
             ProofBody::Plonk { .. } | ProofBody::Pilfflonk { .. } => {
-                ensure_stored_body(&self.body)?;
-                self.ensure_program_vk_committed()?;
+                let body = self.to_bincode()?;
+                // `load` refuses a larger file, so it must not be written.
+                if body.len() > PLONK_FILE_MAX_BYTES {
+                    return Err(CommonError::InvalidProof(format!(
+                        "the SNARK proof encodes to {} bytes, over the {PLONK_FILE_MAX_BYTES} a \
+                         saved proof may have",
+                        body.len()
+                    )));
+                }
                 let mut bytes = PLONK_FILE_MAGIC.to_vec();
-                bytes.extend(self.to_bincode()?);
+                bytes.extend(body);
                 Ok(bytes)
             }
         }
@@ -2305,6 +2379,27 @@ mod tests {
         assert!(err.to_string().contains("pilfflonk verification key was pinned"), "got: {err}");
     }
 
+    /// Unpinned, a pilfflonk proof verifies under the key it carries only if that key's digest is
+    /// the release's for its family.
+    #[test]
+    fn the_release_pilfflonk_key_is_pinned_by_its_digest() {
+        let digests = [("Poseidon2", "0xab")];
+        let release = r#"{"protocol":"pilfflonk","digest":"0xab"}"#;
+        assert_eq!(release_pilfflonk_vkey("Poseidon2", release, &digests).unwrap(), release);
+
+        let other = r#"{"protocol":"pilfflonk","digest":"0xcd"}"#;
+        assert!(matches!(
+            release_pilfflonk_vkey("Poseidon2", other, &digests),
+            Err(CommonError::NotVerified)
+        ));
+        assert!(matches!(
+            release_pilfflonk_vkey("Poseidon2", "not json", &digests),
+            Err(CommonError::NotVerified)
+        ));
+        let err = release_pilfflonk_vkey("Blake3", release, &digests).unwrap_err();
+        assert!(err.to_string().contains("no published pilfflonk key"), "got: {err}");
+    }
+
     /// As for PLONK, a wrong-length root is an error and not a slicing panic.
     #[test]
     fn pilfflonk_verify_rejects_wrong_len_setup_vk() {
@@ -2492,6 +2587,30 @@ mod tests {
 
     fn test_seed() -> RandomSeed {
         RandomSeed::new(std::array::from_fn(|i| i as u8))
+    }
+
+    /// What a webhook sends: the flat bytes a guest verifies, with no seed trailer.
+    #[test]
+    fn the_bytes_without_the_trailer_are_the_flat_layout() {
+        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
+            .with_random_seed(test_seed());
+        assert_eq!(
+            proof.to_bytes_without_seed_trailer().unwrap(),
+            proof.get_proof_bytes().unwrap()
+        );
+        assert_ne!(proof.to_bytes().unwrap(), proof.get_proof_bytes().unwrap());
+    }
+
+    /// `save` refuses a SNARK file larger than `load` reads, rather than writing it.
+    #[test]
+    fn save_refuses_a_snark_file_load_would_not_read() {
+        let mut proof = pilfflonk_proof();
+        if let ProofBody::Pilfflonk { vkey_json, .. } = &mut proof.body {
+            *vkey_json = "x".repeat(PLONK_FILE_MAX_BYTES);
+        }
+        assert!(proof.ensure_saveable().is_ok());
+        let err = proof.to_bytes().unwrap_err();
+        assert!(err.to_string().contains("over the"), "got: {err}");
     }
 
     /// A saved Vadcop proof keeps its seed as the verifier's trailer: the proof bytes are

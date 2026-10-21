@@ -95,16 +95,8 @@ fn derive_program_vks(programs: &[&GuestProgram], hash_mode: HashMode) -> Result
                 prog.name()
             ))
         })?;
-        let limbs_str: [String; 4] = limbs.map(|w| w.to_string());
-        if let Some(prior) = vks.iter().position(|existing| existing == &limbs_str) {
-            return Err(SdkError::Recurser(format!(
-                "duplicate program VK at index {} ('{}'); already registered at index {}",
-                vks.len(),
-                prog.name(),
-                prior,
-            )));
-        }
-        vks.push(limbs_str);
+        // `CircomTemplates::validate` refuses duplicates.
+        vks.push(limbs.map(|w| w.to_string()));
     }
     Ok(vks)
 }
@@ -227,16 +219,6 @@ impl<'a> AggregationProgramBuilder<'a> {
             expect_template_decl(circuit, "NormalizePublics")?;
         }
 
-        // Range-check here so a bad width fails at the client boundary rather
-        // than deep in setup after `recurser_id` is already computed/registered.
-        let n_publics_agg = self.n_publics_agg;
-        let max_publics = zisk_recurser::templates::ZISK_PUBLICS;
-        if n_publics_agg == 0 || n_publics_agg > max_publics {
-            return Err(SdkError::Recurser(format!(
-                "n_publics_agg must be in 1..={max_publics}, got {n_publics_agg}"
-            )));
-        }
-
         let normalize = self
             .normalize
             .as_ref()
@@ -250,22 +232,28 @@ impl<'a> AggregationProgramBuilder<'a> {
             })?
             .to_string();
 
-        // Derive the optional leaf allow-list VKs. Only touches ELFs when a
-        // `programs` list was supplied — an `any_program` recurser stays cheap.
-        let program_vks = if self.programs.is_empty() {
-            Vec::new()
+        // Derive the optional leaf allow-list VKs. Only touches ELFs and the proving key when a
+        // `programs` list was supplied — an `any_program` recurser is validated first.
+        let local_hash_mode = || HashMode::local().map_err(SdkError::backend);
+        let (program_vks, hash_mode) = if self.programs.is_empty() {
+            (Vec::new(), None)
         } else {
-            derive_program_vks(&self.programs, HashMode::local().map_err(SdkError::backend)?)?
+            let hash_mode = local_hash_mode()?;
+            (derive_program_vks(&self.programs, hash_mode)?, Some(hash_mode))
         };
         let templates = zisk_recurser::CircomTemplates {
             normalize: normalize.clone(),
             aggregate_publics: self.aggregate.source().to_string(),
             n_free: self.n_free,
-            n_publics_agg,
+            n_publics_agg: self.n_publics_agg,
             program_vks: program_vks.clone(),
         };
+        // The width range, duplicate VKs and `programIndex`, before a `recurser_id` is handed out.
         templates.validate().map_err(|e| SdkError::Recurser(e.to_string()))?;
-        let hash_mode = HashMode::local().map_err(SdkError::backend)?;
+        let hash_mode = match hash_mode {
+            Some(hash_mode) => hash_mode,
+            None => local_hash_mode()?,
+        };
 
         let output_dir = ZiskPaths::global()
             .home

@@ -17,8 +17,8 @@ pub(crate) struct VerifyCmd {
     #[clap(short = 'k', long = "plonk-vk")]
     plonk_vk: Option<String>,
 
-    /// Trusted pilfflonk key (`pilfflonk.vkey.json`). No release publishes one yet, so a
-    /// pilfflonk proof needs it.
+    /// Trusted pilfflonk key (`pilfflonk.vkey.json`). If omitted, the key the proof carries is
+    /// used only if it is this release's for the proof's family.
     #[clap(long = "pilfflonk-vk")]
     pilfflonk_vk: Option<String>,
 

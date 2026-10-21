@@ -824,7 +824,7 @@ pub struct WebhookErrorDto {
     pub message: String,
 }
 
-/// `WebhookPayloadDto::proof_format` of a `Proof::to_bytes` proof. Bincode-encoded proofs
+/// `WebhookPayloadDto::proof_format` of a `Proof::to_bytes_without_seed_trailer` proof. Bincode-encoded proofs
 /// from earlier coordinators carry no format field.
 pub const WEBHOOK_PROOF_FORMAT: &str = "zisk-proof-v1";
 
@@ -843,9 +843,9 @@ pub struct WebhookPayloadDto {
     pub timestamp: String,
     /// Error details, present on failure.
     pub error: Option<WebhookErrorDto>,
-    /// The proof, when included, as `Proof::to_bytes`: ZisK's flat layout for a Vadcop
-    /// proof (read with `zisk_verifier::decode_saved`), ending with the seed trailer when the
-    /// proof has a seed, or a `ZISKPLNK`-headed PLONK proof.
+    /// The proof, when included, as `Proof::to_bytes_without_seed_trailer`: ZisK's flat layout
+    /// for a Vadcop proof, which guests verify as is (the seed is `random_seed`), or a
+    /// `ZISKPLNK`-headed SNARK proof (PLONK or pilfflonk).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proof_data: Option<Vec<u8>>,
     /// The job's host randomness seed (hex), to replay it. Absent for jobs that run no execution.
