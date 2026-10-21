@@ -4,9 +4,11 @@
 //! ziskemu transpiles it — `prepare` writes everything the Sail side needs and
 //! the trace it must reproduce:
 //!
-//! - `rom.sail`, the program as a `rom_fetch` function, for `make ROM=…`;
+//! - `rom.sail`, the program as a `rom_fetch` function, to read;
 //! - `mem/*.bin` and `mem.args`, the initial memory as raw sections plus the
-//!   `-b addr,file` arguments that load them into the Sail C emulator;
+//!   `-b addr,file` arguments that load them into the Sail C emulator, and
+//!   the ROM as the table the emulator reads it from
+//!   (sail-zisk/model/zisk_rom_table.sail);
 //! - `ziskemu.trace`, the run on ziskemu, in the format `model/zisk_main.sail`
 //!   prints.
 //!
@@ -168,7 +170,8 @@ fn prepare(rom: ZiskRom, input: Option<&Path>, out: &Path, max_steps: u64) -> Re
     let (sail, ops) = rom_to_sail(&rom)?;
     fs::write(out.join("rom.sail"), sail)?;
 
-    let args = write_memory(&rom, &input, out)?;
+    let mut args = write_memory(&rom, &input, out)?;
+    args.push_str(&write_rom_table(&rom, out)?);
     fs::write(out.join("mem.args"), args)?;
 
     let (trace, steps) = reference_trace(&rom, input, max_steps)?;
@@ -323,6 +326,58 @@ fn inst_to_sail(i: &ZiskInst) -> Result<String> {
         lit(m.jmp_off2 as u64),
         m.is_end,
     ))
+}
+
+/// Where the ROM table starts: `ROM_TABLE` in sail-zisk/model/zisk_rom_table.sail.
+const ROM_TABLE: u64 = 0x0001_0000_0000_0000;
+
+/// The ROM table entry of one instruction, as sail-zisk/model/zisk_rom_table.sail
+/// decodes it: eight little-endian words.
+fn rom_entry(i: &ZiskInst) -> Result<[u64; 8]> {
+    let m = model_inst(i)?;
+    let code = |name: &str, names: &[&str]| -> Result<u64> {
+        names.iter().position(|n| *n == name).map(|k| k as u64).ok_or_else(|| anyhow!("{name}"))
+    };
+    let w0 = 1
+        | code(m.a_src, &["A_C", "A_MEM", "A_IMM", "A_STEP", "A_REG"])? << 8
+        | code(m.b_src, &["B_C", "B_MEM", "B_IMM", "B_IND", "B_REG"])? << 16
+        | code(m.store, &["ST_NONE", "ST_MEM", "ST_IND", "ST_REG"])? << 24
+        | m.ind_width << 32
+        | (m.store_pc as u64) << 40
+        | (m.set_pc as u64) << 41
+        | (m.is_end as u64) << 42
+        | (i.op as u64) << 48;
+    Ok([w0, m.a_imm, m.b_imm, m.store_off as u64, m.jmp_off1 as u64, m.jmp_off2 as u64, 0, 0])
+}
+
+/// Write the ROM as the table the model's C emulator reads it from
+/// (sail-zisk/model/zisk_rom_table.sail): an entry of 64 bytes at
+/// `ROM_TABLE + 64 * pc` for every instruction, in one section per run of
+/// nearby pcs, and return the `-b` arguments that load them.
+fn write_rom_table(rom: &ZiskRom, out: &Path) -> Result<String> {
+    let mut sections: Vec<(u64, Vec<u8>)> = Vec::new();
+    for (&pc, builder) in &rom.insts {
+        let entry = rom_entry(&builder.i)
+            .with_context(|| format!("instruction at pc {pc:#x}: {}", builder.i.verbose))?;
+        let addr = ROM_TABLE + 64 * pc;
+        // A gap of up to 4 KB is filled with zeros, entries the model rejects
+        // as invalid; a wider one starts a new section.
+        match sections.last_mut() {
+            Some((start, bytes)) if addr <= *start + bytes.len() as u64 + 4096 => {
+                bytes.resize((addr - *start) as usize, 0);
+                bytes.extend(entry.iter().flat_map(|w| w.to_le_bytes()));
+            }
+            _ => sections.push((addr, entry.iter().flat_map(|w| w.to_le_bytes()).collect())),
+        }
+    }
+    let mut args = String::new();
+    for (addr, bytes) in sections {
+        let file = out.join("mem").join(format!("rom-{addr:016x}.bin"));
+        fs::write(&file, bytes)?;
+        let file = fs::canonicalize(&file)?;
+        writeln!(args, "-b {addr:#x},{}", file.display())?;
+    }
+    Ok(args)
 }
 
 /// Write each initial memory section as a raw file, and return the `-b`

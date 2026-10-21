@@ -19,9 +19,9 @@ val __write_ram = impure {c: "write_ram", lean: "write_ram", _: "write_ram"} :
   forall 'n 'm, 'n >= 0. (int('m), int('n), bits('m), bits('m), bits(8 * 'n)) -> unit
 
 let REG_FIRST : bits(64) = 0x0000_0000_a040_0000   /* SYS_ADDR             */
-let REG_END   : bits(64) = 0x0000_0000_a040_0100   /* REG_LAST + 8         */
+let REG_END   : bits(64) = 0x0000_0000_a040_0140   /* REG_LAST + 8: r0..r39 */
 
-/* True when [addr, addr + n) overlaps x0..x31. The emulator only checks
+/* True when [addr, addr + n) overlaps r0..r39. The emulator only checks
  * aligned addresses; the model rejects any overlap. Computed in int so
  * an access that wraps the address space cannot slip under the check. */
 val hits_registers : forall 'n, 'n > 0. (bits(64), int('n)) -> bool

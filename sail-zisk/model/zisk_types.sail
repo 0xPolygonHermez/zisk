@@ -4,7 +4,7 @@
  * panic: STEP is a-only, IND is b-only.
  */
 
-type regidx = bits(5)
+type regidx = bits(6)
 
 enum a_src  = { A_C, A_MEM, A_IMM, A_STEP, A_REG }
 enum b_src  = { B_C, B_MEM, B_IMM, B_IND,  B_REG }

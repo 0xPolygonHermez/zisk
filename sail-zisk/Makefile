@@ -22,13 +22,16 @@ PROJECT = model/zisk.sail_project
 # Sail memoizes z3 results in the working directory by default; keep it in build/.
 SAILFLAGS = --memo-z3-path $(CURDIR)/build/z3_problems
 
-# The program: a file defining rom_fetch, relative to model/. The default has
-# no instructions.
+# The ROM module, a file defining rom_fetch, relative to model/. The default
+# has no instructions, for the typecheck and the Lean build.
 ROM ?= zisk_rom.sail
 ROMFLAG = --variable 'ROM=$(ROM)'
 
-# The C emulator; EMU_DIR holds one per ROM, since the ROM is compiled in.
-EMU_DIR ?= build/c
+# The C emulator: one for every program, reading the program's ROM from the
+# table tools/sail-difftest writes (model/zisk_rom_table.sail). Rebuilt when
+# the model changes.
+EMU = build/c/zisk_emu
+MODEL_SRCS = $(PROJECT) $(wildcard model/*.sail)
 
 # The program to difftest: ZisK assembly (PROG, as `ziskemu -z` takes it) or
 # a RISC-V ELF (ELF, as `ziskemu -e` takes it, with NAME for its directory),
@@ -39,7 +42,7 @@ ELF   ?=
 NAME  ?= $(if $(ELF),$(basename $(notdir $(ELF))),$(notdir $(PROG)))
 DIFF_DIR = build/difftest/$(NAME)
 
-.PHONY: all check ops lean lean-build riscv riscv-lean equiv emu difftest difftest-all optest opsdoc sail-version clean
+.PHONY: all check ops compliance lean lean-build riscv riscv-lean equiv emu difftest difftest-all optest opsdoc sail-version clean
 
 all: check ops
 
@@ -86,22 +89,32 @@ riscv-lean:
 equiv:
 	cd lean && $(LAKE) update && $(LAKE) build
 
-## Build the C emulator for ROM into EMU_DIR/zisk_emu.
-emu: sail-version
-	@mkdir -p $(EMU_DIR)
-	$(SAIL) $(SAILFLAGS) $(ROMFLAG) --project $(PROJECT) main -c -o $(EMU_DIR)/zisk_emu
-	$(CC) -O2 -w -I $(SAIL_LIB) $(EMU_DIR)/zisk_emu.c $(SAIL_LIB)/*.c -lgmp -lz -o $(EMU_DIR)/zisk_emu
+## Build the C emulator into build/c/zisk_emu.
+emu: $(EMU)
+
+$(EMU): $(MODEL_SRCS) | sail-version
+	@mkdir -p build/c
+	$(SAIL) $(SAILFLAGS) --variable 'ROM=zisk_rom_table.sail' --project $(PROJECT) main -c -o $@
+	$(CC) -O2 -w -I $(SAIL_LIB) $@.c $(SAIL_LIB)/*.c -lgmp -lz -o $@
 
 ## Run PROG on ziskemu and on the model's C emulator, and diff the two traces.
-difftest:
+difftest: $(EMU)
 	cargo run --release -q -p zisk-sail-difftest -- prepare $(if $(ELF),-e $(ELF),-z $(PROG)) \
 	  $(if $(INPUT),-i $(INPUT)) -o $(DIFF_DIR)
-	$(MAKE) --no-print-directory emu ROM=../$(DIFF_DIR)/rom.sail EMU_DIR=$(DIFF_DIR)
-	$(DIFF_DIR)/zisk_emu $$(cat $(DIFF_DIR)/mem.args) > $(DIFF_DIR)/sail.trace
+	$(EMU) $$(cat $(DIFF_DIR)/mem.args) > $(DIFF_DIR)/sail.trace
 	@diff -u $(DIFF_DIR)/ziskemu.trace $(DIFF_DIR)/sail.trace | head -40; \
 	  if cmp -s $(DIFF_DIR)/ziskemu.trace $(DIFF_DIR)/sail.trace; then \
 	    echo "OK: $$(grep -vEc '^(out|end) ' $(DIFF_DIR)/sail.trace) steps and the output agree with ziskemu"; \
 	  else echo "FAIL: the model diverges from ziskemu (traces in $(DIFF_DIR))" >&2; exit 1; fi
+
+## The RISC-V architectural tests, transpiled: every test of SUITES compiled
+## for ZisK's memory map and difftested. Needs a riscv-arch-test checkout
+## (ARCH_TEST) and a RISC-V GCC (RISCV_GCC). See test/compliance/run.py.
+ARCH_TEST ?=
+RISCV_GCC ?= riscv-none-elf-gcc
+SUITES    ?= I M A C B
+compliance:
+	python3 test/compliance/run.py --arch-test '$(ARCH_TEST)' --gcc '$(RISCV_GCC)' $(SUITES)
 
 ## Every program the model is difftested on.
 difftest-all:

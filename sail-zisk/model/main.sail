@@ -28,12 +28,12 @@ let MAX_STEPS   : int      = 10000000
 val flag_str : bool -> string
 function flag_str(f) = if f then "1" else "0"
 
-val trace_step : (int, bits(64), vector(32, bits(64))) -> unit
+val trace_step : (int, bits(64), vector(40, bits(64))) -> unit
 function trace_step(n, pc, before) = {
   var line = concat_str(dec_str(n), concat_str(" ", bits_str(pc)));
   line = concat_str(line, concat_str(" ", bits_str(Zc)));
   line = concat_str(line, concat_str(" ", flag_str(Zflag)));
-  foreach (r from 1 to 31) {
+  foreach (r from 1 to 39) {
     if Xs[r] != before[r] then
       line = concat_str(line, concat_str(concat_str(" x", dec_str(r)), concat_str("=", bits_str(Xs[r]))))
   };
@@ -48,7 +48,7 @@ function main() = {
   Step  = zeros();
   Zerror      = false;
   Zerror_code = zeros();
-  foreach (r from 0 to 31) { Xs[r] = zeros() };
+  foreach (r from 0 to 39) { Xs[r] = zeros() };
 
   var n : int = 0;
   var done : bool = false;

@@ -16,24 +16,30 @@ function prod128(x, y) = to_bits(128, x * y)
 
 /* mul, mulu: the low 64 bits of the product, signed or not alike. */
 union clause zisk_op = ZOP_MUL : unit
+function clause zisk_op_of_code (0xb4) = Some(ZOP_MUL())
 function clause zisk_exec (ZOP_MUL(), a, b) = (prod128(signed(a), signed(b))[63 .. 0], false)
 
 union clause zisk_op = ZOP_MULU : unit
+function clause zisk_op_of_code (0xb0) = Some(ZOP_MULU())
 function clause zisk_exec (ZOP_MULU(), a, b) = (prod128(unsigned(a), unsigned(b))[63 .. 0], false)
 
 /* mulh, mulsuh, muluh: the high 64 bits, of signed x signed, signed x
  * unsigned, unsigned x unsigned. */
 union clause zisk_op = ZOP_MULH : unit
+function clause zisk_op_of_code (0xb5) = Some(ZOP_MULH())
 function clause zisk_exec (ZOP_MULH(), a, b) = (prod128(signed(a), signed(b))[127 .. 64], false)
 
 union clause zisk_op = ZOP_MULSUH : unit
+function clause zisk_op_of_code (0xb3) = Some(ZOP_MULSUH())
 function clause zisk_exec (ZOP_MULSUH(), a, b) = (prod128(signed(a), unsigned(b))[127 .. 64], false)
 
 union clause zisk_op = ZOP_MULUH : unit
+function clause zisk_op_of_code (0xb1) = Some(ZOP_MULUH())
 function clause zisk_exec (ZOP_MULUH(), a, b) = (prod128(unsigned(a), unsigned(b))[127 .. 64], false)
 
 /* mul_w: the low 32 bits of the product, sign-extended. */
 union clause zisk_op = ZOP_MUL_W : unit
+function clause zisk_op_of_code (0xb6) = Some(ZOP_MUL_W())
 function clause zisk_exec (ZOP_MUL_W(), a, b) =
   (sign_extend(prod128(signed(a[31 .. 0]), signed(b[31 .. 0]))[31 .. 0], 64), false)
 
@@ -44,41 +50,49 @@ function clause zisk_exec (ZOP_MUL_W(), a, b) =
  */
 
 union clause zisk_op = ZOP_DIVU : unit
+function clause zisk_op_of_code (0xb8) = Some(ZOP_DIVU())
 function clause zisk_exec (ZOP_DIVU(), a, b) =
   if b == zeros() then (sail_ones(64), true)
   else (to_bits(64, tdiv_int(unsigned(a), unsigned(b))), false)
 
 union clause zisk_op = ZOP_DIV : unit
+function clause zisk_op_of_code (0xba) = Some(ZOP_DIV())
 function clause zisk_exec (ZOP_DIV(), a, b) =
   if b == zeros() then (sail_ones(64), true)
   else (to_bits(64, tdiv_int(signed(a), signed(b))), false)
 
 union clause zisk_op = ZOP_REMU : unit
+function clause zisk_op_of_code (0xb9) = Some(ZOP_REMU())
 function clause zisk_exec (ZOP_REMU(), a, b) =
   if b == zeros() then (a, true)
   else (to_bits(64, tmod_int(unsigned(a), unsigned(b))), false)
 
 union clause zisk_op = ZOP_REM : unit
+function clause zisk_op_of_code (0xbb) = Some(ZOP_REM())
 function clause zisk_exec (ZOP_REM(), a, b) =
   if b == zeros() then (a, true)
   else (to_bits(64, tmod_int(signed(a), signed(b))), false)
 
 union clause zisk_op = ZOP_DIVU_W : unit
+function clause zisk_op_of_code (0xbc) = Some(ZOP_DIVU_W())
 function clause zisk_exec (ZOP_DIVU_W(), a, b) =
   if b[31 .. 0] == zeros() then (sail_ones(64), true)
   else (sign_extend(to_bits(32, tdiv_int(unsigned(a[31 .. 0]), unsigned(b[31 .. 0]))), 64), false)
 
 union clause zisk_op = ZOP_DIV_W : unit
+function clause zisk_op_of_code (0xbe) = Some(ZOP_DIV_W())
 function clause zisk_exec (ZOP_DIV_W(), a, b) =
   if b[31 .. 0] == zeros() then (sail_ones(64), true)
   else (sign_extend(to_bits(32, tdiv_int(signed(a[31 .. 0]), signed(b[31 .. 0]))), 64), false)
 
 union clause zisk_op = ZOP_REMU_W : unit
+function clause zisk_op_of_code (0xbd) = Some(ZOP_REMU_W())
 function clause zisk_exec (ZOP_REMU_W(), a, b) =
   if b[31 .. 0] == zeros() then (sx32(a), true)
   else (sign_extend(to_bits(32, tmod_int(unsigned(a[31 .. 0]), unsigned(b[31 .. 0]))), 64), false)
 
 union clause zisk_op = ZOP_REM_W : unit
+function clause zisk_op_of_code (0xbf) = Some(ZOP_REM_W())
 function clause zisk_exec (ZOP_REM_W(), a, b) =
   if b[31 .. 0] == zeros() then (sx32(a), true)
   else (sign_extend(to_bits(32, tmod_int(signed(a[31 .. 0]), signed(b[31 .. 0]))), 64), false)

@@ -8,7 +8,7 @@
 function source_a (inst : zisk_inst) -> bits(64) =
   match inst.a_src {
     A_C    => Zc,                      /* result of the previous step */
-    A_REG  => rX(inst.a_imm[4 .. 0]),
+    A_REG  => rX(inst.a_imm[5 .. 0]),
     A_MEM  => read_mem(inst.a_imm, 8),
     A_IMM  => inst.a_imm,
     A_STEP => Step
@@ -17,7 +17,7 @@ function source_a (inst : zisk_inst) -> bits(64) =
 function source_b (inst : zisk_inst, a : bits(64)) -> bits(64) =
   match inst.b_src {
     B_C   => Zc,
-    B_REG => rX(inst.b_imm[4 .. 0]),
+    B_REG => rX(inst.b_imm[5 .. 0]),
     B_MEM => read_mem(inst.b_imm, 8),
     B_IMM => inst.b_imm,
     B_IND => zero_extend(read_mem(a + inst.b_imm, inst.ind_width), 64)
@@ -32,7 +32,7 @@ function store_c (inst : zisk_inst, a : bits(64), c : bits(64)) -> unit = {
   let v = value_to_store(inst, c);
   match inst.store {
     ST_NONE => (),
-    ST_REG  => wX(inst.store_off[4 .. 0], v),
+    ST_REG  => wX(inst.store_off[5 .. 0], v),
     ST_MEM  => write_mem(inst.store_off, 8, v),
     /* Bind the width ONCE: each projection of an existentially-typed
        field yields a fresh type variable, so two reads of inst.ind_width

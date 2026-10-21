@@ -118,14 +118,15 @@ runs them through a software float library, for Go compatibility only.
 function of a and b: the internal ones, Binary, BinaryE and Arith
 ([`doc/ops.md`](doc/ops.md)). Each is checked against ZisK's own op functions
 on 320 vectors (`make optest`). Still to come: the precompiles, DMA and fcall,
-which work on memory; memory accesses other than 8-byte ones; and the
-equivalence proofs, whose shape depends on how the transpiler is represented
+which work on memory; the memory map's regions; and the equivalence proofs, whose shape depends on how the transpiler is represented
 — a hand-written spec, differentially tested against the Rust, or the Rust
 itself translated to Lean — which is still to be decided.
 
 The model runs: compiled to C, it executes `ziskasm/examples/doubler-min` —
-BIOS, launcher and program, 253 steps — and `test/programs/halt`, and
-`make difftest` checks every step against `ziskemu`. Both models' Lean builds,
+BIOS, launcher and program, 253 steps — `test/programs/halt`, and the RISC-V
+architectural tests, transpiled: all 169 of the I, M, A, C and B suites ZisK
+runs, up to 22 926 steps each, agree with `ziskemu` step by step
+(`make compliance`). Both models' Lean builds,
 side by side, in `lean/`.
 
 An earlier model of 8 operations, and Lean proofs that ZisK's circuits
@@ -145,11 +146,12 @@ As sail-riscv's:
 | `model/zisk_mem.sail` | Memory. |
 | `model/zisk_insts_begin.sail`, `zisk_insts_<family>.sail`, `zisk_insts_end.sail` | The operations, a file per family: `internal`, `binary`, `binary_ext`, `arith`, `system`. |
 | `model/zisk_inst.sail` | The instruction record. |
-| `model/zisk_rom.sail` | The default ROM, with no program; `make ROM=…` gives another. |
+| `model/zisk_rom.sail` | The default ROM, with no program, for the typecheck and the Lean build. |
+| `model/zisk_rom_table.sail` | The C emulator's ROM: any program's, read from a table in memory. |
 | `model/zisk_step.sail` | The execution step. |
 | `model/main.sail` | The C emulator's main loop and trace. |
 | `lean/` | The equivalence proofs: a Lake package importing both generated models. |
-| `test/` | The per-operation checks (`make optest`), and `programs/`, the ZisK assembly programs `make difftest-all` runs besides the doubler. |
+| `test/` | The per-operation checks (`make optest`); `programs/`, the ZisK assembly programs `make difftest-all` runs besides the doubler; and `compliance/`, the RISC-V architectural tests' harness for ZisK (`make compliance`). |
 | `doc/ops.md` | Every ZisK operation: whether the transpiler emits it, whether the model specifies it. |
 | `check_ops.py` | The opcode-name guard (`make ops`). |
 
@@ -164,9 +166,10 @@ make check         # typecheck the model
 make ops           # check the model's opcode names against core/src/zisk_ops.rs
 make optest        # check every operation against ZisK's own op functions
 make opsdoc        # regenerate doc/ops.md
-make emu           # build the C emulator (ROM=… for a program)
+make emu           # build the C emulator, which runs any program
 make difftest      # run PROG (or ELF=…) on ziskemu and on the C emulator, and diff the traces
 make difftest-all  # every program the model is difftested on
+make compliance    # the RISC-V architectural tests, transpiled, difftested (ARCH_TEST=…, RISCV_GCC=…)
 make lean          # generate Lean definitions into build/lean
 make lean-build    # elaborate them
 make riscv         # fetch sail-riscv at the pinned commit and generate its Lean
@@ -204,7 +207,9 @@ Nothing below is assumed already built.
 | z3 | Sail's typechecker | `apt install z3`, or what Sail's opam install pulls in |
 | A C compiler, GMP, zlib | the C emulators | e.g. `apt install build-essential libgmp-dev zlib1g-dev` |
 | CMake | sail-riscv's build | 3.20 or later |
-| Python 3 | `check_ops.py`, the per-op checks, `doc/ops.md` | any 3.x |
+| Python 3 | `check_ops.py`, the per-op checks, `doc/ops.md`, the compliance runner | any 3.x |
+| A RISC-V GCC | compiling the architectural tests | e.g. the [xPack RISC-V GCC](https://xpack-dev-tools.github.io/riscv-none-elf-gcc-xpack/) 14 (`riscv-none-elf-gcc`) |
+| riscv-arch-test | the architectural tests | `git clone --branch 3.9.1 https://github.com/riscv-non-isa/riscv-arch-test` |
 | elan | Lean 4 | [lean-lang.org/install](https://lean-lang.org/install/). No `elan default` needed: each `lean-toolchain` picks v4.29.0, and elan fetches it on the first `lake build`. |
 
 ### The run
@@ -265,8 +270,8 @@ OK: every operation agrees with the emulator on every vector
 On a mismatch it prints each failing vector — the op, a, b, and both
 results — and fails.
 
-**4. Run the model against ziskemu.** A few seconds, most of it the C
-compile.
+**4. Run the model against ziskemu.** A few seconds, most of it building the
+C emulator, once.
 
 ```sh
 make difftest-all
@@ -286,7 +291,29 @@ or `difftest-all` fails: the program jumps to the BIOS's trap handler at a
 fixed address, so a BIOS whose `mtvec` moves would otherwise make it end
 normally, with both emulators still agreeing.
 
-**5. Generate and elaborate the model's Lean.** The first build fetches the
+**5. Run the RISC-V architectural tests, transpiled.** Each test of the I, M,
+A, C and B suites is compiled for ZisK's memory map, transpiled as `ziskemu -e`
+transpiles it, and difftested; under a minute for all of them.
+
+```sh
+make compliance ARCH_TEST=…/riscv-arch-test RISCV_GCC=…/riscv-none-elf-gcc
+```
+
+```
+PASS  A-amoadd.d-01                    4603 steps
+...
+SKIP  B-clmul-01                       skipped: the transpiler's default build has no Zbc (its zbc feature)
+...
+169 of 169 tests agree with ziskemu: A 18/18, B 40/40, C 47/47, I 51/51, M 13/13; 3 skipped
+```
+
+The results are also in `build/compliance/results.txt`. `SUITES=…` picks
+others: Zicond and Zifencei are known to the runner, and skipped for the same
+kind of reason — the transpiler's default build has no Zicond, and Fence.i's
+test rewrites its own code, which ZisK's read-only ROM does not allow. See
+[Compliance testing](#compliance-testing).
+
+**6. Generate and elaborate the model's Lean.** The first build fetches the
 Lean toolchain and Sail's Lean library (`lake update`); after that, about 20 s.
 
 ```sh
@@ -298,7 +325,7 @@ make lean-build
 Build completed successfully (28 jobs).
 ```
 
-**6. Generate and elaborate sail-riscv's Lean,** at the pinned commit, into
+**7. Generate and elaborate sail-riscv's Lean,** at the pinned commit, into
 `build/sail-riscv`. The generation takes about 17 minutes — most of it z3 —
 and the build about 12.
 
@@ -313,7 +340,7 @@ Building Lean definitions from Sail model (rv64d)
 Build completed successfully (141 jobs).
 ```
 
-**7. Build both models side by side.**
+**8. Build both models side by side.**
 
 ```sh
 make equiv
@@ -406,20 +433,22 @@ they implement a RISC-V instruction.
 taken from what the encoder and the emulator already do rather than chosen
 freely.
 
-**The register file is `x1`–`x31`.** ZisK maps registers at `REG_FIRST =
-SYS_ADDR`, but an instruction never reaches the first 32 through memory. The
-encoder (`ZiskInstBuilder::src_a`, `src_b`, `store` in
+**The register file is `r1`–`r39`.** ZisK maps registers at `REG_FIRST =
+SYS_ADDR`: the 32 RISC-V registers, then `r32`–`r39`, which RISC-V code does
+not see — the transpiler uses them as scratch, for instance in the atomics.
+An instruction never reaches them through memory. The encoder
+(`ZiskInstBuilder::src_a`, `src_b`, `store` in
 `core/src/zisk_inst_builder.rs`) turns register 0 into `SRC_IMM 0` or no
-store at all, registers 1–31 into `SRC_REG`/`STORE_REG`, and the "virtual
-registers" 32–63 into `SRC_MEM`/`STORE_MEM` at `REG_FIRST + 8·i`. So
-registers 32–63 are plain memory, above `REG_LAST`, and the register file is
-the 31 registers the main trace holds: a `vector(32, bits(64))` whose slot 0
-is never used.
+store at all, registers 1–39 into `SRC_REG`/`STORE_REG`, and the "virtual
+registers" 40–63 into `SRC_MEM`/`STORE_MEM` at `REG_FIRST + 8·i`. So
+registers 40–63 are plain memory, above `REG_LAST`, and the register file is
+the 39 registers the main trace holds: a `vector(40, bits(64))` whose slot 0
+is never used, indexed by 6 bits.
 
 **Memory is a little-endian byte map, apart from the registers.** `read_mem`
 and `write_mem` go through Sail's `read_ram`/`write_ram` builtins, which
 Sail's C runtime implements for the C emulator and its Lean library over
-`SequentialState.mem`. The emulator keeps `x0`–`x31` in an array of their
+`SequentialState.mem`. The emulator keeps `r0`–`r39` in an array of their
 own, and `Mem` `debug_assert`s that no memory access lands on an aligned
 register address. The model asserts the stronger condition: no access
 overlaps `[REG_FIRST, REG_LAST + 8)` at all.
@@ -427,10 +456,19 @@ overlaps `[REG_FIRST, REG_LAST + 8)` at all.
 **The ROM is per program.** An instruction is a record, not bytes, so
 `rom_fetch` is a function from `pc` to `zisk_inst` rather than a memory read.
 `model/zisk_rom.sail` is a ROM with no instructions, so the model builds with
-no program at all, and a program supplies its own file (`make ROM=…`, a path
-relative to `model/`). The step is split so that proofs need no ROM:
-`zisk_execute(inst)` runs one instruction, and `zisk_step()` is
-`zisk_execute(rom_fetch(PC))`.
+no program at all; that is the ROM the typecheck and the Lean build use. The
+step is split so that proofs need no ROM: `zisk_execute(inst)` runs one
+instruction, and `zisk_step()` is `zisk_execute(rom_fetch(PC))`.
+
+The C emulator uses `model/zisk_rom_table.sail` instead: its `rom_fetch`
+decodes the instruction at `pc` from a table of 64-byte entries in memory, at
+`ROM_TABLE + 64·pc`, far above every address ZisK uses, which
+`tools/sail-difftest` writes beside the program's memory sections. So one
+emulator runs every program. Compiling each program's ROM into its own
+emulator, as one `match` on the pc, took up to 20 minutes for a transpiled
+RISC-V test of 8 000 instructions; reading it takes nothing. The table names
+the op by its opcode, which is part of the model: each operation's
+`zisk_op_of_code` clause, which `make ops` checks against `zisk_ops.rs`.
 
 Two simplifications, both of which hold today but which the model does not
 check:
@@ -459,13 +497,14 @@ The pipeline:
 1. [`tools/sail-difftest`](../tools/sail-difftest/src/main.rs) builds the ROM
    — assembling `PROG` with the same code `ziskemu -z` uses, or transpiling
    `ELF` with the same code `ziskemu -e` uses — and writes three things into
-   `build/difftest/<name>/`. `rom.sail` holds every instruction of the ROM,
-   BIOS included, as a `rom_fetch`. `mem/` holds the initial memory sections:
-   the ROM's data and the input behind its 8-byte header, as
-   `Emu::create_emu_context` lays them out. `ziskemu.trace` is the reference
-   run, recorded by stepping `Emu` directly.
-2. The model is compiled to C with that ROM and `model/main.sail`, and run
-   with the memory sections loaded through `-b addr,file`.
+   `build/difftest/<name>/`. `mem/` holds the initial memory sections: the
+   ROM's data and the input behind its 8-byte header, as
+   `Emu::create_emu_context` lays them out, and the ROM itself, as the table
+   the emulator reads. `rom.sail` holds every instruction of the ROM, BIOS
+   included, as a `rom_fetch`, to read. `ziskemu.trace` is the reference run,
+   recorded by stepping `Emu` directly.
+2. The model's C emulator, built once, runs with the memory sections loaded
+   through `-b addr,file`.
 3. The two traces are diffed.
 
 Each line of the trace is a step: the pc it ran at, `c`, `flag`, and every
@@ -480,8 +519,35 @@ The exporter refuses what the model does not describe, rather than exporting
 something the model would get subtly wrong: an instruction that uses the
 stack pointer or takes extended arguments (the precompiles), or a source or
 store kind with no Sail counterpart. An operation with no Sail clause gets
-through the exporter, then fails the Sail typecheck with the operation's
-name.
+through the exporter, then stops the emulator when it reaches it: its opcode
+has no `zisk_op_of_code` clause, and `rom_fetch` fails with "an opcode the
+model does not specify".
+
+## Compliance testing
+
+`make compliance` runs the RISC-V architectural tests
+([riscv-arch-test](https://github.com/riscv-non-isa/riscv-arch-test)) through
+the model, as ZisK runs them: compiled for ZisK, transpiled, and difftested
+against `ziskemu`, every step. They are what the transpiler turns RISC-V into,
+so they check the model on the instructions the equivalence will be about —
+loads and stores of every width, sign extension, the atomics, the compressed
+instructions — and not only on hand-written ZisK.
+
+[`test/compliance/env`](test/compliance/env) is the tests' harness for ZisK,
+from [ziskof](https://github.com/0xPolygonHermez/ziskof)'s, for the current
+memory map: `link.ld` puts code and read-only data at the program ROM,
+`ROM_ADDR`, and the signature and other data in RAM; `model_test.h` ends a
+test through ZisK's exit syscall once it finds ZisK's marker at
+`ARCH_ID_CSR_ADDR`. [`test/compliance/run.py`](test/compliance/run.py)
+compiles each test of the chosen suites with the suite's `-march`, runs them
+in parallel through `make difftest`, and prints a line per test and a
+summary.
+
+Tests of instructions ZisK does not run are skipped, each with its reason:
+carry-less multiplication and Zicond, which the transpiler's default build
+does not have, and Fence.i's test, which rewrites its own code. A test that
+fails is either a difference between the model and ZisK, or an instruction
+ZisK does not run that the skip list should name.
 
 ## Per-operation testing
 

@@ -20,47 +20,58 @@ function rotl(x, s) = (x << s) | (x >> (length(x) - s))
 /* --- Shifts ----------------------------------------------------------- */
 
 union clause zisk_op = ZOP_SLL : unit
+function clause zisk_op_of_code (0x21) = Some(ZOP_SLL())
 function clause zisk_exec (ZOP_SLL(), a, b) = (a << unsigned(b[5 .. 0]), false)
 
 union clause zisk_op = ZOP_SRL : unit
+function clause zisk_op_of_code (0x22) = Some(ZOP_SRL())
 function clause zisk_exec (ZOP_SRL(), a, b) = (a >> unsigned(b[5 .. 0]), false)
 
 union clause zisk_op = ZOP_SRA : unit
+function clause zisk_op_of_code (0x23) = Some(ZOP_SRA())
 function clause zisk_exec (ZOP_SRA(), a, b) = (sra_bits(a, unsigned(b[5 .. 0])), false)
 
 union clause zisk_op = ZOP_SLL_W : unit
+function clause zisk_op_of_code (0x24) = Some(ZOP_SLL_W())
 function clause zisk_exec (ZOP_SLL_W(), a, b) =
   (sign_extend(a[31 .. 0] << unsigned(b[4 .. 0]), 64), false)
 
 union clause zisk_op = ZOP_SRL_W : unit
+function clause zisk_op_of_code (0x25) = Some(ZOP_SRL_W())
 function clause zisk_exec (ZOP_SRL_W(), a, b) =
   (sign_extend(a[31 .. 0] >> unsigned(b[4 .. 0]), 64), false)
 
 union clause zisk_op = ZOP_SRA_W : unit
+function clause zisk_op_of_code (0x26) = Some(ZOP_SRA_W())
 function clause zisk_exec (ZOP_SRA_W(), a, b) =
   (sra_bits(sign_extend(a[31 .. 0], 64), unsigned(b[4 .. 0])), false)
 
 /* sll_u_w: the low 32 bits of a, zero-extended, shifted left (Zba's slli.uw). */
 union clause zisk_op = ZOP_SLL_U_W : unit
+function clause zisk_op_of_code (0x43) = Some(ZOP_SLL_U_W())
 function clause zisk_exec (ZOP_SLL_U_W(), a, b) =
   (zero_extend(a[31 .. 0], 64) << unsigned(b[5 .. 0]), false)
 
 /* --- Rotations -------------------------------------------------------- */
 
 union clause zisk_op = ZOP_ROL : unit
+function clause zisk_op_of_code (0x34) = Some(ZOP_ROL())
 function clause zisk_exec (ZOP_ROL(), a, b) = (rotl(a, unsigned(b[5 .. 0])), false)
 
 union clause zisk_op = ZOP_ROR : unit
+function clause zisk_op_of_code (0x36) = Some(ZOP_ROR())
 function clause zisk_exec (ZOP_ROR(), a, b) = {
   let s = unsigned(b[5 .. 0]);
   (rotl(a, if s == 0 then 0 else 64 - s), false)
 }
 
 union clause zisk_op = ZOP_ROL_W : unit
+function clause zisk_op_of_code (0x35) = Some(ZOP_ROL_W())
 function clause zisk_exec (ZOP_ROL_W(), a, b) =
   (sign_extend(rotl(a[31 .. 0], unsigned(b[4 .. 0])), 64), false)
 
 union clause zisk_op = ZOP_ROR_W : unit
+function clause zisk_op_of_code (0x37) = Some(ZOP_ROR_W())
 function clause zisk_exec (ZOP_ROR_W(), a, b) = {
   let s = unsigned(b[4 .. 0]);
   (sign_extend(rotl(a[31 .. 0], if s == 0 then 0 else 32 - s), 64), false)
@@ -69,26 +80,33 @@ function clause zisk_exec (ZOP_ROR_W(), a, b) = {
 /* --- Sign extensions and packing --------------------------------------- */
 
 union clause zisk_op = ZOP_SIGNEXTEND_B : unit
+function clause zisk_op_of_code (0x27) = Some(ZOP_SIGNEXTEND_B())
 function clause zisk_exec (ZOP_SIGNEXTEND_B(), _, b) = (sign_extend(b[7 .. 0], 64), false)
 
 union clause zisk_op = ZOP_SIGNEXTEND_H : unit
+function clause zisk_op_of_code (0x28) = Some(ZOP_SIGNEXTEND_H())
 function clause zisk_exec (ZOP_SIGNEXTEND_H(), _, b) = (sign_extend(b[15 .. 0], 64), false)
 
 union clause zisk_op = ZOP_SIGNEXTEND_W : unit
+function clause zisk_op_of_code (0x29) = Some(ZOP_SIGNEXTEND_W())
 function clause zisk_exec (ZOP_SIGNEXTEND_W(), _, b) = (sign_extend(b[31 .. 0], 64), false)
 
 /* pack, pack_h, pack_w: the low halves of a and b side by side (Zbkb). */
 union clause zisk_op = ZOP_PACK : unit
+function clause zisk_op_of_code (0x31) = Some(ZOP_PACK())
 function clause zisk_exec (ZOP_PACK(), a, b) = (b[31 .. 0] @ a[31 .. 0], false)
 
 union clause zisk_op = ZOP_PACK_H : unit
+function clause zisk_op_of_code (0x32) = Some(ZOP_PACK_H())
 function clause zisk_exec (ZOP_PACK_H(), a, b) = (zero_extend(b[7 .. 0] @ a[7 .. 0], 64), false)
 
 union clause zisk_op = ZOP_PACK_W : unit
+function clause zisk_op_of_code (0x33) = Some(ZOP_PACK_W())
 function clause zisk_exec (ZOP_PACK_W(), a, b) = (sign_extend(b[15 .. 0] @ a[15 .. 0], 64), false)
 
 /* rev8: b with its bytes reversed. */
 union clause zisk_op = ZOP_REV8 : unit
+function clause zisk_op_of_code (0x30) = Some(ZOP_REV8())
 function clause zisk_exec (ZOP_REV8(), _, b) = {
   var r : bits(64) = zeros();
   foreach (k from 0 to 7) {
@@ -99,6 +117,7 @@ function clause zisk_exec (ZOP_REV8(), _, b) = {
 
 /* orc_b: each byte of b that is not zero becomes 0xff. */
 union clause zisk_op = ZOP_ORC_B : unit
+function clause zisk_op_of_code (0x3e) = Some(ZOP_ORC_B())
 function clause zisk_exec (ZOP_ORC_B(), _, b) = {
   var r : bits(64) = zeros();
   foreach (k from 0 to 7) {
@@ -140,26 +159,33 @@ function cpop_bits(x) = {
 }
 
 union clause zisk_op = ZOP_CLZ : unit
+function clause zisk_op_of_code (0x38) = Some(ZOP_CLZ())
 function clause zisk_exec (ZOP_CLZ(), _, b) = (to_bits(64, clz_bits(b)), false)
 
 union clause zisk_op = ZOP_CLZ_W : unit
+function clause zisk_op_of_code (0x39) = Some(ZOP_CLZ_W())
 function clause zisk_exec (ZOP_CLZ_W(), _, b) = (to_bits(64, clz_bits(b[31 .. 0])), false)
 
 union clause zisk_op = ZOP_CTZ : unit
+function clause zisk_op_of_code (0x3a) = Some(ZOP_CTZ())
 function clause zisk_exec (ZOP_CTZ(), _, b) = (to_bits(64, ctz_bits(b)), false)
 
 union clause zisk_op = ZOP_CTZ_W : unit
+function clause zisk_op_of_code (0x3b) = Some(ZOP_CTZ_W())
 function clause zisk_exec (ZOP_CTZ_W(), _, b) = (to_bits(64, ctz_bits(b[31 .. 0])), false)
 
 union clause zisk_op = ZOP_CPOP : unit
+function clause zisk_op_of_code (0x3c) = Some(ZOP_CPOP())
 function clause zisk_exec (ZOP_CPOP(), _, b) = (to_bits(64, cpop_bits(b)), false)
 
 union clause zisk_op = ZOP_CPOP_W : unit
+function clause zisk_op_of_code (0x3d) = Some(ZOP_CPOP_W())
 function clause zisk_exec (ZOP_CPOP_W(), _, b) = (to_bits(64, cpop_bits(b[31 .. 0])), false)
 
 /* --- Single bits (Zbs) --------------------------------------------------- */
 
 union clause zisk_op = ZOP_BCLR : unit
+function clause zisk_op_of_code (0x3f) = Some(ZOP_BCLR())
 function clause zisk_exec (ZOP_BCLR(), a, b) = {
   var r = a;
   r[unsigned(b[5 .. 0])] = bitzero;
@@ -167,6 +193,7 @@ function clause zisk_exec (ZOP_BCLR(), a, b) = {
 }
 
 union clause zisk_op = ZOP_BSET : unit
+function clause zisk_op_of_code (0x42) = Some(ZOP_BSET())
 function clause zisk_exec (ZOP_BSET(), a, b) = {
   var r = a;
   r[unsigned(b[5 .. 0])] = bitone;
@@ -174,6 +201,7 @@ function clause zisk_exec (ZOP_BSET(), a, b) = {
 }
 
 union clause zisk_op = ZOP_BINV : unit
+function clause zisk_op_of_code (0x41) = Some(ZOP_BINV())
 function clause zisk_exec (ZOP_BINV(), a, b) = {
   var r = a;
   let i = unsigned(b[5 .. 0]);
@@ -182,27 +210,33 @@ function clause zisk_exec (ZOP_BINV(), a, b) = {
 }
 
 union clause zisk_op = ZOP_BEXT : unit
+function clause zisk_op_of_code (0x40) = Some(ZOP_BEXT())
 function clause zisk_exec (ZOP_BEXT(), a, b) =
   (if a[unsigned(b[5 .. 0])] == bitone then zero_extend(0b1, 64) else zeros(), false)
 
 /* --- Additions of a zero-extended word (Zba) ---------------------------- */
 
 union clause zisk_op = ZOP_ADD_U_W : unit
+function clause zisk_op_of_code (0x90) = Some(ZOP_ADD_U_W())
 function clause zisk_exec (ZOP_ADD_U_W(), a, b) = (b + zero_extend(a[31 .. 0], 64), false)
 
 union clause zisk_op = ZOP_SH1ADD_U_W : unit
+function clause zisk_op_of_code (0x91) = Some(ZOP_SH1ADD_U_W())
 function clause zisk_exec (ZOP_SH1ADD_U_W(), a, b) = (b + (zero_extend(a[31 .. 0], 64) << 1), false)
 
 union clause zisk_op = ZOP_SH2ADD_U_W : unit
+function clause zisk_op_of_code (0x92) = Some(ZOP_SH2ADD_U_W())
 function clause zisk_exec (ZOP_SH2ADD_U_W(), a, b) = (b + (zero_extend(a[31 .. 0], 64) << 2), false)
 
 union clause zisk_op = ZOP_SH3ADD_U_W : unit
+function clause zisk_op_of_code (0x93) = Some(ZOP_SH3ADD_U_W())
 function clause zisk_exec (ZOP_SH3ADD_U_W(), a, b) = (b + (zero_extend(a[31 .. 0], 64) << 3), false)
 
 /* --- Carry-less products (Zbc) ------------------------------------------- */
 
 /* clmul: the low 64 bits of the carry-less product of a and b. */
 union clause zisk_op = ZOP_CLMUL : unit
+function clause zisk_op_of_code (0x95) = Some(ZOP_CLMUL())
 function clause zisk_exec (ZOP_CLMUL(), a, b) = {
   var r : bits(64) = zeros();
   foreach (i from 0 to 63) { if b[i] == bitone then r = r ^ (a << i) };
@@ -211,6 +245,7 @@ function clause zisk_exec (ZOP_CLMUL(), a, b) = {
 
 /* clmul_h: its high 64 bits. */
 union clause zisk_op = ZOP_CLMUL_H : unit
+function clause zisk_op_of_code (0x96) = Some(ZOP_CLMUL_H())
 function clause zisk_exec (ZOP_CLMUL_H(), a, b) = {
   var r : bits(64) = zeros();
   foreach (i from 1 to 63) { if b[i] == bitone then r = r ^ (a >> (64 - i)) };
@@ -219,6 +254,7 @@ function clause zisk_exec (ZOP_CLMUL_H(), a, b) = {
 
 /* clmul_r: bits 126..63 of the product. */
 union clause zisk_op = ZOP_CLMUL_R : unit
+function clause zisk_op_of_code (0x97) = Some(ZOP_CLMUL_R())
 function clause zisk_exec (ZOP_CLMUL_R(), a, b) = {
   var r : bits(64) = zeros();
   foreach (i from 0 to 63) { if b[i] == bitone then r = r ^ (a >> (63 - i)) };
@@ -229,6 +265,7 @@ function clause zisk_exec (ZOP_CLMUL_R(), a, b) = {
 
 /* xperm4: each nibble of b indexes a nibble of a. */
 union clause zisk_op = ZOP_XPERM4 : unit
+function clause zisk_op_of_code (0x98) = Some(ZOP_XPERM4())
 function clause zisk_exec (ZOP_XPERM4(), a, b) = {
   var r : bits(64) = zeros();
   foreach (i from 0 to 15) {
@@ -240,6 +277,7 @@ function clause zisk_exec (ZOP_XPERM4(), a, b) = {
 
 /* xperm8: each byte of b indexes a byte of a, or gives 0 past the eighth. */
 union clause zisk_op = ZOP_XPERM8 : unit
+function clause zisk_op_of_code (0x99) = Some(ZOP_XPERM8())
 function clause zisk_exec (ZOP_XPERM8(), a, b) = {
   var r : bits(64) = zeros();
   foreach (i from 0 to 7) {
@@ -252,7 +290,9 @@ function clause zisk_exec (ZOP_XPERM8(), a, b) = {
 /* --- Conditional zeroing (Zicond) --------------------------------------- */
 
 union clause zisk_op = ZOP_CZERO_EQZ : unit
+function clause zisk_op_of_code (0x9a) = Some(ZOP_CZERO_EQZ())
 function clause zisk_exec (ZOP_CZERO_EQZ(), a, b) = (if b == zeros() then zeros() else a, false)
 
 union clause zisk_op = ZOP_CZERO_NEZ : unit
+function clause zisk_op_of_code (0x9b) = Some(ZOP_CZERO_NEZ())
 function clause zisk_exec (ZOP_CZERO_NEZ(), a, b) = (if b != zeros() then zeros() else a, false)
