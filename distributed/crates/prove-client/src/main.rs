@@ -10,13 +10,13 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use tracing::info;
+use tracing::{error, info, warn};
 use zisk_common::{RandomSeed, RandomSeedArgs};
 use zisk_coordinator_api::dto::{
     deadline_from_now, DomainExecuteRequest, DomainInputChunk, DomainInputKind, DomainJobKind,
     DomainJobKindResponse, DomainProofKind, DomainProveRequest, DomainSetupRequest, TerminalStatus,
 };
-use zisk_coordinator_client::CoordinatorClient;
+use zisk_coordinator_client::{CoordinatorClient, Job};
 
 #[derive(Parser)]
 #[command(name = "zisk-prove-client", about = "Submit jobs to the ZisK coordinator")]
@@ -157,6 +157,32 @@ fn register_elf(client: &CoordinatorClient, elf_path: &PathBuf) -> Result<(Strin
     Ok((hash_id, program_name))
 }
 
+/// Wait for `job` to end, and cancel it on Ctrl-C, or once `timeout` seconds (`0`:
+/// none) have passed: it would otherwise go on running after the client gave up.
+fn wait_or_cancel(job: &Job, timeout: u64) -> Result<TerminalStatus> {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(async {
+            let expired = async {
+                match timeout {
+                    0 => std::future::pending().await,
+                    secs => tokio::time::sleep(Duration::from_secs(secs)).await,
+                }
+            };
+            let why = tokio::select! {
+                status = job.wait_async(None) => return status,
+                _ = tokio::signal::ctrl_c() => "interrupted".to_string(),
+                () = expired => format!("timed out after {timeout}s"),
+            };
+            match job.cancel_async().await {
+                Ok(true) => warn!("Job {why}; cancelled it"),
+                Ok(false) => warn!("Job {why}; it had already ended"),
+                Err(e) => error!("Job {why}; cancelling it failed: {e}"),
+            }
+            anyhow::bail!("job {why}")
+        })
+    })
+}
+
 fn run_setup(
     client: &CoordinatorClient,
     hash_id: &str,
@@ -174,7 +200,7 @@ fn run_setup(
         emulator_only,
     }))?;
     info!("Setup job submitted. job_id = {}", job.job_id());
-    match job.wait(None)? {
+    match wait_or_cancel(&job, 0)? {
         TerminalStatus::Completed(_) => {
             info!("Setup completed successfully.");
             Ok(())
@@ -259,7 +285,7 @@ fn run_prove(
     let _watch = spawn_watch(&job);
 
     info!("Waiting for proof …");
-    match job.wait(None)? {
+    match wait_or_cancel(&job, timeout)? {
         TerminalStatus::Completed(DomainJobKindResponse::Prove { proof: p, stats }) => {
             info!(
                 steps = stats.steps,
@@ -331,7 +357,7 @@ fn run_execute(
     let _watch = spawn_watch(&job);
 
     info!("Waiting for execution …");
-    match job.wait(None)? {
+    match wait_or_cancel(&job, timeout)? {
         TerminalStatus::Completed(DomainJobKindResponse::Execute {
             stats,
             public_outputs,

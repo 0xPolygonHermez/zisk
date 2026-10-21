@@ -3,7 +3,7 @@ use crate::guest::ProgramId;
 use crate::GuestProgram;
 use crate::{
     check_paths_exist,
-    prover::{ProverBackend, ProverEngine, ZiskBackend, ZiskProver},
+    prover::{ProverBackend, ProverEngine, ProverJob, ZiskBackend, ZiskProver},
     ExecuteOutput, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use crate::{ensure_program_vk, get_rom_bin_path, BackendProverOpts};
@@ -104,6 +104,7 @@ impl ProverEngine for EmuProver {
         _with_hints: bool,
         _emulator_only: bool,
     ) -> Result<ProgramVK> {
+        self.core_prover.backend.forget_registered_program();
         let pctx = self.core_prover.backend.get_pctx()?;
 
         let program_vk = ensure_program_vk(&pctx, elf)?;
@@ -133,7 +134,7 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.set_stdin_and_random_seed(stdin, seed)
     }
 
-    fn register_program(&self, program_id: &ProgramId, _with_hints: bool) -> Result<()> {
+    fn begin_job_for(&self, program_id: &ProgramId, _with_hints: bool) -> Result<ProverJob> {
         let rom = self
             .program_cache
             .read()
@@ -144,7 +145,8 @@ impl ProverEngine for EmuProver {
         })?;
         let pctx = self.core_prover.backend.get_pctx()?;
         let rom_bin_path = get_rom_bin_path(&pctx, program_id)?;
-        self.core_prover.backend.register_program(rom, &rom_bin_path, false)
+        self.core_prover.backend.register_program(rom, &rom_bin_path, false)?;
+        Ok(ProverJob::new(program_id.clone(), false, None))
     }
 
     fn executed_steps(&self) -> u64 {
@@ -175,26 +177,28 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.get_execution_info()
     }
 
+    fn begin_job(&self, program: &GuestProgram) -> Result<ProverJob> {
+        self.begin_job_for(&program.program_id, false)
+    }
+
     fn execute(
         &self,
-        program: &GuestProgram,
+        _job: &ProverJob,
         stdin: ZiskStdin,
         seed: RandomSeed,
     ) -> Result<ExecuteOutput> {
-        self.register_program(&program.program_id, false)?;
         self.core_prover.backend.execute(stdin, seed)
     }
 
     fn stats(
         &self,
-        program: &GuestProgram,
+        _job: &ProverJob,
         stdin: ZiskStdin,
         seed: RandomSeed,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        self.register_program(&program.program_id, false)?;
         self.core_prover.backend.stats(stdin, seed, debug_info, minimal_memory, mpi_node)
     }
 
@@ -224,24 +228,22 @@ impl ProverEngine for EmuProver {
 
     fn verify_constraints(
         &self,
-        program: &GuestProgram,
+        _job: &ProverJob,
         stdin: ZiskStdin,
         seed: RandomSeed,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
-        self.register_program(&program.program_id, false)?;
         self.core_prover.backend.verify_constraints(stdin, seed, debug_info)
     }
 
     fn prove(
         &self,
-        program: &GuestProgram,
+        _job: &ProverJob,
         stdin: ZiskStdin,
         seed: RandomSeed,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
-        self.register_program(&program.program_id, false)?;
         self.core_prover.backend.prove(stdin, seed, proof_kind, prover_options)
     }
 
@@ -365,6 +367,22 @@ impl ProverEngine for EmuProver {
 
     fn wait_until_proofman_ready(&self) {
         self.core_prover.backend.wait_until_proofman_ready();
+    }
+
+    fn abort_cluster(&self, code: i32) -> ! {
+        self.core_prover.backend.abort_cluster(code)
+    }
+
+    fn cluster_all_ok(&self, ok: bool) -> bool {
+        self.core_prover.backend.cluster_all_ok(ok)
+    }
+
+    fn mpi_send(&self, dest: i32, tag: i32, data: &[u8]) {
+        self.core_prover.backend.mpi_send(dest, tag, data);
+    }
+
+    fn mpi_try_receive(&self, tag: i32) -> Option<(i32, Vec<u8>)> {
+        self.core_prover.backend.mpi_try_receive(tag)
     }
 }
 

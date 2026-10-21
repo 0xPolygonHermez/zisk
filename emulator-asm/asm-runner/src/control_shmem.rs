@@ -83,6 +83,12 @@ impl ControlShmem {
         Ok(())
     }
 
+    /// Clears the reset flag alone, keeping the sizes and the seed already written.
+    pub fn clear_reset_flag(&self) -> Result<()> {
+        self.writer.write_u64_at(ControlShmemOffsets::ResetFlag as usize, 0)?;
+        Ok(())
+    }
+
     /// The inputs size another process (or this one) recorded, read through a fresh mapping.
     pub fn inputs_size_of(shm_prefix: &str) -> Result<u64> {
         let name = shmem_control_input_name(shm_prefix);
@@ -141,9 +147,13 @@ mod tests {
         c.inc_inputs_size(5).unwrap();
         assert_eq!(r.read_u64_at(16), 15);
 
-        // ResetFlag @ offset 24
+        // ResetFlag @ offset 24, cleared alone: the inputs size stays
         c.set_reset_flag().unwrap();
         assert_eq!(r.read_u64_at(24), 1);
+        c.clear_reset_flag().unwrap();
+        assert_eq!(r.read_u64_at(24), 0);
+        assert_eq!(r.read_u64_at(16), 15);
+        c.set_reset_flag().unwrap();
 
         // RandomSeed @ offsets 32..64 (words 4..7), RandomSeedSet @ offset 64 (word 8), as
         // the C side reads them (CONTROL_INPUT_RANDOM_SEED_INDEX / _SET_INDEX)

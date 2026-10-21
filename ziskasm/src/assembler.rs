@@ -653,6 +653,8 @@ fn encode(
             zib.op("and").unwrap();
             zib.set_pc();
             zib.j(0, INST_SIZE);
+            // Call-stack meta, as the RISC-V transpiler sets for `jalr r0, r1, 0`.
+            zib.set_meta_rs1_rd(1, 0);
         }
         Kind::Jump(target) => {
             // jump(target) : unconditional static jump to an absolute address.
@@ -679,6 +681,8 @@ fn encode(
             zib.op("flag").unwrap();
             zib.store_pc("reg", 1, false);
             zib.j(off, INST_SIZE);
+            // Call-stack meta, as the RISC-V transpiler sets for `jal r1, LABEL`.
+            zib.set_meta_rs1_rd(1, 1);
         }
         Kind::Op(op) => {
             encode_op(&mut zib, pc, op, symbols).map_err(|e| format!("{}: {e}", loc()))?

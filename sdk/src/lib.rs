@@ -44,7 +44,7 @@ pub use execute::{ExecuteRequest, ExecuteRequestExt, ExecuteResult};
 pub use hints::{HintsSource, ZiskHints};
 pub use input_source::InputSource;
 pub use input_stream::ZiskStream;
-pub use job_handle::JobHandle;
+pub use job_handle::{JobCanceller, JobHandle};
 pub use lifecycle::{SetupTarget, UploadTarget};
 pub use prove::{JobEvent, ProveRequest, ProveRequestExt, ProveResult};
 pub use recurser::{AggregationProgram, AggregationProgramBuilder, Recurser};

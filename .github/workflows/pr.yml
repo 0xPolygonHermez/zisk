@@ -273,6 +273,22 @@ jobs:
               ./build_setup.sh
             '
 
+      # Several programs, and several jobs, on the assembly executor's one set of shared
+      # memory per process. Ignored by default: they need the real services, room in
+      # /dev/shm and, for two of them, the proving key installed above. Built as ZisK was
+      # built above, so that build is reused.
+      - name: Test ASM programs sharing memory
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              cd /workspace/zisk
+              CUDA_ARCHS=major cargo test --release --target x86_64-unknown-linux-gnu \
+                -p integration-tests \
+                --test asm_two_execute_clients --test asm_two_programs --test asm_job_boundary \
+                -- --ignored --test-threads=1
+            '
+
       - name: Test sha_hasher (CPU)
         run: |
           .github/scripts/docker_exec.sh \

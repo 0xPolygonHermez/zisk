@@ -35,7 +35,7 @@
 //! | STORE_MEM  | c        | Value is stored in memory at a constant address             |
 //! | STORE_IND  | c        | value is stored in memory at an indirect address a + offset |
 
-use crate::{source_to_str, store_to_str, InstContext};
+use crate::{source_to_str, store_to_str, zisk_ops::ZiskOp, InstContext, BLAKE2B_RD_CHAIN};
 
 /// a or b registers source is the current value of the c register
 pub const SRC_C: u64 = 0;
@@ -212,6 +212,20 @@ impl Default for ZiskInst {
 }
 
 impl ZiskInst {
+    /// Minimal-trace words a precompile logs: none for a blake2b round fed by the chain once the
+    /// chunk has the chained state (`chain_cached`).
+    #[inline(always)]
+    pub fn min_trace_words(&self, chain_cached: bool) -> u64 {
+        if chain_cached
+            && self.op == ZiskOp::BLAKE2B
+            && self.jmp_offset1 as u64 & BLAKE2B_RD_CHAIN != 0
+        {
+            0
+        } else {
+            (self.input_size + 7) >> 3
+        }
+    }
+
     /// Creates a human-readable string containing the ZisK instruction fields that are not zero.
     /// Used only for debugging.
     pub fn to_text(&self) -> String {

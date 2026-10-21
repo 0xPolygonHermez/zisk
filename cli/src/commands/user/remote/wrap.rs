@@ -52,11 +52,9 @@ impl ZiskRemoteWrap {
             anyhow::anyhow!("Failed to load proof from {}: {}", self.proof.display(), e)
         })?;
 
-        let mut request = client.wrap_proof(&zisk_proof, proof_kind);
-        if self.timeout != 0 {
-            request = request.timeout(Duration::from_secs(self.timeout));
-        }
-        let result = request.run()?.await?;
+        let request = client.wrap_proof(&zisk_proof, proof_kind);
+        let timeout = (self.timeout != 0).then(|| Duration::from_secs(self.timeout));
+        let result = super::await_job(request.run()?, timeout).await?;
 
         let output_file = resolve_output_path(self.output.clone(), result.job_id());
         result.save_proof(&output_file).map_err(|e| {

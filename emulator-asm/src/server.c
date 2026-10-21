@@ -54,9 +54,9 @@ static void on_emulation_signal(int sig)
     raise(sig);
 }
 
-// Write a minimal "end" chunk at MEM_CHUNK_ADDRESS so the parent's reader
-// sees `end=1` and exits its chunk loop cleanly. Used on signal recovery to
-// avoid the parent's 10 s chunk-wait timeout. Layouts must match AsmMOChunk
+// Write a minimal "end" chunk at MEM_CHUNK_ADDRESS, a terminal marker in the
+// shared memory. Used on signal recovery; it is not posted (see server_run), so
+// the parent stops reading when the request is answered. Layouts must match AsmMOChunk
 // / AsmMTChunk in emulator-asm/asm-runner/src/asm_mo.rs and asm_mt.rs:
 //   MemOp: { end, mem_ops_size }                                — 2 u64s, end @ 0
 //   MT-style: pc,sp,c,step, regs[MT_CHUNK_REGS], last_c,end,steps,mem_reads_size
@@ -1105,11 +1105,10 @@ void server_run (void)
     /*******/
 
     // Run the emulator under a sigsetjmp guard — see signal handler block above.
-    // On fault we set MEM_ERROR, write a sentinel "end" chunk so the parent's
-    // chunk-wait wakes immediately (instead of timing out), and fall through.
-    // The post-emulation code publishes MEM_ERROR in the trace header; the
-    // response then carries result=1 back to the parent, which reports the
-    // error.
+    // On fault we set MEM_ERROR, write a sentinel "end" chunk (not posted), and
+    // fall through. The post-emulation code publishes MEM_ERROR in the trace
+    // header; the response then carries result=1 back to the parent, which stops
+    // waiting for chunks once the request is answered and reports the error.
     gettimeofday(&start_time,NULL);
     if (verbose) asm_printf("Before calling emu_start() trace_address=%lx\n", trace_address);
     caught_signal = 0;
@@ -1263,7 +1262,9 @@ void server_run (void)
         // introduced in 0.18 ("ASM fixes to support signals"); 0.17 had the child
         // die on a fault (no persistent contamination). The abort is still
         // reported to the client via the stdio response result (MEM_ERROR -> 1),
-        // and the consumer fails cleanly on its wait timeout — the 0.17 semantics
+        // and the consumer fails as soon as it reads that response: every post of a
+        // request precedes its response, so once answered none is left to come
+        // (asm-runner's `wait_for_chunk`) — the 0.17 semantics
         // without killing the long-running service. write_abort_chunk() is kept
         // (harmless shmem terminal marker) but the leaking post is removed.
         write_abort_chunk();

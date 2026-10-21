@@ -2,7 +2,7 @@ use proofman_fields::PrimeField64;
 use zisk_precomp_common::{MemBusHelpers, MemProcessor, PrecompileMemInputs};
 
 use zisk_common::A;
-use zisk_core::blake2br;
+use zisk_core::{blake2br, BLAKE2B_RD_CHAIN, BLAKE2B_WR_CHAIN};
 
 use crate::blake2b_constants::{INDEX_POS, PARAM_CHUNKS, READ_PARAMS, START_READ_PARAMS};
 use crate::Blake2bSM;
@@ -18,9 +18,12 @@ impl<F: PrimeField64> PrecompileMemInputs for Blake2bSM<F> {
         // a = state address (read and written back), b = input address (read only); see the
         // payload layout in the constants module.
         let param_addrs = [data[A] as u32, addr_main];
+        // A chained round takes its params from the previous round and hands its state to the next
+        let reads = if data[INDEX_POS] & BLAKE2B_RD_CHAIN != 0 { 0 } else { READ_PARAMS };
+        let wr_chain = data[INDEX_POS] & BLAKE2B_WR_CHAIN != 0;
 
         // Generate memory load params
-        for (iparam, param_addr) in param_addrs.iter().enumerate().take(READ_PARAMS) {
+        for (iparam, param_addr) in param_addrs.iter().enumerate().take(reads) {
             for ichunk in 0..PARAM_CHUNKS {
                 MemBusHelpers::mem_aligned_read(
                     param_addr + ichunk as u32 * 8,
@@ -31,6 +34,9 @@ impl<F: PrimeField64> PrecompileMemInputs for Blake2bSM<F> {
             }
         }
 
+        if wr_chain {
+            return;
+        }
         let mut write_data = [0u64; PARAM_CHUNKS];
         if !only_counters {
             let mut state: [u64; 16] =

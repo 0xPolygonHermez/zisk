@@ -20,6 +20,43 @@ pub struct WorkerServiceConfig {
 
     /// Logging configuration
     pub logging: LoggingConfig,
+
+    /// What the worker reports to its coordinator about its host and processes
+    #[serde(default)]
+    pub telemetry: TelemetryConfig,
+}
+
+/// The telemetry the worker reports with its heartbeats: its processes' memory, the host's ZisK
+/// shared memory, its cgroup's memory and CPU, its start-up times, and how its last run ended
+/// when it ended itself. Informational; nothing about the jobs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TelemetryConfig {
+    /// Whether the worker reports it. On by default; `--no-telemetry` turns it off.
+    #[serde(default = "TelemetryConfig::default_enabled")]
+    pub enabled: bool,
+
+    /// Seconds between two reports.
+    #[serde(default = "TelemetryConfig::default_interval")]
+    pub interval_seconds: u64,
+}
+
+impl TelemetryConfig {
+    /// On by default (serde default).
+    pub const fn default_enabled() -> bool {
+        true
+    }
+
+    /// Every 10 seconds by default (serde default).
+    pub const fn default_interval() -> u64 {
+        10
+    }
+}
+
+impl Default for TelemetryConfig {
+    fn default() -> Self {
+        Self { enabled: Self::default_enabled(), interval_seconds: Self::default_interval() }
+    }
 }
 
 /// Worker identity and capacity settings.
@@ -94,6 +131,7 @@ impl WorkerServiceConfig {
         coordinator_url: Option<String>,
         worker_id: Option<String>,
         compute_capacity: Option<u32>,
+        no_telemetry: bool,
     ) -> Result<Self> {
         // Config file is now optional - if not provided, defaults will be used
         let config = config.or_else(|| std::env::var("ZISK_WORKER_CONFIG_PATH").ok());
@@ -127,6 +165,10 @@ impl WorkerServiceConfig {
         if let Some(compute_capacity) = compute_capacity {
             builder =
                 builder.set_override("worker.compute_capacity.compute_units", compute_capacity)?;
+        }
+
+        if no_telemetry {
+            builder = builder.set_override("telemetry.enabled", false)?;
         }
 
         let config = builder.build()?;

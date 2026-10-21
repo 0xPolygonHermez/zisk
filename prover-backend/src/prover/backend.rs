@@ -5,6 +5,7 @@ use crate::{
 };
 use anyhow::Result;
 use colored::Colorize;
+use mpi::traits::{Communicator, Destination, MatchedReceiveVec, Source};
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
@@ -12,6 +13,7 @@ use proofman::{
 };
 use proofman_common::{ProofCtx, ProofOptions, RowInfo};
 use proofman_fields::Goldilocks;
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use proofman_verifier::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -26,7 +28,7 @@ use zisk_common::{
     program_publics, HashMode, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind,
     PublicValues, VadcopKind, PROGRAM_VK_LEN,
 };
-use zisk_executor::{AsmResources, EmulatorAsm, ZiskExecutor};
+use zisk_executor::{AsmJob, AsmResources, EmulatorAsm, ZiskExecutor};
 use zisk_precomp_hints::HintsProcessor;
 use zisk_recurser::prove::{
     prove_recurser_aggregator, register_recurser_setup, ProveRecurserAggregatorOptions,
@@ -43,6 +45,9 @@ pub(crate) struct ProverBackend {
     /// A recurser must be registered (via [`register_recurser`]) before it can
     /// prove — the same register-then-prove lifecycle as a regular program.
     registered_recursers: std::sync::Mutex<HashMap<String, RegisteredRecurser>>,
+    /// The program [`Self::register_program`] last registered, as its ROM path and
+    /// hints mode, so that registering it again is skipped.
+    registered_program: std::sync::Mutex<Option<(PathBuf, bool)>>,
 }
 
 impl ProverBackend {
@@ -60,6 +65,7 @@ impl ProverBackend {
             proving_key_path,
             proving_key_snark_path,
             registered_recursers: std::sync::Mutex::new(HashMap::new()),
+            registered_program: std::sync::Mutex::new(None),
         }
     }
 
@@ -149,14 +155,28 @@ impl ProverBackend {
         Ok(())
     }
 
-    /// Retires the previous job's ASM state.
-    ///
-    /// Goes through the executor rather than straight to the ASM emulator: the executor
-    /// owns the producers still reading that shared memory, so only it can retire them
-    /// before the rewind. `ZiskExecutor::reset_for_new_job` documents the ordering
-    /// callers must respect.
+    /// Retires what the previous run left, for a run on the Rust emulator, which begins
+    /// no assembly job; see `ZiskExecutor::reset_for_new_job`.
     pub(crate) fn reset(&self) -> Result<()> {
         self.executor.reset_for_new_job().map_err(Into::into)
+    }
+
+    /// Builds now what proofman otherwise builds in the first job's reset and keeps for the
+    /// rest of the process: on the GPU, the multiplicity state in the late region and the
+    /// streaming-commit programs and tables. Every proving entry point resets anyway, so
+    /// this only moves the work. Call it before any job; a failure is left to the first
+    /// job, whose reset repeats it.
+    pub(crate) fn warm_up(&self) {
+        timer_start_info!(WARMING_UP_PROOFMAN);
+        if let Err(e) = self.proofman.reset() {
+            tracing::warn!("Proofman warm-up failed, the first job will retry it: {e}");
+        }
+        timer_stop_and_log_info!(WARMING_UP_PROOFMAN);
+    }
+
+    /// Begins a job on the assembly backend; see `ZiskExecutor::begin_asm_job`.
+    pub(crate) fn begin_asm_job(&self, resources: Arc<AsmResources>) -> Result<AsmJob> {
+        self.executor.begin_asm_job(resources).map_err(Into::into)
     }
 
     pub(crate) fn cancel(&self) {
@@ -192,12 +212,23 @@ impl ProverBackend {
         })
     }
 
+    /// Registers a program's ROM with the executor and proofman, unless it is the
+    /// program last registered and nothing has been set up since: building its
+    /// instruction table is not free, and consecutive jobs often run one program.
     pub fn register_program(
         &self,
         zisk_rom: Arc<zisk_core::ZiskRom>,
         rom_bin_path: &std::path::Path,
         with_hints: bool,
     ) -> Result<()> {
+        let key = (rom_bin_path.to_path_buf(), with_hints);
+        let mut registered =
+            self.registered_program.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if registered.as_ref() == Some(&key) {
+            return Ok(());
+        }
+        // Cleared first, so that a registration failing part way is never trusted.
+        *registered = None;
         // Indexed Main: register this program's table before `set_rom` moves the Arc, on the
         // same gate the executor uses to pick the compact row.
         if self.executor.is_packed() {
@@ -226,7 +257,15 @@ impl ProverBackend {
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path.to_path_buf())]);
         self.proofman
             .register_custom_commits(custom_commits_map)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        *registered = Some(key);
+        Ok(())
+    }
+
+    /// Makes the next [`Self::register_program`] register in full. Called by every
+    /// setup and recurser registration, which may change what proofman holds.
+    pub(crate) fn forget_registered_program(&self) {
+        *self.registered_program.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     }
 
     pub fn set_stdin_and_random_seed(&self, stdin: ZiskStdin, seed: RandomSeed) -> Result<()> {
@@ -696,6 +735,7 @@ impl ProverBackend {
         if self.registered_recursers.lock().unwrap().contains_key(recurser_id) {
             return Ok(());
         }
+        self.forget_registered_program();
         let registered = register_recurser_setup(&self.proofman, output_dir, recurser_id)
             .map_err(|e| anyhow::anyhow!("recurser registration failed: {e:#}"))?;
         self.registered_recursers.lock().unwrap().insert(recurser_id.to_string(), registered);
@@ -713,6 +753,7 @@ impl ProverBackend {
         free_b: &[u64],
         root_c_recurser_agg: Option<[u64; 4]>,
     ) -> Result<VadcopFinalProof> {
+        self.forget_registered_program();
         let registered =
             self.registered_recursers.lock().unwrap().get(recurser_id).cloned().ok_or_else(
                 || {
@@ -766,6 +807,34 @@ impl ProverBackend {
 
     pub(crate) fn cluster_barrier(&self) {
         self.proofman.set_barrier();
+    }
+
+    /// Whether every rank succeeded, from each one's `ok`: a collective, which
+    /// every rank must call.
+    pub(crate) fn cluster_all_ok(&self, ok: bool) -> bool {
+        self.proofman.get_wcm().get_pctx().mpi_ctx.all_finished_ok(ok)
+    }
+
+    /// Send `data` to MPI rank `dest`, tagged `tag`.
+    pub(crate) fn mpi_send(&self, dest: i32, tag: i32, data: &[u8]) {
+        let pctx = self.proofman.get_wcm().get_pctx();
+        pctx.mpi_ctx.world.process_at_rank(dest).send_with_tag(data, tag);
+    }
+
+    /// A message tagged `tag` from any rank, if one has arrived: its source rank and
+    /// its data.
+    pub(crate) fn mpi_try_receive(&self, tag: i32) -> Option<(i32, Vec<u8>)> {
+        let pctx = self.proofman.get_wcm().get_pctx();
+        let (message, status) =
+            pctx.mpi_ctx.world.any_process().immediate_matched_probe_with_tag(tag)?;
+        let source = status.source_rank();
+        let (data, _) = (message, status).matched_receive_vec::<u8>();
+        Some((source, data))
+    }
+
+    /// End every rank of the MPI job, this one included, with exit `code`.
+    pub(crate) fn abort_cluster(&self, code: i32) -> ! {
+        self.proofman.get_wcm().get_pctx().mpi_ctx.world.abort(code)
     }
 }
 

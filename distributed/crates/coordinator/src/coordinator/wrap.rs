@@ -50,7 +50,8 @@ impl Coordinator {
         self.fire_job_event(&job_id, CoordinatorJobEvent::Queued).await;
         self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
 
-        crate::metrics::record_job_started();
+        crate::metrics::record_job_started(&job_id, crate::metrics::KIND_WRAP, 1);
+        crate::metrics::record_job_phase(&job_id, crate::metrics::PHASE_AGGREGATION);
 
         let req = ExecuteTaskRequestDto {
             worker_id: worker_id.clone(),
@@ -128,11 +129,18 @@ impl Coordinator {
         job.change_state(JobState::Completed);
 
         // Pairs with launch_wrap's record_job_started.
-        crate::metrics::record_job_terminal(
-            crate::metrics::OUTCOME_SUCCESS,
-            &job.workers,
-            job.phase_start_time(&JobPhase::Recurse),
-        );
+        crate::metrics::record_job_terminal(crate::metrics::JobOutcome {
+            job_id,
+            outcome: crate::metrics::OUTCOME_SUCCESS,
+            reason: None,
+            workers: &job.workers,
+            contributions_started: job.phase_start_time(&JobPhase::Recurse),
+            duration: job.duration_ms.map(|ms| ms as f64 / 1000.0),
+            phases: None,
+            steps: None,
+            instances: None,
+            costs: None,
+        });
 
         tracing::info!("[Wrap] Job {} completed successfully", job_id);
 

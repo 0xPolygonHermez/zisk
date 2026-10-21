@@ -1,8 +1,10 @@
+use std::future::IntoFuture;
 use std::time::Duration;
 
 use anyhow::Result;
+use tracing::{error, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_sdk::ProverClient;
+use zisk_sdk::{JobHandle, ProverClient};
 
 mod aggregate;
 mod execute;
@@ -17,6 +19,35 @@ pub(crate) use prove::ZiskRemoteProve;
 pub(crate) use setup::ZiskRemoteSetup;
 pub(crate) use upload::ZiskRemoteUpload;
 pub(crate) use wrap::ZiskRemoteWrap;
+
+/// Wait for a remote job, and cancel it on Ctrl-C, or once `timeout`, if any, has
+/// passed: the job would otherwise go on running on the cluster after the command
+/// has given up on it.
+pub(crate) async fn await_job<T>(job: JobHandle<T>, timeout: Option<Duration>) -> Result<T>
+where
+    JobHandle<T>: IntoFuture<Output = zisk_sdk::Result<T>>,
+{
+    let canceller = job.canceller();
+    let expired = async {
+        match timeout {
+            Some(timeout) => tokio::time::sleep(timeout).await,
+            None => std::future::pending().await,
+        }
+    };
+    let why = tokio::select! {
+        result = job.into_future() => return Ok(result?),
+        _ = tokio::signal::ctrl_c() => "interrupted".to_string(),
+        () = expired => format!("timed out after {}s", timeout.unwrap_or_default().as_secs()),
+    };
+    if let Some(canceller) = canceller {
+        match canceller.cancel().await {
+            Ok(true) => warn!("Job {why}; cancelled it"),
+            Ok(false) => warn!("Job {why}; it had already ended"),
+            Err(e) => error!("Job {why}; cancelling it failed: {e}"),
+        }
+    }
+    anyhow::bail!("job {why}")
+}
 
 #[derive(clap::Subcommand)]
 pub(crate) enum ZiskRemoteCmd {

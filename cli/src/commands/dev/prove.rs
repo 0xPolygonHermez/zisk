@@ -315,12 +315,12 @@ impl ProveCmd {
             prover.setup(&guest_program).run()?;
         }
 
+        let job = prover.begin_job(&guest_program)?;
         if let Some(hints_stream) = hints_stream {
-            prover.register_hints_stream(hints_stream)?;
+            job.register_hints_stream(hints_stream)?;
         }
 
-        let mut builder =
-            prover.prove(&guest_program, stdin).random_seed(self.random_seed.provided());
+        let mut builder = job.prove(stdin).random_seed(self.random_seed.provided());
         if self.plonk {
             builder = builder.wrap_proof(ProofKind::Plonk);
         }

@@ -39,6 +39,7 @@ ziskemu = { workspace = true }
 # External dependencies
 anyhow = { workspace = true }
 colored = { workspace = true }
+mpi = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 blake3 = { workspace = true }

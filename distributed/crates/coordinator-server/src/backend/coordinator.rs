@@ -219,6 +219,7 @@ fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
         },
         CoordinatorError::NotFoundOrInaccessible => ApiError::Internal("resource not found".into()),
         CoordinatorError::ProgramNotFound(hash_id) => ApiError::ProgramNotFound(hash_id),
+        CoordinatorError::ProgramNotSetup(hash_id) => ApiError::ProgramNotSetup(hash_id),
         CoordinatorError::InvalidArgument(msg) | CoordinatorError::InvalidRequest(msg) => {
             ApiError::InvalidJobState { reason: msg }
         }
@@ -297,6 +298,10 @@ fn catchup_events(state: &JobState, job_id: Uuid) -> Vec<DomainJobEvent> {
 
 #[async_trait]
 impl BackendService for CoordinatorBackend {
+    async fn render_metrics(&self) -> String {
+        self.coordinator.render_metrics().await
+    }
+
     async fn register_guest_program(&self, elf: Vec<u8>) -> ApiResult<String> {
         // blake3 hashing + the multi-MB ELF `fs::write` are blocking; run them off
         // the async runtime so they don't stall a tonic worker thread.

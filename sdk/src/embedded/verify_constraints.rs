@@ -60,8 +60,6 @@ impl EmbeddedClient {
         executor: ExecutorKind,
         prover: Arc<EmbeddedProver>,
     ) -> Result<VerifyConstraintsOutput> {
-        prover.begin_job()?;
-
         match prover.as_ref() {
             EmbeddedProver::Emu(p) => {
                 // The Emu prover has no assembly backend to switch to.
@@ -91,41 +89,42 @@ impl EmbeddedClient {
                         .map_err(SdkError::backend);
                 }
 
-                match hints {
-                    Some(hints) => {
-                        if !p.was_setup_with_hints() {
-                            return Err(SdkError::InvalidConfig(
-                                "Program was set up without hints — call setup().with_hints() first"
-                                    .to_string(),
-                            ));
-                        }
-                        match hints {
-                            HintsSource::Hints(h) => {
-                                p.register_hints_stream(h.into_inner())
-                                    .map_err(SdkError::backend)?;
-                            }
-                            HintsSource::Stream(stream) => {
-                                if stream.is_grpc() {
-                                    return Err(SdkError::UnsupportedExecutor("gRPC streams are not supported with the embedded executor — use a remote client".to_string()));
-                                }
-                                stream.start()?;
-                                let uri = stream.uri().to_string();
-                                let source =
-                                    StreamSource::from_uri(&uri).map_err(SdkError::backend)?;
-                                p.register_hints_stream(source).map_err(SdkError::backend)?;
-                            }
-                        }
+                match (&hints, p.was_setup_with_hints()) {
+                    (Some(_), false) => {
+                        return Err(SdkError::InvalidConfig(
+                            "Program was set up without hints — call setup().with_hints() first"
+                                .to_string(),
+                        ));
                     }
-                    None => {
-                        if p.was_setup_with_hints() {
-                            return Err(SdkError::InvalidConfig(
-                                "Program was set up with hints — call .hints() on the request"
-                                    .to_string(),
-                            ));
-                        }
+                    (None, true) => {
+                        return Err(SdkError::InvalidConfig(
+                            "Program was set up with hints — call .hints() on the request"
+                                .to_string(),
+                        ));
+                    }
+                    _ => {}
+                }
+                if let Some(HintsSource::Stream(stream)) = &hints {
+                    if stream.is_grpc() {
+                        return Err(SdkError::UnsupportedExecutor("gRPC streams are not supported with the embedded executor — use a remote client".to_string()));
                     }
                 }
-                p.verify_constraints(&program, stdin.into_inner(), seed, debug_info)
+
+                // The streams go on the job, so they are set up while it holds the shared memory.
+                let job = p.begin_job(&program).map_err(SdkError::backend)?;
+                match hints {
+                    Some(HintsSource::Hints(h)) => {
+                        job.register_hints_stream(h.into_inner()).map_err(SdkError::backend)?;
+                    }
+                    Some(HintsSource::Stream(stream)) => {
+                        stream.start()?;
+                        let uri = stream.uri().to_string();
+                        let source = StreamSource::from_uri(&uri).map_err(SdkError::backend)?;
+                        job.register_hints_stream(source).map_err(SdkError::backend)?;
+                    }
+                    None => {}
+                }
+                job.verify_constraints(stdin.into_inner(), seed, debug_info)
                     .map_err(SdkError::backend)
             }
         }

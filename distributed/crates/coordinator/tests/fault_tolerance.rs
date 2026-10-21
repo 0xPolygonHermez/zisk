@@ -372,6 +372,7 @@ async fn test_reconnect_idle_no_directive() {
         worker_id: WorkerId::from("w1".to_string()),
         aggregation_arity: 2,
         compute_capacity: ComputeCapacity::from(1u32),
+        previous_exit: None,
     };
     let (accepted, _msg, _setup) =
         coordinator.handle_stream_registration(req, Box::new(sender)).await;

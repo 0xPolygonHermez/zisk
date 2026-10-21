@@ -68,10 +68,8 @@ impl ZiskRemoteExecute {
             request = request.hints(hints);
         }
         request = request.random_seed(self.random_seed.provided());
-        if self.timeout != 0 {
-            request = request.timeout(Duration::from_secs(self.timeout));
-        }
-        let result = request.run()?.await?;
+        let timeout = (self.timeout != 0).then(|| Duration::from_secs(self.timeout));
+        let result = super::await_job(request.run()?, timeout).await?;
 
         info!("{}", "--- EXECUTE SUMMARY -----------".bright_green().bold());
         print_execute_output(result.output());

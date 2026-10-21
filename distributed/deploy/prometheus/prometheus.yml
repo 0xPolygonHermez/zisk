@@ -1,9 +1,33 @@
+# Scrapes the coordinator (its own metrics and what its workers report about their hosts), and the
+# hosts' node_exporter and nvidia_gpu_exporter. Every target names its `cluster` and its `host`: the
+# dashboards' Cluster and Host selectors read them, so give each deployment and host its own.
+#
+# Point a single Prometheus at a coordinator: its timestamped series (one sample per proof) hand
+# each sample to the next scrape, so two scrapers would split them.
 global:
-  scrape_interval:     5s   # 10s jobs → fine resolution. Workers' /metrics
-  evaluation_interval: 5s   # endpoint will join later as a second scrape job.
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+# The proof-time histogram's records (generated with the dashboards).
+rule_files:
+  - /etc/prometheus/rules/*.yml
 
 scrape_configs:
+  # The Live dashboard refreshes every second.
   - job_name: zisk-coordinator
+    scrape_interval: 2s
+    metrics_path: /metrics
     static_configs:
       - targets: ["coordinator:9091"]
-    metrics_path: /metrics
+        labels: {cluster: local, host: docker-host}
+
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels: {cluster: local, host: docker-host, roles: "coordinator, workers"}
+
+  # nvidia-smi takes most of a second to read several GPUs: not more often than this.
+  - job_name: nvidia_gpu_exporter
+    static_configs:
+      - targets: ["nvidia-gpu-exporter:9835"]
+        labels: {cluster: local, host: docker-host}

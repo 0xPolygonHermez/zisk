@@ -91,14 +91,7 @@ zisklib_inv_fp2_bn254:
 	eq(r5, 0), j(bf2_inv_zero)
 	fcall_param(8, r10)
 	fcall(FCALL_BN254_FP2_INV, 0)
-	fcall_get(0, [FREE_INPUT]) -> [BN_F2_INV]
-	fcall_get(0, [FREE_INPUT]) -> [BN_F2_INV + 8]
-	fcall_get(0, [FREE_INPUT]) -> [BN_F2_INV + 16]
-	fcall_get(0, [FREE_INPUT]) -> [BN_F2_INV + 24]
-	fcall_get(0, [FREE_INPUT]) -> [BN_F2_INV + 32]
-	fcall_get(0, [FREE_INPUT]) -> [BN_F2_INV + 40]
-	fcall_get(0, [FREE_INPUT]) -> [BN_F2_INV + 48]
-	copyb(0, [FREE_INPUT]) -> [BN_F2_INV + 56]
+	dma_inputcpy(BN_F2_INV, 64) -> r5
 	ltu([BN_F2_INV + 24], [BN_P + 24]), j(bf2_inv_c1)
 	ltu([BN_P + 24], [BN_F2_INV + 24]), j(bf2_inv_panic)
 	ltu([BN_F2_INV + 16], [BN_P + 16]), j(bf2_inv_c1)

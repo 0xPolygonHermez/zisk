@@ -148,12 +148,6 @@ impl Coordinator {
 
         job.change_state(JobState::Completed);
 
-        crate::metrics::record_job_terminal(
-            crate::metrics::OUTCOME_SUCCESS,
-            &job.workers,
-            job.phase_start_time(&JobPhase::Contributions),
-        );
-
         let end_time = Utc::now();
 
         let phase1_time = job.phase_start_time(&JobPhase::Contributions).unwrap_or_else(|| {
@@ -181,6 +175,36 @@ impl Coordinator {
         );
 
         let duration = Duration::from_millis(job.duration_ms.unwrap_or(0));
+
+        crate::metrics::record_job_terminal(crate::metrics::JobOutcome {
+            job_id,
+            outcome: crate::metrics::OUTCOME_SUCCESS,
+            reason: None,
+            workers: &job.workers,
+            contributions_started: job.phase_start_time(&JobPhase::Contributions),
+            duration: job.duration_ms.map(|ms| ms as f64 / 1000.0),
+            phases: Some([
+                phase1_duration.as_seconds_f64(),
+                phase2_duration.as_seconds_f64(),
+                phase3_duration.as_seconds_f64(),
+            ]),
+            steps: job.executed_steps,
+            instances: job.instances,
+            costs: Some(super::cost_per_type_from_job(&job)),
+        });
+        for (label, phase) in [("1", JobPhase::Contributions), ("2", JobPhase::Prove)] {
+            if let (Some(results), Some(start)) =
+                (job.results.get(&phase), job.phase_start_time(&phase))
+            {
+                let durations: Vec<(WorkerId, f64)> = results
+                    .iter()
+                    .map(|(worker_id, result)| {
+                        (worker_id.clone(), (result.end_time - start).as_seconds_f64())
+                    })
+                    .collect();
+                crate::metrics::record_proof_worker_phases(label, &durations);
+            }
+        }
 
         let header = format!("[Job] Finished {} successfully ✔", job_id).green();
         let duration_str = format!("Duration: {:.3}s", duration.as_secs_f32()).bold();

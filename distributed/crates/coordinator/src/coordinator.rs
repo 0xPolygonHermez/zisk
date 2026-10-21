@@ -33,6 +33,7 @@
 pub(crate) mod aggregate;
 pub(crate) mod contributions;
 pub(crate) mod prove;
+mod telemetry;
 pub(crate) mod worker_handlers;
 pub(crate) mod wrap;
 
@@ -50,7 +51,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     sync::{atomic::AtomicU64, Arc},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::sync::{broadcast, RwLock};
 use tracing::{debug, error, info, warn};
@@ -189,6 +190,11 @@ pub struct Coordinator {
     /// timestamp the worker was parked, used by the stuck-recovery sweep
     /// to evict workers that never confirm.
     pending_recovery: RwLock<HashMap<WorkerId, DateTime<Utc>>>,
+    /// When each program's setup was last sent to each worker, until the worker acks it: for
+    /// the setup's duration.
+    setups_sent: RwLock<HashMap<(WorkerId, String), Instant>>,
+    /// The last telemetry each worker reported, bounded, and when it arrived.
+    worker_telemetry: RwLock<HashMap<WorkerId, (Instant, zisk_cluster_common::WorkerTelemetryDto)>>,
 }
 
 /// Bookkeeping captured by `Coordinator::terminate_job` and consumed by
@@ -196,6 +202,10 @@ pub struct Coordinator {
 struct TerminationOutcome {
     worker_ids: Vec<WorkerId>,
     phase1_start: Option<DateTime<Utc>>,
+    /// Seconds from the job's first phase to its termination, if any phase started.
+    duration: Option<f64>,
+    /// Steps the job had executed, if its execution finished before it ended.
+    executed_steps: Option<u64>,
 }
 
 /// Structural equality on `AggregationProgramSpecDto`. The DTO has no `PartialEq` derive.
@@ -280,6 +290,7 @@ impl Coordinator {
     /// * `config` - Configuration settings
     pub fn new(config: Config) -> Self {
         let start_time_utc = Utc::now();
+        crate::metrics::record_coordinator_started();
 
         Self {
             config,
@@ -298,6 +309,8 @@ impl Coordinator {
             active_recurser_setups: RwLock::new(HashSet::new()),
             grpc_hints_senders: Arc::new(RwLock::new(HashMap::new())),
             pending_recovery: RwLock::new(HashMap::new()),
+            setups_sent: RwLock::new(HashMap::new()),
+            worker_telemetry: RwLock::new(HashMap::new()),
         }
     }
 
@@ -385,11 +398,18 @@ impl Coordinator {
         };
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Cancelled).await;
-        crate::metrics::record_job_terminal(
-            crate::metrics::OUTCOME_CANCELLED,
-            &outcome.worker_ids,
-            outcome.phase1_start,
-        );
+        crate::metrics::record_job_terminal(crate::metrics::JobOutcome {
+            job_id,
+            outcome: crate::metrics::OUTCOME_CANCELLED,
+            reason: None,
+            workers: &outcome.worker_ids,
+            contributions_started: outcome.phase1_start,
+            duration: outcome.duration,
+            phases: None,
+            steps: outcome.executed_steps,
+            instances: None,
+            costs: None,
+        });
         info!("Cancelled job {}", job_id);
 
         Ok(true)
@@ -422,13 +442,18 @@ impl Coordinator {
             jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         drop(jobs_map);
 
-        let (worker_ids, phase1_start) = {
+        let (worker_ids, phase1_start, duration, executed_steps) = {
             let mut job = job_entry.write().await;
             if job.state().is_resolved() {
                 return Ok(None);
             }
             job.change_state(terminal_state);
-            let outcome = (job.workers.clone(), job.phase_start_time(&JobPhase::Contributions));
+            let outcome = (
+                job.workers.clone(),
+                job.phase_start_time(&JobPhase::Contributions),
+                job.duration_ms.map(|ms| ms as f64 / 1000.0),
+                job.executed_steps,
+            );
             // Free the proof payloads now. A failed phase-3 job otherwise pins every
             // retained aggregation set for the whole lifetime of the map entry.
             job.cleanup();
@@ -445,7 +470,7 @@ impl Coordinator {
         }
         self.cancel_job_workers(&worker_ids, job_id, cancel_reason).await;
 
-        Ok(Some(TerminationOutcome { worker_ids, phase1_start }))
+        Ok(Some(TerminationOutcome { worker_ids, phase1_start, duration, executed_steps }))
     }
 
     /// Content-addresses ELF bytes with blake3, writes to cache if absent, returns `hash_id`.
@@ -463,7 +488,7 @@ impl Coordinator {
             }
             fs::write(&path, &elf_bytes)
                 .map_err(|e| CoordinatorError::Internal(format!("write ELF cache: {e}")))?;
-            metrics::gauge!("coordinator_registered_programs_total").increment(1.0);
+            crate::metrics::record_program_registered(&hash_id, elf_bytes.len());
         }
 
         Ok(hash_id)
@@ -555,6 +580,7 @@ impl Coordinator {
                 with_hints,
                 emulator_only,
             });
+            self.note_setup_sent(worker_id, hash_id).await;
             if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
                 warn!("[Setup] Failed to send SetupProgram to worker {}: {}", worker_id, e);
                 self.setup_pending.write().await.entry(job_id.clone()).and_modify(|s| {
@@ -864,6 +890,7 @@ impl Coordinator {
                 with_hints: key.with_hints,
                 emulator_only: key.emulator_only,
             });
+            self.note_setup_sent(&worker_id, &key.hash_id).await;
             if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
                 // Unreachable: drop from pending + disconnect so it can't hang the
                 // entry (same failed-send handling as `setup_program`).
@@ -961,6 +988,10 @@ impl Coordinator {
         request: LaunchProofRequestDto,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
         let seed = self.resolve_random_seed(request.random_seed)?;
+        // A worker holds only the programs set up on it: sent any other, it fails the task.
+        if !self.is_set_up(&request.hash_id).await {
+            return Err(CoordinatorError::ProgramNotSetup(request.hash_id.clone()));
+        }
         let (requested, minimum) = self.resolve_capacity(&request).await?;
 
         // Generate job_id up-front so we can atomically reserve workers
@@ -1035,9 +1066,21 @@ impl Coordinator {
         // timeout will call `record_job_terminal` (which decrements). Without
         // the matching increment here, the gauge would underflow on the
         // dispatch-failure path.
-        crate::metrics::record_job_started();
-
         let job = job_arc.read().await;
+        crate::metrics::record_job_started(
+            &job_id,
+            crate::metrics::job_kind(job.execution_only),
+            job.workers.len(),
+        );
+        crate::metrics::record_job_phase(
+            &job_id,
+            if job.execution_only {
+                crate::metrics::PHASE_EXECUTION
+            } else {
+                crate::metrics::PHASE_CONTRIBUTIONS
+            },
+        );
+
         if let Err(e) = self.dispatch_contributions_messages(&job, &active_workers).await {
             drop(job);
             // Dispatch flaked (e.g. a worker's channel broke). The job is
@@ -1054,6 +1097,12 @@ impl Coordinator {
         info!("[Phase1] Started with {} workers for {}", active_workers.len(), job_id);
 
         Ok(LaunchProofResponseDto { job_id })
+    }
+
+    /// Whether `hash_id` is set up on the workers, in any mode: what a worker checks before it
+    /// runs one of its tasks.
+    async fn is_set_up(&self, hash_id: &str) -> bool {
+        self.active_setups.read().await.keys().any(|key| key.hash_id == hash_id)
     }
 
     /// Resolve the compute capacity for an incoming job request.
@@ -1427,11 +1476,18 @@ impl Coordinator {
         };
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Failed(reason.to_string())).await;
-        crate::metrics::record_job_terminal(
-            crate::metrics::OUTCOME_FAILURE,
-            &outcome.worker_ids,
-            outcome.phase1_start,
-        );
+        crate::metrics::record_job_terminal(crate::metrics::JobOutcome {
+            job_id,
+            outcome: crate::metrics::OUTCOME_FAILURE,
+            reason: Some(reason),
+            workers: &outcome.worker_ids,
+            contributions_started: outcome.phase1_start,
+            duration: outcome.duration,
+            phases: None,
+            steps: outcome.executed_steps,
+            instances: None,
+            costs: None,
+        });
         error!("Failed job {} (reason: {})", job_id, reason);
 
         // Only fails when the job is already gone from `self.jobs`, in which
@@ -1629,7 +1685,7 @@ impl Coordinator {
                     JobPhase::Recurse if job.phase_start_time(phase).is_none() => &JobPhase::Prove,
                     _ => phase,
                 };
-                let timeout_secs = self.phase_timeout_secs(phase);
+                let timeout_secs = self.phase_timeout_secs(phase, job.execution_only);
                 if timeout_secs == 0 {
                     continue;
                 }
@@ -1658,10 +1714,15 @@ impl Coordinator {
         }
     }
 
-    /// Returns the configured timeout in seconds for a given phase.
-    fn phase_timeout_secs(&self, phase: &JobPhase) -> u64 {
+    /// Returns the configured timeout in seconds for a given phase. An
+    /// execution-only job runs in `Running(Contributions)` (`JobPhase::Execution`
+    /// is only a timing key), so its timeout is told apart by `execution_only`.
+    fn phase_timeout_secs(&self, phase: &JobPhase, execution_only: bool) -> u64 {
         match phase {
             JobPhase::Execution => self.config.coordinator.execution_timeout_seconds,
+            JobPhase::Contributions if execution_only => {
+                self.config.coordinator.execution_timeout_seconds
+            }
             JobPhase::Contributions
             | JobPhase::ContributionsInputsStream
             | JobPhase::ContributionsHintsStream => self.config.coordinator.phase1_timeout_seconds,
@@ -1744,6 +1805,7 @@ impl Coordinator {
                         "[Recovery] Worker {} stuck in pending_recovery > {}s; unregistering",
                         wid, threshold_secs
                     );
+                    crate::metrics::record_worker_recovery_expired(&wid, threshold_secs as f64);
                     if let Err(e) = self.unregister_worker(&wid).await {
                         warn!("Failed to unregister stuck-recovery worker {}: {}", wid, e);
                     }
@@ -2043,6 +2105,36 @@ mod tests {
         assert_eq!(entry.read().await.state, JobState::Failed);
     }
 
+    /// An execution-only job runs in `Running(Contributions)`, yet is bound by the
+    /// execution timeout, not phase 1's.
+    #[tokio::test]
+    async fn test_check_phase_timeouts_execution_only_job() {
+        let (coordinator, _workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |c| {
+                c.coordinator.execution_timeout_seconds = 60;
+                c.coordinator.phase1_timeout_seconds = 300;
+            })
+            .await;
+
+        {
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            let mut job = entry.write().await;
+            job.execution_only = true;
+            job.phase_timings.insert(
+                JobPhase::Contributions,
+                PhaseTimings {
+                    start_time: Utc::now() - chrono::Duration::seconds(120),
+                    end_time: None,
+                },
+            );
+        }
+
+        coordinator.check_phase_timeouts().await;
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
     #[tokio::test]
     async fn test_check_phase_timeouts_no_false_positive() {
         let (coordinator, _workers, job_id) =
@@ -2159,6 +2251,58 @@ mod tests {
 
         let state = coordinator.workers_pool.worker_state(&w0_id).await;
         assert_eq!(state, Some(WorkerState::SettingUp));
+        assert!(coordinator.pending_recovery.read().await.contains_key(&w0_id));
+    }
+
+    /// A worker that fails a task before starting it (`worker_in_recovery` false) sends no
+    /// `WorkerRecoveryComplete`: parked, it would wait for the stuck-recovery sweep.
+    #[tokio::test]
+    async fn a_worker_that_failed_without_starting_is_ready_again() {
+        use zisk_cluster_common::ExecuteTaskResponseDto;
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+        let failure = ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: w0_id.clone(),
+            success: false,
+            error_message: Some("Guest program not found".into()),
+            result_data: None,
+            worker_in_recovery: false,
+        };
+
+        let result = coordinator.handle_stream_execute_task_response(failure).await;
+
+        assert!(matches!(result, Err(CoordinatorError::WorkerError(_))));
+        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
+        assert!(!coordinator.pending_recovery.read().await.contains_key(&w0_id));
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
+    #[tokio::test]
+    async fn a_worker_that_failed_in_recovery_stays_parked_for_it() {
+        use zisk_cluster_common::ExecuteTaskResponseDto;
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+        let failure = ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: w0_id.clone(),
+            success: false,
+            error_message: Some("contribution failed".into()),
+            result_data: None,
+            worker_in_recovery: true,
+        };
+
+        let _ = coordinator.handle_stream_execute_task_response(failure).await;
+
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0_id).await,
+            Some(WorkerState::SettingUp)
+        );
         assert!(coordinator.pending_recovery.read().await.contains_key(&w0_id));
     }
 
@@ -3228,12 +3372,19 @@ mod tests {
         let hash_id = coordinator.register_guest_program(elf_bytes).unwrap();
         assert!(fs::metadata(zisk_common::ZiskPaths::global().elf_cache(&hash_id)).is_ok());
 
+        // The proof is of another program, set up earlier: the two race for the worker only.
+        let proven = "proven-hash".to_string();
+        coordinator.active_setups.write().await.insert(
+            SetupKey::new(proven.clone(), false, false),
+            ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() },
+        );
+
         let coord_a = coordinator.clone();
         let coord_b = coordinator.clone();
         let hash_id_a = hash_id.clone();
         let prove_req = LaunchProofRequestDto {
             data_id: "data".to_string().into(),
-            hash_id,
+            hash_id: proven,
             compute_capacity: Some(1),
             minimal_compute_capacity: Some(1),
             inputs_mode: zisk_cluster_common::InputsModeDto::InputsNone,
@@ -3532,6 +3683,7 @@ mod tests {
             worker_id: worker_id.clone(),
             aggregation_arity: 2,
             compute_capacity: 1u32.into(),
+            previous_exit: None,
         };
         let (accepted, _msg, _setup) =
             coordinator.handle_stream_registration(req, Box::new(sender)).await;
@@ -5012,6 +5164,24 @@ mod tests {
         let result = coordinator.launch_proof(request).await;
 
         assert!(matches!(result, Err(CoordinatorError::ClientRandomSeedNotAllowed)));
+        let w0 = WorkerId::from("w0".to_string());
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(coordinator.jobs.read().await.is_empty());
+    }
+
+    /// A worker has only the programs set up on it; a job for any other would fail on it.
+    #[tokio::test]
+    async fn launch_proof_refuses_a_program_that_is_not_set_up_before_reserving_workers() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
+        add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
+        coordinator.active_setups.write().await.insert(
+            SetupKey::new("another-program".to_string(), false, false),
+            ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() },
+        );
+
+        let result = coordinator.launch_proof(capacity_request(None, None)).await;
+
+        assert!(matches!(result, Err(CoordinatorError::ProgramNotSetup(ref h)) if h == "hash"));
         let w0 = WorkerId::from("w0".to_string());
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
         assert!(coordinator.jobs.read().await.is_empty());
