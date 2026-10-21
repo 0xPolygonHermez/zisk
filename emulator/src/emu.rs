@@ -1725,6 +1725,15 @@ impl<'a> Emu<'a> {
                         &symbol.name,
                     );
                 }
+                // The ZisK library merged into the ROM has no ELF symbols: its ROIs are found
+                // from the ROM and named after the library's labels.
+                if !self.rom.zkvmcalls.is_empty() {
+                    let symbols = ziskasm::assemble_zisk_library()
+                        .map(|library| library.symbols)
+                        .unwrap_or_default();
+                    let lib_rois = self.ctx.stats.add_zisklib_rois(self.rom, &symbols);
+                    println!("Added {lib_rois} ZisK library ROIs");
+                }
 
                 self.ctx.stats.load_rom_data(self.rom);
 
