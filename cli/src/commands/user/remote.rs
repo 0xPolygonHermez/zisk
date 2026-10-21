@@ -67,10 +67,20 @@ impl RemoteCmd {
         // internally, which requires a multi-threaded runtime context.
         let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
         runtime.block_on(async {
-            let client = ProverClient::remote(self.coordinator.clone())
+            // The workers' SNARK proving key sets the protocol up: the client checks that the
+            // SNARK it returns is the one asked for.
+            let snark = match &self.command {
+                ZiskRemoteCmd::Prove(cmd) => cmd.snark.protocol(),
+                ZiskRemoteCmd::Wrap(cmd) => cmd.snark.protocol(),
+                _ => None,
+            };
+            let mut builder = ProverClient::remote(self.coordinator.clone())
                 .connect_timeout(Duration::from_secs(self.connect_timeout))
-                .request_timeout(Duration::from_secs(self.request_timeout))
-                .build()?;
+                .request_timeout(Duration::from_secs(self.request_timeout));
+            if let Some(protocol) = snark {
+                builder = builder.snark(protocol);
+            }
+            let client = builder.build()?;
 
             match &mut self.command {
                 ZiskRemoteCmd::Upload(cmd) => cmd.run(&client).await,
