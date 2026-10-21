@@ -10,12 +10,15 @@
 //! cargo run --release -p input-2gb-host -- emu            # Rust emulator, read every u64
 //! cargo run --release -p input-2gb-host -- asm 2048 16    # assembly emulator, 2GB, stride 16
 //! cargo run --release -p input-2gb-host -- asm 256        # assembly emulator, 256MB
+//! cargo run --release -p input-2gb-host -- remote 256 16  # a coordinator, at ZISK_COORDINATOR_URL
 //! ```
 //!
-//! Arguments: backend (`emu` | `asm`), input data size in MB (default: as large as the input
-//! region allows, `MAX_DATA_BYTES`), and read stride (default 1). With the maximum size the input
-//! data starts at INPUT_ADDR + 16 and ends at the last word of the region, so it exercises the
-//! region boundaries and every 128MB step the BIOS reads.
+//! Arguments: backend (`emu` | `asm` | `remote`), input data size in MB (default: as large as the
+//! input region allows, `MAX_DATA_BYTES`), and read stride (default 1). With the maximum size the
+//! input data starts at INPUT_ADDR + 16 and ends at the last word of the region, so it exercises
+//! the region boundaries and every 128MB step the BIOS reads. `remote` executes on the coordinator
+//! at `ZISK_COORDINATOR_URL` (default `http://127.0.0.1:7000`); an input over the 128MB inline
+//! limit of a request travels through the job's gRPC input stream.
 //!
 //! Reading every u64 of a 2GB input touches 2^28 distinct addresses, more than the CPU memory
 //! planner of the assembly backend has slots for (`MAX_SLOT_GB` in
@@ -24,8 +27,8 @@
 //! stride of 17 or more there.
 
 use std::error::Error;
-use std::time::Instant;
-use zisk_sdk::{ProverClient, ZiskStdin};
+use std::time::{Duration, Instant};
+use zisk_sdk::{ExecuteResult, ProverClient, ZiskStdin};
 use zisk_test_artifacts::ELF_INPUT_2GB;
 
 /// Size of the input region (`MAX_INPUT_SIZE` in core/src/mem.rs).
@@ -84,21 +87,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     stdin.write_slice(&data);
     drop(data);
 
-    let builder = ProverClient::embedded().execute_only();
-    let builder = match backend {
-        "emu" => builder.emulator(),
-        "asm" => builder.assembly(),
-        other => return Err(format!("unknown backend '{other}', expected emu or asm").into()),
+    let (result, elapsed) = match backend {
+        "emu" | "asm" => execute_embedded(backend, stdin)?,
+        "remote" => execute_remote(stdin)?,
+        other => {
+            return Err(format!("unknown backend '{other}', expected emu, asm or remote").into())
+        }
     };
-    let client = builder.build()?;
-    client.setup(&ELF_INPUT_2GB, false)?;
-
-    let start = Instant::now();
-    let result = client.execute(&ELF_INPUT_2GB, stdin, None, None)?;
     println!(
         "Executed on {backend}: {} steps in {:.1}s",
         result.get_execution_steps(),
-        start.elapsed().as_secs_f64()
+        elapsed.as_secs_f64()
     );
 
     let mut out = [0u8; 32];
@@ -112,4 +111,38 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     println!("\u{2713} input_2gb OK on {backend}");
     Ok(())
+}
+
+/// Executes the guest on `stdin` with the embedded `emu` or `asm` backend, and returns its output
+/// and how long the execution took.
+fn execute_embedded(
+    backend: &str,
+    stdin: ZiskStdin,
+) -> Result<(ExecuteResult, Duration), Box<dyn Error>> {
+    let builder = ProverClient::embedded().execute_only();
+    let builder = if backend == "asm" { builder.assembly() } else { builder.emulator() };
+    let client = builder.build()?;
+    client.setup(&ELF_INPUT_2GB, false)?;
+
+    let start = Instant::now();
+    let output = client.execute(&ELF_INPUT_2GB, stdin, None, None)?;
+    Ok((output.into(), start.elapsed()))
+}
+
+/// Executes the guest on `stdin` on the coordinator at `ZISK_COORDINATOR_URL`, and returns its
+/// output and how long the job took, input upload included.
+fn execute_remote(stdin: ZiskStdin) -> Result<(ExecuteResult, Duration), Box<dyn Error>> {
+    let url = std::env::var("ZISK_COORDINATOR_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:7000".to_string());
+    // The remote client blocks on its gRPC calls, which needs a multi-threaded runtime.
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
+    runtime.block_on(async {
+        let client = ProverClient::remote(url).build()?;
+        client.upload(&ELF_INPUT_2GB).run()?;
+        client.setup(&ELF_INPUT_2GB).run()?.await?;
+
+        let start = Instant::now();
+        let result = client.execute(&ELF_INPUT_2GB, stdin).run()?.await?;
+        Ok::<_, Box<dyn Error>>((result, start.elapsed()))
+    })
 }
