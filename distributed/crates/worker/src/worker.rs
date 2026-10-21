@@ -710,12 +710,19 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     /// than dropping it, so recovery can await it off the event loop — letting
     /// the ASM child finish resetting before a new job reuses its shmem.
     pub fn cancel_current_computation(&mut self) -> CancelledWork {
-        if let Err(e) = self.prover.cancel() {
-            tracing::warn!("cancel_current_computation: prover.cancel failed: {e:#}");
+        let had_live_compute = self.has_live_computation();
+        let had_job_context = self.current_job.is_some() || self.has_job();
+        let had_stream_actor = self.stream_actor.is_some();
+        let should_cancel = had_live_compute || had_job_context || had_stream_actor;
+
+        if should_cancel {
+            if let Err(e) = self.prover.cancel() {
+                tracing::warn!("cancel_current_computation: prover.cancel failed: {e:#}");
+            }
         }
 
         let compute = self.current_computation.take();
-        if compute.is_some() {
+        if had_live_compute {
             self.prover.notify_cluster_cancellation();
         }
 
