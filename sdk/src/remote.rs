@@ -9,10 +9,12 @@ pub(crate) mod wrap;
 
 use crate::{Result, SdkError};
 use std::time::Duration;
-use zisk_common::io::StreamRead;
+use zisk_common::io::{BytesPushSender, StreamRead};
 use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues, RandomSeed};
-use zisk_coordinator_api::dto::DomainInputKind;
-use zisk_coordinator_client::CoordinatorClient;
+use zisk_coordinator_api::dto::{DomainInputChunk, DomainInputKind};
+use zisk_coordinator_client::{CoordinatorClient, InputSenderPushAdapter, Job};
+
+use crate::input_stream::{ZiskStream, GRPC_PUSH_URI};
 use zisk_prover_backend::GuestProgram;
 
 use crate::aggregate_proofs::{AggregateProofsRequest, AggregationInput};
@@ -323,45 +325,100 @@ impl RemoteClientExt {
     }
 }
 
-/// Converts an [`InputSource`] into a `DomainInputKind` for submission.
-///
-/// For stream-backed input, also returns the [`ZiskStream`](crate::ZiskStream)
-/// so the caller can spawn an activate thread or inject a gRPC sender.
-pub(crate) fn stdin_to_input_kind(
-    stdin: InputSource,
-) -> Result<(DomainInputKind, Option<crate::input_stream::ZiskStream>)> {
-    match stdin {
-        InputSource::Stream(stream) => {
-            // All stream types (unix, quic, grpc) send StreamUri so workers
-            // start in streaming mode (InputNull).  For grpc://, the coordinator
-            // skips the relay — data arrives via PushJobInput instead.
-            Ok((DomainInputKind::StreamUri(stream.uri().to_string()), Some(stream)))
+/// How a job's input, or its hints, reach the job once the job is submitted.
+pub(crate) enum Delivery {
+    /// In the request itself, or there is none.
+    InRequest,
+    /// The caller's stream. A gRPC one gets its sender once the job exists.
+    Stream(ZiskStream),
+    /// Data over the inline limit, pushed through the job's gRPC stream once the job exists:
+    /// the caller does not see the difference.
+    Push(Vec<u8>),
+}
+
+impl Delivery {
+    /// Prepares the caller's stream, if any, before the job is submitted.
+    pub(crate) fn start(&self) -> Result<()> {
+        if let Self::Stream(stream) = self {
+            stream.start()?;
         }
-        InputSource::Stdin(s) => Ok((
-            DomainInputKind::try_inline(s.into_inner().read_data()).map_err(SdkError::backend)?,
-            None,
-        )),
+        Ok(())
+    }
+
+    /// Delivers what is left once `remote_job` exists, and returns the caller's stream for the
+    /// job handle. `hints` selects the job's hints stream over its input stream.
+    ///
+    /// A push sends the data whole: the sender slices it into chunks of at most 3 MB, each copied
+    /// only into its own gRPC message, and the coordinator forwards each chunk to the workers as
+    /// it arrives, so nothing holds a second copy of the data. A push that fails cancels the
+    /// job, which would otherwise wait for the rest of its input until its phase times out.
+    pub(crate) fn complete(self, remote_job: &Job, hints: bool) -> Result<Option<ZiskStream>> {
+        let open =
+            || if hints { remote_job.open_hints_stream() } else { remote_job.open_input_stream() };
+        match self {
+            Self::InRequest => Ok(None),
+            Self::Stream(stream) => {
+                if stream.is_grpc() {
+                    stream.set_input_sender(open());
+                }
+                Ok(Some(stream))
+            }
+            Self::Push(data) => {
+                let sender = Box::new(InputSenderPushAdapter::new(open()));
+                let pushed = sender.send_blocking(data).and_then(|()| sender.close_blocking());
+                if let Err(e) = pushed {
+                    let _ = remote_job.cancel();
+                    return Err(SdkError::backend(e));
+                }
+                Ok(None)
+            }
+        }
     }
 }
 
-/// Converts an optional [`HintsSource`] into a `DomainInputKind` for submission.
+/// The input kind of `data`: inline up to `inline_limit` bytes, a gRPC push stream above it.
+fn inline_or_push(data: Vec<u8>, inline_limit: usize) -> (DomainInputKind, Delivery) {
+    if data.len() <= inline_limit {
+        (DomainInputKind::Inline(DomainInputChunk { data }), Delivery::InRequest)
+    } else {
+        (DomainInputKind::StreamUri(GRPC_PUSH_URI.to_string()), Delivery::Push(data))
+    }
+}
+
+/// Converts an [`InputSource`] into a `DomainInputKind` for submission, and what is left to
+/// deliver once the job exists.
 ///
-/// For stream-backed hints, also returns the [`ZiskStream`](crate::ZiskStream)
-/// so the caller can inject a gRPC sender after job submission.
+/// All stream types (unix, quic, grpc) send StreamUri so workers start in streaming mode
+/// (InputNull). For grpc://, the coordinator skips the relay — data arrives via PushJobInput
+/// instead, which is also how an input over the inline limit travels.
+pub(crate) fn stdin_to_input_kind(stdin: InputSource) -> (DomainInputKind, Delivery) {
+    match stdin {
+        InputSource::Stream(stream) => {
+            (DomainInputKind::StreamUri(stream.uri().to_string()), Delivery::Stream(stream))
+        }
+        InputSource::Stdin(s) => {
+            inline_or_push(s.into_inner().read_data(), DomainInputKind::MAX_INLINE_BYTES)
+        }
+    }
+}
+
+/// Converts an optional [`HintsSource`] into a `DomainInputKind` for submission, and what is
+/// left to deliver once the job exists.
 ///
-/// - `HintsSource::Hints` → reads data and sends inline
+/// - `HintsSource::Hints` → reads data and sends it inline, or pushes it over the inline limit
 /// - `HintsSource::Stream` → `StreamUri(stream.uri())`
 pub(crate) fn hints_to_input_kind(
     hints: Option<HintsSource>,
-) -> Result<(Option<DomainInputKind>, Option<crate::input_stream::ZiskStream>)> {
+) -> Result<(Option<DomainInputKind>, Delivery)> {
     let hints = match hints {
         Some(h) => h,
-        None => return Ok((None, None)),
+        None => return Ok((None, Delivery::InRequest)),
     };
     match hints {
-        HintsSource::Stream(stream) => {
-            Ok((Some(DomainInputKind::StreamUri(stream.uri().to_string())), Some(*stream)))
-        }
+        HintsSource::Stream(stream) => Ok((
+            Some(DomainInputKind::StreamUri(stream.uri().to_string())),
+            Delivery::Stream(*stream),
+        )),
         HintsSource::Hints(h) => {
             let mut source = h.into_inner();
             source.open().map_err(SdkError::backend)?;
@@ -370,7 +427,29 @@ pub(crate) fn hints_to_input_kind(
                 data.extend(chunk);
             }
             source.close().map_err(SdkError::backend)?;
-            Ok((Some(DomainInputKind::try_inline(data).map_err(SdkError::backend)?), None))
+            let (kind, delivery) = inline_or_push(data, DomainInputKind::MAX_INLINE_BYTES);
+            Ok((Some(kind), delivery))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn data_up_to_the_inline_limit_travels_in_the_request() {
+        let (kind, delivery) = inline_or_push(vec![7; 16], 16);
+        assert!(
+            matches!(kind, DomainInputKind::Inline(DomainInputChunk { ref data }) if data.len() == 16)
+        );
+        assert!(matches!(delivery, Delivery::InRequest));
+    }
+
+    #[test]
+    fn data_over_the_inline_limit_is_pushed_whole() {
+        let (kind, delivery) = inline_or_push(vec![7; 17], 16);
+        assert!(matches!(kind, DomainInputKind::StreamUri(ref uri) if uri == GRPC_PUSH_URI));
+        assert!(matches!(delivery, Delivery::Push(ref data) if data.len() == 17));
     }
 }

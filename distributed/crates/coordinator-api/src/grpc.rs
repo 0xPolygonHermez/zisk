@@ -193,7 +193,8 @@ impl From<DomainJobPhase> for JobPhase {
 impl DomainInputKind {
     /// Maximum size for inline input payloads. Both the coordinator server and
     /// SDK client are configured with the same limit via `max_decoding/encoding_message_size`.
-    const MAX_INLINE_BYTES: usize = 128 * 1024 * 1024;
+    /// The SDK sends a larger payload through a gRPC push stream instead.
+    pub const MAX_INLINE_BYTES: usize = 128 * 1024 * 1024;
 
     /// Wrap `data` as an inline input chunk, enforcing the gRPC message size limit.
     pub fn try_inline(data: Vec<u8>) -> anyhow::Result<Self> {

@@ -75,20 +75,16 @@ impl RemoteClient {
         metadata: Option<BTreeMap<String, String>>,
     ) -> Result<JobHandle<ProveResult>> {
         let metadata = metadata.filter(|m| !m.is_empty());
-        let (hints, maybe_hints_stream) = hints_to_input_kind(hints)?;
+        let (hints, hints_delivery) = hints_to_input_kind(hints)?;
 
         let hash_id = program.program_id.hash_id.to_string();
-        let (input, maybe_stream) = stdin_to_input_kind(stdin)?;
+        let (input, input_delivery) = stdin_to_input_kind(stdin);
         let proof_timeout = timeout.map(deadline_from_now);
         let proof_dest = proof_kind.into();
 
         // Prepare transports BEFORE submit_job().
-        if let Some(ref stream) = maybe_stream {
-            stream.start()?;
-        }
-        if let Some(ref stream) = maybe_hints_stream {
-            stream.start()?;
-        }
+        input_delivery.start()?;
+        hints_delivery.start()?;
 
         let job_kind = DomainJobKind::Prove(DomainProveRequest {
             hash_id,
@@ -105,18 +101,11 @@ impl RemoteClient {
         }
         .map_err(SdkError::backend)?;
 
-        // gRPC streams need an InputSender injected after job submission.
-        if let Some(ref stream) = maybe_stream {
-            if stream.is_grpc() {
-                stream.set_input_sender(remote_job.open_input_stream());
-            }
-        }
-        if let Some(ref stream) = maybe_hints_stream {
-            if stream.is_grpc() {
-                stream.set_input_sender(remote_job.open_hints_stream());
-            }
-        }
+        // gRPC streams need an InputSender injected after job submission, and data over the
+        // inline limit is pushed through one.
+        let stream = input_delivery.complete(&remote_job, false)?;
+        let hints_stream = hints_delivery.complete(&remote_job, true)?;
 
-        Ok(JobHandle::new_remote(remote_job, subs, timeout, maybe_stream, maybe_hints_stream))
+        Ok(JobHandle::new_remote(remote_job, subs, timeout, stream, hints_stream))
     }
 }
