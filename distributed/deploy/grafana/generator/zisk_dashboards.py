@@ -377,7 +377,9 @@ def proofs():
 
 
 def once(expr):
-    """Only each sample's own evaluation: a timed series' sample (one per proof, at its end) at the step it falls in."""
+    """Only each sample's own evaluation: a timed series' sample (one per proof, at its end) at the step it falls in.
+    `expr` must be a selector: timestamp() of anything else (a label_replace, say) is the evaluation time, which
+    keeps the last sample at every step for the 5 min Prometheus looks back."""
     return f"{expr} and ((time() - timestamp({expr})) * 1000 < $__interval_ms)"
 
 
@@ -513,10 +515,11 @@ def live():
     # $__range are exact per proof. "@ end()" pins them to the selected range's end: a constant over the panel,
     # i.e. a horizontal line, the same value the box shows.
     phases = [("1", "1 contributions"), ("2", "2 prove"), ("3", "3 aggregation")]
-    DUR = relabel(f"coordinator_proof_seconds{{{C}}}", "phase", phases)
+    # once() before the renames: it needs the selector's own timestamps.
+    DUR = relabel(once(f"coordinator_proof_seconds{{{C}}}"), "phase", phases)
     TOTAL = f'coordinator_proof_seconds{{{C},phase="total"}}'
     p = timeseries("Proof duration per job",
-                   [(once(DUR), "{{phase}}"),
+                   [(DUR, "{{phase}}"),
                     (f"avg_over_time({TOTAL}[$__range] @ end())", "mean (total)"),
                     (f"quantile_over_time(0.999, {TOTAL}[$__range] @ end())", "P99.9 (total)")], "s",
                    desc="One point per successful proof: each phase and the total; the dashed lines are the mean "

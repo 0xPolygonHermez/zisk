@@ -1080,7 +1080,7 @@
    "targets": [
     {
      "refId": "A",
-     "expr": "label_replace(label_replace(label_replace(coordinator_proof_seconds{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, \"phase\", \"1 contributions\", \"phase\", \"1\"), \"phase\", \"2 prove\", \"phase\", \"2\"), \"phase\", \"3 aggregation\", \"phase\", \"3\") and ((time() - timestamp(label_replace(label_replace(label_replace(coordinator_proof_seconds{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, \"phase\", \"1 contributions\", \"phase\", \"1\"), \"phase\", \"2 prove\", \"phase\", \"2\"), \"phase\", \"3 aggregation\", \"phase\", \"3\"))) * 1000 < $__interval_ms)",
+     "expr": "label_replace(label_replace(label_replace(coordinator_proof_seconds{job=\"zisk-coordinator\",cluster=~\"$cluster\"} and ((time() - timestamp(coordinator_proof_seconds{job=\"zisk-coordinator\",cluster=~\"$cluster\"})) * 1000 < $__interval_ms), \"phase\", \"1 contributions\", \"phase\", \"1\"), \"phase\", \"2 prove\", \"phase\", \"2\"), \"phase\", \"3 aggregation\", \"phase\", \"3\")",
      "legendFormat": "{{phase}}",
      "datasource": {
       "type": "prometheus",
