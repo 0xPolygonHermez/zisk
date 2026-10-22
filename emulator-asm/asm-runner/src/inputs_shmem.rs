@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use named_sem::NamedSemaphore;
@@ -11,9 +12,14 @@ use crate::{
 
 use anyhow::Result;
 
+/// Bytes of the length header that precedes the input in its segment.
+const HEADER_BYTES: usize = 8;
+
 /// This struct manages the shared memory for writing inputs to the C++ side.
 pub struct InputsShmemWriter {
     writer: Mutex<ShmemWriter>,
+    /// The end of the furthest input byte written since the last reset.
+    written_end: AtomicUsize,
     control_writer: Arc<ControlShmem>,
     sem_avails: Mutex<Option<Vec<NamedSemaphore>>>,
 }
@@ -40,7 +46,12 @@ impl InputsShmemWriter {
         writer.reset();
         writer.append_input(&0u64.to_le_bytes())?;
 
-        Ok(Self { writer: Mutex::new(writer), control_writer, sem_avails: Mutex::new(None) })
+        Ok(Self {
+            writer: Mutex::new(writer),
+            written_end: AtomicUsize::new(HEADER_BYTES),
+            control_writer,
+            sem_avails: Mutex::new(None),
+        })
     }
 
     /// Open the per-service input-availability semaphores for a given program.
@@ -84,7 +95,13 @@ impl InputsShmemWriter {
             return Ok(());
         }
 
-        self.writer.lock().unwrap().write_at(8, inputs)?;
+        {
+            // Recorded under the lock, as `reset` reads it, so that a reset sees every write
+            // made before it.
+            let writer = self.writer.lock().unwrap();
+            writer.write_at(HEADER_BYTES, inputs)?;
+            self.written_end.fetch_max(HEADER_BYTES + inputs.len(), Ordering::Relaxed);
+        }
         self.control_writer.inc_inputs_size(inputs.len())?;
         self.notify_all_services()?;
         Ok(())
@@ -92,7 +109,11 @@ impl InputsShmemWriter {
 
     /// Appends inputs to the shared memory and updates the control shared memory.
     pub fn append_input(&self, inputs: &[u8]) -> Result<()> {
-        self.writer.lock().unwrap().append_input(inputs)?;
+        {
+            let mut writer = self.writer.lock().unwrap();
+            writer.append_input(inputs)?;
+            self.written_end.fetch_max(writer.offset(), Ordering::Relaxed);
+        }
         self.control_writer.inc_inputs_size(inputs.len())?;
         self.notify_all_services()?;
         Ok(())
@@ -132,8 +153,17 @@ impl InputsShmemWriter {
     }
 
     /// Resets the shared memory and control flags, and drains any stale semaphore posts.
+    ///
+    /// The bytes the input wrote are zeroed. A run reads input addresses past the end of its
+    /// input, among them the BIOS's read every 128 MB of the input region, and the prover takes
+    /// them as zeros: what a larger previous input left there failed every later proof at its
+    /// global constraints.
     pub fn reset(&self) {
         let mut writer = self.writer.lock().unwrap();
+        let written_end = self.written_end.swap(HEADER_BYTES, Ordering::Relaxed);
+        if let Err(e) = writer.zero_range(HEADER_BYTES, written_end) {
+            tracing::error!("InputsShmemWriter::reset: zeroing the previous input failed: {e}");
+        }
         writer.reset();
         writer
             .append_input(&0u64.to_le_bytes())
@@ -271,6 +301,39 @@ mod tests {
 
         drop(r);
         drop(cr);
+        unlink_segment(&input_seg);
+        unlink_segment(&control_seg);
+    }
+
+    /// A run reads input addresses past the end of its input (the BIOS reads one every 128 MB of
+    /// the region), which the prover takes as zeros: a reset leaves nothing of the previous
+    /// input, whether it was written whole or appended.
+    #[test]
+    fn reset_zeroes_what_the_previous_input_wrote() {
+        let prefix = format!("ZISK_unittest_zeroed_{}", std::process::id());
+        let input_seg = shmem_input_name(&prefix);
+        let control_seg = shmem_control_input_name(&prefix);
+        create_segment(&input_seg, MAX_INPUT_SIZE as usize);
+        create_segment(&control_seg, ControlShmem::CONTROL_WRITER_SIZE as usize);
+
+        let control = std::sync::Arc::new(ControlShmem::new(&prefix, true).unwrap());
+        let writer = InputsShmemWriter::new(&prefix, true, control).unwrap();
+        let r = ShmemReader::new(&input_seg, 3 * 4096).unwrap();
+
+        // Two pages written whole, then one appended over the first: each reset must clear what
+        // the input before it reached past the next one.
+        writer.write_input(&[0xAB; 2 * 4096]).unwrap();
+        writer.reset();
+        writer.append_input(&[0xCD; 4096]).unwrap();
+        writer.reset();
+        writer.write_input(&[7u8; 8]).unwrap();
+
+        assert_eq!(r.read_u64_at(HEADER_BYTES), u64::from_le_bytes([7; 8]));
+        for offset in (2 * HEADER_BYTES..HEADER_BYTES + 2 * 4096).step_by(8) {
+            assert_eq!(r.read_u64_at(offset), 0, "a stale byte at offset {offset}");
+        }
+
+        drop(r);
         unlink_segment(&input_seg);
         unlink_segment(&control_seg);
     }

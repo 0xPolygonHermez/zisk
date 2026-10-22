@@ -337,7 +337,7 @@ jobs:
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e ZEC_GUEST="${ZEC_GUEST}" \
-            -e BLOCK_INPUTS_SINGLE="mainnet_25431013_172_16_zec_ziskethone.bin,mainnet_25431039_325_25_zec_ziskethone.bin" \
+            -e BLOCK_INPUTS_SINGLE="mainnet_26235156_91_5_zec_ziskethone.bin,mainnet_26235168_260_29_zec_ziskethone.bin" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_eth_block.sh
@@ -348,7 +348,7 @@ jobs:
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e ZEC_GUEST="${ZEC_GUEST}" \
-            -e BLOCK_INPUTS_ETHPROOFS="mainnet_25431013_172_16_zec_ziskethone.bin,mainnet_25431039_325_25_zec_ziskethone.bin,mainnet_25431055_712_55_zec_ziskethone.bin" \
+            -e BLOCK_INPUTS_ETHPROOFS="mainnet_26235156_91_5_zec_ziskethone.bin,mainnet_26235168_260_29_zec_ziskethone.bin,mainnet_26235159_532_57_zec_ziskethone.bin" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_ethproofs.sh

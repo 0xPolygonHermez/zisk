@@ -208,37 +208,48 @@ fn modexp_long(
     // Scratch space
     let mut scratch = LongScratch::new(len_m);
 
+    // The guest heap is a bump allocator that never frees, so the loop must not allocate:
+    // each step writes its result into `next`, which then swaps places with `out`
+    let mut out = vec![U256::ZERO; len_m];
+    let mut next = vec![U256::ZERO; len_m];
+
     // Initialize out = base
-    let mut out = base.clone();
+    let mut out_len = base.len();
+    out[..out_len].copy_from_slice(&base);
     for &bit in bits.iter().skip(1) {
-        if out.len() == 1 && out[0].is_zero() {
+        if out_len == 1 && out[0].is_zero() {
             // Exit with out = 0 if the result is already zero,
             // since it will remain zero regardless of the remaining bits
             break;
         }
 
         // Compute out = out² (mod modulus)
-        out = square_and_reduce_long(
-            &out,
+        out_len = square_and_reduce_long(
+            &out[..out_len],
             modulus,
             &mut scratch,
+            &mut next,
             #[cfg(feature = "hints")]
             hints,
         );
+        core::mem::swap(&mut out, &mut next);
 
         if bit == 1 {
             // Compute out = (out * base) (mod modulus)
-            out = mul_and_reduce_long(
-                &out,
+            out_len = mul_and_reduce_long(
+                &out[..out_len],
                 &base,
                 modulus,
                 &mut scratch,
+                &mut next,
                 #[cfg(feature = "hints")]
                 hints,
             );
+            core::mem::swap(&mut out, &mut next);
         }
     }
 
+    out.truncate(out_len);
     out
 }
 
