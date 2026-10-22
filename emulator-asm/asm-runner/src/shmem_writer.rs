@@ -4,8 +4,27 @@ use std::io::{self, Result};
 use std::ptr;
 
 use libc::{close, munmap, PROT_READ, PROT_WRITE};
+use rayon::prelude::*;
 
 use crate::shmem_sys;
+
+/// Below this many bytes one thread zeroes as fast as rayon's, or faster: on a 2-socket host,
+/// spreading the work costs more than the `memset`. Above it, zeroing is bound by memory
+/// bandwidth, which rayon's threads reach 2–5× sooner.
+const PARALLEL_ZERO_BYTES: usize = 64 << 20;
+
+/// The piece of a large range that each rayon task zeroes: a transparent huge page, as proofman
+/// zeroes its pool buffers.
+const ZERO_CHUNK_BYTES: usize = 2 << 20;
+
+/// Zeroes `bytes`, from every rayon thread when they are many.
+fn zero_bytes(bytes: &mut [u8]) {
+    if bytes.len() < PARALLEL_ZERO_BYTES {
+        bytes.fill(0);
+    } else {
+        bytes.par_chunks_mut(ZERO_CHUNK_BYTES).for_each(|chunk| chunk.fill(0));
+    }
+}
 
 pub(crate) struct ShmemWriter {
     ptr: *mut u8,
@@ -229,6 +248,41 @@ impl ShmemWriter {
     pub fn reset(&mut self) {
         self.current_ptr = self.ptr;
     }
+
+    /// The offset, in bytes, that `append_input` writes at next.
+    pub fn offset(&self) -> usize {
+        // SAFETY: `current_ptr` always points into the mapping that starts at `ptr`.
+        unsafe { self.current_ptr.offset_from(self.ptr) as usize }
+    }
+
+    /// Zeroes the bytes `[start, end)` of the shared memory.
+    pub fn zero_range(&mut self, start: usize, end: usize) -> Result<()> {
+        if end <= start {
+            return Ok(());
+        }
+        if end > self.size {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "Range end ({}) exceeds shared memory capacity ({}) for '{}'",
+                    end, self.size, self.name
+                ),
+            ));
+        }
+
+        unsafe {
+            // SAFETY: `[start, end)` lies inside the mapping, and `&mut self` keeps this writer
+            // from writing it meanwhile.
+            zero_bytes(std::slice::from_raw_parts_mut(self.ptr.add(start), end - start));
+            // Force changes to be flushed to the shared memory
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            if msync(self.ptr as *mut _, self.size, MS_SYNC) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Drop for ShmemWriter {
@@ -315,6 +369,31 @@ mod tests {
         assert_eq!(r.read_u64_at(24), 4, "last slot before wrap");
         assert_eq!(r.read_u64_at(0), 5, "wrapped to start");
         assert_eq!(r.read_u64_at(8), 2, "untouched from first write");
+        unlink_segment(&name);
+    }
+
+    #[test]
+    fn zero_bytes_clears_ranges_below_and_above_the_parallel_threshold() {
+        for len in [1, 4097, PARALLEL_ZERO_BYTES + ZERO_CHUNK_BYTES / 2 + 3] {
+            let mut bytes = vec![0xABu8; len];
+            zero_bytes(&mut bytes);
+            assert!(bytes.iter().all(|&b| b == 0), "{len} bytes");
+        }
+    }
+
+    #[test]
+    fn zero_range_clears_only_its_range() {
+        let name = seg_name("zero");
+        create_segment(&name, 4096);
+        let mut w = ShmemWriter::new(&name, 4096, true).unwrap();
+        w.write_at(0, &[1u64, 2, 3, 4]).unwrap();
+        w.zero_range(8, 24).unwrap();
+        let r = ShmemReader::new(&name, 4096).unwrap();
+        assert_eq!(
+            [r.read_u64_at(0), r.read_u64_at(8), r.read_u64_at(16), r.read_u64_at(24)],
+            [1, 0, 0, 4]
+        );
+        assert!(w.zero_range(0, 4097).is_err(), "a range past the segment");
         unlink_segment(&name);
     }
 
