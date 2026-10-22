@@ -752,14 +752,10 @@ void state_machine_by_run_with_hist_kernel(const uint32_t* __restrict__ d_run_of
             const uint32_t v = d_sorted_vals[j];
             const bool kind_w       = (v >> 31);
             const uint32_t orig_pos = v & 0x7FFFFFFFu;
-            uint32_t emit;
-            if (kind_w) {
-                emit = 1;
-                state = true;
-            } else {
-                if (state) { emit = 0; state = false; }
-                else       { emit = 1; state = true;  }
-            }
+            // An access emits a row exactly when it leaves the word open: a write always does; a
+            // read does when nothing is open, else it closes the open row and shares it.
+            state = kind_w || !state;
+            const uint32_t emit = state ? 1u : 0u;
             d_emit_bits[orig_pos] = emit;
             n_emit += emit;
         }
