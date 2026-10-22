@@ -242,10 +242,10 @@ message ExecuteTaskRequest {
     ContributionParams execution_params = 7; // Same params as contribution, but only executes without proof generation
     WrapParams wrap_params = 8;
   }
-  // Carried the job's caller metadata, which no worker read: it stays on the
-  // coordinator.
-  reserved 9;
-  reserved "metadata";
+  // DEPRECATED: carried the job's caller metadata, which no worker read; it
+  // stays on the coordinator, which no longer sets this field. Removed (and
+  // reserved) in the first non-alpha release.
+  map<string, string> metadata = 9 [deprecated = true];
 }
 
 enum TaskType {

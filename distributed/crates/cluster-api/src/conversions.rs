@@ -321,6 +321,8 @@ impl From<ExecuteTaskRequestDto> for ExecuteTaskRequest {
             job_id: dto.job_id.into(),
             task_type: task_type as i32,
             params: Some(params),
+            // `metadata` is deprecated and left empty: job metadata stays on the coordinator.
+            ..Default::default()
         }
     }
 }
