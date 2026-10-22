@@ -19,3 +19,6 @@ import Equiv.RiscvDecodeMem
 import Equiv.LoadSim
 import Equiv.MemWrite
 import Equiv.ZiskStore
+import Equiv.RiscvStore
+import Equiv.RiscvStepStore
+import Equiv.StoreSim

@@ -28,9 +28,9 @@ set_option maxHeartbeats 4000000 in
 /-- One step of each on an instruction that writes `val` to rd on both
     sides keeps the states related. -/
 theorem alu_step_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hr : StepReady s rs)
-    (xs : Vector (BitVec 64) 40) (hx : z.regs.get? _root_.Zisk.Register.Xs = some xs) (agree : RegsAgree s xs)
+    (xs : Vector (BitVec 64) 40) (_hx : z.regs.get? _root_.Zisk.Register.Xs = some xs) (agree : RegsAgree s xs)
     (pc : BitVec 64) (hpc : s.regs.get? Register.PC = some pc)
-    (hzpc : z.regs.get? _root_.Zisk.Register.PC = some pc)
+    (_hzpc : z.regs.get? _root_.Zisk.Register.PC = some pc)
     (b0 b1 b2 b3 : BitVec 8) (hw : WordAt s rs pc b0 b1 b2 b3) (ins : instruction)
     (hdec : ∀ t : RVState, t.regs.get? Register.cur_privilege = some .Machine →
       (∃ v, t.regs.get? Register.mseccfg = some v) →
