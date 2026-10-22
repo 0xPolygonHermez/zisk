@@ -174,6 +174,7 @@ As sail-riscv's:
 | `lean/` | The equivalence proofs: a Lake package importing both generated models. |
 | `test/` | The per-operation checks (`make optest`); `programs/`, the ZisK assembly programs `make difftest-all` runs besides the doubler, `memmap/` among them, the accesses ZisK refuses; and `compliance/`, the RISC-V architectural tests' harness for ZisK (`make compliance`). |
 | `riscv/` | `zisk_profile.py`: sail-riscv's configuration for the RISC-V ZisK runs (`make riscv-sim`). |
+| `doc/riscv_contract.md` | ZisK's RISC-V: what a RISC-V program means when ZisK runs it, where ZisK departs from RISC-V. |
 | `doc/ops.md` | Every ZisK operation: whether the transpiler emits it, whether the model specifies it. |
 | `check_ops.py` | The opcode guard (`make ops`). |
 
@@ -725,8 +726,11 @@ What the transpiler does is not always what RISC-V specifies, on purpose:
 
 The architectural tests stay clear of these: their harness's CSR accesses
 set up a trap handler no test takes, and they end before the exit syscall.
-The equivalence will have to state them: what a RISC-V program may rely on,
-and what ZisK's `ecall` and CSRs mean for it.
+[`doc/riscv_contract.md`](doc/riscv_contract.md) states them all — how a
+program starts and ends, `ecall`, the CSRs, the precompile and free-input
+CSR sequences — as the RISC-V side of the equivalence, with its
+preconditions: no `ecall` but exit, no CSR access but ZisK's own calls, no
+zkvmcall.
 
 ## Per-operation testing
 

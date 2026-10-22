@@ -24,6 +24,9 @@ import sys
 # The extensions ZisK runs. B is Zba, Zbb and Zbs.
 PROFILE = {'M', 'A', 'B', 'Zbkb', 'Zicsr', 'Zifencei'}
 
+# ZisK's architecture ID, ARCH_ID_ZISK in core/src/mem.rs.
+ARCH_ID_ZISK = 0x0FFFEEEE
+
 
 def main():
     sim, out = sys.argv[1], sys.argv[2]
@@ -37,6 +40,9 @@ def main():
     # With neither F, V nor S, mstatus.FS and mstatus.VS are read-only zero.
     config['base']['mstatus']['fs_legal_states'] = 'ExtContext_Off'
     config['base']['mstatus']['vs_legal_states'] = 'ExtContext_Off'
+    # marchid is ZisK's ID, as the BIOS sets its cell: the runtime reads it to
+    # tell ZisK from QEMU (doc/riscv_contract.md, precondition C).
+    config['platform']['archid'] = ARCH_ID_ZISK
     # No interrupt sources: nothing in a ZisK program can take one.
     platform = config['platform']
     for kind in platform['interrupts']['machine'].values():
