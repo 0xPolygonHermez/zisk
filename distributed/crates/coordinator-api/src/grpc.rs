@@ -9,6 +9,8 @@ pub mod proto {
     #![allow(clippy::large_enum_variant)]
     // Generated code — the proto definitions are the source of truth.
     #![allow(missing_docs)]
+    // The generated services name the deprecated extended API's messages.
+    #![allow(deprecated)]
     tonic::include_proto!("zisk.coordinator.v1");
 }
 
@@ -451,6 +453,8 @@ impl TryFrom<ExecuteRequest> for DomainExecuteRequest {
     }
 }
 
+// The deprecated extended API's conversions, kept with it.
+#[allow(deprecated)]
 impl TryFrom<DomainJobKind> for JobKindExt {
     type Error = String;
 
@@ -465,6 +469,7 @@ impl TryFrom<DomainJobKind> for JobKindExt {
     }
 }
 
+#[allow(deprecated)]
 impl TryFrom<JobKindExt> for DomainJobKind {
     type Error = String;
 

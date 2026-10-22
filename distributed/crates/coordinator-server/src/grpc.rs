@@ -381,6 +381,7 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
 
 /// Deprecated alias of `JobRequest`, kept for clients built against the extended
 /// API until the first non-alpha release.
+#[allow(deprecated)]
 #[tonic::async_trait]
 impl<B: BackendService> ZiskCoordinatorApiExt for GrpcAdapter<B> {
     #[instrument(level = "debug", skip(self, request))]

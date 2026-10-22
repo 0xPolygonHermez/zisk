@@ -17,9 +17,9 @@ use zisk_coordinator_api::grpc::proto::{
     zisk_coordinator_api_ext_client::ZiskCoordinatorApiExtClient,
     zisk_coordinator_api_ext_server::ZiskCoordinatorApiExtServer,
     zisk_coordinator_api_server::ZiskCoordinatorApiServer, CancelJobRequest, ExecuteRequest,
-    InputChunk, InputKind, JobKind, JobKindExt, JobRequestExtMessage, JobRequestMessage, Proof,
-    ProofKind, ProveRequest, PushJobHintsInputRequest, PushJobInputRequest, SetupRequest,
-    WaitJobResultRequest, WatchJobRequest, WrapRequest,
+    InputChunk, InputKind, JobKind, JobRequestMessage, Proof, ProofKind, ProveRequest,
+    PushJobHintsInputRequest, PushJobInputRequest, SetupRequest, WaitJobResultRequest,
+    WatchJobRequest, WrapRequest,
 };
 use zisk_coordinator_server::{backend::mock::MockBackend, CoordinatorHandler, GrpcAdapter};
 
@@ -60,32 +60,9 @@ async fn start_test_server_with_backend() -> (ZiskCoordinatorApiClient<Channel>,
 }
 
 /// Start a coordinator server over a `MockBackend` and return its endpoint URL
-/// and the backend, for tests that bring their own client.
+/// and the backend, for tests that bring their own client. It serves the base
+/// and the deprecated extended API, as `zisk-coordinator` does.
 async fn start_mock_server() -> (String, Arc<MockBackend>) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-
-    let backend = Arc::new(MockBackend::default());
-    let backend_clone = Arc::clone(&backend);
-    let service = GrpcAdapter::new(CoordinatorHandler::new(Arc::clone(&backend)));
-
-    tokio::spawn(async move {
-        Server::builder()
-            .add_service(ZiskCoordinatorApiServer::new(service))
-            .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
-            .await
-            .unwrap();
-    });
-
-    (format!("http://{addr}"), backend_clone)
-}
-
-/// Start a coordinator server exposing BOTH the base and the deprecated extended
-/// APIs over a single shared `MockBackend`. Returns a base client (for
-/// register/wait), an extended client (for `job_request_ext`), and the backend
-/// for assertions.
-async fn start_test_server_ext(
-) -> (ZiskCoordinatorApiClient<Channel>, ZiskCoordinatorApiExtClient<Channel>, Arc<MockBackend>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
 
@@ -103,7 +80,14 @@ async fn start_test_server_ext(
             .unwrap();
     });
 
-    let endpoint = format!("http://{addr}");
+    (format!("http://{addr}"), backend)
+}
+
+/// Start a coordinator server and return a base client (for register/wait), an
+/// extended client (for `job_request_ext`), and the backend for assertions.
+async fn start_test_server_ext(
+) -> (ZiskCoordinatorApiClient<Channel>, ZiskCoordinatorApiExtClient<Channel>, Arc<MockBackend>) {
+    let (endpoint, backend) = start_mock_server().await;
     let base_client =
         connect_with_retry(|e: String| ZiskCoordinatorApiClient::connect(e), &endpoint).await;
     let ext_client =
@@ -165,7 +149,7 @@ async fn job_request_round_trips_metadata() {
 
     // Metadata must have propagated through grpc → handler → backend.
     let seen = backend.submit_metadata(response.job_id.parse().unwrap()).await;
-    let expected: std::collections::BTreeMap<String, String> = job_metadata().into_iter().collect();
+    let expected = job_metadata_map();
     assert_eq!(seen, expected, "submitted metadata must reach the backend");
 }
 
@@ -195,15 +179,16 @@ async fn job_request_round_trips_metadata_on_a_wrap_job() {
         .job_id;
 
     let seen = backend.submit_metadata(job_id.parse().unwrap()).await;
-    let expected: std::collections::BTreeMap<String, String> = job_metadata().into_iter().collect();
+    let expected = job_metadata_map();
     assert_eq!(seen, expected, "submitted metadata must reach the backend");
 }
 
-/// `CoordinatorClient` sends job metadata on `JobRequest`, through
-/// `submit_job_with_metadata` and the deprecated `submit_job_ext` alike.
+/// `CoordinatorClient` sends job metadata on `JobRequest` with
+/// `submit_job_with_metadata`, and keeps sending it on `JobRequestExt` with the
+/// deprecated `submit_job_ext`, which coordinators before 1.4 also take.
 #[tokio::test(flavor = "multi_thread")]
 #[allow(deprecated)]
-async fn coordinator_client_sends_metadata_on_job_request() {
+async fn coordinator_client_sends_metadata() {
     use zisk_coordinator_api::dto::{
         DomainExecuteRequest, DomainInputChunk, DomainInputKind, DomainJobKind,
     };
@@ -223,7 +208,7 @@ async fn coordinator_client_sends_metadata_on_job_request() {
             execute_timeout: None,
         })
     };
-    let metadata: std::collections::BTreeMap<String, String> = job_metadata().into_iter().collect();
+    let metadata = job_metadata_map();
 
     let job = client.submit_job_with_metadata(execute(), metadata.clone()).unwrap();
     assert_eq!(backend.submit_metadata(job.job_id()).await, metadata);
@@ -274,6 +259,8 @@ async fn job_request_rejects_oversized_metadata() {
 #[tokio::test]
 #[allow(deprecated)]
 async fn job_request_ext_alias_round_trips_metadata() {
+    use zisk_coordinator_api::grpc::proto::{JobKindExt, JobRequestExtMessage};
+
     let (mut base_client, mut ext_client, backend) = start_test_server_ext().await;
     let hash_id = register_program(&mut base_client).await;
 
@@ -300,7 +287,7 @@ async fn job_request_ext_alias_round_trips_metadata() {
 
     // Metadata must have propagated through grpc → handler → backend.
     let seen = backend.submit_metadata(job_id.parse().unwrap()).await;
-    let expected: std::collections::BTreeMap<String, String> = job_metadata().into_iter().collect();
+    let expected = job_metadata_map();
     assert_eq!(seen, expected, "submitted metadata must reach the backend");
 
     // The job created via the extended API is visible on the base API and runs

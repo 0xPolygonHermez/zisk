@@ -53,8 +53,13 @@ impl RemoteClient {
             proof_dest,
         });
 
-        let remote_job =
-            self.gw.submit_job_with_metadata(job_kind, metadata).map_err(SdkError::backend)?;
+        let remote_job = if self.legacy_ext && !metadata.is_empty() {
+            #[allow(deprecated)]
+            self.gw.submit_job_ext(job_kind, metadata)
+        } else {
+            self.gw.submit_job_with_metadata(job_kind, metadata)
+        }
+        .map_err(SdkError::backend)?;
 
         // gRPC streams need an InputSender injected after job submission.
         if let Some(ref stream) = maybe_stream {

@@ -85,7 +85,7 @@ impl<Out: From<RemoteClient>> RemoteClientBuilder<Out> {
         crate::client::ensure_single_instance();
         let gw = CoordinatorClient::connect(self.url, self.connect_timeout, self.request_timeout)
             .map_err(SdkError::backend)?;
-        Ok(RemoteClient { gw })
+        Ok(RemoteClient { gw, legacy_ext: false })
     }
 
     /// Build the client.
@@ -101,16 +101,18 @@ impl<Out: From<RemoteClient>> RemoteClientBuilder<Out> {
     ///
     /// # Returns
     ///
-    /// [`RemoteClientExt`] — a wrapper around [`RemoteClient`], whose request
-    /// builders now carry job metadata themselves.
+    /// [`RemoteClientExt`] — a wrapper around [`RemoteClient`] whose `prove` and
+    /// `execute` keep sending their metadata over the extended API, which
+    /// coordinators that predate metadata on `JobRequest` also take.
     #[deprecated(
         since = "1.4.0-alpha",
-        note = "use `build`: the remote client's requests take `metadata`; \
-                removed in the first non-alpha release"
+        note = "build a `RemoteClient` with `ProverClient::remote(url).build()` (or reach it \
+                with `ZiskClient::as_remote`): its requests take `metadata`; removed in the \
+                first non-alpha release"
     )]
     #[allow(deprecated)]
     pub fn build_ext(self) -> Result<RemoteClientExt> {
-        Ok(RemoteClientExt { inner: self.connect()? })
+        Ok(RemoteClientExt { inner: RemoteClient { legacy_ext: true, ..self.connect()? } })
     }
 }
 
@@ -118,6 +120,10 @@ impl<Out: From<RemoteClient>> RemoteClientBuilder<Out> {
 #[derive(Clone)]
 pub struct RemoteClient {
     pub(crate) gw: CoordinatorClient,
+    /// Built by the deprecated [`RemoteClientBuilder::build_ext`]: prove and execute
+    /// metadata goes over the extended API's `JobRequestExt`, as it did before it moved
+    /// onto `JobRequest`.
+    pub(crate) legacy_ext: bool,
 }
 
 impl Client for RemoteClient {
@@ -295,7 +301,7 @@ impl RemoteClient {
 ///
 /// Built via [`RemoteClientBuilder::build_ext`]. Dereferences to [`RemoteClient`],
 /// whose `prove`, `execute`, `wrap_proof` and `aggregate_proofs` builders take
-/// job `metadata`.
+/// job `metadata`; `prove` and `execute` send it over the extended API, as before.
 #[deprecated(
     since = "1.4.0-alpha",
     note = "use `RemoteClient`: its requests take `metadata`; removed in the first non-alpha release"

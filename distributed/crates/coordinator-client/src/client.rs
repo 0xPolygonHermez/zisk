@@ -9,7 +9,7 @@ use zisk_coordinator_api::dto::{
     RegisterGuestProgramRequestDto,
 };
 use zisk_coordinator_api::grpc::proto::{CancelJobRequest, JobRequestMessage};
-use zisk_coordinator_api::grpc::ZiskCoordinatorApiClient;
+use zisk_coordinator_api::grpc::{ZiskCoordinatorApiClient, ZiskCoordinatorApiExtClient};
 
 use crate::input_sender::InputSender;
 use crate::job::Job;
@@ -22,6 +22,7 @@ use crate::job::Job;
 #[derive(Clone)]
 pub struct CoordinatorClient {
     inner: ZiskCoordinatorApiClient<Channel>,
+    ext: ZiskCoordinatorApiExtClient<Channel>,
 }
 
 impl CoordinatorClient {
@@ -42,7 +43,10 @@ impl CoordinatorClient {
                 .context("Failed to connect to coordinator")
         })?;
         Ok(Self {
-            inner: ZiskCoordinatorApiClient::new(channel)
+            inner: ZiskCoordinatorApiClient::new(channel.clone())
+                .max_decoding_message_size(128 * 1024 * 1024)
+                .max_encoding_message_size(128 * 1024 * 1024),
+            ext: ZiskCoordinatorApiExtClient::new(channel)
                 .max_decoding_message_size(128 * 1024 * 1024)
                 .max_encoding_message_size(128 * 1024 * 1024),
         })
@@ -101,17 +105,33 @@ impl CoordinatorClient {
         Job::new(resp.job_id, self.clone())
     }
 
-    /// Submit a job with caller-defined key/value metadata.
+    /// Submit a prove or execute job with caller-defined key/value metadata over
+    /// the extended API's `JobRequestExt`, which coordinators that predate
+    /// metadata on `JobRequest` also take.
     #[deprecated(
         since = "1.4.0-alpha",
-        note = "use `submit_job_with_metadata`; removed in the first non-alpha release"
+        note = "use `submit_job_with_metadata`, which sends the metadata on `JobRequest`; \
+                removed in the first non-alpha release"
     )]
+    #[allow(deprecated)]
     pub fn submit_job_ext(
         &self,
         kind: DomainJobKind,
         metadata: BTreeMap<String, String>,
     ) -> Result<Job> {
-        self.submit_job_with_metadata(kind, metadata)
+        use zisk_coordinator_api::grpc::proto::{JobKindExt, JobRequestExtMessage};
+
+        let job_kind = JobKindExt::try_from(kind).map_err(|e| anyhow::anyhow!(e))?;
+        let resp = block_on(async {
+            let mut gw = self.ext.clone();
+            let req = JobRequestExtMessage {
+                job_kind: Some(job_kind),
+                metadata: metadata.into_iter().collect(),
+            };
+            let resp = gw.job_request_ext(req).await.context("JobRequestExt RPC failed")?;
+            Ok::<_, anyhow::Error>(resp.into_inner())
+        })?;
+        Job::new(resp.job_id, self.clone())
     }
 
     /// Cancel a job by its id without first holding a [`Job`] handle.
