@@ -12,7 +12,8 @@
   interpreter fails on a register it does not have).
 
   So far reads: `mem_read`, `fetch_bytes`, and `fetch` of a 32-bit
-  instruction. Stores, and loads through `vmem_read`, come next.
+  instruction — in the end the four bytes at pc, little-endian
+  (`fetch_word`). Stores, and loads through `vmem_read`, come next.
 
   lean-sail's free monad has no LawfulMonad instance; it is proved here, so
   the monad laws simplify sail-riscv's code.
@@ -194,6 +195,34 @@ theorem fetch_bytes_run (s : RVState) (rs : List PMA_Region) (hs : MemReady s rs
   simp [fetch_bytes, ext_fetch_check_pc, me_run_lift_bind, me_run_pure, bind_assoc,
     readReg_run _ _ _ hms, readReg_run _ _ _ hp, he, ht, hrd]
 
+theorem vec_getElem_int (v : Vector α n) (i : Int) (h : i.toNat < n) :
+    v[i]'h = v[i.toNat]'h := rfl
+
+macro "bytes_rt" : tactic => `(tactic| (
+  simp [from_bytes_le, bitvec_to_vecbytes, Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange',
+    Sail.BitVec.slice, Id.run, forIn, ForIn'.forIn', IntRange.forIn']
+  repeat (rw [IntRange.forIn'.loop]; simp (config := { decide := true }) [Membership.mem])
+  try simp [vec_getElem_int, Vector.getElem_ofFn, Id.run, pure]
+  show _ = _
+  bv_decide))
+
+/-- sail-riscv's bytes to bits and back: the identity, at the widths of
+    RISC-V's accesses. -/
+theorem rt1 (v : BitVec 8) : from_bytes_le (n := 1) (bitvec_to_vecbytes v) = v := by bytes_rt
+
+
+
+theorem rt2 (v : BitVec 16) : from_bytes_le (n := 2) (bitvec_to_vecbytes v) = v := by bytes_rt
+theorem rt4 (v : BitVec 32) : from_bytes_le (n := 4) (bitvec_to_vecbytes v) = v := by bytes_rt
+theorem rt8 (v : BitVec 64) : from_bytes_le (n := 8) (bitvec_to_vecbytes v) = v := by bytes_rt
+
+/-- The interpreter's read of two bytes: little-endian. -/
+theorem readBytes2_run (s : RVState) (a : Nat) (b0 b1 : BitVec 8)
+    (h0 : s.mem.get? a = some b0) (h1 : s.mem.get? (a + 1) = some b1) :
+    (Sail.ArchSem.readBytes 2 a : Sail.ArchSem.ArchSemSeqM exception _).run s = .ok (b1 ++ b0) s := by
+  simp only [Std.ExtHashMap.get?_eq_getElem?] at h0 h1
+  simp [Sail.ArchSem.readBytes, Sail.ArchSem.readByte, h0, h1]
+
 theorem tmod_nat (n m : Nat) : Int.tmod (n : Int) (m : Int) = ((n % m : Nat) : Int) := rfl
 
 theorem access_low (pc : BitVec 64) (hal : pc.toNat % 4 = 0) :
@@ -232,5 +261,27 @@ theorem fetch_run (s : RVState) (rs : List PMA_Region) (hs : MemReady s rs)
     readReg_run _ _ _ hpc, readReg_run _ _ _ hmi, currentlyEnabled, hartSupports,
     is_aligned_vaddr, BitVec.addInt, f1, hrvc, b0, b1]
   erw [f2]; rfl
+
+/-- The fetch in terms of memory: the four bytes at pc, little-endian, when
+    the low two bits of the first are 11 (not a compressed instruction). -/
+theorem fetch_word (s : RVState) (rs : List PMA_Region) (hs : MemReady s rs)
+    (pc : BitVec 64) (hpc : s.regs.get? PC = some pc) (hal : pc.toNat % 4 = 0)
+    (r1 r2 : PMA_Region) (hm1 : matching_pma_region rs (.Physaddr pc) 2 = some r1)
+    (hm2 : matching_pma_region rs (.Physaddr (pc + 2)) 2 = some r2)
+    (hx1 : r1.attributes.executable = true) (hx2 : r2.attributes.executable = true)
+    (b0 b1 b2 b3 : BitVec 8)
+    (h0 : s.mem.get? pc.toNat = some b0) (h1 : s.mem.get? (pc.toNat + 1) = some b1)
+    (h2 : s.mem.get? (pc.toNat + 2) = some b2) (h3 : s.mem.get? (pc.toNat + 3) = some b3)
+    (hc : b0.extractLsb 1 0 = 3#2) :
+    (interpretSailEffects (fetch ())).run s = .ok (.F_Base ((b3 ++ b2) ++ (b1 ++ b0))) s := by
+  have e2 : (pc + 2).toNat = pc.toNat + 2 := by rw [BitVec.toNat_add]; simp; omega
+  have lo := readBytes2_run s pc.toNat b0 b1 h0 h1
+  have hi := readBytes2_run s (pc + 2).toNat b2 b3 (by rw [e2]; exact h2) (by rw [e2]; exact h3)
+  have hr : isRVC (from_bytes_le (n := 2) (bitvec_to_vecbytes (b1 ++ b0))) = false := by
+    rw [rt2]; simp [isRVC, Sail.BitVec.extractLsb, LeanZiskRV.not]
+    have : (b1 ++ b0).extractLsb 1 0 = b0.extractLsb 1 0 := by bv_decide
+    rw [this, hc]
+  have := fetch_run s rs hs pc hpc hal r1 r2 hm1 hm2 hx1 hx2 _ _ lo hi hr
+  rwa [rt2, rt2] at this
 
 end Equiv.Riscv
