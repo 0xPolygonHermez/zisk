@@ -78,7 +78,7 @@ impl RemoteClient {
         let (hints, hints_delivery) = hints_to_input_kind(hints)?;
 
         let hash_id = program.program_id.hash_id.to_string();
-        let (input, input_delivery) = stdin_to_input_kind(stdin);
+        let (input, input_delivery) = stdin_to_input_kind(stdin)?;
         let proof_timeout = timeout.map(deadline_from_now);
         let proof_dest = proof_kind.into();
 

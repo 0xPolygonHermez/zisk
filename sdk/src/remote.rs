@@ -376,6 +376,21 @@ impl Delivery {
     }
 }
 
+/// The most stdin bytes the guest's input region holds: 2 GB less its first word, the free
+/// input, and its last one, as the ASM client checks an input file.
+const MAX_STDIN_BYTES: usize = zisk_core::MAX_INPUT_SIZE as usize - 16;
+
+/// Errors when `len` bytes of stdin do not fit the guest's input region: the worker refuses
+/// them, and the job would fail only once the input has been sent.
+fn ensure_fits_input_region(len: usize) -> Result<()> {
+    if len > MAX_STDIN_BYTES {
+        return Err(SdkError::backend(format!(
+            "input is {len} bytes, more than the {MAX_STDIN_BYTES} bytes of the guest's input region"
+        )));
+    }
+    Ok(())
+}
+
 /// The input kind of `data`: inline up to `inline_limit` bytes, a gRPC push stream above it.
 fn inline_or_push(data: Vec<u8>, inline_limit: usize) -> (DomainInputKind, Delivery) {
     if data.len() <= inline_limit {
@@ -391,13 +406,15 @@ fn inline_or_push(data: Vec<u8>, inline_limit: usize) -> (DomainInputKind, Deliv
 /// All stream types (unix, quic, grpc) send StreamUri so workers start in streaming mode
 /// (InputNull). For grpc://, the coordinator skips the relay — data arrives via PushJobInput
 /// instead, which is also how an input over the inline limit travels.
-pub(crate) fn stdin_to_input_kind(stdin: InputSource) -> (DomainInputKind, Delivery) {
+pub(crate) fn stdin_to_input_kind(stdin: InputSource) -> Result<(DomainInputKind, Delivery)> {
     match stdin {
         InputSource::Stream(stream) => {
-            (DomainInputKind::StreamUri(stream.uri().to_string()), Delivery::Stream(stream))
+            Ok((DomainInputKind::StreamUri(stream.uri().to_string()), Delivery::Stream(stream)))
         }
         InputSource::Stdin(s) => {
-            inline_or_push(s.into_inner().read_data(), DomainInputKind::MAX_INLINE_BYTES)
+            let data = s.into_inner().read_data();
+            ensure_fits_input_region(data.len())?;
+            Ok(inline_or_push(data, DomainInputKind::MAX_INLINE_BYTES))
         }
     }
 }
@@ -444,6 +461,13 @@ mod tests {
             matches!(kind, DomainInputKind::Inline(DomainInputChunk { ref data }) if data.len() == 16)
         );
         assert!(matches!(delivery, Delivery::InRequest));
+    }
+
+    #[test]
+    fn stdin_larger_than_the_input_region_is_refused() {
+        ensure_fits_input_region(MAX_STDIN_BYTES).unwrap();
+        let err = ensure_fits_input_region(MAX_STDIN_BYTES + 1).unwrap_err().to_string();
+        assert!(err.contains("more than the"), "{err}");
     }
 
     #[test]
