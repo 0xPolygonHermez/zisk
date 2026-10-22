@@ -15,3 +15,7 @@ import Equiv.Program
 import Equiv.MemRead
 import Equiv.RiscvLoad
 import Equiv.ZiskLoad
+import Equiv.RiscvDecodeMem
+import Equiv.LoadSim
+import Equiv.MemWrite
+import Equiv.ZiskStore
