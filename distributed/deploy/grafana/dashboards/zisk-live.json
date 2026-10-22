@@ -1076,8 +1076,35 @@
   {
    "type": "timeseries",
    "title": "Proof time per job · ${range_text}",
-   "description": "One point per successful proof: each phase and the total; the dashed lines are the mean and P99.9 of the total over the selected time range. Failed and cancelled jobs are the vertical lines: their times would stretch the scale of the proofs'",
+   "description": "One point per successful proof: its phases stacked in order, so the top of the stack is the total (shown in the tooltip); a period without proofs is a straight line between the proofs on either side; the dotted lines are the mean and P99.9 of the total over the selected time range. Failed and cancelled jobs are the vertical lines: their times would stretch the scale of the proofs'",
    "targets": [
+    {
+     "refId": "D",
+     "expr": "vector(NaN)",
+     "legendFormat": "1 contributions",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "E",
+     "expr": "vector(NaN)",
+     "legendFormat": "2 prove",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "F",
+     "expr": "vector(NaN)",
+     "legendFormat": "3 aggregation",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
     {
      "refId": "A",
      "expr": "label_replace(label_replace(label_replace(coordinator_proof_seconds{job=\"zisk-coordinator\",cluster=~\"$cluster\"} and ((time() - timestamp(coordinator_proof_seconds{job=\"zisk-coordinator\",cluster=~\"$cluster\"})) * 1000 < $__interval_ms), \"phase\", \"1 contributions\", \"phase\", \"1\"), \"phase\", \"2 prove\", \"phase\", \"2\"), \"phase\", \"3 aggregation\", \"phase\", \"3\")",
@@ -1090,7 +1117,7 @@
     {
      "refId": "B",
      "expr": "avg_over_time(coordinator_proof_seconds{job=\"zisk-coordinator\",cluster=~\"$cluster\",phase=\"total\"}[$__range] @ end())",
-     "legendFormat": "mean (total)",
+     "legendFormat": "mean",
      "datasource": {
       "type": "prometheus",
       "uid": "prometheus"
@@ -1099,34 +1126,34 @@
     {
      "refId": "C",
      "expr": "quantile_over_time(0.999, coordinator_proof_seconds{job=\"zisk-coordinator\",cluster=~\"$cluster\",phase=\"total\"}[$__range] @ end())",
-     "legendFormat": "P99.9 (total)",
+     "legendFormat": "P99.9",
      "datasource": {
       "type": "prometheus",
       "uid": "prometheus"
      }
     },
     {
-     "refId": "D",
+     "refId": "G",
      "expr": "vector(NaN)",
-     "legendFormat": "┃ worker restarted",
+     "legendFormat": "worker restarted",
      "datasource": {
       "type": "prometheus",
       "uid": "prometheus"
      }
     },
     {
-     "refId": "E",
+     "refId": "H",
      "expr": "vector(NaN)",
-     "legendFormat": "┃ job cancelled",
+     "legendFormat": "job cancelled",
      "datasource": {
       "type": "prometheus",
       "uid": "prometheus"
      }
     },
     {
-     "refId": "F",
+     "refId": "I",
      "expr": "vector(NaN)",
-     "legendFormat": "┃ job failed",
+     "legendFormat": "job failed",
      "datasource": {
       "type": "prometheus",
       "uid": "prometheus"
@@ -1140,14 +1167,14 @@
       "drawStyle": "line",
       "fillOpacity": 15,
       "lineWidth": 1,
-      "showPoints": "always",
+      "showPoints": "never",
       "spanNulls": true,
       "stacking": {
        "mode": "none",
        "group": "A"
-      },
-      "pointSize": 4
-     }
+      }
+     },
+     "min": 0
     },
     "overrides": [
      {
@@ -1162,6 +1189,29 @@
          "mode": "fixed",
          "fixedColor": "blue"
         }
+       },
+       {
+        "id": "custom.stacking",
+        "value": {
+         "mode": "normal",
+         "group": "phases"
+        }
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 30
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": false
+        }
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0.25
        }
       ]
      },
@@ -1177,6 +1227,29 @@
          "mode": "fixed",
          "fixedColor": "purple"
         }
+       },
+       {
+        "id": "custom.stacking",
+        "value": {
+         "mode": "normal",
+         "group": "phases"
+        }
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 30
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": false
+        }
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0.25
        }
       ]
      },
@@ -1191,6 +1264,25 @@
         "value": {
          "mode": "fixed",
          "fixedColor": "yellow"
+        }
+       },
+       {
+        "id": "custom.stacking",
+        "value": {
+         "mode": "normal",
+         "group": "phases"
+        }
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 30
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": false
         }
        }
       ]
@@ -1210,14 +1302,26 @@
        },
        {
         "id": "custom.lineWidth",
-        "value": 2
+        "value": 0
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 0
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": false
+        }
        }
       ]
      },
      {
       "matcher": {
        "id": "byName",
-       "options": "mean (total)"
+       "options": "mean"
       },
       "properties": [
        {
@@ -1230,16 +1334,12 @@
        {
         "id": "custom.lineStyle",
         "value": {
-         "fill": "dash",
+         "fill": "dot",
          "dash": [
-          10,
+          0,
           6
          ]
         }
-       },
-       {
-        "id": "custom.showPoints",
-        "value": "never"
        },
        {
         "id": "custom.lineWidth",
@@ -1250,7 +1350,7 @@
      {
       "matcher": {
        "id": "byName",
-       "options": "P99.9 (total)"
+       "options": "P99.9"
       },
       "properties": [
        {
@@ -1263,16 +1363,12 @@
        {
         "id": "custom.lineStyle",
         "value": {
-         "fill": "dash",
+         "fill": "dot",
          "dash": [
-          10,
+          0,
           6
          ]
         }
-       },
-       {
-        "id": "custom.showPoints",
-        "value": "never"
        },
        {
         "id": "custom.lineWidth",
@@ -1282,8 +1378,98 @@
      },
      {
       "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#644c58"
+        }
+       },
+       {
+        "id": "custom.stacking",
+        "value": {
+         "mode": "none",
+         "group": "A"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": false,
+         "tooltip": true,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "E"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#794653"
+        }
+       },
+       {
+        "id": "custom.stacking",
+        "value": {
+         "mode": "none",
+         "group": "A"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": false,
+         "tooltip": true,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "F"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#875c2d"
+        }
+       },
+       {
+        "id": "custom.stacking",
+        "value": {
+         "mode": "none",
+         "group": "A"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": false,
+         "tooltip": true,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
        "id": "byName",
-       "options": "┃ worker restarted"
+       "options": "worker restarted"
       },
       "properties": [
        {
@@ -1300,13 +1486,23 @@
          "tooltip": true,
          "viz": false
         }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          5,
+          5
+         ]
+        }
        }
       ]
      },
      {
       "matcher": {
        "id": "byName",
-       "options": "┃ job cancelled"
+       "options": "job cancelled"
       },
       "properties": [
        {
@@ -1323,13 +1519,23 @@
          "tooltip": true,
          "viz": false
         }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          5,
+          5
+         ]
+        }
        }
       ]
      },
      {
       "matcher": {
        "id": "byName",
-       "options": "┃ job failed"
+       "options": "job failed"
       },
       "properties": [
        {
@@ -1346,6 +1552,16 @@
          "tooltip": true,
          "viz": false
         }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          5,
+          5
+         ]
+        }
        }
       ]
      }
@@ -1360,7 +1576,7 @@
     },
     "tooltip": {
      "mode": "multi",
-     "sort": "desc"
+     "sort": "none"
     }
    },
    "id": 12,
