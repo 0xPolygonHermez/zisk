@@ -6943,3 +6943,9 @@ pub fn verify_u64(proof: &[u64], vk: &[u64]) -> bool {
 pub fn expected_proof_bytes() -> usize {
     proofman_verifier::expected_proof_size_bytes(&verifier_info())
 }
+
+// Appended by `cargo-zisk-dev release-artifacts install`: the stage's proof length, from
+// whichever function the generator emits.
+pub fn proof_size() -> crate::ProofSize {
+    crate::ProofSize::Exact(expected_proof_bytes())
+}

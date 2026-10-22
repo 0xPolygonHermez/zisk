@@ -166,6 +166,7 @@ zisk-gpu-witness = { path = "gpu-witness", version = "1.4.0-alpha" }
 # Proofman git
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
 proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
+proofman-pilfflonk = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
 proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
 proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha", default-features = false }
 proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
@@ -186,6 +187,7 @@ proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofma
 # pil2-std-lib = "1.4.0-alpha"
 # proofman-witness = "1.4.0-alpha"
 # proofman-fields = "1.4.0-alpha"
+# proofman-pilfflonk = "1.4.0-alpha"
 # pil2-stark-setup = "1.4.0-alpha"
 # pil2-stark-recurser = "1.4.0-alpha"
 # pil2-pilout = "1.4.0-alpha"
@@ -194,6 +196,7 @@ proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofma
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman", version = "1.4.0-alpha" }
 # proofman-common = { path = "../pil2-proofman/common", version = "1.4.0-alpha" }
+# proofman-pilfflonk = { path = "../pil2-proofman/pilfflonk", version = "1.4.0-alpha" }
 # proofman-macros = { path = "../pil2-proofman/macros", version = "1.4.0-alpha" }
 # proofman-verifier = { path = "../pil2-proofman/verifier", version = "1.4.0-alpha", default-features = false }
 # proofman-util = { path = "../pil2-proofman/util", version = "1.4.0-alpha" }

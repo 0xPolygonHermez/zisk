@@ -9,6 +9,7 @@ homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
+readme = "README.md"
 # The real-proof tests need the fixtures, which are too large to publish.
 exclude = ["tests/fixtures", "tests/real_proof.rs"]
 

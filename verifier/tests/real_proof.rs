@@ -1,11 +1,9 @@
-//! Real proofs, as `cargo-zisk prove` saves them (ZisK's flat layout).
-//!
-//! The fixtures are tied to the committed verifiers and keys: re-prove them and update the
-//! table below whenever the setup changes.
+//! Real proofs, as `cargo-zisk prove` saves them. `tools/release-artifacts/regen.sh --prove`
+//! regenerates them with the verifiers and keys.
 
 use zisk_verifier::{
-    decode_saved, decode_saved_words, seed_trailer, vadcop_vk, verify, verify_saved_words,
-    VadcopFinalProof, VerifyError,
+    decode_saved, decode_saved_words, seed_trailer, vadcop_vk, verify, verify_saved,
+    verify_saved_words, VadcopFinalProof, VerifyError,
 };
 
 fn words(bytes: &[u8]) -> Vec<u64> {
@@ -17,70 +15,52 @@ struct Fixture {
     bytes: &'static [u8],
     hash: &'static str,
     compressed: bool,
-    program_vk: [u64; 4],
-    /// Leading output words.
+    program_vk_json: &'static str,
     outputs: &'static [u32],
 }
 
-/// `fib_mod` with `n = 100`, `module = 233`: commits the bytes `100, 233, fib(100) % 233 = 2`.
-/// The program key is the ROM root, hashed with the proof's own family: one per family.
-const FIB_MOD_VK_POSEIDON1: [u64; 4] =
-    [849280929739825263, 11332809024285158711, 14612506331956425990, 8500145639271242349];
-const FIB_MOD_VK_POSEIDON2: [u64; 4] =
-    [1235102246277954017, 14605898302766356739, 13657465950397323756, 6719762526413802671];
-const FIB_MOD_VK_BLAKE3: [u64; 4] =
-    [17885856439396720575, 14851487842048450457, 5252325657547320468, 9487799266351193817];
+/// `fib_mod` with `n = 100`, `module = 233` commits `100, 233, fib(100) % 233 = 2`.
 const FIB_MOD_OUTPUTS: &[u32] = &[100 | 233 << 8 | 2 << 16, 0];
 
+macro_rules! fixture {
+    ($name:literal, $stem:literal, $hash:literal, $stage:literal, $compressed:literal) => {
+        Fixture {
+            name: $name,
+            bytes: include_bytes!(concat!("fixtures/", $stem, "_", $stage, ".bin")),
+            hash: $hash,
+            compressed: $compressed,
+            program_vk_json: include_str!(concat!("fixtures/", $stem, "_program_vk.json")),
+            outputs: FIB_MOD_OUTPUTS,
+        }
+    };
+}
+
 const FIXTURES: &[Fixture] = &[
-    Fixture {
-        name: "poseidon1 compressed",
-        bytes: include_bytes!("fixtures/poseidon1_compressed.bin"),
-        hash: "Poseidon1",
-        compressed: true,
-        program_vk: FIB_MOD_VK_POSEIDON1,
-        outputs: FIB_MOD_OUTPUTS,
-    },
-    Fixture {
-        name: "poseidon1 leaf",
-        bytes: include_bytes!("fixtures/poseidon1_leaf.bin"),
-        hash: "Poseidon1",
-        compressed: false,
-        program_vk: FIB_MOD_VK_POSEIDON1,
-        outputs: FIB_MOD_OUTPUTS,
-    },
-    Fixture {
-        name: "poseidon2 compressed",
-        bytes: include_bytes!("fixtures/poseidon2_compressed.bin"),
-        hash: "Poseidon2",
-        compressed: true,
-        program_vk: FIB_MOD_VK_POSEIDON2,
-        outputs: FIB_MOD_OUTPUTS,
-    },
-    Fixture {
-        name: "poseidon2 leaf",
-        bytes: include_bytes!("fixtures/poseidon2_leaf.bin"),
-        hash: "Poseidon2",
-        compressed: false,
-        program_vk: FIB_MOD_VK_POSEIDON2,
-        outputs: FIB_MOD_OUTPUTS,
-    },
-    Fixture {
-        name: "blake3 leaf",
-        bytes: include_bytes!("fixtures/blake3_leaf.bin"),
-        hash: "blake3",
-        compressed: false,
-        program_vk: FIB_MOD_VK_BLAKE3,
-        outputs: FIB_MOD_OUTPUTS,
-    },
+    fixture!("poseidon1 compressed", "poseidon1", "Poseidon1", "compressed", true),
+    fixture!("poseidon1 leaf", "poseidon1", "Poseidon1", "leaf", false),
+    fixture!("poseidon2 compressed", "poseidon2", "Poseidon2", "compressed", true),
+    fixture!("poseidon2 leaf", "poseidon2", "Poseidon2", "leaf", false),
+    fixture!("blake3 compressed", "blake3", "blake3", "compressed", true),
+    fixture!("blake3 leaf", "blake3", "blake3", "leaf", false),
 ];
 
 impl Fixture {
+    fn program_vk(&self) -> [u64; 4] {
+        let limbs: Vec<u64> = self
+            .program_vk_json
+            .trim()
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .split(',')
+            .map(|l| l.trim().parse().unwrap())
+            .collect();
+        limbs.try_into().unwrap()
+    }
+
     fn proof(&self) -> VadcopFinalProof {
         decode_saved(self.bytes).unwrap().proof
     }
 
-    /// The crate's published key for the fixture's stage.
     fn key(&self) -> [u64; 4] {
         vadcop_vk(self.hash, self.compressed)
             .unwrap_or_else(|| panic!("{}: key not published", self.name))
@@ -88,7 +68,6 @@ impl Fixture {
 }
 
 #[test]
-#[ignore = "fixtures predate the current verifiers; re-prove them under the release setup"]
 fn every_fixture_decodes_to_its_stage() {
     for f in FIXTURES {
         let saved = decode_saved(f.bytes).unwrap();
@@ -98,14 +77,11 @@ fn every_fixture_decodes_to_its_stage() {
     }
 }
 
-/// Each fixture verifies under the crate's constant for its stage: this is what pins a key
-/// to its verifier.
 #[test]
-#[ignore = "fixtures predate the current verifiers; re-prove them under the release setup"]
 fn every_fixture_verifies_and_reports_what_it_proves() {
     for f in FIXTURES {
         let v = verify(&f.proof(), &f.key()).unwrap_or_else(|e| panic!("{}: {e}", f.name));
-        assert_eq!(v.program_vk, f.program_vk, "{}", f.name);
+        assert_eq!(v.program_vk, f.program_vk(), "{}", f.name);
         assert_eq!(v.is_aggregate, if f.compressed { None } else { Some(false) }, "{}", f.name);
         let outputs = v.outputs_u32().expect("a leaf's outputs fit in u32");
         assert_eq!(&outputs[..f.outputs.len()], f.outputs, "{}", f.name);
@@ -113,7 +89,6 @@ fn every_fixture_verifies_and_reports_what_it_proves() {
 }
 
 #[test]
-#[ignore = "fixtures predate the current verifiers; re-prove them under the release setup"]
 fn a_wrong_key_or_a_flipped_word_is_refused() {
     for f in FIXTURES {
         let mut key = f.key();
@@ -131,10 +106,7 @@ fn a_wrong_key_or_a_flipped_word_is_refused() {
     }
 }
 
-/// Each published key opens only its own family and stage: a swapped or duplicated
-/// constant fails here.
 #[test]
-#[ignore = "fixtures predate the current verifiers; re-prove them under the release setup"]
 fn no_fixture_verifies_under_another_published_key() {
     let stages = [
         ("blake3", false),
@@ -160,9 +132,7 @@ fn no_fixture_verifies_under_another_published_key() {
     }
 }
 
-/// The in-place path a guest takes reaches the same verdict as decode-then-verify.
 #[test]
-#[ignore = "fixtures predate the current verifiers; re-prove them under the release setup"]
 fn verifying_in_place_matches_decode_then_verify() {
     for f in FIXTURES {
         let words = words(f.bytes);
@@ -189,38 +159,57 @@ fn verifying_in_place_matches_decode_then_verify() {
     }
 }
 
-/// A saved file's seed trailer is for hosts: they decode it, a guest refuses it.
+/// A guest refuses the trailer so that it sees one encoding per proof.
 #[test]
-fn a_seed_trailer_is_decoded_but_not_verified_in_place() {
+fn a_seed_trailer_is_read_by_hosts_and_refused_by_guests() {
     for f in FIXTURES {
         let mut words = words(f.bytes);
         words.extend(seed_trailer([1, 2, 3, 4]));
         assert!(matches!(
-            verify_saved_words(&words, &f.key(), Some(&f.program_vk)).unwrap_err(),
+            verify_saved_words(&words, &f.key(), None).unwrap_err(),
             VerifyError::Malformed(_)
         ));
+        let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+        assert_eq!(verify_saved(&bytes, None).unwrap().program_vk, f.program_vk(), "{}", f.name);
         let saved = decode_saved_words(&words).unwrap();
         assert_eq!(saved.random_seed, Some([1, 2, 3, 4]), "{}", f.name);
         assert_eq!(saved.proof.proof, f.proof().proof, "{}", f.name);
     }
 }
 
-/// A guest pinning the program refuses another program's proof before the STARK, and
-/// accepts its own.
 #[test]
-#[ignore = "fixtures predate the current verifiers; re-prove them under the release setup"]
 fn verifying_in_place_pins_the_program() {
     for f in FIXTURES {
         let words = words(f.bytes);
-        assert!(verify_saved_words(&words, &f.key(), Some(&f.program_vk)).is_ok(), "{}", f.name);
+        assert!(verify_saved_words(&words, &f.key(), Some(&f.program_vk())).is_ok(), "{}", f.name);
 
-        let mut other = f.program_vk;
+        let mut other = f.program_vk();
         other[0] ^= 1;
         assert_eq!(
             verify_saved_words(&words, &f.key(), Some(&other)).unwrap_err(),
-            VerifyError::ProgramMismatch { committed: f.program_vk },
+            VerifyError::ProgramMismatch { committed: f.program_vk() },
             "{}",
             f.name
         );
     }
+}
+
+#[test]
+fn every_fixture_verifies_from_its_bytes() {
+    for f in FIXTURES {
+        let v = verify_saved(f.bytes, Some(&f.program_vk()))
+            .unwrap_or_else(|e| panic!("{}: {e}", f.name));
+        assert_eq!(v.program_vk, f.program_vk(), "{}", f.name);
+
+        let mut other = f.program_vk();
+        other[0] ^= 1;
+        assert!(matches!(
+            verify_saved(f.bytes, Some(&other)).unwrap_err(),
+            VerifyError::ProgramMismatch { .. }
+        ));
+    }
+    let mut tampered = FIXTURES[0].bytes.to_vec();
+    let mid = tampered.len() / 2;
+    tampered[mid] ^= 1;
+    assert!(verify_saved(&tampered, None).is_err());
 }

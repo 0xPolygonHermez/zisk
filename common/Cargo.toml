@@ -43,7 +43,3 @@ default = ["jemalloc"]
 # Use jemalloc instead of the system allocator; see `src/allocator.rs`.
 jemalloc = ["dep:tikv-jemallocator"]
 stats = []
-
-
-[dev-dependencies]
-num-bigint = { workspace = true }

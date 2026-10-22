@@ -233,13 +233,15 @@ main() {
       --exclude='*.const_gpu' || return 1
 
     step "Compress verify key..."
-    # One key per stage the setup builds: blake3 has no compressed stage.
-    local verkeys=(provingKey/zisk/vadcop_final/vadcop_final.verkey.bin)
-    local compressed_verkey=provingKey/zisk/vadcop_final_compressed/vadcop_final_compressed.verkey.bin
-    if [[ "${SETUP_MODE}" != "blake3" ]]; then
-      [[ -f "${compressed_verkey}" ]] || { err "${compressed_verkey} not found"; return 1; }
-      verkeys+=("${compressed_verkey}")
-    fi
+    # One key per stage the setup builds; every family has a compressed stage.
+    local verkeys=(
+      provingKey/zisk/vadcop_final/vadcop_final.verkey.bin
+      provingKey/zisk/vadcop_final_compressed/vadcop_final_compressed.verkey.bin
+    )
+    local verkey
+    for verkey in "${verkeys[@]}"; do
+      [[ -f "${verkey}" ]] || { err "${verkey} not found"; return 1; }
+    done
     ensure tar -czvf "${VERIFYKEY_FILE}" "${verkeys[@]}" || return 1
     write_md5 "${VERIFYKEY_FILE}" > "${VERIFYKEY_FILE}.md5" || { err "md5 failed for ${VERIFYKEY_FILE}"; return 1; }
     ARTIFACTS+=("${VERIFYKEY_FILE}" "${VERIFYKEY_FILE}.md5")

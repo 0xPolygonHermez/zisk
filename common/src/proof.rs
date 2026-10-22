@@ -27,27 +27,22 @@ const PLONK_FILE_MAX_BYTES: usize = 16 << 20;
 /// The native verifier aborts the process on any other length rather than failing.
 pub const PLONK_PROOF_BYTES: usize = 9 * 64 + 6 * 32;
 
-/// The BN254 scalar order `r`, big-endian. `PlonkVerifier.sol`'s `checkField` requires all
-/// 24 proof words to be below it, and proofman's parser reads every word mod `r`, so a word
+/// The BN254 scalar order `r`, big-endian. snarkjs's Solidity PLONK verifier (`checkField`)
+/// requires all 24 proof words to be below it, and proofman's parser reads every word mod `r`, so a word
 /// at or above it is another encoding of the same proof.
 const BN254_R_BE: [u8; 32] = [
     0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
     0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01,
 ];
 
-/// The `digest` of each family's release `pilfflonk.vkey.json`: `keccak256` of the rest of the
-/// key, which pilfflonk's verifier checks and absorbs into its transcript, so pinning the digest
-/// pins the whole key without bundling its ~0.5 MB. Empty until the release setup is generated.
-const RELEASE_PILFFLONK_VKEY_DIGESTS: &[(&str, &str)] = &[];
-
 /// The pilfflonk key a proof of family `hash` verifies under when the caller passes none: the one
-/// it carries, if its digest is the release's (`digests`).
+/// it carries, if its digest is the release's (`release`, `zisk_verifier::pilfflonk_vkey_digest`).
 fn release_pilfflonk_vkey<'v>(
     hash: &str,
     carried: &'v str,
-    digests: &[(&str, &str)],
+    release: Option<&str>,
 ) -> Result<&'v str> {
-    let Some(&(_, release)) = digests.iter().find(|(family, _)| *family == hash) else {
+    let Some(release) = release else {
         return Err(CommonError::InvalidProof(format!(
             "no published pilfflonk key for {hash:?}; pass one with with_pilfflonk_vkey \
              (`--pilfflonk-vk`)"
@@ -64,20 +59,6 @@ fn release_pilfflonk_vkey<'v>(
              non-release setup verifies under that setup's pilfflonk.vkey.json (`--pilfflonk-vk`)"
         );
         Err(CommonError::NotVerified)
-    }
-}
-
-/// The PLONK circuit key the release's `PlonkVerifier.sol` was generated from, for the
-/// families that have a PLONK wrap. `rootc` is a public input of that circuit, so one key
-/// covers leaves and aggregates alike.
-pub fn release_plonk_vkey(hash: &str) -> Option<&'static PlonkVkey> {
-    static POSEIDON1: std::sync::OnceLock<PlonkVkey> = std::sync::OnceLock::new();
-    match hash {
-        "Poseidon1" => Some(POSEIDON1.get_or_init(|| {
-            serde_json::from_str(include_str!("../keys/plonk_poseidon1.vkey.json"))
-                .expect("the bundled release PLONK key parses")
-        })),
-        _ => None,
     }
 }
 
@@ -887,8 +868,8 @@ impl<'a> ZiskVerifyBuilder<'a> {
         self
     }
 
-    /// Trusted PLONK circuit key (`final.verkey.json`). If unset, the release key for the
-    /// proof's family ([`release_plonk_vkey`]). The copy the proof carries is never used.
+    /// Trusted PLONK circuit key (`final.verkey.json`). The release's final SNARK is pilfflonk
+    /// and publishes no PLONK key, so a PLONK proof needs it; the copy it carries is never used.
     pub fn with_plonk_vk(mut self, plonk_vkey: &'a PlonkVkey) -> Self {
         self.trusted_plonk_vk = Some(plonk_vkey);
         self
@@ -1086,17 +1067,12 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 }
                 let public_snark_bytes =
                     self.snark_public_digest(publics_full, stored_rootc, "PLONK")?;
-                let hash = self.proof_with_values.program_vk.hash_mode.as_str();
-
-                let plonk_vkey = match self.trusted_plonk_vk {
-                    Some(vkey) => vkey,
-                    None => release_plonk_vkey(hash).ok_or_else(|| {
-                        CommonError::InvalidProof(format!(
-                            "no published PLONK key for {hash:?}; pass one with with_plonk_vk \
-                             (`--plonk-vk`)"
-                        ))
-                    })?,
-                };
+                let plonk_vkey = self.trusted_plonk_vk.ok_or_else(|| {
+                    CommonError::InvalidProof(
+                        "no published PLONK key; pass one with with_plonk_vk (`--plonk-vk`)"
+                            .to_string(),
+                    )
+                })?;
 
                 let snark_proof = SnarkProof {
                     proof_bytes: proof_bytes.clone(),
@@ -1148,9 +1124,11 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 let hash = self.proof_with_values.program_vk.hash_mode.as_str();
                 let vkey_json = match self.trusted_pilfflonk_vkey {
                     Some(vkey) => vkey,
-                    None => {
-                        release_pilfflonk_vkey(hash, vkey_json, RELEASE_PILFFLONK_VKEY_DIGESTS)?
-                    }
+                    None => release_pilfflonk_vkey(
+                        hash,
+                        vkey_json,
+                        zisk_verifier::pilfflonk_vkey_digest(hash),
+                    )?,
                 };
 
                 let snark_proof = SnarkProof {
@@ -1337,7 +1315,7 @@ impl Proof {
     /// A Vadcop proof is ZisK's flat layout, [`get_proof_bytes`](Self::get_proof_bytes),
     /// which guests and ethproofs take. A proof with a [`random_seed`](Self::random_seed)
     /// ends with it as the verifier's seed trailer ([`SEED_TRAILER_TAG`]), which
-    /// `zisk_verifier::decode_saved` reads and guests refuse. A PLONK proof is
+    /// `zisk_verifier` reads and verification ignores. A PLONK proof is
     /// [`PLONK_FILE_MAGIC`] followed by the bincode `Proof`, seed included.
     ///
     /// # Errors
@@ -2096,8 +2074,11 @@ mod tests {
     #[test]
     fn verify_reports_a_misshapen_blake3_compressed_proof_as_malformed() {
         let mut proof = vadcop_proof(VadcopKind::Minimal, flag_free_publics([1, 2, 3, 4]));
-        if let ProofBody::Vadcop { hash, .. } = &mut proof.body {
+        // A multiproof's length is only bounded: over the bound is misshapen.
+        let max = zisk_verifier::proof_size("blake3", true).unwrap().max_bytes();
+        if let ProofBody::Vadcop { hash, proof: words, .. } = &mut proof.body {
             *hash = "blake3".to_string();
+            *words = vec![0; max / 8 + 1];
         }
         proof.program_vk.hash_mode = HashMode::Blake3;
 
@@ -2383,20 +2364,20 @@ mod tests {
     /// the release's for its family.
     #[test]
     fn the_release_pilfflonk_key_is_pinned_by_its_digest() {
-        let digests = [("Poseidon2", "0xab")];
+        let digest = Some("0xab");
         let release = r#"{"protocol":"pilfflonk","digest":"0xab"}"#;
-        assert_eq!(release_pilfflonk_vkey("Poseidon2", release, &digests).unwrap(), release);
+        assert_eq!(release_pilfflonk_vkey("Poseidon2", release, digest).unwrap(), release);
 
         let other = r#"{"protocol":"pilfflonk","digest":"0xcd"}"#;
         assert!(matches!(
-            release_pilfflonk_vkey("Poseidon2", other, &digests),
+            release_pilfflonk_vkey("Poseidon2", other, digest),
             Err(CommonError::NotVerified)
         ));
         assert!(matches!(
-            release_pilfflonk_vkey("Poseidon2", "not json", &digests),
+            release_pilfflonk_vkey("Poseidon2", "not json", digest),
             Err(CommonError::NotVerified)
         ));
-        let err = release_pilfflonk_vkey("Blake3", release, &digests).unwrap_err();
+        let err = release_pilfflonk_vkey("blake3", release, None).unwrap_err();
         assert!(err.to_string().contains("no published pilfflonk key"), "got: {err}");
     }
 
@@ -2455,6 +2436,27 @@ mod tests {
         )
     }
 
+    /// The release publishes no PLONK key, so a PLONK proof needs the caller's.
+    #[test]
+    fn a_plonk_proof_needs_a_plonk_key() {
+        let proof = plonk_proof(flag_free_publics([3; 4]), vec![7; 4], HashMode::Poseidon1);
+        let err = proof.with_setup_vk(&[7; 4]).with_leaf_setup_vk(&[7; 4]).verify().unwrap_err();
+        assert!(err.to_string().contains("no published PLONK key"), "got: {err}");
+    }
+
+    /// Every proof word must be below the BN254 scalar order, as a Solidity verifier requires:
+    /// adding `r` gives another encoding the native parser reads back as the same proof.
+    #[test]
+    fn a_plonk_proof_word_at_or_above_r_is_refused() {
+        let mut proof = plonk_proof(flag_free_publics([0; 4]), vec![9; 4], HashMode::Poseidon1);
+        if let ProofBody::Plonk { proof_bytes, .. } = &mut proof.body {
+            proof_bytes[..32].copy_from_slice(&BN254_R_BE);
+        }
+        let err = proof.verify().unwrap_err();
+        assert!(err.to_string().contains("word 0"), "got: {err}");
+        assert!(proof.to_bytes().is_err());
+    }
+
     #[test]
     fn verify_rejects_a_plonk_stored_rootc_that_differs_from_the_setup_vk() {
         let proof = plonk_proof(flag_free_publics([0; 4]), vec![9; 4], HashMode::Blake3);
@@ -2499,7 +2501,13 @@ mod tests {
 
         // Vouched as a custom setup's leaf key, the same statement passes the policy and
         // fails only at the dummy PLONK proof.
-        let err = foreign.verify_builder().with_leaf_setup_vk(&recurser).verify().unwrap_err();
+        let vkey = dummy_plonk_vkey();
+        let err = foreign
+            .verify_builder()
+            .with_leaf_setup_vk(&recurser)
+            .with_plonk_vk(&vkey)
+            .verify()
+            .unwrap_err();
         assert!(matches!(err, CommonError::NotVerified), "got: {err:?}");
 
         // A leaf key never verifies an aggregate.

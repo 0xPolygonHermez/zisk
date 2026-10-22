@@ -2,9 +2,10 @@
 //!
 //! ZisK proofs have one byte format, the flat layout read by [`decode_saved`]: what
 //! `cargo-zisk prove` saves, what `Proof::get_proof_bytes` returns and what guests verify.
-//! A saved file may end with a [seed trailer](SEED_TRAILER_TAG), which the decoders here
-//! strip; [`crate::verify_saved_words`], what guests call, refuses it, so a guest takes one
-//! encoding per proof.
+//! A saved file may end with a [seed trailer](SEED_TRAILER_TAG): unauthenticated metadata, not
+//! part of the proof. The decoders and [`crate::verify_saved`] strip it;
+//! [`crate::verify_saved_words`], what guests call, refuses it, so a guest takes one encoding
+//! per proof.
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -45,6 +46,8 @@ pub enum DecodeError {
     NonCanonicalPublic { index: usize },
     /// The leaf/fold flag of an uncompressed proof is neither 1 (leaf) nor 0 (fold).
     InvalidLeafFlag(u64),
+    /// A key that is not 4 u64 words.
+    KeyLength(usize),
 }
 
 impl fmt::Display for DecodeError {
@@ -61,11 +64,23 @@ impl fmt::Display for DecodeError {
                 write!(f, "public {index} is not a canonical Goldilocks element")
             }
             Self::InvalidLeafFlag(v) => write!(f, "leaf flag {v} is not 0 or 1"),
+            Self::KeyLength(n) => write!(
+                f,
+                "a key is {} bytes ({VADCOP_VK_LEN_WORDS} little-endian u64 words), got {n}",
+                VADCOP_VK_LEN_WORDS * 8
+            ),
         }
     }
 }
 
 impl core::error::Error for DecodeError {}
+
+/// Decode a key from its `verkey.bin`: 4 little-endian u64 words.
+pub fn decode_vk(bytes: &[u8]) -> Result<[u64; VADCOP_VK_LEN_WORDS], DecodeError> {
+    let bytes: &[u8; VADCOP_VK_LEN_WORDS * 8] =
+        bytes.try_into().map_err(|_| DecodeError::KeyLength(bytes.len()))?;
+    Ok(core::array::from_fn(|i| u64::from_le_bytes(bytes[i * 8..i * 8 + 8].try_into().unwrap())))
+}
 
 /// A proof read from the flat layout.
 #[derive(Debug, Clone)]
@@ -83,11 +98,7 @@ pub struct SavedProof {
 /// `[minimal][n_publics][publics][proof][vadcop_final_vk(4)][hash tag]`, u64 LE words,
 /// optionally followed by the [seed trailer](SEED_TRAILER_TAG).
 pub fn decode_saved(bytes: &[u8]) -> Result<SavedProof, DecodeError> {
-    if bytes.len() % 8 != 0 {
-        return Err(DecodeError::NotWordAligned(bytes.len()));
-    }
-    let mut words: Vec<u64> =
-        bytes.chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().unwrap())).collect();
+    let mut words = words_of(bytes)?;
     let (flat, random_seed) = strip_seed_trailer(&words)?;
     let v = split_saved(flat)?;
     let (compressed, hash, claimed_vadcop_vk) = (v.compressed, v.hash, v.claimed_vadcop_vk);
@@ -132,8 +143,16 @@ pub(crate) struct SavedView<'a> {
     pub claimed_vadcop_vk: [u64; VADCOP_VK_LEN_WORDS],
 }
 
+/// `bytes` as little-endian u64 words.
+pub(crate) fn words_of(bytes: &[u8]) -> Result<Vec<u64>, DecodeError> {
+    if bytes.len() % 8 != 0 {
+        return Err(DecodeError::NotWordAligned(bytes.len()));
+    }
+    Ok(bytes.chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().unwrap())).collect())
+}
+
 /// Split off the [seed trailer](SEED_TRAILER_TAG), if `words` end with one.
-fn strip_seed_trailer(
+pub(crate) fn strip_seed_trailer(
     words: &[u64],
 ) -> Result<(&[u64], Option<[u64; SEED_LEN_WORDS]>), DecodeError> {
     match words {
@@ -186,10 +205,17 @@ pub(crate) fn split_saved(words: &[u64]) -> Result<SavedView<'_>, DecodeError> {
 mod tests {
     use super::*;
     use crate::{
-        expected_proof_bytes, hash_tag, verify, VerifyError, GOLDILOCKS_ORDER,
-        IS_VADCOP_FINAL_PROOF,
+        hash_tag, proof_size, verify, VerifyError, GOLDILOCKS_ORDER, IS_VADCOP_FINAL_PROOF,
     };
     use alloc::vec;
+
+    #[test]
+    fn a_key_is_4_little_endian_words() {
+        let bytes: Vec<u8> = [1u64, 2, 3, u64::MAX].iter().flat_map(|w| w.to_le_bytes()).collect();
+        assert_eq!(decode_vk(&bytes), Ok([1, 2, 3, u64::MAX]));
+        assert_eq!(decode_vk(&bytes[..31]), Err(DecodeError::KeyLength(31)));
+        assert_eq!(decode_vk(&[0; 40]), Err(DecodeError::KeyLength(40)));
+    }
 
     fn saved(minimal: bool, n_publics: usize, proof_words: usize, tag: u64) -> Vec<u8> {
         let mut words = vec![minimal as u64, n_publics as u64];
@@ -287,7 +313,7 @@ mod tests {
     fn leaf_proof(flag: u64) -> VadcopFinalProof {
         let mut publics = vec![0u64; expected_n_publics(false)];
         publics[0] = flag;
-        let words = expected_proof_bytes("Poseidon2", false).unwrap() / 8;
+        let words = proof_size("Poseidon2", false).unwrap().max_bytes() / 8;
         VadcopFinalProof::new(vec![0; words], publics, false, "Poseidon2".into())
     }
 

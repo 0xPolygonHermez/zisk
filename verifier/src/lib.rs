@@ -6,8 +6,9 @@
 //! application's publics into q_verify: a verifier generated for a different
 //! application rejects valid ZisK proofs.
 //!
-//! Regenerate from `<key>/zisk/<stage>/<stage>.verifier.rs`, rewriting the
-//! `crate::` references the generator emits to `proofman_verifier::`.
+//! Regenerate with `tools/release-artifacts/regen.sh`, which installs each family's
+//! `<key>/zisk/<stage>/<stage>.verifier.rs` with the generator's `crate::` paths pointing
+//! at `proofman_verifier::`, and its keys with them.
 
 // The generated verifiers allocate and this crate is no_std.
 extern crate alloc;

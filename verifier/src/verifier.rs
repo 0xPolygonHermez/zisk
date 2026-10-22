@@ -96,6 +96,41 @@ pub(crate) fn is_aggregate_flag(flag: u64) -> Option<bool> {
     }
 }
 
+/// The length a stage's proofs have.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProofSize {
+    /// Every proof of the stage has this many bytes.
+    Exact(usize),
+    /// A Merkle multiproof: at most this many bytes.
+    AtMost(usize),
+}
+
+impl ProofSize {
+    /// Whether a proof of `bytes` bytes has an admissible length.
+    pub fn admits(self, bytes: usize) -> bool {
+        match self {
+            ProofSize::Exact(n) => bytes == n,
+            ProofSize::AtMost(n) => bytes > 0 && bytes <= n,
+        }
+    }
+
+    /// The largest admissible length.
+    pub fn max_bytes(self) -> usize {
+        match self {
+            ProofSize::Exact(n) | ProofSize::AtMost(n) => n,
+        }
+    }
+}
+
+impl core::fmt::Display for ProofSize {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            ProofSize::Exact(n) => write!(f, "{n}"),
+            ProofSize::AtMost(n) => write!(f, "at most {n}"),
+        }
+    }
+}
+
 /// The generated entry points for one (family, stage) pair.
 ///
 /// Function pointers rather than a trait: each stage is its own generated module, so
@@ -104,7 +139,8 @@ struct StageVerifier {
     verify: fn(&VadcopFinalProof, &[u64]) -> bool,
     /// The same check over `[n_publics][publics][proof]` in place, without a copy.
     verify_u64: fn(&[u64], &[u64]) -> bool,
-    expected_proof_bytes: fn() -> usize,
+    /// Appended to each generated module by `release-artifacts install`.
+    proof_size: fn() -> ProofSize,
     /// The setup's key for this stage, from [`crate::keys`].
     vk: [u64; PROGRAM_VK_LEN],
 }
@@ -121,7 +157,7 @@ fn stage_verifier(hash: &str, minimal: bool) -> Option<StageVerifier> {
             StageVerifier {
                 verify: m::verify,
                 verify_u64: m::verify_u64,
-                expected_proof_bytes: m::expected_proof_bytes,
+                proof_size: m::proof_size,
                 vk: $vk,
             }
         }};
@@ -195,8 +231,8 @@ pub enum VerifyError {
     NonCanonicalPublic { index: usize },
     /// The leaf/fold flag is neither 1 (leaf) nor 0 (fold).
     InvalidLeafFlag(u64),
-    /// The STARK payload is not the length this stage's proofs have.
-    ProofLength { expected_bytes: usize, got_bytes: usize },
+    /// The STARK payload is not a length this stage's proofs have.
+    ProofLength { expected: ProofSize, got_bytes: usize },
     /// A leaf output does not fit in u32, which a ZisK guest cannot commit.
     OutputNotU32 { index: usize },
     /// An aggregate whose committed domain is not the key it verifies under: a subtree
@@ -206,7 +242,7 @@ pub enum VerifyError {
     ProgramMismatch { committed: [u64; PROGRAM_VK_LEN] },
     /// The STARK itself does not verify against the given key.
     InvalidProof,
-    /// The bytes are not a well-formed flat proof ([`verify_saved_words`] only).
+    /// The bytes are not a well-formed flat proof ([`verify_saved`], [`verify_saved_words`]).
     Malformed(crate::DecodeError),
 }
 
@@ -223,8 +259,8 @@ impl core::fmt::Display for VerifyError {
                 write!(f, "public {index} is not a canonical Goldilocks element")
             }
             Self::InvalidLeafFlag(v) => write!(f, "leaf flag {v} is not 0 or 1"),
-            Self::ProofLength { expected_bytes, got_bytes } => {
-                write!(f, "proof is {got_bytes} bytes, the stage's proofs are {expected_bytes}")
+            Self::ProofLength { expected, got_bytes } => {
+                write!(f, "proof is {got_bytes} bytes, the stage's proofs are {expected}")
             }
             Self::OutputNotU32 { index } => write!(f, "leaf output {index} does not fit in u32"),
             Self::AggregateDomainMismatch { declared } => write!(
@@ -269,12 +305,23 @@ pub fn verify(
 ///
 /// With `expected_program_vk`, a proof for any other program is refused before the STARK
 /// runs, so a guest pays a few comparisons, not a full verification, for it.
+///
+/// A seed trailer is refused, so a guest sees one encoding per proof.
 pub fn verify_saved_words(
     words: &[u64],
     vadcop_vk: &[u64; PROGRAM_VK_LEN],
     expected_program_vk: Option<&[u64; PROGRAM_VK_LEN]>,
 ) -> Result<Verified, VerifyError> {
     let view = crate::decode::split_saved(words).map_err(VerifyError::Malformed)?;
+    verify_view(&view, vadcop_vk, expected_program_vk)
+}
+
+/// [`verify_saved_words`] over a split proof.
+fn verify_view(
+    view: &crate::decode::SavedView<'_>,
+    vadcop_vk: &[u64; PROGRAM_VK_LEN],
+    expected_program_vk: Option<&[u64; PROGRAM_VK_LEN]>,
+) -> Result<Verified, VerifyError> {
     let shape = Shape {
         hash: view.hash,
         compressed: view.compressed,
@@ -286,6 +333,23 @@ pub fn verify_saved_words(
         return Err(VerifyError::InvalidProof);
     }
     Ok(verified)
+}
+
+/// Verify a proof as `cargo-zisk prove` saves it under this release's key ([`vadcop_vk`]),
+/// optionally pinning the program. A proof of another setup, or an aggregate, needs its own key:
+/// use [`verify_saved_words`].
+pub fn verify_saved(
+    bytes: &[u8],
+    expected_program_vk: Option<&[u64; PROGRAM_VK_LEN]>,
+) -> Result<Verified, VerifyError> {
+    let words = crate::decode::words_of(bytes).map_err(VerifyError::Malformed)?;
+    let (flat, _seed) =
+        crate::decode::strip_seed_trailer(&words).map_err(VerifyError::Malformed)?;
+    let view = crate::decode::split_saved(flat).map_err(VerifyError::Malformed)?;
+    let vk = vadcop_vk(view.hash, view.compressed).ok_or_else(|| {
+        VerifyError::UnsupportedStage { hash: view.hash.into(), compressed: view.compressed }
+    })?;
+    verify_view(&view, &vk, expected_program_vk)
 }
 
 /// What every check reads, borrowed from wherever the proof lives.
@@ -340,17 +404,17 @@ fn check_shape(
         // A leaf, compressed ones included: aggregates are never compressed.
         return Err(VerifyError::OutputNotU32 { index });
     }
-    let expected_bytes = (stage.expected_proof_bytes)();
-    if s.proof_words * 8 != expected_bytes {
-        return Err(VerifyError::ProofLength { expected_bytes, got_bytes: s.proof_words * 8 });
+    let expected = (stage.proof_size)();
+    if !expected.admits(s.proof_words * 8) {
+        return Err(VerifyError::ProofLength { expected, got_bytes: s.proof_words * 8 });
     }
     Ok((stage, verified))
 }
 
-/// Serialized length in bytes a proof of this family and stage must have, or `None` if
-/// no such stage exists — see [`stage_verifier`].
-pub fn expected_proof_bytes(hash: &str, minimal: bool) -> Option<usize> {
-    stage_verifier(hash, minimal).map(|s| (s.expected_proof_bytes)())
+/// The serialized length a proof of this family and stage has, or `None` if no such stage
+/// exists — see [`stage_verifier`].
+pub fn proof_size(hash: &str, minimal: bool) -> Option<ProofSize> {
+    stage_verifier(hash, minimal).map(|s| (s.proof_size)())
 }
 
 /// The setup's vadcop_final key for this family and stage, or `None` if this crate has
@@ -359,6 +423,18 @@ pub fn expected_proof_bytes(hash: &str, minimal: bool) -> Option<usize> {
 /// verifies under its recurser's key.
 pub fn vadcop_vk(hash: &str, compressed: bool) -> Option<[u64; PROGRAM_VK_LEN]> {
     stage_verifier(hash, compressed).map(|s| s.vk)
+}
+
+/// The `digest` of this family's release `pilfflonk.vkey.json`, or `None` if this crate has
+/// none for it. The digest is `keccak256` of the rest of the key, which pilfflonk's verifier
+/// checks and absorbs into its transcript, so it pins the whole key.
+pub fn pilfflonk_vkey_digest(hash: &str) -> Option<&'static str> {
+    match hash {
+        "Poseidon1" => crate::keys::PILFFLONK_VKEY_DIGEST_POSEIDON1,
+        "Poseidon2" => crate::keys::PILFFLONK_VKEY_DIGEST_POSEIDON2,
+        "blake3" => crate::keys::PILFFLONK_VKEY_DIGEST_BLAKE3,
+        _ => None,
+    }
 }
 
 /// Return the program-level publics `[program VK | inputs]` from a vadcop_final
@@ -439,12 +515,22 @@ mod tests {
             ("Poseidon2", false),
             ("Poseidon2", true),
         ] {
-            let bytes = expected_proof_bytes(hash, minimal)
-                .unwrap_or_else(|| panic!("{hash} minimal={minimal} should have a stage"));
+            let bytes = proof_size(hash, minimal)
+                .unwrap_or_else(|| panic!("{hash} minimal={minimal} should have a stage"))
+                .max_bytes();
             assert_eq!(bytes % 8, 0, "{hash} minimal={minimal}");
             assert!(bytes > 0, "{hash} minimal={minimal}");
         }
-        assert_eq!(expected_proof_bytes("poseidon3", false), None);
+        assert_eq!(proof_size("poseidon3", false), None);
+    }
+
+    /// A flat stage admits its one length; a multiproof stage any length up to its bound.
+    #[test]
+    fn a_proof_size_admits_its_lengths() {
+        assert!(ProofSize::Exact(64).admits(64));
+        assert!(!ProofSize::Exact(64).admits(56) && !ProofSize::Exact(64).admits(72));
+        assert!(ProofSize::AtMost(64).admits(64) && ProofSize::AtMost(64).admits(8));
+        assert!(!ProofSize::AtMost(64).admits(72) && !ProofSize::AtMost(64).admits(0));
     }
 
     /// The circuit emits slot 0 as 1 (leaf) or 0 (fold) and nothing else, so a third
