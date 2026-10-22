@@ -340,7 +340,7 @@ private:
     uint32_t*      d_pages_dense_            = nullptr;
     uint32_t*      d_present_counters_       = nullptr;
     uint32_t*      d_page_meta_starts_       = nullptr;
-    uint32_t*      d_pages_dense_starts_     = nullptr;
+    struct PageBatchEntry* d_page_batch_      = nullptr;   // the compaction batch's (instance, page range) entries
     uint32_t*      h_present_counters_       = nullptr;
 
     // ─── Per-stream device buffers (parallel arrays) ──────────────────
@@ -397,6 +397,7 @@ private:
     std::mutex          ram_runs_mtx_;
     uint32_t            piece_potentials_ = MAX_POT_PER_PIECE;  // cut threshold (ZISK_MEM_TEST_PIECE_POTENTIALS lowers it)
     uint64_t            retained_cap_ = MAX_RETAINED_ACCESSES;  // ZISK_MEM_TEST_RETENTION lowers it
+    uint32_t            test_pages_window_ = 0;              // ZISK_MEM_TEST_PAGES_WINDOW caps the offset-pages window
 #ifdef ZISK_MEM_TEST
     int64_t             test_chunk_reject_ = -1;                // ZISK_MEM_TEST_CHUNK_REJECT: the chunk add_chunk rejects
     int64_t             test_pool_cross_   = -1;                // ZISK_MEM_TEST_POOL_CROSS: the chunk whose pool reservation meets the records
