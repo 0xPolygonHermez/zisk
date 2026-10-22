@@ -416,6 +416,11 @@ the line it logs when the job completes. Prove, execute, wrap and aggregate jobs
 jobs (`SetupRequest`, `SetupAggregationProgramRequest`) reject a non-empty map with
 `INVALID_ARGUMENT`.
 
+From the command line, pass `--metadata KEY=VALUE` (repeatable) to `cargo-zisk remote prove`,
+`execute`, `wrap` and `aggregate`, or to `zisk-prove-client prove` and `execute`. With the SDK, call
+`.metadata(key, value)` on a `RemoteClient`'s `prove`, `execute`, `wrap_proof` or `aggregate_proofs`
+request.
+
 Metadata is accepted unless the coordinator config sets `coordinator.allow_job_metadata = false`;
 jobs that carry metadata are then rejected with `JOB_METADATA_NOT_ALLOWED`.
 

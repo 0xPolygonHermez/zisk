@@ -5,7 +5,7 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::RandomSeedArgs;
+use zisk_common::{JobMetadataArgs, RandomSeedArgs};
 use zisk_sdk::{setup_logger, GuestProgram, RemoteClient, ZiskHints, ZiskStdin};
 
 use crate::common::{reject_quic_hints, resolve_elf, ElfSelectorArgs};
@@ -39,6 +39,9 @@ pub(crate) struct ZiskRemoteExecute {
     #[command(flatten)]
     random_seed: RandomSeedArgs,
 
+    #[command(flatten)]
+    metadata: JobMetadataArgs,
+
     /// Execute timeout in seconds (0 = no timeout)
     #[arg(long, default_value_t = 0)]
     timeout: u64,
@@ -68,6 +71,9 @@ impl ZiskRemoteExecute {
             request = request.hints(hints);
         }
         request = request.random_seed(self.random_seed.provided());
+        for (key, value) in self.metadata.to_map() {
+            request = request.metadata(key, value);
+        }
         let timeout = (self.timeout != 0).then(|| Duration::from_secs(self.timeout));
         let result = super::await_job(request.run()?, timeout).await?;
 

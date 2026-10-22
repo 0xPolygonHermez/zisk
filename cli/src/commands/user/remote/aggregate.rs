@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::JobMetadataArgs;
 use zisk_sdk::{setup_logger, Proof, ProofExt, RemoteClient, VerboseMode};
 
 use crate::commands::user::recurser_common::{parse_free_inputs, parse_root_c, resolve_recurser};
@@ -43,6 +44,9 @@ pub(crate) struct ZiskRemoteAggregate {
     /// the recurser's own verkey.
     #[arg(long = "root-c-recurser-agg")]
     root_c_recurser_agg: Option<String>,
+
+    #[command(flatten)]
+    metadata: JobMetadataArgs,
 
     /// Save the generated proof to the specified file path
     #[arg(short = 'o', long)]
@@ -85,6 +89,9 @@ impl ZiskRemoteAggregate {
         );
         if let Some(limbs) = root_c {
             request = request.root_c_recurser_agg(limbs);
+        }
+        for (key, value) in self.metadata.to_map() {
+            request = request.metadata(key, value);
         }
         let timeout = (self.timeout > 0).then(|| Duration::from_secs(self.timeout));
         let result = super::await_job(request.run()?, timeout).await?;
