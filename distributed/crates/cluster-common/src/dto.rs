@@ -108,8 +108,6 @@ pub struct LaunchWrapRequestDto {
     pub proof_data: Vec<u8>,
     /// Target proof kind (a `ProofKind` value).
     pub proof_dest: i32,
-    /// Arbitrary client metadata.
-    pub metadata: Option<std::collections::BTreeMap<String, String>>,
 }
 
 /// Request from a worker to register with the coordinator.
@@ -369,6 +367,13 @@ pub struct ExecuteTaskRequestDto {
     pub job_id: JobId,
     /// The phase-specific parameters.
     pub params: ExecuteTaskRequestTypeDto,
+    /// Job-level metadata, once passed to the worker. No worker read it; the coordinator
+    /// now keeps it and leaves this `None`.
+    #[deprecated(
+        since = "1.4.0-alpha",
+        note = "job metadata stays on the coordinator; removed in the first non-alpha release"
+    )]
+    pub metadata: Option<std::collections::BTreeMap<String, String>>,
 }
 
 /// Phase-specific parameters for an execute-task request.

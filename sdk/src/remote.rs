@@ -313,6 +313,37 @@ impl std::ops::Deref for RemoteClientExt {
     }
 }
 
+#[allow(deprecated)]
+impl RemoteClientExt {
+    /// Submit a prove request that can carry job-level metadata.
+    #[deprecated(
+        since = "1.4.0-alpha",
+        note = "use `RemoteClient::prove`; removed in the first non-alpha release"
+    )]
+    #[must_use]
+    pub fn prove<'a>(
+        &'a self,
+        program: &'a GuestProgram,
+        stdin: impl Into<InputSource>,
+    ) -> crate::prove::ProveRequestExt<'a> {
+        self.inner.prove(program, stdin)
+    }
+
+    /// Submit an execute request (dry-run, no proof) that can carry job-level metadata.
+    #[deprecated(
+        since = "1.4.0-alpha",
+        note = "use `RemoteClient::execute`; removed in the first non-alpha release"
+    )]
+    #[must_use]
+    pub fn execute<'a>(
+        &'a self,
+        program: &'a GuestProgram,
+        stdin: impl Into<InputSource>,
+    ) -> crate::execute::ExecuteRequestExt<'a> {
+        self.inner.execute(program, stdin)
+    }
+}
+
 /// Converts an [`InputSource`] into a `DomainInputKind` for submission.
 ///
 /// For stream-backed input, also returns the [`ZiskStream`](crate::ZiskStream)

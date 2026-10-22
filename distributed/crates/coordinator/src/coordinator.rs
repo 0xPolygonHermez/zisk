@@ -3940,12 +3940,12 @@ mod tests {
             .await
             .unwrap();
 
-        let req_a = LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, metadata: None };
-        let req_b = LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, metadata: None };
+        let req_a = LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0 };
+        let req_b = LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0 };
         let coord_a = coordinator.clone();
         let coord_b = coordinator.clone();
-        let task_a = tokio::spawn(async move { coord_a.launch_wrap(req_a).await });
-        let task_b = tokio::spawn(async move { coord_b.launch_wrap(req_b).await });
+        let task_a = tokio::spawn(async move { coord_a.launch_wrap(req_a, None).await });
+        let task_b = tokio::spawn(async move { coord_b.launch_wrap(req_b, None).await });
         let (ra, rb) = tokio::join!(task_a, task_b);
         let ra = ra.unwrap();
         let rb = rb.unwrap();
@@ -4481,7 +4481,7 @@ mod tests {
             .unwrap();
 
         let response = coordinator
-            .launch_wrap(LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, metadata: None })
+            .launch_wrap(LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0 }, None)
             .await
             .unwrap();
         let job_id = response.job_id;
@@ -5187,11 +5187,10 @@ mod tests {
             .unwrap();
 
         let job_id = coordinator
-            .launch_wrap(LaunchWrapRequestDto {
-                proof_data: vec![],
-                proof_dest: 0,
-                metadata: Some(job_metadata()),
-            })
+            .launch_wrap(
+                LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0 },
+                Some(job_metadata()),
+            )
             .await
             .unwrap()
             .job_id;
@@ -5216,11 +5215,10 @@ mod tests {
             .unwrap();
 
         let result = coordinator
-            .launch_wrap(LaunchWrapRequestDto {
-                proof_data: vec![],
-                proof_dest: 0,
-                metadata: Some(job_metadata()),
-            })
+            .launch_wrap(
+                LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0 },
+                Some(job_metadata()),
+            )
             .await;
 
         assert!(matches!(result, Err(CoordinatorError::JobMetadataNotAllowed)));

@@ -690,6 +690,7 @@ impl Coordinator {
             })
             .collect();
 
+        #[allow(deprecated)] // `metadata` is deprecated and left empty.
         let req = ExecuteTaskRequestDto {
             worker_id: dispatch.worker.clone(),
             job_id: job_id.clone(),
@@ -701,6 +702,7 @@ impl Coordinator {
                 keep_resident: dispatch.keep_resident,
                 reset_state: dispatch.reset_state,
             }),
+            metadata: None,
         };
 
         self.workers_pool

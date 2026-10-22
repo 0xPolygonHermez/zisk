@@ -111,10 +111,12 @@ impl Coordinator {
                     ExecuteTaskRequestTypeDto::ContributionParams(contribution_params)
                 };
 
+                #[allow(deprecated)] // `metadata` is deprecated and left empty.
                 let req = ExecuteTaskRequestDto {
                     worker_id: worker_id.clone(),
                     job_id: job_id.clone(),
                     params,
+                    metadata: None,
                 };
                 let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
 

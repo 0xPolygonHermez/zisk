@@ -16,12 +16,13 @@ impl Coordinator {
     /// Launch a wrap job: compress/reduce an existing vadcop proof to minimal or SNARK format.
     ///
     /// Selects any single idle worker, sends a WRAP task to it, and returns the job ID.
-    /// The proof data must be a bincode-encoded `Proof`.
+    /// The proof data must be a bincode-encoded `Proof`; `metadata` is the caller's, if any.
     pub async fn launch_wrap(
         &self,
         request: LaunchWrapRequestDto,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
-        let metadata = self.admit_job_metadata(request.metadata)?;
+        let metadata = self.admit_job_metadata(metadata)?;
         // Atomic single-worker reservation under one pool write lock —
         // prevents two concurrent launch_wrap calls from double-booking.
         let job_id = JobId::new();
@@ -54,6 +55,7 @@ impl Coordinator {
         crate::metrics::record_job_started(&job_id, crate::metrics::KIND_WRAP, 1);
         crate::metrics::record_job_phase(&job_id, crate::metrics::PHASE_AGGREGATION);
 
+        #[allow(deprecated)] // `metadata` is deprecated and left empty.
         let req = ExecuteTaskRequestDto {
             worker_id: worker_id.clone(),
             job_id: job_id.clone(),
@@ -61,6 +63,7 @@ impl Coordinator {
                 proof_data: request.proof_data,
                 proof_dest: request.proof_dest,
             }),
+            metadata: None,
         };
         let message = CoordinatorMessageDto::ExecuteTaskRequest(req);
         if let Err(e) = self.workers_pool.send_message(&worker_id, message).await {
