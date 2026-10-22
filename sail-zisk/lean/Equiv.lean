@@ -2,5 +2,7 @@ import Equiv.Models
 import Equiv.Riscv
 import Equiv.RiscvMem
 import Equiv.RiscvDecode
+import Equiv.RiscvStep
 import Equiv.Zisk
 import Equiv.Sim
+import Equiv.StepSim
