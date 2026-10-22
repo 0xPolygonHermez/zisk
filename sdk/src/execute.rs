@@ -58,6 +58,7 @@ pub struct ExecuteRequest<'a, C> {
     random_seed: Option<RandomSeed>,
     executor: ExecutorKind,
     timeout: Option<Duration>,
+    metadata: BTreeMap<String, String>,
 }
 
 #[allow(private_bounds)]
@@ -76,6 +77,7 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
             random_seed: None,
             executor,
             timeout: None,
+            metadata: BTreeMap::new(),
         }
     }
 
@@ -124,7 +126,18 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
             self.executor,
             self.timeout,
             subs,
+            self.metadata,
         )
+    }
+}
+
+impl ExecuteRequest<'_, RemoteClient> {
+    /// Attach a job-level metadata key/value pair for the coordinator to keep with the job.
+    /// Call repeatedly to attach multiple pairs.
+    #[must_use]
+    pub fn metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(key.into(), value.into());
+        self
     }
 }
 
@@ -149,90 +162,10 @@ impl<'a, C: ClientSync> ExecuteRequest<'a, C> {
     }
 }
 
-/// Extended execute request builder — identical to [`ExecuteRequest`] but adds
-/// opt-in, job-level [`metadata`](Self::metadata).
-///
-/// Remote backend only; obtain via
-/// [`RemoteClientExt::execute`](crate::RemoteClientExt::execute).
-pub struct ExecuteRequestExt<'a> {
-    client: &'a RemoteClient,
-    program: &'a GuestProgram,
-    stdin: InputSource,
-    hints: Option<HintsSource>,
-    random_seed: Option<RandomSeed>,
-    executor: ExecutorKind,
-    timeout: Option<Duration>,
-    metadata: BTreeMap<String, String>,
-}
-
-impl<'a> ExecuteRequestExt<'a> {
-    pub(crate) fn new(
-        client: &'a RemoteClient,
-        program: &'a GuestProgram,
-        stdin: impl Into<InputSource>,
-    ) -> Self {
-        Self {
-            client,
-            program,
-            stdin: stdin.into(),
-            hints: None,
-            random_seed: None,
-            executor: ExecutorKind::default(),
-            timeout: None,
-            metadata: BTreeMap::new(),
-        }
-    }
-
-    /// Attach a job-level metadata key/value pair forwarded to the coordinator.
-    /// Call repeatedly to attach multiple pairs; an empty map means no metadata.
-    #[must_use]
-    pub fn metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.metadata.insert(key.into(), value.into());
-        self
-    }
-
-    /// Attach a hints stream to this execute request.
-    #[must_use]
-    pub fn hints(mut self, hints: impl Into<HintsSource>) -> Self {
-        self.hints = Some(hints.into());
-        self
-    }
-
-    /// Use this host randomness seed instead of drawing a fresh one. Every result reports the seed
-    /// it ran with. A remote coordinator rejects it unless it is configured to allow client random
-    /// seeds.
-    #[must_use]
-    pub fn random_seed(mut self, seed: impl Into<Option<RandomSeed>>) -> Self {
-        self.random_seed = seed.into();
-        self
-    }
-
-    /// Override the executor for this execute call.
-    #[must_use]
-    pub fn executor(mut self, executor: ExecutorKind) -> Self {
-        self.executor = executor;
-        self
-    }
-
-    /// Set a timeout for the execution.
-    #[must_use]
-    pub fn timeout(mut self, duration: Duration) -> Self {
-        self.timeout = Some(duration);
-        self
-    }
-
-    /// Submit the execution, returning a [`JobHandle<ExecuteResult>`].
-    pub fn run(self) -> Result<JobHandle<ExecuteResult>> {
-        let subs = new_subscriber_list();
-        self.client.do_execute_ext(
-            self.program,
-            self.stdin,
-            self.hints,
-            self.random_seed,
-            self.executor,
-            self.timeout,
-            subs,
-            self.metadata,
-        )
-    }
-}
+/// Execute request builder of the deprecated extended remote client.
+#[deprecated(
+    since = "1.4.0-alpha",
+    note = "use `ExecuteRequest`, whose `metadata` is available on the remote client; \
+            removed in the first non-alpha release"
+)]
+pub type ExecuteRequestExt<'a> = ExecuteRequest<'a, RemoteClient>;

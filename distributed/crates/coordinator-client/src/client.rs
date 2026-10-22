@@ -8,8 +8,8 @@ use zisk_coordinator_api::dto::{
     DomainAggregationProgramSpec, DomainJobKind, RegisterAggregationProgramRequestDto,
     RegisterGuestProgramRequestDto,
 };
-use zisk_coordinator_api::grpc::proto::{CancelJobRequest, JobKindExt, JobRequestExtMessage};
-use zisk_coordinator_api::grpc::{ZiskCoordinatorApiClient, ZiskCoordinatorApiExtClient};
+use zisk_coordinator_api::grpc::proto::{CancelJobRequest, JobRequestMessage};
+use zisk_coordinator_api::grpc::ZiskCoordinatorApiClient;
 
 use crate::input_sender::InputSender;
 use crate::job::Job;
@@ -22,7 +22,6 @@ use crate::job::Job;
 #[derive(Clone)]
 pub struct CoordinatorClient {
     inner: ZiskCoordinatorApiClient<Channel>,
-    ext: ZiskCoordinatorApiExtClient<Channel>,
 }
 
 impl CoordinatorClient {
@@ -43,10 +42,7 @@ impl CoordinatorClient {
                 .context("Failed to connect to coordinator")
         })?;
         Ok(Self {
-            inner: ZiskCoordinatorApiClient::new(channel.clone())
-                .max_decoding_message_size(128 * 1024 * 1024)
-                .max_encoding_message_size(128 * 1024 * 1024),
-            ext: ZiskCoordinatorApiExtClient::new(channel)
+            inner: ZiskCoordinatorApiClient::new(channel)
                 .max_decoding_message_size(128 * 1024 * 1024)
                 .max_encoding_message_size(128 * 1024 * 1024),
         })
@@ -83,34 +79,42 @@ impl CoordinatorClient {
 
     /// Submit a job of the given kind and return a [`Job`] handle for tracking it.
     pub fn submit_job(&self, kind: DomainJobKind) -> Result<Job> {
+        self.submit_job_with_metadata(kind, BTreeMap::new())
+    }
+
+    /// Submit a job of the given kind with caller-defined key/value metadata
+    /// (empty for none) and return a [`Job`] handle for tracking it.
+    ///
+    /// A coordinator that predates job metadata on `JobRequest` runs the job
+    /// without it.
+    pub fn submit_job_with_metadata(
+        &self,
+        kind: DomainJobKind,
+        metadata: BTreeMap<String, String>,
+    ) -> Result<Job> {
         let resp = block_on(async {
             let mut gw = self.inner.clone();
-            let resp = gw.job_request(kind).await.context("JobRequest RPC failed")?;
+            let req = JobRequestMessage {
+                job_kind: Some(kind.into()),
+                metadata: metadata.into_iter().collect(),
+            };
+            let resp = gw.job_request(req).await.context("JobRequest RPC failed")?;
             Ok::<_, anyhow::Error>(resp.into_inner())
         })?;
         Job::new(resp.job_id, self.clone())
     }
 
-    /// Submit an extended job with caller-defined key/value metadata.
-    // The extended API is deprecated in favour of `JobRequest.metadata`; this
-    // moves to it together with the SDK's metadata API.
-    #[allow(deprecated)]
+    /// Submit a job with caller-defined key/value metadata.
+    #[deprecated(
+        since = "1.4.0-alpha",
+        note = "use `submit_job_with_metadata`; removed in the first non-alpha release"
+    )]
     pub fn submit_job_ext(
         &self,
         kind: DomainJobKind,
         metadata: BTreeMap<String, String>,
     ) -> Result<Job> {
-        let job_kind = JobKindExt::try_from(kind).map_err(|e| anyhow::anyhow!(e))?;
-        let resp = block_on(async {
-            let mut gw = self.ext.clone();
-            let req = JobRequestExtMessage {
-                job_kind: Some(job_kind),
-                metadata: metadata.into_iter().collect(),
-            };
-            let resp = gw.job_request_ext(req).await.context("JobRequestExt RPC failed")?;
-            Ok::<_, anyhow::Error>(resp.into_inner())
-        })?;
-        Job::new(resp.job_id, self.clone())
+        self.submit_job_with_metadata(kind, metadata)
     }
 
     /// Cancel a job by its id without first holding a [`Job`] handle.

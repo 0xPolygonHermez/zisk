@@ -53,6 +53,15 @@ async fn start_test_server() -> ZiskCoordinatorApiClient<Channel> {
 /// Start a coordinator server and return both the client and the `MockBackend`
 /// so tests can inspect internal state (e.g. received hints chunks).
 async fn start_test_server_with_backend() -> (ZiskCoordinatorApiClient<Channel>, Arc<MockBackend>) {
+    let (endpoint, backend) = start_mock_server().await;
+    let client =
+        connect_with_retry(|e: String| ZiskCoordinatorApiClient::connect(e), &endpoint).await;
+    (client, backend)
+}
+
+/// Start a coordinator server over a `MockBackend` and return its endpoint URL
+/// and the backend, for tests that bring their own client.
+async fn start_mock_server() -> (String, Arc<MockBackend>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
 
@@ -68,10 +77,7 @@ async fn start_test_server_with_backend() -> (ZiskCoordinatorApiClient<Channel>,
             .unwrap();
     });
 
-    let endpoint = format!("http://{addr}");
-    let client =
-        connect_with_retry(|e: String| ZiskCoordinatorApiClient::connect(e), &endpoint).await;
-    (client, backend_clone)
+    (format!("http://{addr}"), backend_clone)
 }
 
 /// Start a coordinator server exposing BOTH the base and the deprecated extended
@@ -187,6 +193,39 @@ async fn job_request_round_trips_metadata_on_a_wrap_job() {
     let seen = backend.submit_metadata(job_id.parse().unwrap()).await;
     let expected: std::collections::BTreeMap<String, String> = job_metadata().into_iter().collect();
     assert_eq!(seen, expected, "submitted metadata must reach the backend");
+}
+
+/// `CoordinatorClient` sends job metadata on `JobRequest`, through
+/// `submit_job_with_metadata` and the deprecated `submit_job_ext` alike.
+#[tokio::test(flavor = "multi_thread")]
+#[allow(deprecated)]
+async fn coordinator_client_sends_metadata_on_job_request() {
+    use zisk_coordinator_api::dto::{
+        DomainExecuteRequest, DomainInputChunk, DomainInputKind, DomainJobKind,
+    };
+    use zisk_coordinator_client::CoordinatorClient;
+
+    let (endpoint, backend) = start_mock_server().await;
+    let client =
+        CoordinatorClient::connect(endpoint, Duration::from_secs(5), Duration::from_secs(5))
+            .unwrap();
+    let hash_id = client.register_program(dummy_elf()).unwrap();
+    let execute = || {
+        DomainJobKind::Execute(DomainExecuteRequest {
+            hash_id: hash_id.clone(),
+            input: DomainInputKind::Inline(DomainInputChunk { data: vec![1, 2, 3] }),
+            hints: None,
+            random_seed: None,
+            execute_timeout: None,
+        })
+    };
+    let metadata: std::collections::BTreeMap<String, String> = job_metadata().into_iter().collect();
+
+    let job = client.submit_job_with_metadata(execute(), metadata.clone()).unwrap();
+    assert_eq!(backend.submit_metadata(job.job_id()).await, metadata);
+
+    let job = client.submit_job_ext(execute(), metadata.clone()).unwrap();
+    assert_eq!(backend.submit_metadata(job.job_id()).await, metadata);
 }
 
 #[tokio::test]
