@@ -131,6 +131,10 @@ pub struct CoordinatorConfig {
     /// craft worst-case inputs (e.g. hash collisions). Keep it off when clients are not trusted;
     /// jobs that carry a seed are then rejected. Default: false.
     pub allow_client_random_seed: bool,
+    /// Accept caller-defined metadata (key/value labels) on job requests. Turn it off on
+    /// installations that must not take it; jobs that carry metadata are then rejected.
+    /// Default: true.
+    pub allow_job_metadata: bool,
 }
 
 impl Config {
@@ -173,7 +177,8 @@ impl Config {
             .set_default("coordinator.default_compute_units", 0)?
             .set_default("coordinator.min_compute_units", 0)?
             .set_default("coordinator.reconnect_grace_period_ms", 500_u64)?
-            .set_default("coordinator.allow_client_random_seed", false)?;
+            .set_default("coordinator.allow_client_random_seed", false)?
+            .set_default("coordinator.allow_job_metadata", true)?;
 
         if let Some(path) = config_file {
             builder = builder.add_source(config::File::with_name(&path));

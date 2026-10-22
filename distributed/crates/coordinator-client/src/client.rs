@@ -8,7 +8,7 @@ use zisk_coordinator_api::dto::{
     DomainAggregationProgramSpec, DomainJobKind, RegisterAggregationProgramRequestDto,
     RegisterGuestProgramRequestDto,
 };
-use zisk_coordinator_api::grpc::proto::{CancelJobRequest, JobKindExt, JobRequestExtMessage};
+use zisk_coordinator_api::grpc::proto::{CancelJobRequest, JobRequestMessage};
 use zisk_coordinator_api::grpc::{ZiskCoordinatorApiClient, ZiskCoordinatorApiExtClient};
 
 use crate::input_sender::InputSender;
@@ -83,20 +83,44 @@ impl CoordinatorClient {
 
     /// Submit a job of the given kind and return a [`Job`] handle for tracking it.
     pub fn submit_job(&self, kind: DomainJobKind) -> Result<Job> {
+        self.submit_job_with_metadata(kind, BTreeMap::new())
+    }
+
+    /// Submit a job of the given kind with caller-defined key/value metadata
+    /// (empty for none) and return a [`Job`] handle for tracking it.
+    ///
+    /// A coordinator that predates job metadata on `JobRequest` runs the job
+    /// without it.
+    pub fn submit_job_with_metadata(
+        &self,
+        kind: DomainJobKind,
+        metadata: BTreeMap<String, String>,
+    ) -> Result<Job> {
         let resp = block_on(async {
             let mut gw = self.inner.clone();
-            let resp = gw.job_request(kind).await.context("JobRequest RPC failed")?;
+            let req = JobRequestMessage { job_kind: Some(kind.into()), metadata };
+            let resp = gw.job_request(req).await.context("JobRequest RPC failed")?;
             Ok::<_, anyhow::Error>(resp.into_inner())
         })?;
         Job::new(resp.job_id, self.clone())
     }
 
-    /// Submit an extended job with caller-defined key/value metadata.
+    /// Submit a prove or execute job with caller-defined key/value metadata over
+    /// the extended API's `JobRequestExt`, which coordinators that predate
+    /// metadata on `JobRequest` also take.
+    #[deprecated(
+        since = "1.4.0-alpha",
+        note = "use `submit_job_with_metadata`, which sends the metadata on `JobRequest`; \
+                removed in the first non-alpha release"
+    )]
+    #[allow(deprecated)]
     pub fn submit_job_ext(
         &self,
         kind: DomainJobKind,
         metadata: BTreeMap<String, String>,
     ) -> Result<Job> {
+        use zisk_coordinator_api::grpc::proto::{JobKindExt, JobRequestExtMessage};
+
         let job_kind = JobKindExt::try_from(kind).map_err(|e| anyhow::anyhow!(e))?;
         let resp = block_on(async {
             let mut gw = self.ext.clone();

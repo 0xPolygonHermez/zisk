@@ -1,7 +1,7 @@
 use anyhow::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
@@ -376,8 +376,6 @@ pub struct JobContext {
     pub instances: u64,
     /// When the current task was received (for latency accounting).
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
-    /// Job-level metadata propagated from the coordinator.
-    pub metadata: Option<BTreeMap<String, String>>,
 }
 
 /// A ZisK worker over backend `T`: holds the prover, the current job context
@@ -822,7 +820,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         allocation: Vec<u32>,
         total_compute_units: u32,
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
-        metadata: Option<BTreeMap<String, String>>,
     ) -> Arc<Mutex<JobContext>> {
         let current_job = Arc::new(Mutex::new(JobContext {
             job_id: job_id.clone(),
@@ -837,7 +834,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             executed_steps: 0,
             task_received_time,
             instances: 0,
-            metadata,
         }));
         self.current_job = Some(current_job.clone());
 

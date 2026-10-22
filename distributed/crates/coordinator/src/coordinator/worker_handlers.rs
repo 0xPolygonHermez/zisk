@@ -385,7 +385,7 @@ impl Coordinator {
             return Ok(());
         }
 
-        {
+        let metadata_str = {
             let mut job = job_entry.write().await;
             job.change_state(JobState::Completed);
             // The ack carries a bincode-encoded `Proof` (see the worker's
@@ -398,7 +398,8 @@ impl Coordinator {
                     job_id, e
                 ),
             }
-        }
+            Self::format_job_metadata(job.metadata.as_ref())
+        };
         self.fire_job_event(
             &job_id,
             CoordinatorJobEvent::Completed(
@@ -406,7 +407,10 @@ impl Coordinator {
             ),
         )
         .await;
-        info!("[Recurser] Job {} completed successfully on worker {}", job_id, worker_id);
+        info!(
+            "[Recurser] Job {} completed successfully on worker {}{}",
+            job_id, worker_id, metadata_str
+        );
         Ok(())
     }
 

@@ -8,6 +8,7 @@ pub(crate) mod upload;
 pub(crate) mod wrap;
 
 use crate::{Result, SdkError};
+use std::collections::BTreeMap;
 use std::time::Duration;
 use zisk_common::io::StreamRead;
 use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues, RandomSeed};
@@ -86,7 +87,7 @@ impl<Out: From<RemoteClient>> RemoteClientBuilder<Out> {
         crate::client::ensure_single_instance();
         let gw = CoordinatorClient::connect(self.url, self.connect_timeout, self.request_timeout)
             .map_err(SdkError::backend)?;
-        Ok(RemoteClient { gw })
+        Ok(RemoteClient { gw, legacy_ext: false })
     }
 
     /// Build the client.
@@ -102,11 +103,18 @@ impl<Out: From<RemoteClient>> RemoteClientBuilder<Out> {
     ///
     /// # Returns
     ///
-    /// [`RemoteClientExt`] — a wrapper around [`RemoteClient`] that overrides
-    /// [`execute`](RemoteClient::execute) and [`prove`](RemoteClient::prove)
-    /// to return builders that can carry extended features.
+    /// [`RemoteClientExt`] — a wrapper around [`RemoteClient`] whose `prove` and
+    /// `execute` keep sending their metadata over the extended API, which
+    /// coordinators that predate metadata on `JobRequest` also take.
+    #[deprecated(
+        since = "1.4.0-alpha",
+        note = "build a `RemoteClient` with `ProverClient::remote(url).build()` (or reach it \
+                with `ZiskClient::as_remote`): its requests take `metadata`; removed in the \
+                first non-alpha release"
+    )]
+    #[allow(deprecated)]
     pub fn build_ext(self) -> Result<RemoteClientExt> {
-        Ok(RemoteClientExt { inner: self.connect()? })
+        Ok(RemoteClientExt { inner: RemoteClient { legacy_ext: true, ..self.connect()? } })
     }
 }
 
@@ -114,6 +122,10 @@ impl<Out: From<RemoteClient>> RemoteClientBuilder<Out> {
 #[derive(Clone)]
 pub struct RemoteClient {
     pub(crate) gw: CoordinatorClient,
+    /// Built by the deprecated [`RemoteClientBuilder::build_ext`]: prove and execute
+    /// metadata goes over the extended API's `JobRequestExt`, as it did before it moved
+    /// onto `JobRequest`.
+    pub(crate) legacy_ext: bool,
 }
 
 impl Client for RemoteClient {
@@ -142,8 +154,9 @@ impl Client for RemoteClient {
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
-        self.do_prove(program, stdin, hints, seed, executor, proof_kind, timeout, subs)
+        self.do_prove(program, stdin, hints, seed, executor, proof_kind, timeout, subs, metadata)
     }
 
     fn run_execute(
@@ -155,8 +168,9 @@ impl Client for RemoteClient {
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ExecuteResult>> {
-        self.do_execute(program, stdin, hints, seed, executor, timeout, subs)
+        self.do_execute(program, stdin, hints, seed, executor, timeout, subs, metadata)
     }
 
     fn run_wrap(
@@ -167,8 +181,9 @@ impl Client for RemoteClient {
         _override_program_vk: Option<ProgramVK>,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
-        self.do_wrap(proof, proof_kind, timeout, subs)
+        self.do_wrap(proof, proof_kind, timeout, subs, metadata)
     }
 
     fn run_upload_aggregation_program(&self, agg: &Recurser) -> Result<UploadResult> {
@@ -194,6 +209,7 @@ impl Client for RemoteClient {
         root_c_recurser_agg: Option<[u64; 4]>,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
         self.do_aggregate_proofs(
             agg,
@@ -204,6 +220,7 @@ impl Client for RemoteClient {
             root_c_recurser_agg,
             timeout,
             subs,
+            metadata,
         )
     }
 }
@@ -282,17 +299,21 @@ impl RemoteClient {
     }
 }
 
-/// Extended remote client with opt-in, job-level metadata on `execute`/`prove`.
+/// Extended remote client of the deprecated metadata API.
 ///
 /// Built via [`RemoteClientBuilder::build_ext`]. Dereferences to [`RemoteClient`],
-/// so every other operation (`setup`, `upload`, `wrap_proof`, `aggregate_proofs`,
-/// …) is available unchanged; only [`execute`](Self::execute) and
-/// [`prove`](Self::prove) are overridden to return metadata-capable builders.
+/// whose `prove`, `execute`, `wrap_proof` and `aggregate_proofs` builders take
+/// job `metadata`; `prove` and `execute` send it over the extended API, as before.
+#[deprecated(
+    since = "1.4.0-alpha",
+    note = "use `RemoteClient`: its requests take `metadata`; removed in the first non-alpha release"
+)]
 #[derive(Clone)]
 pub struct RemoteClientExt {
     inner: RemoteClient,
 }
 
+#[allow(deprecated)]
 impl std::ops::Deref for RemoteClientExt {
     type Target = RemoteClient;
     fn deref(&self) -> &Self::Target {
@@ -300,28 +321,34 @@ impl std::ops::Deref for RemoteClientExt {
     }
 }
 
+#[allow(deprecated)]
 impl RemoteClientExt {
-    /// Submit a prove request that can carry opaque job-level metadata via
-    /// [`ProveRequestExt::metadata`](crate::ProveRequestExt::metadata).
+    /// Submit a prove request that can carry job-level metadata.
+    #[deprecated(
+        since = "1.4.0-alpha",
+        note = "use `RemoteClient::prove`; removed in the first non-alpha release"
+    )]
     #[must_use]
     pub fn prove<'a>(
         &'a self,
         program: &'a GuestProgram,
         stdin: impl Into<InputSource>,
     ) -> crate::prove::ProveRequestExt<'a> {
-        crate::prove::ProveRequestExt::new(&self.inner, program, stdin)
+        self.inner.prove(program, stdin)
     }
 
-    /// Submit an execute request (dry-run, no proof) that can carry opaque
-    /// job-level metadata via
-    /// [`ExecuteRequestExt::metadata`](crate::ExecuteRequestExt::metadata).
+    /// Submit an execute request (dry-run, no proof) that can carry job-level metadata.
+    #[deprecated(
+        since = "1.4.0-alpha",
+        note = "use `RemoteClient::execute`; removed in the first non-alpha release"
+    )]
     #[must_use]
     pub fn execute<'a>(
         &'a self,
         program: &'a GuestProgram,
         stdin: impl Into<InputSource>,
     ) -> crate::execute::ExecuteRequestExt<'a> {
-        crate::execute::ExecuteRequestExt::new(&self.inner, program, stdin)
+        self.inner.execute(program, stdin)
     }
 }
 
