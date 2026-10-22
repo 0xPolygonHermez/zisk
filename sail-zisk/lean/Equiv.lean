@@ -6,3 +6,4 @@ import Equiv.RiscvStep
 import Equiv.Zisk
 import Equiv.Sim
 import Equiv.StepSim
+import Equiv.Block
