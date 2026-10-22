@@ -522,17 +522,23 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         Ok(message) => {
                             if let Err(e) = self.handle_coordinator_message(message, &message_sender, loop_tx).await {
                                 error!("Error handling coordinator message: {}", e);
-                                self.report_computation_error(&message_sender, &e.to_string()).await;
+                                let reported = self.report_computation_error(&message_sender, &e.to_string()).await;
                                 // Only truly fatal errors (e.g. registration rejected) set state
                                 // to Error inside the handler — those break the loop and trigger
-                                // reconnect. Recoverable errors (task dispatch failures, unknown
-                                // task types, etc.) just reset the worker to Ready and keep the
-                                // stream alive.
+                                // reconnect.
                                 if matches!(self.worker.state(), WorkerState::Error) {
                                     break;
                                 }
-                                self.worker.set_current_job(None);
-                                self.worker.set_state(WorkerState::Ready);
+                                // An error reported against the current job keeps the job: the
+                                // coordinator fails it, parks this worker until it gets
+                                // `WorkerRecoveryComplete`, and sends `JobCancelled`, which must
+                                // find the job to tear its computation down and answer. Errors
+                                // with no job (unknown task types, etc.) just reset the worker to
+                                // Ready and keep the stream alive.
+                                if !reported {
+                                    self.worker.set_current_job(None);
+                                    self.worker.set_state(WorkerState::Ready);
+                                }
                             }
                         }
                         Err(e) => {
@@ -733,12 +739,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// Sends a [`WorkerError`] message to the coordinator when a computation task
     /// fails unexpectedly (e.g. panic inside `spawn_blocking`). This ensures the
     /// coordinator learns about the failure immediately instead of waiting for a
-    /// heartbeat timeout.
+    /// heartbeat timeout. Returns whether it was sent, against the current job.
     async fn report_computation_error(
         &self,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         error_message: &str,
-    ) {
+    ) -> bool {
         let job_id = match self.worker.current_job() {
             Some(job) => job.lock().await.job_id.as_string(),
             None => {
@@ -747,7 +753,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     "Computation error without active job (not reported to coordinator): {}",
                     error_message
                 );
-                return;
+                return false;
             }
         };
 
@@ -761,7 +767,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         if let Err(e) = message_sender.send(message) {
             error!("Failed to send WorkerError to coordinator: {}", e);
+            return false;
         }
+        true
     }
 
     #[allow(clippy::too_many_arguments)]
