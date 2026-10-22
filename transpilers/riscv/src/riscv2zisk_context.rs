@@ -29,7 +29,7 @@ use zisk_core::{
 };
 
 #[cfg(not(feature = "float"))]
-use zisk_core::rom_layout::ECALL_HANDLER_ADDR;
+use zisk_core::rom_layout::{ECALL_HANDLER_ADDR, ECALL_RETURN_REG};
 #[cfg(feature = "float")]
 use zisk_core::rom_layout::FLOAT_HANDLER_ADDR;
 #[cfg(feature = "float")]
@@ -1690,7 +1690,9 @@ impl<'a> Riscv2ZiskContext<'a> {
         #[cfg(not(feature = "float"))]
         zib.src_b("imm", ECALL_HANDLER_ADDR, false);
         zib.op("copyb").unwrap();
-        zib.store_pc("reg", 1, false);
+        // The return address goes to a virtual register, not ra: RISC-V's ecall changes no
+        // register but the ones the system call defines, so the caller's ra must survive it
+        zib.store_pc("reg", ECALL_RETURN_REG as i64, false);
         zib.set_pc();
         zib.j(0, 4);
         zib.verbose("ecall");
@@ -3279,5 +3281,23 @@ mod tests {
             }
             assert_eq!((zi.jmp_offset1, zi.jmp_offset2), (0, 4), "rd={rd} rs1={rs1}");
         }
+    }
+
+    /// `ecall` jumps to the BIOS's handler leaving its return address in ECALL_RETURN_REG, a
+    /// virtual register: ra, like every other RISC-V register, survives it.
+    #[test]
+    fn ecall_leaves_ra_alone() {
+        let inst = RiscvInst {
+            rom_address: ROM_ADDR,
+            inst_name: RiscvInstName::Ecall,
+            ..Default::default()
+        };
+        let mut rom = ZiskRom::default();
+        Riscv2ZiskContext::new(&mut rom).ecall(&inst);
+
+        let zi = &rom.insts[&ROM_ADDR].i;
+        assert!(zi.store_pc && zi.set_pc);
+        assert_eq!((zi.store, zi.store_offset), (STORE_REG, ECALL_RETURN_REG as i64));
+        assert!(ECALL_RETURN_REG >= 32, "must not be a register RISC-V code can see");
     }
 }
