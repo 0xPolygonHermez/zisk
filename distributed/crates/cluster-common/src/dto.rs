@@ -369,8 +369,6 @@ pub struct ExecuteTaskRequestDto {
     pub job_id: JobId,
     /// The phase-specific parameters.
     pub params: ExecuteTaskRequestTypeDto,
-    /// Job-level metadata propagated to the worker.
-    pub metadata: Option<std::collections::BTreeMap<String, String>>,
 }
 
 /// Phase-specific parameters for an execute-task request.

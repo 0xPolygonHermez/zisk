@@ -88,7 +88,6 @@ impl Coordinator {
             let data_id = job.data_id.clone();
             let worker_allocation = job.partitions[rank_id].clone();
             let job_compute_capacity = job.compute_capacity;
-            let job_metadata = job.metadata.clone();
             let workers_pool = &self.workers_pool;
 
             async move {
@@ -116,7 +115,6 @@ impl Coordinator {
                     worker_id: worker_id.clone(),
                     job_id: job_id.clone(),
                     params,
-                    metadata: job_metadata,
                 };
                 let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
 

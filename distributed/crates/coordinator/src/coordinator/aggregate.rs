@@ -701,7 +701,6 @@ impl Coordinator {
                 keep_resident: dispatch.keep_resident,
                 reset_state: dispatch.reset_state,
             }),
-            metadata: None,
         };
 
         self.workers_pool

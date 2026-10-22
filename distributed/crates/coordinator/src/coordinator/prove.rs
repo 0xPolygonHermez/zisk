@@ -48,7 +48,6 @@ impl Coordinator {
                 params: ExecuteTaskRequestTypeDto::ProveParams(ProveParamsDto {
                     challenges: challenges.clone(),
                 }),
-                metadata: None,
             };
             let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
 
