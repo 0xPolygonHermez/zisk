@@ -21,6 +21,7 @@ impl Coordinator {
         &self,
         request: LaunchWrapRequestDto,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
+        let metadata = self.admit_job_metadata(request.metadata)?;
         // Atomic single-worker reservation under one pool write lock —
         // prevents two concurrent launch_wrap calls from double-booking.
         let job_id = JobId::new();
@@ -38,7 +39,7 @@ impl Coordinator {
             vec![worker_id.clone()],
             vec![],
             JobExecutionMode::Standard,
-            None,
+            metadata,
             false,
             ProofKind::VadcopFinal,
         );
@@ -142,7 +143,11 @@ impl Coordinator {
             costs: None,
         });
 
-        tracing::info!("[Wrap] Job {} completed successfully", job_id);
+        tracing::info!(
+            "[Wrap] Job {} completed successfully{}",
+            job_id,
+            Self::format_job_metadata(job.metadata.as_ref())
+        );
 
         drop(job);
 

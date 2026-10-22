@@ -415,7 +415,11 @@ impl BackendService for CoordinatorBackend {
                 };
                 let response = self
                     .coordinator
-                    .launch_wrap(LaunchWrapRequestDto { proof_data: r.proof.data, proof_dest })
+                    .launch_wrap(LaunchWrapRequestDto {
+                        proof_data: r.proof.data,
+                        proof_dest,
+                        metadata,
+                    })
                     .await
                     .map_err(coord_err_to_api)?;
                 let job_id = Uuid::parse_str(&response.job_id.as_string())
@@ -442,6 +446,7 @@ impl BackendService for CoordinatorBackend {
                         r.free_inputs_a,
                         r.free_inputs_b,
                         r.root_c_recurser_agg,
+                        metadata,
                     )
                     .await
                     .map_err(coord_err_to_api)?;

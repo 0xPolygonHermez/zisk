@@ -108,6 +108,8 @@ pub struct LaunchWrapRequestDto {
     pub proof_data: Vec<u8>,
     /// Target proof kind (a `ProofKind` value).
     pub proof_dest: i32,
+    /// Arbitrary client metadata.
+    pub metadata: Option<std::collections::BTreeMap<String, String>>,
 }
 
 /// Request from a worker to register with the coordinator.

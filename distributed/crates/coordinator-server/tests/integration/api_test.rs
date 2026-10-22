@@ -17,8 +17,8 @@ use zisk_coordinator_api::grpc::proto::{
     zisk_coordinator_api_ext_client::ZiskCoordinatorApiExtClient,
     zisk_coordinator_api_ext_server::ZiskCoordinatorApiExtServer,
     zisk_coordinator_api_server::ZiskCoordinatorApiServer, CancelJobRequest, ExecuteRequest,
-    InputChunk, InputKind, JobKind, JobKindExt, JobRequestExtMessage, JobRequestMessage, ProofKind,
-    ProveRequest, PushJobHintsInputRequest, PushJobInputRequest, SetupRequest,
+    InputChunk, InputKind, JobKind, JobKindExt, JobRequestExtMessage, JobRequestMessage, Proof,
+    ProofKind, ProveRequest, PushJobHintsInputRequest, PushJobInputRequest, SetupRequest,
     WaitJobResultRequest, WatchJobRequest, WrapRequest,
 };
 use zisk_coordinator_server::{backend::mock::MockBackend, CoordinatorHandler, GrpcAdapter};
@@ -155,6 +155,36 @@ async fn job_request_round_trips_metadata() {
 
     // Metadata must have propagated through grpc → handler → backend.
     let seen = backend.submit_metadata(response.job_id.parse().unwrap()).await;
+    let expected: std::collections::BTreeMap<String, String> = job_metadata().into_iter().collect();
+    assert_eq!(seen, expected, "submitted metadata must reach the backend");
+}
+
+#[tokio::test]
+async fn job_request_round_trips_metadata_on_a_wrap_job() {
+    let (mut client, backend) = start_test_server_with_backend().await;
+    let proof = Proof {
+        proof_id: uuid::Uuid::new_v4().to_string(),
+        proof_kind: ProofKind::Stark as i32,
+        ..Default::default()
+    };
+
+    let job_id = client
+        .job_request(JobRequestMessage {
+            job_kind: Some(JobKind {
+                kind: Some(job_kind::Kind::Wrap(WrapRequest {
+                    proof: Some(proof),
+                    proof_dest: ProofKind::Plonk as i32,
+                    wrap_timeout: None,
+                })),
+            }),
+            metadata: job_metadata(),
+        })
+        .await
+        .unwrap()
+        .into_inner()
+        .job_id;
+
+    let seen = backend.submit_metadata(job_id.parse().unwrap()).await;
     let expected: std::collections::BTreeMap<String, String> = job_metadata().into_iter().collect();
     assert_eq!(seen, expected, "submitted metadata must reach the backend");
 }

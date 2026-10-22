@@ -77,11 +77,12 @@ fn validate_metadata(
 /// the kinds that keep it.
 fn kind_without_metadata(kind: &DomainJobKind) -> Option<&'static str> {
     match kind {
-        DomainJobKind::Prove(_) | DomainJobKind::Execute(_) => None,
+        DomainJobKind::Prove(_)
+        | DomainJobKind::Execute(_)
+        | DomainJobKind::Wrap(_)
+        | DomainJobKind::AggregateProofs(_) => None,
         DomainJobKind::Setup(_) => Some("setup"),
-        DomainJobKind::Wrap(_) => Some("wrap"),
         DomainJobKind::SetupAggregationProgram(_) => Some("setup_aggregation_program"),
-        DomainJobKind::AggregateProofs(_) => Some("aggregate_proofs"),
     }
 }
 
