@@ -1343,7 +1343,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         take(((size_t)MAX_CHUNKS + 1) * 4);
         for (int s = 0; s < N_STREAMS; s++) {
             take((size_t)MAX_POT_PER_PIECE    * sizeof(PotentialEmit));
-            take((size_t)MAX_POT_PER_PIECE    * 4);
+            take(((size_t)MAX_POT_PER_PIECE + 1) * 4);     // d_emit_bits_
             take(((size_t)MAX_POT_PER_PIECE + 1) * 4);
             take((size_t)MAX_WORDS_PER_PIECE * 8);          // d_words_
             take(((size_t)MAX_WORDS_PER_PIECE + 1) * 4);    // d_tag_flags_
@@ -1358,7 +1358,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
             take((size_t)MAX_SORT_PER_PIECE * 8);
             take((size_t)MAX_SORT_PER_PIECE * 4);
             take((size_t)MAX_SORT_PER_PIECE * 4);
-            take((size_t)MAX_SORT_PER_PIECE * 4);
+            take(((size_t)MAX_SORT_PER_PIECE + 1) * 4);     // d_run_lengths_
             take(((size_t)MAX_SORT_PER_PIECE + 1) * 4);
             take((size_t)N_ADDR_RAM);                        // d_pair_state_
             take(4);
@@ -1434,7 +1434,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
 
     for (int s = 0; s < N_STREAMS; s++) {
         d_potentials_[s]        = (PotentialEmit*)take((size_t)MAX_POT_PER_PIECE    * sizeof(PotentialEmit));
-        d_emit_bits_[s]         = (uint32_t*)     take((size_t)MAX_POT_PER_PIECE    * 4);
+        d_emit_bits_[s]         = (uint32_t*)     take(((size_t)MAX_POT_PER_PIECE + 1) * 4);    // one past: the emit scan reads pot + 1
         d_other_rank_[s]        = (uint32_t*)     take(((size_t)MAX_POT_PER_PIECE + 1) * 4);
         d_align_kind_[s]        = (uint8_t*)      take((size_t)MAX_WORDS_PER_PIECE);
         d_align_flag_[s]        = (uint32_t*)     take(((size_t)MAX_WORDS_PER_PIECE + 1) * 4);
@@ -1453,7 +1453,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         d_ram_keys_sorted_[s]   = (uint64_t*)     take((size_t)MAX_SORT_PER_PIECE * 8);
         d_sorted_addr_[s]       = (uint32_t*)     take((size_t)MAX_SORT_PER_PIECE * 4);
         d_ram_vals_sorted_[s]   = (uint32_t*)     take((size_t)MAX_SORT_PER_PIECE * 4);
-        d_run_lengths_[s]       = (uint32_t*)     take((size_t)MAX_SORT_PER_PIECE * 4);
+        d_run_lengths_[s]       = (uint32_t*)     take(((size_t)MAX_SORT_PER_PIECE + 1) * 4);    // one past: the run scan reads n_sort + 1
         d_run_offsets_[s]       = (uint32_t*)     take(((size_t)MAX_SORT_PER_PIECE + 1) * 4);
         d_pair_state_[s]        = (uint8_t*)      take((size_t)N_ADDR_RAM);
         d_num_unique_[s]        = (uint32_t*)     take(4);
