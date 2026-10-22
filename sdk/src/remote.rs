@@ -429,20 +429,18 @@ impl Payload {
     }
 }
 
-/// Which of a job's input and hints data, by their lengths (`None` for a stream), travel inline
-/// within `budget` bytes, which a request holds for both: both when they fit together, else the
-/// smaller one alone when it fits.
-fn inline_split(input: Option<usize>, hints: Option<usize>, budget: usize) -> (bool, bool) {
-    match (input, hints) {
-        (Some(input), Some(hints)) if input + hints > budget => {
-            if input <= hints {
-                (input <= budget, false)
-            } else {
-                (false, hints <= budget)
-            }
-        }
-        (input, hints) => (input.is_some_and(|n| n <= budget), hints.is_some_and(|n| n <= budget)),
+/// Whether a job's input data travels inline within `budget` bytes, which a request holds for its
+/// input and hints together, by their lengths (`None` for a stream). Hints data always travels
+/// inline, and is refused past the budget: the coordinator buffers a pushed hints stream without
+/// a bound, so only the input is pushed, when it does not fit beside the hints.
+fn input_inline(input: Option<usize>, hints: Option<usize>, budget: usize) -> Result<bool> {
+    let hints = hints.unwrap_or(0);
+    if hints > budget {
+        return Err(SdkError::backend(format!(
+            "hints are {hints} bytes, more than the {budget} bytes a request carries inline"
+        )));
     }
+    Ok(input.is_some_and(|n| n + hints <= budget))
 }
 
 /// A job's input and hints for its request, and what is left to deliver of each once the job
@@ -454,9 +452,9 @@ pub(crate) struct JobInputs {
     pub(crate) hints_delivery: Delivery,
 }
 
-/// Converts a job's [`InputSource`] and optional [`HintsSource`] for its request. Data travels
-/// inline while the request holds it ([`DomainInputKind::MAX_INLINE_BYTES`], input and hints
-/// together), and through the job's gRPC push stream past that. For a grpc:// stream the
+/// Converts a job's [`InputSource`] and optional [`HintsSource`] for its request. Hints data
+/// travels inline, within [`DomainInputKind::MAX_INLINE_BYTES`]; the input data too when it fits
+/// beside them, and through the job's gRPC push stream past that. For a grpc:// stream the
 /// coordinator relays nothing: its data arrives through PushJobInput too.
 pub(crate) fn job_inputs(stdin: InputSource, hints: Option<HintsSource>) -> Result<JobInputs> {
     let input = match stdin {
@@ -469,15 +467,15 @@ pub(crate) fn job_inputs(stdin: InputSource, hints: Option<HintsSource>) -> Resu
     };
     let hints = hints.map(read_hints).transpose()?;
 
-    let (input_inline, hints_inline) = inline_split(
+    let inline = input_inline(
         input.data_len(),
         hints.as_ref().and_then(Payload::data_len),
         DomainInputKind::MAX_INLINE_BYTES,
-    );
-    let (input, input_delivery) = input.into_kind(input_inline);
+    )?;
+    let (input, input_delivery) = input.into_kind(inline);
     let (hints, hints_delivery) = match hints {
         Some(hints) => {
-            let (kind, delivery) = hints.into_kind(hints_inline);
+            let (kind, delivery) = hints.into_kind(true);
             (Some(kind), delivery)
         }
         None => (None, Delivery::InRequest),
@@ -508,9 +506,9 @@ mod tests {
 
     #[test]
     fn data_that_fits_the_budget_travels_in_the_request() {
-        assert_eq!(inline_split(Some(16), None, 16), (true, false));
-        assert_eq!(inline_split(None, Some(16), 16), (false, true));
-        assert_eq!(inline_split(Some(8), Some(8), 16), (true, true));
+        assert!(input_inline(Some(16), None, 16).unwrap());
+        assert!(!input_inline(None, Some(16), 16).unwrap());
+        assert!(input_inline(Some(8), Some(8), 16).unwrap());
         let (kind, delivery) = Payload::Data(vec![7; 16]).into_kind(true);
         assert!(
             matches!(kind, DomainInputKind::Inline(DomainInputChunk { ref data }) if data.len() == 16)
@@ -518,14 +516,21 @@ mod tests {
         assert!(matches!(delivery, Delivery::InRequest));
     }
 
-    /// A request carries its input and its hints together: when both do not fit, the larger one
-    /// is pushed, and the smaller one stays inline when it fits alone.
+    /// A request carries its input and its hints together: when both do not fit, the input is
+    /// pushed, whichever is larger, and the hints stay inline.
     #[test]
-    fn the_larger_data_is_pushed_when_input_and_hints_do_not_fit_together() {
-        assert_eq!(inline_split(Some(10), Some(8), 16), (false, true));
-        assert_eq!(inline_split(Some(8), Some(10), 16), (true, false));
-        assert_eq!(inline_split(Some(20), Some(17), 16), (false, false));
-        assert_eq!(inline_split(Some(17), None, 16), (false, false));
+    fn the_input_is_pushed_when_input_and_hints_do_not_fit_together() {
+        assert!(!input_inline(Some(10), Some(8), 16).unwrap());
+        assert!(!input_inline(Some(8), Some(10), 16).unwrap());
+        assert!(!input_inline(Some(17), None, 16).unwrap());
+    }
+
+    /// The coordinator buffers a pushed hints stream without a bound, so hints are never pushed.
+    #[test]
+    fn hints_over_the_budget_are_refused() {
+        let err = input_inline(Some(1), Some(17), 16).unwrap_err().to_string();
+        assert!(err.contains("hints are 17 bytes"), "{err}");
+        assert!(input_inline(None, Some(17), 16).is_err());
     }
 
     #[test]
