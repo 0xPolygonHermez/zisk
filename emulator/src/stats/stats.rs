@@ -16,7 +16,7 @@ use zisk_core::{
     InstContext, ZiskInst, ZiskOperationType, ZiskRom, RAM_ADDR, REGS_IN_MAIN_TOTAL_NUMBER,
     ROM_ADDR, ROM_ENTRY, ROM_ENTRY_SIZE, ROM_EXIT, ROM_SIZE, SRC_IMM, STORE_NONE, SYS_ADDR,
 };
-use zisk_core::{FLOAT_LIB_ROM_ADDR, ZISKLIB_ROM_ADDR};
+use zisk_core::{FLOAT_LIB_ROM_ADDR, ZISKLIB_ROM_ADDR, ZISK_COSTS_VERSION};
 use zisk_pil::RomRomTrace;
 use zisk_riscv::RiscVRegisters;
 use zisk_sm_arith::{ArithFrops, ArithLegacyFrops};
@@ -2565,6 +2565,7 @@ impl Stats {
         };
 
         let mut s = String::new();
+        s += &format!("COSTS_VERSION;{ZISK_COSTS_VERSION}\n");
         s += &format!("STEPS;{steps}\n\n");
 
         s += "COST;COST DISTRIBUTION;COST;%\n";
@@ -2686,7 +2687,7 @@ impl Stats {
         report.use_thousands_sep = self.use_thousands_sep;
         report.sdk_width = self.sdk_width;
 
-        report.sdk_report_header("REPORT SUMMARY");
+        report.sdk_report_header(&format!("REPORT SUMMARY (cost version {ZISK_COSTS_VERSION})"));
         report.sdk_report_summary_line("STEPS", self.costs.steps);
         report.sdk_report_summary_line("COST", total_cost);
         report.sdk_report_summary_data_line(
@@ -2857,7 +2858,7 @@ impl Stats {
 
         report.set_total_cost(total_cost);
         report.set_steps(total_steps);
-        report.title_cost("REPORT", "");
+        report.title_cost(&format!("REPORT (cost version {ZISK_COSTS_VERSION})"), "");
         report.add_cost("STEPS", total_steps);
 
         report.title_cost_perc("COST DISTRIBUTION", "COST");
