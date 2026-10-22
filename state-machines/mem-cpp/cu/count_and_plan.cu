@@ -1577,7 +1577,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
 
 bool CountAndPlan::add_chunk(const uint64_t* words, uint32_t n) {
     if (n_chunks_ >= MAX_CHUNKS) {
-        fprintf(stderr, "CountAndPlan::add_chunk ERROR: MAX_CHUNKS=%u exceeded\n", MAX_CHUNKS);
+        fprintf(stderr, "CountAndPlan::add_chunk WARNING: MAX_CHUNKS=%u exceeded\n", MAX_CHUNKS);
         add_error_.store(true, std::memory_order_relaxed);
         return false;
     }
@@ -1705,7 +1705,7 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
     }
     if (pool_end_bytes(base + pot_total) > top_bytes_) {
         fprintf(stderr,
-                "CountAndPlan::add_chunk ERROR: ops pool exhausted at chunk %u "
+                "CountAndPlan::add_chunk WARNING: ops pool exhausted at chunk %u "
                 "(base %zu + need %zu > capacity %zu u32 entries). "
                 "Increase the buffer size passed to setup().\n",
                 c, base, pot_total, d_ops_pool_cap_u32_);
@@ -1714,7 +1714,7 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
     }
 #ifdef ZISK_MEM_TEST
     if ((int64_t)c == test_chunk_reject_) {   // tests: this chunk is rejected like one the pool cannot hold
-        fprintf(stderr, "CountAndPlan::add_chunk ERROR: ZISK_MEM_TEST_CHUNK_REJECT set; chunk %u rejected\n", c);
+        fprintf(stderr, "CountAndPlan::add_chunk WARNING: ZISK_MEM_TEST_CHUNK_REJECT set; chunk %u rejected\n", c);
         add_error_.store(true, std::memory_order_relaxed);
         return false;
     }
@@ -1972,12 +1972,12 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
         return false;
     }
     if (add_error_.load(std::memory_order_relaxed)) {
-        fprintf(stderr, "CountAndPlan::run ERROR: a chunk was rejected (see above); no device plan for this block\n");
+        fprintf(stderr, "CountAndPlan::run WARNING: a chunk was rejected (see above); no device plan for this block\n");
         return false;
     }
 #ifdef ZISK_MEM_TEST
     if (std::getenv("ZISK_MEM_TEST_PLAN_FAIL")) {   // tests: the block is planned on the CPU
-        fprintf(stderr, "CountAndPlan::run ERROR: ZISK_MEM_TEST_PLAN_FAIL set; no device plan for this block\n");
+        fprintf(stderr, "CountAndPlan::run WARNING: ZISK_MEM_TEST_PLAN_FAIL set; no device plan for this block\n");
         return false;
     }
 #endif
@@ -2015,7 +2015,7 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
         for (uint32_t c = 0; c < n_chunks_; c++) {
             total_rows += h_n_emits_all_[c];
             if (total_rows > 0xFFFFFFFFull) {
-                fprintf(stderr, "CountAndPlan::run ERROR: the block has more than 2^32 - 1 memory rows "
+                fprintf(stderr, "CountAndPlan::run WARNING: the block has more than 2^32 - 1 memory rows "
                                 "(reached at chunk %u of %u); no device plan for this block\n", c, n_chunks_);
                 return false;
             }
@@ -2049,7 +2049,7 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
             h_fault[0] &= ~LIGHT_RECORD;
         }
         if (h_fault[0] & COUNTER_OVERFLOW) {
-            fprintf(stderr, "CountAndPlan::run ERROR: more than 2^32 - 1 rows at address 0x%08x; no device plan "
+            fprintf(stderr, "CountAndPlan::run WARNING: more than 2^32 - 1 rows at address 0x%08x; no device plan "
                             "for this block\n", expand_addr(h_fault[1]));
             return false;
         }
@@ -2268,7 +2268,7 @@ bool CountAndPlan::prepare_global_() {
         num_instances_ += num_inst_[r];
     }
     if (num_instances_ > MAX_INSTANCES) {
-        std::cerr << "CountAndPlan ERROR: too many instances ("
+        std::cerr << "CountAndPlan WARNING: too many instances ("
                   << num_instances_ << " > " << MAX_INSTANCES
                   << " ROM=" << num_inst_[0]
                   << " INPUT=" << num_inst_[1]
@@ -2433,7 +2433,7 @@ bool CountAndPlan::process_worker_() {
         window_pages = (uint32_t)std::min<size_t>(gap_pages, total_pages);
         if (test_pages_window_ != 0 && test_pages_window_ < window_pages) window_pages = test_pages_window_;   // tests: small window
         if (window_pages == 0 && total_pages != 0) {
-            fprintf(stderr, "CountAndPlan ERROR: no room for one page of address offsets between the ops pool and "
+            fprintf(stderr, "CountAndPlan WARNING: no room for one page of address offsets between the ops pool and "
                             "the retained RAM accesses; no device plan for this block\n");
             return false;
         }
