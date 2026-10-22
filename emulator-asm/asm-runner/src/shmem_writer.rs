@@ -65,6 +65,21 @@ impl ShmemWriter {
         }
     }
 
+    /// Errors unless `byte_size` bytes from `offset` lie inside the shared memory: a write past
+    /// its end would land in whatever the process maps next.
+    fn check_fits(&self, offset: usize, byte_size: usize) -> Result<()> {
+        if offset.checked_add(byte_size).is_some_and(|end| end <= self.size) {
+            return Ok(());
+        }
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "Writing {} bytes at offset {} exceeds shared memory capacity ({}) for '{}'",
+                byte_size, offset, self.size, self.name
+            ),
+        ))
+    }
+
     /// Writes data to the shared memory, starting at the specified offset
     ///
     /// # Type Parameters
@@ -76,19 +91,11 @@ impl ShmemWriter {
     ///
     /// # Returns
     /// * `Ok(())` - If data was successfully written
-    /// * `Err` - If data size exceeds shared memory capacity or msync fails
+    /// * `Err` - If the data does not fit from `offset` to the end of the shared memory, or
+    ///   msync fails
     pub fn write_at<T>(&self, offset: usize, data: &[T]) -> Result<()> {
         let byte_size = std::mem::size_of_val(data);
-
-        if byte_size > self.size {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!(
-                    "Data size ({} bytes) exceeds shared memory capacity ({}) for '{}'",
-                    byte_size, self.size, self.name
-                ),
-            ));
-        }
+        self.check_fits(offset, byte_size)?;
 
         unsafe {
             ptr::copy_nonoverlapping(data.as_ptr() as *const u8, self.ptr.add(offset), byte_size);
@@ -112,19 +119,11 @@ impl ShmemWriter {
     ///
     /// # Returns
     /// * `Ok(())` - If data was successfully written
-    /// * `Err` - If data size exceeds shared memory capacity or msync fails
+    /// * `Err` - If the data does not fit from the append offset to the end of the shared memory,
+    ///   or msync fails
     pub fn append_input<T>(&mut self, data: &[T]) -> Result<()> {
         let byte_size = std::mem::size_of_val(data);
-
-        if byte_size > self.size {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!(
-                    "Data size ({} bytes) exceeds shared memory capacity ({}) for '{}'",
-                    byte_size, self.size, self.name
-                ),
-            ));
-        }
+        self.check_fits(self.offset(), byte_size)?;
 
         unsafe {
             ptr::copy_nonoverlapping(data.as_ptr() as *const u8, self.current_ptr, byte_size);
@@ -260,15 +259,7 @@ impl ShmemWriter {
         if end <= start {
             return Ok(());
         }
-        if end > self.size {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!(
-                    "Range end ({}) exceeds shared memory capacity ({}) for '{}'",
-                    end, self.size, self.name
-                ),
-            ));
-        }
+        self.check_fits(start, end - start)?;
 
         unsafe {
             // SAFETY: `[start, end)` lies inside the mapping, and `&mut self` keeps this writer
@@ -355,6 +346,32 @@ mod tests {
         create_segment(&name, 64);
         let w = ShmemWriter::new(&name, 64, true).unwrap();
         assert!(w.write_at(0, &[0u8; 128]).is_err());
+        unlink_segment(&name);
+    }
+
+    /// A write that fits the segment's size but not from its offset would land in whatever the
+    /// process maps after the segment.
+    #[test]
+    fn write_at_rejects_a_write_past_the_end() {
+        let name = seg_name("pastend");
+        create_segment(&name, 4096);
+        let w = ShmemWriter::new(&name, 4096, true).unwrap();
+        assert!(w.write_at(4090, &[1u8; 16]).is_err());
+        assert!(w.write_at(usize::MAX, &[1u8; 1]).is_err(), "an offset that overflows");
+        w.write_at(4080, &[1u8; 16]).unwrap();
+        unlink_segment(&name);
+    }
+
+    #[test]
+    fn append_input_rejects_a_write_past_the_end_and_keeps_its_offset() {
+        let name = seg_name("appendend");
+        create_segment(&name, 4096);
+        let mut w = ShmemWriter::new(&name, 4096, true).unwrap();
+        w.append_input(&[1u8; 4000]).unwrap();
+        assert!(w.append_input(&[2u8; 200]).is_err());
+        assert_eq!(w.offset(), 4000);
+        w.append_input(&[3u8; 96]).unwrap();
+        assert_eq!(w.offset(), 4096);
         unlink_segment(&name);
     }
 
