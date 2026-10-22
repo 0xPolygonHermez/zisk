@@ -114,8 +114,7 @@ struct BlockOpSpill {
 
 // 64-bit RAM sort-key bit layout (see kernels below).
 //   bit 0        : kind_w
-//   bits 1..23   : orig_pos (potential index + 1; 0 marks a carry entry from the previous piece,
-//                  whose kind bit holds the pairing state)
+//   bits 1..23   : orig_pos (potential index + 1)
 //   bits 24..49  : compact_ram (RAM word index, < 2^26)
 // orig_pos must span the full potential range of a piece; too few bits would let the top index
 // bit bleed into compact_ram. The static_asserts below pin orig_pos width and the sort end-bit
@@ -126,7 +125,6 @@ struct BlockOpSpill {
 #define ORIG_POS_MASK       ((1u << ORIG_POS_BITS) - 1u)
 #define COMPACT_ADDR_SHIFT  (ORIG_POS_SHIFT + ORIG_POS_BITS)   // 24
 #define RAM_KEY_END_BIT     50
-#define CARRY_POS           0x7FFFFFFFu   // packed orig_pos of a carry entry
 
 // orig_pos must represent every potential index in a chunk without truncation.
 static_assert((1ull << ORIG_POS_BITS) > (uint64_t)MAX_POT_PER_PIECE,
@@ -571,7 +569,7 @@ void extract_sorted_packed_kernel(const uint64_t* __restrict__ d_sorted_keys,
     const uint64_t k = d_sorted_keys[i];
     const uint32_t orig_pos = (uint32_t)((k >> ORIG_POS_SHIFT) & ORIG_POS_MASK);
     const uint32_t kind_w_bit = (uint32_t)(k & 1ull);
-    d_sorted_packed[i] = (kind_w_bit << 31) | (orig_pos == 0 ? CARRY_POS : orig_pos - 1);
+    d_sorted_packed[i] = (kind_w_bit << 31) | (orig_pos - 1);
 }
 
 // =====================================================================
@@ -634,27 +632,16 @@ __global__ void compact_kernel_with_shift(const PotentialEmit* __restrict__ d_po
     }
 }
 
-// Real entries among the sorted ones (carry entries are not accesses).
-__global__ void real_flags_kernel(const uint32_t* __restrict__ d_sorted_packed, uint32_t n,
-                                  uint32_t* __restrict__ d_flags) {
-    const uint32_t t = blockIdx.x * blockDim.x + threadIdx.x;
-    if (t >= n) return;
-    d_flags[t] = (d_sorted_packed[t] & 0x7FFFFFFFu) == CARRY_POS ? 0u : 1u;
-}
-
-// The piece's RAM accesses as records, in the (address, arrival) order of its sorted keys; with
-// carry entries in the sort, `d_rank` gives each position its rank among the real ones.
+// The piece's RAM accesses as records, in the (address, arrival) order of its sorted keys.
 __global__ void retain_ram_kernel(const PotentialEmit* __restrict__ d_potentials,
                                   const uint32_t* __restrict__ d_sorted_packed, uint32_t n_sorted,
-                                  const uint32_t* __restrict__ d_rank,
                                   size_t base, uint32_t chunk, uint32_t chunk_size_bits, RamRecords rec,
                                   unsigned long long* __restrict__ d_nwrites) {
     const uint32_t t = blockIdx.x * blockDim.x + threadIdx.x;
     if (t >= n_sorted) return;
     const uint32_t pos = d_sorted_packed[t] & 0x7FFFFFFFu;
-    if (pos == CARRY_POS) return;
     const PotentialEmit p = d_potentials[pos];
-    const size_t k = base + (d_rank ? d_rank[t] : t);
+    const size_t k = base + t;
     const uint32_t field = p.meta >> POT_META_STEP_SHIFT;             // (step_in_chunk << 2) | slot
     const uint64_t main_step = ((uint64_t)chunk << chunk_size_bits) + (field >> 2);
     const uint64_t mem_step  = 1ull + (main_step << 2) + (field & 3u);
@@ -748,39 +735,36 @@ void state_machine_by_run_with_hist_kernel(const uint32_t* __restrict__ d_run_of
                                            uint32_t* __restrict__ d_histogram,
                                            uint32_t* __restrict__ d_max_compact,
                                            uint32_t* __restrict__ d_invalid_flag,
-                                           uint64_t* __restrict__ d_carry) {
+                                           uint8_t* __restrict__ d_pair_state) {
     uint32_t local_max_ram = 0;
 
     const uint32_t t = blockIdx.x * blockDim.x + threadIdx.x;
     if (t < *d_num_unique) {
         const uint32_t start = d_run_offsets[t];
         const uint32_t end   = d_run_offsets[t + 1];
+        const uint32_t compact_ram = d_sorted_addr[start];
 
-        bool state = false;
+        // The word's state as the previous pieces of the chunk left it. One thread owns one word
+        // (and its byte of the mask), so the read and the store below need no atomics.
+        bool state = d_pair_state != nullptr && d_pair_state[compact_ram] != 0;
         uint32_t n_emit = 0;
         for (uint32_t j = start; j < end; j++) {
             const uint32_t v = d_sorted_vals[j];
             const bool kind_w       = (v >> 31);
             const uint32_t orig_pos = v & 0x7FFFFFFFu;
-            if (orig_pos == CARRY_POS) { state = kind_w; continue; }   // previous piece's state
-            uint32_t emit;
-            if (kind_w) {
-                emit = 1;
-                state = true;
-            } else {
-                if (state) { emit = 0; state = false; }
-                else       { emit = 1; state = true;  }
-            }
+            // An access emits a row exactly when it leaves the word open: a write always does; a
+            // read does when nothing is open, else it closes the open row and shares it.
+            state = kind_w || !state;
+            const uint32_t emit = state ? 1u : 0u;
             d_emit_bits[orig_pos] = emit;
             n_emit += emit;
         }
-        const uint32_t compact_ram = d_sorted_addr[start];
         if (n_emit > 0) {
             const uint32_t compact = compact_ram + N_ADDR_ROM + N_ADDR_INPUT;
             hist_add(&d_histogram[compact], n_emit, compact, d_invalid_flag);
             local_max_ram = compact_ram;
         }
-        if (d_carry && t < MAX_POT_PER_PIECE) d_carry[t] = ((uint64_t)compact_ram << COMPACT_ADDR_SHIFT) | (state ? 1ull : 0ull);
+        if (d_pair_state != nullptr) d_pair_state[compact_ram] = state ? 1u : 0u;
     }
 
     __shared__ uint32_t s_max_ram;
@@ -1359,7 +1343,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         take(((size_t)MAX_CHUNKS + 1) * 4);
         for (int s = 0; s < N_STREAMS; s++) {
             take((size_t)MAX_POT_PER_PIECE    * sizeof(PotentialEmit));
-            take((size_t)MAX_POT_PER_PIECE    * 4);
+            take(((size_t)MAX_POT_PER_PIECE + 1) * 4);     // d_emit_bits_
             take(((size_t)MAX_POT_PER_PIECE + 1) * 4);
             take((size_t)MAX_WORDS_PER_PIECE * 8);          // d_words_
             take(((size_t)MAX_WORDS_PER_PIECE + 1) * 4);    // d_tag_flags_
@@ -1374,10 +1358,9 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
             take((size_t)MAX_SORT_PER_PIECE * 8);
             take((size_t)MAX_SORT_PER_PIECE * 4);
             take((size_t)MAX_SORT_PER_PIECE * 4);
-            take((size_t)MAX_SORT_PER_PIECE * 4);
+            take(((size_t)MAX_SORT_PER_PIECE + 1) * 4);     // d_run_lengths_
             take(((size_t)MAX_SORT_PER_PIECE + 1) * 4);
-            take((size_t)MAX_POT_PER_PIECE * 8);            // d_carry_
-            take((size_t)MAX_SORT_PER_PIECE * 4);           // d_carry_rank_
+            take((size_t)N_ADDR_RAM);                        // d_pair_state_
             take(4);
             take(4);
             take(cub_temp_bytes_);
@@ -1451,7 +1434,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
 
     for (int s = 0; s < N_STREAMS; s++) {
         d_potentials_[s]        = (PotentialEmit*)take((size_t)MAX_POT_PER_PIECE    * sizeof(PotentialEmit));
-        d_emit_bits_[s]         = (uint32_t*)     take((size_t)MAX_POT_PER_PIECE    * 4);
+        d_emit_bits_[s]         = (uint32_t*)     take(((size_t)MAX_POT_PER_PIECE + 1) * 4);    // one past: the emit scan reads pot + 1
         d_other_rank_[s]        = (uint32_t*)     take(((size_t)MAX_POT_PER_PIECE + 1) * 4);
         d_align_kind_[s]        = (uint8_t*)      take((size_t)MAX_WORDS_PER_PIECE);
         d_align_flag_[s]        = (uint32_t*)     take(((size_t)MAX_WORDS_PER_PIECE + 1) * 4);
@@ -1470,10 +1453,9 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         d_ram_keys_sorted_[s]   = (uint64_t*)     take((size_t)MAX_SORT_PER_PIECE * 8);
         d_sorted_addr_[s]       = (uint32_t*)     take((size_t)MAX_SORT_PER_PIECE * 4);
         d_ram_vals_sorted_[s]   = (uint32_t*)     take((size_t)MAX_SORT_PER_PIECE * 4);
-        d_run_lengths_[s]       = (uint32_t*)     take((size_t)MAX_SORT_PER_PIECE * 4);
+        d_run_lengths_[s]       = (uint32_t*)     take(((size_t)MAX_SORT_PER_PIECE + 1) * 4);    // one past: the run scan reads n_sort + 1
         d_run_offsets_[s]       = (uint32_t*)     take(((size_t)MAX_SORT_PER_PIECE + 1) * 4);
-        d_carry_[s]             = (uint64_t*)     take((size_t)MAX_POT_PER_PIECE * 8);
-        d_carry_rank_[s]        = (uint32_t*)     take((size_t)MAX_SORT_PER_PIECE * 4);
+        d_pair_state_[s]        = (uint8_t*)      take((size_t)N_ADDR_RAM);
         d_num_unique_[s]        = (uint32_t*)     take(4);
         d_ram_count_[s]         = (uint32_t*)     take(4);
         d_cub_temp_[s]          = (void*)         take(cub_temp_bytes_);
@@ -1570,7 +1552,6 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     CUDA_CHECK(cudaMallocHost(&h_present_counters_, (size_t)max_active_ * sizeof(uint32_t)));
     for (int s = 0; s < N_STREAMS; s++) {
         CUDA_CHECK(cudaMallocHost(&h_n_emits_[s], sizeof(uint32_t)));
-        CUDA_CHECK(cudaMallocHost(&h_n_carry_[s], sizeof(uint32_t)));
         CUDA_CHECK(cudaMallocHost(&h_pot_piece_[s], sizeof(uint32_t)));
     }
 
@@ -1741,19 +1722,20 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
     uint32_t* d_chunk_out = d_ops_pool_ + base;
     if (pieces.size() == 1 && pieces[0].sub_nw == 0) {
         // One piece: its device potential count is checked against the walk's in run().
-        return add_piece_(words, n, c, s, (uint32_t)pot_total, ram_total, d_chunk_out, 0, false, &h_n_emits_all_[c],
+        return add_piece_(words, n, c, s, (uint32_t)pot_total, ram_total, d_chunk_out, false, &h_n_emits_all_[c],
                           &h_pot_device_[c]);
     }
 
-    // Pieces run in order on the chunk's stream; each hands its emit count and the pairing state
-    // of the addresses it touched to the next.
-    uint32_t emits = 0, n_carry = 0;
+    // Pieces run in order on the chunk's stream; each hands its emit count to the next, and the
+    // pairing state of the RAM words it touched through the stream's mask, clean at the chunk's
+    // start.
+    CUDA_CHECK(cudaMemsetAsync(d_pair_state_[s], 0, (size_t)N_ADDR_RAM, streams_[s]));
+    uint32_t emits = 0;
     for (size_t p = 0; p < pieces.size(); ++p) {
         const Piece& pc = pieces[p];
-        const bool last = p + 1 == pieces.size();
         const uint64_t* pw = pc.sub_nw ? pc.sub : words + pc.w0;
         const uint32_t  pn = pc.sub_nw ? pc.sub_nw : pc.nw;
-        if (!add_piece_(pw, pn, c, s, pc.pot, pc.ram, d_chunk_out + emits, n_carry, !last, h_n_emits_[s], h_pot_piece_[s]))
+        if (!add_piece_(pw, pn, c, s, pc.pot, pc.ram, d_chunk_out + emits, true, h_n_emits_[s], h_pot_piece_[s]))
             return false;
         CUDA_CHECK(cudaStreamSynchronize(streams_[s]));   // the sub-record's words may leave scope
         if (*h_pot_piece_[s] != pc.pot) {
@@ -1763,13 +1745,6 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
             return false;
         }
         emits += *h_n_emits_[s];
-        n_carry = (!last && pc.ram + n_carry > 0) ? *h_n_carry_[s] : 0;
-        if (n_carry > MAX_POT_PER_PIECE) {   // more distinct RAM words in one chunk than a piece carries
-            fprintf(stderr, "CountAndPlan::add_chunk ERROR: chunk %u touches more than %u distinct RAM words; "
-                            "no device plan for this block\n", c, MAX_POT_PER_PIECE);
-            add_error_.store(true, std::memory_order_relaxed);
-            return false;
-        }
     }
     h_n_emits_all_[c] = emits;
     h_pot_device_[c] = (uint32_t)pot_total;   // every piece checked above
@@ -1778,14 +1753,14 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
 
 // One piece of a chunk through the device pipeline: decode, expand, count, pair, retain, compact.
 bool CountAndPlan::add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int s, uint32_t pot, uint32_t ram,
-                              uint32_t* d_out, uint32_t n_carry, bool carry_out, uint32_t* h_emits, uint32_t* h_pot) {
+                              uint32_t* d_out, bool cross_pieces, uint32_t* h_emits, uint32_t* h_pot) {
     cudaStream_t st = streams_[s];
     constexpr int BLOCK = 256;
     const int g_memops = (n + BLOCK - 1) / BLOCK;
     // At least one block: a piece of zero-count block records has no potential, and the kernels
     // indexed by potential bound their threads (a zero-block launch is a CUDA error).
     const int g_pot    = pot == 0 ? 1 : (int)((pot + BLOCK - 1) / BLOCK);
-    const uint32_t n_sort = ram + n_carry;
+    const uint32_t n_sort = ram;
     const int g_sort   = n_sort == 0 ? 0 : (int)((n_sort + BLOCK - 1) / BLOCK);
 
     CUDA_CHECK(cudaMemcpyAsync(d_words_[s], words, 8ull * n, cudaMemcpyHostToDevice, st));
@@ -1876,9 +1851,6 @@ bool CountAndPlan::add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int
     }
 
     if (n_sort > 0) {
-        // The previous piece's pairing state enters the sort as one entry per address.
-        if (n_carry > 0)
-            CUDA_CHECK(cudaMemcpyAsync(d_ram_keys_[s] + ram, d_carry_[s], 8ull * n_carry, cudaMemcpyDeviceToDevice, st));
         size_t bytes_sort = cub_temp_bytes_;
         CUDA_CHECK(cub::DeviceRadixSort::SortKeys(d_cub_temp_[s], bytes_sort,
             d_ram_keys_[s], d_ram_keys_sorted_[s], n_sort, 0, RAM_KEY_END_BIT, st));
@@ -1906,16 +1878,7 @@ bool CountAndPlan::add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int
                     std::lock_guard<std::mutex> lk(ram_runs_mtx_);
                     ram_runs_.push_back(RamRun{(uint32_t)rbase, ram, c});
                 }
-                const uint32_t* d_rank = nullptr;
-                if (n_carry > 0) {
-                    real_flags_kernel<<<g_sort, BLOCK, 0, st>>>(d_ram_vals_sorted_[s], n_sort, d_carry_rank_[s]);
-                    CUDA_CHECK_LAUNCH();
-                    size_t bytes_rank = cub_temp_bytes_;
-                    CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_cub_temp_[s], bytes_rank,
-                        d_carry_rank_[s], d_carry_rank_[s], n_sort, st));
-                    d_rank = d_carry_rank_[s];
-                }
-                retain_ram_kernel<<<g_sort, BLOCK, 0, st>>>(d_potentials_[s], d_ram_vals_sorted_[s], n_sort, d_rank,
+                retain_ram_kernel<<<g_sort, BLOCK, 0, st>>>(d_potentials_[s], d_ram_vals_sorted_[s], n_sort,
                     rbase, c, chunk_size_bits_, ram_records_, d_ram_nwrites_);
                 CUDA_CHECK_LAUNCH();
             }
@@ -1935,10 +1898,8 @@ bool CountAndPlan::add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int
         state_machine_by_run_with_hist_kernel<<<g_sort, BLOCK, 0, st>>>(
             d_run_offsets_[s], d_num_unique_[s], d_ram_vals_sorted_[s],
             d_sorted_addr_[s], d_emit_bits_[s], d_histogram_, d_max_compact_, d_invalid_mode_flag_,
-            carry_out ? d_carry_[s] : nullptr);
+            cross_pieces ? d_pair_state_[s] : nullptr);
         CUDA_CHECK_LAUNCH();
-        if (carry_out)
-            CUDA_CHECK(cudaMemcpyAsync(h_n_carry_[s], d_num_unique_[s], 4, cudaMemcpyDeviceToHost, st));
     }
 
     {
@@ -2207,7 +2168,6 @@ void CountAndPlan::free_pinned_() {
     if (h_chunk_counters_per_chunk_) { cudaFreeHost(h_chunk_counters_per_chunk_); h_chunk_counters_per_chunk_ = nullptr; }
     for (int s = 0; s < N_STREAMS; s++) {
         if (h_n_emits_[s]) { cudaFreeHost(h_n_emits_[s]); h_n_emits_[s] = nullptr; }
-        if (h_n_carry_[s]) { cudaFreeHost(h_n_carry_[s]); h_n_carry_[s] = nullptr; }
         if (h_pot_piece_[s]) { cudaFreeHost(h_pot_piece_[s]); h_pot_piece_[s] = nullptr; }
     }
 }
