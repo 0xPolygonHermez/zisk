@@ -8,10 +8,10 @@
 #                                $OUTPUT_DIR, keyed by <platform>/<input-hash>.
 #   FORCE_SETUP_BUILD            Ignore a cache hit and rebuild the setup (the
 #                                fresh build then refreshes the cache entry).
-#   REMOTE_CACHE_SETUP           [user@]host:/path, the cache root ($OUTPUT_DIR) of
-#                                another worker. A local cache miss is looked up
-#                                there first and pulled over rsync/ssh. Only used
-#                                with USE_CACHE_SETUP=1.
+#   REMOTE_CACHE_SETUP           Cache roots ($OUTPUT_DIR) of other workers, as
+#                                [user@]host:/path, comma separated. A local cache
+#                                miss is looked up there first, in order, and
+#                                pulled over rsync/ssh. Only with USE_CACHE_SETUP=1.
 #   DISABLE_RECURSIVE_SETUP      Build without aggregation (setup without -r).
 #   INSTALL_SETUP                Install the provingKey into $HOME/.zisk, plus the
 #                                provingKeySnark when the build produced one.
@@ -87,7 +87,10 @@ main() {
     [[ "${DISABLE_RECURSIVE_SETUP}" == "1" ]] && build_flags+=(--no-aggregation)
     if [[ "${USE_CACHE_SETUP}" == "1" ]]; then
         build_flags+=(--cache-dir "${OUTPUT_DIR}")
-        [[ -n "${REMOTE_CACHE_SETUP:-}" ]] && build_flags+=(--remote-cache-dir "${REMOTE_CACHE_SETUP}")
+        local peer peers="${REMOTE_CACHE_SETUP:-}"
+        for peer in ${peers//,/ }; do
+            build_flags+=(--remote-cache-dir "$peer")
+        done
     fi
 
     [[ -n "${PIL2_COMPILER_BRANCH}" ]] && build_flags+=(--pil2-compiler-branch "${PIL2_COMPILER_BRANCH}")

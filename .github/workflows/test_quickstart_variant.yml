@@ -114,6 +114,10 @@ jobs:
           sudo chmod -R u+rwX "$GITHUB_WORKSPACE"
 
       - name: Start test container
+        # SETUP_CACHE_WORKERS (repository variable): the workers of the group as
+        # name[=ip], comma separated. This runner pulls the setup cache from the others.
+        env:
+          SETUP_CACHE_WORKERS: ${{ vars.SETUP_CACHE_WORKERS }}
         run: .github/scripts/start_test_container.sh
 
       # HTTP/2 negotiation against github.com fails on this runner ("expected
