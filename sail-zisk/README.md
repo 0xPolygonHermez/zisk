@@ -144,8 +144,13 @@ to 22 926 steps each, agree with `ziskemu` step by step, reach their end,
 and leave the signature sail-riscv's C emulator leaves running the RISC-V
 program itself (`make compliance`). So does a Rust guest,
 `examples/fibonacci`, built with `cargo-zisk`: 2 706 steps, through fcall and
-DMA. Both models' Lean builds,
-side by side, in `lean/`.
+DMA. Both models' Lean builds, side by side, in `lean/` — sail-riscv's in
+ZisK's profile — and so does ZisK's RISC-V
+([`doc/riscv_contract.md`](doc/riscv_contract.md)) as a machine,
+`lean/ZiskRiscv`: sail-riscv's step, with sail-zisk's operations for the
+calls ZisK adds. Run on sail-riscv's executable Lean, it ends every
+compliance test, and the fibonacci guest, as sail-zisk ends its
+transpilation.
 
 An earlier model of 8 operations, and Lean proofs that ZisK's circuits
 implement it, lived in `../sail/`; they are at the git tag `sail-air-v0`, for
@@ -171,9 +176,9 @@ As sail-riscv's:
 | `model/zisk_rom_table.sail` | The C emulator's ROM: any program's, read from a table in memory. |
 | `model/zisk_step.sail` | The execution step. |
 | `model/main.sail` | The C emulator's main loop and trace. |
-| `lean/` | The equivalence proofs: a Lake package importing both generated models. |
+| `lean/` | The equivalence proofs: a Lake package importing both generated models; `ZiskRiscv/`, ZisK's RISC-V as a machine over sail-riscv; `ZiskRiscvRun/`, the machine on sail-riscv's executable Lean, and `zisk_riscv_run`, which runs programs on it. |
 | `test/` | The per-operation checks (`make optest`); `programs/`, the ZisK assembly programs `make difftest-all` runs besides the doubler, `memmap/` among them, the accesses ZisK refuses; and `compliance/`, the RISC-V architectural tests' harness for ZisK (`make compliance`). |
-| `riscv/` | `zisk_profile.py`: sail-riscv's configuration for the RISC-V ZisK runs (`make riscv-sim`). |
+| `riscv/` | `zisk_profile.py`: sail-riscv's configuration for the RISC-V ZisK runs; `gen_lean_registers.py`: the register set-up of sail-riscv's Lean emulator, for `zisk_riscv_run`. |
 | `doc/riscv_contract.md` | ZisK's RISC-V: what a RISC-V program means when ZisK runs it, where ZisK departs from RISC-V. |
 | `doc/ops.md` | Every ZisK operation: whether the transpiler emits it, whether the model specifies it. |
 | `check_ops.py` | The opcode guard (`make ops`). |
@@ -196,10 +201,12 @@ make difftest-all  # every program the model is difftested on
 make compliance    # the RISC-V architectural tests, transpiled, difftested (ARCH_TEST=…, RISCV_GCC=…)
 make lean          # generate Lean definitions into build/lean
 make lean-build    # elaborate them
-make riscv         # fetch sail-riscv at the pinned commit and generate its Lean
-make riscv-sim     # build its C emulator, and its configuration for ZisK's profile (~15 min)
-make riscv-lean    # elaborate it (~12 min)
-make equiv         # build lean/, both models side by side
+make riscv         # fetch sail-riscv at the pinned commit, generate its Lean in ZisK's profile (~5 min)
+make riscv-lean    # elaborate it (~15 min)
+make riscv-sim     # build its C emulator, for compliance's signatures (~15 min)
+make riscv-run     # build ZisK's RISC-V machine on its executable Lean, and zisk_riscv_run (~15 min)
+make zisk-riscv    # run ELF (prepared by make difftest) on that machine, and diff its end with sail-zisk's
+make equiv         # build lean/: both models side by side, and ZisK's RISC-V machine
 ```
 
 Every target that runs Sail first checks that the installed Sail is the
@@ -366,7 +373,9 @@ A, B suites and of K's Zbkb tests is compiled for ZisK's memory map,
 transpiled as `ziskemu -e` transpiles it, and difftested; and, once
 `make riscv-sim` has built sail-riscv's C emulator (after `make riscv`; about
 15 minutes, once), run on sail-riscv too, whose signature must be the
-model's. Under a minute for all of them.
+model's; and, once `make riscv-run` has built ZisK's RISC-V machine (step 9),
+on that, which must end the test as the model does. Under a minute for all
+of them.
 
 ```sh
 make riscv-sim
@@ -374,11 +383,11 @@ make compliance ARCH_TEST=…/riscv-arch-test RISCV_GCC=…/riscv-none-elf-gcc
 ```
 
 ```
-PASS  A-amoadd.d-01                    4603 steps; signature = sail-riscv's (536 words)
+PASS  A-amoadd.d-01                    4603 steps; signature = sail-riscv's = ZisK's RISC-V machine's (536 words)
 ...
 SKIP  B-clmul-01                       skipped: the transpiler's default build has no Zbc (its zbc feature)
 ...
-126 of 126 tests agree with ziskemu and sail-riscv: A 18/18, B 40/40, I 51/51, K 4/4, M 13/13; 3 skipped
+126 of 126 tests agree with ziskemu, sail-riscv and ZisK's RISC-V machine: A 18/18, B 40/40, I 51/51, K 4/4, M 13/13; 3 skipped
 ```
 
 The results are also in `build/compliance/results.txt`. `SUITES=…` picks
@@ -400,9 +409,11 @@ make lean-build
 Build completed successfully (28 jobs).
 ```
 
-**7. Generate and elaborate sail-riscv's Lean,** at the pinned commit, into
-`build/sail-riscv`. The generation takes about 17 minutes — most of it z3 —
-and the build about 12.
+**7. Generate and elaborate sail-riscv's Lean,** at the pinned commit, in
+ZisK's profile: sail-riscv's own Lean command and unchanged sources, with
+the configuration `riscv/zisk_profile.py` writes — the Lean backend fixes
+the configuration when it generates — into `build/riscv-lean/Lean_ZiskRV`.
+The generation takes about 5 minutes, the build about 15.
 
 ```sh
 make riscv
@@ -410,7 +421,8 @@ make riscv-lean
 ```
 
 ```
-Building Lean definitions from Sail model (rv64d)
+python3 riscv/zisk_profile.py build/sail-riscv/build/config/rv64d_v256_e64.json build/riscv/zisk_rv64.json
+wrote build/riscv/zisk_rv64.json: RV64 A B M Zbkb Zicsr Zifencei, M-mode only
 ...
 Build completed successfully (141 jobs).
 ```
@@ -422,17 +434,39 @@ make equiv
 ```
 
 ```
-ℹ [159/161] Built Equiv.Models (1.0s)
 info: Equiv/Models.lean:13:0: Zisk.Functions.zisk_execute : Zisk.zisk_inst → Zisk.SailM Bool
-info: Equiv/Models.lean:14:0: LeanRV64D.Functions.execute : LeanRV64D.instruction → LeanRV64D.SailM LeanRV64D.ExecutionResult
-✔ [160/161] Built Equiv (1.0s)
-Build completed successfully (161 jobs).
+info: Equiv/Models.lean:14:0: LeanZiskRV.Functions.execute : LeanZiskRV.instruction → LeanZiskRV.SailM LeanZiskRV.ExecutionResult
+Build completed successfully (175 jobs).
 ```
 
 Seconds, since both models are already built: `lean/` reuses them and the
 one copy of Sail's Lean library they share. `lean/Equiv/Models.lean` imports
 both and names the two functions the equivalence relates, `Zisk.Functions.zisk_execute` and
-`LeanRV64D.Functions.execute`. The proofs will go next to it.
+`LeanZiskRV.Functions.execute`. The proofs will go next to it. The build
+also checks ZisK's RISC-V machine (`lean/ZiskRiscv/Tests.lean`): its
+decoding of the contract's CSR sequences, and sail-zisk's keccak run on its
+memory.
+
+**9. Run programs on ZisK's RISC-V machine.** `make riscv-run` builds the
+machine on sail-riscv's executable Lean (about 15 minutes, once), and
+`make zisk-riscv` runs a program `make difftest` has prepared on it, from the
+same memory, and diffs how it ends with sail-zisk's run of the
+transpilation: the exit, the output, the dump range. The fibonacci guest,
+after its difftest (step 4):
+
+```sh
+make riscv-run
+make zisk-riscv ELF=../examples/target/riscv64ima-zisk-zkvm-elf/release/fibonacci-guest
+```
+
+```
+2563 steps
+OK: ZisK's RISC-V machine ends as sail-zisk does: exit, output
+```
+
+2 563 RISC-V steps against sail-zisk's 2 706 ZisK steps, the BIOS's
+included; on the way, the guest's 2 fcall parameters, 2 fcalls and 10
+memcpys run as sail-zisk's operations on the RISC-V memory.
 
 ### What a clean run establishes
 
@@ -700,6 +734,10 @@ A test passes on three counts:
   program computes what the RISC-V one does, which is the equivalence to be
   proved, checked on these tests. Without `make riscv-sim`'s build, this
   check is left out.
+- **ZisK's RISC-V machine ends it so too.** `lean/ZiskRiscv`, run on
+  sail-riscv's executable Lean, must end the test as the model does: the
+  same exit, output and signature (`make zisk-riscv`). Without
+  `make riscv-run`'s build, this check is left out.
 
 Tests of instructions ZisK does not run are skipped, each with its reason:
 the compressed instructions, carry-less multiplication and Zicond, which the

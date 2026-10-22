@@ -8,7 +8,7 @@
   to either backend's output breaks the build here first.
 -/
 import Zisk
-import LeanRV64D
+import LeanZiskRV
 
 #check @Zisk.Functions.zisk_execute
-#check @LeanRV64D.Functions.execute
+#check @LeanZiskRV.Functions.execute

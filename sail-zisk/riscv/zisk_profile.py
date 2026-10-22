@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Write sail-riscv's configuration for the RISC-V that ZisK runs.
 
-Starts from the default configuration of the pinned sail-riscv (what
-`sail_riscv_sim --print-default-config` prints), and keeps only what ZisK's
+Starts from the default configuration of the pinned sail-riscv — the
+rv64d_v256_e64.json its CMake configure writes, which is what
+`sail_riscv_sim --print-default-config` prints and what its Lean build
+uses — and keeps only what ZisK's
 transpiler supports in its default build (transpilers/riscv): RV64I, M, A,
 Zba, Zbb, Zbs and Zbkb, Zicsr and Zifencei; machine mode only, and no
 interrupts. F and D are out of scope; the compressed instructions, Zbc and
@@ -13,12 +15,12 @@ The memory map needs no change: the default's main memory,
 0x8000_0000..0xFFFF_FFFF, holds ZisK's ROM (ROM_ADDR, 0x9000_0000) and RAM
 (RAM_ADDR, 0xA000_0000), where the architectural tests live.
 
-Usage: zisk_profile.py <sail_riscv_sim> <out.json>   (`make riscv-sim`)
+Usage: zisk_profile.py <default config.json> <out.json>
+    (`make riscv-sim`, `make riscv-zisk-lean`)
 """
 
 import json
 import re
-import subprocess
 import sys
 
 # The extensions ZisK runs. B is Zba, Zbb and Zbs.
@@ -29,9 +31,8 @@ ARCH_ID_ZISK = 0x0FFFEEEE
 
 
 def main():
-    sim, out = sys.argv[1], sys.argv[2]
-    text = subprocess.run([sim, '--print-default-config'], check=True, capture_output=True, text=True).stdout
-    config = json.loads(re.sub(r'(?m)^\s*//.*$', '', text))
+    base, out = sys.argv[1], sys.argv[2]
+    config = json.loads(re.sub(r'(?m)^\s*//.*$', '', open(base).read()))
     for name, ext in config['extensions'].items():
         if isinstance(ext, dict) and 'supported' in ext:
             ext['supported'] = name in PROFILE

@@ -48,7 +48,7 @@ EXPECT_FAULT ?=
 NAME  ?= $(if $(ELF),$(basename $(notdir $(ELF))),$(notdir $(firstword $(PROG))))
 DIFF_DIR = build/difftest/$(NAME)
 
-.PHONY: all check ops compliance lean lean-build riscv riscv-sim riscv-lean equiv emu difftest difftest-all constants optest opsdoc sail-version clean
+.PHONY: all check ops compliance lean lean-build riscv riscv-sim riscv-lean riscv-run zisk-riscv equiv emu difftest difftest-all constants optest opsdoc sail-version clean
 
 all: check ops
 
@@ -81,27 +81,81 @@ lean-build:
 	@test -d build/lean/Zisk || { echo "build/lean/Zisk is missing — run make lean" >&2; exit 1; }
 	cd build/lean/Zisk && $(LAKE) update && $(LAKE) build
 
-## Fetch sail-riscv at the pinned commit and generate its RV64 Lean
-## (SAIL_RISCV_DIR/build/model/Lean_RV64D), as its own CMake target does.
+## sail-riscv's configuration for the RISC-V ZisK runs (riscv/zisk_profile.py),
+## from the default its CMake configure writes.
+ZISK_RV_CONFIG = build/riscv/zisk_rv64.json
+$(ZISK_RV_CONFIG): riscv/zisk_profile.py $(SAIL_RISCV_DIR)/build/config/rv64d_v256_e64.json
+	@mkdir -p build/riscv
+	python3 riscv/zisk_profile.py $(SAIL_RISCV_DIR)/build/config/rv64d_v256_e64.json $@
+
+## Fetch sail-riscv at the pinned commit, configure it, and generate its Lean
+## for ZisK's profile (build/riscv-lean/Lean_ZiskRV): sail-riscv's own Lean
+## command (its generated_lean_rv64d target), with ZisK's configuration, which
+## the Lean backend fixes at generation time, and unchanged sources. ~5 min.
+RISCV_LEAN = build/riscv-lean/Lean_ZiskRV
 riscv: sail-version
 	@if [ ! -d $(SAIL_RISCV_DIR)/.git ]; then git clone -q $(SAIL_RISCV_URL) $(SAIL_RISCV_DIR); fi
 	cd $(SAIL_RISCV_DIR) && git fetch -q origin && git checkout -q $(SAIL_RISCV_REV)
 	$(CMAKE) -S $(SAIL_RISCV_DIR) -B $(SAIL_RISCV_DIR)/build -DCMAKE_BUILD_TYPE=RelWithDebInfo > /dev/null
-	$(CMAKE) --build $(SAIL_RISCV_DIR)/build --target generated_lean_rv64d
+	$(MAKE) --no-print-directory $(ZISK_RV_CONFIG)
+	@mkdir -p build/riscv-lean
+	cd $(SAIL_RISCV_DIR)/model && $(SAIL) --strict-var --strict-bitvector --strict-exponentials \
+	  --require-version $(SAIL_VERSION) --memo-z3-path $(abspath $(SAIL_RISCV_DIR))/build/model/sail_smt_cache \
+	  --config $(abspath $(ZISK_RV_CONFIG)) --lean --memo-z3 --lean-output-dir $(abspath build/riscv-lean) \
+	  --lean-force-output --lean-non-beq-type instruction --lean-non-beq-type instr_info \
+	  --lean-non-beq-type HartState --lean-non-beq-type ExecutionResult --lean-non-beq-type Step \
+	  --lean-noncomputable $(foreach f,encdec_forwards encdec_backwards encdec_forwards_matches \
+	    encdec_backwards_matches encdec_compressed_forwards encdec_compressed_backwards \
+	    encdec_compressed_forwards_matches encdec_compressed_backwards_matches,--lean-noncomputable-function $(f)) \
+	  --lean-import-file ../handwritten_support/RiscvExtras.lean -o Lean_ZiskRV --all-modules riscv.sail_project
 
 ## Build sail-riscv's C emulator, sail_riscv_sim, for `make compliance` to
-## compare signatures with, and its configuration for ZisK's RISC-V profile
-## (riscv/zisk_profile.py). Run `make riscv` first; long (~15 min).
+## compare signatures with, in ZisK's profile. Run `make riscv` first; long
+## (~15 min).
 RISCV_SIM ?= $(SAIL_RISCV_DIR)/build/c_emulator/sail_riscv_sim
-riscv-sim:
+riscv-sim: $(ZISK_RV_CONFIG)
 	$(CMAKE) --build $(SAIL_RISCV_DIR)/build --target sail_riscv_sim
-	@mkdir -p build/riscv
-	python3 riscv/zisk_profile.py $(RISCV_SIM) build/riscv/zisk_rv64.json
-	$(RISCV_SIM) --config build/riscv/zisk_rv64.json --validate-config
+	$(RISCV_SIM) --config $(ZISK_RV_CONFIG) --validate-config
 
 ## Elaborate sail-riscv's generated Lean. Run `make riscv` first; long (~12 min).
 riscv-lean:
-	cd $(SAIL_RISCV_DIR)/build/model/Lean_RV64D && $(LAKE) update && $(LAKE) build
+	cd $(RISCV_LEAN) && $(LAKE) update && $(LAKE) build
+
+## ZisK's RISC-V machine, runnable (lean/ZiskRiscvRun): sail-riscv's executable
+## Lean in ZisK's profile, and zisk_riscv_run on it. Lean's compiled runtime
+## takes an inductive of at most ~256 constructors, which sail-riscv's
+## instruction type exceeds with every module, so the executable model has the
+## modules its Lean emulator's README lists, and ZisK's profile's — the
+## leaves: selecting a module does not select the modules nested in it — the
+## same semantics for every instruction the profile has. Run `make riscv` first;
+## long (~15 min).
+RISCV_RUN_MODULES = H Zca Zicbom_insts Zicboz Zicsr_insts Zicfiss_regs Zimop Zaamo Zicntr Zkr \
+  Sscofpmf Ssqosid postlude I_insts M_insts Zalrsc Zba Zbb Zbc Zbs Zbkb Zifencei
+ZISK_RISCV_RUN = lean/.lake/build/bin/zisk_riscv_run
+riscv-run: $(ZISK_RV_CONFIG)
+	cd $(SAIL_RISCV_DIR)/model && $(SAIL) --strict-var --strict-bitvector --strict-exponentials \
+	  --require-version $(SAIL_VERSION) --memo-z3-path $(abspath $(SAIL_RISCV_DIR))/build/model/sail_smt_cache \
+	  --config $(abspath $(ZISK_RV_CONFIG)) --lean --memo-z3 --lean-output-dir $(abspath build/riscv-lean) \
+	  --lean-force-output --lean-non-beq-type instruction --lean-non-beq-type instr_info \
+	  --lean-non-beq-type HartState --lean-non-beq-type ExecutionResult --lean-non-beq-type Step \
+	  --lean-import-file ../handwritten_support/RiscvExtrasExecutable.lean -o Lean_ZiskRV_executable \
+	  $(RISCV_RUN_MODULES) riscv.sail_project
+	python3 riscv/gen_lean_registers.py $(SAIL_RISCV_DIR) \
+	  build/riscv-lean/Lean_ZiskRV_executable/LeanZiskRVExecutable/Defs.lean lean/ZiskRiscvRun/Registers.lean
+	cd lean && $(LAKE) update && $(LAKE) build zisk_riscv_run
+
+## Run ELF, after `make difftest ELF=...` has prepared it, on ZisK's RISC-V
+## machine too, from the same memory but the ROM table (0x1_xxxx_xxxx_xxxx,
+## which only sail-zisk reads), and diff how it ends — the exit, the output, the dump range —
+## with sail-zisk's run of its transpilation.
+zisk-riscv:
+	@test -x $(ZISK_RISCV_RUN) || { echo "$(ZISK_RISCV_RUN) is missing — run make riscv-run" >&2; exit 1; }
+	$(ZISK_RISCV_RUN) $(ELF) $$(grep -vE '^-b 0x1[0-9a-f]{12},' $(DIFF_DIR)/mem.args) \
+	  $(if $(DUMP),--dump $(DUMP)) > $(DIFF_DIR)/riscv.end
+	@grep -E '^(end|out|dump) ' $(DIFF_DIR)/sail.trace | diff -u - $(DIFF_DIR)/riscv.end | head -20; \
+	  if grep -E '^(end|out|dump) ' $(DIFF_DIR)/sail.trace | cmp -s - $(DIFF_DIR)/riscv.end; then \
+	    echo "OK: ZisK's RISC-V machine ends as sail-zisk does: exit, output$(if $(DUMP), and dump)"; \
+	  else echo "FAIL: ZisK's RISC-V machine ends otherwise than sail-zisk (in $(DIFF_DIR))" >&2; exit 1; fi
 
 ## Build the equivalence package in lean/, which imports both models. Run
 ## `make lean` and `make riscv` first.
@@ -134,7 +188,8 @@ RISCV_GCC ?= riscv-none-elf-gcc
 SUITES    ?= I M A B K
 compliance:
 	python3 test/compliance/run.py --arch-test '$(ARCH_TEST)' --gcc '$(RISCV_GCC)' \
-	  $(if $(wildcard $(RISCV_SIM)),--riscv-sim '$(RISCV_SIM)') $(SUITES)
+	  $(if $(wildcard $(RISCV_SIM)),--riscv-sim '$(RISCV_SIM)') \
+	  $(if $(and $(wildcard $(RISCV_SIM)),$(wildcard $(ZISK_RISCV_RUN))),--zisk-riscv) $(SUITES)
 
 ## Every program the model is difftested on.
 # ziskasm's diagnostic program: every family of operations, each checked

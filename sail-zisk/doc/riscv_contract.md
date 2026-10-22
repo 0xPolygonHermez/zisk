@@ -188,6 +188,21 @@ definition, and is left for later.
 > **Precondition Z.** The program makes no zkvmcall: no access to CSRs
 > 0x850–0x8BF or 0x8E0–0x8E7.
 
+## As a machine
+
+`lean/ZiskRiscv` states this contract in Lean, as a machine: sail-riscv's
+step, in ZisK's profile, except at a sequence of §§ 7–8, which runs
+sail-zisk's own operation on the RISC-V memory, and at the end of § 4. It
+is generic in the RISC-V model: on sail-riscv's Lean, it is the RISC-V side
+of the theorem; on its executable Lean (`lean/ZiskRiscvRun`,
+`make riscv-run`), it runs programs, and ends every compliance test and the
+fibonacci guest as sail-zisk ends their transpilations (`make zisk-riscv`,
+`make compliance`).
+
+Memory a ZisK run starts as 0 — the RAM, the ROM's unused bytes, the input
+past its end — the machine reads as 0 inside the regions of § 2; sail-riscv's
+Lean, which has no such default, is retried with the byte written 0.
+
 ## Preconditions, together
 
 A program is in the contract when it is in the instruction set of § 1 and

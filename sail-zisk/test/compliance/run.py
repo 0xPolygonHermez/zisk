@@ -8,7 +8,9 @@ and the model's C emulator run the transpiled program, and every step must
 agree, the test's signature included. With --riscv-sim, sail-riscv's C
 emulator also runs the RISC-V program itself, in ZisK's profile
 (build/riscv/zisk_rv64.json, from riscv/zisk_profile.py), up to the halt (exit_cleanup), and its signature
-must be the model's. Prints a line per test and a summary, and writes it to
+must be the model's. With --zisk-riscv, ZisK's RISC-V machine
+(lean/ZiskRiscvRun, `make riscv-run`) runs it as well, and must end as the
+model does: exit, output and signature. Prints a line per test and a summary, and writes it to
 build/compliance/results.txt. Exit status 1 if any test fails.
 
 Usage: run.py [--arch-test DIR] [--gcc GCC] [--riscv-sim SIM] [-j N] [SUITE ...]
@@ -113,7 +115,18 @@ def ending(tag, halt):
     return f'stops before the test\'s halt, after {len(steps)} steps, last in the program at {at}'
 
 
-def difftest(suite, name, elf, nm, sim):
+def zisk_riscv(tag, elf, begin, end):
+    """None if ZisK's RISC-V machine ends the test as the model does; else why not."""
+    r = subprocess.run(['make', '--no-print-directory', 'zisk-riscv', f'ELF={elf}', f'NAME={tag}',
+                        f'DUMP={begin:x},{end:x}'], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode == 0:
+        return None
+    out = r.stdout + r.stderr
+    return next((l.strip() for l in out.splitlines() if l.startswith(('FAIL', 'zisk_riscv_run', 'failure'))),
+                f'exit {r.returncode}')[:160]
+
+
+def difftest(suite, name, elf, nm, sim, zrv):
     tag = f'{suite}-{name}'
     sym = symbols(nm, elf)
     begin, end = sym['begin_signature'], sym['end_signature']
@@ -139,6 +152,11 @@ def difftest(suite, name, elf, nm, sim):
             k = next((i for i, (x, y) in enumerate(zip(riscv, zisk)) if x != y), min(len(riscv), len(zisk)))
             return tag, False, (f'signature differs from sail-riscv\'s at word {k} of {len(zisk)}'
                                 f' ({begin + 4 * k:#x})')
+        if zrv:
+            why = zisk_riscv(tag, elf, begin, end)
+            if why:
+                return tag, False, f'ZisK\'s RISC-V machine: {why}'
+            return tag, True, f'{m.group(1)} steps; signature = sail-riscv\'s = ZisK\'s RISC-V machine\'s ({len(zisk)} words)'
         return tag, True, f'{m.group(1)} steps; signature = sail-riscv\'s ({len(zisk)} words)'
     # The first line that says why.
     for pat in (r'^FAIL.*$', r'panicked at.*$', r'^.*(?:Error|error)[^\n]*$', r'^@@.*$'):
@@ -156,6 +174,8 @@ def main():
                     help='a RISC-V GCC (RISCV_GCC)')
     ap.add_argument('--riscv-sim', default=os.environ.get('RISCV_SIM', ''),
                     help="sail-riscv's sail_riscv_sim, to compare signatures with (RISCV_SIM)")
+    ap.add_argument('--zisk-riscv', action='store_true',
+                    help="also run each test on ZisK's RISC-V machine (needs make riscv-run, and --riscv-sim)")
     ap.add_argument('-j', type=int, default=os.cpu_count() or 4)
     ap.add_argument('suites', nargs='*', default=['I', 'M', 'A', 'B', 'K'])
     args = ap.parse_args()
@@ -189,7 +209,7 @@ def main():
             elif f'{suite}-{name}' in SKIP:
                 results.append((f'{suite}-{name}', None, 'skipped: ' + SKIP[f'{suite}-{name}']))
             elif ok:
-                runs.append(pool.submit(difftest, suite, name, elf, nm, args.riscv_sim))
+                runs.append(pool.submit(difftest, suite, name, elf, nm, args.riscv_sim, args.zisk_riscv))
             else:
                 results.append((f'{suite}-{name}', False, 'does not compile: ' + err.strip().split('\n')[0][:120]))
         for f in concurrent.futures.as_completed(runs):
@@ -207,7 +227,8 @@ def main():
         by_suite.setdefault(s, [0, 0])
         by_suite[s][0] += ok
         by_suite[s][1] += 1
-    against = 'ziskemu and sail-riscv' if args.riscv_sim else 'ziskemu'
+    against = ('ziskemu, sail-riscv and ZisK\'s RISC-V machine' if args.riscv_sim and args.zisk_riscv
+               else 'ziskemu and sail-riscv' if args.riscv_sim else 'ziskemu')
     summary = f'{passed} of {len(run)} tests agree with {against}: ' + ', '.join(
         f'{s} {p}/{n}' for s, (p, n) in by_suite.items()) + (f'; {skipped} skipped' if skipped else '')
     text = '\n'.join(lines + ['', summary]) + '\n'
