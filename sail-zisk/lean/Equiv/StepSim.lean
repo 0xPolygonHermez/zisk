@@ -18,21 +18,31 @@ namespace Equiv.Sim
 open Equiv.Riscv
 open LeanZiskRV LeanZiskRV.Functions Sail Sail.ArchSem
 
+/-- A step that changes no register but PC, nextPC, minstret,
+    minstret_increment and x registers keeps StepReady. -/
+theorem _root_.Equiv.Riscv.StepReady.keep {s s' : RVState} {rs : List PMA_Region} (hr : StepReady s rs)
+    (hwf : WF s')
+    (ho : ∀ r, isXReg r = false → r ≠ Register.PC → r ≠ Register.nextPC → r ≠ Register.minstret →
+      r ≠ Register.minstret_increment → s'.regs.get? r = s.regs.get? r) : StepReady s' rs := by
+  have e : ∀ r, isXReg r = false → r ≠ Register.PC → r ≠ Register.nextPC → r ≠ Register.minstret →
+      r ≠ Register.minstret_increment → s'.regs.get? r = s.regs.get? r := ho
+  refine ⟨hwf, ?_, ?_, ?_, ?_, hr.mem.congr ?_⟩
+  · rw [e _ (by decide) (by decide) (by decide) (by decide) (by decide)]; exact hr.mip
+  · rw [e _ (by decide) (by decide) (by decide) (by decide) (by decide)]; exact hr.mie
+  · rw [e _ (by decide) (by decide) (by decide) (by decide) (by decide)]; exact hr.hart
+  · rw [e _ (by decide) (by decide) (by decide) (by decide) (by decide)]; exact hr.elp
+  · intro r hrm
+    simp only [memRegs, List.mem_cons, List.not_mem_nil, or_false] at hrm
+    rcases hrm with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+      exact e _ (by decide) (by decide) (by decide) (by decide) (by decide)
+
 set_option maxHeartbeats 4000000 in
-/-- One step of each, on an R-type instruction with rs1, rs2, rd ≠ x0. -/
-theorem rtype_step_sim (s : RVState) (h : WF s) (hmip : s.regs.get? Register.mip = some 0)
-    (hmie : s.regs.get? Register.mie = some 0)
-    (hhs : s.regs.get? Register.hart_state = some (.HART_ACTIVE ()))
-    (help : s.regs.get? Register.elp = some (landing_pad_bits_backwards .NO_LP_EXPECTED))
-    (rs : List PMA_Region) (hs : MemReady s rs)
-    (pc : BitVec 64) (hpc : s.regs.get? Register.PC = some pc) (hal : pc.toNat % 4 = 0)
-    (r1 r2 : PMA_Region) (hm1 : matching_pma_region rs (.Physaddr pc) 2 = some r1)
-    (hm2 : matching_pma_region rs (.Physaddr (pc + 2)) 2 = some r2)
-    (hx1 : r1.attributes.executable = true) (hx2 : r2.attributes.executable = true)
-    (b0 b1 b2 b3 : BitVec 8)
-    (h0 : s.mem.get? pc.toNat = some b0) (h1 : s.mem.get? (pc.toNat + 1) = some b1)
-    (h2 : s.mem.get? (pc.toNat + 2) = some b2) (h3 : s.mem.get? (pc.toNat + 3) = some b3)
-    (hc : b0.extractLsb 1 0 = 3#2) (op : rop)
+/-- One step of each, on an R-type instruction with rs1, rs2, rd ≠ x0: the
+    registers agree after, both pcs are pc + 4, and sail-riscv's state is
+    still ready for a step, with its memory unchanged. -/
+theorem rtype_step_sim (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
+    (pc : BitVec 64) (hpc : s.regs.get? Register.PC = some pc)
+    (b0 b1 b2 b3 : BitVec 8) (hw : WordAt s rs pc b0 b1 b2 b3) (op : rop)
     (hop : (b3 ++ b2 ++ (b1 ++ b0)).extractLsb 6 0 = 0x33#7)
     (hf3 : (b3 ++ b2 ++ (b1 ++ b0)).extractLsb 14 12 = rtypeF3 op)
     (hf7 : (b3 ++ b2 ++ (b1 ++ b0)).extractLsb 31 25 = rtypeF7 op)
@@ -53,7 +63,9 @@ theorem rtype_step_sim (s : RVState) (h : WF s) (hmip : s.regs.get? Register.mip
       z'.regs.get? _root_.Zisk.Register.Xs = some xs' ∧
       RegsAgree s' xs' ∧
       s'.regs.get? Register.PC = some (pc + 4) ∧
-      z'.regs.get? _root_.Zisk.Register.PC = some (pc + 4) := by
+      z'.regs.get? _root_.Zisk.Register.PC = some (pc + 4) ∧
+      z'.regs.get? _root_.Zisk.Register.Step = some (BitVec.addInt st 1) ∧
+      StepReady s' rs ∧ s'.mem = s.mem := by
   intro rd rs1 rs2
   have e1 : rs1.toNat ≠ 0 := hr1
   have e2 : rs2.toNat ≠ 0 := hr2
@@ -63,15 +75,15 @@ theorem rtype_step_sim (s : RVState) (h : WF s) (hmip : s.regs.get? Register.mip
   have a2 := agree rs2.toNat (by omega) l2
   have hrd5 : (b3 ++ b2 ++ (b1 ++ b0)).extractLsb 11 7 ≠ 0#5 := by
     intro e; apply hrd; show (BitVec.extractLsb 11 7 (b3 ++ b2 ++ (b1 ++ b0))).toNat = 0; rw [e]; rfl
-  obtain ⟨s', hrun, -, -, hpc', hxs', -⟩ :=
-    try_step_rtype s h hmip hmie hhs help rs hs pc hpc hal r1 r2 hm1 hm2 hx1 hx2 b0 b1 b2 b3 h0 h1 h2 h3 hc op
-      hop hf3 hf7 hrd5 _ _ a1 a2 n
+  obtain ⟨s', hrun, hmem, hwf, hpc', hxs', ho⟩ :=
+    try_step_rtype s rs hr pc hpc b0 b1 b2 b3 hw op hop hf3 hf7 hrd5 _ _ a1 a2 n
   obtain ⟨-, hag⟩ := rtype_regs s xs op rs1 rs2 rd e1 e2 ed agree
   refine ⟨s', _, vectorUpdate xs rd.toNat
       (_root_.Zisk.Functions.zisk_exec (ziskOp op) xs[(rs1.toNat : Int)]! xs[(rs2.toNat : Int)]!).1, hrun,
     Equiv.Zisk.execute_regop z (ziskOp op) (pureOp op) rd.toNat rs1.toNat rs2.toNat
       (by omega) (by omega) (by omega) xs pc st hx hzpc hst,
-    by simp [Std.ExtDHashMap.get?_insert], ?_, hpc', by simp⟩
+    by simp [Std.ExtDHashMap.get?_insert], ?_, hpc', by simp, by simp [Std.ExtDHashMap.get?_insert],
+    hr.keep hwf ho, hmem⟩
   intro k hk1 hk2
   rw [hxs' k hk2]
   have := hag k hk1 hk2

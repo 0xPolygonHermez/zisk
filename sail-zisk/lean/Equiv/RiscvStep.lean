@@ -171,36 +171,54 @@ theorem MemReady.congr {s t : RVState} {rs : List PMA_Region} (hs : MemReady s r
   obtain ⟨e1, e2, e3, e4, e5, e6, e7⟩ := he
   exact ⟨e1 ▸ hp, e2 ▸ hm, e3 ▸ hmi, e4 ▸ hse, e5 ▸ hme, e6 ▸ hh, e7 ▸ hr⟩
 
+/-- What a step needs of the state, whatever the instruction: well formed,
+    no interrupt pending, the hart active, no landing pad expected, and
+    memory accesses as RiscvMem states them. Every step here keeps it. -/
+structure StepReady (s : RVState) (rs : List PMA_Region) : Prop where
+  wf : WF s
+  mip : s.regs.get? mip = some 0
+  mie : s.regs.get? mie = some 0
+  hart : s.regs.get? hart_state = some (.HART_ACTIVE ())
+  elp : s.regs.get? elp = some (landing_pad_bits_backwards .NO_LP_EXPECTED)
+  mem : MemReady s rs
+
+/-- An instruction word at pc that sail-riscv fetches as such: aligned, in
+    executable memory, not compressed. -/
+def ExecAt (rs : List PMA_Region) (a : BitVec 64) : Prop :=
+  ∃ r, matching_pma_region rs (.Physaddr a) 2 = some r ∧ r.attributes.executable = true
+
+structure WordAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64) (b0 b1 b2 b3 : BitVec 8) : Prop where
+  al : pc.toNat % 4 = 0
+  x1 : ExecAt rs pc
+  x2 : ExecAt rs (pc + 2)
+  h0 : s.mem.get? pc.toNat = some b0
+  h1 : s.mem.get? (pc.toNat + 1) = some b1
+  h2 : s.mem.get? (pc.toNat + 2) = some b2
+  h3 : s.mem.get? (pc.toNat + 3) = some b3
+  c : b0.extractLsb 1 0 = 3#2
+
 set_option maxHeartbeats 4000000 in
-/-- One step of sail-riscv, in ZisK's profile, on an R-type instruction
-    with rd ≠ x0: the four bytes at pc decode to it, it executes, pc moves to
-    pc + 4; and nothing else changes but the step's own bookkeeping (nextPC,
-    the retired-instruction count). -/
-theorem try_step_rtype (s : RVState) (h : WF s) (hmip : s.regs.get? mip = some 0)
-    (hmie : s.regs.get? mie = some 0) (hhs : s.regs.get? hart_state = some (.HART_ACTIVE ()))
-    (help : s.regs.get? elp = some (landing_pad_bits_backwards .NO_LP_EXPECTED))
-    (rs : List PMA_Region) (hs : MemReady s rs)
-    (pc : BitVec 64) (hpc : s.regs.get? PC = some pc) (hal : pc.toNat % 4 = 0)
-    (r1 r2 : PMA_Region) (hm1 : matching_pma_region rs (.Physaddr pc) 2 = some r1)
-    (hm2 : matching_pma_region rs (.Physaddr (pc + 2)) 2 = some r2)
-    (hx1 : r1.attributes.executable = true) (hx2 : r2.attributes.executable = true)
-    (b0 b1 b2 b3 : BitVec 8)
-    (h0 : s.mem.get? pc.toNat = some b0) (h1 : s.mem.get? (pc.toNat + 1) = some b1)
-    (h2 : s.mem.get? (pc.toNat + 2) = some b2) (h3 : s.mem.get? (pc.toNat + 3) = some b3)
-    (hc : b0.extractLsb 1 0 = 3#2) (op : rop)
-    (hop : (b3 ++ b2 ++ (b1 ++ b0)).extractLsb 6 0 = 0x33#7)
-    (hf3 : (b3 ++ b2 ++ (b1 ++ b0)).extractLsb 14 12 = rtypeF3 op)
-    (hf7 : (b3 ++ b2 ++ (b1 ++ b0)).extractLsb 31 25 = rtypeF7 op)
-    (hrd : (b3 ++ b2 ++ (b1 ++ b0)).extractLsb 11 7 ≠ 0#5)
-    (v1 v2 : BitVec 64)
-    (hv1 : getX s ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 19 15).toNat = some v1)
-    (hv2 : getX s ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 24 20).toNat = some v2) (n : Nat) :
+/-- One step of sail-riscv, in ZisK's profile, on any instruction that
+    writes one register: the word at pc decodes to `ins` (in machine mode),
+    and `ins` writes `val` to rd ≠ x0 and does nothing else (from any state
+    whose x registers are s's). Then pc moves to pc + 4, rd gets val, and no
+    register but PC, nextPC, minstret, minstret_increment and rd changes. -/
+theorem try_step_alu (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
+    (pc : BitVec 64) (hpc : s.regs.get? PC = some pc)
+    (b0 b1 b2 b3 : BitVec 8) (hw : WordAt s rs pc b0 b1 b2 b3) (ins : instruction)
+    (hdec : ∀ t : RVState, t.regs.get? cur_privilege = some .Machine →
+      (∃ v, t.regs.get? mseccfg = some v) →
+      (interpretSailEffects (ext_decode (b3 ++ b2 ++ (b1 ++ b0)))).run t = .ok ins t)
+    (rd : Nat) (hrd : rd ≠ 0) (val : BitVec 64)
+    (hexec : ∀ t : RVState, (∀ k, k < 32 → getX t k = getX s k) →
+      (interpretSailEffects (execute ins)).run t = .ok RETIRE_SUCCESS (setX t rd val)) (n : Nat) :
     ∃ s', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
       s'.mem = s.mem ∧ WF s' ∧ s'.regs.get? PC = some (pc + 4) ∧
-      (∀ k, k < 32 → getX s' k =
-        getX (setX s ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 11 7).toNat (rtypeVal op v1 v2)) k) ∧
+      (∀ k, k < 32 → getX s' k = getX (setX s rd val) k) ∧
       (∀ r, isXReg r = false → r ≠ PC → r ≠ nextPC → r ≠ minstret → r ≠ minstret_increment →
         s'.regs.get? r = s.regs.get? r) := by
+  obtain ⟨h, hmip, hmie, hhs, help, hs⟩ := hr
+  obtain ⟨hal, ⟨r1, hm1, hx1⟩, ⟨r2, hm2, hx2⟩, h0, h1, h2, h3, hc⟩ := hw
   have hp := hs.priv
   simp only [try_step, run_hart_active, should_inc_minstret, counter_priv_filter_bit, dispatchInterrupt,
     getPendingSet, read_mip, is_landing_pad_expected, hart_is_active, hart_is_waiting, tick_pc,
@@ -221,25 +239,20 @@ theorem try_step_rtype (s : RVState) (h : WF s) (hmip : s.regs.get? mip = some 0
   · exact h3
   dsimp only [ext_fetch_hook]
   repeat rv_step h
-  rw [decode_rtype _ _ op hop hf3 hf7 hrd ?hp1 (regVal h mseccfg) ?hsec1]
+  rw [hdec _ ?hp1 ?hsec1]
   rotate_left
   · simp only [Std.ExtDHashMap.get?_insert]; simpa using hp
-  · simp only [Std.ExtDHashMap.get?_insert]; simpa using h.get? mseccfg
+  · exact ⟨regVal h mseccfg, by simp only [Std.ExtDHashMap.get?_insert]; simpa using h.get? mseccfg⟩
   repeat rv_step h
-  simp only [no_lp, Bool.false_and, Bool.false_eq_true, if_false, execute_rtype_eq]
+  simp only [no_lp, Bool.false_and, Bool.false_eq_true, if_false]
   repeat rv_step h
-  rw [execute_rtype _ op _ _ _ v1 v2 ?g1 ?g2]
+  rw [hexec _ ?gx]
   rotate_left
-  · simp (disch := decide) only [getX, Std.ExtDHashMap.get?_insert, beq_xreg_false, Bool.false_eq_true,
+  · intro k _
+    simp (disch := decide) only [getX, Std.ExtDHashMap.get?_insert, beq_xreg_false, Bool.false_eq_true,
       dite_false]
-    exact hv1
-  · simp (disch := decide) only [getX, Std.ExtDHashMap.get?_insert, beq_xreg_false, Bool.false_eq_true,
-      dite_false]
-    exact hv2
-  have hk : (BitVec.extractLsb 11 7 (b3 ++ b2 ++ (b1 ++ b0) : BitVec 32)).toNat ≠ 0 := by
-    intro e; apply hrd; apply BitVec.eq_of_toNat_eq; simpa using e
   simp only [setX, RETIRE_SUCCESS]
-  rw [if_neg]; rotate_left; · exact hk
+  rw [if_neg]; rotate_left; · exact hrd
   repeat rv_step h
   split
   all_goals (repeat rv_step h)
@@ -257,5 +270,39 @@ theorem try_step_rtype (s : RVState) (h : WF s) (hmip : s.regs.get? mip = some 0
   all_goals simp (disch := decide) only [Std.ExtDHashMap.get?_insert, beq_xreg_false, Bool.false_eq_true,
                      dite_false]
   all_goals rfl
+
+/-- getX agreement gives the source registers' values. -/
+theorem getX_of_agree {s t : RVState} (he : ∀ k, k < 32 → getX t k = getX s k) {k : Nat} (hk : k < 32)
+    {v : BitVec 64} (hv : getX s k = some v) : getX t k = some v := (he k hk).trans hv
+
+/-- One step of sail-riscv on an R-type instruction with rd ≠ x0. -/
+theorem try_step_rtype (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
+    (pc : BitVec 64) (hpc : s.regs.get? PC = some pc)
+    (b0 b1 b2 b3 : BitVec 8) (hw : WordAt s rs pc b0 b1 b2 b3) (op : rop)
+    (hop : (b3 ++ b2 ++ (b1 ++ b0)).extractLsb 6 0 = 0x33#7)
+    (hf3 : (b3 ++ b2 ++ (b1 ++ b0)).extractLsb 14 12 = rtypeF3 op)
+    (hf7 : (b3 ++ b2 ++ (b1 ++ b0)).extractLsb 31 25 = rtypeF7 op)
+    (hrd : (b3 ++ b2 ++ (b1 ++ b0)).extractLsb 11 7 ≠ 0#5)
+    (v1 v2 : BitVec 64)
+    (hv1 : getX s ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 19 15).toNat = some v1)
+    (hv2 : getX s ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 24 20).toNat = some v2) (n : Nat) :
+    ∃ s', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
+      s'.mem = s.mem ∧ WF s' ∧ s'.regs.get? PC = some (pc + 4) ∧
+      (∀ k, k < 32 → getX s' k =
+        getX (setX s ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 11 7).toNat (rtypeVal op v1 v2)) k) ∧
+      (∀ r, isXReg r = false → r ≠ PC → r ≠ nextPC → r ≠ minstret → r ≠ minstret_increment →
+        s'.regs.get? r = s.regs.get? r) := by
+  have hk : ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 11 7).toNat ≠ 0 := by
+    intro e; apply hrd; apply BitVec.eq_of_toNat_eq; simpa using e
+  refine try_step_alu s rs hr pc hpc b0 b1 b2 b3 hw
+    (.RTYPE (.Regidx ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 24 20), .Regidx ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 19 15),
+      .Regidx ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 11 7), op)) ?_ _ hk _ ?_ n
+  · intro t htp ⟨v, hv⟩
+    exact decode_rtype t _ op hop hf3 hf7 hrd htp v hv
+  · intro t he
+    rw [execute_rtype_eq]
+    have l1 : ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 19 15 : RegBits).toNat < 32 := RegBits.lt _
+    have l2 : ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 24 20 : RegBits).toNat < 32 := RegBits.lt _
+    exact execute_rtype t op _ _ _ v1 v2 (getX_of_agree he l1 hv1) (getX_of_agree he l2 hv2)
 
 end Equiv.Riscv
