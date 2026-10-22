@@ -92,6 +92,9 @@ impl CoordinatorClient {
     }
 
     /// Submit an extended job with caller-defined key/value metadata.
+    // The extended API is deprecated in favour of `JobRequest.metadata`; this
+    // moves to it together with the SDK's metadata API.
+    #[allow(deprecated)]
     pub fn submit_job_ext(
         &self,
         kind: DomainJobKind,

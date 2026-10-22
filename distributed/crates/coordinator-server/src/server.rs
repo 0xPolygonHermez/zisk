@@ -57,7 +57,8 @@ impl<B: BackendService> CoordinatorServer<B> {
             .max_decoding_message_size(MAX_MESSAGE_SIZE)
             .max_encoding_message_size(MAX_MESSAGE_SIZE);
 
-        // Extended API: same handler, carries opt-in job-level metadata.
+        // Deprecated extended API: an alias of `JobRequest`, kept until the first non-alpha
+        // release for clients built against it.
         let ext_service = GrpcAdapter::new(CoordinatorHandler::new(Arc::clone(&self.backend)));
         let ext_svc = ZiskCoordinatorApiExtServer::new(ext_service)
             .max_decoding_message_size(MAX_MESSAGE_SIZE)

@@ -988,6 +988,7 @@ impl Coordinator {
         request: LaunchProofRequestDto,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
         let seed = self.resolve_random_seed(request.random_seed)?;
+        let metadata = self.admit_job_metadata(request.metadata.clone())?;
         // A worker holds only the programs set up on it: sent any other, it fails the task.
         if !self.is_set_up(&request.hash_id).await {
             return Err(CoordinatorError::ProgramNotSetup(request.hash_id.clone()));
@@ -1013,7 +1014,7 @@ impl Coordinator {
                 request.inputs_mode,
                 request.hints_mode,
                 request.simulated_node,
-                request.metadata.clone(),
+                metadata,
                 request.execution_only,
                 request.proof_type,
             )
@@ -1328,6 +1329,20 @@ impl Coordinator {
                 Ok(seed)
             }
             None => RandomSeed::random().map_err(|e| CoordinatorError::Internal(e.to_string())),
+        }
+    }
+
+    /// The job's caller metadata, an empty map read as none. Metadata is rejected
+    /// (`JobMetadataNotAllowed`) unless `allow_job_metadata` is set.
+    fn admit_job_metadata(
+        &self,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
+    ) -> CoordinatorResult<Option<std::collections::BTreeMap<String, String>>> {
+        match metadata.filter(|m| !m.is_empty()) {
+            Some(_) if !self.config.coordinator.allow_job_metadata => {
+                Err(CoordinatorError::JobMetadataNotAllowed)
+            }
+            metadata => Ok(metadata),
         }
     }
 
@@ -5120,6 +5135,39 @@ mod tests {
             coordinator.resolve_random_seed(None).unwrap(),
             coordinator.resolve_random_seed(None).unwrap()
         );
+    }
+
+    // --- admit_job_metadata ---------------------------------------------------------
+
+    fn job_metadata() -> std::collections::BTreeMap<String, String> {
+        std::collections::BTreeMap::from([("team".to_string(), "zkvm".to_string())])
+    }
+
+    #[tokio::test]
+    async fn admit_job_metadata_keeps_metadata_by_default() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert_eq!(
+            coordinator.admit_job_metadata(Some(job_metadata())).unwrap(),
+            Some(job_metadata())
+        );
+    }
+
+    #[tokio::test]
+    async fn admit_job_metadata_reads_an_empty_map_as_none() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert_eq!(coordinator.admit_job_metadata(Some(Default::default())).unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn admit_job_metadata_rejects_metadata_when_not_allowed() {
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.allow_job_metadata = false));
+        assert!(matches!(
+            coordinator.admit_job_metadata(Some(job_metadata())),
+            Err(CoordinatorError::JobMetadataNotAllowed)
+        ));
+        // A job without metadata is unaffected by the policy.
+        assert_eq!(coordinator.admit_job_metadata(Some(Default::default())).unwrap(), None);
     }
 
     /// Every worker re-executes the whole program, so all must get the job's one seed.

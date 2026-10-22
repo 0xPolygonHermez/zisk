@@ -225,6 +225,12 @@ message RegisterAggregationProgramResponse {
 
 message JobRequestMessage {
   JobKind job_kind = 1;
+  // Caller-defined key/value labels for the job; empty means none. At most 32
+  // entries, keys up to 128 bytes and values up to 1024 bytes. Accepted for
+  // prove and execute jobs; any other kind rejects a non-empty map with
+  // INVALID_ARGUMENT. A coordinator that does not allow job metadata rejects it
+  // with JOB_METADATA_NOT_ALLOWED.
+  map<string, string> metadata = 2;
 }
 
 message JobResponse {

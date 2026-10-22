@@ -74,9 +74,10 @@ async fn start_test_server_with_backend() -> (ZiskCoordinatorApiClient<Channel>,
     (client, backend_clone)
 }
 
-/// Start a coordinator server exposing BOTH the base and extended APIs over a
-/// single shared `MockBackend`. Returns a base client (for register/wait), an
-/// extended client (for `job_request_ext`), and the backend for assertions.
+/// Start a coordinator server exposing BOTH the base and the deprecated extended
+/// APIs over a single shared `MockBackend`. Returns a base client (for
+/// register/wait), an extended client (for `job_request_ext`), and the backend
+/// for assertions.
 async fn start_test_server_ext(
 ) -> (ZiskCoordinatorApiClient<Channel>, ZiskCoordinatorApiExtClient<Channel>, Arc<MockBackend>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -119,15 +120,89 @@ async fn register_program(client: &mut ZiskCoordinatorApiClient<Channel>) -> Str
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-#[tokio::test]
-async fn job_request_ext_round_trips_metadata() {
-    let (mut base_client, mut ext_client, backend) = start_test_server_ext().await;
-    let hash_id = register_program(&mut base_client).await;
-
-    let metadata = std::collections::HashMap::from([
+fn job_metadata() -> std::collections::HashMap<String, String> {
+    std::collections::HashMap::from([
         ("team".to_string(), "zkvm".to_string()),
         ("run".to_string(), "42".to_string()),
-    ]);
+    ])
+}
+
+fn execute_job(hash_id: String) -> JobKind {
+    JobKind {
+        kind: Some(job_kind::Kind::Execute(ExecuteRequest {
+            hash_id,
+            input: inline_input(),
+            hints: None,
+            random_seed: None,
+            execute_timeout: None,
+        })),
+    }
+}
+
+#[tokio::test]
+async fn job_request_round_trips_metadata() {
+    let (mut client, backend) = start_test_server_with_backend().await;
+    let hash_id = register_program(&mut client).await;
+
+    let response = client
+        .job_request(JobRequestMessage {
+            job_kind: Some(execute_job(hash_id)),
+            metadata: job_metadata(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    // Metadata must have propagated through grpc → handler → backend.
+    let seen = backend.submit_metadata(response.job_id.parse().unwrap()).await;
+    let expected: std::collections::BTreeMap<String, String> = job_metadata().into_iter().collect();
+    assert_eq!(seen, expected, "submitted metadata must reach the backend");
+}
+
+#[tokio::test]
+async fn job_request_rejects_metadata_on_a_setup_job() {
+    let mut client = start_test_server().await;
+    let hash_id = register_program(&mut client).await;
+
+    let err = client
+        .job_request(JobRequestMessage {
+            job_kind: Some(JobKind {
+                kind: Some(job_kind::Kind::Setup(SetupRequest {
+                    hash_id,
+                    with_hints: false,
+                    emulator_only: false,
+                    program_name: "test".into(),
+                })),
+            }),
+            metadata: job_metadata(),
+        })
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.code(), tonic::Code::InvalidArgument);
+}
+
+#[tokio::test]
+async fn job_request_rejects_oversized_metadata() {
+    let mut client = start_test_server().await;
+    let hash_id = register_program(&mut client).await;
+
+    let too_many = (0..33).map(|i| (format!("k{i}"), "v".to_string())).collect();
+    let err = client
+        .job_request(JobRequestMessage { job_kind: Some(execute_job(hash_id)), metadata: too_many })
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.code(), tonic::Code::InvalidArgument);
+}
+
+/// `JobRequestExt` is a deprecated alias of `JobRequest`; it must keep working
+/// for clients built against it until it is removed.
+#[tokio::test]
+#[allow(deprecated)]
+async fn job_request_ext_alias_round_trips_metadata() {
+    let (mut base_client, mut ext_client, backend) = start_test_server_ext().await;
+    let hash_id = register_program(&mut base_client).await;
 
     // Submit via the extended service, carrying job-level metadata.
     let job_id = ext_client
@@ -141,7 +216,7 @@ async fn job_request_ext_round_trips_metadata() {
                     execute_timeout: None,
                 })),
             }),
-            metadata: metadata.clone(),
+            metadata: job_metadata(),
         })
         .await
         .unwrap()
@@ -152,7 +227,7 @@ async fn job_request_ext_round_trips_metadata() {
 
     // Metadata must have propagated through grpc → handler → backend.
     let seen = backend.submit_metadata(job_id.parse().unwrap()).await;
-    let expected: std::collections::BTreeMap<String, String> = metadata.into_iter().collect();
+    let expected: std::collections::BTreeMap<String, String> = job_metadata().into_iter().collect();
     assert_eq!(seen, expected, "submitted metadata must reach the backend");
 
     // The job created via the extended API is visible on the base API and runs
@@ -210,6 +285,7 @@ async fn prove_job_wait_result_completes() {
                     proof_dest: ProofKind::Stark as i32,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -255,6 +331,7 @@ async fn prove_job_watch_stream_receives_all_events() {
                     proof_dest: ProofKind::Stark as i32,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -300,6 +377,7 @@ async fn setup_job_completes() {
                     program_name: "test".into(),
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -341,6 +419,7 @@ async fn execute_job_completes() {
                     execute_timeout: None,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -384,6 +463,7 @@ async fn wrap_job_completes() {
                     proof_dest: ProofKind::Stark as i32,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -421,6 +501,7 @@ async fn wrap_job_completes() {
                     wrap_timeout: None,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -468,6 +549,7 @@ async fn cancel_running_job_returns_true() {
                     proof_dest: ProofKind::Stark as i32,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -500,6 +582,7 @@ async fn cancel_completed_job_returns_false() {
                     program_name: "test".into(),
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -555,6 +638,7 @@ async fn program_not_found_returns_error() {
                     program_name: "test".into(),
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap_err();
@@ -580,6 +664,7 @@ async fn wait_result_timeout_returns_current_status() {
                     proof_dest: ProofKind::Stark as i32,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -616,6 +701,7 @@ async fn push_input_multi_chunk_completes() {
                     proof_dest: ProofKind::Stark as i32,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -670,6 +756,7 @@ async fn push_input_on_terminal_job_fails() {
                     program_name: "test".into(),
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -724,6 +811,7 @@ async fn push_hints_input_chunks_are_stored() {
                     proof_dest: ProofKind::Stark as i32,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -767,6 +855,7 @@ async fn push_hints_input_on_terminal_job_fails() {
                     program_name: "test".into(),
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()

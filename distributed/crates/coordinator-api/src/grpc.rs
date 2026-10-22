@@ -140,7 +140,10 @@ impl From<RegisterAggregationProgramResponse> for RegisterAggregationProgramResp
 
 impl tonic::IntoRequest<JobRequestMessage> for DomainJobKind {
     fn into_request(self) -> tonic::Request<JobRequestMessage> {
-        tonic::Request::new(JobRequestMessage { job_kind: Some(self.into()) })
+        tonic::Request::new(JobRequestMessage {
+            job_kind: Some(self.into()),
+            metadata: Default::default(),
+        })
     }
 }
 
