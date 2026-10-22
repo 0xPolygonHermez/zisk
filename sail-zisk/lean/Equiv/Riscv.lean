@@ -12,9 +12,8 @@
   read to hold values — `misa`, too, for a branch, since sail-riscv checks
   the compressed extension before a jump.
 
-  Loads and stores are still to come: sail-riscv takes them through address
-  translation, PMP and PMA checks and misaligned splitting, which want
-  lemmas of their own under machine mode, PMP and region hypotheses.
+  Memory accesses — address translation, PMP and PMA checks, misaligned
+  splitting — are Equiv/RiscvMem.lean's.
 -/
 import LeanZiskRV
 
