@@ -176,6 +176,35 @@ theorem execute_add (s : RVState) (rs1 rs2 rd : RegBits) (v1 v2 : BitVec 64)
     run_pure']
   rw [r1]; dsimp only; rw [r2]; dsimp only; rw [w]
 
+/-- What an R-type instruction computes from its operands, as
+    sail-riscv's `execute_RTYPE` computes it. -/
+def rtypeVal : rop → BitVec 64 → BitVec 64 → BitVec 64
+  | .ADD, a, b => a + b
+  | .SLT, a, b => zero_extend (m := 64) (bool_to_bit (zopz0zI_s a b))
+  | .SLTU, a, b => zero_extend (m := 64) (bool_to_bit (zopz0zI_u a b))
+  | .AND, a, b => a &&& b
+  | .OR, a, b => a ||| b
+  | .XOR, a, b => a ^^^ b
+  | .SLL, a, b => shift_bits_left a (Sail.BitVec.extractLsb b (Functions.log2_xlen -i 1) 0)
+  | .SRL, a, b => shift_bits_right a (Sail.BitVec.extractLsb b (Functions.log2_xlen -i 1) 0)
+  | .SUB, a, b => a - b
+  | .SRA, a, b => shift_bits_right_arith a (Sail.BitVec.extractLsb b (Functions.log2_xlen -i 1) 0)
+
+/-- Any R-type instruction, any registers: rd gets what it computes. -/
+theorem execute_rtype (s : RVState) (op : rop) (rs1 rs2 rd : RegBits) (v1 v2 : BitVec 64)
+    (h1 : getX s rs1.toNat = some v1) (h2 : getX s rs2.toNat = some v2) :
+    (interpretSailEffects (execute_RTYPE (.Regidx rs2) (.Regidx rs1) (.Regidx rd) op)).run s
+      = .ok RETIRE_SUCCESS (setX s rd.toNat (rtypeVal op v1 v2)) := by
+  have r1 := rX_run s rs1.toNat rs1.lt v1 h1
+  have r2 := rX_run s rs2.toNat rs2.lt v2 h2
+  have w := wX_run s rd.toNat rd.lt (rtypeVal op v1 v2)
+  cases op <;>
+  · simp only [execute_RTYPE, rX_bits, wX_bits, toNatInt_toNat, interp_bind, interp_pure, run_bind',
+      run_pure']
+    repeat (first | rw [r1] | rw [r2]); dsimp only
+    repeat (first | (rw [r1]; dsimp only) | (rw [r2]; dsimp only))
+    simp only [rtypeVal] at w; rw [w]; rfl
+
 /-- `addi rd, rs1, imm`: rd gets rs1 + sign-extended imm. -/
 theorem execute_addi (s : RVState) (rs1 rd : RegBits) (imm : BitVec 12) (v1 : BitVec 64)
     (h1 : getX s rs1.toNat = some v1) :
