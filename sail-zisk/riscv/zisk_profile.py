@@ -11,9 +11,8 @@ interrupts. F and D are out of scope; the compressed instructions, Zbc and
 Zicond need transpiler features the default build leaves out (`compressed`
 is off to match the EF RISC-V target standard, IALIGN = 32).
 
-The memory map needs no change: the default's main memory,
-0x8000_0000..0xFFFF_FFFF, holds ZisK's ROM (ROM_ADDR, 0x9000_0000) and RAM
-(RAM_ADDR, 0xA000_0000), where the architectural tests live.
+Memory is ZisK's map: the input (read-only), the ROM (read-only,
+executable) and the RAM (read-write), and no PMP.
 
 Usage: zisk_profile.py <default config.json> <out.json>
     (`make riscv-sim`, `make riscv-zisk-lean`)
@@ -50,6 +49,29 @@ def main():
         kind['supported'] = False
     platform['clint']['supported'] = False
     platform['simple_interrupt_generator']['supported'] = False
+    # ZisK's memory map (contract § 2, pil/zisk.pil), and nothing else: an
+    # access outside it, or against its permissions, is an access fault, a
+    # trap, as it is a failure on ZisK. The attributes are the default's main
+    # memory's but for the permissions; sail-riscv's main memory must be
+    # writable, so the read-only regions are IO memory, which changes nothing
+    # else of an access.
+    memory = config['memory']
+    main = next(r for r in memory['regions'] if r['attributes']['mem_type'] == 'MainMemory')
+
+    def region(base, size, readable, writable, executable):
+        r = json.loads(json.dumps(main))
+        r['base']['value'], r['size']['value'] = hex(base), hex(size)
+        r['attributes'].update(readable=readable, writable=writable, executable=executable,
+                               mem_type='MainMemory' if writable else 'IOMemory')
+        return r
+    memory['regions'] = [
+        region(0x1000_0000, 0x8000_0000, True, False, False),  # input, INPUT_ADDR
+        region(0x9000_0000, 0x0800_0000, True, False, True),   # ROM, ROM_ADDR
+        region(0xA000_0000, 0x2000_0000, True, True, False),   # RAM, RAM_ADDR
+    ]
+    # ZisK has no PMP.
+    memory['pmp']['count'] = 0
+    memory['pmp']['usable_count'] = 0
     with open(out, 'w') as f:
         json.dump(config, f, indent=2)
         f.write('\n')

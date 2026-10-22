@@ -203,6 +203,14 @@ Memory a ZisK run starts as 0 — the RAM, the ROM's unused bytes, the input
 past its end — the machine reads as 0 inside the regions of § 2; sail-riscv's
 Lean, which has no such default, is retried with the byte written 0.
 
+The regions of § 2 are sail-riscv's PMA regions in ZisK's profile, with
+their permissions — the input readable, the ROM readable and executable, the
+RAM readable and writable — and there is no PMP. So an access outside § 2,
+against a region's permissions or straddling a region's end is an access
+fault in sail-riscv: a trap, and a failure, as on ZisK. One part of § 2 a
+PMA cannot state: the registers' slots, `[0xA040_0000, 0xA040_0140)`, which
+share a 4 KB page with the parameter area; to sail-riscv they are RAM.
+
 ## Preconditions, together
 
 A program is in the contract when it is in the instruction set of § 1 and
