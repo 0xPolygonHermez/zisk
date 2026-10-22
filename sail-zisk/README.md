@@ -176,7 +176,7 @@ As sail-riscv's:
 | `model/zisk_rom_table.sail` | The C emulator's ROM: any program's, read from a table in memory. |
 | `model/zisk_step.sail` | The execution step. |
 | `model/main.sail` | The C emulator's main loop and trace. |
-| `lean/` | The equivalence proofs: a Lake package importing both generated models; `ZiskRiscv/`, ZisK's RISC-V as a machine over sail-riscv; `ZiskRiscvRun/`, the machine on sail-riscv's executable Lean, and `zisk_riscv_run`, which runs programs on it. |
+| `lean/` | The equivalence proofs: a Lake package importing both generated models; `Equiv/Riscv.lean`, sail-riscv's semantics instruction by instruction (`add`, `addi`, `beq` so far); `ZiskRiscv/`, ZisK's RISC-V as a machine over sail-riscv; `ZiskRiscvRun/`, the machine on sail-riscv's executable Lean, and `zisk_riscv_run`, which runs programs on it. |
 | `test/` | The per-operation checks (`make optest`); `programs/`, the ZisK assembly programs `make difftest-all` runs besides the doubler, `memmap/` among them, the accesses ZisK refuses; and `compliance/`, the RISC-V architectural tests' harness for ZisK (`make compliance`). |
 | `riscv/` | `zisk_profile.py`: sail-riscv's configuration for the RISC-V ZisK runs; `gen_lean_registers.py`: the register set-up of sail-riscv's Lean emulator, for `zisk_riscv_run`. |
 | `doc/riscv_contract.md` | ZisK's RISC-V: what a RISC-V program means when ZisK runs it, where ZisK departs from RISC-V. |
