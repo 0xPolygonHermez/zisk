@@ -26,7 +26,7 @@ theorem _root_.Equiv.Riscv.StepReady.keep {s s' : RVState} {rs : List PMA_Region
       r ≠ Register.minstret_increment → s'.regs.get? r = s.regs.get? r) : StepReady s' rs := by
   have e : ∀ r, isXReg r = false → r ≠ Register.PC → r ≠ Register.nextPC → r ≠ Register.minstret →
       r ≠ Register.minstret_increment → s'.regs.get? r = s.regs.get? r := ho
-  refine ⟨hwf, ?_, ?_, ?_, ?_, hr.mem.congr ?_⟩
+  refine ⟨hwf, ?_, ?_, ?_, ?_, hr.mem.congr ?_, ?_⟩
   · rw [e _ (by decide) (by decide) (by decide) (by decide) (by decide)]; exact hr.mip
   · rw [e _ (by decide) (by decide) (by decide) (by decide) (by decide)]; exact hr.mie
   · rw [e _ (by decide) (by decide) (by decide) (by decide) (by decide)]; exact hr.hart
@@ -35,6 +35,8 @@ theorem _root_.Equiv.Riscv.StepReady.keep {s s' : RVState} {rs : List PMA_Region
     simp only [memRegs, List.mem_cons, List.not_mem_nil, or_false] at hrm
     rcases hrm with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
       exact e _ (by decide) (by decide) (by decide) (by decide) (by decide)
+  · obtain ⟨v, hv, hz⟩ := hr.pmm
+    exact ⟨v, by rw [e _ (by decide) (by decide) (by decide) (by decide) (by decide)]; exact hv, hz⟩
 
 set_option maxHeartbeats 4000000 in
 /-- One step of each, on an R-type instruction with rs1, rs2, rd ≠ x0: the
@@ -65,7 +67,7 @@ theorem rtype_step_sim (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs
       s'.regs.get? Register.PC = some (pc + 4) ∧
       z'.regs.get? _root_.Zisk.Register.PC = some (pc + 4) ∧
       z'.regs.get? _root_.Zisk.Register.Step = some (BitVec.addInt st 1) ∧
-      StepReady s' rs ∧ s'.mem = s.mem := by
+      StepReady s' rs ∧ s'.mem = s.mem ∧ z'.mem = z.mem := by
   intro rd rs1 rs2
   have e1 : rs1.toNat ≠ 0 := hr1
   have e2 : rs2.toNat ≠ 0 := hr2
@@ -83,7 +85,7 @@ theorem rtype_step_sim (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs
     Equiv.Zisk.execute_regop z (ziskOp op) (pureOp op) rd.toNat rs1.toNat rs2.toNat
       (by omega) (by omega) (by omega) xs pc st hx hzpc hst,
     by simp [Std.ExtDHashMap.get?_insert], ?_, hpc', by simp, by simp [Std.ExtDHashMap.get?_insert],
-    hr.keep hwf ho, hmem⟩
+    hr.keep hwf ho, hmem, rfl⟩
   intro k hk1 hk2
   rw [hxs' k hk2]
   have := hag k hk1 hk2

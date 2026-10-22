@@ -49,6 +49,8 @@ structure Rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) : Pro
   regs : ∃ xs, z.regs.get? _root_.Zisk.Register.Xs = some xs ∧ RegsAgree s xs
   pc : ∃ pc, s.regs.get? Register.PC = some pc ∧ z.regs.get? _root_.Zisk.Register.PC = some pc
   step : ∃ st, z.regs.get? _root_.Zisk.Register.Step = some st
+  /-- The same memory: both models keep it as a map of bytes. -/
+  mem : z.mem = s.mem
 
 /-- An R-type instruction, by its fields. -/
 structure RInstr where
@@ -108,7 +110,7 @@ theorem rstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
       (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧
       s'.regs.get? Register.PC = some (pc + 4) ∧ s'.mem = s.mem := by
-  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst⟩⟩ := hrel
+  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
   obtain ⟨hop, hf3, hf7, hrdx, hr1x, hr2x, hc⟩ := i.fields
@@ -118,8 +120,9 @@ theorem rstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     (by rw [hrdx]; exact ne_zero_toNat hi.rd) (by rw [hr1x]; exact ne_zero_toNat hi.rs1)
     (by rw [hr2x]; exact ne_zero_toNat hi.rs2) n z xs st hx hzpc hst agree
   simp only [hrdx, hr1x, hr2x] at this
-  obtain ⟨s', z', xs', hrun, hzrun, hx', hag, hpc'', hzpc', hst', hready, hmem⟩ := this
-  refine ⟨s', z', hrun, ?_, ⟨hready, ⟨xs', hx', hag⟩, ⟨_, hpc'', hzpc'⟩, ⟨_, hst'⟩⟩, hpc'', hmem⟩
+  obtain ⟨s', z', xs', hrun, hzrun, hx', hag, hpc'', hzpc', hst', hready, hmem, hzmem⟩ := this
+  refine ⟨s', z', hrun, ?_,
+    ⟨hready, ⟨xs', hx', hag⟩, ⟨_, hpc'', hzpc'⟩, ⟨_, hst'⟩, hzmem.trans (hzm.trans hmem.symm)⟩, hpc'', hmem⟩
   rw [zstep_run zrom z pc' hzpc, hi.rom]; exact hzrun
 
 /-- A block of R-type instructions at pc, pc + 4, …. -/

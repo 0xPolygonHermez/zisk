@@ -181,6 +181,8 @@ structure StepReady (s : RVState) (rs : List PMA_Region) : Prop where
   hart : s.regs.get? hart_state = some (.HART_ACTIVE ())
   elp : s.regs.get? elp = some (landing_pad_bits_backwards .NO_LP_EXPECTED)
   mem : MemReady s rs
+  /-- No pointer masking in machine mode (ZisK's profile has no Smmpm). -/
+  pmm : ∃ v, s.regs.get? mseccfg = some v ∧ _get_Seccfg_PMM v = 0#2
 
 /-- An instruction word at pc that sail-riscv fetches as such: aligned, in
     executable memory, not compressed. -/
@@ -210,14 +212,15 @@ theorem try_step_alu (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
       (∃ v, t.regs.get? mseccfg = some v) →
       (interpretSailEffects (ext_decode (b3 ++ b2 ++ (b1 ++ b0)))).run t = .ok ins t)
     (rd : Nat) (hrd : rd ≠ 0) (val : BitVec 64)
-    (hexec : ∀ t : RVState, (∀ k, k < 32 → getX t k = getX s k) →
+    (hexec : ∀ t : RVState, (∀ k, k < 32 → getX t k = getX s k) → t.mem = s.mem → MemReady t rs →
+      t.regs.get? mseccfg = s.regs.get? mseccfg → WF t →
       (interpretSailEffects (execute ins)).run t = .ok RETIRE_SUCCESS (setX t rd val)) (n : Nat) :
     ∃ s', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
       s'.mem = s.mem ∧ WF s' ∧ s'.regs.get? PC = some (pc + 4) ∧
       (∀ k, k < 32 → getX s' k = getX (setX s rd val) k) ∧
       (∀ r, isXReg r = false → r ≠ PC → r ≠ nextPC → r ≠ minstret → r ≠ minstret_increment →
         s'.regs.get? r = s.regs.get? r) := by
-  obtain ⟨h, hmip, hmie, hhs, help, hs⟩ := hr
+  obtain ⟨h, hmip, hmie, hhs, help, hs, -⟩ := hr
   obtain ⟨hal, ⟨r1, hm1, hx1⟩, ⟨r2, hm2, hx2⟩, h0, h1, h2, h3, hc⟩ := hw
   have hp := hs.priv
   simp only [try_step, run_hart_active, should_inc_minstret, counter_priv_filter_bit, dispatchInterrupt,
@@ -246,11 +249,18 @@ theorem try_step_alu (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
   repeat rv_step h
   simp only [no_lp, Bool.false_and, Bool.false_eq_true, if_false]
   repeat rv_step h
-  rw [hexec _ ?gx]
+  rw [hexec _ ?gx ?gm ?gr ?gs ?gw]
   rotate_left
   · intro k _
     simp (disch := decide) only [getX, Std.ExtDHashMap.get?_insert, beq_xreg_false, Bool.false_eq_true,
       dite_false]
+  · rfl
+  · exact hs.congr (by
+      intro r hr
+      simp only [memRegs, List.mem_cons, List.not_mem_nil, or_false] at hr
+      rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> simp [Std.ExtDHashMap.get?_insert])
+  · simp [Std.ExtDHashMap.get?_insert]
+  · exact ⟨isSome_insert _ _ _ (isSome_insert _ _ _ h.all)⟩
   simp only [setX, RETIRE_SUCCESS]
   rw [if_neg]; rotate_left; · exact hrd
   repeat rv_step h
@@ -299,7 +309,7 @@ theorem try_step_rtype (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs
       .Regidx ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 11 7), op)) ?_ _ hk _ ?_ n
   · intro t htp ⟨v, hv⟩
     exact decode_rtype t _ op hop hf3 hf7 hrd htp v hv
-  · intro t he
+  · intro t he _ _ _ _
     rw [execute_rtype_eq]
     have l1 : ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 19 15 : RegBits).toNat < 32 := RegBits.lt _
     have l2 : ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 24 20 : RegBits).toNat < 32 := RegBits.lt _

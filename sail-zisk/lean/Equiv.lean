@@ -7,3 +7,11 @@ import Equiv.Zisk
 import Equiv.Sim
 import Equiv.StepSim
 import Equiv.Block
+import Equiv.RiscvImm
+import Equiv.RiscvDecodeImm
+import Equiv.ZiskImm
+import Equiv.SimImm
+import Equiv.Program
+import Equiv.MemRead
+import Equiv.RiscvLoad
+import Equiv.ZiskLoad
