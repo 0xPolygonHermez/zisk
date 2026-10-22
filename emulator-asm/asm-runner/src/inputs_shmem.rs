@@ -95,8 +95,13 @@ impl InputsShmemWriter {
             return Ok(());
         }
 
-        self.writer.lock().unwrap().write_at(HEADER_BYTES, inputs)?;
-        self.written_end.fetch_max(HEADER_BYTES + inputs.len(), Ordering::Relaxed);
+        {
+            // Recorded under the lock, as `reset` reads it, so that a reset sees every write
+            // made before it.
+            let writer = self.writer.lock().unwrap();
+            writer.write_at(HEADER_BYTES, inputs)?;
+            self.written_end.fetch_max(HEADER_BYTES + inputs.len(), Ordering::Relaxed);
+        }
         self.control_writer.inc_inputs_size(inputs.len())?;
         self.notify_all_services()?;
         Ok(())
