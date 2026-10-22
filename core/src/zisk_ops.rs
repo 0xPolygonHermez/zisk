@@ -1003,6 +1003,13 @@ pub fn opc_blake2b(ctx: &mut InstContext) {
     let wr_chain = index & BLAKE2B_WR_CHAIN != 0;
     let replay = ctx.emulation_mode == EmulationMode::ConsumeMemReads;
     let gap = index >> BLAKE2B_GAP_SHIFT;
+    // What Blake2br can prove: no gap outside a chain read, and one that fits its u8 column
+    assert!(
+        if rd_chain { gap <= u8::MAX as u64 } else { gap == 0 },
+        "[blake2b] gap {gap} not provable (rd_chain: {rd_chain}) at PC:0x{:08X} STEP:{}",
+        ctx.pc,
+        ctx.step
+    );
     if rd_chain && !replay && ctx.step.wrapping_sub(gap) != ctx.blake2b_step {
         panic!(
             "[blake2b] chained round without a blake2b round {gap} steps back at PC:0x{:08X} STEP:{}",
