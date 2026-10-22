@@ -6,6 +6,9 @@
 #
 # The container name is read from the TEST_CONTAINER environment variable.
 # The image can be overridden with the IMAGE environment variable.
+# REMOTE_CACHE_SETUP ([user@]host:/path, set per runner in the runner's .env)
+# is passed into the container together with the ssh key it needs, when the
+# runner has one under /home/gha/ziskuser-ssh.
 #
 # Usage: start_test_container.sh
 set -e
@@ -29,6 +32,14 @@ IMAGE="${IMAGE:-ziskvm/zisk-runner-gpu:latest}"
 GPU_ARGS=()
 if [[ "${RUNNER_WITH_GPU:-1}" == "1" ]]; then
     GPU_ARGS+=(--gpus all)
+fi
+
+# The ssh key ziskuser pulls the setup cache from another worker with
+# (REMOTE_CACHE_SETUP). Mounted only on a runner that has one. Owned by UID
+# 1000, mode 700, key 600. rw so ssh can store the peer's host key.
+SSH_ARGS=()
+if [[ -d /home/gha/ziskuser-ssh ]]; then
+    SSH_ARGS+=(-v /home/gha/ziskuser-ssh:/home/ziskuser/.ssh:rw)
 fi
 
 docker rm -f "${TEST_CONTAINER}" || true
@@ -56,6 +67,8 @@ docker run -d -t \
     --shm-size=48g \
     -v "$GITHUB_WORKSPACE":/workspace/zisk:rw \
     -v /home/gha/cache-setup:/home/ziskuser/output:rw \
+    "${SSH_ARGS[@]}" \
+    -e REMOTE_CACHE_SETUP="${REMOTE_CACHE_SETUP:-}" \
     -e ZISK_GHA=1 \
     -e ZISK_CI_NO_DOCKER_REBUILD=1 \
     -e ZISK_REPO_DIR=/workspace/zisk \
