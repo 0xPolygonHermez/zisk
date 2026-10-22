@@ -58,99 +58,92 @@ theorem writeReg_run (s : RVState) (r : Register) (v : RegisterType r) :
   rfl
 
 
-/-- Register `n` of a RISC-V state, as sail-riscv's `rX` reads it (x0 is 0). -/
-def getX (s : RVState) : Nat → Option (BitVec 64)
-  | 0 => some 0
-  | 1 => s.regs.get? Register.x1
-  | 2 => s.regs.get? Register.x2
-  | 3 => s.regs.get? Register.x3
-  | 4 => s.regs.get? Register.x4
-  | 5 => s.regs.get? Register.x5
-  | 6 => s.regs.get? Register.x6
-  | 7 => s.regs.get? Register.x7
-  | 8 => s.regs.get? Register.x8
-  | 9 => s.regs.get? Register.x9
-  | 10 => s.regs.get? Register.x10
-  | 11 => s.regs.get? Register.x11
-  | 12 => s.regs.get? Register.x12
-  | 13 => s.regs.get? Register.x13
-  | 14 => s.regs.get? Register.x14
-  | 15 => s.regs.get? Register.x15
-  | 16 => s.regs.get? Register.x16
-  | 17 => s.regs.get? Register.x17
-  | 18 => s.regs.get? Register.x18
-  | 19 => s.regs.get? Register.x19
-  | 20 => s.regs.get? Register.x20
-  | 21 => s.regs.get? Register.x21
-  | 22 => s.regs.get? Register.x22
-  | 23 => s.regs.get? Register.x23
-  | 24 => s.regs.get? Register.x24
-  | 25 => s.regs.get? Register.x25
-  | 26 => s.regs.get? Register.x26
-  | 27 => s.regs.get? Register.x27
-  | 28 => s.regs.get? Register.x28
-  | 29 => s.regs.get? Register.x29
-  | 30 => s.regs.get? Register.x30
-  | _ => s.regs.get? Register.x31
+/-- sail-riscv's register for x_k, k = 1..31, as `rX` and `wX` pick it (31 for
+    anything past 30, as they do). -/
+def xreg : Nat → Register
+  | 1 => Register.x1
+  | 2 => Register.x2
+  | 3 => Register.x3
+  | 4 => Register.x4
+  | 5 => Register.x5
+  | 6 => Register.x6
+  | 7 => Register.x7
+  | 8 => Register.x8
+  | 9 => Register.x9
+  | 10 => Register.x10
+  | 11 => Register.x11
+  | 12 => Register.x12
+  | 13 => Register.x13
+  | 14 => Register.x14
+  | 15 => Register.x15
+  | 16 => Register.x16
+  | 17 => Register.x17
+  | 18 => Register.x18
+  | 19 => Register.x19
+  | 20 => Register.x20
+  | 21 => Register.x21
+  | 22 => Register.x22
+  | 23 => Register.x23
+  | 24 => Register.x24
+  | 25 => Register.x25
+  | 26 => Register.x26
+  | 27 => Register.x27
+  | 28 => Register.x28
+  | 29 => Register.x29
+  | 30 => Register.x30
+  | _ => Register.x31
 
-/-- The state with register `n` set to `v`, as sail-riscv's `wX` writes it. -/
-def setX (s : RVState) (n : Nat) (v : BitVec 64) : RVState :=
-  match n with
-  | 0 => s
-  | 1 => { s with regs := s.regs.insert Register.x1 v }
-  | 2 => { s with regs := s.regs.insert Register.x2 v }
-  | 3 => { s with regs := s.regs.insert Register.x3 v }
-  | 4 => { s with regs := s.regs.insert Register.x4 v }
-  | 5 => { s with regs := s.regs.insert Register.x5 v }
-  | 6 => { s with regs := s.regs.insert Register.x6 v }
-  | 7 => { s with regs := s.regs.insert Register.x7 v }
-  | 8 => { s with regs := s.regs.insert Register.x8 v }
-  | 9 => { s with regs := s.regs.insert Register.x9 v }
-  | 10 => { s with regs := s.regs.insert Register.x10 v }
-  | 11 => { s with regs := s.regs.insert Register.x11 v }
-  | 12 => { s with regs := s.regs.insert Register.x12 v }
-  | 13 => { s with regs := s.regs.insert Register.x13 v }
-  | 14 => { s with regs := s.regs.insert Register.x14 v }
-  | 15 => { s with regs := s.regs.insert Register.x15 v }
-  | 16 => { s with regs := s.regs.insert Register.x16 v }
-  | 17 => { s with regs := s.regs.insert Register.x17 v }
-  | 18 => { s with regs := s.regs.insert Register.x18 v }
-  | 19 => { s with regs := s.regs.insert Register.x19 v }
-  | 20 => { s with regs := s.regs.insert Register.x20 v }
-  | 21 => { s with regs := s.regs.insert Register.x21 v }
-  | 22 => { s with regs := s.regs.insert Register.x22 v }
-  | 23 => { s with regs := s.regs.insert Register.x23 v }
-  | 24 => { s with regs := s.regs.insert Register.x24 v }
-  | 25 => { s with regs := s.regs.insert Register.x25 v }
-  | 26 => { s with regs := s.regs.insert Register.x26 v }
-  | 27 => { s with regs := s.regs.insert Register.x27 v }
-  | 28 => { s with regs := s.regs.insert Register.x28 v }
-  | 29 => { s with regs := s.regs.insert Register.x29 v }
-  | 30 => { s with regs := s.regs.insert Register.x30 v }
-  | _ => { s with regs := s.regs.insert Register.x31 v }
+theorem xreg_ty (k : Nat) : RegisterType (xreg k) = BitVec 64 := by
+  unfold xreg; split <;> rfl
 
-macro "reg_simp" : tactic => `(tactic| (simp_all [getX, setX, interpretSailEffects, LeanZiskRV.readReg,
+theorem xreg_inj : ∀ a b : Fin 32, a.val ≠ 0 → b.val ≠ 0 → xreg a.val = xreg b.val → a = b := by
+  decide
+
+/-- Register k of a RISC-V state, as sail-riscv's `rX` reads it (x0 is 0). -/
+def getX (s : RVState) (k : Nat) : Option (BitVec 64) :=
+  if k = 0 then some 0 else (s.regs.get? (xreg k)).map (cast (xreg_ty k))
+
+/-- The state with register k set to v, as sail-riscv's `wX` writes it (x0 stays). -/
+def setX (s : RVState) (k : Nat) (v : BitVec 64) : RVState :=
+  if k = 0 then s else { s with regs := s.regs.insert (xreg k) (cast (xreg_ty k).symm v) }
+
+/-- Reading a register after writing one. -/
+theorem getX_setX (s : RVState) (n k : Nat) (v : BitVec 64) (hn : n < 32) (hk : k < 32) :
+    getX (setX s n v) k = if n ≠ 0 ∧ k = n then some v else getX s k := by
+  by_cases h0 : n = 0
+  · simp [setX, h0]
+  by_cases k0 : k = 0
+  · simp [getX, k0]; omega
+  by_cases e : k = n
+  · subst e; simp [getX, setX, h0]
+  · have ne : xreg n ≠ xreg k := fun h => e (by
+      have := xreg_inj ⟨n, hn⟩ ⟨k, hk⟩ h0 k0 h; simp at this; omega)
+    simp [getX, setX, h0, k0, e, Std.ExtDHashMap.get?_insert, ne]
+
+macro "reg_simp" : tactic => `(tactic| (simp_all [getX, setX, xreg, interpretSailEffects, LeanZiskRV.readReg,
     Sail.ArchSem.PreSail.readReg, LeanZiskRV.writeReg, Sail.ArchSem.PreSail.writeReg, FreeM.liftM,
     interpretInstructionEffect, regval_from_reg, regval_into_reg, zero_reg, zeros, xreg_write_callback,
     reg_name_forwards, encdec_reg_forwards_matches, get_config_use_abi_names, LeanZiskRV.not,
     xreg_full_write_callback] <;> try rfl))
 
+/-- sail-riscv's `rX` reads register n. -/
 theorem rX_run (s : RVState) (n : Nat) (hn : n < 32) (v : BitVec 64) (h : getX s n = some v) :
     (interpretSailEffects (rX (.Regno n))).run s = .ok v s := by
   simp only [rX]
   split
   all_goals first
-    | reg_simp
-    | (have : n = 31 := by omega
+    | (reg_simp; done)
+    | (have : n = 31 := by simp only [imp_false] at *; omega
        subst this; reg_simp)
 
+/-- sail-riscv's `wX` writes register n. -/
 theorem wX_run (s : RVState) (n : Nat) (hn : n < 32) (v : BitVec 64) :
     (interpretSailEffects (wX (.Regno n) v)).run s = .ok () (setX s n v) := by
   simp only [wX]
   split
   all_goals first
-    | reg_simp
-    | (have : n = 31 := by omega
+    | (reg_simp; done)
+    | (have : n = 31 := by simp only [imp_false] at *; omega
        subst this; reg_simp)
 
 @[simp] theorem interp_bind (x : SailM α) (f : α → SailM β) :
