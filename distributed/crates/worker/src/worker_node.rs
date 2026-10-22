@@ -1915,9 +1915,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         };
         if let Err(e) = result {
             error!("Error handling held-back stream data: {e}");
-            self.report_computation_error(message_sender, &e.to_string()).await;
-            self.worker.set_current_job(None);
-            self.worker.set_state(WorkerState::Ready);
+            // An error reported against the current job keeps the job, for `JobCancelled` to
+            // find it (see the message loop).
+            if !self.report_computation_error(message_sender, &e.to_string()).await {
+                self.worker.set_current_job(None);
+                self.worker.set_state(WorkerState::Ready);
+            }
         }
     }
 
