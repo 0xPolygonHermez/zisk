@@ -1,9 +1,9 @@
-use super::{hints_to_input_kind, stdin_to_input_kind, RemoteClient};
+use super::{job_inputs, JobInputs, RemoteClient};
 
 use crate::execute::ExecuteResult;
 use crate::hints::HintsSource;
 use crate::input_source::InputSource;
-use crate::job_handle::{JobHandle, SubscriberList};
+use crate::job_handle::{InputPushes, JobHandle, SubscriberList};
 use crate::ExecutorKind;
 use crate::SdkError;
 
@@ -63,10 +63,9 @@ impl RemoteClient {
         metadata: Option<BTreeMap<String, String>>,
     ) -> Result<JobHandle<ExecuteResult>> {
         let metadata = metadata.filter(|m| !m.is_empty());
-        let (hints, hints_delivery) = hints_to_input_kind(hints)?;
+        let JobInputs { input, input_delivery, hints, hints_delivery } = job_inputs(stdin, hints)?;
 
         let hash_id = program.program_id.hash_id.to_string();
-        let (input, input_delivery) = stdin_to_input_kind(stdin)?;
         let execute_timeout = timeout.map(deadline_from_now);
 
         // Prepare transports BEFORE submit_job().
@@ -88,10 +87,13 @@ impl RemoteClient {
         .map_err(SdkError::backend)?;
 
         // gRPC streams need an InputSender injected after job submission, and data over the
-        // inline limit is pushed through one.
-        let stream = input_delivery.complete(&remote_job, false)?;
-        let hints_stream = hints_delivery.complete(&remote_job, true)?;
+        // inline limit is pushed through one, in the background.
+        let mut pushes = InputPushes::default();
+        let stream = input_delivery.complete(&remote_job, false, &mut pushes);
+        let hints_stream = hints_delivery.complete(&remote_job, true, &mut pushes);
 
-        Ok(JobHandle::new_remote(remote_job, subs, timeout, stream, hints_stream))
+        let mut handle = JobHandle::new_remote(remote_job, subs, timeout, stream, hints_stream);
+        handle.set_input_pushes(pushes);
+        Ok(handle)
     }
 }
