@@ -410,8 +410,8 @@ collisions), so keep the option off when clients are not trusted.
 
 ### Job metadata
 
-A `JobRequest` can carry caller-defined key/value labels in `metadata` (at most 32 entries, keys up
-to 128 bytes, values up to 1024 bytes). The coordinator keeps them with the job and writes them in
+A `JobRequest` can carry caller-defined key/value labels in `metadata` (at most 32 keys, each up to
+128 bytes, with values up to 1024 bytes). The coordinator keeps them with the job and writes them in
 the line it logs when the job completes. Prove, execute, wrap and aggregate jobs take metadata; setup
 jobs (`SetupRequest`, `SetupAggregationProgramRequest`) reject a non-empty map with
 `INVALID_ARGUMENT`.

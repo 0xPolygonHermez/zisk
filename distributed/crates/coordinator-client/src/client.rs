@@ -94,10 +94,7 @@ impl CoordinatorClient {
     ) -> Result<Job> {
         let resp = block_on(async {
             let mut gw = self.inner.clone();
-            let req = JobRequestMessage {
-                job_kind: Some(kind.into()),
-                metadata: metadata.into_iter().collect(),
-            };
+            let req = JobRequestMessage { job_kind: Some(kind.into()), metadata };
             let resp = gw.job_request(req).await.context("JobRequest RPC failed")?;
             Ok::<_, anyhow::Error>(resp.into_inner())
         })?;

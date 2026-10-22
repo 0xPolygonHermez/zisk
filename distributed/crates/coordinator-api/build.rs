@@ -9,6 +9,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .disable_comments(["."])
         .extern_path(".google.protobuf.Timestamp", "::prost_types::Timestamp")
         .extern_path(".google.protobuf.Duration", "::prost_types::Duration")
+        // prost derives neither Eq nor Hash for a message with a map, and JobRequestMessage
+        // derived both before it had `metadata`: generate that map as a BTreeMap, which
+        // implements them, and derive them by hand.
+        .btree_map(".zisk.coordinator.v1.JobRequestMessage.metadata")
+        .message_attribute(".zisk.coordinator.v1.JobRequestMessage", "#[derive(Eq, Hash)]")
         .protoc_arg("--experimental_allow_proto3_optional")
         .compile_protos(
             &["proto/zisk_coordinator_api.proto", "proto/zisk_coordinator_api_ext.proto"],

@@ -42,7 +42,7 @@ const METADATA_MAX_VALUE_BYTES: usize = 1024;
 /// it, or when oversized.
 fn validate_metadata(
     kind: &DomainJobKind,
-    metadata: &std::collections::HashMap<String, String>,
+    metadata: &std::collections::BTreeMap<String, String>,
 ) -> Result<(), Status> {
     if metadata.is_empty() {
         return Ok(());
@@ -105,12 +105,11 @@ impl<B: BackendService> GrpcAdapter<B> {
     async fn submit_job(
         &self,
         kind: DomainJobKind,
-        metadata: std::collections::HashMap<String, String>,
+        metadata: std::collections::BTreeMap<String, String>,
     ) -> Result<Response<JobResponse>, Status> {
         validate_metadata(&kind, &metadata)?;
-        // Proto `map<string, string>` (a HashMap on the wire) into the domain's ordered map.
         self.handler
-            .submit_job(kind, metadata.into_iter().collect())
+            .submit_job(kind, metadata)
             .await
             .map(|r| Response::new(JobResponse { job_id: r.job_id.to_string() }))
             .map_err(Status::from)
@@ -215,7 +214,6 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
             .ok_or_else(|| Status::invalid_argument("job_kind must be set"))?
             .try_into()
             .map_err(|e: String| Status::invalid_argument(e))?;
-
         let result = self.submit_job(kind, msg.metadata).await;
 
         Self::log_call("JobRequest", start, result.as_ref().map(|_| ()));
@@ -398,7 +396,7 @@ impl<B: BackendService> ZiskCoordinatorApiExt for GrpcAdapter<B> {
             .try_into()
             .map_err(|e: String| Status::invalid_argument(e))?;
 
-        let result = self.submit_job(kind, msg.metadata).await;
+        let result = self.submit_job(kind, msg.metadata.into_iter().collect()).await;
 
         Self::log_call("JobRequestExt", start, result.as_ref().map(|_| ()));
         result

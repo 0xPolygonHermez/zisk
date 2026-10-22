@@ -863,6 +863,13 @@ impl TryFrom<JobEvent> for DomainJobEvent {
 mod tests {
     use super::*;
 
+    /// `JobRequestMessage` derived `Eq` and `Hash` before it had `metadata`; `build.rs` keeps them.
+    #[test]
+    fn job_request_message_keeps_deriving_eq_and_hash() {
+        fn derives_eq_and_hash<T: Eq + std::hash::Hash>() {}
+        derives_eq_and_hash::<JobRequestMessage>();
+    }
+
     fn prove_request(seed: Option<RandomSeed>) -> DomainProveRequest {
         DomainProveRequest {
             hash_id: "hash".to_string(),

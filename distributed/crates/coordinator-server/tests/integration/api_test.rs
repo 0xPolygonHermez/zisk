@@ -133,6 +133,10 @@ fn job_metadata() -> std::collections::HashMap<String, String> {
     ])
 }
 
+fn job_metadata_map() -> std::collections::BTreeMap<String, String> {
+    job_metadata().into_iter().collect()
+}
+
 fn execute_job(hash_id: String) -> JobKind {
     JobKind {
         kind: Some(job_kind::Kind::Execute(ExecuteRequest {
@@ -153,7 +157,7 @@ async fn job_request_round_trips_metadata() {
     let response = client
         .job_request(JobRequestMessage {
             job_kind: Some(execute_job(hash_id)),
-            metadata: job_metadata(),
+            metadata: job_metadata_map(),
         })
         .await
         .unwrap()
@@ -183,7 +187,7 @@ async fn job_request_round_trips_metadata_on_a_wrap_job() {
                     wrap_timeout: None,
                 })),
             }),
-            metadata: job_metadata(),
+            metadata: job_metadata_map(),
         })
         .await
         .unwrap()
@@ -243,7 +247,7 @@ async fn job_request_rejects_metadata_on_a_setup_job() {
                     program_name: "test".into(),
                 })),
             }),
-            metadata: job_metadata(),
+            metadata: job_metadata_map(),
         })
         .await
         .unwrap_err();
