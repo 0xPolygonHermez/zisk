@@ -115,6 +115,18 @@ impl<B: BackendService> GrpcAdapter<B> {
             .map_err(Status::from)
     }
 
+    /// Run an RPC's body and record the call in the call log and the request metrics: every
+    /// outcome, the request's own validation errors included.
+    async fn logged<T>(
+        method: &'static str,
+        body: impl std::future::Future<Output = Result<T, Status>>,
+    ) -> Result<T, Status> {
+        let start = Instant::now();
+        let result = body.await;
+        Self::log_call(method, start, result.as_ref().map(|_| ()));
+        result
+    }
+
     pub(crate) fn log_call(method: &'static str, start: Instant, result: Result<(), &Status>) {
         let elapsed_secs = start.elapsed().as_secs_f64();
         let elapsed_ms = (elapsed_secs * 1_000.0) as u128;
@@ -164,22 +176,21 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         &self,
         request: Request<RegisterGuestProgramRequest>,
     ) -> Result<Response<RegisterGuestProgramResponse>, Status> {
-        let start = Instant::now();
-        let req: RegisterGuestProgramRequestDto = request.into_inner().into();
-        tracing::Span::current().record("elf_bytes", req.zisk_elf.len());
+        Self::logged("RegisterGuestProgram", async move {
+            let req: RegisterGuestProgramRequestDto = request.into_inner().into();
+            tracing::Span::current().record("elf_bytes", req.zisk_elf.len());
 
-        let result = if req.zisk_elf.is_empty() {
-            Err(Status::invalid_argument("zisk_elf must not be empty"))
-        } else {
-            self.handler
-                .register_guest_program(req)
-                .await
-                .map(|dto| Response::new(dto.into()))
-                .map_err(Status::from)
-        };
-
-        Self::log_call("RegisterGuestProgram", start, result.as_ref().map(|_| ()));
-        result
+            if req.zisk_elf.is_empty() {
+                Err(Status::invalid_argument("zisk_elf must not be empty"))
+            } else {
+                self.handler
+                    .register_guest_program(req)
+                    .await
+                    .map(|dto| Response::new(dto.into()))
+                    .map_err(Status::from)
+            }
+        })
+        .await
     }
 
     #[instrument(level = "debug", skip(self, request))]
@@ -187,19 +198,17 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         &self,
         request: Request<RegisterAggregationProgramRequest>,
     ) -> Result<Response<RegisterAggregationProgramResponse>, Status> {
-        let start = Instant::now();
-        let req: RegisterAggregationProgramRequestDto =
-            request.into_inner().try_into().map_err(|e: String| Status::invalid_argument(e))?;
+        Self::logged("RegisterAggregationProgram", async move {
+            let req: RegisterAggregationProgramRequestDto =
+                request.into_inner().try_into().map_err(|e: String| Status::invalid_argument(e))?;
 
-        let result = self
-            .handler
-            .register_aggregation_program(req)
-            .await
-            .map(|dto| Response::new(dto.into()))
-            .map_err(Status::from);
-
-        Self::log_call("RegisterAggregationProgram", start, result.as_ref().map(|_| ()));
-        result
+            self.handler
+                .register_aggregation_program(req)
+                .await
+                .map(|dto| Response::new(dto.into()))
+                .map_err(Status::from)
+        })
+        .await
     }
 
     #[instrument(level = "debug", skip(self, request))]
@@ -207,17 +216,16 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         &self,
         request: Request<JobRequestMessage>,
     ) -> Result<Response<JobResponse>, Status> {
-        let start = Instant::now();
-        let msg = request.into_inner();
-        let kind = msg
-            .job_kind
-            .ok_or_else(|| Status::invalid_argument("job_kind must be set"))?
-            .try_into()
-            .map_err(|e: String| Status::invalid_argument(e))?;
-        let result = self.submit_job(kind, msg.metadata).await;
-
-        Self::log_call("JobRequest", start, result.as_ref().map(|_| ()));
-        result
+        Self::logged("JobRequest", async move {
+            let msg = request.into_inner();
+            let kind = msg
+                .job_kind
+                .ok_or_else(|| Status::invalid_argument("job_kind must be set"))?
+                .try_into()
+                .map_err(|e: String| Status::invalid_argument(e))?;
+            self.submit_job(kind, msg.metadata).await
+        })
+        .await
     }
 
     #[instrument(level = "debug", skip(self, request), fields(job_id = %request.get_ref().job_id))]
@@ -225,30 +233,28 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         &self,
         request: Request<WaitJobResultRequest>,
     ) -> Result<Response<WaitJobResultResponse>, Status> {
-        let start = Instant::now();
-        let req = request.into_inner();
-        let job_id = parse_uuid(&req.job_id)?;
-        let timeout_secs = req
-            .timeout_seconds
-            .unwrap_or(WAIT_TIMEOUT_DEFAULT_SECS)
-            .clamp(WAIT_TIMEOUT_MIN_SECS, WAIT_TIMEOUT_MAX_SECS);
-        let timeout = Duration::from_secs(timeout_secs as u64);
+        Self::logged("WaitJobResult", async move {
+            let req = request.into_inner();
+            let job_id = parse_uuid(&req.job_id)?;
+            let timeout_secs = req
+                .timeout_seconds
+                .unwrap_or(WAIT_TIMEOUT_DEFAULT_SECS)
+                .clamp(WAIT_TIMEOUT_MIN_SECS, WAIT_TIMEOUT_MAX_SECS);
+            let timeout = Duration::from_secs(timeout_secs as u64);
 
-        let result = self
-            .handler
-            .wait_job_result(job_id, timeout)
-            .await
-            .map(|wait| {
-                Response::new(WaitJobResultResponse {
-                    job_id: wait.job_id.to_string(),
-                    job_status: Some((&wait.job_status).into()),
-                    result: wait.result.map(Into::into),
+            self.handler
+                .wait_job_result(job_id, timeout)
+                .await
+                .map(|wait| {
+                    Response::new(WaitJobResultResponse {
+                        job_id: wait.job_id.to_string(),
+                        job_status: Some((&wait.job_status).into()),
+                        result: wait.result.map(Into::into),
+                    })
                 })
-            })
-            .map_err(Status::from);
-
-        Self::log_call("WaitJobResult", start, result.as_ref().map(|_| ()));
-        result
+                .map_err(Status::from)
+        })
+        .await
     }
 
     #[instrument(level = "debug", skip(self, request), fields(job_id = %request.get_ref().job_id))]
@@ -256,21 +262,19 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         &self,
         request: Request<WatchJobRequest>,
     ) -> Result<Response<Self::WatchJobStream>, Status> {
-        let start = Instant::now();
-        let job_id = parse_uuid(&request.into_inner().job_id)?;
+        Self::logged("WatchJob", async move {
+            let job_id = parse_uuid(&request.into_inner().job_id)?;
 
-        let result = self
-            .handler
-            .watch_job(job_id)
-            .await
-            .map(|stream| {
-                let proto_stream = stream.map(|r| r.map(Into::into).map_err(Status::from));
-                Response::new(Box::pin(proto_stream) as WatchJobStream)
-            })
-            .map_err(Status::from);
-
-        Self::log_call("WatchJob", start, result.as_ref().map(|_| ()));
-        result
+            self.handler
+                .watch_job(job_id)
+                .await
+                .map(|stream| {
+                    let proto_stream = stream.map(|r| r.map(Into::into).map_err(Status::from));
+                    Response::new(Box::pin(proto_stream) as WatchJobStream)
+                })
+                .map_err(Status::from)
+        })
+        .await
     }
 
     #[instrument(level = "debug", skip(self, request))]
@@ -278,41 +282,39 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         &self,
         request: Request<Streaming<PushJobInputRequest>>,
     ) -> Result<Response<()>, Status> {
-        let start = Instant::now();
-        let mut stream = request.into_inner();
+        Self::logged("PushJobInput", async move {
+            let mut stream = request.into_inner();
 
-        let first = stream
-            .next()
-            .await
-            .ok_or_else(|| Status::invalid_argument("PushJobInput stream must not be empty"))?
-            .map_err(|e| Status::internal(format!("stream read error: {e}")))?;
+            let first = stream
+                .next()
+                .await
+                .ok_or_else(|| Status::invalid_argument("PushJobInput stream must not be empty"))?
+                .map_err(|e| Status::internal(format!("stream read error: {e}")))?;
 
-        let job_id = parse_uuid(&first.job_id)?;
-        let first_chunk =
-            first.chunk.ok_or_else(|| Status::invalid_argument("chunk must be set"))?.into();
+            let job_id = parse_uuid(&first.job_id)?;
+            let first_chunk =
+                first.chunk.ok_or_else(|| Status::invalid_argument("chunk must be set"))?.into();
 
-        let chunk_stream =
-            futures::stream::once(async move { Ok(first_chunk) }).chain(stream.map(|result| {
-                result.map_err(|e| ApiError::Internal(format!("stream read error: {e}"))).and_then(
-                    |msg| {
-                        msg.chunk
-                            .ok_or_else(|| ApiError::InvalidJobState {
-                                reason: "PushJobInput message missing chunk field".into(),
-                            })
-                            .map(Into::into)
-                    },
-                )
-            }));
+            let chunk_stream =
+                futures::stream::once(async move { Ok(first_chunk) }).chain(stream.map(|result| {
+                    result
+                        .map_err(|e| ApiError::Internal(format!("stream read error: {e}")))
+                        .and_then(|msg| {
+                            msg.chunk
+                                .ok_or_else(|| ApiError::InvalidJobState {
+                                    reason: "PushJobInput message missing chunk field".into(),
+                                })
+                                .map(Into::into)
+                        })
+                }));
 
-        let result = self
-            .handler
-            .push_job_input(job_id, Box::pin(chunk_stream))
-            .await
-            .map(Response::new)
-            .map_err(Status::from);
-
-        Self::log_call("PushJobInput", start, result.as_ref().map(|_| ()));
-        result
+            self.handler
+                .push_job_input(job_id, Box::pin(chunk_stream))
+                .await
+                .map(Response::new)
+                .map_err(Status::from)
+        })
+        .await
     }
 
     #[instrument(level = "debug", skip(self, request))]
@@ -320,41 +322,41 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         &self,
         request: Request<Streaming<PushJobHintsInputRequest>>,
     ) -> Result<Response<()>, Status> {
-        let start = Instant::now();
-        let mut stream = request.into_inner();
+        Self::logged("PushJobHintsInput", async move {
+            let mut stream = request.into_inner();
 
-        let first = stream
-            .next()
-            .await
-            .ok_or_else(|| Status::invalid_argument("PushJobHintsInput stream must not be empty"))?
-            .map_err(|e| Status::internal(format!("stream read error: {e}")))?;
+            let first = stream
+                .next()
+                .await
+                .ok_or_else(|| {
+                    Status::invalid_argument("PushJobHintsInput stream must not be empty")
+                })?
+                .map_err(|e| Status::internal(format!("stream read error: {e}")))?;
 
-        let job_id = parse_uuid(&first.job_id)?;
-        let first_chunk =
-            first.chunk.ok_or_else(|| Status::invalid_argument("chunk must be set"))?.into();
+            let job_id = parse_uuid(&first.job_id)?;
+            let first_chunk =
+                first.chunk.ok_or_else(|| Status::invalid_argument("chunk must be set"))?.into();
 
-        let chunk_stream =
-            futures::stream::once(async move { Ok(first_chunk) }).chain(stream.map(|result| {
-                result.map_err(|e| ApiError::Internal(format!("stream read error: {e}"))).and_then(
-                    |msg| {
-                        msg.chunk
-                            .ok_or_else(|| ApiError::InvalidJobState {
-                                reason: "PushJobHintsInput message missing chunk field".into(),
-                            })
-                            .map(Into::into)
-                    },
-                )
-            }));
+            let chunk_stream =
+                futures::stream::once(async move { Ok(first_chunk) }).chain(stream.map(|result| {
+                    result
+                        .map_err(|e| ApiError::Internal(format!("stream read error: {e}")))
+                        .and_then(|msg| {
+                            msg.chunk
+                                .ok_or_else(|| ApiError::InvalidJobState {
+                                    reason: "PushJobHintsInput message missing chunk field".into(),
+                                })
+                                .map(Into::into)
+                        })
+                }));
 
-        let result = self
-            .handler
-            .push_job_hints_input(job_id, Box::pin(chunk_stream))
-            .await
-            .map(Response::new)
-            .map_err(Status::from);
-
-        Self::log_call("PushJobHintsInput", start, result.as_ref().map(|_| ()));
-        result
+            self.handler
+                .push_job_hints_input(job_id, Box::pin(chunk_stream))
+                .await
+                .map(Response::new)
+                .map_err(Status::from)
+        })
+        .await
     }
 
     #[instrument(level = "debug", skip(self, request), fields(job_id = %request.get_ref().job_id))]
@@ -362,20 +364,18 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         &self,
         request: Request<CancelJobRequest>,
     ) -> Result<Response<CancelJobResponse>, Status> {
-        let start = Instant::now();
-        let job_id = parse_uuid(&request.into_inner().job_id)?;
+        Self::logged("CancelJob", async move {
+            let job_id = parse_uuid(&request.into_inner().job_id)?;
 
-        let result = self
-            .handler
-            .cancel_job(job_id)
-            .await
-            .map(|cancelled| {
-                Response::new(CancelJobResponse { job_id: job_id.to_string(), cancelled })
-            })
-            .map_err(Status::from);
-
-        Self::log_call("CancelJob", start, result.as_ref().map(|_| ()));
-        result
+            self.handler
+                .cancel_job(job_id)
+                .await
+                .map(|cancelled| {
+                    Response::new(CancelJobResponse { job_id: job_id.to_string(), cancelled })
+                })
+                .map_err(Status::from)
+        })
+        .await
     }
 }
 
@@ -389,21 +389,59 @@ impl<B: BackendService> ZiskCoordinatorApiExt for GrpcAdapter<B> {
         &self,
         request: Request<JobRequestExtMessage>,
     ) -> Result<Response<JobResponse>, Status> {
-        let start = Instant::now();
-        let msg = request.into_inner();
-        let kind = msg
-            .job_kind
-            .ok_or_else(|| Status::invalid_argument("job_kind must be set"))?
-            .try_into()
-            .map_err(|e: String| Status::invalid_argument(e))?;
+        Self::logged("JobRequestExt", async move {
+            let msg = request.into_inner();
+            let kind = msg
+                .job_kind
+                .ok_or_else(|| Status::invalid_argument("job_kind must be set"))?
+                .try_into()
+                .map_err(|e: String| Status::invalid_argument(e))?;
 
-        let result = self.submit_job(kind, msg.metadata.into_iter().collect()).await;
-
-        Self::log_call("JobRequestExt", start, result.as_ref().map(|_| ()));
-        result
+            self.submit_job(kind, msg.metadata.into_iter().collect()).await
+        })
+        .await
     }
 }
 
 fn parse_uuid(s: &str) -> Result<Uuid, Status> {
     Uuid::parse_str(s).map_err(|_| Status::invalid_argument(format!("invalid UUID: {s}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use metrics_exporter_prometheus::PrometheusBuilder;
+
+    use super::*;
+    use crate::backend::mock::MockBackend;
+
+    /// A request its own validation refuses is still recorded: a `?` used to return ahead of
+    /// the call log, so malformed requests never reached `coordinator_requests_total`.
+    #[test]
+    fn a_request_refused_by_its_validation_is_recorded() {
+        let recorder = PrometheusBuilder::new().build_recorder();
+        let handle = recorder.handle();
+        let adapter = GrpcAdapter::new(CoordinatorHandler::new(Arc::new(MockBackend::default())));
+
+        metrics::with_local_recorder(&recorder, || {
+            futures::executor::block_on(async {
+                let no_job_kind = adapter.job_request(Request::new(JobRequestMessage::default()));
+                assert_eq!(no_job_kind.await.unwrap_err().code(), tonic::Code::InvalidArgument);
+                let bad_job_id = adapter
+                    .cancel_job(Request::new(CancelJobRequest { job_id: "not-a-uuid".into() }));
+                assert_eq!(bad_job_id.await.unwrap_err().code(), tonic::Code::InvalidArgument);
+            })
+        });
+
+        let rendered = handle.render();
+        for method in ["JobRequest", "CancelJob"] {
+            assert!(
+                rendered.lines().any(|l| l.starts_with("coordinator_requests_total")
+                    && l.contains(&format!("method=\"{method}\""))
+                    && l.ends_with(" 1")),
+                "{method} not recorded:\n{rendered}"
+            );
+        }
+    }
 }
