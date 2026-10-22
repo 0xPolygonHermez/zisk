@@ -22,3 +22,4 @@ import Equiv.ZiskStore
 import Equiv.RiscvStore
 import Equiv.RiscvStepStore
 import Equiv.StoreSim
+import Equiv.Run
