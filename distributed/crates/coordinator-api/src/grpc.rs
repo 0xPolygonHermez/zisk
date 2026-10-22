@@ -9,6 +9,8 @@ pub mod proto {
     #![allow(clippy::large_enum_variant)]
     // Generated code — the proto definitions are the source of truth.
     #![allow(missing_docs)]
+    // The generated services name the deprecated extended API's messages.
+    #![allow(deprecated)]
     tonic::include_proto!("zisk.coordinator.v1");
 }
 
@@ -140,7 +142,10 @@ impl From<RegisterAggregationProgramResponse> for RegisterAggregationProgramResp
 
 impl tonic::IntoRequest<JobRequestMessage> for DomainJobKind {
     fn into_request(self) -> tonic::Request<JobRequestMessage> {
-        tonic::Request::new(JobRequestMessage { job_kind: Some(self.into()) })
+        tonic::Request::new(JobRequestMessage {
+            job_kind: Some(self.into()),
+            metadata: Default::default(),
+        })
     }
 }
 
@@ -448,6 +453,8 @@ impl TryFrom<ExecuteRequest> for DomainExecuteRequest {
     }
 }
 
+// The deprecated extended API's conversions, kept with it.
+#[allow(deprecated)]
 impl TryFrom<DomainJobKind> for JobKindExt {
     type Error = String;
 
@@ -462,6 +469,7 @@ impl TryFrom<DomainJobKind> for JobKindExt {
     }
 }
 
+#[allow(deprecated)]
 impl TryFrom<JobKindExt> for DomainJobKind {
     type Error = String;
 
@@ -859,6 +867,13 @@ impl TryFrom<JobEvent> for DomainJobEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `JobRequestMessage` derived `Eq` and `Hash` before it had `metadata`; `build.rs` keeps them.
+    #[test]
+    fn job_request_message_keeps_deriving_eq_and_hash() {
+        fn derives_eq_and_hash<T: Eq + std::hash::Hash>() {}
+        derives_eq_and_hash::<JobRequestMessage>();
+    }
 
     fn prove_request(seed: Option<RandomSeed>) -> DomainProveRequest {
         DomainProveRequest {

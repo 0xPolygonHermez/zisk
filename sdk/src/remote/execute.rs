@@ -16,42 +16,9 @@ use zisk_prover_backend::GuestProgram;
 use crate::Result;
 
 impl RemoteClient {
-    /// Submit an execute job over the standard coordinator API.
+    /// Submit an execute job with its caller-defined key/value `metadata` (empty for none).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn do_execute(
-        &self,
-        program: &GuestProgram,
-        stdin: InputSource,
-        hints: Option<HintsSource>,
-        seed: Option<RandomSeed>,
-        executor: ExecutorKind,
-        timeout: Option<Duration>,
-        subs: SubscriberList,
-    ) -> Result<JobHandle<ExecuteResult>> {
-        self.submit_execute(program, stdin, hints, seed, executor, timeout, subs, None)
-    }
-
-    /// Submit an execute job over the extended coordinator API, attaching
-    /// job-level `metadata` key/value pairs.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn do_execute_ext(
-        &self,
-        program: &GuestProgram,
-        stdin: InputSource,
-        hints: Option<HintsSource>,
-        seed: Option<RandomSeed>,
-        executor: ExecutorKind,
-        timeout: Option<Duration>,
-        subs: SubscriberList,
-        metadata: BTreeMap<String, String>,
-    ) -> Result<JobHandle<ExecuteResult>> {
-        self.submit_execute(program, stdin, hints, seed, executor, timeout, subs, Some(metadata))
-    }
-
-    /// Shared execute submission. `metadata` selects the transport: `Some` routes
-    /// through the extended API (`submit_job_ext`), `None` through the standard one.
-    #[allow(clippy::too_many_arguments)]
-    fn submit_execute(
         &self,
         program: &GuestProgram,
         stdin: InputSource,
@@ -60,9 +27,8 @@ impl RemoteClient {
         _executor: ExecutorKind, // remote: coordinator uses its configured executor; hint ignored
         timeout: Option<Duration>,
         subs: SubscriberList,
-        metadata: Option<BTreeMap<String, String>>,
+        metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ExecuteResult>> {
-        let metadata = metadata.filter(|m| !m.is_empty());
         let (hints, maybe_hints_stream) = hints_to_input_kind(hints)?;
 
         let hash_id = program.program_id.hash_id.to_string();
@@ -85,9 +51,11 @@ impl RemoteClient {
             execute_timeout,
         });
 
-        let remote_job = match metadata {
-            Some(metadata) => self.gw.submit_job_ext(job_kind, metadata),
-            None => self.gw.submit_job(job_kind),
+        let remote_job = if self.legacy_ext && !metadata.is_empty() {
+            #[allow(deprecated)]
+            self.gw.submit_job_ext(job_kind, metadata)
+        } else {
+            self.gw.submit_job_with_metadata(job_kind, metadata)
         }
         .map_err(SdkError::backend)?;
 

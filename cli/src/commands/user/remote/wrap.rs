@@ -5,6 +5,7 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::JobMetadataArgs;
 use zisk_sdk::{setup_logger, Proof, RemoteClient};
 
 use crate::common::resolve_output_path;
@@ -31,6 +32,9 @@ pub(crate) struct ZiskRemoteWrap {
     #[arg(long, conflicts_with = "minimal")]
     plonk: bool,
 
+    #[command(flatten)]
+    metadata: JobMetadataArgs,
+
     /// Wrap timeout in seconds (0 = no timeout)
     #[arg(long, default_value_t = 0)]
     timeout: u64,
@@ -53,7 +57,10 @@ impl ZiskRemoteWrap {
             anyhow::anyhow!("Failed to load proof from {}: {}", self.proof.display(), e)
         })?;
 
-        let request = client.wrap_proof(&zisk_proof, proof_kind);
+        let mut request = client.wrap_proof(&zisk_proof, proof_kind);
+        for (key, value) in self.metadata.to_map() {
+            request = request.metadata(key, value);
+        }
         let timeout = (self.timeout != 0).then(|| Duration::from_secs(self.timeout));
         let result = super::await_job(request.run()?, timeout).await?;
 

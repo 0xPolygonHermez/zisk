@@ -15,7 +15,7 @@ use tonic::{Request, Response, Status};
 use tracing::{error, info, instrument};
 use uuid::Uuid;
 
-use crate::backend::BackendService;
+use crate::backend::{BackendService, DomainJobKind};
 use crate::errors::ApiError;
 use crate::handler::CoordinatorHandler;
 use crate::proto::zisk_coordinator_api_ext_server::ZiskCoordinatorApiExt;
@@ -37,9 +37,19 @@ const METADATA_MAX_ENTRIES: usize = 32;
 const METADATA_MAX_KEY_BYTES: usize = 128;
 const METADATA_MAX_VALUE_BYTES: usize = 1024;
 
-/// Reject oversized caller-supplied metadata early with `InvalidArgument`,
-/// before it reaches backend storage or worker dispatch.
-fn validate_metadata(metadata: &std::collections::HashMap<String, String>) -> Result<(), Status> {
+/// Reject caller-supplied metadata early with `InvalidArgument`, before it
+/// reaches backend storage or worker dispatch: on a job kind that does not take
+/// it, or when oversized.
+fn validate_metadata(
+    kind: &DomainJobKind,
+    metadata: &std::collections::BTreeMap<String, String>,
+) -> Result<(), Status> {
+    if metadata.is_empty() {
+        return Ok(());
+    }
+    if let Some(name) = kind_without_metadata(kind) {
+        return Err(Status::invalid_argument(format!("{name} jobs do not take metadata")));
+    }
     if metadata.len() > METADATA_MAX_ENTRIES {
         return Err(Status::invalid_argument(format!(
             "metadata has too many entries ({} > {METADATA_MAX_ENTRIES})",
@@ -63,6 +73,19 @@ fn validate_metadata(metadata: &std::collections::HashMap<String, String>) -> Re
     Ok(())
 }
 
+/// The proto name of a job kind that does not take caller metadata, `None` for
+/// the kinds that keep it.
+fn kind_without_metadata(kind: &DomainJobKind) -> Option<&'static str> {
+    match kind {
+        DomainJobKind::Prove(_)
+        | DomainJobKind::Execute(_)
+        | DomainJobKind::Wrap(_)
+        | DomainJobKind::AggregateProofs(_) => None,
+        DomainJobKind::Setup(_) => Some("setup"),
+        DomainJobKind::SetupAggregationProgram(_) => Some("setup_aggregation_program"),
+    }
+}
+
 /// Server-streaming type for the `WatchJob` RPC.
 pub type WatchJobStream = Pin<Box<dyn Stream<Item = Result<JobEvent, Status>> + Send + 'static>>;
 
@@ -76,6 +99,20 @@ impl<B: BackendService> GrpcAdapter<B> {
     /// Wrap a handler in the gRPC adapter.
     pub fn new(handler: CoordinatorHandler<B>) -> Self {
         Self { handler }
+    }
+
+    /// Submit a job for `JobRequest` and its deprecated alias `JobRequestExt`.
+    async fn submit_job(
+        &self,
+        kind: DomainJobKind,
+        metadata: std::collections::BTreeMap<String, String>,
+    ) -> Result<Response<JobResponse>, Status> {
+        validate_metadata(&kind, &metadata)?;
+        self.handler
+            .submit_job(kind, metadata)
+            .await
+            .map(|r| Response::new(JobResponse { job_id: r.job_id.to_string() }))
+            .map_err(Status::from)
     }
 
     pub(crate) fn log_call(method: &'static str, start: Instant, result: Result<(), &Status>) {
@@ -171,19 +208,13 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         request: Request<JobRequestMessage>,
     ) -> Result<Response<JobResponse>, Status> {
         let start = Instant::now();
-        let kind = request
-            .into_inner()
+        let msg = request.into_inner();
+        let kind = msg
             .job_kind
             .ok_or_else(|| Status::invalid_argument("job_kind must be set"))?
             .try_into()
             .map_err(|e: String| Status::invalid_argument(e))?;
-
-        let result = self
-            .handler
-            .submit_job(kind)
-            .await
-            .map(|r| Response::new(JobResponse { job_id: r.job_id.to_string() }))
-            .map_err(Status::from);
+        let result = self.submit_job(kind, msg.metadata).await;
 
         Self::log_call("JobRequest", start, result.as_ref().map(|_| ()));
         result
@@ -348,6 +379,9 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
     }
 }
 
+/// Deprecated alias of `JobRequest`, kept for clients built against the extended
+/// API until the first non-alpha release.
+#[allow(deprecated)]
 #[tonic::async_trait]
 impl<B: BackendService> ZiskCoordinatorApiExt for GrpcAdapter<B> {
     #[instrument(level = "debug", skip(self, request))]
@@ -357,25 +391,13 @@ impl<B: BackendService> ZiskCoordinatorApiExt for GrpcAdapter<B> {
     ) -> Result<Response<JobResponse>, Status> {
         let start = Instant::now();
         let msg = request.into_inner();
-        // Proto `map<string, string>` (a HashMap on the wire) into the domain's
-        // ordered map. An empty map means "no metadata" → route through the base path.
-        validate_metadata(&msg.metadata)?;
-        let metadata: std::collections::BTreeMap<String, String> =
-            msg.metadata.into_iter().collect();
         let kind = msg
             .job_kind
             .ok_or_else(|| Status::invalid_argument("job_kind must be set"))?
             .try_into()
             .map_err(|e: String| Status::invalid_argument(e))?;
 
-        let submitted = if metadata.is_empty() {
-            self.handler.submit_job(kind).await
-        } else {
-            self.handler.submit_job_ext(kind, metadata).await
-        };
-        let result = submitted
-            .map(|r| Response::new(JobResponse { job_id: r.job_id.to_string() }))
-            .map_err(Status::from);
+        let result = self.submit_job(kind, msg.metadata.into_iter().collect()).await;
 
         Self::log_call("JobRequestExt", start, result.as_ref().map(|_| ()));
         result

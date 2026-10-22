@@ -2255,10 +2255,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // still be inside `process_hints` on the new stream.
         Self::drain_cancelled_computation(cancelled.stream, "partial_contribution stream").await;
 
-        // Proto `map<string, string>` (a HashMap); an empty map means "no metadata".
-        let metadata = (!request.metadata.is_empty())
-            .then(|| request.metadata.into_iter().collect::<std::collections::BTreeMap<_, _>>());
-
         // Extract the PartialContribution params
         let Some(execute_task_request::Params::ContributionParams(params)) = request.params else {
             return Err(anyhow!("Expected ContributionParams for Partial Contribution task"));
@@ -2308,7 +2304,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             params.worker_allocation,
             params.job_compute_units,
             Some(task_received_time),
-            metadata,
         );
 
         // Start computation in background task
@@ -2336,10 +2331,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // See `partial_contribution`: also drain the previous stream-ordering
         // thread before the reset in `prepare_for_new_job`.
         Self::drain_cancelled_computation(cancelled.stream, "execute_only stream").await;
-
-        // Proto `map<string, string>` (a HashMap); an empty map means "no metadata".
-        let metadata = (!request.metadata.is_empty())
-            .then(|| request.metadata.into_iter().collect::<std::collections::BTreeMap<_, _>>());
 
         // Extract the ExecutionParams (reuses ContributionParams structure)
         let Some(execute_task_request::Params::ExecutionParams(params)) = request.params else {
@@ -2390,7 +2381,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             params.worker_allocation,
             params.job_compute_units,
             Some(task_received_time),
-            metadata,
         );
 
         // Start execution-only computation in background task
