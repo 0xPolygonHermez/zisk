@@ -38,16 +38,16 @@ pub use embedded::{
 pub use error::{Result, SdkError};
 pub use zisk_client::ZiskClient;
 
-pub use execute::{ExecuteRequest, ExecuteRequestExt, ExecuteResult};
+pub use execute::{ExecuteRequest, ExecuteResult};
 pub use hints::{HintsSource, ZiskHints};
 pub use input_source::InputSource;
 pub use input_stream::ZiskStream;
 pub use job_handle::{JobCanceller, JobHandle};
 pub use lifecycle::{SetupTarget, UploadTarget};
-pub use prove::{JobEvent, ProveRequest, ProveRequestExt, ProveResult};
+pub use prove::{JobEvent, ProveRequest, ProveResult};
 pub use recurser::{AggregationProgram, AggregationProgramBuilder, Recurser};
 pub use remote::setup::SetupByIdRequest;
-pub use remote::{RemoteClient, RemoteClientBuilder, RemoteClientExt};
+pub use remote::{RemoteClient, RemoteClientBuilder};
 pub use setup::SetupRequest;
 pub use stdin::ZiskStdin;
 pub use upload::UploadRequest;
@@ -56,6 +56,15 @@ pub use verify_constraints::{
 };
 pub use wrap::WrapRequest;
 pub use zisk_common::ZiskVerifyBuilder as VerifyBuilder;
+
+// The extended metadata API, deprecated now that the remote client's requests take
+// `metadata`; removed in the first non-alpha release.
+#[allow(deprecated)]
+pub use execute::ExecuteRequestExt;
+#[allow(deprecated)]
+pub use prove::ProveRequestExt;
+#[allow(deprecated)]
+pub use remote::RemoteClientExt;
 
 // Re-export guest types from backend (public API for loading programs)
 pub use zisk_prover_backend::{
@@ -122,6 +131,7 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         proof_kind: ProofKind,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
+        metadata: std::collections::BTreeMap<String, String>,
     ) -> Result<job_handle::JobHandle<ProveResult>>;
 
     fn run_execute(
@@ -133,6 +143,7 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         executor: ExecutorKind,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
+        metadata: std::collections::BTreeMap<String, String>,
     ) -> Result<job_handle::JobHandle<ExecuteResult>>;
 
     fn run_wrap(
@@ -143,6 +154,7 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         override_program_vk: Option<ProgramVK>,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
+        metadata: std::collections::BTreeMap<String, String>,
     ) -> Result<job_handle::JobHandle<crate::prove::ProveResult>>;
 
     fn run_upload_aggregation_program(
@@ -167,6 +179,7 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         root_c_recurser_agg: Option<[u64; 4]>,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
+        metadata: std::collections::BTreeMap<String, String>,
     ) -> Result<job_handle::JobHandle<crate::prove::ProveResult>>;
 }
 

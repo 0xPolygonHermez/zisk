@@ -5,13 +5,14 @@
 #![warn(rustdoc::all)]
 #![deny(rustdoc::missing_crate_level_docs)]
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tracing::{error, info, warn};
-use zisk_common::{Proof, RandomSeed, RandomSeedArgs};
+use zisk_common::{JobMetadataArgs, Proof, RandomSeed, RandomSeedArgs};
 use zisk_coordinator_api::dto::{
     deadline_from_now, DomainExecuteRequest, DomainInputChunk, DomainInputKind, DomainJobKind,
     DomainJobKindResponse, DomainProofKind, DomainProveRequest, DomainSetupRequest, TerminalStatus,
@@ -87,6 +88,9 @@ enum Commands {
         #[command(flatten)]
         random_seed: RandomSeedArgs,
 
+        #[command(flatten)]
+        metadata: JobMetadataArgs,
+
         /// Proof timeout in seconds (0 = no timeout)
         #[arg(long, default_value_t = 0)]
         timeout: u64,
@@ -112,6 +116,9 @@ enum Commands {
 
         #[command(flatten)]
         random_seed: RandomSeedArgs,
+
+        #[command(flatten)]
+        metadata: JobMetadataArgs,
 
         /// Execute timeout in seconds (0 = no timeout)
         #[arg(long, default_value_t = 0)]
@@ -255,6 +262,7 @@ fn run_prove(
     proof: &DomainProofKind,
     output: Option<&PathBuf>,
     seed: Option<RandomSeed>,
+    metadata: BTreeMap<String, String>,
     timeout: u64,
 ) -> Result<()> {
     let input_kind = match input {
@@ -271,14 +279,17 @@ fn run_prove(
     let timeout_opt = (timeout != 0).then(|| deadline_from_now(Duration::from_secs(timeout)));
 
     info!("Submitting prove job (proof_dest = {proof:?}) …");
-    let job = client.submit_job(DomainJobKind::Prove(DomainProveRequest {
-        hash_id: hash_id.to_string(),
-        input: input_kind,
-        hints: hints_kind,
-        random_seed: seed,
-        proof_dest: proof.clone(),
-        proof_timeout: timeout_opt,
-    }))?;
+    let job = client.submit_job_with_metadata(
+        DomainJobKind::Prove(DomainProveRequest {
+            hash_id: hash_id.to_string(),
+            input: input_kind,
+            hints: hints_kind,
+            random_seed: seed,
+            proof_dest: proof.clone(),
+            proof_timeout: timeout_opt,
+        }),
+        metadata,
+    )?;
     let job_id = job.job_id();
     info!("Prove job submitted. job_id = {job_id}");
 
@@ -326,6 +337,7 @@ fn run_prove(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_execute(
     client: &CoordinatorClient,
     hash_id: &str,
@@ -333,6 +345,7 @@ fn run_execute(
     hints: Option<&PathBuf>,
     output: Option<&PathBuf>,
     seed: Option<RandomSeed>,
+    metadata: BTreeMap<String, String>,
     timeout: u64,
 ) -> Result<()> {
     let input_kind = match input {
@@ -349,13 +362,16 @@ fn run_execute(
     let timeout_opt = (timeout != 0).then(|| deadline_from_now(Duration::from_secs(timeout)));
 
     info!("Submitting execute job …");
-    let job = client.submit_job(DomainJobKind::Execute(DomainExecuteRequest {
-        hash_id: hash_id.to_string(),
-        input: input_kind,
-        hints: hints_kind,
-        random_seed: seed,
-        execute_timeout: timeout_opt,
-    }))?;
+    let job = client.submit_job_with_metadata(
+        DomainJobKind::Execute(DomainExecuteRequest {
+            hash_id: hash_id.to_string(),
+            input: input_kind,
+            hints: hints_kind,
+            random_seed: seed,
+            execute_timeout: timeout_opt,
+        }),
+        metadata,
+    )?;
     let job_id = job.job_id();
     info!("Execute job submitted. job_id = {job_id}");
 
@@ -421,7 +437,16 @@ async fn main() -> Result<()> {
             println!("Setup completed for Hash ID: {hash_id}");
         }
 
-        Commands::Prove { hash_id, input, hints, proof, output, random_seed: seed, timeout } => {
+        Commands::Prove {
+            hash_id,
+            input,
+            hints,
+            proof,
+            output,
+            random_seed: seed,
+            metadata,
+            timeout,
+        } => {
             run_prove(
                 &client,
                 hash_id,
@@ -430,11 +455,20 @@ async fn main() -> Result<()> {
                 proof,
                 output.as_ref(),
                 seed.provided(),
+                metadata.to_map(),
                 *timeout,
             )?;
         }
 
-        Commands::Execute { hash_id, input, hints, output, random_seed: seed, timeout } => {
+        Commands::Execute {
+            hash_id,
+            input,
+            hints,
+            output,
+            random_seed: seed,
+            metadata,
+            timeout,
+        } => {
             run_execute(
                 &client,
                 hash_id,
@@ -442,6 +476,7 @@ async fn main() -> Result<()> {
                 hints.as_ref(),
                 output.as_ref(),
                 seed.provided(),
+                metadata.to_map(),
                 *timeout,
             )?;
         }

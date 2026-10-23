@@ -992,6 +992,17 @@ pub fn ops_poseidon1(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_direct_data(ctx, stats, 16, 16);
 }
 
+/// Whether Blake2br can prove a blake2b round's static argument: no gap unless it reads its state
+/// from a chain, and then a gap in [1, 255] (the trace's `gap` is a byte).
+pub fn blake2b_gap_is_provable(index: u64) -> bool {
+    let gap = index >> BLAKE2B_GAP_SHIFT;
+    if index & BLAKE2B_RD_CHAIN != 0 {
+        (1..=u8::MAX as u64).contains(&gap)
+    } else {
+        gap == 0
+    }
+}
+
 #[inline(always)]
 pub fn opc_blake2b(ctx: &mut InstContext) {
     const WORDS: usize = 1 + 2 * 16; // index (static argument), state[16] (at a), input[16] (at b)
@@ -1003,6 +1014,12 @@ pub fn opc_blake2b(ctx: &mut InstContext) {
     let wr_chain = index & BLAKE2B_WR_CHAIN != 0;
     let replay = ctx.emulation_mode == EmulationMode::ConsumeMemReads;
     let gap = index >> BLAKE2B_GAP_SHIFT;
+    assert!(
+        blake2b_gap_is_provable(index),
+        "[blake2b] gap {gap} not provable (rd_chain: {rd_chain}) at PC:0x{:08X} STEP:{}",
+        ctx.pc,
+        ctx.step
+    );
     if rd_chain && !replay && ctx.step.wrapping_sub(gap) != ctx.blake2b_step {
         panic!(
             "[blake2b] chained round without a blake2b round {gap} steps back at PC:0x{:08X} STEP:{}",
@@ -2446,4 +2463,21 @@ pub fn opc_halt(ctx: &mut InstContext) {
     ctx.error_code = ctx.a;
     ctx.c = 0;
     ctx.flag = false;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_blake2b_gap_is_provable_only_on_a_chain_read_and_in_a_byte() {
+        let gap = |g: u64| g << BLAKE2B_GAP_SHIFT;
+        assert!(blake2b_gap_is_provable(3));
+        assert!(blake2b_gap_is_provable(3 | BLAKE2B_WR_CHAIN));
+        assert!(!blake2b_gap_is_provable(3 | gap(1)));
+        assert!(!blake2b_gap_is_provable(BLAKE2B_RD_CHAIN));
+        assert!(blake2b_gap_is_provable(BLAKE2B_RD_CHAIN | gap(1)));
+        assert!(blake2b_gap_is_provable(BLAKE2B_RD_CHAIN | gap(255)));
+        assert!(!blake2b_gap_is_provable(BLAKE2B_RD_CHAIN | gap(256)));
+    }
 }

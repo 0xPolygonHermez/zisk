@@ -20,3 +20,5 @@ phase2_timeout_seconds = 1200   # 20 minutes for phase 2
 reconnect_grace_period_ms = 500 # Grace period before failing a disconnected computing worker's job
 # Accept random seeds provided by clients (replays/CI); keep off for untrusted clients
 allow_client_random_seed = false
+# Accept caller-defined key/value metadata on job requests
+allow_job_metadata = true

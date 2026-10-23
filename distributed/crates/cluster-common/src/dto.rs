@@ -367,7 +367,12 @@ pub struct ExecuteTaskRequestDto {
     pub job_id: JobId,
     /// The phase-specific parameters.
     pub params: ExecuteTaskRequestTypeDto,
-    /// Job-level metadata propagated to the worker.
+    /// Job-level metadata, once passed to the worker. No worker read it; the coordinator
+    /// now keeps it and leaves this `None`.
+    #[deprecated(
+        since = "1.4.0-alpha",
+        note = "job metadata stays on the coordinator; removed in the first non-alpha release"
+    )]
     pub metadata: Option<std::collections::BTreeMap<String, String>>,
 }
 

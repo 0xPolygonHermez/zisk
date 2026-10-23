@@ -2710,6 +2710,7 @@ dependencies = [
 name = "input-2gb-host"
 version = "0.1.0"
 dependencies = [
+ "tokio",
  "zisk-sdk",
  "zisk-test-artifacts",
 ]

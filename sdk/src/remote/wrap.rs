@@ -1,6 +1,7 @@
 use super::RemoteClient;
 use crate::job_handle::{JobHandle, SubscriberList};
 use crate::prove::ProveResult;
+use std::collections::BTreeMap;
 use std::time::Duration;
 use zisk_common::{Proof, ProofKind};
 use zisk_coordinator_api::dto::{deadline_from_now, DomainJobKind, DomainProof, DomainWrapRequest};
@@ -14,6 +15,7 @@ impl RemoteClient {
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ProveResult>> {
         let data = proof
             .to_bincode()
@@ -39,7 +41,8 @@ impl RemoteClient {
 
         let job_kind = DomainJobKind::Wrap(DomainWrapRequest { proof, proof_dest, wrap_timeout });
 
-        let remote_job = self.gw.submit_job(job_kind).map_err(SdkError::backend)?;
+        let remote_job =
+            self.gw.submit_job_with_metadata(job_kind, metadata).map_err(SdkError::backend)?;
 
         Ok(JobHandle::new_remote(remote_job, subs, timeout, None, None))
     }

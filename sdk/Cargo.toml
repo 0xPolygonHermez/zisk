@@ -17,6 +17,7 @@ zisk-prover-backend = { workspace = true }
 # Common dependencies
 proofman-common = { workspace = true }
 zisk-common = { workspace = true }
+zisk-core = { workspace = true }
 zisk-build = { workspace = true }
 
 # Utilities
