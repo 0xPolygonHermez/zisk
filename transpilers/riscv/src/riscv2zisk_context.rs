@@ -756,12 +756,11 @@ impl<'a> Riscv2ZiskContext<'a> {
                 feature = "zicond_native",
                 feature = "compressed"
             )))]
-            _ => {
-                panic!(
-                    "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst_name={}",
-                    riscv_instruction.inst_name
-                )
-            }
+            // An instruction this build does not support (F, D, Zbc, Zicond, ...)
+            // is an illegal instruction, as in RISC-V: the run fails if it gets
+            // there. Not a panic, which would reject the whole program even
+            // when the word is never executed (data in a code section, say).
+            _ => self.halt_with_error(riscv_instruction, 4),
         }
     }
 

@@ -301,11 +301,9 @@ fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> 
             i.succ = (inst & 0x00F00000) >> 20;
             i.inst_name = RiscvInstName::Fence;
         } else if i.funct3 == 1 {
-            if (inst & 0xFFFF8F80) != 0 {
-                i.inst_name = RiscvInstName::Reserved;
-            } else {
-                i.inst_name = RiscvInstName::FenceI;
-            }
+            // Per Zifencei, base implementations shall ignore FENCE.I's imm, rs1
+            // and rd, reserved for finer-grain fences; only software zeroes them.
+            i.inst_name = RiscvInstName::FenceI;
         } else {
             i.inst_name = RiscvInstName::Reserved;
         }
