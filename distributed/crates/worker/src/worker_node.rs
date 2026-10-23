@@ -556,9 +556,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     match join_result {
                         Err(join_error) => {
                             error!("Computation task failed unexpectedly: {}", join_error);
-                            self.report_computation_error(&message_sender, &join_error.to_string()).await;
-                            self.worker.set_current_job(None);
-                            self.worker.set_state(WorkerState::Ready);
+                            // An error reported against the current job keeps the job, for
+                            // `JobCancelled` to find it (see the message loop).
+                            if !self.report_computation_error(&message_sender, &join_error.to_string()).await {
+                                self.worker.set_current_job(None);
+                                self.worker.set_state(WorkerState::Ready);
+                            }
                         }
                         Ok(()) => {
                             match loop_rx.try_recv() {
