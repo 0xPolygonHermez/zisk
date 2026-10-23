@@ -487,7 +487,7 @@ pub(crate) fn job_inputs(stdin: InputSource, hints: Option<HintsSource>) -> Resu
     let input = match stdin {
         InputSource::Stream(stream) => Payload::Stream(stream),
         InputSource::Stdin(s) => {
-            let data = s.into_inner().read_data();
+            let data = s.into_inner().into_data();
             ensure_fits_input_region(data.len())?;
             Payload::Data(data)
         }
