@@ -153,6 +153,10 @@ jobs:
           sudo chown 1000:1000 "${SETUP_STAGE_ROOT}" "$STAGE"   # container user
 
       - name: Start upload setup container
+        # SETUP_CACHE_WORKERS (repository variable): the workers of the group as
+        # name[=ip], comma separated. This runner pulls the setup cache from the others.
+        env:
+          SETUP_CACHE_WORKERS: ${{ vars.SETUP_CACHE_WORKERS }}
         run: .github/scripts/start_test_container.sh
 
       - name: Build ZisK

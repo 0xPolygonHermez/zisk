@@ -8,6 +8,10 @@
 #                                $OUTPUT_DIR, keyed by <platform>/<input-hash>.
 #   FORCE_SETUP_BUILD            Ignore a cache hit and rebuild the setup (the
 #                                fresh build then refreshes the cache entry).
+#   REMOTE_CACHE_SETUP           Cache roots ($OUTPUT_DIR) of other workers, as
+#                                [user@]host:/path, comma separated. A local cache
+#                                miss is looked up there first, in order, and
+#                                pulled over rsync/ssh. Only with USE_CACHE_SETUP=1.
 #   DISABLE_RECURSIVE_SETUP      Build without aggregation (setup without -r).
 #   INSTALL_SETUP                Install the provingKey into $HOME/.zisk, plus the
 #                                provingKeySnark when the build produced one.
@@ -53,7 +57,7 @@ main() {
 
     info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
-    load_env ZISK_REPO_DIR PIL2_COMPILER_BRANCH USE_CACHE_SETUP FORCE_SETUP_BUILD \
+    load_env ZISK_REPO_DIR PIL2_COMPILER_BRANCH USE_CACHE_SETUP FORCE_SETUP_BUILD REMOTE_CACHE_SETUP \
         DISABLE_RECURSIVE_SETUP INSTALL_SETUP HASH_MODE INCLUDE_SNARK DYLIB_INPUT_FILES \
         HASH_MODE PTAU_PATH RECURSIVE_JOBS SETUP_JOBS || return 1
 
@@ -81,7 +85,13 @@ main() {
 
     build_flags=(--build-dir build --gen-exps --exps-arch major)
     [[ "${DISABLE_RECURSIVE_SETUP}" == "1" ]] && build_flags+=(--no-aggregation)
-    [[ "${USE_CACHE_SETUP}" == "1" ]] && build_flags+=(--cache-dir "${OUTPUT_DIR}")
+    if [[ "${USE_CACHE_SETUP}" == "1" ]]; then
+        build_flags+=(--cache-dir "${OUTPUT_DIR}")
+        local peer peers="${REMOTE_CACHE_SETUP:-}"
+        for peer in ${peers//,/ }; do
+            build_flags+=(--remote-cache-dir "$peer")
+        done
+    fi
 
     [[ -n "${PIL2_COMPILER_BRANCH}" ]] && build_flags+=(--pil2-compiler-branch "${PIL2_COMPILER_BRANCH}")
     # setup_build.sh (build / no-aggregation) emits the input hash as its final

@@ -36,7 +36,7 @@ This will run the Docker container and open the ZisK test menu inside the contai
    After building, it installs the CLI tools and necessary files to the `$HOME/.zisk` folder and adds that folder to the `$PATH` environment variable.
 
 3. **Build setup from source**
-   Builds the setup files (proving key) by delegating to `tools/setup/build-setup.sh`, which runs the `cargo-zisk` proving-key pipeline (`compile-pil` + `setup`). It no longer clones `pil2-proofman-js` / `pil2-compiler` or shells into node — `pil2-compiler` is pulled via npm at the version pinned in `pil2-proofman`'s `package.json`, and the proofman checkout is whatever `Cargo.toml` resolves to (set up by option 2). With `USE_CACHE_SETUP=1` a local artifact cache under `${HOME}/output` is reused/populated, keyed by the input hash.
+   Builds the setup files (proving key) by delegating to `tools/setup/build-setup.sh`, which runs the `cargo-zisk` proving-key pipeline (`compile-pil` + `setup`). It no longer clones `pil2-proofman-js` / `pil2-compiler` or shells into node — `pil2-compiler` is pulled via npm at the version pinned in `pil2-proofman`'s `package.json`, and the proofman checkout is whatever `Cargo.toml` resolves to (set up by option 2). With `USE_CACHE_SETUP=1` a local artifact cache under `${HOME}/output` is reused/populated, keyed by the input hash. With `REMOTE_CACHE_SETUP=[user@]host:/path,...` (the same cache root on other workers, comma separated) a local miss is first pulled from the first of them that has it, over rsync/ssh.
    After building, it installs the proving key (and the snark proving key, when the build produced one) to the `$HOME/.zisk` folder and generates the constant files using the `cargo-zisk-dev check-setup` command.
 
 4. **Build dylib files (macOS)**

@@ -46,6 +46,14 @@
 # entry) — the escape hatch if a setup-relevant change slipped past the
 # content key's path list.
 #
+# --remote-cache-dir [user@]host:/path (repeatable) names the same cache root on
+# other workers, as the peer's ssh account sees it. Only rsync runs on the peer,
+# so its key can be locked to `rrsync -ro <root>` in authorized_keys; the path
+# is then relative to that root, i.e. /. On a local miss the peers are tried in
+# order and the entry for the key is pulled over rsync/ssh into the local cache,
+# then used as a local hit, so the next run on this host needs no network. A
+# peer that is down or has no entry is skipped; none with it is a plain miss.
+#
 # The pil2-proofman checkout is resolved from `cargo metadata` — whatever cargo
 # compiled into cargo-zisk-dev, be it the git dep's checkout under
 # ~/.cargo/git/checkouts/ or a local path dep. A crates.io dep has no checkout,
@@ -65,7 +73,8 @@ fi
 
 usage() {
   cat <<EOF >&2
-usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs N]
+usage: $0 [--build-dir DIR] [--cache-dir DIR] [--remote-cache-dir HOST:PATH]
+         [--recursive-jobs N] [--setup-jobs N]
          [--skip-compile-pil] [--gen-exps] [--exps-arch SPEC] [--pil2-compiler-branch BRANCH]
          [-v|-vv|--verbose]
          [--compile-pil | --no-aggregation | --snark | --compressed-final | --gen-exps-only | --stats | --print-hash]
@@ -80,6 +89,15 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
                          so changing any hashed input (see below) or --hash-mode
                          misses the cache. No bucket / network access — this is
                          a plain filesystem cache.
+  --remote-cache-dir [user@]host:/path
+                         Cache root of another worker, same layout as
+                         --cache-dir, as the peer's ssh account sees it (with
+                         a key locked to rrsync -ro ROOT, that is /). Repeatable;
+                         peers are tried in order. On a local miss the entry is
+                         pulled from the first peer that has it (rsync over ssh)
+                         into the local cache before building. Only rsync runs
+                         on the peer. Needs --cache-dir. No peer with the entry
+                         => normal miss.
   --recursive-jobs N     Concurrent recursive1 air pipelines (circom + pil2com).
                          Default 1. Each job can use several GB; size by RAM.
                          Also settable via RECURSIVE_JOBS env var.
@@ -138,6 +156,7 @@ EOF
 MODE="build"   # build | no_aggregation | snark | compressed_final | gen_exps_only | stats | compile_pil | print_hash
 BUILD_DIR="build"
 CACHE_DIR=""
+REMOTE_CACHE_DIRS=()
 CACHE_HIT=0
 CACHE_ENTRY=""
 # Set to 1 when a cache hit's provingKey has no kernels (stale cache) and we must
@@ -171,6 +190,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --build-dir)         BUILD_DIR="$2";          shift 2 ;;
     --cache-dir)         CACHE_DIR="$2";          shift 2 ;;
+    --remote-cache-dir)  REMOTE_CACHE_DIRS+=("$2"); shift 2 ;;
     --recursive-jobs)    RECURSIVE_JOBS_ARG="$2"; shift 2 ;;
     --setup-jobs)        SETUP_JOBS_ARG="$2";     shift 2 ;;
     --hash-mode|--hash)  HASH_MODE="$2";          shift 2 ;;
@@ -195,6 +215,18 @@ done
 if [ "$MODE" = "compile_pil" ] && [ $SKIP_COMPILE_PIL -eq 1 ]; then
   echo "error: --compile-pil and --skip-compile-pil are contradictory" >&2
   exit 1
+fi
+
+if [ "${#REMOTE_CACHE_DIRS[@]}" -gt 0 ]; then
+  [ -n "$CACHE_DIR" ] || { echo "error: --remote-cache-dir needs --cache-dir (the pulled entry is stored there)" >&2; exit 1; }
+  # Strict charset: the value ends up as a remote rsync argument, so nothing a
+  # shell could read as syntax gets through.
+  for peer in "${REMOTE_CACHE_DIRS[@]}"; do
+    if ! [[ "$peer" =~ ^([A-Za-z0-9._-]+@)?[A-Za-z0-9._-]+:[A-Za-z0-9._/-]+$ ]]; then
+      echo "error: --remote-cache-dir must be [user@]host:/path (letters, digits, . _ - / only), got '$peer'" >&2
+      exit 1
+    fi
+  done
 fi
 
 VERBOSE_FLAGS=()
@@ -319,6 +351,72 @@ run_gen_exps() {
     ${VERBOSE_FLAGS[@]+"${VERBOSE_FLAGS[@]}"}
 }
 
+# Non-interactive ssh for the remote cache: CI must never wait on a password or
+# a host-key prompt. The peer's host key must already be in known_hosts: an
+# unknown or changed one fails the connection (exit 255), so a spoofed peer can
+# never hand us a proving key. The caller then falls back to the next peer or
+# to a local build.
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes)
+
+# Pull this key's entry from the cache root of peer $1 ([user@]host:/path) into
+# $CACHE_ENTRY, so the lookup then sees a local hit. The peer only ever runs
+# rsync (the probe is a listing), which is what lets its key be locked to
+# rrsync -ro. Returns 1 on any failure (no ssh/rsync, peer down, no entry,
+# broken transfer): the caller moves on to the next peer, or builds.
+fetch_remote_cache_entry() {
+  local host="${1%%:*}" root="${1#*:}"
+  local remote_entry="${root%/}/$platform/$cache_key"
+  local partial="$CACHE_ENTRY.partial"
+  local rsync_ssh="ssh ${SSH_OPTS[*]}"
+  local tool rc=0 probe_err
+
+  # platform and cache_key join the path; keep the whole of it in the charset
+  # the flag was checked against.
+  if ! [[ "$remote_entry" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+    echo "==> remote cache: unsafe remote path '$remote_entry', skipping $host" >&2
+    return 1
+  fi
+
+  for tool in ssh rsync; do
+    command -v "$tool" >/dev/null 2>&1 && continue
+    echo "==> remote cache: $tool not on PATH, skipping $host" >&2
+    return 1
+  done
+
+  # 0: entry present, 23: absent, 255: ssh could not connect.
+  probe_err="$(rsync --list-only -e "$rsync_ssh" "$host:$remote_entry/provingKey/" 2>&1 >/dev/null)" || rc=$?
+  case $rc in
+    0) ;;
+    23) echo "==> remote cache miss: $host:$remote_entry"; return 1 ;;
+    255) echo "==> remote cache: cannot reach $host, skipping" >&2; echo "$probe_err" >&2; return 1 ;;
+    *) echo "==> remote cache: listing $host:$remote_entry failed (rsync exit $rc), skipping" >&2; echo "$probe_err" >&2; return 1 ;;
+  esac
+
+  # Into a .partial dir, renamed only when complete: a cut transfer never leaves
+  # a half entry that a later run takes for a hit. The partial dir is kept so
+  # the next run resumes it.
+  echo "==> remote cache hit: $host:$remote_entry (pulling provingKey)"
+  mkdir -p "$partial"
+  if ! rsync -a --delete --partial -e "$rsync_ssh" \
+       "$host:$remote_entry/provingKey/" "$partial/provingKey/" 1>&2; then
+    echo "==> remote cache: rsync from $host failed, skipping" >&2
+    return 1
+  fi
+  rm -rf "$CACHE_ENTRY"
+  mv "$partial" "$CACHE_ENTRY"
+}
+
+# Replace the cache entry with $BUILD_DIR/provingKey. Staged next to it and
+# renamed at the end, so a peer pulling the entry never sees a half-written one.
+store_cache_entry() {
+  local staging="$CACHE_ENTRY.tmp"
+  rm -rf "$staging" "$CACHE_ENTRY.partial"
+  mkdir -p "$staging"
+  cp -R "$BUILD_DIR/provingKey" "$staging/provingKey"
+  rm -rf "$CACHE_ENTRY"
+  mv "$staging" "$CACHE_ENTRY"
+}
+
 # ----- mode dispatch ---------------------------------------------------------
 
 case "$MODE" in
@@ -437,16 +535,29 @@ case "$MODE" in
       [ "$MODE" = "no_aggregation" ] && cache_key="${cache_key}-no-aggregation"
       CACHE_ENTRY="$CACHE_DIR/$platform/$cache_key"
 
-      if [ "${FORCE_SETUP_BUILD:-0}" = "1" ] && [ -d "$CACHE_ENTRY/provingKey" ]; then
-        echo "==> FORCE_SETUP_BUILD=1 — ignoring cache hit at $CACHE_ENTRY (will rebuild, then refresh)"
-      elif [ -d "$CACHE_ENTRY/provingKey" ]; then
-        echo "==> cache hit: $CACHE_ENTRY (skipping compile-pil + setup)"
-        rm -rf "$BUILD_DIR/provingKey"
-        mkdir -p "$BUILD_DIR"
-        cp -R "$CACHE_ENTRY/provingKey" "$BUILD_DIR/provingKey"
-        CACHE_HIT=1
+      if [ "${FORCE_SETUP_BUILD:-0}" = "1" ]; then
+        # The peer is skipped too: a forced rebuild takes no cached entry at all.
+        if [ -d "$CACHE_ENTRY/provingKey" ]; then
+          echo "==> FORCE_SETUP_BUILD=1 — ignoring cache hit at $CACHE_ENTRY (will rebuild, then refresh)"
+        else
+          echo "==> cache miss: $CACHE_ENTRY (will build, then populate)"
+        fi
       else
-        echo "==> cache miss: $CACHE_ENTRY (will build, then populate)"
+        if [ ! -d "$CACHE_ENTRY/provingKey" ] && [ "${#REMOTE_CACHE_DIRS[@]}" -gt 0 ]; then
+          echo "==> local cache miss: $CACHE_ENTRY, asking ${#REMOTE_CACHE_DIRS[@]} peer(s)"
+          for peer in "${REMOTE_CACHE_DIRS[@]}"; do
+            fetch_remote_cache_entry "$peer" && break
+          done
+        fi
+        if [ -d "$CACHE_ENTRY/provingKey" ]; then
+          echo "==> cache hit: $CACHE_ENTRY (skipping compile-pil + setup)"
+          rm -rf "$BUILD_DIR/provingKey"
+          mkdir -p "$BUILD_DIR"
+          cp -R "$CACHE_ENTRY/provingKey" "$BUILD_DIR/provingKey"
+          CACHE_HIT=1
+        else
+          echo "==> cache miss: $CACHE_ENTRY (will build, then populate)"
+        fi
       fi
       # gen-exps kernels are baked into the provingKey during the miss build (see
       # below) and cached alongside it. With --exps-arch major they carry SASS +
@@ -504,9 +615,7 @@ if [ "$CACHE_HIT" -eq 0 ]; then
   # computed hash, so don't poison the cache in that case.
   if [ -n "$CACHE_DIR" ] && [ $SKIP_COMPILE_PIL -eq 0 ]; then
     echo "==> caching provingKey to $CACHE_ENTRY"
-    rm -rf "$CACHE_ENTRY"
-    mkdir -p "$CACHE_ENTRY"
-    cp -R "$BUILD_DIR/provingKey" "$CACHE_ENTRY/provingKey"
+    store_cache_entry
   fi
 elif [ "$GEN_EXPS_ON_HIT" -eq 1 ]; then
   # Stale cache (populated before kernels were cached): generate once and refresh
@@ -514,9 +623,7 @@ elif [ "$GEN_EXPS_ON_HIT" -eq 1 ]; then
   run_gen_exps
   if [ -n "$CACHE_DIR" ]; then
     echo "==> refreshing cached provingKey with kernels at $CACHE_ENTRY"
-    rm -rf "$CACHE_ENTRY"
-    mkdir -p "$CACHE_ENTRY"
-    cp -R "$BUILD_DIR/provingKey" "$CACHE_ENTRY/provingKey"
+    store_cache_entry
   fi
 fi
 
