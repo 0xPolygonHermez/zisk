@@ -23,6 +23,11 @@ impl Coordinator {
         metadata: Option<std::collections::BTreeMap<String, String>>,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
         let metadata = self.admit_job_metadata(metadata)?;
+        // Before any worker is reserved, as in `launch_proof`.
+        if ProofKind::from(request.proof_dest) == ProofKind::Plonk {
+            self.ensure_snark_available(request.snark_protocol).await?;
+        }
+
         // Atomic single-worker reservation under one pool write lock —
         // prevents two concurrent launch_wrap calls from double-booking.
         let job_id = JobId::new();

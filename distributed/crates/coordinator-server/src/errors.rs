@@ -30,6 +30,8 @@ pub mod codes {
     pub const CLIENT_RANDOM_SEED_NOT_ALLOWED: u32 = 1006;
     /// The request carried job metadata and the coordinator does not accept it.
     pub const JOB_METADATA_NOT_ALLOWED: u32 = 1007;
+    /// The request asks for a final SNARK the workers cannot prove.
+    pub const SNARK_UNAVAILABLE: u32 = 1008;
     /// The pushed input is larger than the guest's input region holds.
     pub const INPUT_TOO_LARGE: u32 = 1009;
     /// No cluster is available to service the request.
@@ -77,6 +79,11 @@ pub enum ApiError {
     #[error("Job metadata is not allowed by this coordinator")]
     JobMetadataNotAllowed,
 
+    /// The request asks for a final SNARK the workers cannot prove: they have no SNARK proving
+    /// key, or one of another protocol.
+    #[error("Final SNARK unavailable: {0}")]
+    SnarkUnavailable(String),
+
     /// The pushed input is larger than the guest's input region holds.
     #[error("Input too large: the guest's input region holds at most {limit} bytes")]
     InputTooLarge {
@@ -107,6 +114,7 @@ impl ApiError {
             Self::InvalidProofConversion { .. } => codes::INVALID_PROOF_CONVERSION,
             Self::ClientRandomSeedNotAllowed => codes::CLIENT_RANDOM_SEED_NOT_ALLOWED,
             Self::JobMetadataNotAllowed => codes::JOB_METADATA_NOT_ALLOWED,
+            Self::SnarkUnavailable(_) => codes::SNARK_UNAVAILABLE,
             Self::InputTooLarge { .. } => codes::INPUT_TOO_LARGE,
             Self::ClusterUnavailable { .. } => codes::CLUSTER_UNAVAILABLE,
             Self::Internal(_) => codes::INTERNAL,
@@ -123,6 +131,7 @@ impl ApiError {
             Self::InvalidProofConversion { .. } => "INVALID_PROOF_CONVERSION",
             Self::ClientRandomSeedNotAllowed => "CLIENT_RANDOM_SEED_NOT_ALLOWED",
             Self::JobMetadataNotAllowed => "JOB_METADATA_NOT_ALLOWED",
+            Self::SnarkUnavailable(_) => "SNARK_UNAVAILABLE",
             Self::InputTooLarge { .. } => "INPUT_TOO_LARGE",
             Self::ClusterUnavailable { .. } => "CLUSTER_UNAVAILABLE",
             Self::Internal(_) => "INTERNAL",
@@ -140,6 +149,7 @@ impl ApiError {
             Self::ClientRandomSeedNotAllowed | Self::JobMetadataNotAllowed => {
                 Code::PermissionDenied
             }
+            Self::SnarkUnavailable(_) => Code::FailedPrecondition,
             Self::ClusterUnavailable { .. } => Code::Unavailable,
             Self::Internal(_) => Code::Internal,
         }
@@ -189,6 +199,7 @@ mod tests {
         assert_eq!(ApiError::InvalidJobState { reason: "x".into() }.code(), 1004);
         assert_eq!(ApiError::ClientRandomSeedNotAllowed.code(), 1006);
         assert_eq!(ApiError::JobMetadataNotAllowed.code(), 1007);
+        assert_eq!(ApiError::SnarkUnavailable("x".into()).code(), 1008);
         assert_eq!(ApiError::InputTooLarge { limit: 16 }.code(), 1009);
         assert_eq!(ApiError::ClusterUnavailable { reason: "test" }.code(), 2001);
         assert_eq!(ApiError::Internal("x".into()).code(), 3001);
@@ -219,6 +230,13 @@ mod tests {
     #[test]
     fn job_metadata_not_allowed_maps_to_permission_denied() {
         assert_eq!(Status::from(ApiError::JobMetadataNotAllowed).code(), Code::PermissionDenied);
+    }
+
+    #[test]
+    fn snark_unavailable_maps_to_failed_precondition_with_its_reason() {
+        let status = Status::from(ApiError::SnarkUnavailable("no SNARK key".into()));
+        assert_eq!(status.code(), Code::FailedPrecondition);
+        assert!(status.message().contains("no SNARK key"));
     }
 
     #[test]

@@ -31,7 +31,12 @@ gRPC Service definition: [`coordinator_api.proto`](../../distributed/crates/coor
 enum ProofKind {
     Stark,
     StarkMinimal,
+    Plonk, // the final SNARK, of the protocol of the workers' SNARK proving key
+}
+
+enum SnarkProtocol {
     Plonk,
+    Pilfflonk,
 }
 
 enum InputKind {
@@ -330,10 +335,12 @@ Creates a proof job against a registered program. Use `WatchJob` or `WaitJobResu
 
 ```rust
 struct ProveRequest {
-    hash_id:       String,           // Elf hash id
-    input:         InputKind,
-    proof_timeout: Option<DateTime<Utc>>, // proof generation timeout; server default if omitted
-    random_seed:   Option<[u8; 32]>, // provide the host randomness seed (replays); see below
+    hash_id:        String,           // Elf hash id
+    input:          InputKind,
+    proof_timeout:  Option<DateTime<Utc>>, // proof generation timeout; server default if omitted
+    proof_dest:     ProofKind,        // format of the proof; Stark if omitted
+    random_seed:    Option<[u8; 32]>, // provide the host randomness seed (replays); see below
+    snark_protocol: Option<SnarkProtocol>, // for a Plonk proof; see below
 }
 
 struct ProveResponse {
@@ -348,15 +355,26 @@ Converts an existing `Proof` to the format specified by `proof_dest`. Valid comb
 
 ```rust
 struct WrapRequest {
-    proof:        Proof,
-    proof_dest:   ProofKind,         // target format
-    wrap_timeout: Option<DateTime<Utc>>,  // wrapping timeout; server default if omitted
+    proof:          Proof,
+    proof_dest:     ProofKind,         // target format
+    wrap_timeout:   Option<DateTime<Utc>>,  // wrapping timeout; server default if omitted
+    snark_protocol: Option<SnarkProtocol>, // for a Plonk proof_dest; see below
 }
 
 struct WrapResponse {
     proof: Proof,
 }
 ```
+
+### Final SNARK protocol
+
+A `Plonk` proof is the final SNARK of the workers' SNARK proving key, which is set up for one
+protocol (`setup-snark --final-snark`): PLONK or pilfflonk. Any worker may wrap a job's SNARK, so
+the coordinator accepts a worker only with the same SNARK proving key protocol as the others, or
+none when they have none. A prove or wrap request for a `Plonk` proof is rejected with
+`SNARK_UNAVAILABLE`, before it runs, when the workers have no SNARK proving key, or when it sets
+`snark_protocol` and the workers' key is of another protocol. Without `snark_protocol`, the proof is
+of the workers' protocol.
 
 ### `Aggregate`
 
@@ -440,6 +458,7 @@ All RPC methods may return `ApiError`. Common error codes:
 | 1005 | `INVALID_PROOF_CONVERSION` | Unsupported `proof_dest` for given `proof_kind` |
 | 1006 | `CLIENT_RANDOM_SEED_NOT_ALLOWED` | Request provided a random seed and the coordinator does not allow client random seeds |
 | 1007 | `JOB_METADATA_NOT_ALLOWED` | Request carried job metadata and the coordinator does not allow it |
+| 1008 | `SNARK_UNAVAILABLE` | Request asks for a `Plonk` proof the workers cannot prove: they have no SNARK proving key, or one of another `snark_protocol` |
 | 1009 | `INPUT_TOO_LARGE` | `PushJobInput` sent more input than the guest's input region holds (2 GiB − 16 bytes); the job fails |
 | 2001 | `CLUSTER_UNAVAILABLE` | No coordinator available |
 | 3001 | `INTERNAL` | Unexpected server error; include `trace_id` in support requests |

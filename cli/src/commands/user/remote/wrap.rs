@@ -9,7 +9,7 @@ use zisk_common::JobMetadataArgs;
 use zisk_sdk::{setup_logger, Proof, RemoteClient};
 
 use crate::common::resolve_output_path;
-use crate::proof::{select_wrap_kind, wrap_kind_label};
+use crate::proof::{select_wrap_kind, wrap_kind_label, SnarkArgs};
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
 #[derive(clap::Args, Debug)]
@@ -24,13 +24,12 @@ pub(crate) struct ZiskRemoteWrap {
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
 
-    /// Smaller STARK proof with reduced size. Mutually exclusive with --plonk
-    #[arg(short = 'c', long, conflicts_with = "plonk")]
+    /// Smaller STARK proof with reduced size. Mutually exclusive with --plonk and --pilfflonk
+    #[arg(short = 'c', long, conflicts_with_all = ["plonk", "pilfflonk"])]
     minimal: bool,
 
-    /// SNARK proof, of the protocol of the proving key (pilfflonk, or PLONK). Mutually exclusive with --minimal. Only a PLONK proof can be exported for the on-chain EVM verifier for now
-    #[arg(long, conflicts_with = "minimal")]
-    plonk: bool,
+    #[command(flatten)]
+    pub(crate) snark: SnarkArgs,
 
     #[command(flatten)]
     metadata: JobMetadataArgs,
@@ -50,7 +49,7 @@ impl ZiskRemoteWrap {
 
         setup_logger(zisk_sdk::VerboseMode::Info);
 
-        let proof_kind = select_wrap_kind(self.plonk, self.minimal)?;
+        let proof_kind = select_wrap_kind(self.snark.protocol(), self.minimal)?;
         let kind_label = wrap_kind_label(proof_kind);
 
         let zisk_proof = Proof::load(&self.proof).map_err(|e| {

@@ -15,8 +15,8 @@ The API uses bidirectional gRPC streaming for real-time communication between co
 The primary communication channel between coordinator and workers:
 
 **Worker → Coordinator Messages:**
-- `WorkerRegisterRequest` - Initial worker registration with compute capacity
-- `WorkerReconnectRequest` - Reconnection with last known state
+- `WorkerRegisterRequest` - Initial worker registration with compute capacity, the aggregation arity of the proving key and the protocol of the SNARK proving key (none without `--plonk`). The coordinator rejects a worker whose arity or SNARK protocol differs from the other workers'
+- `WorkerReconnectRequest` - Reconnection with last known state, and the same arity and SNARK protocol
 - `ExecuteTaskResponse` - Task completion results (challenges, proofs, final proofs)
 - `HeartbeatAck` - Heartbeat acknowledgments
 - `WorkerError` - Error reporting
