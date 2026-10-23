@@ -2,7 +2,7 @@ use crate::{
     coordinator::exec_stats_from_job,
     coordinator_errors::{CoordinatorError, CoordinatorResult},
     job_events::{CoordinatorJobEvent, CoordinatorJobResult},
-    Coordinator, PrecompileHintsRelay, WorkersPool,
+    Coordinator, InputActivity, PrecompileHintsRelay, WorkersPool,
 };
 use bytes::Bytes;
 use chrono::Utc;
@@ -141,7 +141,17 @@ impl Coordinator {
             })?;
         }
 
-        if matches!(hints_source, HintsSourceDto::HintsStream(_)) {
+        // From here the workers wait for what the client streams: the job monitor fails the job
+        // if it stops coming (`input_idle_timeout_seconds`).
+        let streams_input = matches!(job.inputs_mode, InputsModeDto::InputsStream(_));
+        let streams_hints = matches!(hints_source, HintsSourceDto::HintsStream(_));
+        if streams_input || streams_hints {
+            let activity = self.input_activity(&job.job_id).await;
+            activity.expect_input(streams_input);
+            activity.expect_hints(streams_hints);
+        }
+
+        if streams_hints {
             self.initialize_stream(job, cloned_active_workers.clone()).await?;
         }
 
@@ -165,6 +175,7 @@ impl Coordinator {
         let job_id_clone = job.job_id.clone();
         let workers_clone = Arc::new(cloned_active_workers.clone());
         let workers_pool = Arc::clone(&self.workers_pool);
+        let activity = self.input_activity(&job.job_id).await;
 
         // Async dispatcher — no blocking, pure async flow for maximum performance.
         let dispatcher =
@@ -172,6 +183,11 @@ impl Coordinator {
                 use futures::future::join_all;
                 use zisk_cluster_common::{StreamDataDto, StreamPayloadDto};
 
+                // Every batch read from the client is progress; its control-end hint ends them.
+                match stream_type {
+                    StreamMessageKind::End => activity.expect_hints(false),
+                    _ => activity.progress(),
+                }
                 let job_id = job_id_clone.clone();
                 let workers = Arc::clone(&workers_clone);
                 let pool = Arc::clone(&workers_pool);
@@ -289,6 +305,7 @@ impl Coordinator {
 
         let job_id = job.job_id.clone();
         let coord = Arc::clone(self);
+        let activity = self.input_activity(&job.job_id).await;
 
         // Spawn a background thread: opens the stream reader, reads chunks,
         // and relays each chunk to all workers via InputStreamData.
@@ -305,6 +322,7 @@ impl Coordinator {
                 let result = Self::run_input_relay(
                     &inputs_uri,
                     &job_id,
+                    &activity,
                     &active_workers,
                     &coord.workers_pool,
                 )
@@ -329,11 +347,12 @@ impl Coordinator {
     }
 
     /// Core loop for the input relay: connects to the stream, reads chunks,
-    /// and broadcasts each to all workers.
+    /// and broadcasts each to all workers, marking each on the job's `activity`.
     ///
     async fn run_input_relay(
         inputs_uri: &str,
         job_id: &JobId,
+        activity: &InputActivity,
         workers: &[WorkerId],
         workers_pool: &WorkersPool,
     ) -> anyhow::Result<()> {
@@ -373,6 +392,7 @@ impl Coordinator {
         loop {
             match stream.next() {
                 Ok(Some(chunk)) => {
+                    activity.progress();
                     // Converted once so the per-worker clones are refcounts.
                     let chunk = Bytes::from(chunk);
                     let sends = workers.iter().map(|worker_id| {
@@ -394,6 +414,7 @@ impl Coordinator {
                     futures::future::join_all(sends).await;
                 }
                 Ok(None) => {
+                    activity.expect_input(false);
                     info!("Input relay finished for job {} (stream ended)", job_id);
                     return Ok(());
                 }
