@@ -116,7 +116,7 @@ for line in "${commits_array[@]}"; do
     if ! [[ $? -eq 0 ]]; then
         if [[ "$output" == *"CONFLICT"* ]]; then
             printf "%s\n" "$output"
-            log_warn "The are CONFLICTS, please resolve them and after press a key to continue"
+            log_warn "There are CONFLICTS, please resolve them and after press a key to continue"
             read -n1 -s
         else
             log_err "Failed to apply cherry pick for commit: ${msg} (${commit})"
