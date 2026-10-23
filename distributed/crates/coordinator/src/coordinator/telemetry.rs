@@ -59,7 +59,11 @@ impl Coordinator {
     /// recorder's output. Sets the `coordinator_workers_connected`, `coordinator_compute_units`
     /// and `coordinator_registered_programs_total` gauges first, so call it before rendering the
     /// recorder.
-    pub async fn render_metrics(&self) -> String {
+    ///
+    /// A scrape that `take`s samples moves the timestamped series on to their next queued sample;
+    /// any other is shown the same samples and leaves them for it. Only the Prometheus that
+    /// records this coordinator should take them.
+    pub async fn render_metrics(&self, take: bool) -> String {
         let mut out = String::new();
 
         let (connected, cc, acc) = self.workers_pool.pool_stats().await;
@@ -125,7 +129,7 @@ impl Coordinator {
             );
         }
 
-        journal().render(&mut out);
+        journal().render(&mut out, take);
         out
     }
 }
