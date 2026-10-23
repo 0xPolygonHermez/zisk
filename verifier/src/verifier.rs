@@ -209,9 +209,13 @@ pub struct Verified {
 }
 
 impl Verified {
-    /// The outputs as the guest committed them. Always `Some` unless `is_aggregate` is
-    /// `Some(true)`: [`verify`] checks every leaf, compressed ones included.
+    /// The outputs as the guest committed them: `None` for an aggregate, whose outputs are its
+    /// recurser's, and `Some` for any leaf, as [`verify`] checks each fits in u32 (compressed
+    /// ones included).
     pub fn outputs_u32(&self) -> Option<[u32; ZISK_PUBLICS]> {
+        if self.is_aggregate == Some(true) {
+            return None;
+        }
         let mut out = [0u32; ZISK_PUBLICS];
         for (o, &w) in out.iter_mut().zip(&self.outputs) {
             *o = u32::try_from(w).ok()?;

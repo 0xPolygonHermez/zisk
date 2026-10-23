@@ -96,6 +96,14 @@ fn ensure_stored_body(body: &ProofBody) -> Result<()> {
             )));
         }
     }
+    if let ProofBody::Plonk { rootc, .. } | ProofBody::Pilfflonk { rootc, .. } = body {
+        if rootc.len() != PROGRAM_VK_LEN {
+            return Err(CommonError::InvalidProof(format!(
+                "rootc has {} limbs, expected {PROGRAM_VK_LEN}",
+                rootc.len()
+            )));
+        }
+    }
     let flag_free = PROGRAM_VK_LEN + ZISK_PUBLICS;
     let (ProofBody::Vadcop { publics_full, .. }
     | ProofBody::Plonk { publics_full, .. }

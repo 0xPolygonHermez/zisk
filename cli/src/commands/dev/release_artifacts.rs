@@ -487,9 +487,11 @@ mod tests {
     }
 
     /// keys.rs is a fixed point: rendering the keys it compiled to writes it back unchanged.
+    /// Read at run time: a packaged crate has no sibling crates, and there the test passes.
     #[test]
     fn rendering_the_built_in_keys_writes_keys_rs_back() {
-        let committed = include_str!("../../../../verifier/src/keys.rs");
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../verifier/src/keys.rs");
+        let Ok(committed) = std::fs::read_to_string(path) else { return };
         let built_in = built_in_manifests();
         assert_eq!(built_in.len(), 3);
         assert_eq!(render_keys_rs(&merge_manifests(built_in, vec![]).unwrap()), committed);
