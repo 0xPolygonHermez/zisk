@@ -196,16 +196,19 @@ impl From<DomainJobPhase> for JobPhase {
 }
 
 impl DomainInputKind {
-    /// Maximum size for inline input payloads. Both the coordinator server and
-    /// SDK client are configured with the same limit via `max_decoding/encoding_message_size`.
-    const MAX_INLINE_BYTES: usize = 128 * 1024 * 1024;
+    /// The most bytes a request carries inline, its input and its hints together. A request is
+    /// one gRPC message, which the coordinator server and the client both cap at 128 MiB
+    /// (`max_decoding/encoding_message_size`), and the 1 MiB left holds the rest of it: the
+    /// program hash, the seed, the metadata (at most 32 entries of about 1 KiB) and the framing.
+    /// Larger data goes through the job's push streams (`PushJobInput`, `PushJobHintsInput`).
+    pub const MAX_INLINE_BYTES: usize = (128 - 1) * 1024 * 1024;
 
-    /// Wrap `data` as an inline input chunk, enforcing the gRPC message size limit.
+    /// Wrap `data` as an inline input chunk, refusing more than [`Self::MAX_INLINE_BYTES`].
     pub fn try_inline(data: Vec<u8>) -> anyhow::Result<Self> {
         if data.len() > Self::MAX_INLINE_BYTES {
             anyhow::bail!(
-                "input is {} bytes which exceeds the {} byte inline limit; \
-                 use a StreamUri input source for large payloads",
+                "input is {} bytes, more than the {} bytes a request carries inline; \
+                 push it through the job's input stream (PushJobInput) instead",
                 data.len(),
                 Self::MAX_INLINE_BYTES
             );
@@ -933,5 +936,33 @@ mod tests {
         let mut wire = ProveRequest::from(prove_request(None));
         wire.random_seed = Some(vec![0; RandomSeed::LEN - 1]);
         assert!(DomainProveRequest::try_from(wire).is_err());
+    }
+
+    #[test]
+    fn try_inline_takes_up_to_the_inline_limit() {
+        assert!(DomainInputKind::try_inline(vec![0; DomainInputKind::MAX_INLINE_BYTES]).is_ok());
+        assert!(
+            DomainInputKind::try_inline(vec![0; DomainInputKind::MAX_INLINE_BYTES + 1]).is_err()
+        );
+    }
+
+    /// An input of exactly 128 MiB used to pass as inline, and its request then failed in the
+    /// transport, past the gRPC message limit. The largest request the inline limit lets
+    /// through, with every other field at its largest, must fit that limit.
+    #[test]
+    fn the_largest_inline_request_fits_a_grpc_message() {
+        use prost::Message;
+
+        let mut request = prove_request(Some(RandomSeed::new([1; RandomSeed::LEN])));
+        request.hash_id = "f".repeat(64);
+        request.proof_timeout = Some(chrono::Utc::now());
+        request.input = DomainInputKind::Inline(DomainInputChunk {
+            data: vec![0; DomainInputKind::MAX_INLINE_BYTES],
+        });
+        // The server's metadata caps: 32 entries, keys of 128 bytes and values of 1 KiB.
+        let metadata = (0..32).map(|i| (format!("{i:0>128}"), "v".repeat(1024))).collect();
+        let message =
+            JobRequestMessage { job_kind: Some(DomainJobKind::Prove(request).into()), metadata };
+        assert!(message.encoded_len() <= 128 * 1024 * 1024, "{} bytes", message.encoded_len());
     }
 }

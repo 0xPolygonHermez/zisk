@@ -8168,6 +8168,7 @@ dependencies = [
  "zisk-common",
  "zisk-coordinator-api",
  "zisk-coordinator-client",
+ "zisk-core",
  "zisk-prover-backend",
  "zisk-recurser",
  "zisk-rom-setup",
