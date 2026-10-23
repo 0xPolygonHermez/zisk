@@ -16,7 +16,7 @@ impl Coordinator {
     /// Launch a wrap job: compress/reduce an existing vadcop proof to minimal or SNARK format.
     ///
     /// Selects any single idle worker, sends a WRAP task to it, and returns the job ID.
-    /// The proof data must be a bincode-encoded `Proof`; `metadata` is the caller's, if any.
+    /// The proof data must be `Proof::to_bincode`; `metadata` is the caller's, if any.
     pub async fn launch_wrap(
         &self,
         request: LaunchWrapRequestDto,
@@ -129,9 +129,19 @@ impl Coordinator {
             ));
         };
 
-        let zisk_proof = Proof::from_bytes(&wrap_result.proof_data).map_err(|e| {
-            CoordinatorError::Internal(format!("Failed to deserialize wrap proof: {}", e))
-        })?;
+        // A proof that does not decode, or cannot be saved (which would complete the job with
+        // no proof for its webhook), fails the job.
+        let zisk_proof = match Proof::from_bincode(&wrap_result.proof_data)
+            .and_then(|p| p.ensure_saveable().map(|()| p))
+        {
+            Ok(p) => p,
+            Err(e) => {
+                drop(job);
+                let reason = format!("Wrap proof from worker {worker_id} is malformed: {e}");
+                let _ = self.fail_job(job_id, &reason).await;
+                return Err(CoordinatorError::Internal(reason));
+            }
+        };
         let seed = zisk_proof.random_seed;
         job.proof = Some(zisk_proof);
         job.change_state(JobState::Completed);

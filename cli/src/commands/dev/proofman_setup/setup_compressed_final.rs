@@ -16,7 +16,7 @@ pub(crate) struct ZiskProofmanSetupCompressedFinal {
     #[arg(short = 'b', long)]
     build_dir: String,
 
-    /// Low-degree test of the compressed proof: FRI (default) or STIR
+    /// Low-degree test of the compressed proof: FRI or STIR (default: proofman's, STIR)
     #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(["FRI", "STIR"]))]
     low_degree_test: Option<String>,
 

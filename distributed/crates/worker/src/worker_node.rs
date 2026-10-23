@@ -1231,11 +1231,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                         Some(zisk_proof)
                                     };
                                     match final_proof {
-                                        Some(p) => bincode::serde::encode_to_vec(
-                                            &p,
-                                            bincode::config::standard(),
-                                        )
-                                        .unwrap_or_default(),
+                                        Some(p) => p.to_bincode().unwrap_or_default(),
                                         None => vec![],
                                     }
                                 }
@@ -2228,8 +2224,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             zisk_vk,
             vfp.hash.clone(),
         )?;
-        let bytes = bincode::serde::encode_to_vec(&proof, bincode::config::standard())
-            .map_err(|e| anyhow!("failed to serialize recurser proof: {e}"))?;
+        let bytes =
+            proof.to_bincode().map_err(|e| anyhow!("failed to serialize recurser proof: {e}"))?;
 
         info!(
             "[Recurser] job_id {} Completed recurser prove for recurser_id {}",

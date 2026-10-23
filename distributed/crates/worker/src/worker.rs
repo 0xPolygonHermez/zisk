@@ -1388,14 +1388,17 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             _ => anyhow::bail!("Unsupported proof_dest for wrap: {}", proof_dest),
         };
 
-        let proof = Proof::from_bytes(&proof_data)
-            .map_err(|e| anyhow::anyhow!("Failed to deserialize proof for wrap: {}", e))?;
+        // from_bincode does not check the shape a saved proof has; the backend indexes into it.
+        let proof = Proof::from_bincode(&proof_data)
+            .and_then(|p| p.ensure_saveable().map(|()| p))
+            .map_err(|e| anyhow::anyhow!("Invalid proof for wrap: {}", e))?;
 
         let result = prover.wrap_proof(&proof, proof_kind).run()?;
 
         let wrapped = result.get_proof();
 
-        let result_bytes = bincode::serde::encode_to_vec(wrapped, bincode::config::standard())
+        let result_bytes = wrapped
+            .to_bincode()
             .map_err(|e| anyhow::anyhow!("Failed to serialize wrapped proof: {}", e))?;
 
         Ok(result_bytes)

@@ -60,9 +60,14 @@ pub(crate) struct ProveCmd {
     #[arg(short = 'c', long, conflicts_with = "plonk")]
     minimal: bool,
 
-    /// SNARK proof, of the protocol of the proving key (pilfflonk, or PLONK). Mutually exclusive with minimal. Only a PLONK proof can be exported for the on-chain EVM verifier for now
+    /// SNARK proof, of the protocol of the proving key (pilfflonk, or PLONK). Mutually exclusive with minimal. Either is exported for the on-chain EVM verifier with `cargo-zisk-dev export-solidity-calldata`
     #[arg(long, conflicts_with = "minimal")]
     plonk: bool,
+
+    /// Load the SNARK proving key at startup rather than when the proof is wrapped. Requires
+    /// --plonk
+    #[arg(long, requires = "plonk")]
+    preload: bool,
 
     /// Verify proofs after generation
     #[arg(short = 'y', long)]
@@ -177,7 +182,7 @@ impl ProveCmd {
             prover_options = prover_options.cpu_mops();
         }
         if self.plonk {
-            prover_options = prover_options.plonk(false);
+            prover_options = prover_options.plonk(self.preload);
         }
         if let Some(ref path) = self.proving_key {
             prover_options = prover_options.proving_key(path.clone());

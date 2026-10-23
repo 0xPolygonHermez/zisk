@@ -11,14 +11,14 @@ use crate::ux::{print_banner, print_banner_command};
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-/// Export the four ABI fields of a wrapped PLONK proof as JSON for the Solidity verifier. A pilfflonk
-/// proof is not exported yet.
+/// Export the four ABI fields of a final SNARK proof (PLONK or pilfflonk) as JSON for the Solidity
+/// verifier.
 ///
 /// Test fixture only: `programVK` and `rootCVadcopFinal` are read out of the proof
 /// itself. A production integration must hold both as contract constants, or
 /// verification is self-keyed.
 pub(crate) struct ExportSolidityCalldataCmd {
-    /// Path to the wrapped PLONK proof file (output of `cargo-zisk wrap-proof --plonk` with a PLONK proving key)
+    /// Path to the final SNARK proof file (`prove --plonk`, or `wrap-proof --plonk`)
     #[arg(short = 'p', long)]
     proof: PathBuf,
 
@@ -56,18 +56,22 @@ impl ExportSolidityCalldataCmd {
 
         let (proof_bytes, rootc, publics_full) = match &proof.body {
             ProofBody::Plonk { proof_bytes, publics_full, rootc, .. } => {
-                (proof_bytes.as_slice(), rootc.as_slice(), publics_full.as_slice())
+                (proof_bytes.clone(), rootc.as_slice(), publics_full.as_slice())
             }
-            ProofBody::Pilfflonk { .. } => {
-                return Err(anyhow!(
-                    "This is a pilfflonk proof: only PLONK proofs are exported for the Solidity \
-                     verifier so far. Wrap with a PLONK proving key (setup-snark --final-snark plonk, \
-                     on a Poseidon key)."
-                ));
-            }
+            ProofBody::Pilfflonk { proof_bytes, vkey_json, publics_full, rootc, .. } => (
+                pilfflonk_calldata(
+                    proof_bytes,
+                    vkey_json,
+                    publics_full,
+                    rootc,
+                    zisk_verifier::pilfflonk_vkey_digest(proof.get_program_vk().hash_mode.as_str()),
+                )?,
+                rootc.as_slice(),
+                publics_full.as_slice(),
+            ),
             _ => {
                 return Err(anyhow!(
-                    "Expected a PLONK-wrapped proof; got {:?}. Run `cargo-zisk wrap-proof --plonk` first.",
+                    "Expected a final SNARK proof; got {:?}. Prove or wrap with --plonk first.",
                     proof.kind()
                 ));
             }
@@ -92,8 +96,7 @@ impl ExportSolidityCalldataCmd {
         //   - rootCVadcopFinal       = the STAMPED verkey (`rootc`): vadcop_final for a plain
         //                              proof, the recurser's own verkey for an aggregated one;
         //                              4×u64 big-endian (32 bytes)
-        // The publicValues encoding comes straight from `snark_inputs_bytes` so it stays in
-        // lockstep with `snark_publics_hash` (the off-chain/snarkjs path).
+        // `snark_inputs_bytes` and `snark_publics_hash` share proofman's circuit layout.
         // The committed identity, not the untrusted outer copy: a relabelled proof
         // would otherwise export calldata the proof does not commit to.
         let program_vk_bytes = u64_chunks_to_be(&program_vk.vk);
@@ -121,6 +124,46 @@ impl ExportSolidityCalldataCmd {
         info!("Solidity fixture written to {}", self.output.display());
         Ok(())
     }
+}
+
+/// `verifyProof`'s `bytes32[W]` words of a pilfflonk proof. A proof wrapped under another key
+/// than this release's (`release_digest`) is refused here, not as a bare `InvalidProof` on-chain.
+fn pilfflonk_calldata(
+    proof_bytes: &[u8],
+    vkey_json: &str,
+    publics_full: &[u64],
+    rootc: &[u64],
+    release_digest: Option<&str>,
+) -> Result<Vec<u8>> {
+    use proofman_pilfflonk::{Calldata, FrBytes, Proof as PilfflonkProof, ProofNames, Vkey};
+
+    // Before snark_publics_hash, which expects four.
+    if rootc.len() != 4 {
+        return Err(anyhow!("rootc has unexpected length {} (expected 4 u64s)", rootc.len()));
+    }
+    let vkey: Vkey =
+        serde_json::from_str(vkey_json).context("the proof's pilfflonk vkey does not parse")?;
+    vkey.check_digest().map_err(|e| anyhow!("the proof's pilfflonk vkey: {e}"))?;
+    if let Some(release) = release_digest {
+        let digest = vkey.digest.to_hex();
+        if digest != release {
+            return Err(anyhow!(
+                "the proof is wrapped under pilfflonk key {digest}, not this release's {release}: \
+                 the release's verifier contract would refuse it"
+            ));
+        }
+    }
+    let names =
+        ProofNames::of_vkey(&vkey).map_err(|e| anyhow!("the proof's pilfflonk vkey: {e}"))?;
+    let proof = PilfflonkProof::from_bytes(proof_bytes, &names.shape())
+        .map_err(|e| anyhow!("the pilfflonk proof bytes: {e}"))?;
+    let digest: [u8; 32] = zisk_common::snark_publics_hash(publics_full, rootc)
+        .try_into()
+        .map_err(|_| anyhow!("the public digest is not 32 bytes"))?;
+    let public = FrBytes::from_be_bytes(digest).map_err(|e| anyhow!("the public digest: {e}"))?;
+    let calldata = Calldata::encode(&vkey, &proof, &[public])
+        .map_err(|e| anyhow!("pilfflonk calldata: {e}"))?;
+    Ok(calldata.proof.concat())
 }
 
 fn u64_chunks_to_be(values: &[u64]) -> [u8; 32] {

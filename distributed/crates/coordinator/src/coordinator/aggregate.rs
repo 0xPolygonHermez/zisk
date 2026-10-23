@@ -125,10 +125,19 @@ impl Coordinator {
 
         let agg_worker_id = worker_id;
 
-        // Decode before changing any state.
-        let zisk_proof = Proof::from_bytes(&proof_data.proof_data).map_err(|e| {
-            CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e))
-        })?;
+        // Decode before changing any state. A proof that does not decode, or cannot be saved
+        // (which would complete the job with no proof for its webhook), fails the job.
+        let zisk_proof = Proof::from_bincode(&proof_data.proof_data)
+            .and_then(|p| p.ensure_saveable().map(|()| p));
+        let zisk_proof = match zisk_proof {
+            Ok(p) => p,
+            Err(e) => {
+                drop(job);
+                let reason = format!("Final proof from worker {agg_worker_id} is malformed: {e}");
+                let _ = self.fail_job(job_id, &reason).await;
+                return Err(CoordinatorError::Internal(reason));
+            }
+        };
 
         let scheduler = job.agg.as_mut().expect("checked above");
         scheduler.take_live(&agg_worker_id);
@@ -436,11 +445,10 @@ impl Coordinator {
         // Build proof bytes and stats for the event before releasing the lock
         let prove_event = {
             let proof_bytes = match job.proof.as_ref() {
-                Some(p) => bincode::serde::encode_to_vec(p, bincode::config::standard())
-                    .unwrap_or_else(|e| {
-                        warn!("Failed to serialize proof for event on job {}: {}", job_id, e);
-                        vec![]
-                    }),
+                Some(p) => p.to_bincode().unwrap_or_else(|e| {
+                    warn!("Failed to serialize proof for event on job {}: {}", job_id, e);
+                    vec![]
+                }),
                 None => vec![],
             };
             let stats = exec_stats_from_job(&job);

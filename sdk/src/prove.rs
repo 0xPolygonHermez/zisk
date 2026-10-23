@@ -28,6 +28,37 @@ impl ProveResult {
     pub fn job_id(&self) -> Option<&JobId> {
         self.job_id.as_ref()
     }
+
+    /// The trusted key [`verify`](ProveOutput::verify) uses: a recurser's verkey for an
+    /// aggregate. A remote result has no producing setup to fall back on.
+    #[must_use]
+    pub fn with_setup_vk(mut self, setup_vk: Vec<u64>) -> Self {
+        self.output = self.output.with_setup_vk(setup_vk);
+        self
+    }
+
+    /// A non-release setup's leaf key for [`verify`](ProveOutput::verify): the cluster's
+    /// `vadcop_final.verkey.json`, or `vadcop_final_compressed.verkey.json` for a minimal proof.
+    #[must_use]
+    pub fn with_leaf_setup_vk(mut self, setup_vk: Vec<u64>) -> Self {
+        self.output = self.output.with_leaf_setup_vk(setup_vk);
+        self
+    }
+
+    /// The trusted PLONK key [`verify`](ProveOutput::verify) uses.
+    #[must_use]
+    pub fn with_plonk_vk(mut self, plonk_vk: zisk_common::PlonkVkey) -> Self {
+        self.output = self.output.with_plonk_vk(plonk_vk);
+        self
+    }
+
+    /// The trusted pilfflonk key (the JSON of `pilfflonk.vkey.json`)
+    /// [`verify`](ProveOutput::verify) uses.
+    #[must_use]
+    pub fn with_pilfflonk_vkey(mut self, vkey_json: String) -> Self {
+        self.output = self.output.with_pilfflonk_vkey(vkey_json);
+        self
+    }
 }
 
 impl Deref for ProveResult {

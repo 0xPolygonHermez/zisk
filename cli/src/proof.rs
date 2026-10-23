@@ -12,14 +12,13 @@ use zisk_sdk::{Proof, ProofBody, ProofKind, SnarkProtocol};
 #[derive(clap::Args, Debug, Clone, Copy, Default)]
 pub(crate) struct SnarkArgs {
     /// PLONK SNARK proof, of a SNARK proving key set up for PLONK (`--final-snark plonk`, a
-    /// poseidon key only). The one the on-chain EVM verifier takes for now. Mutually exclusive with
-    /// --pilfflonk and --minimal
+    /// poseidon key only). Mutually exclusive with --pilfflonk and --minimal
     #[arg(long, conflicts_with_all = ["pilfflonk", "minimal"])]
     pub(crate) plonk: bool,
 
     /// pilfflonk SNARK proof, of a SNARK proving key set up for pilfflonk (the default of
-    /// `--final-snark`, and the only one of a blake3 key). Mutually exclusive with --plonk and
-    /// --minimal
+    /// `--final-snark`, and the only one of a blake3 key): the release's, whose contracts are in
+    /// `zisk-contracts/<family>/`. Mutually exclusive with --plonk and --minimal
     #[arg(long, conflicts_with_all = ["plonk", "minimal"])]
     pub(crate) pilfflonk: bool,
 }

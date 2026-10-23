@@ -1269,10 +1269,16 @@ impl Coordinator {
         let job_state = job.state.clone();
         let executed_steps = job.executed_steps;
         let seed = job.random_seed;
-        let proof_data = job
-            .proof
-            .as_ref()
-            .and_then(|p| bincode::serde::encode_to_vec(p, bincode::config::standard()).ok());
+        // The bytes guests verify: `Proof::to_bytes` without the seed trailer, as the seed is
+        // its own field. Every completion path checks the proof is saveable first, so this
+        // only fails on a proof that path did not see.
+        let proof_data =
+            job.proof.as_ref().map(|p| p.to_bytes_without_seed_trailer()).transpose().map_err(
+                |e| {
+                    warn!("Proof of job {job_id} could not be encoded for its webhook: {e}");
+                    format!("The proof could not be encoded: {e}")
+                },
+            );
 
         tokio::spawn(async move {
             const MAX_RETRIES: usize = 10;
@@ -1282,26 +1288,40 @@ impl Coordinator {
             let mut attempt = 0;
 
             while attempt < MAX_RETRIES {
-                let result = if job_state == JobState::Failed {
-                    hooks::send_failure_webhook(
-                        webhook_url.clone(),
-                        job_id.clone(),
-                        duration_ms,
-                        "JOB_FAILED".to_string(),
-                        "The job has failed during execution.".to_string(),
-                        seed,
-                    )
-                    .await
-                } else {
-                    hooks::send_completion_webhook(
-                        webhook_url.clone(),
-                        job_id.clone(),
-                        duration_ms,
-                        executed_steps,
-                        proof_data.clone(),
-                        seed,
-                    )
-                    .await
+                let result = match (&job_state, &proof_data) {
+                    (JobState::Failed, _) => {
+                        hooks::send_failure_webhook(
+                            webhook_url.clone(),
+                            job_id.clone(),
+                            duration_ms,
+                            "JOB_FAILED".to_string(),
+                            "The job has failed during execution.".to_string(),
+                            seed,
+                        )
+                        .await
+                    }
+                    (_, Err(message)) => {
+                        hooks::send_failure_webhook(
+                            webhook_url.clone(),
+                            job_id.clone(),
+                            duration_ms,
+                            "PROOF_ENCODING_FAILED".to_string(),
+                            message.clone(),
+                            seed,
+                        )
+                        .await
+                    }
+                    (_, Ok(proof_data)) => {
+                        hooks::send_completion_webhook(
+                            webhook_url.clone(),
+                            job_id.clone(),
+                            duration_ms,
+                            executed_steps,
+                            proof_data.clone(),
+                            seed,
+                        )
+                        .await
+                    }
                 };
 
                 match result {
@@ -1997,7 +2017,24 @@ mod tests {
         ComputeCapacity, HintsModeDto, InputsModeDto, Job, JobExecutionMode, JobPhase, JobState,
         PhaseTimings, WorkerState,
     };
-    use zisk_common::Proof;
+    use zisk_common::{
+        HashMode, ProgramVK, Proof, ProofBody, VadcopKind, PROGRAM_VK_LEN, ZISK_PUBLICS,
+    };
+
+    /// A final proof the coordinator accepts: its `program_vk` is the one its publics commit to.
+    fn saveable_proof() -> Proof {
+        let publics_full = vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS];
+        Proof::new(
+            ProofBody::Vadcop {
+                proof: vec![0u64; 8],
+                zisk_vk: vec![0u64; PROGRAM_VK_LEN],
+                kind: VadcopKind::Final,
+                hash: "Poseidon2".to_string(),
+                publics_full,
+            },
+            ProgramVK::new_from_publics_with_mode(&[0u64; PROGRAM_VK_LEN], HashMode::Poseidon2),
+        )
+    }
 
     fn test_config_with(overrides: impl FnOnce(&mut Config)) -> Config {
         let mut config =
@@ -3644,13 +3681,60 @@ mod tests {
             worker_id: w0.clone(),
             success: true,
             error_message: None,
-            proof: bincode::serde::encode_to_vec(Proof::default(), bincode::config::standard())
-                .unwrap(),
+            proof: saveable_proof().to_bincode().unwrap(),
         };
         coordinator.handle_stream_run_aggregate_proofs_ack(ack).await.unwrap();
 
         let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
         assert!(entry.read().await.proof.is_some(), "aggregate ack must store the decoded proof");
+    }
+
+    /// A proof that cannot be saved fails the job rather than completing it with no proof for
+    /// its webhook.
+    #[tokio::test]
+    async fn test_aggregate_ack_with_an_unsaveable_proof_fails_the_job() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
+        let ack = RunAggregateProofsAckDto {
+            job_id: job_id.as_string(),
+            worker_id: workers[0].0.clone(),
+            success: true,
+            error_message: None,
+            proof: Proof::default().to_bincode().unwrap(),
+        };
+        coordinator.handle_stream_run_aggregate_proofs_ack(ack).await.unwrap();
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        let job = entry.read().await;
+        assert_eq!(job.state, JobState::Failed);
+        assert!(job.proof.is_none());
+    }
+
+    /// A wrap result that does not decode fails the job rather than leaving it unresolved.
+    #[tokio::test]
+    async fn test_wrap_completion_with_an_undecodable_proof_fails_the_job() {
+        use zisk_cluster_common::{
+            ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, WrapResultDto,
+        };
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
+        let response = ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: workers[0].0.clone(),
+            success: true,
+            error_message: None,
+            result_data: Some(ExecuteTaskResponseResultDataDto::WrapResult(WrapResultDto {
+                proof_data: vec![1, 2, 3],
+            })),
+            worker_in_recovery: false,
+        };
+        assert!(coordinator.handle_wrap_completion(response).await.is_err());
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        let job = entry.read().await;
+        assert_eq!(job.state, JobState::Failed);
+        assert!(job.proof.is_none());
     }
 
     /// Regression: `handle_wrap_completion` must not flip the worker
@@ -5020,7 +5104,7 @@ mod tests {
             worker_id: w0.clone(),
             success: true,
             error_message: None,
-            proof: vec![],
+            proof: saveable_proof().to_bincode().unwrap(),
         };
         coordinator.handle_stream_run_aggregate_proofs_ack(ack).await.unwrap();
 
@@ -5713,8 +5797,7 @@ mod tests {
         job_entry.write().await.random_seed = Some(CLIENT_RANDOM_SEED);
         coordinator.alloc_job_events(&job_id).await;
         let mut events = coordinator.subscribe_job_events(&job_id).await.unwrap();
-        let seedless =
-            bincode::serde::encode_to_vec(Proof::default(), bincode::config::standard()).unwrap();
+        let seedless = saveable_proof().to_bincode().unwrap();
 
         coordinator
             .handle_stream_execute_task_response(final_proof_response(&job_id, &w0_id, seedless))
@@ -5733,7 +5816,7 @@ mod tests {
             }) => {
                 assert_eq!(seed, Some(CLIENT_RANDOM_SEED));
                 assert_eq!(
-                    Proof::from_bytes(&proof_bytes).unwrap().random_seed,
+                    Proof::from_bincode(&proof_bytes).unwrap().random_seed,
                     Some(CLIENT_RANDOM_SEED)
                 );
             }

@@ -9,6 +9,8 @@ homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
+# Reads fixtures from sibling crates, which are not packaged.
+exclude = ["tests/repo_fixtures.rs"]
 
 [dependencies]
 zisk-core = { workspace = true }
@@ -26,8 +28,6 @@ tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-sha2 = { workspace = true }
-num-bigint = { workspace = true }
 dirs = "6"
 getrandom = { workspace = true }
 hex = { workspace = true }
@@ -43,4 +43,3 @@ default = ["jemalloc"]
 # Use jemalloc instead of the system allocator; see `src/allocator.rs`.
 jemalloc = ["dep:tikv-jemallocator"]
 stats = []
-

@@ -12,7 +12,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tracing::{error, info, warn};
-use zisk_common::{JobMetadataArgs, RandomSeed, RandomSeedArgs};
+use zisk_common::{JobMetadataArgs, Proof, RandomSeed, RandomSeedArgs};
 use zisk_coordinator_api::dto::{
     deadline_from_now, DomainExecuteRequest, DomainInputChunk, DomainInputKind, DomainJobKind,
     DomainJobKindResponse, DomainProofKind, DomainProveRequest, DomainSetupRequest, TerminalStatus,
@@ -311,7 +311,12 @@ fn run_prove(
 
             let out_path =
                 output.cloned().unwrap_or_else(|| PathBuf::from(format!("{job_id}.proof.bin")));
-            std::fs::write(&out_path, &p.data)
+            // The coordinator sends `Proof::to_bincode`; save it as the file `cargo-zisk`
+            // writes and `verify`/`wrap`/`aggregate` read.
+            let proof =
+                Proof::from_bincode(&p.data).context("Cannot decode the coordinator's proof")?;
+            proof
+                .save(&out_path)
                 .with_context(|| format!("Cannot write proof to {}", out_path.display()))?;
             println!("Proof saved to {}", out_path.display());
 

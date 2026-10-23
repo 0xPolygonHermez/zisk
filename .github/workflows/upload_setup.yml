@@ -180,6 +180,8 @@ jobs:
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e USE_CACHE_SETUP="1" \
+            -e RECURSIVE_JOBS="4" \
+            -e SETUP_JOBS="4" \
             -e HASH_MODE="$HASH_MODE" \
             -e INCLUDE_SNARK="$INCLUDE_SNARK" \
             -e DYLIB_INPUT_FILES="$DYLIB_INPUT_FILES" \
@@ -224,6 +226,8 @@ jobs:
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e USE_CACHE_SETUP="1" \
+            -e RECURSIVE_JOBS="4" \
+            -e SETUP_JOBS="4" \
             -e HASH_MODE="$HASH_MODE" \
             -e INCLUDE_SNARK="$INCLUDE_SNARK" \
             -e DYLIB_INPUT_FILES="$DYLIB_INPUT_FILES" \

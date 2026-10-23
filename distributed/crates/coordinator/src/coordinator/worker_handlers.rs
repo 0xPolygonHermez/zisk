@@ -363,18 +363,21 @@ impl Coordinator {
                 job.change_state(JobState::Failed);
                 Some(Err(ack.error_message.unwrap_or_else(|| "(no detail)".to_string())))
             } else {
-                job.change_state(JobState::Completed);
-                // The ack carries a bincode-encoded `Proof` (see the worker's
-                // handle_run_aggregate_proofs); decode it so the completed job owns
-                // its proof like every other completion path does.
-                match Proof::from_bytes(&ack.proof) {
-                    Ok(proof) => job.proof = Some(proof),
-                    Err(e) => warn!(
-                        "[Recurser] Failed to deserialize aggregate proof for job {}: {}",
-                        job_id, e
-                    ),
+                // The ack carries `Proof::to_bincode` (see the worker's handle_run_aggregate_proofs).
+                // A proof that does not decode, or cannot be saved, fails the job like a failed ack:
+                // a completed job must own its proof, as on every other completion path.
+                match Proof::from_bincode(&ack.proof).and_then(|p| p.ensure_saveable().map(|()| p))
+                {
+                    Ok(proof) => {
+                        job.change_state(JobState::Completed);
+                        job.proof = Some(proof);
+                        Some(Ok(Self::format_job_metadata(job.metadata.as_ref())))
+                    }
+                    Err(e) => {
+                        job.change_state(JobState::Failed);
+                        Some(Err(format!("its aggregate proof is malformed: {e}")))
+                    }
                 }
-                Some(Ok(Self::format_job_metadata(job.metadata.as_ref())))
             }
         };
 

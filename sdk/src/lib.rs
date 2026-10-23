@@ -25,7 +25,6 @@ mod setup;
 mod snark;
 mod stdin;
 mod upload;
-mod verify;
 mod verify_constraints;
 mod wrap;
 mod zisk_client;
@@ -54,11 +53,11 @@ pub use setup::SetupRequest;
 pub use snark::SnarkProtocol;
 pub use stdin::ZiskStdin;
 pub use upload::UploadRequest;
-pub use verify::VerifyBuilder;
 pub use verify_constraints::{
     VerifyConstraintsExtension, VerifyConstraintsRequest, VerifyConstraintsResult,
 };
 pub use wrap::WrapRequest;
+pub use zisk_common::ZiskVerifyBuilder as VerifyBuilder;
 
 // The extended metadata API, deprecated now that the remote client's requests take
 // `metadata`; removed in the first non-alpha release.

@@ -1,18 +1,66 @@
 use crate::error::{CommonError, Result};
-use proofman::{verify_snark_proof, verify_snark_proof_with_vkey, SnarkProof, SnarkProtocol};
+use proofman::{verify_snark_proof_with_vkey, SnarkProof, SnarkProtocol};
+use proofman_common::ProofmanError;
+use proofman_common::{PublicDefinition, PublicsInfo};
 use proofman_verifier::VadcopFinalProof;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub use zisk_verifier::{
-    program_publics, GOLDILOCKS_ORDER, IS_VADCOP_FINAL_PROOF, PROGRAM_VK_LEN,
-    VADCOP_FINAL_FLAG_LEN, ZISK_PUBLICS,
+    program_publics, seed_trailer, GOLDILOCKS_ORDER, IS_VADCOP_FINAL_PROOF, PROGRAM_VK_LEN,
+    SEED_TRAILER_TAG, VADCOP_FINAL_FLAG_LEN, ZISK_PUBLICS,
 };
 
 use crate::{HashMode, RandomSeed};
+
+/// Leads a saved PLONK proof. A Vadcop proof is saved flat, whose first word is the 0/1
+/// minimal marker, so no Vadcop file starts with this.
+pub const PLONK_FILE_MAGIC: &[u8; 8] = b"ZISKPLNK";
+
+/// Ceiling on a SNARK file after its magic, checked on save and on load. A PLONK one (proof,
+/// vkey, publics) is a few KB; a pilfflonk one carries its vkey JSON, about 0.5 MB.
+const PLONK_FILE_MAX_BYTES: usize = 16 << 20;
+
+/// A BN254 PLONK proof: 9 G1 points (64 bytes each) and 6 field evaluations (32 each).
+/// The native verifier aborts the process on any other length rather than failing.
+pub const PLONK_PROOF_BYTES: usize = 9 * 64 + 6 * 32;
+
+/// The BN254 scalar order `r`, big-endian. snarkjs's Solidity PLONK verifier (`checkField`)
+/// requires all 24 proof words to be below it, and proofman's parser reads every word mod `r`, so a word
+/// at or above it is another encoding of the same proof.
+const BN254_R_BE: [u8; 32] = [
+    0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
+    0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01,
+];
+
+/// The pilfflonk key a proof of family `hash` verifies under when the caller passes none: the one
+/// it carries, if its digest is the release's (`release`, `zisk_verifier::pilfflonk_vkey_digest`).
+fn release_pilfflonk_vkey<'v>(
+    hash: &str,
+    carried: &'v str,
+    release: Option<&str>,
+) -> Result<&'v str> {
+    let Some(release) = release else {
+        return Err(CommonError::InvalidProof(format!(
+            "no published pilfflonk key for {hash:?}; pass one with with_pilfflonk_vkey \
+             (`--pilfflonk-vk`)"
+        )));
+    };
+    let digest = serde_json::from_str::<serde_json::Value>(carried)
+        .ok()
+        .and_then(|vkey| vkey.get("digest")?.as_str().map(str::to_owned));
+    if digest.as_deref() == Some(release) {
+        Ok(carried)
+    } else {
+        tracing::warn!(
+            "the pilfflonk key the proof carries is not this release's; a proof from a \
+             non-release setup verifies under that setup's pilfflonk.vkey.json (`--pilfflonk-vk`)"
+        );
+        Err(CommonError::NotVerified)
+    }
+}
 
 /// The canonical representative of a Goldilocks element: the unique value in
 /// `[0, p)` congruent to `word`. One subtraction suffices — `p > 2^63`, so every
@@ -26,29 +74,59 @@ fn canonical(word: u64) -> u64 {
     }
 }
 
-/// Canonicality plus the exact shape a *stored* body must have.
+/// Canonicality plus the exact shape a *stored* body must have, including a PLONK proof's
+/// length, which must be checked before it reaches the native verifier.
 ///
 /// Length: a short vector would panic the fixed-offset slicing in `snark_publics_hash` /
 /// `snark_inputs_bytes`, turning an untrusted proof into a crash rather than an `Err`.
-/// `Vadcop` storage is flag-free by construction — `stark_publics` re-adds the flag at
-/// verify time, so a 69-word body would reach the STARK verifier with 70 publics. `Plonk`
-/// bodies from older builds may still carry the flag, so that shape stays accepted.
-fn ensure_stored_publics(body: &ProofBody) -> Result<()> {
+/// Storage is flag-free by construction — `stark_publics` re-adds the flag at verify
+/// time, so a 69-word body would reach the STARK verifier with 70 publics.
+fn ensure_stored_body(body: &ProofBody) -> Result<()> {
+    if let ProofBody::Plonk { proof_bytes, .. } = body {
+        if proof_bytes.len() != PLONK_PROOF_BYTES {
+            return Err(CommonError::InvalidProof(format!(
+                "PLONK proof is {} bytes, expected {PLONK_PROOF_BYTES}",
+                proof_bytes.len()
+            )));
+        }
+        // Big-endian words of equal length compare as numbers.
+        if let Some(i) = proof_bytes.chunks_exact(32).position(|w| w >= &BN254_R_BE[..]) {
+            return Err(CommonError::InvalidProof(format!(
+                "PLONK proof word {i} is not below the BN254 scalar order"
+            )));
+        }
+    }
+    if let ProofBody::Plonk { rootc, .. } | ProofBody::Pilfflonk { rootc, .. } = body {
+        if rootc.len() != PROGRAM_VK_LEN {
+            return Err(CommonError::InvalidProof(format!(
+                "rootc has {} limbs, expected {PROGRAM_VK_LEN}",
+                rootc.len()
+            )));
+        }
+    }
     let flag_free = PROGRAM_VK_LEN + ZISK_PUBLICS;
-    let (publics_full, flagged_ok) = match body {
-        ProofBody::Vadcop { publics_full, .. } => (publics_full.as_slice(), false),
-        ProofBody::Plonk { publics_full, .. } => (publics_full.as_slice(), true),
-        ProofBody::Pilfflonk { publics_full, .. } => (publics_full.as_slice(), false),
-    };
-    let ok = publics_full.len() == flag_free
-        || (flagged_ok && publics_full.len() == VADCOP_FINAL_FLAG_LEN + flag_free);
-    if !ok {
+    let (ProofBody::Vadcop { publics_full, .. }
+    | ProofBody::Plonk { publics_full, .. }
+    | ProofBody::Pilfflonk { publics_full, .. }) = body;
+    if publics_full.len() != flag_free {
         return Err(CommonError::InvalidProof(format!(
             "stored publics have {} field elements, expected {flag_free}",
             publics_full.len()
         )));
     }
     ensure_canonical_publics(publics_full)
+}
+
+/// What to pass when a proof fails under the release key: a custom setup's key for the
+/// proof's own stage.
+fn hint_setup_vk(trusted_setup_vk: Option<&[u64]>, compressed: bool) -> Option<String> {
+    let stage = if compressed { "vadcop_final_compressed" } else { "vadcop_final" };
+    trusted_setup_vk.is_none().then(|| {
+        format!(
+            "a proof from a non-release setup verifies under that setup's \
+             `{stage}.verkey.json` (`--leaf-setup-vk`)"
+        )
+    })
 }
 
 /// Without this a proof holder could rewrite a stored public — `x` and `x + p` are one
@@ -69,24 +147,6 @@ fn ensure_canonical_publics(publics_full: &[u64]) -> Result<()> {
         )));
     }
     Ok(())
-}
-
-/// The committed publics with the program-VK limbs replaced by `vk`.
-///
-/// Splicing keeps every other slot at full u64 width; rebuilding from the u32
-/// [`PublicValues`] view would truncate a recurser proof's inputs.
-fn splice_program_vk(publics_full: &[u64], vk: &[u64]) -> Result<Vec<u64>> {
-    if publics_full.len() < PROGRAM_VK_LEN {
-        return Err(CommonError::InvalidProof(format!(
-            "committed publics too short to hold a program VK: {} < {PROGRAM_VK_LEN}",
-            publics_full.len()
-        )));
-    }
-    // Normalize first: a raw vadcop_final vector carries the flag at index 0, and
-    // splicing over it would shift the rest of the statement by one.
-    let mut out = program_publics(publics_full).to_vec();
-    out[..PROGRAM_VK_LEN].copy_from_slice(vk);
-    Ok(out)
 }
 
 /// Cache key for a built setup (per program + build flavor).
@@ -380,7 +440,7 @@ impl PlonkVkey {
 pub struct PlonkVkBlob {
     /// Vadcop verification key values.
     pub vadcop_vk: Vec<u64>,
-    /// Structured Plonk verification key. This is boxed to avoid bloating the size of the `ProofBody` enum, since Plonk proofs are less common and the vkey is large.
+    /// Structured Plonk verification key.
     pub plonk_vkey: PlonkVkey,
 }
 
@@ -574,100 +634,100 @@ impl PublicValues {
             .collect()
     }
 
-    /// Hash the public values using Solidity-compatible encoding.
+    /// The public input `ZiskVerifier.hashPublicValues` computes on-chain, as 32 big-endian
+    /// bytes: see [`snark_publics_hash`]. `vadcop_verkey` is the `rootCVadcopFinal`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `program_vk` or `vadcop_verkey` is not `PROGRAM_VK_LEN` limbs.
     pub fn hash_solidity(&self, program_vk: &ProgramVK, vadcop_verkey: &[u64]) -> Vec<u8> {
-        let bytes = self.bytes_solidity(program_vk, vadcop_verkey);
+        snark_publics_hash(&self.publics_full(program_vk), vadcop_verkey)
+    }
 
-        // SHA-256
-        let hash = Sha256::digest(&bytes);
-
-        hash.to_vec()
+    /// `[program_vk | outputs]` at u64 width, which a leaf's u32 outputs fill exactly.
+    fn publics_full(&self, program_vk: &ProgramVK) -> Vec<u64> {
+        assert_eq!(
+            program_vk.vk.len(),
+            PROGRAM_VK_LEN,
+            "program vk must be {PROGRAM_VK_LEN} limbs"
+        );
+        let mut publics = program_vk.vk.clone();
+        publics.extend(self.public_u64());
+        publics
     }
 }
 
 impl PublicValues {
-    /// Convert the public values into a byte vector formatted for Solidity hashing.
+    /// The bytes [`hash_solidity`](Self::hash_solidity) hashes, as `ZiskVerifier` lays
+    /// them out: `programVK` big-endian, `publicValues` ([`snark_inputs_bytes`]), then
+    /// `rootCVadcopFinal` big-endian.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `program_vk` or `vadcop_verkey` is not `PROGRAM_VK_LEN` limbs.
     pub fn bytes_solidity(&self, program_vk: &ProgramVK, vadcop_verkey: &[u64]) -> Vec<u8> {
-        let mut prefix = [0u8; PROGRAM_VK_LEN * 8];
-        for (i, val) in program_vk.vk.iter().enumerate() {
-            prefix[i * 8..(i + 1) * 8].copy_from_slice(&val.to_be_bytes());
-        }
-
-        let mut bytes = prefix.to_vec();
-        bytes.extend_from_slice(&self.data);
-        let mut suffix = [0u8; PROGRAM_VK_LEN * 8];
-        for (i, val) in vadcop_verkey.iter().enumerate() {
-            suffix[i * 8..(i + 1) * 8].copy_from_slice(&val.to_be_bytes());
-        }
-        bytes.extend(&suffix);
+        assert_eq!(vadcop_verkey.len(), PROGRAM_VK_LEN, "rootC must be {PROGRAM_VK_LEN} limbs");
+        let mut bytes: Vec<u8> = program_vk.vk.iter().flat_map(|w| w.to_be_bytes()).collect();
+        bytes.extend(snark_inputs_bytes(&self.publics_full(program_vk)));
+        bytes.extend(vadcop_verkey.iter().flat_map(|w| w.to_be_bytes()));
         bytes
     }
 }
 
-/// The `ZISK_PUBLICS` user publics encoded as the snark circuit's `inputs`
-/// section: each field element as 8 little-endian bytes (`ZISK_PUBLICS * 8`
-/// bytes total). This is the on-chain `publicValues` byte string the Solidity
-/// verifier hashes — NOT the u32 `PublicValues.data`.
+/// ZisK's publics as the final SNARK circuit lays them out: the program VK, then the
+/// `ZISK_PUBLICS` user outputs, one 64-bit chunk each.
+fn zisk_publics_info() -> &'static PublicsInfo {
+    static INFO: std::sync::OnceLock<PublicsInfo> = std::sync::OnceLock::new();
+    INFO.get_or_init(|| {
+        let section = |name: &str, initial_pos, n_values, verification_key| PublicDefinition {
+            name: name.to_string(),
+            initial_pos,
+            n_values,
+            chunks: [1, 64],
+            verification_key,
+        };
+        PublicsInfo {
+            n_publics: PROGRAM_VK_LEN + ZISK_PUBLICS,
+            definitions: vec![
+                section("rom_root", 0, PROGRAM_VK_LEN, true),
+                section("inputs", PROGRAM_VK_LEN, ZISK_PUBLICS, false),
+            ],
+            has_program_vk: true,
+        }
+    })
+}
+
+/// The user outputs as the SNARK circuit hashes them, 8 little-endian bytes each: the
+/// on-chain `publicValues`, not the u32 `PublicValues.data`. See
+/// `PublicsInfo::solidity_public_bytes`.
 ///
-/// The circuit's per-element bit layout `in[(j\8)*8 + (7 - j%8)]` over the
-/// `Num2Bits(64)` (LSB-first) bits is exactly the value's little-endian bytes
-/// once SHA-256 reads them MSB-first per byte.
+/// # Panics
+///
+/// Panics if `publics_full` is not a `[flag? | program_vk | inputs]` vector.
 pub fn snark_inputs_bytes(publics_full: &[u64]) -> Vec<u8> {
-    // Strip the recursion-layer flag so `inputs` is read from the flag-free view.
-    let publics_full = program_publics(publics_full);
-    assert!(
-        publics_full.len() >= PROGRAM_VK_LEN + ZISK_PUBLICS,
-        "publics_full too short for snark inputs"
-    );
-    publics_full[PROGRAM_VK_LEN..PROGRAM_VK_LEN + ZISK_PUBLICS]
-        .iter()
-        .flat_map(|v| v.to_le_bytes())
-        .collect()
+    zisk_publics_info()
+        .solidity_public_bytes(program_publics(publics_full))
+        .expect("publics_full has ZisK's layout")
 }
 
-/// Compute the snark's committed public-input hash exactly as the recurser's
-/// `final.circom getSha256Inputs(publicsProof, rootC)` does, returning the
-/// 32-byte big-endian field element snarkjs verifies against.
+/// The public input the SNARK commits to, as 32 big-endian bytes: `getSha256Inputs` over
+/// `publics_full` and `rootc`, the key the wrap verified under (vadcop_final's for a leaf,
+/// the recurser's own for an aggregate). See `PublicsInfo::snark_public_digest`.
 ///
-/// The circuit SHA-256s `rom_root ‖ inputs ‖ rootCVadcopFinal`, then reduces the
-/// digest mod the BN254 scalar field (`Bits2Num` yields a field element). The
-/// per-element byte forms reduce to: verkeys big-endian, user publics
-/// little-endian (see [`snark_inputs_bytes`]). The three sections are:
-///   - `rom_root`         = the program VK = `publics_full[0..PROGRAM_VK_LEN]`
-///   - `inputs`           = the user publics = `publics_full[PROGRAM_VK_LEN..]`
-///   - `rootCVadcopFinal` = the verkey STAMPED into the RecursiveF proof — the
-///     vadcop_final verkey for a plain proof, the recurser's own verkey for an
-///     aggregated proof. NOT generally equal to the program VK, so it is passed
-///     in (`rootc`) rather than derived from `publics_full`.
+/// # Panics
+///
+/// Panics if `publics_full` is not a `[flag? | program_vk | inputs]` vector, or `rootc` is
+/// shorter than `PROGRAM_VK_LEN`.
 pub fn snark_publics_hash(publics_full: &[u64], rootc: &[u64]) -> Vec<u8> {
-    assert!(rootc.len() >= PROGRAM_VK_LEN, "rootc too short for snark hash");
-    // Defensive: normalize to the flag-free `[vk | inputs]` view. Stored
-    // `publics_full` is already flag-free, but a raw vadcop_final vector (69,
-    // flag @0) would otherwise shift rom_root/inputs by one.
-    let publics_full = program_publics(publics_full);
-    let program_vk = &publics_full[..PROGRAM_VK_LEN];
-
-    let mut preimage = Vec::with_capacity((2 * PROGRAM_VK_LEN + ZISK_PUBLICS) * 8);
-    preimage.extend(program_vk.iter().flat_map(|v| v.to_be_bytes())); // rom_root (BE)
-    preimage.extend(snark_inputs_bytes(publics_full)); // inputs (LE)
-    preimage.extend(rootc[..PROGRAM_VK_LEN].iter().flat_map(|v| v.to_be_bytes())); // rootC (BE)
-    let digest = Sha256::digest(&preimage);
-
-    // `Bits2Num` makes the hash a field element: reduce mod the BN254 scalar
-    // field, as 32 big-endian bytes.
-    let bn254 = num_bigint::BigUint::parse_bytes(
-        b"21888242871839275222246405745257275088548364400416034343698204186575808495617",
-        10,
-    )
-    .expect("valid BN254 modulus");
-    let reduced = num_bigint::BigUint::from_bytes_be(&digest) % bn254;
-    let mut out = reduced.to_bytes_be();
-    out.splice(0..0, std::iter::repeat(0u8).take(32 - out.len())); // left-pad to 32
-    out
+    let rootc: &[u64; PROGRAM_VK_LEN] =
+        rootc.get(..PROGRAM_VK_LEN).and_then(|r| r.try_into().ok()).expect("rootc too short");
+    zisk_publics_info()
+        .snark_public_digest(program_publics(publics_full), rootc)
+        .expect("publics_full has ZisK's layout")
+        .to_vec()
 }
 
-/// Kind-tagged proof payload. The Plonk vkey blob is boxed so the enum doesn't
-/// carry ~880 bytes of inline vkey on the (common, most-cloned) Vadcop variant.
+/// Kind-tagged proof payload.
 ///
 /// Publics are stored as full-width u64 field elements: a recurser proof's
 /// publics exceed 32 bits, and the recursion round-trip / snark hash must use
@@ -697,7 +757,8 @@ pub enum ProofBody {
     Plonk {
         /// Serialized proof bytes.
         proof_bytes: Vec<u8>,
-        /// Plonk verification key blob.
+        /// The keys the producer wrapped under. Untrusted metadata: verification uses the
+        /// caller's or the release keys. Boxed so the Vadcop variant stays small.
         plonk_vk: Box<PlonkVkBlob>,
         /// u32 view of the publics, for the Solidity calldata layout.
         publics: PublicValues,
@@ -741,10 +802,9 @@ impl Default for ProofBody {
 
 /// A struct representing a proof.
 ///
-/// Serialized with bincode, which records no field names, lengths or version: fields decode
-/// positionally. New fields therefore only go at the end, and [`Proof::from_bytes`] is the one
-/// decoder that knows which trailing fields a file may lack. Decode through it, never with
-/// `bincode` directly.
+/// Files and webhooks use [`Proof::to_bytes`]; the coordinator, workers and clients exchange
+/// [`Proof::to_bincode`]. bincode decodes fields positionally, so new fields go at the end and
+/// decoding goes through [`Proof::from_bincode`], never `bincode` directly.
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Proof {
     /// The data of the proof.
@@ -787,6 +847,8 @@ pub struct ZiskVerifyBuilder<'a> {
     trusted_plonk_vk: Option<&'a PlonkVkey>,
     trusted_pilfflonk_vkey: Option<&'a str>,
     trusted_setup_vk: Option<&'a [u64]>,
+    /// The caller vouches `trusted_setup_vk` is a setup's leaf key, not a recurser's.
+    leaf_setup_vk: bool,
 }
 
 impl<'a> ZiskVerifyBuilder<'a> {
@@ -798,6 +860,7 @@ impl<'a> ZiskVerifyBuilder<'a> {
             trusted_plonk_vk: None,
             trusted_pilfflonk_vkey: None,
             trusted_setup_vk: None,
+            leaf_setup_vk: false,
         }
     }
 
@@ -813,85 +876,151 @@ impl<'a> ZiskVerifyBuilder<'a> {
         self
     }
 
-    /// Optional trusted PLONK circuit key; if unset, the proof's embedded key is used.
+    /// Trusted PLONK circuit key (`final.verkey.json`). The release's final SNARK is pilfflonk
+    /// and publishes no PLONK key, so a PLONK proof needs it; the copy it carries is never used.
     pub fn with_plonk_vk(mut self, plonk_vkey: &'a PlonkVkey) -> Self {
         self.trusted_plonk_vk = Some(plonk_vkey);
         self
     }
 
-    /// Optional trusted pilfflonk key, the JSON of its `pilfflonk.vkey.json`; if unset, the proof's
-    /// embedded key is used.
+    /// Trusted pilfflonk key, the JSON of its `pilfflonk.vkey.json`. If unset, the key the proof
+    /// carries is used only if its digest is the release's for the proof's family.
     pub fn with_pilfflonk_vkey(mut self, vkey_json: &'a str) -> Self {
         self.trusted_pilfflonk_vkey = Some(vkey_json);
         self
     }
 
-    /// Optional trusted recursion setup key (4 u64 limbs: `vadcop_final` verkey for
-    /// a plain proof, recurser verkey for an aggregated one); if unset, the proof's
-    /// embedded value is used.
+    /// Trusted recursion key (4 u64 limbs): a recurser's verkey for an aggregated proof,
+    /// or a release leaf key. If unset, a plain proof verifies under the release key for its
+    /// family and stage (`zisk_verifier::vadcop_vk`); an aggregated one requires it. The copy
+    /// the proof carries is never used.
+    ///
+    /// A PLONK proof does not say whether it wraps a leaf or a fold, so under a key that is
+    /// not a release leaf key it must declare that key as its recursion domain. Pass a
+    /// custom setup's leaf key with [`with_leaf_setup_vk`](Self::with_leaf_setup_vk).
     pub fn with_setup_vk(mut self, setup_vk: &'a [u64]) -> Self {
         self.trusted_setup_vk = Some(setup_vk);
+        self.leaf_setup_vk = false;
         self
     }
 
-    /// The public digest a SNARK body must carry: of the committed publics (with any override
-    /// applied) and the root, the caller's if pinned, else the proof's.
-    fn snark_statement(
+    /// A non-release setup's leaf key: its `vadcop_final.verkey.json`, or
+    /// `vadcop_final_compressed.verkey.json` for a compressed proof. Aggregates are refused.
+    pub fn with_leaf_setup_vk(mut self, setup_vk: &'a [u64]) -> Self {
+        self.trusted_setup_vk = Some(setup_vk);
+        self.leaf_setup_vk = true;
+        self
+    }
+
+    /// The statement to verify, flag-free `[program_vk | inputs]`: the committed publics at
+    /// full u64 width, with each override written over its own slots. Only the overridden
+    /// inputs are u32-wide; an untouched recurser input keeps its full width.
+    fn statement(&self, publics_full: &[u64]) -> Vec<u64> {
+        let mut statement = program_publics(publics_full).to_vec();
+        if let Some(pv) = self.override_program_vk {
+            statement[..PROGRAM_VK_LEN].copy_from_slice(&pv.vk);
+        }
+        if let Some(publics) = self.override_publics {
+            statement[PROGRAM_VK_LEN..].copy_from_slice(&publics.public_u64());
+        }
+        statement
+    }
+
+    /// The public digest a SNARK proof must carry, rebuilt from the statement and the root it
+    /// verifies under; `name` is the protocol, for errors. A SNARK wraps an uncompressed
+    /// vadcop_final proof.
+    fn snark_public_digest(
         &self,
         publics_full: &[u64],
-        rootc: &[u64],
-        publics: &PublicValues,
+        stored_rootc: &[u64],
+        name: &str,
     ) -> Result<Vec<u8>> {
-        let rootc = self.trusted_setup_vk.unwrap_or(rootc);
-        if rootc.len() != PROGRAM_VK_LEN {
+        // The family only picks the release keys; an override's mode is irrelevant.
+        let hash = self.proof_with_values.program_vk.hash_mode.as_str();
+        // A recurser stores its own key in the program VK slots, so a proof stamped
+        // with the domain its verified statement declares is an aggregate.
+        let statement = self.statement(publics_full);
+        let declared = &statement[..PROGRAM_VK_LEN];
+        let aggregate = stored_rootc == declared;
+        let rootc = self.setup_vk_to_verify_under(hash, false, aggregate.then_some(declared))?;
+        let rootc: &[u64] = &rootc;
+        // export-solidity-calldata reads the stored copy.
+        if stored_rootc != rootc {
             return Err(CommonError::InvalidProof(format!(
-                "setup vk (`rootc`) must have exactly {PROGRAM_VK_LEN} u64 limbs, got {}",
-                rootc.len()
+                "stored `rootc` does not match the setup vk the proof is verified under{}",
+                hint_setup_vk(self.trusted_setup_vk, false)
+                    .map(|h| format!("; {h}"))
+                    .unwrap_or_default()
+            )));
+        }
+        // The wrap does not commit the leaf flag, so a fold carrying another
+        // recurser's subtree reads as a leaf of its own key. Unless that key is a
+        // leaf key, the statement's domain must be the key, as for a Vadcop fold.
+        let leaf_key =
+            self.leaf_setup_vk || zisk_verifier::vadcop_vk(hash, false).is_some_and(|k| k == rootc);
+        if !leaf_key && declared != rootc {
+            return Err(CommonError::InvalidProof(format!(
+                "{name} proof declares recursion domain {declared:?} but verifies under \
+                 {rootc:?}; pass a non-release leaf key with with_leaf_setup_vk \
+                 (`--leaf-setup-vk`)"
             )));
         }
 
-        // Statement to verify: the committed publics with any override applied.
-        // Only an explicit publics override takes the u32-lossy `[vk | inputs]`
-        // rebuild. snarkjs uses only these bytes; `public_bytes` is unused.
-        Ok(match (self.override_publics, self.override_program_vk) {
-            (None, None) => snark_publics_hash(publics_full, rootc),
-            (None, Some(pv)) => {
-                snark_publics_hash(&splice_program_vk(publics_full, &pv.vk)?, rootc)
+        // snarkjs uses only these bytes; `public_bytes` is unused.
+        Ok(snark_publics_hash(&statement, rootc))
+    }
+
+    /// The vadcop_final key to verify under: the caller's, else the release constant for a
+    /// leaf of this family and stage. Never the copy the proof carries, which would make
+    /// verification self-keyed.
+    fn setup_vk_to_verify_under(
+        &self,
+        hash: &str,
+        compressed: bool,
+        aggregate_domain: Option<&[u64]>,
+    ) -> Result<std::borrow::Cow<'a, [u64]>> {
+        if let Some(vk) = self.trusted_setup_vk {
+            if self.leaf_setup_vk && aggregate_domain.is_some() {
+                return Err(CommonError::InvalidProof(
+                    "an aggregated proof cannot verify under a leaf setup key; pass its \
+                     recurser's key with with_setup_vk (`--setup-vk`)"
+                        .to_string(),
+                ));
             }
-            (Some(_), _) => {
-                // Committed vk unless overridden — never the stored copy.
-                let committed = program_publics(publics_full);
-                let vk_limbs: &[u64] = match self.override_program_vk {
-                    Some(pv) => &pv.vk,
-                    None => &committed[..PROGRAM_VK_LEN],
-                };
-                let mut pf = vk_limbs.to_vec();
-                pf.extend(publics.public_u64());
-                snark_publics_hash(&pf, rootc)
-            }
+            return Ok(std::borrow::Cow::Borrowed(vk));
+        }
+        if let Some(domain) = aggregate_domain {
+            return Err(CommonError::InvalidProof(format!(
+                "a recurser proof verifies under its recurser's key, which no release \
+                 publishes; pass the verkey of the recurser you trust with with_setup_vk \
+                 (`--setup-vk`). The proof claims {domain:?}"
+            )));
+        }
+        zisk_verifier::vadcop_vk(hash, compressed).map(|k| k.to_vec().into()).ok_or_else(|| {
+            CommonError::InvalidProof(format!(
+                "no published vadcop_final key for {hash:?} (compressed: {compressed}); pass \
+                 one with with_setup_vk"
+            ))
         })
     }
 
     /// Verify the proof using the configured parameters.
     ///
     /// This method uses the overridden values if provided, otherwise falls back
-    /// to the values stored in the proof.
+    /// to the values stored in the proof, except for the setup key: see
+    /// [`with_setup_vk`](Self::with_setup_vk).
     ///
     /// # Errors
     ///
     /// - [`CommonError::NotVerified`] if the proof is well-formed but does not verify.
     /// - [`CommonError::InvalidProof`] if the proof is malformed or its hash family
     ///   does not match the verification key.
-    /// - [`CommonError::Invalid`] if SNARK proof verification fails (Plonk).
-    /// - [`CommonError::Serialization`] / [`CommonError::Io`] if writing the temporary
-    ///   PlonkVkey file fails (Plonk).
+    /// - [`CommonError::Serialization`] if the PLONK key cannot be serialized (Plonk).
     pub fn verify(self) -> Result<()> {
         // A successful verify() is the signal callers trust before reading
         // `publics()`, and `Proof::new` builds bodies the ingest checks never see.
-        ensure_stored_publics(&self.proof_with_values.body)?;
+        ensure_stored_body(&self.proof_with_values.body)?;
 
-        let derived_publics = self.proof_with_values.publics();
-        let publics = self.override_publics.unwrap_or(&derived_publics);
         let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_values.program_vk);
 
         // Spliced into the committed publics below, so a short one would shear the rest of
@@ -912,6 +1041,12 @@ impl<'a> ZiskVerifyBuilder<'a> {
             }
         }
         if let Some(vk) = self.trusted_setup_vk {
+            if vk.len() != PROGRAM_VK_LEN {
+                return Err(CommonError::InvalidProof(format!(
+                    "setup vk must have exactly {PROGRAM_VK_LEN} u64 limbs, got {}",
+                    vk.len()
+                )));
+            }
             if !zisk_verifier::publics_are_canonical(vk) {
                 return Err(CommonError::InvalidProof(
                     "setup vk override has a non-canonical Goldilocks limb".to_string(),
@@ -929,71 +1064,71 @@ impl<'a> ZiskVerifyBuilder<'a> {
         }
 
         match &self.proof_with_values.body {
-            ProofBody::Plonk { proof_bytes, plonk_vk, publics_full, rootc, .. } => {
-                // Caller-provided keys if given, else the proof's own.
-                let plonk_vkey = self.trusted_plonk_vk.unwrap_or(&plonk_vk.plonk_vkey);
+            ProofBody::Plonk { proof_bytes, publics_full, rootc: stored_rootc, .. } => {
                 if self.trusted_pilfflonk_vkey.is_some() {
                     return Err(CommonError::InvalidProof(
                         "a pilfflonk verification key was pinned (with_pilfflonk_vkey) for a PLONK proof"
                             .to_string(),
                     ));
                 }
-                let public_snark_bytes = self.snark_statement(publics_full, rootc, publics)?;
+                let public_snark_bytes =
+                    self.snark_public_digest(publics_full, stored_rootc, "PLONK")?;
+                let plonk_vkey = self.trusted_plonk_vk.ok_or_else(|| {
+                    CommonError::InvalidProof(
+                        "no published PLONK key; pass one with with_plonk_vk (`--plonk-vk`)"
+                            .to_string(),
+                    )
+                })?;
 
                 let snark_proof = SnarkProof {
                     proof_bytes: proof_bytes.clone(),
                     public_bytes: Vec::new(),
-                    public_snark_bytes,
+                    public_snark_bytes: public_snark_bytes.clone(),
                     protocol_id: SnarkProtocol::Plonk.protocol_id(),
                 };
-
-                let temp_dir = std::env::temp_dir();
-                // Concurrent verify() calls in one process otherwise race on the tempfile.
-                let unique_id = format!(
-                    "{}_{}",
-                    std::process::id(),
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_nanos())
-                        .unwrap_or(0)
-                );
-                let temp_file = temp_dir.join(format!("plonk_vkey_{}.json", unique_id));
-
-                let plonk_vkey_json = serde_json::to_vec(plonk_vkey)
+                let plonk_vkey_json = serde_json::to_string(plonk_vkey)
                     .map_err(|e| CommonError::Serialization(format!("PlonkVkey to JSON: {e}")))?;
-                std::fs::write(&temp_file, &plonk_vkey_json).map_err(|e| {
-                    CommonError::Io(format!(
-                        "Failed to write PlonkVkey to temporary file: {}: {e}",
-                        temp_file.display()
-                    ))
-                })?;
-
-                let result = verify_snark_proof(&snark_proof, &temp_file);
-
-                if temp_file.exists() {
-                    std::fs::remove_file(&temp_file).map_err(|e| {
-                        CommonError::Io(format!(
-                            "Failed to delete temporary file: {}: {e}",
-                            temp_file.display()
-                        ))
-                    })?;
-                }
-
-                result.map_err(|e| {
-                    CommonError::Invalid(format!("snark proof verification failed: {e}"))
-                })?;
-                Ok(())
+                // The digest is the statement recomputed above, so pin it.
+                verify_snark_proof_with_vkey(
+                    &snark_proof,
+                    &plonk_vkey_json,
+                    Some(&public_snark_bytes),
+                )
+                .map_err(|e| match e {
+                    // The proof was checked and rejected.
+                    ProofmanError::InvalidProof(reason) => {
+                        tracing::warn!("PLONK proof not verified: {reason}");
+                        CommonError::NotVerified
+                    }
+                    // snarkjs could not run (missing, no temp dir, ...): nothing was checked.
+                    e => CommonError::Invalid(format!("PLONK verification could not run: {e}")),
+                })
             }
-            ProofBody::Pilfflonk { proof_bytes, vkey_json, publics_full, rootc, .. } => {
+            ProofBody::Pilfflonk {
+                proof_bytes,
+                vkey_json,
+                publics_full,
+                rootc: stored_rootc,
+                ..
+            } => {
                 if self.trusted_plonk_vk.is_some() {
                     return Err(CommonError::InvalidProof(
                         "a PLONK verification key was pinned (with_plonk_vk) for a pilfflonk proof"
                             .to_string(),
                     ));
                 }
-                // Caller-provided key if given, else the proof's own.
-                let vkey_json = self.trusted_pilfflonk_vkey.unwrap_or(vkey_json.as_str());
-                let public_snark_bytes = self.snark_statement(publics_full, rootc, publics)?;
+                let public_snark_bytes =
+                    self.snark_public_digest(publics_full, stored_rootc, "pilfflonk")?;
+                // The caller's key, else the one the proof carries if it is the release's.
+                let hash = self.proof_with_values.program_vk.hash_mode.as_str();
+                let vkey_json = match self.trusted_pilfflonk_vkey {
+                    Some(vkey) => vkey,
+                    None => release_pilfflonk_vkey(
+                        hash,
+                        vkey_json,
+                        zisk_verifier::pilfflonk_vkey_digest(hash),
+                    )?,
+                };
 
                 let snark_proof = SnarkProof {
                     proof_bytes: proof_bytes.clone(),
@@ -1001,16 +1136,20 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     public_snark_bytes: public_snark_bytes.clone(),
                     protocol_id: SnarkProtocol::Pilfflonk.protocol_id(),
                 };
-
-                // The digest was rebuilt here from the publics and the root, not read from the
-                // proof, so it is the pinned statement.
+                // The digest is the statement recomputed above, so pin it.
                 verify_snark_proof_with_vkey(&snark_proof, vkey_json, Some(&public_snark_bytes))
-                    .map_err(|e| {
-                        CommonError::Invalid(format!("snark proof verification failed: {e}"))
-                    })?;
-                Ok(())
+                    .map_err(|e| match e {
+                        // The proof was checked and rejected.
+                        ProofmanError::InvalidProof(reason) => {
+                            tracing::warn!("pilfflonk proof not verified: {reason}");
+                            CommonError::NotVerified
+                        }
+                        e => CommonError::Invalid(format!(
+                            "pilfflonk verification could not run: {e}"
+                        )),
+                    })
             }
-            ProofBody::Vadcop { proof, zisk_vk, kind, hash, publics_full } => {
+            ProofBody::Vadcop { proof, kind, hash, publics_full, zisk_vk } => {
                 let kind = *kind;
 
                 // A pinned PLONK key can't gate a non-PLONK proof; the Vadcop path would
@@ -1036,97 +1175,42 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     )));
                 }
 
-                // `root_c` for the STARK verifier: caller's key if given, else the proof's.
-                let setup_vk = self.trusted_setup_vk.unwrap_or(zisk_vk.as_slice());
-                if setup_vk.len() != PROGRAM_VK_LEN {
-                    return Err(CommonError::InvalidProof(format!(
-                        "setup vk must have exactly {PROGRAM_VK_LEN} u64 limbs, got {}",
-                        setup_vk.len()
-                    )));
-                }
+                // The domain of the statement verified, overrides included, as for a SNARK.
+                let statement = self.statement(publics_full);
+                let declared = &statement[..PROGRAM_VK_LEN];
+                let setup_vk = self.setup_vk_to_verify_under(
+                    hash,
+                    kind.is_minimal(),
+                    (kind == VadcopKind::Recurser).then_some(declared),
+                )?;
+                let setup_vk: &[u64; PROGRAM_VK_LEN] = setup_vk.as_ref().try_into().unwrap();
 
-                // A fold skips the leaf allow-list for an aggregated child and verifies it
-                // under the root that child declares, so a genuine recurser output can
-                // carry a subtree from another recurser. Requiring the declared domain to
-                // equal the key the STARK is checked under makes the allow-list transitive
-                // over the fold tree; honest folds already satisfy it. `Recurser` only — a
-                // leaf declares its ROM root against the shared vadcop_final key.
-                if kind == VadcopKind::Recurser {
-                    // The domain the *verified statement* declares, not the committed one:
-                    // an override is spliced into the publics below, so checking the stored
-                    // limbs would guard a statement that is never verified.
-                    let declared: &[u64] = match self.override_program_vk {
-                        Some(pv) => &pv.vk,
-                        None => &program_publics(publics_full)[..PROGRAM_VK_LEN],
-                    };
-                    if declared != setup_vk {
-                        return Err(CommonError::InvalidProof(format!(
-                            "recurser proof declares recursion domain {declared:?} but verifies \
-                             under {setup_vk:?}; its subtree was not produced by this recurser"
-                        )));
-                    }
-                }
-
-                // `None` means no such (family, stage) exists — an unknown family.
-                // That is a malformed shape, not an unverifiable statement, so it must
-                // not fall through to the verifier and come back as `NotVerified`.
-                let Some(expected_len) =
-                    zisk_verifier::expected_proof_bytes(hash, kind.is_minimal())
-                else {
-                    return Err(CommonError::InvalidProof(format!(
-                        "no {:?} stage exists for hash family {hash:?}",
-                        self.proof_with_values.kind()
-                    )));
-                };
-                if proof.len() * 8 != expected_len {
-                    return Err(CommonError::InvalidProof(format!(
-                        "Malformed proof: expected {} bytes for {:?}, got {}",
-                        expected_len,
-                        self.proof_with_values.kind(),
-                        proof.len() * 8
-                    )));
-                }
-
-                // The STARK verifier's Fiat-Shamir transcript is over the full
-                // `[flag? | program_vk | inputs]` at FULL u64 width. Splicing keeps that
-                // width; only an explicit publics override falls back to the u32-lossy
-                // `PublicValues` view, which is meant for proofs whose publics fit in 32
-                // bits. A program-VK-only override must NOT truncate a recurser proof's
-                // publics, so it splices instead.
-                let pubs_u64 = match (self.override_publics, self.override_program_vk) {
-                    (None, None) => kind.stark_publics(publics_full),
-                    (None, Some(pv)) => {
-                        kind.stark_publics(&splice_program_vk(publics_full, &pv.vk)?)
-                    }
-                    (Some(_), _) => {
-                        // Committed vk unless overridden — never the stored copy.
-                        let committed = program_publics(publics_full);
-                        let vk_limbs: &[u64] = match self.override_program_vk {
-                            Some(pv) => &pv.vk,
-                            None => &committed[..PROGRAM_VK_LEN],
-                        };
-                        let mut v = Vec::with_capacity(
-                            kind.flag().map_or(0, |_| VADCOP_FINAL_FLAG_LEN)
-                                + PROGRAM_VK_LEN
-                                + ZISK_PUBLICS,
-                        );
-                        if let Some(flag) = kind.flag() {
-                            v.push(flag);
-                        }
-                        v.extend_from_slice(vk_limbs);
-                        v.extend(publics.public_u64());
-                        v
-                    }
-                };
+                // The STARK transcript is over `[flag? | program_vk | inputs]`.
+                let pubs_u64 = kind.stark_publics(&statement);
                 let vadcop_final_proof =
                     VadcopFinalProof::new(proof.clone(), pubs_u64, kind.is_minimal(), hash.clone());
 
-                let is_valid = zisk_verifier::verify_vadcop_final(&vadcop_final_proof, setup_vk);
-
-                if !is_valid {
-                    Err(CommonError::NotVerified)
-                } else {
-                    Ok(())
+                // The one acceptance policy, shared with guests: shape, canonical publics,
+                // leaf flag, an aggregate's domain (which makes a recurser's allow-list
+                // transitive over the fold tree), u32 leaf outputs, then the STARK.
+                match zisk_verifier::verify(&vadcop_final_proof, setup_vk) {
+                    Ok(_) => Ok(()),
+                    Err(zisk_verifier::VerifyError::InvalidProof) => {
+                        // The claimed key is untrusted; it only tells a genuine proof from
+                        // another setup apart from a broken one.
+                        if zisk_vk.as_slice() != setup_vk.as_slice() {
+                            if let Some(hint) =
+                                hint_setup_vk(self.trusted_setup_vk, kind.is_minimal())
+                            {
+                                tracing::warn!("{hint}");
+                            }
+                        }
+                        Err(CommonError::NotVerified)
+                    }
+                    Err(e) => Err(CommonError::InvalidProof(format!(
+                        "{:?} proof: {e}",
+                        self.proof_with_values.kind()
+                    ))),
                 }
             }
         }
@@ -1157,7 +1241,10 @@ impl Proof {
     /// deserialized independently of the statement `verify()` actually hashes, so
     /// returning it would let a modified proof verify while reporting other outputs.
     ///
-    /// **Only meaningful on a proof that passed [`Proof::load`] or [`Proof::verify`].**
+    /// **Only meaningful on a proof that passed [`Proof::load`] or [`Proof::verify`].** A
+    /// verification with [`with_publics`](Proof::with_publics) or
+    /// [`with_program_vk`](Proof::with_program_vk) verifies the caller's values, not these:
+    /// read the overrides back, not this view.
     /// A misshapen body has no committed statement to report, and what comes back is
     /// zero-filled — indistinguishable from a proof whose outputs really are zero. It is
     /// not evidence of anything. Reach for [`Proof::try_publics`] whenever the proof's
@@ -1222,14 +1309,202 @@ impl Proof {
         }
     }
 
-    /// Save the proof to a file using bincode serialization.
+    /// The bytes [`save`](Self::save) writes.
+    ///
+    /// A Vadcop proof is ZisK's flat layout, [`get_proof_bytes`](Self::get_proof_bytes). A
+    /// proof with a [`random_seed`](Self::random_seed) ends with it as the verifier's seed
+    /// trailer ([`SEED_TRAILER_TAG`]), which hosts read and ignore and guests refuse: give a
+    /// guest [`to_bytes_without_seed_trailer`](Self::to_bytes_without_seed_trailer). A PLONK
+    /// proof is [`PLONK_FILE_MAGIC`] followed by the bincode `Proof`, seed included.
     ///
     /// # Errors
     ///
-    /// Returns [`CommonError::Io`] if the parent directory or file cannot be created,
-    /// or if serializing the proof to the file fails.
+    /// Returns [`CommonError::InvalidProof`] if a Vadcop proof's publics are misshapen or
+    /// non-canonical, or its `program_vk` is not the one its publics and hash family commit
+    /// to (the flat layout derives it from them); otherwise the errors of
+    /// [`get_proof_u64`](Self::get_proof_u64).
+    pub fn to_bytes(&self) -> Result<Vec<u8>> {
+        self.encode(true)
+    }
+
+    /// [`to_bytes`](Self::to_bytes) without a Vadcop proof's seed trailer: the bytes a guest
+    /// verifies. A SNARK proof's bytes are the same as `to_bytes`'s.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`to_bytes`](Self::to_bytes).
+    pub fn to_bytes_without_seed_trailer(&self) -> Result<Vec<u8>> {
+        self.encode(false)
+    }
+
+    /// Errors unless [`to_bytes`](Self::to_bytes) can write this proof, and so
+    /// [`load`](Self::load) read it back, without encoding it.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`to_bytes`](Self::to_bytes).
+    pub fn ensure_saveable(&self) -> Result<()> {
+        // A flagged or non-canonical vector would be written as a file `load` refuses.
+        ensure_stored_body(&self.body)?;
+        self.ensure_program_vk_committed()?;
+        if let ProofBody::Vadcop { hash, .. } = &self.body {
+            if self.program_vk.hash_mode.as_str() != hash {
+                return Err(CommonError::InvalidProof(
+                    "program_vk's hash mode differs from the proof's hash family, which the \
+                     saved form cannot carry"
+                        .to_string(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn encode(&self, seed_trailer_too: bool) -> Result<Vec<u8>> {
+        self.ensure_saveable()?;
+        match &self.body {
+            ProofBody::Vadcop { .. } => {
+                let mut words = self.get_proof_u64()?;
+                if let Some(seed) = self.random_seed.as_ref().filter(|_| seed_trailer_too) {
+                    words.extend(seed_trailer(seed.to_le_words()));
+                }
+                let mut bytes = Vec::with_capacity(words.len() * 8);
+                for w in &words {
+                    bytes.extend_from_slice(&w.to_le_bytes());
+                }
+                Ok(bytes)
+            }
+            ProofBody::Plonk { .. } | ProofBody::Pilfflonk { .. } => {
+                let body = self.to_bincode()?;
+                // `load` refuses a larger file, so it must not be written.
+                if body.len() > PLONK_FILE_MAX_BYTES {
+                    return Err(CommonError::InvalidProof(format!(
+                        "the SNARK proof encodes to {} bytes, over the {PLONK_FILE_MAX_BYTES} a \
+                         saved proof may have",
+                        body.len()
+                    )));
+                }
+                let mut bytes = PLONK_FILE_MAGIC.to_vec();
+                bytes.extend(body);
+                Ok(bytes)
+            }
+        }
+    }
+
+    /// `program_vk` is a public field; a saved proof must not carry one that differs from the
+    /// program VK its publics commit to.
+    fn ensure_program_vk_committed(&self) -> Result<()> {
+        if self.program_vk.vk.as_slice()
+            != &program_publics(self.committed_publics())[..PROGRAM_VK_LEN]
+        {
+            return Err(CommonError::InvalidProof(
+                "program_vk differs from the one the publics commit to".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Decode [`to_bytes`](Self::to_bytes) output.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::InvalidProof`] if the bytes are neither a well-formed flat
+    /// Vadcop proof nor a PLONK file.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        if let Some(rest) = bytes.strip_prefix(PLONK_FILE_MAGIC) {
+            let (proof, read): (Proof, usize) = bincode::serde::decode_from_slice(
+                rest,
+                bincode::config::standard().with_limit::<PLONK_FILE_MAX_BYTES>(),
+            )
+            .map_err(|e| CommonError::InvalidProof(format!("Malformed PLONK proof: {e}")))?;
+            if read != rest.len() {
+                return Err(CommonError::InvalidProof(format!(
+                    "{} trailing bytes after the PLONK proof",
+                    rest.len() - read
+                )));
+            }
+            if !matches!(proof.body, ProofBody::Plonk { .. } | ProofBody::Pilfflonk { .. }) {
+                return Err(CommonError::InvalidProof(
+                    "a PLONK file must hold a SNARK proof; Vadcop proofs are saved flat"
+                        .to_string(),
+                ));
+            }
+            // bincode will happily decode a non-canonical or misshapen `publics_full`.
+            ensure_stored_body(&proof.body)?;
+            proof.ensure_program_vk_committed()?;
+            return Ok(proof);
+        }
+
+        let saved = zisk_verifier::decode_saved(bytes)
+            .map_err(|e| CommonError::InvalidProof(format!("Malformed proof: {e}")))?;
+        let random_seed = saved.random_seed.map(RandomSeed::from_le_words);
+        let VadcopFinalProof { proof, public_values, compressed, hash } = saved.proof;
+        // `decode_saved` pins the flag to 0 or 1.
+        let kind = match (compressed, public_values.first()) {
+            (true, _) => VadcopKind::Minimal,
+            (false, Some(&IS_VADCOP_FINAL_PROOF)) => VadcopKind::Final,
+            (false, _) => VadcopKind::Recurser,
+        };
+        let publics_full = program_publics(&public_values).to_vec();
+        let mode = hash.parse().map_err(|e| CommonError::InvalidProof(format!("{e}")))?;
+        let program_vk = ProgramVK::new_from_publics_with_mode(&publics_full, mode);
+        Ok(Proof::new(
+            ProofBody::Vadcop {
+                proof,
+                zisk_vk: saved.claimed_vadcop_vk.to_vec(),
+                kind,
+                hash,
+                publics_full,
+            },
+            program_vk,
+        )
+        .with_random_seed(random_seed))
+    }
+
+    /// The bincode encoding the coordinator, workers and clients exchange; not a file format
+    /// (see [`to_bytes`](Self::to_bytes)).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::Serialization`] if bincode fails.
+    pub fn to_bincode(&self) -> Result<Vec<u8>> {
+        bincode::serde::encode_to_vec(self, bincode::config::standard())
+            .map_err(|e| CommonError::Serialization(e.to_string()))
+    }
+
+    /// Decode [`to_bincode`](Self::to_bincode) output, including that of ZisK versions that
+    /// predate [`Proof::random_seed`] (they decode with `random_seed: None`).
+    ///
+    /// Bytes past the last known field are ignored, so encodings from later versions that
+    /// append fields still decode. Unlike [`from_bytes`](Self::from_bytes) this does not
+    /// check the publics' shape.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::Deserialization`] if the bytes do not hold a proof.
+    pub fn from_bincode(bytes: &[u8]) -> Result<Self> {
+        let config = bincode::config::standard();
+        let err = |e: bincode::error::DecodeError| CommonError::Deserialization(e.to_string());
+        // bincode encodes a struct as the tuple of its fields, so this reads the fields every
+        // encoding starts with, including those written before `random_seed` existed.
+        let ((body, program_vk), head_len) =
+            bincode::serde::decode_from_slice::<(ProofBody, ProgramVK), _>(bytes, config)
+                .map_err(err)?;
+        let random_seed = match &bytes[head_len..] {
+            [] => None,
+            tail => bincode::serde::decode_from_slice(tail, config).map_err(err)?.0,
+        };
+        Ok(Self { body, program_vk, random_seed })
+    }
+
+    /// Save the proof to a file: [`to_bytes`](Self::to_bytes).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::Io`] if the parent directory or file cannot be created or
+    /// written, or the errors of [`to_bytes`](Self::to_bytes).
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
         let path = path.as_ref();
+        let bytes = self.to_bytes()?;
 
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
@@ -1239,67 +1514,26 @@ impl Proof {
                 ))
             })?;
         }
+        std::fs::write(path, bytes).map_err(|e| {
+            CommonError::Io(format!("failed to save proof to {}: {e}", path.display()))
+        })
+    }
 
-        let mut file = File::create(path).map_err(|e| {
+    /// Load a proof saved by [`save`](Self::save): [`from_bytes`](Self::from_bytes).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::Io`] if the file cannot be read, or the errors of
+    /// [`from_bytes`](Self::from_bytes).
+    pub fn load(path: impl AsRef<Path>) -> Result<Self> {
+        let path = path.as_ref();
+        let bytes = std::fs::read(path).map_err(|e| {
             CommonError::Io(format!(
-                "failed to create file for saving proof: {}: {e}",
+                "failed to open file for loading proof: {}: {e}",
                 path.display()
             ))
         })?;
-        bincode::serde::encode_into_std_write(self, &mut file, bincode::config::standard())
-            .map(|_| ())
-            .map_err(|e| CommonError::Io(format!("Failed to save proof: {}", e)))
-    }
-
-    /// Load a proof from a file written by [`Proof::save`] (or by an older version, see
-    /// [`Proof::from_bytes`]).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`CommonError::Io`] if the file cannot be read or its contents
-    /// cannot be deserialized into a [`Proof`].
-    pub fn load(path: impl AsRef<Path>) -> Result<Self> {
-        let bytes = std::fs::read(path.as_ref()).map_err(|e| {
-            CommonError::Io(format!(
-                "failed to open file for loading proof: {}: {e}",
-                path.as_ref().display()
-            ))
-        })?;
-        let proof = Self::from_bytes(&bytes)
-            .map_err(|e| CommonError::Io(format!("Failed to load proof: {}", e)))?;
-        // bincode will happily decode a non-canonical or misshapen `publics_full`.
-        ensure_stored_publics(&proof.body)?;
-        Ok(proof)
-    }
-
-    /// Decode a bincode-serialized proof, including ones written by ZisK versions that predate
-    /// [`Proof::random_seed`] (they decode with `random_seed: None`).
-    ///
-    /// Bytes past the last known field are ignored, so proofs from later versions that append
-    /// fields still decode. Unlike [`Proof::load`] this does not check the publics' shape.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`CommonError::Deserialization`] if the bytes do not hold a proof.
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        let config = bincode::config::standard();
-        let decode_err =
-            |e: bincode::error::DecodeError| CommonError::Deserialization(e.to_string());
-
-        // bincode encodes a struct as the tuple of its fields, so this reads the fields every
-        // serialized proof starts with, including those written before `random_seed` existed.
-        let ((body, program_vk), head_len) =
-            bincode::serde::decode_from_slice::<(ProofBody, ProgramVK), _>(bytes, config)
-                .map_err(decode_err)?;
-        let tail = &bytes[head_len..];
-        let seed = if tail.is_empty() {
-            None
-        } else {
-            bincode::serde::decode_from_slice::<Option<RandomSeed>, _>(tail, config)
-                .map_err(decode_err)?
-                .0
-        };
-        Ok(Self { body, program_vk, random_seed: seed })
+        Self::from_bytes(&bytes)
     }
 
     /// The committed `publics_full` (`[program_vk | inputs]`) for either flavor —
@@ -1324,7 +1558,7 @@ impl Proof {
                 // carries one would come back 70 wide. Vadcop storage is flag-free by
                 // construction, but `Proof::new` and raw deserialization never check
                 // that, and this conversion feeds proofman directly.
-                ensure_stored_publics(&self.body)?;
+                ensure_stored_body(&self.body)?;
 
                 // The STARK layer commits to the full-width publics INCLUDING the
                 // is_vadcop_final_proof flag; `kind.stark_publics` re-adds it to
@@ -1362,8 +1596,7 @@ impl Proof {
                     "a compressed (minimal) proof cannot be aggregated: compression strips \
                      the is_vadcop_final_proof flag the aggregator reads at public slot 0, \
                      and it cannot be recovered. Produce the leaf uncompressed \
-                     (ProofKind::VadcopFinal) if you intend to fold it — note the embedded \
-                     client defaults to ProofKind::VadcopFinalMinimal"
+                     (ProofKind::VadcopFinal) if you intend to fold it"
                         .to_string(),
                 ));
             }
@@ -1653,6 +1886,12 @@ impl Proof {
     pub fn with_setup_vk<'a>(&'a self, setup_vk: &'a [u64]) -> ZiskVerifyBuilder<'a> {
         ZiskVerifyBuilder::new(self).with_setup_vk(setup_vk)
     }
+
+    /// Start a custom verification with a non-release setup's leaf key. See
+    /// [`ZiskVerifyBuilder::with_leaf_setup_vk`].
+    pub fn with_leaf_setup_vk<'a>(&'a self, setup_vk: &'a [u64]) -> ZiskVerifyBuilder<'a> {
+        ZiskVerifyBuilder::new(self).with_leaf_setup_vk(setup_vk)
+    }
 }
 
 #[cfg(test)]
@@ -1834,14 +2073,17 @@ mod tests {
     #[test]
     fn verify_reports_a_misshapen_blake3_compressed_proof_as_malformed() {
         let mut proof = vadcop_proof(VadcopKind::Minimal, flag_free_publics([1, 2, 3, 4]));
-        if let ProofBody::Vadcop { hash, .. } = &mut proof.body {
+        // A multiproof's length is only bounded: over the bound is misshapen.
+        let max = zisk_verifier::proof_size("blake3", true).unwrap().max_bytes();
+        if let ProofBody::Vadcop { hash, proof: words, .. } = &mut proof.body {
             *hash = "blake3".to_string();
+            *words = vec![0; max / 8 + 1];
         }
         proof.program_vk.hash_mode = HashMode::Blake3;
 
         let err = proof.verify().unwrap_err();
         assert!(matches!(err, CommonError::InvalidProof(_)), "got: {err:?}");
-        assert!(err.to_string().contains("Malformed proof"), "got: {err}");
+        assert!(err.to_string().contains("the stage's proofs are"), "got: {err}");
     }
 
     /// `stark_publics` re-adds the flag, so a stored vector that already carries one
@@ -1864,37 +2106,6 @@ mod tests {
         let vfp = ok.get_vadcop_final_proof().unwrap();
         assert_eq!(vfp.public_values.len(), VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS);
         assert_eq!(vfp.public_values[0], IS_VADCOP_FINAL_PROOF);
-    }
-
-    /// `ensure_stored_publics` still accepts the legacy flagged 69-word Plonk body, so
-    /// pin that both accessors strip the flag rather than shifting the view by a word.
-    /// `new_from_u64` normalizes internally; this guards anyone "simplifying" that away.
-    #[test]
-    fn a_flagged_plonk_body_is_not_shifted_by_a_word() {
-        let mut flagged = vec![0u64; VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS];
-        flagged[0] = IS_VADCOP_FINAL_PROOF;
-        flagged[VADCOP_FINAL_FLAG_LEN..VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN]
-            .copy_from_slice(&[11, 12, 13, 14]);
-        flagged[VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN] = 0xAABB;
-
-        let proof = Proof::new(
-            ProofBody::Plonk {
-                proof_bytes: vec![],
-                plonk_vk: Box::new(PlonkVkBlob {
-                    vadcop_vk: vec![0u64; PROGRAM_VK_LEN],
-                    plonk_vkey: dummy_plonk_vkey(),
-                }),
-                publics: PublicValues::new_empty(),
-                publics_full: flagged,
-                rootc: vec![0u64; PROGRAM_VK_LEN],
-            },
-            ProgramVK::new_empty(),
-        );
-
-        // The first user input, not the last VK limb and not the flag.
-        assert_eq!(&proof.publics().data[0..4], &0xAABBu32.to_le_bytes());
-        assert_eq!(&proof.try_publics().unwrap().data[0..4], &0xAABBu32.to_le_bytes());
-        assert_eq!(proof.get_program_vk().vk, vec![11, 12, 13, 14]);
     }
 
     /// A structurally valid (not cryptographically meaningful) PLONK vkey.
@@ -1984,20 +2195,28 @@ mod tests {
         assert!(err.to_string().contains("recursion domain"), "got: {err}");
     }
 
-    /// bincode decodes a non-canonical word happily; `load` must not.
+    /// A non-canonical public is refused on both sides: `save` will not write one, and
+    /// `load` rejects a file that carries one anyway.
     #[test]
     fn load_rejects_a_non_canonical_stored_public() {
-        let tmp = std::env::temp_dir().join(format!("proof_noncanon_{}.bin", std::process::id()));
         let mut publics = flag_free_publics([1, 2, 3, 4]);
         publics[PROGRAM_VK_LEN] = GOLDILOCKS_ORDER;
-        vadcop_proof(VadcopKind::Final, publics).save(&tmp).unwrap();
+        let proof = vadcop_proof(VadcopKind::Final, publics);
+        assert!(proof.to_bytes().unwrap_err().to_string().contains("canonical"));
 
-        let err = Proof::load(&tmp).unwrap_err();
-        std::fs::remove_file(&tmp).ok();
+        let err = Proof::from_bytes(&proof.get_proof_bytes().unwrap()).unwrap_err();
         assert!(err.to_string().contains("canonical"), "got: {err}");
     }
 
-    /// The guest reads the family off the tail, so the tag must be the last word.
+    #[test]
+    fn load_rejects_a_leaf_flag_other_than_0_or_1() {
+        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
+        let mut bytes = proof.get_proof_bytes().unwrap();
+        bytes[16..24].copy_from_slice(&2u64.to_le_bytes());
+        let err = Proof::from_bytes(&bytes).unwrap_err();
+        assert!(err.to_string().contains("leaf flag"), "got: {err}");
+    }
+
     #[test]
     fn serialized_proof_carries_the_hash_tag_last() {
         let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
@@ -2005,54 +2224,25 @@ mod tests {
         assert_eq!(words.last().copied(), zisk_verifier::hash_tag("Poseidon2"));
     }
 
-    /// Splicing a VK must keep every other slot at full u64 width — rebuilding from the
-    /// u32 `PublicValues` view would truncate a recurser proof's inputs.
+    /// A VK override keeps every other slot at full u64 width; rebuilding from the u32
+    /// `PublicValues` view would truncate a recurser proof's inputs.
     #[test]
-    fn splice_program_vk_preserves_wide_publics() {
+    fn a_program_vk_override_keeps_wide_publics() {
         let mut publics = flag_free_publics([1, 2, 3, 4]);
         publics[PROGRAM_VK_LEN] = 1 << 40;
+        let proof = vadcop_proof(VadcopKind::Final, publics);
+        let vk = ProgramVK { vk: vec![9, 9, 9, 9], hash_mode: HashMode::Poseidon2 };
 
-        let spliced = splice_program_vk(&publics, &[9, 9, 9, 9]).unwrap();
-
-        assert_eq!(&spliced[..PROGRAM_VK_LEN], &[9, 9, 9, 9]);
-        assert_eq!(spliced[PROGRAM_VK_LEN], 1 << 40, "wide public must not be truncated");
-    }
-
-    /// A raw vadcop_final vector carries the flag at index 0; splicing over it would
-    /// shift the whole statement by one.
-    #[test]
-    fn splice_program_vk_normalizes_a_flagged_publics_vector() {
-        let mut flagged = vec![0u64; VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS];
-        flagged[0] = IS_VADCOP_FINAL_PROOF;
-        flagged[VADCOP_FINAL_FLAG_LEN..VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN]
-            .copy_from_slice(&[11, 12, 13, 14]);
-        flagged[VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN] = 77;
-
-        let spliced = splice_program_vk(&flagged, &[91, 92, 93, 94]).unwrap();
-
-        assert_eq!(spliced.len(), PROGRAM_VK_LEN + ZISK_PUBLICS, "flag must be stripped");
-        assert_eq!(&spliced[..PROGRAM_VK_LEN], &[91, 92, 93, 94], "vk must be replaced");
-        assert_eq!(spliced[PROGRAM_VK_LEN], 77, "inputs must not shift");
+        let statement = proof.with_program_vk(&vk).statement(proof.publics_full().unwrap());
+        assert_eq!(&statement[..PROGRAM_VK_LEN], &[9, 9, 9, 9]);
+        assert_eq!(statement[PROGRAM_VK_LEN], 1 << 40, "wide public must not be truncated");
     }
 
     /// A wrong-length `setup_vk` must return an error, not panic in
     /// `snark_publics_hash` (which slices on `PROGRAM_VK_LEN`).
     #[test]
     fn plonk_verify_rejects_wrong_len_setup_vk() {
-        let vkey = dummy_plonk_vkey();
-        let proof = Proof::new(
-            ProofBody::Plonk {
-                proof_bytes: vec![],
-                plonk_vk: Box::new(PlonkVkBlob {
-                    vadcop_vk: vec![0u64; PROGRAM_VK_LEN],
-                    plonk_vkey: vkey,
-                }),
-                publics: PublicValues::new_empty(),
-                publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
-                rootc: vec![0u64; PROGRAM_VK_LEN],
-            },
-            ProgramVK::new_empty(),
-        );
+        let proof = plonk_proof(flag_free_publics([0; 4]), vec![0; 4], HashMode::Poseidon1);
         // 3 limbs instead of PROGRAM_VK_LEN (4).
         let err = proof.with_setup_vk(&[1u64, 2, 3]).verify().unwrap_err();
         assert!(
@@ -2061,37 +2251,51 @@ mod tests {
         );
     }
 
-    #[test]
-    fn proof_save_load_roundtrip_vadcop() {
-        let tmp = std::env::temp_dir().join(format!("proof_roundtrip_{}.bin", std::process::id()));
-        let original = Proof::new(
-            ProofBody::Vadcop {
-                proof: vec![1, 2, 3, 4],
-                zisk_vk: vec![10, 20, 30, 40],
-                kind: VadcopKind::Minimal,
-                hash: "Poseidon2".to_string(),
-                publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
-            },
-            ProgramVK::new_from_publics(&[7, 8, 9, 10]),
-        );
-
-        original.save(&tmp).unwrap();
-        let loaded = Proof::load(&tmp).unwrap();
+    fn save_and_load(proof: &Proof) -> (Vec<u8>, Result<Proof>) {
+        // Tests run in parallel: each call needs its own file.
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let tmp = std::env::temp_dir().join(format!(
+            "proof_roundtrip_{}_{}.bin",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        proof.save(&tmp).unwrap();
+        let bytes = std::fs::read(&tmp).unwrap();
+        let loaded = Proof::load(&tmp);
         std::fs::remove_file(&tmp).ok();
+        (bytes, loaded)
+    }
 
-        assert_eq!(loaded.kind(), ProofKind::VadcopFinalMinimal);
-        match loaded.body {
-            ProofBody::Vadcop { proof, zisk_vk, kind, hash, .. } => {
-                assert_eq!(proof, vec![1, 2, 3, 4]);
-                assert_eq!(zisk_vk, vec![10, 20, 30, 40]);
-                assert_eq!(kind, VadcopKind::Minimal);
-                assert_eq!(hash, "Poseidon2");
-            }
-            ProofBody::Plonk { .. } | ProofBody::Pilfflonk { .. } => {
-                panic!("expected Vadcop body after roundtrip")
+    /// One Vadcop format: what `save` writes is `get_proof_bytes`, the bytes guests and
+    /// ethproofs take, and `load` restores every kind from them.
+    #[test]
+    fn a_saved_vadcop_proof_is_the_flat_layout_for_every_kind() {
+        for kind in [VadcopKind::Final, VadcopKind::Recurser, VadcopKind::Minimal] {
+            let mut publics = flag_free_publics([1, 2, 3, 4]);
+            publics[PROGRAM_VK_LEN] = 1 << 40; // a recurser's outputs may be wide
+            let original = vadcop_proof(kind, publics.clone());
+
+            let (bytes, loaded) = save_and_load(&original);
+            assert_eq!(bytes, original.get_proof_bytes().unwrap(), "{kind:?}");
+            let saved = zisk_verifier::decode_saved(&bytes).unwrap();
+            assert_eq!(saved.proof.compressed, kind.is_minimal(), "{kind:?}");
+
+            let loaded = loaded.unwrap();
+            assert_eq!(loaded.program_vk.vk, vec![1, 2, 3, 4], "{kind:?}");
+            assert_eq!(loaded.program_vk.hash_mode, HashMode::Poseidon2, "{kind:?}");
+            match loaded.body {
+                ProofBody::Vadcop { proof, zisk_vk, kind: k, hash, publics_full } => {
+                    assert_eq!(proof, vec![0u64; 8], "{kind:?}");
+                    assert_eq!(zisk_vk, vec![1, 2, 3, 4], "{kind:?}");
+                    assert_eq!(k, kind);
+                    assert_eq!(hash, "Poseidon2", "{kind:?}");
+                    assert_eq!(publics_full, publics, "{kind:?}");
+                }
+                ProofBody::Plonk { .. } | ProofBody::Pilfflonk { .. } => {
+                    panic!("expected a Vadcop body")
+                }
             }
         }
-        assert_eq!(loaded.program_vk.vk, vec![7, 8, 9, 10]);
     }
 
     fn pilfflonk_proof() -> Proof {
@@ -2111,17 +2315,13 @@ mod tests {
     /// survive a save and a load.
     #[test]
     fn pilfflonk_proof_is_a_snark_kind_and_roundtrips() {
-        let tmp =
-            std::env::temp_dir().join(format!("pilfflonk_roundtrip_{}.bin", std::process::id()));
         let original = pilfflonk_proof();
         assert_eq!(original.kind(), ProofKind::Plonk);
         assert!(!original.is_empty());
 
-        original.save(&tmp).unwrap();
-        let loaded = Proof::load(&tmp).unwrap();
-        std::fs::remove_file(&tmp).ok();
-
-        match loaded.body {
+        let (bytes, loaded) = save_and_load(&original);
+        assert!(bytes.starts_with(PLONK_FILE_MAGIC));
+        match loaded.unwrap().body {
             ProofBody::Pilfflonk { proof_bytes, vkey_json, .. } => {
                 assert_eq!(proof_bytes, vec![5, 6, 7]);
                 assert_eq!(vkey_json, "{\"protocol\":\"pilfflonk\"}");
@@ -2144,7 +2344,7 @@ mod tests {
 
         let plonk = Proof::new(
             ProofBody::Plonk {
-                proof_bytes: vec![],
+                proof_bytes: vec![0; PLONK_PROOF_BYTES],
                 plonk_vk: Box::new(PlonkVkBlob {
                     vadcop_vk: vec![0u64; PROGRAM_VK_LEN],
                     plonk_vkey: dummy_plonk_vkey(),
@@ -2159,6 +2359,27 @@ mod tests {
         assert!(err.to_string().contains("pilfflonk verification key was pinned"), "got: {err}");
     }
 
+    /// Unpinned, a pilfflonk proof verifies under the key it carries only if that key's digest is
+    /// the release's for its family.
+    #[test]
+    fn the_release_pilfflonk_key_is_pinned_by_its_digest() {
+        let digest = Some("0xab");
+        let release = r#"{"protocol":"pilfflonk","digest":"0xab"}"#;
+        assert_eq!(release_pilfflonk_vkey("Poseidon2", release, digest).unwrap(), release);
+
+        let other = r#"{"protocol":"pilfflonk","digest":"0xcd"}"#;
+        assert!(matches!(
+            release_pilfflonk_vkey("Poseidon2", other, digest),
+            Err(CommonError::NotVerified)
+        ));
+        assert!(matches!(
+            release_pilfflonk_vkey("Poseidon2", "not json", digest),
+            Err(CommonError::NotVerified)
+        ));
+        let err = release_pilfflonk_vkey("blake3", release, None).unwrap_err();
+        assert!(err.to_string().contains("no published pilfflonk key"), "got: {err}");
+    }
+
     /// As for PLONK, a wrong-length root is an error and not a slicing panic.
     #[test]
     fn pilfflonk_verify_rejects_wrong_len_setup_vk() {
@@ -2166,74 +2387,292 @@ mod tests {
         assert!(matches!(err, CommonError::InvalidProof(_)), "got {err:?}");
     }
 
+    /// The flat layout derives `program_vk` from the publics, so a proof whose
+    /// `program_vk` says otherwise must not be saved as if it agreed.
+    #[test]
+    fn save_refuses_a_program_vk_the_publics_do_not_commit_to() {
+        let mut proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
+        proof.program_vk = ProgramVK::new_from_publics(&[7, 8, 9, 10]);
+        let err = proof.to_bytes().unwrap_err();
+        assert!(err.to_string().contains("program_vk"), "got: {err}");
+    }
+
+    /// Neither a flagged publics vector nor a `hash_mode` the body contradicts can be
+    /// saved: the file would not load, or would load as a different proof.
+    #[test]
+    fn save_refuses_what_the_flat_layout_would_not_round_trip() {
+        let mut flagged = vec![IS_VADCOP_FINAL_PROOF];
+        flagged.extend(flag_free_publics([1, 2, 3, 4]));
+        assert!(vadcop_proof(VadcopKind::Final, flagged).to_bytes().is_err());
+
+        let mut proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
+        proof.program_vk.hash_mode = HashMode::Poseidon1;
+        let err = proof.to_bytes().unwrap_err();
+        assert!(err.to_string().contains("program_vk"), "got: {err}");
+    }
+
+    /// No release publishes a recurser's key, so an aggregate must be given one.
+    #[test]
+    fn verify_requires_a_key_for_a_recurser_proof() {
+        let proof = vadcop_proof(VadcopKind::Recurser, flag_free_publics([9, 9, 9, 9]));
+        let err = proof.verify().unwrap_err();
+        assert!(err.to_string().contains("recurser's key"), "got: {err}");
+    }
+
+    fn plonk_proof(publics_full: Vec<u64>, rootc: Vec<u64>, hash_mode: HashMode) -> Proof {
+        Proof::new(
+            ProofBody::Plonk {
+                proof_bytes: vec![5; PLONK_PROOF_BYTES],
+                plonk_vk: Box::new(PlonkVkBlob {
+                    vadcop_vk: vec![0u64; PROGRAM_VK_LEN],
+                    plonk_vkey: dummy_plonk_vkey(),
+                }),
+                publics: PublicValues::new_empty(),
+                publics_full,
+                rootc,
+            },
+            ProgramVK { vk: vec![0u64; PROGRAM_VK_LEN], hash_mode },
+        )
+    }
+
+    /// The release publishes no PLONK key, so a PLONK proof needs the caller's.
+    #[test]
+    fn a_plonk_proof_needs_a_plonk_key() {
+        let proof = plonk_proof(flag_free_publics([3; 4]), vec![7; 4], HashMode::Poseidon1);
+        let err = proof.with_setup_vk(&[7; 4]).with_leaf_setup_vk(&[7; 4]).verify().unwrap_err();
+        assert!(err.to_string().contains("no published PLONK key"), "got: {err}");
+    }
+
+    /// Every proof word must be below the BN254 scalar order, as a Solidity verifier requires:
+    /// adding `r` gives another encoding the native parser reads back as the same proof.
+    #[test]
+    fn a_plonk_proof_word_at_or_above_r_is_refused() {
+        let mut proof = plonk_proof(flag_free_publics([0; 4]), vec![9; 4], HashMode::Poseidon1);
+        if let ProofBody::Plonk { proof_bytes, .. } = &mut proof.body {
+            proof_bytes[..32].copy_from_slice(&BN254_R_BE);
+        }
+        let err = proof.verify().unwrap_err();
+        assert!(err.to_string().contains("word 0"), "got: {err}");
+        assert!(proof.to_bytes().is_err());
+    }
+
+    #[test]
+    fn verify_rejects_a_plonk_stored_rootc_that_differs_from_the_setup_vk() {
+        let proof = plonk_proof(flag_free_publics([0; 4]), vec![9; 4], HashMode::Blake3);
+        let err = proof.with_setup_vk(&[1, 2, 3, 4]).verify().unwrap_err();
+        assert!(err.to_string().contains("stored `rootc`"), "got: {err}");
+    }
+
+    #[test]
+    fn plonk_verify_asks_for_the_recurser_key_on_an_aggregate() {
+        let proof = plonk_proof(flag_free_publics([7, 7, 7, 7]), vec![7; 4], HashMode::Blake3);
+        let err = proof.verify().unwrap_err();
+        assert!(err.to_string().contains("recurser's key"), "got: {err}");
+    }
+
+    /// The native verifier aborts on any other length, so it must never reach it.
+    #[test]
+    fn a_plonk_proof_of_the_wrong_length_is_refused_before_the_native_verifier() {
+        for len in [0, 3, PLONK_PROOF_BYTES - 1, PLONK_PROOF_BYTES + 1] {
+            let mut proof = plonk_proof(flag_free_publics([0; 4]), vec![9; 4], HashMode::Poseidon1);
+            if let ProofBody::Plonk { proof_bytes, .. } = &mut proof.body {
+                *proof_bytes = vec![0; len];
+            }
+            let err = proof.with_setup_vk(&[9; 4]).verify().unwrap_err();
+            assert!(err.to_string().contains("PLONK proof is"), "{len}: {err}");
+            let mut bytes = PLONK_FILE_MAGIC.to_vec();
+            bytes.extend(
+                bincode::serde::encode_to_vec(&proof, bincode::config::standard()).unwrap(),
+            );
+            assert!(Proof::from_bytes(&bytes).is_err(), "{len}");
+        }
+    }
+
+    /// Under a key that is not a release leaf key, a PLONK proof cannot tell a leaf from a
+    /// fold carrying another recurser's subtree, so its domain must be that key.
+    #[test]
+    fn plonk_under_a_recurser_key_must_declare_it_as_its_domain() {
+        let recurser = [7u64; 4];
+        let foreign =
+            plonk_proof(flag_free_publics([3; 4]), recurser.to_vec(), HashMode::Poseidon1);
+        let err = foreign.with_setup_vk(&recurser).verify().unwrap_err();
+        assert!(err.to_string().contains("recursion domain"), "got: {err}");
+
+        // Vouched as a custom setup's leaf key, the same statement passes the policy and
+        // fails only at the dummy PLONK proof.
+        let vkey = dummy_plonk_vkey();
+        let err = foreign
+            .verify_builder()
+            .with_leaf_setup_vk(&recurser)
+            .with_plonk_vk(&vkey)
+            .verify()
+            .unwrap_err();
+        assert!(matches!(err, CommonError::NotVerified), "got: {err:?}");
+
+        // A leaf key never verifies an aggregate.
+        let own = plonk_proof(flag_free_publics(recurser), recurser.to_vec(), HashMode::Poseidon1);
+        let err = own.verify_builder().with_leaf_setup_vk(&recurser).verify().unwrap_err();
+        assert!(err.to_string().contains("leaf setup key"), "got: {err}");
+    }
+
+    /// The Solidity helpers compute what `ZiskVerifier.hashPublicValues` does.
+    #[test]
+    fn hash_solidity_is_the_on_chain_public_input() {
+        let mut publics_full = flag_free_publics([1, 2, 3, 4]);
+        publics_full[PROGRAM_VK_LEN] = 0xAABB_CCDD;
+        let publics = PublicValues::new_from_u64(&publics_full);
+        let vk = ProgramVK { vk: vec![1, 2, 3, 4], hash_mode: HashMode::Poseidon1 };
+        let rootc = [5, 6, 7, 8];
+        assert_eq!(publics.hash_solidity(&vk, &rootc), snark_publics_hash(&publics_full, &rootc));
+        // A raw vadcop_final vector hashes as its flag-free statement.
+        let mut flagged = vec![IS_VADCOP_FINAL_PROOF];
+        flagged.extend(&publics_full);
+        assert_eq!(snark_publics_hash(&flagged, &rootc), snark_publics_hash(&publics_full, &rootc));
+        assert_eq!(snark_inputs_bytes(&flagged), snark_inputs_bytes(&publics_full));
+        let bytes = publics.bytes_solidity(&vk, &rootc);
+        assert_eq!(bytes.len(), (2 * PROGRAM_VK_LEN + ZISK_PUBLICS) * 8);
+        assert_eq!(&bytes[32..40], &0xAABB_CCDDu64.to_le_bytes());
+    }
+
+    /// A program VK override that names the stamped key makes the proof an aggregate, so a
+    /// leaf key still refuses it.
+    #[test]
+    fn a_leaf_key_refuses_a_plonk_aggregate_declared_through_an_override() {
+        let r = [7u64; 4];
+        let proof = plonk_proof(flag_free_publics([3; 4]), r.to_vec(), HashMode::Poseidon1);
+        let vk = ProgramVK { vk: r.to_vec(), hash_mode: HashMode::Poseidon1 };
+        let err = proof.with_program_vk(&vk).with_leaf_setup_vk(&r).verify().unwrap_err();
+        assert!(err.to_string().contains("leaf setup key"), "got: {err}");
+    }
+
+    /// `program_vk` is public, so a PLONK file is bound to its publics like a Vadcop one.
+    #[test]
+    fn a_plonk_program_vk_must_match_its_publics() {
+        let mut proof =
+            plonk_proof(flag_free_publics([1, 2, 3, 4]), vec![9; 4], HashMode::Poseidon1);
+        proof.program_vk.vk = vec![1, 2, 3, 4];
+        let bytes = proof.to_bytes().unwrap();
+        assert!(Proof::from_bytes(&bytes).is_ok());
+
+        proof.program_vk.vk = vec![7, 7, 7, 7];
+        assert!(proof.to_bytes().unwrap_err().to_string().contains("program_vk"));
+        let mut forged = PLONK_FILE_MAGIC.to_vec();
+        forged.extend(bincode::serde::encode_to_vec(&proof, bincode::config::standard()).unwrap());
+        assert!(Proof::from_bytes(&forged).unwrap_err().to_string().contains("program_vk"));
+    }
+
+    #[test]
+    fn save_refuses_a_plonk_body_load_would_reject() {
+        let proof = plonk_proof(vec![0; 3], vec![9; 4], HashMode::Blake3);
+        assert!(proof.to_bytes().is_err());
+    }
+
+    #[test]
+    fn a_saved_plonk_proof_round_trips_behind_its_magic() {
+        let original = plonk_proof(flag_free_publics([0; 4]), vec![9; 4], HashMode::Poseidon1);
+        let (bytes, loaded) = save_and_load(&original);
+        assert!(bytes.starts_with(PLONK_FILE_MAGIC));
+        match loaded.unwrap().body {
+            ProofBody::Plonk { proof_bytes, rootc, .. } => {
+                assert_eq!(proof_bytes, vec![5; PLONK_PROOF_BYTES]);
+                assert_eq!(rootc, vec![9u64; PROGRAM_VK_LEN]);
+            }
+            other => panic!("expected a PLONK body, got {other:?}"),
+        }
+
+        let mut trailing = bytes.clone();
+        trailing.push(0);
+        assert!(Proof::from_bytes(&trailing).is_err());
+
+        // A Vadcop proof smuggled behind the magic is refused: Vadcop has one format.
+        let mut smuggled = PLONK_FILE_MAGIC.to_vec();
+        let vadcop = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
+        smuggled
+            .extend(bincode::serde::encode_to_vec(&vadcop, bincode::config::standard()).unwrap());
+        assert!(Proof::from_bytes(&smuggled).is_err());
+    }
+
     fn test_seed() -> RandomSeed {
         RandomSeed::new(std::array::from_fn(|i| i as u8))
     }
 
-    fn encode(proof: &Proof) -> Vec<u8> {
-        bincode::serde::encode_to_vec(proof, bincode::config::standard()).unwrap()
+    /// What a webhook sends: the flat bytes a guest verifies, with no seed trailer.
+    #[test]
+    fn the_bytes_without_the_trailer_are_the_flat_layout() {
+        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
+            .with_random_seed(test_seed());
+        assert_eq!(
+            proof.to_bytes_without_seed_trailer().unwrap(),
+            proof.get_proof_bytes().unwrap()
+        );
+        assert_ne!(proof.to_bytes().unwrap(), proof.get_proof_bytes().unwrap());
     }
 
+    /// `save` refuses a SNARK file larger than `load` reads, rather than writing it.
     #[test]
-    fn proof_save_load_roundtrip_keeps_the_seed() {
-        let tmp = std::env::temp_dir().join(format!("proof_seed_{}.bin", std::process::id()));
+    fn save_refuses_a_snark_file_load_would_not_read() {
+        let mut proof = pilfflonk_proof();
+        if let ProofBody::Pilfflonk { vkey_json, .. } = &mut proof.body {
+            *vkey_json = "x".repeat(PLONK_FILE_MAX_BYTES);
+        }
+        assert!(proof.ensure_saveable().is_ok());
+        let err = proof.to_bytes().unwrap_err();
+        assert!(err.to_string().contains("over the"), "got: {err}");
+    }
+
+    /// A saved Vadcop proof keeps its seed as the verifier's trailer: the proof bytes are
+    /// unchanged, and `decode_saved` reads both.
+    #[test]
+    fn a_saved_vadcop_proof_keeps_its_seed_in_the_trailer() {
         let original = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
             .with_random_seed(test_seed());
+        let (bytes, loaded) = save_and_load(&original);
 
-        original.save(&tmp).unwrap();
-        let loaded = Proof::load(&tmp).unwrap();
-        std::fs::remove_file(&tmp).ok();
+        let flat = original.get_proof_bytes().unwrap();
+        assert_eq!(&bytes[..flat.len()], &flat[..]);
+        assert_eq!(&bytes[bytes.len() - 8..], &SEED_TRAILER_TAG.to_le_bytes());
+        let saved = zisk_verifier::decode_saved(&bytes).unwrap();
+        assert_eq!(saved.random_seed, Some(test_seed().to_le_words()));
 
+        let loaded = loaded.unwrap();
         assert_eq!(loaded.random_seed, Some(test_seed()));
-        assert_eq!(encode(&loaded), encode(&original));
+        assert_eq!(loaded.to_bytes().unwrap(), bytes);
     }
 
-    /// A file written before `Proof::random_seed` existed ends right after `program_vk`.
     #[test]
-    fn from_bytes_reads_a_proof_serialized_before_the_seed() {
+    fn a_saved_plonk_proof_keeps_its_seed() {
+        let original = plonk_proof(flag_free_publics([0; 4]), vec![9; 4], HashMode::Poseidon1)
+            .with_random_seed(test_seed());
+        let (_, loaded) = save_and_load(&original);
+        assert_eq!(loaded.unwrap().random_seed, Some(test_seed()));
+    }
+
+    #[test]
+    fn bincode_round_trips_the_seed() {
+        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
+            .with_random_seed(test_seed());
+        let bytes = proof.to_bincode().unwrap();
+        assert_eq!(Proof::from_bincode(&bytes).unwrap().random_seed, Some(test_seed()));
+        assert!(Proof::from_bincode(&bytes[..bytes.len() - 1]).is_err());
+
+        // Fields a later version appends must not stop this version from reading it.
+        let mut appended = bytes.clone();
+        appended.extend_from_slice(&[1, 2, 3]);
+        assert_eq!(Proof::from_bincode(&appended).unwrap().random_seed, Some(test_seed()));
+    }
+
+    /// An encoding written before `Proof::random_seed` existed ends right after `program_vk`.
+    #[test]
+    fn bincode_reads_a_proof_encoded_before_the_seed() {
         let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
         let legacy = bincode::serde::encode_to_vec(
             (&proof.body, &proof.program_vk),
             bincode::config::standard(),
         )
         .unwrap();
-
-        let decoded = Proof::from_bytes(&legacy).unwrap();
-
+        let decoded = Proof::from_bincode(&legacy).unwrap();
         assert_eq!(decoded.random_seed, None);
-        assert_eq!(encode(&decoded), encode(&proof));
-    }
-
-    /// Fields a later version appends must not stop this version from reading the file.
-    #[test]
-    fn from_bytes_ignores_fields_appended_after_the_seed() {
-        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
-            .with_random_seed(test_seed());
-        let mut bytes = encode(&proof);
-        bytes.extend_from_slice(&[1, 2, 3]);
-
-        assert_eq!(Proof::from_bytes(&bytes).unwrap().random_seed, Some(test_seed()));
-    }
-
-    #[test]
-    fn from_bytes_rejects_a_truncated_seed() {
-        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
-            .with_random_seed(test_seed());
-        let bytes = encode(&proof);
-
-        assert!(Proof::from_bytes(&bytes[..bytes.len() - 1]).is_err());
-    }
-
-    /// The committed PLONK fixture predates `Proof::random_seed`; CI exports Solidity calldata
-    /// from it.
-    #[test]
-    fn load_reads_the_committed_plonk_fixture() {
-        let fixture =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../zisk-contracts/test/plonk_proof.bin");
-        let proof = Proof::load(fixture).unwrap();
-
-        assert_eq!(proof.kind(), ProofKind::Plonk);
-        assert_eq!(proof.random_seed, None);
+        assert_eq!(decoded.to_bincode().unwrap(), proof.to_bincode().unwrap());
     }
 
     #[test]
