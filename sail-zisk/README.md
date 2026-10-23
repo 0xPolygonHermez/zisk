@@ -188,6 +188,13 @@ transpilation.
   CSR access is followed by its operand instruction, and panics otherwise,
   rejecting the whole program even if the access never runs. Like the
   decoder (`make decoder-diff`), it should halt there instead.
+- **The decode lemmas' checking time:** `lean/Equiv/RiscvDecode*.lean`
+  take about an hour and a half of the two hours `make equiv` takes from
+  scratch, most of it stepping through sail-riscv's decoder one clause at a
+  time (the `peel` macros), each guard refuted by `bv_decide`. A faster way
+  past the clauses that cannot match — a lemma per opcode that skips them
+  together, say, or the decoder's clauses grouped by opcode once — would
+  make the proofs cheap enough to check on every CI run.
 - **The transpiler in the proof, long term (option D), not now:** rewrite
   the transpiler in Lean and ship it, so that the transpiler that runs is the
   one proved.
