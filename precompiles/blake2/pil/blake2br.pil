@@ -141,6 +141,12 @@ airtemplate Blake2br(const int N = 2**20) {
     in_use * (1 - CLK_0) * (wr_chain - 'wr_chain) === 0;
     in_use * (1 - CLK_0) * (gap - 'gap) === 0;
 
+    // rd_chain = 0 -> gap = 0; rd_chain = 1 -> gap in [1, 256], so a round never reads its own step.
+    // Bounding gap also makes the extended_arg decomposition below unique: round_idx, the mode
+    // bits and gap are the ROM's, not any other split of the same field element
+    (1 - rd_chain) * gap === 0;
+    range_check(expression: gap - rd_chain, min: 0, max: P2_8 - 1, predefined: 1);
+
     // One-hot encoding for round index selection
     col witness bits(1) round_idx_sel[SIGMA_LENGTH];
 
