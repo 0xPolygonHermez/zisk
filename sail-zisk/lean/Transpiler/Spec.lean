@@ -229,13 +229,18 @@ def jalr (pc ia : BitVec 64) : List (BitVec 64 × zisk_inst) :=
      (ia, mk (.A_IMM, JALR_MASK) (.B_C, 0) (.ZOP_AND ()) (storeReg (rd w) true) 0 (pc + 4 - ia)
        (setPc := true))]
 
+/-- Whether `auipc` fuses with the word after it: a jalr that jumps through
+    its rd, not x0, and links to rd or x0. -/
+def fuses (n : BitVec 32) : Bool :=
+  decode n == some .jalr && rd w ≠ 0 && rs1 n = rd w && (rd n = rd w || rd n = 0)
+
 /-- `auipc` (pc, the next word, if any): fused with a jalr after it that
     jumps through rd and links to rd or x0, one instruction, the constant to
     rd and the jump made at transpile time; else copyb(0, pc + imm) -> r[rd]. -/
 def auipc (pc : BitVec 64) (next : Option (BitVec 32)) : zisk_inst :=
   match next with
   | some n =>
-    if decode n == some .jalr && rd w ≠ 0 && rs1 n = rd w && (rd n = rd w || rd n = 0) then
+    if fuses w n then
       let auipcResult := pc + immU w
       let jumpPc := (auipcResult + immI n) &&& JALR_MASK
       let c := if rd n = 0 then auipcResult else pc + 8

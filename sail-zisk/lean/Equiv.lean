@@ -41,3 +41,4 @@ import Equiv.RiscvStoreW
 import Equiv.ZiskStoreW
 import Equiv.RiscvDecodeStore
 import Equiv.StoreWSim
+import Equiv.FromSpec
