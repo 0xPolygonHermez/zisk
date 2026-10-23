@@ -129,6 +129,47 @@ impl std::fmt::Display for ChunkStop {
     }
 }
 
+/// The marks a service's emulation leaves in its control output segment while it blocks on
+/// data the job has not delivered yet: the C side's `waiting_for_precompile_address` (hints)
+/// and `waiting_for_input_address` (input). Each holds `counter << 1` while the emulation
+/// waits and `(counter << 1) + 1` once it wakes, and `server_reset_fast` zeroes both after
+/// every run.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub(crate) struct DataWaits {
+    control: ShmemReader,
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+impl DataWaits {
+    /// The size of a service's control output segment (`CONTROL_OUTPUT_SIZE`).
+    const CONTROL_OUTPUT_SIZE: usize = 0x1000;
+    /// Byte offsets of the marks (`shmem_control_output_address[1]` and `[2]`).
+    const WAITING_FOR_HINTS: usize = 8;
+    const WAITING_FOR_INPUT: usize = 16;
+
+    /// Map `service`'s control output segment. Without it a runner cannot tell a service that
+    /// waits for its data from a stuck one, and takes every silence past the stall limit for
+    /// a stall, so a failure to map it is only warned about.
+    pub(crate) fn open(shm_prefix: &str, service: AsmService) -> Option<Self> {
+        let name = shmem_control_output_name(shm_prefix, service);
+        match ShmemReader::new(&name, Self::CONTROL_OUTPUT_SIZE) {
+            Ok(control) => Some(Self { control }),
+            Err(e) => {
+                tracing::warn!("Cannot map '{name}' to see {service} wait for data: {e}");
+                None
+            }
+        }
+    }
+
+    /// Whether the emulation is blocked now on input or hints that have not arrived.
+    pub(crate) fn waiting(&self) -> bool {
+        [Self::WAITING_FOR_HINTS, Self::WAITING_FOR_INPUT].into_iter().any(|offset| {
+            let mark = self.control.read_u64_at(offset);
+            mark != 0 && mark % 2 == 0
+        })
+    }
+}
+
 /// Wait for the next `chunk_done` post of a request, which `answered` says whether the
 /// service has answered.
 ///
@@ -139,6 +180,12 @@ impl std::fmt::Display for ChunkStop {
 /// service then surfaces within [`SEM_CHUNK_DONE_POLL`] of its answer; `stall` stays the
 /// limit for a service that neither posts nor answers.
 ///
+/// Time the service spends waiting for data, which `waiting` says, does not count towards
+/// `stall`: a job's input or hints arrive at the sender's pace, and a guest that reads its
+/// whole input first produces no chunk until all of it has arrived. A job whose data stops
+/// arriving is ended by whatever ends the job, a cancel or a failure, whose reset answers
+/// the request.
+///
 /// The same order keeps a request's posts from reaching the next one: a runner stops
 /// reading only once its request is answered or the wait has failed, and in both cases
 /// joins the request, which ends with the answer, before it drains the semaphore.
@@ -146,9 +193,10 @@ impl std::fmt::Display for ChunkStop {
 pub(crate) fn wait_for_chunk(
     sem: &mut named_sem::NamedSemaphore,
     answered: impl Fn() -> bool,
+    waiting: impl Fn() -> bool,
     stall: std::time::Duration,
 ) -> Result<(), ChunkStop> {
-    let deadline = std::time::Instant::now() + stall;
+    let mut deadline = std::time::Instant::now() + stall;
     loop {
         match sem.timed_wait(SEM_CHUNK_DONE_POLL.min(stall)) {
             Ok(()) => return Ok(()),
@@ -166,7 +214,9 @@ pub(crate) fn wait_for_chunk(
                 Err(e) => Err(ChunkStop::Stalled(e)),
             };
         }
-        if std::time::Instant::now() >= deadline {
+        if waiting() {
+            deadline = std::time::Instant::now() + stall;
+        } else if std::time::Instant::now() >= deadline {
             return Err(ChunkStop::Stalled(named_sem::Error::WaitTimeout));
         }
     }
@@ -238,9 +288,19 @@ mod tests {
 
         /// Reads the request's chunks as a runner does: how many it read, and why it stopped.
         fn read(&mut self, request: &JoinHandle<()>, stall: Duration) -> (usize, ChunkStop) {
+            self.read_waiting(request, || false, stall)
+        }
+
+        /// As [`read`](Self::read), for a service that `waiting` says waits for data.
+        fn read_waiting(
+            &mut self,
+            request: &JoinHandle<()>,
+            waiting: impl Fn() -> bool,
+            stall: Duration,
+        ) -> (usize, ChunkStop) {
             let mut read = 0;
             loop {
-                match wait_for_chunk(&mut self.sem, || request.is_finished(), stall) {
+                match wait_for_chunk(&mut self.sem, || request.is_finished(), &waiting, stall) {
                     Ok(()) => read += 1,
                     Err(stop) => return (read, stop),
                 }
@@ -286,6 +346,72 @@ mod tests {
         assert!(start.elapsed() >= Duration::from_millis(300), "{:?}", start.elapsed());
         drop(answer);
         request.join().unwrap();
+    }
+
+    /// A service that waits for its data between chunks for longer than the stall limit, as
+    /// with an input that arrives slowly, is not taken for a stalled one.
+    #[test]
+    fn a_service_waiting_for_data_does_not_stall() {
+        let mut chunk_done = ChunkDone::new("waiting");
+        let stall = Duration::from_millis(200);
+        let request = chunk_done.request(2, stall * 3);
+
+        let (read, stop) = chunk_done.read_waiting(&request, || true, stall);
+        assert_eq!(read, 2, "every chunk is read, however long the service waited for data");
+        assert!(matches!(stop, ChunkStop::Answered), "{stop}");
+    }
+
+    /// The stall limit counts again from when the service was last seen waiting for data, at
+    /// most one poll before it stopped.
+    #[test]
+    fn a_service_stalls_a_stall_limit_after_it_stops_waiting() {
+        let mut chunk_done = ChunkDone::new("waited");
+        let (answer, unanswered) = std::sync::mpsc::channel::<()>();
+        let request = thread::spawn(move || {
+            let _ = unanswered.recv();
+        });
+
+        let start = Instant::now();
+        let waited = Duration::from_millis(500);
+        let stall = Duration::from_millis(300);
+        let (read, stop) = chunk_done.read_waiting(&request, || start.elapsed() < waited, stall);
+        assert_eq!(read, 0);
+        assert!(matches!(stop, ChunkStop::Stalled(named_sem::Error::WaitTimeout)), "{stop}");
+        let took = start.elapsed();
+        assert!(took >= waited + stall - SEM_CHUNK_DONE_POLL, "{took:?}");
+        drop(answer);
+        request.join().unwrap();
+    }
+
+    /// The marks read as the C service writes them: waiting while even and not zero.
+    #[test]
+    fn data_waits_reads_the_service_marks() {
+        let prefix = format!("ZISK_unittest_waits_{}", std::process::id());
+        let name = shmem_control_output_name(&prefix, AsmService::MT);
+        let c = std::ffi::CString::new(name.as_str()).unwrap();
+        unsafe {
+            let fd = libc::shm_open(c.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600);
+            assert!(fd >= 0);
+            assert_eq!(libc::ftruncate(fd, DataWaits::CONTROL_OUTPUT_SIZE as libc::off_t), 0);
+            libc::close(fd);
+        }
+        let control = ShmemWriter::new(&name, DataWaits::CONTROL_OUTPUT_SIZE, true).unwrap();
+        let waits = DataWaits::open(&prefix, AsmService::MT).expect("the segment maps");
+
+        assert!(!waits.waiting(), "a reset service waits for nothing");
+        for (offset, what) in
+            [(DataWaits::WAITING_FOR_INPUT, "input"), (DataWaits::WAITING_FOR_HINTS, "hints")]
+        {
+            control.write_u64_at(offset, 3 << 1).unwrap();
+            assert!(waits.waiting(), "the third wait for {what} is on");
+            control.write_u64_at(offset, (3 << 1) + 1).unwrap();
+            assert!(!waits.waiting(), "the third wait for {what} is over");
+        }
+        assert!(DataWaits::open(&format!("{prefix}_missing"), AsmService::MT).is_none());
+
+        drop(waits);
+        drop(control);
+        unsafe { libc::shm_unlink(c.as_ptr()) };
     }
 
     /// No post of a request is taken by the next one. Each request's runner reads until its
