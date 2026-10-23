@@ -59,6 +59,14 @@ pub struct ServiceConfig {
 ///
 /// Setting any timeout to `0` disables enforcement for that phase.
 ///
+/// ## Input idle timeout
+///
+/// A job whose input or hints are streamed by its client (pushed with `PushJobInput` /
+/// `PushJobHintsInput`, or read from a stream URI) waits for them in phase 1, and so do its
+/// workers. One that still expects data and has received none for
+/// `input_idle_timeout_seconds` is failed, so a sender that stalls cannot hold the workers
+/// until the phase-1 timeout. `0` disables it.
+///
 /// ## Heartbeat detection
 ///
 /// Workers send periodic heartbeats. A worker is considered dead when
@@ -93,6 +101,9 @@ pub struct CoordinatorConfig {
     pub phase2_timeout_seconds: u64,
     /// Timeout for Phase 3: Aggregate (proof aggregation). Default: 100s.
     pub phase3_timeout_seconds: u64,
+    /// Seconds a job in phase 1 may go without the input or hints its client still has to
+    /// stream before it is failed. `0` disables it. Default: 60s.
+    pub input_idle_timeout_seconds: u64,
     /// Spread the phase-3 fold tree across the job's workers; false keeps it on one. Default true.
     pub distributed_aggregation: bool,
     /// Expected interval between worker heartbeats. Default: 30s.
@@ -167,6 +178,7 @@ impl Config {
             .set_default("coordinator.phase1_timeout_seconds", 300)?
             .set_default("coordinator.phase2_timeout_seconds", 600)?
             .set_default("coordinator.phase3_timeout_seconds", 100)?
+            .set_default("coordinator.input_idle_timeout_seconds", 60)?
             .set_default("coordinator.distributed_aggregation", true)?
             .set_default("coordinator.heartbeat_interval_seconds", 30)?
             .set_default("coordinator.heartbeat_max_missed", 3)?
