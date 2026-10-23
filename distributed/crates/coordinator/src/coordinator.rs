@@ -59,7 +59,8 @@ use zisk_cluster_common::{
     AggregationProgramSpecDto, ComputeCapacity, CoordinatorMessageDto, DataId, HintsModeDto,
     InputsModeDto, Job, JobExecutionMode, JobId, JobPhase, JobResultData, JobState,
     LaunchProofRequestDto, LaunchProofResponseDto, PhaseTimings, ProofKind,
-    SetupAggregationProgramDto, SetupProgramDto, StatsCostPerType, WorkerId, WorkerState,
+    SetupAggregationProgramDto, SetupProgramDto, SnarkProtocol, StatsCostPerType, WorkerId,
+    WorkerState,
 };
 use zisk_common::{AirInstanceCount, RandomSeed, SetupKey, ZiskExecutorTime, ZiskPaths};
 
@@ -142,8 +143,12 @@ pub struct Coordinator {
     /// A mutex, not an atomic: adopting a value reads the pool first.
     agg_arity: tokio::sync::Mutex<u64>,
 
-    /// Held from the arity check until the worker is in the pool, so two first registrations
-    /// cannot both see an empty fleet and adopt different arities. Taken only by the
+    /// Protocol of the final SNARK the workers' SNARK proving key is set up for, `Some(None)` when
+    /// they have none, `None` until the first one reports. Kept like `agg_arity`.
+    snark_protocol: tokio::sync::Mutex<Option<Option<SnarkProtocol>>>,
+
+    /// Held from the arity and SNARK checks until the worker is in the pool, so two first
+    /// registrations cannot both see an empty fleet and adopt different values. Taken only by the
     /// registration handlers, so it never nests inside a job lock.
     registration: tokio::sync::Mutex<()>,
 
@@ -206,6 +211,14 @@ struct TerminationOutcome {
     duration: Option<f64>,
     /// Steps the job had executed, if its execution finished before it ended.
     executed_steps: Option<u64>,
+}
+
+/// A worker's SNARK proving key, in a message: of `protocol`, or none.
+fn snark_key(protocol: Option<SnarkProtocol>) -> String {
+    match protocol {
+        Some(protocol) => format!("a {} SNARK proving key", protocol.name()),
+        None => "no SNARK proving key".to_string(),
+    }
 }
 
 /// Structural equality on `AggregationProgramSpecDto`. The DTO has no `PartialEq` derive.
@@ -298,6 +311,7 @@ impl Coordinator {
             workers_pool: Arc::new(WorkersPool::new()),
             jobs: RwLock::new(HashMap::new()),
             agg_arity: tokio::sync::Mutex::new(0),
+            snark_protocol: tokio::sync::Mutex::new(None),
             registration: tokio::sync::Mutex::new(()),
             registrations: AtomicU64::new(0),
             reconnections: AtomicU64::new(0),
@@ -725,6 +739,7 @@ impl Coordinator {
     /// Sends a `RunAggregateProofs` task to a single idle worker. Mirrors
     /// `launch_wrap`: the job lives in `self.jobs` so worker-disconnect machinery
     /// fails it automatically if the worker dies mid-prove.
+    #[allow(clippy::too_many_arguments)]
     pub async fn launch_aggregate_proofs(
         &self,
         recurser_id: String,
@@ -733,7 +748,9 @@ impl Coordinator {
         free_inputs_a: Vec<u64>,
         free_inputs_b: Vec<u64>,
         root_c_recurser_agg: Option<[u64; 4]>,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
+        let metadata = self.admit_job_metadata(metadata)?;
         if !self.aggregation_program_specs.read().await.contains_key(&recurser_id) {
             return Err(CoordinatorError::InvalidRequest(format!(
                 "recurser_id '{recurser_id}' is not registered; call register + setup first"
@@ -759,7 +776,7 @@ impl Coordinator {
             vec![worker_id.clone()],
             Vec::<Vec<u32>>::new(),
             JobExecutionMode::Standard,
-            None,
+            metadata,
             false,
             ProofKind::VadcopFinal,
         );
@@ -988,9 +1005,14 @@ impl Coordinator {
         request: LaunchProofRequestDto,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
         let seed = self.resolve_random_seed(request.random_seed)?;
+        let metadata = self.admit_job_metadata(request.metadata.clone())?;
         // A worker holds only the programs set up on it: sent any other, it fails the task.
         if !self.is_set_up(&request.hash_id).await {
             return Err(CoordinatorError::ProgramNotSetup(request.hash_id.clone()));
+        }
+        // The worker that aggregates wraps the SNARK, so one the workers cannot prove fails here.
+        if request.proof_type == ProofKind::Plonk {
+            self.ensure_snark_available(request.snark_protocol).await?;
         }
         let (requested, minimum) = self.resolve_capacity(&request).await?;
 
@@ -1013,7 +1035,7 @@ impl Coordinator {
                 request.inputs_mode,
                 request.hints_mode,
                 request.simulated_node,
-                request.metadata.clone(),
+                metadata,
                 request.execution_only,
                 request.proof_type,
             )
@@ -1331,6 +1353,20 @@ impl Coordinator {
         }
     }
 
+    /// The job's caller metadata, an empty map read as none. Metadata is rejected
+    /// (`JobMetadataNotAllowed`) unless `allow_job_metadata` is set.
+    fn admit_job_metadata(
+        &self,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
+    ) -> CoordinatorResult<Option<std::collections::BTreeMap<String, String>>> {
+        match metadata.filter(|m| !m.is_empty()) {
+            Some(_) if !self.config.coordinator.allow_job_metadata => {
+                Err(CoordinatorError::JobMetadataNotAllowed)
+            }
+            metadata => Ok(metadata),
+        }
+    }
+
     /// Creates a new proof generation job with allocated resources.
     ///
     /// # Parameters
@@ -1530,6 +1566,53 @@ impl Coordinator {
              workers must share a proving key",
             *current
         )))
+    }
+
+    /// Record the protocol of the final SNARK a worker's SNARK proving key is set up for (`None`:
+    /// it has none); one that disagrees with the cluster is rejected, since any worker may wrap a
+    /// job's SNARK. Callers hold `registration` until the worker is registered.
+    pub(crate) async fn observe_snark_protocol(
+        &self,
+        worker_id: &WorkerId,
+        protocol: Option<SnarkProtocol>,
+    ) -> CoordinatorResult<()> {
+        // An empty pool (the fleet cycled, maybe re-keyed) adopts the first value reported.
+        let mut current = self.snark_protocol.lock().await;
+        let pool_empty = self.workers_pool.num_workers().await == 0;
+        let Some(cluster) = current.filter(|_| !pool_empty) else {
+            *current = Some(protocol);
+            return Ok(());
+        };
+        if cluster == protocol {
+            return Ok(());
+        }
+
+        Err(CoordinatorError::InvalidRequest(format!(
+            "Worker {worker_id} has {} but the cluster's workers have {}; workers must share a \
+             SNARK proving key",
+            snark_key(protocol),
+            snark_key(cluster)
+        )))
+    }
+
+    /// Refuses a final SNARK job the workers cannot prove: they have no SNARK proving key, or one
+    /// of another protocol than `asked` (`None`: any). Until a worker registers there is no
+    /// protocol to check, and no worker to run the job either.
+    async fn ensure_snark_available(&self, asked: Option<SnarkProtocol>) -> CoordinatorResult<()> {
+        match (*self.snark_protocol.lock().await, asked) {
+            (Some(None), _) => Err(CoordinatorError::SnarkUnavailable(
+                "the workers have no SNARK proving key".to_string(),
+            )),
+            (Some(Some(cluster)), Some(asked)) if cluster != asked => {
+                Err(CoordinatorError::SnarkUnavailable(format!(
+                    "a {} final SNARK was asked for, but the workers' SNARK proving key is set \
+                     up for {}",
+                    asked.name(),
+                    cluster.name()
+                )))
+            }
+            _ => Ok(()),
+        }
     }
 
     /// Aggregation arity for scheduling. Registration rejects a worker that does
@@ -2799,6 +2882,7 @@ mod tests {
         let req = WorkerReconnectRequestDto {
             worker_id: w0_id.clone(),
             aggregation_arity: 2,
+            snark_protocol: None,
             compute_capacity: 1u32.into(),
             last_known_job_id: None,
         };
@@ -3393,6 +3477,7 @@ mod tests {
             metadata: None,
             execution_only: false,
             proof_type: zisk_cluster_common::ProofKind::VadcopFinal,
+            snark_protocol: None,
             random_seed: None,
         };
 
@@ -3682,6 +3767,7 @@ mod tests {
         let req = WorkerRegisterRequestDto {
             worker_id: worker_id.clone(),
             aggregation_arity: 2,
+            snark_protocol: None,
             compute_capacity: 1u32.into(),
             previous_exit: None,
         };
@@ -3922,12 +4008,14 @@ mod tests {
             .await
             .unwrap();
 
-        let req_a = LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0 };
-        let req_b = LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0 };
+        let req_a =
+            LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, snark_protocol: None };
+        let req_b =
+            LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, snark_protocol: None };
         let coord_a = coordinator.clone();
         let coord_b = coordinator.clone();
-        let task_a = tokio::spawn(async move { coord_a.launch_wrap(req_a).await });
-        let task_b = tokio::spawn(async move { coord_b.launch_wrap(req_b).await });
+        let task_a = tokio::spawn(async move { coord_a.launch_wrap(req_a, None).await });
+        let task_b = tokio::spawn(async move { coord_b.launch_wrap(req_b, None).await });
         let (ra, rb) = tokio::join!(task_a, task_b);
         let ra = ra.unwrap();
         let rb = rb.unwrap();
@@ -4463,7 +4551,10 @@ mod tests {
             .unwrap();
 
         let response = coordinator
-            .launch_wrap(LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0 })
+            .launch_wrap(
+                LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, snark_protocol: None },
+                None,
+            )
             .await
             .unwrap();
         let job_id = response.job_id;
@@ -4904,6 +4995,46 @@ mod tests {
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready),);
     }
 
+    /// Success ack: job → Completed with its terminal event, worker → Ready.
+    #[tokio::test]
+    async fn test_run_aggregate_proofs_success_ack_completes_job() {
+        let (coordinator, workers) = coordinator_with_idle_workers(1).await;
+        let w0 = workers[0].0.clone();
+
+        let mut job = create_test_job(std::slice::from_ref(&w0));
+        job.change_state(JobState::Running(JobPhase::Recurse));
+        let job_id = job.job_id.clone();
+        coordinator.jobs.write().await.insert(job_id.clone(), Arc::new(RwLock::new(job)));
+        coordinator.alloc_job_events(&job_id).await;
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(
+                &w0,
+                WorkerState::Computing((job_id.clone(), JobPhase::Recurse)),
+            )
+            .await
+            .unwrap();
+
+        let ack = RunAggregateProofsAckDto {
+            job_id: job_id.as_string(),
+            worker_id: w0.clone(),
+            success: true,
+            error_message: None,
+            proof: vec![],
+        };
+        coordinator.handle_stream_run_aggregate_proofs_ack(ack).await.unwrap();
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Completed);
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(matches!(
+            coordinator.get_terminal_event(&job_id).await,
+            Some(CoordinatorJobEvent::Completed(
+                crate::job_events::CoordinatorJobResult::AggregateProofs { .. }
+            ))
+        ));
+    }
+
     /// Failure ack: job → Failed, worker → Ready, error message preserved verbatim.
     #[tokio::test]
     async fn test_run_aggregate_proofs_failure_ack_fails_job() {
@@ -4995,6 +5126,7 @@ mod tests {
                 WorkerReconnectRequestDto {
                     worker_id: w0_id.clone(),
                     aggregation_arity: 2,
+                    snark_protocol: None,
                     compute_capacity: ComputeCapacity::from(1u32),
                     last_known_job_id: Some(job_id),
                 },
@@ -5023,6 +5155,7 @@ mod tests {
                 WorkerReconnectRequestDto {
                     worker_id: w0_id.clone(),
                     aggregation_arity: 2,
+                    snark_protocol: None,
                     compute_capacity: ComputeCapacity::from(1u32),
                     last_known_job_id: Some(job_id),
                 },
@@ -5059,6 +5192,7 @@ mod tests {
                 WorkerReconnectRequestDto {
                     worker_id: w0_id.clone(),
                     aggregation_arity: 2,
+                    snark_protocol: None,
                     compute_capacity: ComputeCapacity::from(1u32),
                     last_known_job_id: Some(job_id),
                 },
@@ -5122,6 +5256,164 @@ mod tests {
         );
     }
 
+    // --- admit_job_metadata ---------------------------------------------------------
+
+    fn job_metadata() -> std::collections::BTreeMap<String, String> {
+        std::collections::BTreeMap::from([("team".to_string(), "zkvm".to_string())])
+    }
+
+    #[tokio::test]
+    async fn admit_job_metadata_keeps_metadata_by_default() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert_eq!(
+            coordinator.admit_job_metadata(Some(job_metadata())).unwrap(),
+            Some(job_metadata())
+        );
+    }
+
+    #[tokio::test]
+    async fn admit_job_metadata_reads_an_empty_map_as_none() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert_eq!(coordinator.admit_job_metadata(Some(Default::default())).unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn admit_job_metadata_rejects_metadata_when_not_allowed() {
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.allow_job_metadata = false));
+        assert!(matches!(
+            coordinator.admit_job_metadata(Some(job_metadata())),
+            Err(CoordinatorError::JobMetadataNotAllowed)
+        ));
+        // A job without metadata is unaffected by the policy.
+        assert_eq!(coordinator.admit_job_metadata(Some(Default::default())).unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn launch_wrap_keeps_the_job_metadata() {
+        use zisk_cluster_common::LaunchWrapRequestDto;
+
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        let worker_id = WorkerId::from("w-wrap".to_string());
+        let (sender, _messages) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(worker_id, 1u32, Box::new(sender), WorkerState::Ready)
+            .await
+            .unwrap();
+
+        let job_id = coordinator
+            .launch_wrap(
+                LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, snark_protocol: None },
+                Some(job_metadata()),
+            )
+            .await
+            .unwrap()
+            .job_id;
+
+        let job = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(job.read().await.metadata, Some(job_metadata()));
+    }
+
+    /// A rejected wrap must not hold the worker it would have run on.
+    #[tokio::test]
+    async fn launch_wrap_rejects_metadata_when_not_allowed_without_reserving_a_worker() {
+        use zisk_cluster_common::LaunchWrapRequestDto;
+
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.allow_job_metadata = false));
+        let worker_id = WorkerId::from("w-wrap".to_string());
+        let (sender, _messages) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(worker_id.clone(), 1u32, Box::new(sender), WorkerState::Ready)
+            .await
+            .unwrap();
+
+        let result = coordinator
+            .launch_wrap(
+                LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, snark_protocol: None },
+                Some(job_metadata()),
+            )
+            .await;
+
+        assert!(matches!(result, Err(CoordinatorError::JobMetadataNotAllowed)));
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&worker_id).await,
+            Some(WorkerState::Ready)
+        );
+    }
+
+    /// A coordinator with a registered recurser spec and one Ready worker to run it.
+    async fn recurser_coordinator(overrides: impl FnOnce(&mut Config)) -> Coordinator {
+        let coordinator = Coordinator::new(test_config_with(overrides));
+        coordinator
+            .register_aggregation_program(
+                "recurser".to_string(),
+                AggregationProgramSpecDto {
+                    normalize: None,
+                    aggregate_publics_body: String::new(),
+                    n_free: 0,
+                    n_publics_agg: 0,
+                    program_vks: vec![],
+                },
+            )
+            .await
+            .unwrap();
+        let (sender, _messages) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(
+                WorkerId::from("w-recurser".to_string()),
+                1u32,
+                Box::new(sender),
+                WorkerState::Ready,
+            )
+            .await
+            .unwrap();
+        coordinator
+    }
+
+    async fn launch_test_aggregate_proofs(
+        coordinator: &Coordinator,
+    ) -> CoordinatorResult<LaunchProofResponseDto> {
+        coordinator
+            .launch_aggregate_proofs(
+                "recurser".to_string(),
+                vec![],
+                vec![],
+                vec![],
+                vec![],
+                None,
+                Some(job_metadata()),
+            )
+            .await
+    }
+
+    #[tokio::test]
+    async fn launch_aggregate_proofs_keeps_the_job_metadata() {
+        let coordinator = recurser_coordinator(|_| {}).await;
+
+        let job_id = launch_test_aggregate_proofs(&coordinator).await.unwrap().job_id;
+
+        let job = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(job.read().await.metadata, Some(job_metadata()));
+    }
+
+    /// A rejected aggregation must not hold the worker it would have run on.
+    #[tokio::test]
+    async fn launch_aggregate_proofs_rejects_metadata_when_not_allowed_without_reserving_a_worker()
+    {
+        let coordinator = recurser_coordinator(|c| c.coordinator.allow_job_metadata = false).await;
+
+        let result = launch_test_aggregate_proofs(&coordinator).await;
+
+        assert!(matches!(result, Err(CoordinatorError::JobMetadataNotAllowed)));
+        let worker = WorkerId::from("w-recurser".to_string());
+        assert_eq!(coordinator.workers_pool.worker_state(&worker).await, Some(WorkerState::Ready));
+        assert!(coordinator.jobs.read().await.is_empty());
+    }
+
     /// Every worker re-executes the whole program, so all must get the job's one seed.
     #[tokio::test]
     async fn contributions_carry_the_job_seed_to_every_worker() {
@@ -5169,6 +5461,24 @@ mod tests {
         assert!(coordinator.jobs.read().await.is_empty());
     }
 
+    /// Like a random seed, metadata is checked before capacity is reserved.
+    #[tokio::test]
+    async fn launch_proof_rejects_metadata_when_not_allowed_before_reserving_workers() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|c| {
+            c.coordinator.allow_job_metadata = false
+        })));
+        add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
+        let mut request = capacity_request(None, None);
+        request.metadata = Some(job_metadata());
+
+        let result = coordinator.launch_proof(request).await;
+
+        assert!(matches!(result, Err(CoordinatorError::JobMetadataNotAllowed)));
+        let w0 = WorkerId::from("w0".to_string());
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(coordinator.jobs.read().await.is_empty());
+    }
+
     /// A worker has only the programs set up on it; a job for any other would fail on it.
     #[tokio::test]
     async fn launch_proof_refuses_a_program_that_is_not_set_up_before_reserving_workers() {
@@ -5185,6 +5495,195 @@ mod tests {
         let w0 = WorkerId::from("w0".to_string());
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
         assert!(coordinator.jobs.read().await.is_empty());
+    }
+
+    // --- SNARK protocol -------------------------------------------------------
+
+    const PLONK: Option<SnarkProtocol> = Some(SnarkProtocol::Plonk);
+    const PILFFLONK: Option<SnarkProtocol> = Some(SnarkProtocol::Pilfflonk);
+
+    /// Register worker `id`, with a SNARK proving key of `snark_protocol`, as its stream does.
+    async fn register_with_snark(
+        coordinator: &Coordinator,
+        id: &str,
+        snark_protocol: Option<SnarkProtocol>,
+    ) -> (bool, String) {
+        let (sender, _msgs) = MockMessageSender::new();
+        let req = zisk_cluster_common::WorkerRegisterRequestDto {
+            worker_id: WorkerId::from(id.to_string()),
+            compute_capacity: 1u32.into(),
+            aggregation_arity: 2,
+            snark_protocol,
+            previous_exit: None,
+        };
+        let (accepted, message, _setup) =
+            coordinator.handle_stream_registration(req, Box::new(sender)).await;
+        (accepted, message)
+    }
+
+    /// Any worker may wrap a job's SNARK: the first one sets the cluster's key, and the others
+    /// must have one of its protocol, or none when it has none.
+    #[tokio::test]
+    async fn workers_must_share_a_snark_proving_key() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert!(register_with_snark(&coordinator, "w0", PLONK).await.0);
+        assert!(register_with_snark(&coordinator, "w1", PLONK).await.0);
+
+        let (accepted, message) = register_with_snark(&coordinator, "w2", PILFFLONK).await;
+        assert!(!accepted);
+        assert!(message.contains("w2"), "{message}");
+        assert!(
+            message.contains(
+                "has a pilfflonk SNARK proving key but the cluster's workers have a PLONK SNARK \
+                 proving key; workers must share a SNARK proving key"
+            ),
+            "{message}"
+        );
+        let (accepted, message) = register_with_snark(&coordinator, "w3", None).await;
+        assert!(!accepted);
+        assert!(message.contains("w3"), "{message}");
+        assert!(message.contains("has no SNARK proving key but"), "{message}");
+        assert_eq!(coordinator.workers_pool.num_workers().await, 2);
+    }
+
+    #[tokio::test]
+    async fn a_reconnecting_worker_must_share_the_snark_proving_key() {
+        use zisk_cluster_common::WorkerReconnectRequestDto;
+
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert!(register_with_snark(&coordinator, "w0", None).await.0);
+
+        let (sender, _msgs) = MockMessageSender::new();
+        let req = WorkerReconnectRequestDto {
+            worker_id: WorkerId::from("w1".to_string()),
+            compute_capacity: 1u32.into(),
+            last_known_job_id: None,
+            aggregation_arity: 2,
+            snark_protocol: PLONK,
+        };
+        let (accepted, message, _directive, _setup) =
+            coordinator.handle_stream_reconnection(req, Box::new(sender)).await;
+
+        assert!(!accepted);
+        assert!(
+            message.contains("has a PLONK SNARK proving key but the cluster's workers have no"),
+            "{message}"
+        );
+    }
+
+    /// An emptied pool (the fleet cycled, maybe re-keyed) adopts the next worker's key, or its
+    /// lack of one.
+    #[tokio::test]
+    async fn an_emptied_pool_adopts_the_next_snark_proving_key() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert!(register_with_snark(&coordinator, "w0", PLONK).await.0);
+        coordinator
+            .workers_pool
+            .unregister_worker(&WorkerId::from("w0".to_string()))
+            .await
+            .unwrap();
+
+        assert!(register_with_snark(&coordinator, "w1", None).await.0);
+        let (accepted, message) = register_with_snark(&coordinator, "w2", PLONK).await;
+        assert!(!accepted);
+        assert!(message.contains("the cluster's workers have no SNARK proving key"), "{message}");
+    }
+
+    /// A Ready worker `w0` for `hash`, on a cluster whose workers' SNARK proving key is of
+    /// `cluster` (`None`: they have none).
+    async fn coordinator_with_snark(cluster: Option<SnarkProtocol>) -> Arc<Coordinator> {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
+        add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
+        coordinator.active_setups.write().await.insert(
+            SetupKey::new("hash".to_string(), false, false),
+            ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() },
+        );
+        *coordinator.snark_protocol.lock().await = Some(cluster);
+        coordinator
+    }
+
+    /// The SNARK would fail on the worker that wraps it, after the whole proof; refused up front,
+    /// it leaves no trace.
+    #[tokio::test]
+    async fn launch_proof_refuses_a_snark_the_workers_cannot_prove_before_reserving_workers() {
+        for (cluster, asked, refusal) in [
+            (None, None, "the workers have no SNARK proving key"),
+            (None, PLONK, "the workers have no SNARK proving key"),
+            (
+                PLONK,
+                PILFFLONK,
+                "a pilfflonk final SNARK was asked for, but the workers' SNARK proving key is \
+                 set up for PLONK",
+            ),
+        ] {
+            let coordinator = coordinator_with_snark(cluster).await;
+            let mut request = capacity_request(None, None);
+            request.proof_type = ProofKind::Plonk;
+            request.snark_protocol = asked;
+
+            let result = coordinator.launch_proof(request).await;
+
+            assert!(
+                matches!(result, Err(CoordinatorError::SnarkUnavailable(ref m)) if m == refusal),
+                "{cluster:?} asked {asked:?}: {:?}",
+                result.as_ref().err()
+            );
+            let w0 = WorkerId::from("w0".to_string());
+            assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+            assert!(coordinator.jobs.read().await.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn launch_wrap_refuses_a_snark_the_workers_cannot_prove_before_reserving_workers() {
+        use zisk_cluster_common::LaunchWrapRequestDto;
+
+        for (cluster, asked) in [(None, None), (PILFFLONK, PLONK)] {
+            let coordinator = coordinator_with_snark(cluster).await;
+            let request = LaunchWrapRequestDto {
+                proof_data: vec![],
+                proof_dest: ProofKind::Plonk.into(),
+                snark_protocol: asked,
+            };
+
+            let result = coordinator.launch_wrap(request, None).await;
+
+            assert!(
+                matches!(result, Err(CoordinatorError::SnarkUnavailable(_))),
+                "{cluster:?} asked {asked:?}: {:?}",
+                result.as_ref().err()
+            );
+            let w0 = WorkerId::from("w0".to_string());
+            assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+            assert!(coordinator.jobs.read().await.is_empty());
+        }
+    }
+
+    /// Only a final SNARK needs the key; one of the workers' protocol, or of any, runs.
+    #[tokio::test]
+    async fn launch_wrap_runs_what_the_workers_can_prove() {
+        use zisk_cluster_common::LaunchWrapRequestDto;
+
+        for (cluster, proof_dest, asked) in [
+            (None, ProofKind::VadcopFinalMinimal, None),
+            (PLONK, ProofKind::Plonk, PLONK),
+            (PILFFLONK, ProofKind::Plonk, None),
+        ] {
+            let coordinator = coordinator_with_snark(cluster).await;
+            let request = LaunchWrapRequestDto {
+                proof_data: vec![],
+                proof_dest: proof_dest.into(),
+                snark_protocol: asked,
+            };
+
+            let result = coordinator.launch_wrap(request, None).await;
+
+            assert!(
+                result.is_ok(),
+                "{cluster:?} {proof_dest:?} asked {asked:?}: {:?}",
+                result.as_ref().err()
+            );
+        }
     }
 
     #[tokio::test]
@@ -5259,6 +5758,7 @@ mod tests {
             metadata: None,
             execution_only: false,
             proof_type: ProofKind::VadcopFinal,
+            snark_protocol: None,
             random_seed: None,
         }
     }

@@ -352,61 +352,65 @@ impl Coordinator {
             return Ok(());
         };
 
-        // Drop late acks for already-resolved jobs (mirrors execute-task path).
-        {
-            let job = job_entry.read().await;
+        // Check the job and change its state under one write lock: a cancel landing between a
+        // separate check and the change would otherwise be followed by a terminal event of ours,
+        // and turned into a failure by a failed ack (Failed is reachable from any state).
+        let outcome = {
+            let mut job = job_entry.write().await;
             if job.state().is_resolved() {
-                info!(
-                    "[Recurser] Ignoring late RunAggregateProofsAck from worker {} for resolved job {}",
-                    worker_id, ack.job_id
-                );
-                drop(job);
-                let _ =
-                    self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
-                return Ok(());
+                None
+            } else if !ack.success {
+                job.change_state(JobState::Failed);
+                Some(Err(ack.error_message.unwrap_or_else(|| "(no detail)".to_string())))
+            } else {
+                job.change_state(JobState::Completed);
+                // The ack carries a bincode-encoded `Proof` (see the worker's
+                // handle_run_aggregate_proofs); decode it so the completed job owns
+                // its proof like every other completion path does.
+                match Proof::from_bytes(&ack.proof) {
+                    Ok(proof) => job.proof = Some(proof),
+                    Err(e) => warn!(
+                        "[Recurser] Failed to deserialize aggregate proof for job {}: {}",
+                        job_id, e
+                    ),
+                }
+                Some(Ok(Self::format_job_metadata(job.metadata.as_ref())))
             }
-        }
+        };
 
         let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
 
-        if !ack.success {
-            let reason = ack.error_message.unwrap_or_else(|| "(no detail)".to_string());
-            {
-                let mut job = job_entry.write().await;
-                job.change_state(JobState::Failed);
-            }
-            self.fire_job_event(
-                &job_id,
-                CoordinatorJobEvent::Failed(format!(
-                    "Recurser prove failed on worker {worker_id}: {reason}"
-                )),
-            )
-            .await;
-            return Ok(());
-        }
-
-        {
-            let mut job = job_entry.write().await;
-            job.change_state(JobState::Completed);
-            // The ack carries a bincode-encoded `Proof` (see the worker's
-            // handle_run_aggregate_proofs); decode it so the completed job owns
-            // its proof like every other completion path does.
-            match Proof::from_bytes(&ack.proof) {
-                Ok(proof) => job.proof = Some(proof),
-                Err(e) => warn!(
-                    "[Recurser] Failed to deserialize aggregate proof for job {}: {}",
-                    job_id, e
-                ),
-            }
-        }
-        self.fire_job_event(
-            &job_id,
-            CoordinatorJobEvent::Completed(
-                crate::job_events::CoordinatorJobResult::AggregateProofs { proof_bytes: ack.proof },
+        match outcome {
+            // Late ack for an already-resolved job (mirrors execute-task path).
+            None => info!(
+                "[Recurser] Ignoring late RunAggregateProofsAck from worker {} for resolved job {}",
+                worker_id, ack.job_id
             ),
-        )
-        .await;
-        info!("[Recurser] Job {} completed successfully on worker {}", job_id, worker_id);
+            Some(Err(reason)) => {
+                self.fire_job_event(
+                    &job_id,
+                    CoordinatorJobEvent::Failed(format!(
+                        "Recurser prove failed on worker {worker_id}: {reason}"
+                    )),
+                )
+                .await;
+            }
+            Some(Ok(metadata_str)) => {
+                self.fire_job_event(
+                    &job_id,
+                    CoordinatorJobEvent::Completed(
+                        crate::job_events::CoordinatorJobResult::AggregateProofs {
+                            proof_bytes: ack.proof,
+                        },
+                    ),
+                )
+                .await;
+                info!(
+                    "[Recurser] Job {} completed successfully on worker {}{}",
+                    job_id, worker_id, metadata_str
+                );
+            }
+        }
         Ok(())
     }
 
@@ -483,6 +487,9 @@ impl Coordinator {
 
         let registering = self.registration.lock().await;
         if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
+            return (false, e.to_string(), None);
+        }
+        if let Err(e) = self.observe_snark_protocol(&req.worker_id, req.snark_protocol).await {
             return (false, e.to_string(), None);
         }
 
@@ -580,6 +587,9 @@ impl Coordinator {
 
         let registering = self.registration.lock().await;
         if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
+            return (false, e.to_string(), None, None);
+        }
+        if let Err(e) = self.observe_snark_protocol(&req.worker_id, req.snark_protocol).await {
             return (false, e.to_string(), None, None);
         }
 

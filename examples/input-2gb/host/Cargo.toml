@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 zisk-sdk = { workspace = true }
 zisk-test-artifacts = { workspace = true, features = ["input_2gb"] }
+tokio = { version = "1.52.1", features = ["rt-multi-thread"] }

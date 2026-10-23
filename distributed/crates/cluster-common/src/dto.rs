@@ -41,6 +41,7 @@ impl std::fmt::Debug for InputsModeDto {
 
 pub use zisk_common::AirInstanceCount;
 pub use zisk_common::ProofKind;
+pub use zisk_common::SnarkProtocol;
 pub use zisk_common::StatsCostPerType;
 
 /// How a job's precompile hints are supplied to the cluster.
@@ -90,6 +91,8 @@ pub struct LaunchProofRequestDto {
     pub execution_only: bool,
     /// The kind of proof requested.
     pub proof_type: ProofKind,
+    /// The protocol a final SNARK (`ProofKind::Plonk`) must be of; `None` takes the workers'.
+    pub snark_protocol: Option<SnarkProtocol>,
     /// Host randomness seed provided by the client; `None` draws a fresh one. If the coordinator
     /// does not allow client random seeds, the job is rejected (`ClientRandomSeedNotAllowed`)
     /// rather than run with a different seed.
@@ -108,6 +111,8 @@ pub struct LaunchWrapRequestDto {
     pub proof_data: Vec<u8>,
     /// Target proof kind (a `ProofKind` value).
     pub proof_dest: i32,
+    /// The protocol a final SNARK (`ProofKind::Plonk`) must be of; `None` takes the workers'.
+    pub snark_protocol: Option<SnarkProtocol>,
 }
 
 /// Request from a worker to register with the coordinator.
@@ -118,6 +123,9 @@ pub struct WorkerRegisterRequestDto {
     pub compute_capacity: ComputeCapacity,
     /// Aggregation arity of the worker's proving key.
     pub aggregation_arity: u32,
+    /// Protocol of the final SNARK the worker's SNARK proving key is set up for; `None` when it
+    /// has no SNARK proving key.
+    pub snark_protocol: Option<SnarkProtocol>,
     /// How the worker's previous run ended, when it ended itself. Reported by the worker:
     /// informational, unverified.
     pub previous_exit: Option<WorkerExitDto>,
@@ -146,6 +154,9 @@ pub struct WorkerReconnectRequestDto {
     pub last_known_job_id: Option<JobId>,
     /// Aggregation arity of the worker's proving key.
     pub aggregation_arity: u32,
+    /// Protocol of the final SNARK the worker's SNARK proving key is set up for; `None` when it
+    /// has no SNARK proving key.
+    pub snark_protocol: Option<SnarkProtocol>,
 }
 
 /// Reconciliation directive sent by the coordinator in the registration response.
@@ -367,7 +378,12 @@ pub struct ExecuteTaskRequestDto {
     pub job_id: JobId,
     /// The phase-specific parameters.
     pub params: ExecuteTaskRequestTypeDto,
-    /// Job-level metadata propagated to the worker.
+    /// Job-level metadata, once passed to the worker. No worker read it; the coordinator
+    /// now keeps it and leaves this `None`.
+    #[deprecated(
+        since = "1.4.0-alpha",
+        note = "job metadata stays on the coordinator; removed in the first non-alpha release"
+    )]
     pub metadata: Option<std::collections::BTreeMap<String, String>>,
 }
 

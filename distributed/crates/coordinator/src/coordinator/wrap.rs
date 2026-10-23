@@ -16,11 +16,18 @@ impl Coordinator {
     /// Launch a wrap job: compress/reduce an existing vadcop proof to minimal or SNARK format.
     ///
     /// Selects any single idle worker, sends a WRAP task to it, and returns the job ID.
-    /// The proof data must be a bincode-encoded `Proof`.
+    /// The proof data must be a bincode-encoded `Proof`; `metadata` is the caller's, if any.
     pub async fn launch_wrap(
         &self,
         request: LaunchWrapRequestDto,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
+        let metadata = self.admit_job_metadata(metadata)?;
+        // Before any worker is reserved, as in `launch_proof`.
+        if ProofKind::from(request.proof_dest) == ProofKind::Plonk {
+            self.ensure_snark_available(request.snark_protocol).await?;
+        }
+
         // Atomic single-worker reservation under one pool write lock —
         // prevents two concurrent launch_wrap calls from double-booking.
         let job_id = JobId::new();
@@ -38,7 +45,7 @@ impl Coordinator {
             vec![worker_id.clone()],
             vec![],
             JobExecutionMode::Standard,
-            None,
+            metadata,
             false,
             ProofKind::VadcopFinal,
         );
@@ -53,6 +60,7 @@ impl Coordinator {
         crate::metrics::record_job_started(&job_id, crate::metrics::KIND_WRAP, 1);
         crate::metrics::record_job_phase(&job_id, crate::metrics::PHASE_AGGREGATION);
 
+        #[allow(deprecated)] // `metadata` is deprecated and left empty.
         let req = ExecuteTaskRequestDto {
             worker_id: worker_id.clone(),
             job_id: job_id.clone(),
@@ -142,7 +150,11 @@ impl Coordinator {
             costs: None,
         });
 
-        tracing::info!("[Wrap] Job {} completed successfully", job_id);
+        tracing::info!(
+            "[Wrap] Job {} completed successfully{}",
+            job_id,
+            Self::format_job_metadata(job.metadata.as_ref())
+        );
 
         drop(job);
 

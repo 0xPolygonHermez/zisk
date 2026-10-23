@@ -13,7 +13,9 @@ use crate::{
     REGS_IN_MAIN_TO, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
     STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR, ZISKLIB_ROM_ADDR,
 };
-use crate::{BLAKE2B_RD_CHAIN, BLAKE2B_ROUND_MASK, BLAKE2B_WR_CHAIN};
+use crate::{
+    zisk_ops::blake2b_gap_is_provable, BLAKE2B_RD_CHAIN, BLAKE2B_ROUND_MASK, BLAKE2B_WR_CHAIN,
+};
 
 /// Last register held in the main trace; the asm keeps a `reg_N` slot for r0..=LAST_REG.
 const LAST_REG: u64 = REGS_IN_MAIN_TO as u64;
@@ -5286,6 +5288,13 @@ impl ZiskRom2Asm {
                     "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
                     ctx.comment_str("rsi = b = input address")
+                );
+                // The Rust path asserts this per execution; generated code would run it unchecked
+                assert!(
+                    blake2b_gap_is_provable(inst.jmp_offset1 as u64),
+                    "[blake2b] static argument 0x{:x} has an unprovable gap at PC:0x{:08X}",
+                    inst.jmp_offset1,
+                    ctx.pc
                 );
                 let round = inst.jmp_offset1 as u64 & BLAKE2B_ROUND_MASK;
                 *code += &format!(

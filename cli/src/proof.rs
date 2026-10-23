@@ -4,16 +4,47 @@
 //! and dev command trees, and makes it unit-testable in isolation.
 
 use anyhow::Result;
-use zisk_sdk::{Proof, ProofBody, ProofKind};
+use zisk_sdk::{Proof, ProofBody, ProofKind, SnarkProtocol};
+
+/// The final SNARK flags of the prove and wrap commands. The SNARK proving key (the workers', for a
+/// remote command) is set up for one protocol, which the flag must name: it checks the key, or the
+/// proof a worker returns, and does not change the proof.
+#[derive(clap::Args, Debug, Clone, Copy, Default)]
+pub(crate) struct SnarkArgs {
+    /// PLONK SNARK proof, of a SNARK proving key set up for PLONK (`--final-snark plonk`, a
+    /// poseidon key only). The one the on-chain EVM verifier takes for now. Mutually exclusive with
+    /// --pilfflonk and --minimal
+    #[arg(long, conflicts_with_all = ["pilfflonk", "minimal"])]
+    pub(crate) plonk: bool,
+
+    /// pilfflonk SNARK proof, of a SNARK proving key set up for pilfflonk (the default of
+    /// `--final-snark`, and the only one of a blake3 key). Mutually exclusive with --plonk and
+    /// --minimal
+    #[arg(long, conflicts_with_all = ["plonk", "minimal"])]
+    pub(crate) pilfflonk: bool,
+}
+
+impl SnarkArgs {
+    /// The protocol of the final SNARK asked for, if any. clap forbids both flags; if both are
+    /// somehow set, `--plonk` wins so the result stays deterministic.
+    pub(crate) fn protocol(&self) -> Option<SnarkProtocol> {
+        if self.plonk {
+            Some(SnarkProtocol::Plonk)
+        } else if self.pilfflonk {
+            Some(SnarkProtocol::Pilfflonk)
+        } else {
+            None
+        }
+    }
+}
 
 /// Select the proof kind for a *prove* request.
 ///
-/// Proving defaults to a full STARK proof (`VadcopFinal`); `--plonk` and
-/// `--minimal` select a wrapped proof instead. The two flags are mutually
-/// exclusive at the clap layer; if both are somehow set, `--plonk` wins so the
-/// result stays deterministic.
-pub(crate) fn select_prove_kind(plonk: bool, minimal: bool) -> ProofKind {
-    if plonk {
+/// Proving defaults to a full STARK proof (`VadcopFinal`); a final SNARK (`--plonk`,
+/// `--pilfflonk`) or `--minimal` selects a wrapped proof instead. The flags are mutually exclusive
+/// at the clap layer; if both are somehow set, the SNARK wins so the result stays deterministic.
+pub(crate) fn select_prove_kind(snark: Option<SnarkProtocol>, minimal: bool) -> ProofKind {
+    if snark.is_some() {
         ProofKind::Plonk
     } else if minimal {
         ProofKind::VadcopFinalMinimal
@@ -24,15 +55,15 @@ pub(crate) fn select_prove_kind(plonk: bool, minimal: bool) -> ProofKind {
 
 /// Select the proof kind for a *wrap* request.
 ///
-/// Unlike proving, wrapping has no default: exactly one of `--plonk` /
+/// Unlike proving, wrapping has no default: exactly one of `--plonk` / `--pilfflonk` /
 /// `--minimal` must be supplied, otherwise it is a usage error.
-pub(crate) fn select_wrap_kind(plonk: bool, minimal: bool) -> Result<ProofKind> {
-    if plonk {
+pub(crate) fn select_wrap_kind(snark: Option<SnarkProtocol>, minimal: bool) -> Result<ProofKind> {
+    if snark.is_some() {
         Ok(ProofKind::Plonk)
     } else if minimal {
         Ok(ProofKind::VadcopFinalMinimal)
     } else {
-        anyhow::bail!("Either --plonk or --minimal must be specified.")
+        anyhow::bail!("Either --plonk, --pilfflonk or --minimal must be specified.")
     }
 }
 
@@ -58,28 +89,43 @@ pub(crate) fn verify_kind_label(proof: &Proof) -> &'static str {
 mod tests {
     use super::*;
 
+    const PLONK: Option<SnarkProtocol> = Some(SnarkProtocol::Plonk);
+    const PILFFLONK: Option<SnarkProtocol> = Some(SnarkProtocol::Pilfflonk);
+
+    #[test]
+    fn snark_flags_name_their_protocol() {
+        let args = |plonk, pilfflonk| SnarkArgs { plonk, pilfflonk };
+        assert_eq!(args(false, false).protocol(), None);
+        assert_eq!(args(true, false).protocol(), PLONK);
+        assert_eq!(args(false, true).protocol(), PILFFLONK);
+        // clap forbids this combination, but the precedence must stay deterministic.
+        assert_eq!(args(true, true).protocol(), PLONK);
+    }
+
     #[test]
     fn prove_kind_defaults_to_vadcop_final() {
-        assert!(matches!(select_prove_kind(false, false), ProofKind::VadcopFinal));
+        assert!(matches!(select_prove_kind(None, false), ProofKind::VadcopFinal));
     }
 
     #[test]
-    fn prove_kind_plonk_and_minimal_select_wrapped() {
-        assert!(matches!(select_prove_kind(true, false), ProofKind::Plonk));
-        assert!(matches!(select_prove_kind(false, true), ProofKind::VadcopFinalMinimal));
+    fn prove_kind_snark_and_minimal_select_wrapped() {
+        assert!(matches!(select_prove_kind(PLONK, false), ProofKind::Plonk));
+        assert!(matches!(select_prove_kind(PILFFLONK, false), ProofKind::Plonk));
+        assert!(matches!(select_prove_kind(None, true), ProofKind::VadcopFinalMinimal));
     }
 
     #[test]
-    fn prove_kind_plonk_wins_when_both_set() {
+    fn prove_kind_snark_wins_when_both_set() {
         // clap forbids this combination, but the precedence must stay deterministic.
-        assert!(matches!(select_prove_kind(true, true), ProofKind::Plonk));
+        assert!(matches!(select_prove_kind(PILFFLONK, true), ProofKind::Plonk));
     }
 
     #[test]
     fn wrap_kind_requires_a_flag() {
-        assert!(select_wrap_kind(false, false).is_err());
-        assert!(matches!(select_wrap_kind(true, false).unwrap(), ProofKind::Plonk));
-        assert!(matches!(select_wrap_kind(false, true).unwrap(), ProofKind::VadcopFinalMinimal));
+        assert!(select_wrap_kind(None, false).is_err());
+        assert!(matches!(select_wrap_kind(PLONK, false).unwrap(), ProofKind::Plonk));
+        assert!(matches!(select_wrap_kind(PILFFLONK, false).unwrap(), ProofKind::Plonk));
+        assert!(matches!(select_wrap_kind(None, true).unwrap(), ProofKind::VadcopFinalMinimal));
     }
 
     #[test]

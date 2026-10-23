@@ -1,7 +1,7 @@
 use anyhow::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
@@ -12,13 +12,13 @@ use zisk_cluster_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_cluster_common::{JobId, PartitionInfo};
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::{
-    AirInstanceCount, ProgramVK, Proof, ProofKind, RandomSeed, SetupKey, StatsCostPerType,
-    ZiskExecutorTime, ZiskPaths,
+    AirInstanceCount, ProgramVK, Proof, ProofKind, RandomSeed, SetupKey, SnarkProtocol,
+    StatsCostPerType, ZiskExecutorTime, ZiskPaths,
 };
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
-    Asm, AsmOptions, BackendProverOpts, Emu, ProverClientBuilder, ProverEngine, ProverJob,
-    ZiskBackend, ZiskProver,
+    snark_protocol_of_key, Asm, AsmOptions, BackendProverOpts, Emu, ProverClientBuilder,
+    ProverEngine, ProverJob, ZiskBackend, ZiskProver,
 };
 
 use crate::stream_ordering::StreamOrderingActor;
@@ -262,6 +262,9 @@ pub struct ProverConfig {
     /// Path to the PLONK proving key
     pub proving_key_snark: Option<PathBuf>,
 
+    /// Protocol of the final SNARK the SNARK proving key is set up for, when there is one
+    pub snark_protocol: Option<SnarkProtocol>,
+
     /// Verbosity level for logging
     pub verbose: u8,
 
@@ -315,6 +318,13 @@ impl ProverConfig {
         } else {
             None
         };
+        // Reported at registration, where the coordinator requires the same of every worker. A
+        // key that is not a final SNARK key stops the worker here, not at a job's SNARK.
+        let snark_protocol = proving_key_snark
+            .as_deref()
+            .map(snark_protocol_of_key)
+            .transpose()
+            .map_err(|e| anyhow::anyhow!("--plonk needs a final SNARK proving key, but {e}"))?;
         let debug_info = match &prover_service_config.debug {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
@@ -332,6 +342,7 @@ impl ProverConfig {
             emulator,
             proving_key,
             proving_key_snark,
+            snark_protocol,
             verbose: prover_service_config.verbose,
             debug_info,
             unlock_mapped_memory: prover_service_config.unlock_mapped_memory,
@@ -376,8 +387,6 @@ pub struct JobContext {
     pub instances: u64,
     /// When the current task was received (for latency accounting).
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
-    /// Job-level metadata propagated from the coordinator.
-    pub metadata: Option<BTreeMap<String, String>>,
 }
 
 /// A ZisK worker over backend `T`: holds the prover, the current job context
@@ -710,6 +719,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.prover.aggregation_arity()
     }
 
+    /// Protocol of the final SNARK of the SNARK proving key, if any, reported at registration.
+    pub fn snark_protocol(&self) -> Option<SnarkProtocol> {
+        self.prover_config.snark_protocol
+    }
+
     /// A shared handle to the underlying prover.
     pub fn prover_arc(&self) -> Arc<ZiskProver<T>> {
         self.prover.clone()
@@ -822,7 +836,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         allocation: Vec<u32>,
         total_compute_units: u32,
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
-        metadata: Option<BTreeMap<String, String>>,
     ) -> Arc<Mutex<JobContext>> {
         let current_job = Arc::new(Mutex::new(JobContext {
             job_id: job_id.clone(),
@@ -837,7 +850,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             executed_steps: 0,
             task_received_time,
             instances: 0,
-            metadata,
         }));
         self.current_job = Some(current_job.clone());
 

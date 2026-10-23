@@ -9,6 +9,8 @@ pub mod proto {
     #![allow(clippy::large_enum_variant)]
     // Generated code — the proto definitions are the source of truth.
     #![allow(missing_docs)]
+    // The generated services name the deprecated extended API's messages.
+    #![allow(deprecated)]
     tonic::include_proto!("zisk.coordinator.v1");
 }
 
@@ -140,7 +142,10 @@ impl From<RegisterAggregationProgramResponse> for RegisterAggregationProgramResp
 
 impl tonic::IntoRequest<JobRequestMessage> for DomainJobKind {
     fn into_request(self) -> tonic::Request<JobRequestMessage> {
-        tonic::Request::new(JobRequestMessage { job_kind: Some(self.into()) })
+        tonic::Request::new(JobRequestMessage {
+            job_kind: Some(self.into()),
+            metadata: Default::default(),
+        })
     }
 }
 
@@ -180,6 +185,33 @@ impl TryFrom<i32> for DomainProofKind {
     }
 }
 
+impl From<zisk_common::SnarkProtocol> for SnarkProtocol {
+    fn from(protocol: zisk_common::SnarkProtocol) -> Self {
+        match protocol {
+            zisk_common::SnarkProtocol::Plonk => SnarkProtocol::Plonk,
+            zisk_common::SnarkProtocol::Pilfflonk => SnarkProtocol::Pilfflonk,
+        }
+    }
+}
+
+/// Encodes an optional SNARK protocol for the wire.
+fn snark_protocol_to_wire(protocol: Option<zisk_common::SnarkProtocol>) -> Option<i32> {
+    protocol.map(|protocol| SnarkProtocol::from(protocol).into())
+}
+
+/// Decodes an optional wire SNARK protocol: unset or unspecified asks for any, and an unknown one
+/// is rejected rather than taken for any.
+fn snark_protocol_from_wire(
+    protocol: Option<i32>,
+) -> std::result::Result<Option<zisk_common::SnarkProtocol>, String> {
+    match protocol.map(SnarkProtocol::try_from) {
+        None | Some(Ok(SnarkProtocol::Unspecified)) => Ok(None),
+        Some(Ok(SnarkProtocol::Plonk)) => Ok(Some(zisk_common::SnarkProtocol::Plonk)),
+        Some(Ok(SnarkProtocol::Pilfflonk)) => Ok(Some(zisk_common::SnarkProtocol::Pilfflonk)),
+        Some(Err(unknown)) => Err(format!("invalid snark_protocol {}", unknown.0)),
+    }
+}
+
 impl From<DomainJobPhase> for JobPhase {
     fn from(phase: DomainJobPhase) -> Self {
         match phase {
@@ -191,16 +223,19 @@ impl From<DomainJobPhase> for JobPhase {
 }
 
 impl DomainInputKind {
-    /// Maximum size for inline input payloads. Both the coordinator server and
-    /// SDK client are configured with the same limit via `max_decoding/encoding_message_size`.
-    const MAX_INLINE_BYTES: usize = 128 * 1024 * 1024;
+    /// The most bytes a request carries inline, its input and its hints together. A request is
+    /// one gRPC message, which the coordinator server and the client both cap at 128 MiB
+    /// (`max_decoding/encoding_message_size`), and the 1 MiB left holds the rest of it: the
+    /// program hash, the seed, the metadata (at most 32 entries of about 1 KiB) and the framing.
+    /// Larger data goes through the job's push streams (`PushJobInput`, `PushJobHintsInput`).
+    pub const MAX_INLINE_BYTES: usize = (128 - 1) * 1024 * 1024;
 
-    /// Wrap `data` as an inline input chunk, enforcing the gRPC message size limit.
+    /// Wrap `data` as an inline input chunk, refusing more than [`Self::MAX_INLINE_BYTES`].
     pub fn try_inline(data: Vec<u8>) -> anyhow::Result<Self> {
         if data.len() > Self::MAX_INLINE_BYTES {
             anyhow::bail!(
-                "input is {} bytes which exceeds the {} byte inline limit; \
-                 use a StreamUri input source for large payloads",
+                "input is {} bytes, more than the {} bytes a request carries inline; \
+                 push it through the job's input stream (PushJobInput) instead",
                 data.len(),
                 Self::MAX_INLINE_BYTES
             );
@@ -302,8 +337,14 @@ impl TryFrom<JobKind> for DomainJobKind {
                 .map_err(|e| format!("invalid wrap.proof: {e}"))?;
                 let proof_dest = DomainProofKind::try_from(r.proof_dest)
                     .map_err(|_| "invalid proof_dest".to_string())?;
+                let snark_protocol = snark_protocol_from_wire(r.snark_protocol)?;
                 let wrap_timeout = r.wrap_timeout.and_then(ts_to_datetime);
-                Ok(DomainJobKind::Wrap(DomainWrapRequest { proof, proof_dest, wrap_timeout }))
+                Ok(DomainJobKind::Wrap(DomainWrapRequest {
+                    proof,
+                    proof_dest,
+                    snark_protocol,
+                    wrap_timeout,
+                }))
             }
             job_kind::Kind::Execute(r) => Ok(DomainJobKind::Execute(r.try_into()?)),
             job_kind::Kind::SetupAggregationProgram(r) => {
@@ -355,6 +396,7 @@ impl From<DomainJobKind> for JobKind {
                 proof: Some(r.proof.into()),
                 proof_dest: ProofKind::from(r.proof_dest).into(),
                 wrap_timeout: r.wrap_timeout.map(datetime_to_ts),
+                snark_protocol: snark_protocol_to_wire(r.snark_protocol),
             }),
             DomainJobKind::Execute(r) => Kind::Execute(r.into()),
             DomainJobKind::SetupAggregationProgram(r) => {
@@ -394,6 +436,7 @@ impl From<DomainProveRequest> for ProveRequest {
             proof_dest: ProofKind::from(r.proof_dest).into(),
             hints: r.hints.map(InputKind::from),
             random_seed: random_seed_to_wire(r.random_seed),
+            snark_protocol: snark_protocol_to_wire(r.snark_protocol),
         }
     }
 }
@@ -407,6 +450,7 @@ impl TryFrom<ProveRequest> for DomainProveRequest {
         let proof_dest = DomainProofKind::try_from(r.proof_dest).unwrap_or(DomainProofKind::Stark);
         let hints = r.hints.map(|h| h.try_into()).transpose()?;
         let seed = random_seed_from_wire(r.random_seed)?;
+        let snark_protocol = snark_protocol_from_wire(r.snark_protocol)?;
         Ok(DomainProveRequest {
             hash_id: r.hash_id,
             input,
@@ -414,6 +458,7 @@ impl TryFrom<ProveRequest> for DomainProveRequest {
             random_seed: seed,
             proof_timeout,
             proof_dest,
+            snark_protocol,
         })
     }
 }
@@ -448,6 +493,8 @@ impl TryFrom<ExecuteRequest> for DomainExecuteRequest {
     }
 }
 
+// The deprecated extended API's conversions, kept with it.
+#[allow(deprecated)]
 impl TryFrom<DomainJobKind> for JobKindExt {
     type Error = String;
 
@@ -462,6 +509,7 @@ impl TryFrom<DomainJobKind> for JobKindExt {
     }
 }
 
+#[allow(deprecated)]
 impl TryFrom<JobKindExt> for DomainJobKind {
     type Error = String;
 
@@ -860,6 +908,13 @@ impl TryFrom<JobEvent> for DomainJobEvent {
 mod tests {
     use super::*;
 
+    /// `JobRequestMessage` derived `Eq` and `Hash` before it had `metadata`; `build.rs` keeps them.
+    #[test]
+    fn job_request_message_keeps_deriving_eq_and_hash() {
+        fn derives_eq_and_hash<T: Eq + std::hash::Hash>() {}
+        derives_eq_and_hash::<JobRequestMessage>();
+    }
+
     fn prove_request(seed: Option<RandomSeed>) -> DomainProveRequest {
         DomainProveRequest {
             hash_id: "hash".to_string(),
@@ -868,7 +923,70 @@ mod tests {
             random_seed: seed,
             proof_timeout: None,
             proof_dest: DomainProofKind::Stark,
+            snark_protocol: None,
         }
+    }
+
+    const SNARK_PROTOCOLS: [Option<zisk_common::SnarkProtocol>; 3] = [
+        None,
+        Some(zisk_common::SnarkProtocol::Plonk),
+        Some(zisk_common::SnarkProtocol::Pilfflonk),
+    ];
+
+    #[test]
+    fn prove_request_snark_protocol_round_trips() {
+        for protocol in SNARK_PROTOCOLS {
+            let request = DomainProveRequest {
+                proof_dest: DomainProofKind::Plonk,
+                snark_protocol: protocol,
+                ..prove_request(None)
+            };
+            let wire = ProveRequest::from(request);
+            assert_eq!(DomainProveRequest::try_from(wire).unwrap().snark_protocol, protocol);
+        }
+    }
+
+    #[test]
+    fn wrap_request_snark_protocol_round_trips() {
+        for protocol in SNARK_PROTOCOLS {
+            let request = DomainWrapRequest {
+                proof: DomainProof {
+                    proof_id: Uuid::nil(),
+                    hash_id: String::new(),
+                    verification_key: vec![],
+                    proof_kind: DomainProofKind::Plonk,
+                    data: vec![1, 2, 3],
+                    public_inputs: vec![],
+                    started_at: None,
+                    completed_at: None,
+                    random_seed: None,
+                },
+                proof_dest: DomainProofKind::Plonk,
+                snark_protocol: protocol,
+                wrap_timeout: None,
+            };
+            let wire = JobKind::from(DomainJobKind::Wrap(request));
+            match DomainJobKind::try_from(wire).unwrap() {
+                DomainJobKind::Wrap(decoded) => assert_eq!(decoded.snark_protocol, protocol),
+                other => panic!("expected a wrap request, got {other:?}"),
+            }
+        }
+    }
+
+    /// A client older than the field sends none, and 0 is unspecified: both ask for any protocol.
+    #[test]
+    fn an_unspecified_snark_protocol_asks_for_any() {
+        let mut wire = ProveRequest::from(prove_request(None));
+        assert_eq!(wire.snark_protocol, None);
+        wire.snark_protocol = Some(SnarkProtocol::Unspecified.into());
+        assert_eq!(DomainProveRequest::try_from(wire).unwrap().snark_protocol, None);
+    }
+
+    #[test]
+    fn an_unknown_snark_protocol_is_rejected() {
+        let mut wire = ProveRequest::from(prove_request(None));
+        wire.snark_protocol = Some(99);
+        assert!(DomainProveRequest::try_from(wire).is_err());
     }
 
     #[test]
@@ -918,5 +1036,33 @@ mod tests {
         let mut wire = ProveRequest::from(prove_request(None));
         wire.random_seed = Some(vec![0; RandomSeed::LEN - 1]);
         assert!(DomainProveRequest::try_from(wire).is_err());
+    }
+
+    #[test]
+    fn try_inline_takes_up_to_the_inline_limit() {
+        assert!(DomainInputKind::try_inline(vec![0; DomainInputKind::MAX_INLINE_BYTES]).is_ok());
+        assert!(
+            DomainInputKind::try_inline(vec![0; DomainInputKind::MAX_INLINE_BYTES + 1]).is_err()
+        );
+    }
+
+    /// An input of exactly 128 MiB used to pass as inline, and its request then failed in the
+    /// transport, past the gRPC message limit. The largest request the inline limit lets
+    /// through, with every other field at its largest, must fit that limit.
+    #[test]
+    fn the_largest_inline_request_fits_a_grpc_message() {
+        use prost::Message;
+
+        let mut request = prove_request(Some(RandomSeed::new([1; RandomSeed::LEN])));
+        request.hash_id = "f".repeat(64);
+        request.proof_timeout = Some(chrono::Utc::now());
+        request.input = DomainInputKind::Inline(DomainInputChunk {
+            data: vec![0; DomainInputKind::MAX_INLINE_BYTES],
+        });
+        // The server's metadata caps: 32 entries, keys of 128 bytes and values of 1 KiB.
+        let metadata = (0..32).map(|i| (format!("{i:0>128}"), "v".repeat(1024))).collect();
+        let message =
+            JobRequestMessage { job_kind: Some(DomainJobKind::Prove(request).into()), metadata };
+        assert!(message.encoded_len() <= 128 * 1024 * 1024, "{} bytes", message.encoded_len());
     }
 }

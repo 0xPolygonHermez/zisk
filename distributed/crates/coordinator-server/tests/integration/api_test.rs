@@ -17,9 +17,9 @@ use zisk_coordinator_api::grpc::proto::{
     zisk_coordinator_api_ext_client::ZiskCoordinatorApiExtClient,
     zisk_coordinator_api_ext_server::ZiskCoordinatorApiExtServer,
     zisk_coordinator_api_server::ZiskCoordinatorApiServer, CancelJobRequest, ExecuteRequest,
-    InputChunk, InputKind, JobKind, JobKindExt, JobRequestExtMessage, JobRequestMessage, ProofKind,
-    ProveRequest, PushJobHintsInputRequest, PushJobInputRequest, SetupRequest,
-    WaitJobResultRequest, WatchJobRequest, WrapRequest,
+    InputChunk, InputKind, JobKind, JobRequestMessage, Proof, ProofKind, ProveRequest,
+    PushJobHintsInputRequest, PushJobInputRequest, SetupRequest, WaitJobResultRequest,
+    WatchJobRequest, WrapRequest,
 };
 use zisk_coordinator_server::{backend::mock::MockBackend, CoordinatorHandler, GrpcAdapter};
 
@@ -53,32 +53,16 @@ async fn start_test_server() -> ZiskCoordinatorApiClient<Channel> {
 /// Start a coordinator server and return both the client and the `MockBackend`
 /// so tests can inspect internal state (e.g. received hints chunks).
 async fn start_test_server_with_backend() -> (ZiskCoordinatorApiClient<Channel>, Arc<MockBackend>) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-
-    let backend = Arc::new(MockBackend::default());
-    let backend_clone = Arc::clone(&backend);
-    let service = GrpcAdapter::new(CoordinatorHandler::new(Arc::clone(&backend)));
-
-    tokio::spawn(async move {
-        Server::builder()
-            .add_service(ZiskCoordinatorApiServer::new(service))
-            .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
-            .await
-            .unwrap();
-    });
-
-    let endpoint = format!("http://{addr}");
+    let (endpoint, backend) = start_mock_server().await;
     let client =
         connect_with_retry(|e: String| ZiskCoordinatorApiClient::connect(e), &endpoint).await;
-    (client, backend_clone)
+    (client, backend)
 }
 
-/// Start a coordinator server exposing BOTH the base and extended APIs over a
-/// single shared `MockBackend`. Returns a base client (for register/wait), an
-/// extended client (for `job_request_ext`), and the backend for assertions.
-async fn start_test_server_ext(
-) -> (ZiskCoordinatorApiClient<Channel>, ZiskCoordinatorApiExtClient<Channel>, Arc<MockBackend>) {
+/// Start a coordinator server over a `MockBackend` and return its endpoint URL
+/// and the backend, for tests that bring their own client. It serves the base
+/// and the deprecated extended API, as `zisk-coordinator` does.
+async fn start_mock_server() -> (String, Arc<MockBackend>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
 
@@ -96,7 +80,14 @@ async fn start_test_server_ext(
             .unwrap();
     });
 
-    let endpoint = format!("http://{addr}");
+    (format!("http://{addr}"), backend)
+}
+
+/// Start a coordinator server and return a base client (for register/wait), an
+/// extended client (for `job_request_ext`), and the backend for assertions.
+async fn start_test_server_ext(
+) -> (ZiskCoordinatorApiClient<Channel>, ZiskCoordinatorApiExtClient<Channel>, Arc<MockBackend>) {
+    let (endpoint, backend) = start_mock_server().await;
     let base_client =
         connect_with_retry(|e: String| ZiskCoordinatorApiClient::connect(e), &endpoint).await;
     let ext_client =
@@ -119,15 +110,160 @@ async fn register_program(client: &mut ZiskCoordinatorApiClient<Channel>) -> Str
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-#[tokio::test]
-async fn job_request_ext_round_trips_metadata() {
-    let (mut base_client, mut ext_client, backend) = start_test_server_ext().await;
-    let hash_id = register_program(&mut base_client).await;
-
-    let metadata = std::collections::HashMap::from([
+fn job_metadata() -> std::collections::HashMap<String, String> {
+    std::collections::HashMap::from([
         ("team".to_string(), "zkvm".to_string()),
         ("run".to_string(), "42".to_string()),
-    ]);
+    ])
+}
+
+fn job_metadata_map() -> std::collections::BTreeMap<String, String> {
+    job_metadata().into_iter().collect()
+}
+
+fn execute_job(hash_id: String) -> JobKind {
+    JobKind {
+        kind: Some(job_kind::Kind::Execute(ExecuteRequest {
+            hash_id,
+            input: inline_input(),
+            hints: None,
+            random_seed: None,
+            execute_timeout: None,
+        })),
+    }
+}
+
+#[tokio::test]
+async fn job_request_round_trips_metadata() {
+    let (mut client, backend) = start_test_server_with_backend().await;
+    let hash_id = register_program(&mut client).await;
+
+    let response = client
+        .job_request(JobRequestMessage {
+            job_kind: Some(execute_job(hash_id)),
+            metadata: job_metadata_map(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    // Metadata must have propagated through grpc → handler → backend.
+    let seen = backend.submit_metadata(response.job_id.parse().unwrap()).await;
+    let expected = job_metadata_map();
+    assert_eq!(seen, expected, "submitted metadata must reach the backend");
+}
+
+#[tokio::test]
+async fn job_request_round_trips_metadata_on_a_wrap_job() {
+    let (mut client, backend) = start_test_server_with_backend().await;
+    let proof = Proof {
+        proof_id: uuid::Uuid::new_v4().to_string(),
+        proof_kind: ProofKind::Stark as i32,
+        ..Default::default()
+    };
+
+    let job_id = client
+        .job_request(JobRequestMessage {
+            job_kind: Some(JobKind {
+                kind: Some(job_kind::Kind::Wrap(WrapRequest {
+                    proof: Some(proof),
+                    proof_dest: ProofKind::Plonk as i32,
+                    wrap_timeout: None,
+                    snark_protocol: None,
+                })),
+            }),
+            metadata: job_metadata_map(),
+        })
+        .await
+        .unwrap()
+        .into_inner()
+        .job_id;
+
+    let seen = backend.submit_metadata(job_id.parse().unwrap()).await;
+    let expected = job_metadata_map();
+    assert_eq!(seen, expected, "submitted metadata must reach the backend");
+}
+
+/// `CoordinatorClient` sends job metadata on `JobRequest` with
+/// `submit_job_with_metadata`, and keeps sending it on `JobRequestExt` with the
+/// deprecated `submit_job_ext`, which coordinators before 1.4 also take.
+#[tokio::test(flavor = "multi_thread")]
+#[allow(deprecated)]
+async fn coordinator_client_sends_metadata() {
+    use zisk_coordinator_api::dto::{
+        DomainExecuteRequest, DomainInputChunk, DomainInputKind, DomainJobKind,
+    };
+    use zisk_coordinator_client::CoordinatorClient;
+
+    let (endpoint, backend) = start_mock_server().await;
+    let client =
+        CoordinatorClient::connect(endpoint, Duration::from_secs(5), Duration::from_secs(5))
+            .unwrap();
+    let hash_id = client.register_program(dummy_elf()).unwrap();
+    let execute = || {
+        DomainJobKind::Execute(DomainExecuteRequest {
+            hash_id: hash_id.clone(),
+            input: DomainInputKind::Inline(DomainInputChunk { data: vec![1, 2, 3] }),
+            hints: None,
+            random_seed: None,
+            execute_timeout: None,
+        })
+    };
+    let metadata = job_metadata_map();
+
+    let job = client.submit_job_with_metadata(execute(), metadata.clone()).unwrap();
+    assert_eq!(backend.submit_metadata(job.job_id()).await, metadata);
+
+    let job = client.submit_job_ext(execute(), metadata.clone()).unwrap();
+    assert_eq!(backend.submit_metadata(job.job_id()).await, metadata);
+}
+
+#[tokio::test]
+async fn job_request_rejects_metadata_on_a_setup_job() {
+    let mut client = start_test_server().await;
+    let hash_id = register_program(&mut client).await;
+
+    let err = client
+        .job_request(JobRequestMessage {
+            job_kind: Some(JobKind {
+                kind: Some(job_kind::Kind::Setup(SetupRequest {
+                    hash_id,
+                    with_hints: false,
+                    emulator_only: false,
+                    program_name: "test".into(),
+                })),
+            }),
+            metadata: job_metadata_map(),
+        })
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.code(), tonic::Code::InvalidArgument);
+}
+
+#[tokio::test]
+async fn job_request_rejects_oversized_metadata() {
+    let mut client = start_test_server().await;
+    let hash_id = register_program(&mut client).await;
+
+    let too_many = (0..33).map(|i| (format!("k{i}"), "v".to_string())).collect();
+    let err = client
+        .job_request(JobRequestMessage { job_kind: Some(execute_job(hash_id)), metadata: too_many })
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.code(), tonic::Code::InvalidArgument);
+}
+
+/// `JobRequestExt` is a deprecated alias of `JobRequest`; it must keep working
+/// for clients built against it until it is removed.
+#[tokio::test]
+#[allow(deprecated)]
+async fn job_request_ext_alias_round_trips_metadata() {
+    use zisk_coordinator_api::grpc::proto::{JobKindExt, JobRequestExtMessage};
+
+    let (mut base_client, mut ext_client, backend) = start_test_server_ext().await;
+    let hash_id = register_program(&mut base_client).await;
 
     // Submit via the extended service, carrying job-level metadata.
     let job_id = ext_client
@@ -141,7 +277,7 @@ async fn job_request_ext_round_trips_metadata() {
                     execute_timeout: None,
                 })),
             }),
-            metadata: metadata.clone(),
+            metadata: job_metadata(),
         })
         .await
         .unwrap()
@@ -152,7 +288,7 @@ async fn job_request_ext_round_trips_metadata() {
 
     // Metadata must have propagated through grpc → handler → backend.
     let seen = backend.submit_metadata(job_id.parse().unwrap()).await;
-    let expected: std::collections::BTreeMap<String, String> = metadata.into_iter().collect();
+    let expected = job_metadata_map();
     assert_eq!(seen, expected, "submitted metadata must reach the backend");
 
     // The job created via the extended API is visible on the base API and runs
@@ -208,8 +344,10 @@ async fn prove_job_wait_result_completes() {
                     random_seed: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
+                    snark_protocol: None,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -253,8 +391,10 @@ async fn prove_job_watch_stream_receives_all_events() {
                     random_seed: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
+                    snark_protocol: None,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -300,6 +440,7 @@ async fn setup_job_completes() {
                     program_name: "test".into(),
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -341,6 +482,7 @@ async fn execute_job_completes() {
                     execute_timeout: None,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -382,8 +524,10 @@ async fn wrap_job_completes() {
                     random_seed: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
+                    snark_protocol: None,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -419,8 +563,10 @@ async fn wrap_job_completes() {
                     proof: Some(stark_proof),
                     proof_dest: ProofKind::Plonk as i32,
                     wrap_timeout: None,
+                    snark_protocol: None,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -466,8 +612,10 @@ async fn cancel_running_job_returns_true() {
                     random_seed: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
+                    snark_protocol: None,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -500,6 +648,7 @@ async fn cancel_completed_job_returns_false() {
                     program_name: "test".into(),
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -555,6 +704,7 @@ async fn program_not_found_returns_error() {
                     program_name: "test".into(),
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap_err();
@@ -578,8 +728,10 @@ async fn wait_result_timeout_returns_current_status() {
                     random_seed: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
+                    snark_protocol: None,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -614,8 +766,10 @@ async fn push_input_multi_chunk_completes() {
                     random_seed: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
+                    snark_protocol: None,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -670,6 +824,7 @@ async fn push_input_on_terminal_job_fails() {
                     program_name: "test".into(),
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -722,8 +877,10 @@ async fn push_hints_input_chunks_are_stored() {
                     random_seed: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
+                    snark_protocol: None,
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()
@@ -767,6 +924,7 @@ async fn push_hints_input_on_terminal_job_fails() {
                     program_name: "test".into(),
                 })),
             }),
+            metadata: Default::default(),
         })
         .await
         .unwrap()

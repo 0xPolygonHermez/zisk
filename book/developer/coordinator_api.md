@@ -31,7 +31,12 @@ gRPC Service definition: [`coordinator_api.proto`](../../distributed/crates/coor
 enum ProofKind {
     Stark,
     StarkMinimal,
+    Plonk, // the final SNARK, of the protocol of the workers' SNARK proving key
+}
+
+enum SnarkProtocol {
     Plonk,
+    Pilfflonk,
 }
 
 enum InputKind {
@@ -125,6 +130,7 @@ struct RegisterGuestProgramResponse {
 ```rust
 struct JobRequest {
     job_kind: JobKind,
+    metadata: Map<String, String>, // caller-defined labels; see "Job metadata"
 }
 
 struct JobResponse {
@@ -329,10 +335,12 @@ Creates a proof job against a registered program. Use `WatchJob` or `WaitJobResu
 
 ```rust
 struct ProveRequest {
-    hash_id:       String,           // Elf hash id
-    input:         InputKind,
-    proof_timeout: Option<DateTime<Utc>>, // proof generation timeout; server default if omitted
-    random_seed:   Option<[u8; 32]>, // provide the host randomness seed (replays); see below
+    hash_id:        String,           // Elf hash id
+    input:          InputKind,
+    proof_timeout:  Option<DateTime<Utc>>, // proof generation timeout; server default if omitted
+    proof_dest:     ProofKind,        // format of the proof; Stark if omitted
+    random_seed:    Option<[u8; 32]>, // provide the host randomness seed (replays); see below
+    snark_protocol: Option<SnarkProtocol>, // for a Plonk proof; see below
 }
 
 struct ProveResponse {
@@ -347,15 +355,26 @@ Converts an existing `Proof` to the format specified by `proof_dest`. Valid comb
 
 ```rust
 struct WrapRequest {
-    proof:        Proof,
-    proof_dest:   ProofKind,         // target format
-    wrap_timeout: Option<DateTime<Utc>>,  // wrapping timeout; server default if omitted
+    proof:          Proof,
+    proof_dest:     ProofKind,         // target format
+    wrap_timeout:   Option<DateTime<Utc>>,  // wrapping timeout; server default if omitted
+    snark_protocol: Option<SnarkProtocol>, // for a Plonk proof_dest; see below
 }
 
 struct WrapResponse {
     proof: Proof,
 }
 ```
+
+### Final SNARK protocol
+
+A `Plonk` proof is the final SNARK of the workers' SNARK proving key, which is set up for one
+protocol (`setup-snark --final-snark`): PLONK or pilfflonk. Any worker may wrap a job's SNARK, so
+the coordinator accepts a worker only with the same SNARK proving key protocol as the others, or
+none when they have none. A prove or wrap request for a `Plonk` proof is rejected with
+`SNARK_UNAVAILABLE`, before it runs, when the workers have no SNARK proving key, or when it sets
+`snark_protocol` and the workers' key is of another protocol. Without `snark_protocol`, the proof is
+of the workers' protocol.
 
 ### `Aggregate`
 
@@ -407,6 +426,25 @@ A provided seed is accepted only when the coordinator config sets
 who could otherwise craft inputs that are expensive under that seed (for example hash-map
 collisions), so keep the option off when clients are not trusted.
 
+### Job metadata
+
+A `JobRequest` can carry caller-defined key/value labels in `metadata` (at most 32 keys, each up to
+128 bytes, with values up to 1024 bytes). The coordinator keeps them with the job and writes them in
+the line it logs when the job completes. Prove, execute, wrap and aggregate jobs take metadata; setup
+jobs (`SetupRequest`, `SetupAggregationProgramRequest`) reject a non-empty map with
+`INVALID_ARGUMENT`.
+
+From the command line, pass `--metadata KEY=VALUE` (repeatable) to `cargo-zisk remote prove`,
+`execute`, `wrap` and `aggregate`, or to `zisk-prove-client prove` and `execute`. With the SDK, call
+`.metadata(key, value)` on a `RemoteClient`'s `prove`, `execute`, `wrap_proof` or `aggregate_proofs`
+request.
+
+Metadata is accepted unless the coordinator config sets `coordinator.allow_job_metadata = false`;
+jobs that carry metadata are then rejected with `JOB_METADATA_NOT_ALLOWED`.
+
+The extended service `ZiskCoordinatorApiExt.JobRequestExt` is a deprecated alias of `JobRequest`
+for prove and execute jobs. It is removed in the first non-alpha release.
+
 ## Error Handling
 
 All RPC methods may return `ApiError`. Common error codes:
@@ -419,6 +457,8 @@ All RPC methods may return `ApiError`. Common error codes:
 | 1004 | `INVALID_JOB_STATE` | Operation not valid for current job state (e.g., `PushJobInput` on non-input job) |
 | 1005 | `INVALID_PROOF_CONVERSION` | Unsupported `proof_dest` for given `proof_kind` |
 | 1006 | `CLIENT_RANDOM_SEED_NOT_ALLOWED` | Request provided a random seed and the coordinator does not allow client random seeds |
+| 1007 | `JOB_METADATA_NOT_ALLOWED` | Request carried job metadata and the coordinator does not allow it |
+| 1008 | `SNARK_UNAVAILABLE` | Request asks for a `Plonk` proof the workers cannot prove: they have no SNARK proving key, or one of another `snark_protocol` |
 | 2001 | `CLUSTER_UNAVAILABLE` | No coordinator available |
 | 3001 | `INTERNAL` | Unexpected server error; include `trace_id` in support requests |
 

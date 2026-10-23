@@ -377,7 +377,9 @@ def proofs():
 
 
 def once(expr):
-    """Only each sample's own evaluation: a timed series' sample (one per proof, at its end) at the step it falls in."""
+    """Only each sample's own evaluation: a timed series' sample (one per proof, at its end) at the step it falls in.
+    `expr` must be a selector: timestamp() of anything else (a label_replace, say) is the evaluation time, which
+    keeps the last sample at every step for the 5 min Prometheus looks back."""
     return f"{expr} and ((time() - timestamp({expr})) * 1000 < $__interval_ms)"
 
 
@@ -513,28 +515,54 @@ def live():
     # $__range are exact per proof. "@ end()" pins them to the selected range's end: a constant over the panel,
     # i.e. a horizontal line, the same value the box shows.
     phases = [("1", "1 contributions"), ("2", "2 prove"), ("3", "3 aggregation")]
-    DUR = relabel(f"coordinator_proof_seconds{{{C}}}", "phase", phases)
+    # once() before the renames: it needs the selector's own timestamps.
+    DUR = relabel(once(f"coordinator_proof_seconds{{{C}}}"), "phase", phases)
     TOTAL = f'coordinator_proof_seconds{{{C},phase="total"}}'
     p = timeseries("Proof duration per job",
-                   [(once(DUR), "{{phase}}"),
-                    (f"avg_over_time({TOTAL}[$__range] @ end())", "mean (total)"),
-                    (f"quantile_over_time(0.999, {TOTAL}[$__range] @ end())", "P99.9 (total)")], "s",
-                   desc="One point per successful proof: each phase and the total; the dashed lines are the mean "
-                        "and P99.9 of the total over the selected time range. Failed and cancelled jobs are the "
-                        "vertical lines: their times would stretch the scale of the proofs'")
-    p["fieldConfig"]["defaults"]["custom"].update({"showPoints": "always", "pointSize": 4, "spanNulls": True})
+                   [(DUR, "{{phase}}"),
+                    (f"avg_over_time({TOTAL}[$__range] @ end())", "mean"),
+                    (f"quantile_over_time(0.999, {TOTAL}[$__range] @ end())", "P99.9")], "s",
+                   desc="One point per successful proof: its phases stacked in order, so the top of the stack is "
+                        "the total (shown in the tooltip); a period without proofs is a straight line between the "
+                        "proofs on either side; the dotted lines are the mean and P99.9 of the total over the "
+                        "selected time range. Failed and cancelled jobs are the vertical lines: their times would "
+                        "stretch the scale of the proofs'")
+    p["fieldConfig"]["defaults"]["min"] = 0  # a stack starts at zero
+    p["fieldConfig"]["defaults"]["custom"].update({"showPoints": "never", "spanNulls": True})
     # One line under the chart instead of a table of one row per series.
     p["options"]["legend"] = {"showLegend": True, "displayMode": "list", "placement": "bottom", "calcs": []}
-    colors = {"1 contributions": "blue", "2 prove": "purple", "3 aggregation": "yellow", "total": "green",
-              "mean (total)": "orange", "P99.9 (total)": "red"}
+    # In the series' order rather than by value: the phases bottom to top, the total, mean, P99.9.
+    p["options"]["tooltip"]["sort"] = "none"
+    fixed = lambda color: {"id": "color", "value": {"mode": "fixed", "fixedColor": color}}
+    no_legend = {"id": "custom.hideFrom", "value": {"legend": True, "tooltip": False, "viz": False}}
+    # The phases stacked, each band filled: the top of the stack is the total. The edges between the bands
+    # only separate them, so they are thin and the top stands out. The legend lists the phases in their
+    # bands' colours (area_legend below).
+    phase_colors = {"1 contributions": "blue", "2 prove": "purple", "3 aggregation": "yellow"}
+    phase_fill = 30
     p["fieldConfig"]["overrides"] = [
         {"matcher": {"id": "byName", "options": name},
-         "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": color}}]
-         + ([{"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 6]}},
-             {"id": "custom.showPoints", "value": "never"}, {"id": "custom.lineWidth", "value": 2}]
-            if name.endswith("(total)") else [])
-         + ([{"id": "custom.lineWidth", "value": 2}] if name == "total" else [])}
-        for name, color in colors.items()]
+         "properties": [fixed(color), {"id": "custom.stacking", "value": {"mode": "normal", "group": "phases"}},
+                        {"id": "custom.fillOpacity", "value": phase_fill}, no_legend]
+         + ([{"id": "custom.lineWidth", "value": 0.25}] if name != "3 aggregation" else [])}
+        for name, color in phase_colors.items()]
+    # The total is the top of the stack: it is drawn with nothing, for the tooltip to list it (Grafana leaves a
+    # series hidden from the chart out of the tooltip too).
+    p["fieldConfig"]["overrides"].append(
+        {"matcher": {"id": "byName", "options": "total"},
+         "properties": [fixed("green"), {"id": "custom.lineWidth", "value": 0},
+                        {"id": "custom.fillOpacity", "value": 0}, no_legend]})
+    # Dotted: Grafana always draws the vertical lines dashed, and red is also a failed job's.
+    reference_colors = {"mean": "orange", "P99.9": "red"}
+    p["fieldConfig"]["overrides"] += [
+        {"matcher": {"id": "byName", "options": name},
+         "properties": [fixed(color), {"id": "custom.lineStyle", "value": {"fill": "dot", "dash": [0, 6]}},
+                        {"id": "custom.lineWidth", "value": 2}]}
+        for name, color in reference_colors.items()]
+    # A band is its phase's colour at the phase's fill over the background, under the mean's and P99.9's fills,
+    # drawn after the stack: below the mean line, where the bands mostly are.
+    under = [(color, p["fieldConfig"]["defaults"]["custom"]["fillOpacity"] / 100) for color in reference_colors.values()]
+    area_legend(p, {name: painted([(color, phase_fill / 100), *under]) for name, color in phase_colors.items()})
     annotation_legend(p)
     l.add(p, 16, 12)
     base_y = p["gridPos"]["y"]
@@ -646,19 +674,55 @@ def host_variable():
 
 
 # The job annotations' vertical lines, as they read in a chart's legend: (legend name, colour).
-ANNOTATION_LEGEND = [("┃ worker restarted", "purple"), ("┃ job cancelled", "dark-blue"), ("┃ job failed", "red")]
+ANNOTATION_LEGEND = [("worker restarted", "purple"), ("job cancelled", "dark-blue"), ("job failed", "red")]
 
 
 def annotation_legend(panel):
     """Names the annotations' vertical lines in a chart's legend: one empty series each (all NaN, so
-    nothing is drawn), in the annotation's colour. Grafana itself lists annotations only in the
-    dashboard's header. Hidden from the chart, Grafana would dim their legend entries."""
+    nothing is drawn), in the annotation's colour and dashed, as Grafana draws them (it has no setting
+    for that: 2 px, 5 on, 5 off). Grafana itself lists annotations only in the dashboard's header.
+    Hidden from the chart, Grafana would dim their legend entries."""
     first = len(panel["targets"])
     for i, (name, color) in enumerate(ANNOTATION_LEGEND):
         panel["targets"].append({"refId": chr(65 + first + i), "expr": "vector(NaN)", "legendFormat": name, "datasource": DS})
         panel["fieldConfig"]["overrides"].append({"matcher": {"id": "byName", "options": name}, "properties": [
             {"id": "color", "value": {"mode": "fixed", "fixedColor": color}},
-            {"id": "custom.hideFrom", "value": {"legend": False, "tooltip": True, "viz": False}}]})
+            {"id": "custom.hideFrom", "value": {"legend": False, "tooltip": True, "viz": False}},
+            {"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [5, 5]}}]})
+
+
+# Grafana's dark theme: a panel's background, and the named colours area_legend paints with.
+DARK_BACKGROUND = "#181b1f"
+DARK_COLORS = {"blue": "#5794f2", "purple": "#b877d9", "yellow": "#fade2a", "orange": "#ff9830", "red": "#f2495c"}
+
+
+def painted(fills):
+    """The colour the dark theme's background takes under `fills`, (colour, opacity) pairs drawn in order.
+    (Within 1 or 2 per channel of what Grafana draws, which rounds at every fill.)"""
+    rgb = lambda color: [int(DARK_COLORS.get(color, color)[i:i + 2], 16) for i in (1, 3, 5)]
+    out = rgb(DARK_BACKGROUND)
+    for color, opacity in fills:
+        out = [o * (1 - opacity) + c * opacity for o, c in zip(out, rgb(color))]
+    return "#" + "".join(f"{round(c):02x}" for c in out)
+
+
+def area_legend(panel, colors):
+    """Lists filled series in a chart's legend in their areas' colours, `colors` (name: colour), rather
+    than their lines': Grafana's legend has only the line's. One empty series each, as in
+    annotation_legend, named as the series it stands for, so that a click on it isolates that series.
+    They come first, in the legend's order, and stay out of any stack (NaN would poison it); their
+    overrides come last, to win over the series' own, which match them by name too. The series
+    themselves must leave the legend."""
+    first = len(panel["targets"])
+    refs = [chr(65 + first + i) for i in range(len(colors))]
+    panel["targets"][:0] = [{"refId": ref, "expr": "vector(NaN)", "legendFormat": name, "datasource": DS}
+                            for ref, name in zip(refs, colors)]
+    panel["fieldConfig"]["overrides"] += [
+        {"matcher": {"id": "byFrameRefID", "options": ref}, "properties": [
+            {"id": "color", "value": {"mode": "fixed", "fixedColor": color}},
+            {"id": "custom.stacking", "value": {"mode": "none", "group": "A"}},
+            {"id": "custom.hideFrom", "value": {"legend": False, "tooltip": True, "viz": False}}]}
+        for ref, color in zip(refs, colors.values())]
 
 
 def job_annotations():
