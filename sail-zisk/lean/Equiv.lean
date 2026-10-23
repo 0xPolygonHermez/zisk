@@ -32,3 +32,4 @@ import Equiv.RiscvJump
 import Equiv.ZiskJump
 import Equiv.JumpSim
 import Equiv.Prog
+import Equiv.FusedSim

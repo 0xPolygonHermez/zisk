@@ -119,4 +119,30 @@ theorem execute_jalr (s : ZState) (rd rs1 : Nat) (off : BitVec 64) (hd : rd < 32
       Sail.ConcurrencyInterfaceV1.PreSail.assert, n1, l1, ld, writeReg_run]
     repeat (rw [readReg_run']; (try simp only [Std.ExtDHashMap.get?_insert]); simp [hst, hpc, hx])
 
+/-- The instruction the transpiler emits for auipc fused with the jalr after
+    it: the constant c to rd, and the step goes to pc + j (both computed at
+    transpile time). -/
+def constJInst (rd : Nat) (c j : BitVec 64) : zisk_inst :=
+  { a_src := .A_IMM, a_imm := 0, b_src := .B_IMM, b_imm := c,
+    ind_width := 8, op := .ZOP_COPYB (), store := .ST_REG, store_off := .ofNat 64 rd,
+    store_pc := false, set_pc := false, jmp_off1 := j, jmp_off2 := j, is_end := false }
+
+set_option maxHeartbeats 4000000 in
+theorem execute_constj (s : ZState) (rd : Nat) (c j : BitVec 64) (hd : 1 ≤ rd ∧ rd < 32)
+    (xs : Vector (BitVec 64) 40) (pc st : BitVec 64)
+    (hx : s.regs.get? Xs = some xs) (hpc : s.regs.get? PC = some pc) (hst : s.regs.get? Step = some st) :
+    (zisk_execute (constJInst rd c j)).run s = .ok false
+      { s with regs := (((((s.regs.insert Xs (vectorUpdate xs rd c)).insert Zc c).insert Zflag false).insert
+          Step (BitVec.addInt st 1)).insert PC (pc + j)) } := by
+  have nd : rd ≠ 0 := by omega
+  have ld : (rd : Int) < 40 := by omega
+  have hm := copyb_pure.mem
+  have hp := copyb_pure.notPre
+  simp [zisk_execute, constJInst, source_a, source_b, wX, store_c, value_to_store, next_pc,
+    hm, hp, copyb_val, reg_index rd (by omega), Zisk.assert, Sail.ConcurrencyInterfaceV1.PreSail.assert,
+    nd, ld, writeReg_run]
+  rw [readReg_run s Xs xs hx]; try dsimp only
+  rw [readReg_run']; simp only [Std.ExtDHashMap.get?_insert]; simp [hst]; try dsimp only
+  rw [readReg_run']; simp only [Std.ExtDHashMap.get?_insert]; simp [hpc]
+
 end Equiv.Zisk
