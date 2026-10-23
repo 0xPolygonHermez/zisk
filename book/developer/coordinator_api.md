@@ -440,6 +440,7 @@ All RPC methods may return `ApiError`. Common error codes:
 | 1005 | `INVALID_PROOF_CONVERSION` | Unsupported `proof_dest` for given `proof_kind` |
 | 1006 | `CLIENT_RANDOM_SEED_NOT_ALLOWED` | Request provided a random seed and the coordinator does not allow client random seeds |
 | 1007 | `JOB_METADATA_NOT_ALLOWED` | Request carried job metadata and the coordinator does not allow it |
+| 1009 | `INPUT_TOO_LARGE` | `PushJobInput` sent more input than the guest's input region holds (2 GiB − 16 bytes); the job fails |
 | 2001 | `CLUSTER_UNAVAILABLE` | No coordinator available |
 | 3001 | `INTERNAL` | Unexpected server error; include `trace_id` in support requests |
 

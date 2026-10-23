@@ -7664,6 +7664,7 @@ dependencies = [
  "zisk-coordinator",
  "zisk-coordinator-api",
  "zisk-coordinator-client",
+ "zisk-core",
 ]
 
 [[package]]

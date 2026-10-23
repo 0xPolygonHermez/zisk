@@ -30,6 +30,8 @@ pub mod codes {
     pub const CLIENT_RANDOM_SEED_NOT_ALLOWED: u32 = 1006;
     /// The request carried job metadata and the coordinator does not accept it.
     pub const JOB_METADATA_NOT_ALLOWED: u32 = 1007;
+    /// The pushed input is larger than the guest's input region holds.
+    pub const INPUT_TOO_LARGE: u32 = 1009;
     /// No cluster is available to service the request.
     pub const CLUSTER_UNAVAILABLE: u32 = 2001;
     /// An unexpected internal error.
@@ -75,6 +77,13 @@ pub enum ApiError {
     #[error("Job metadata is not allowed by this coordinator")]
     JobMetadataNotAllowed,
 
+    /// The pushed input is larger than the guest's input region holds.
+    #[error("Input too large: the guest's input region holds at most {limit} bytes")]
+    InputTooLarge {
+        /// The most bytes of input a job can take.
+        limit: u64,
+    },
+
     /// No cluster is available to service the request.
     #[error("Cluster unavailable: {reason}")]
     ClusterUnavailable {
@@ -98,6 +107,7 @@ impl ApiError {
             Self::InvalidProofConversion { .. } => codes::INVALID_PROOF_CONVERSION,
             Self::ClientRandomSeedNotAllowed => codes::CLIENT_RANDOM_SEED_NOT_ALLOWED,
             Self::JobMetadataNotAllowed => codes::JOB_METADATA_NOT_ALLOWED,
+            Self::InputTooLarge { .. } => codes::INPUT_TOO_LARGE,
             Self::ClusterUnavailable { .. } => codes::CLUSTER_UNAVAILABLE,
             Self::Internal(_) => codes::INTERNAL,
         }
@@ -113,6 +123,7 @@ impl ApiError {
             Self::InvalidProofConversion { .. } => "INVALID_PROOF_CONVERSION",
             Self::ClientRandomSeedNotAllowed => "CLIENT_RANDOM_SEED_NOT_ALLOWED",
             Self::JobMetadataNotAllowed => "JOB_METADATA_NOT_ALLOWED",
+            Self::InputTooLarge { .. } => "INPUT_TOO_LARGE",
             Self::ClusterUnavailable { .. } => "CLUSTER_UNAVAILABLE",
             Self::Internal(_) => "INTERNAL",
         }
@@ -123,9 +134,9 @@ impl ApiError {
             Self::JobNotFound(_) | Self::ProgramNotFound(_) | Self::ProgramNotSetup(_) => {
                 Code::NotFound
             }
-            Self::InvalidJobState { .. } | Self::InvalidProofConversion { .. } => {
-                Code::InvalidArgument
-            }
+            Self::InvalidJobState { .. }
+            | Self::InvalidProofConversion { .. }
+            | Self::InputTooLarge { .. } => Code::InvalidArgument,
             Self::ClientRandomSeedNotAllowed | Self::JobMetadataNotAllowed => {
                 Code::PermissionDenied
             }
@@ -178,6 +189,7 @@ mod tests {
         assert_eq!(ApiError::InvalidJobState { reason: "x".into() }.code(), 1004);
         assert_eq!(ApiError::ClientRandomSeedNotAllowed.code(), 1006);
         assert_eq!(ApiError::JobMetadataNotAllowed.code(), 1007);
+        assert_eq!(ApiError::InputTooLarge { limit: 16 }.code(), 1009);
         assert_eq!(ApiError::ClusterUnavailable { reason: "test" }.code(), 2001);
         assert_eq!(ApiError::Internal("x".into()).code(), 3001);
     }
@@ -195,6 +207,13 @@ mod tests {
             Status::from(ApiError::ClientRandomSeedNotAllowed).code(),
             Code::PermissionDenied
         );
+    }
+
+    #[test]
+    fn input_too_large_maps_to_invalid_argument_with_its_limit() {
+        let status = Status::from(ApiError::InputTooLarge { limit: 2147483632 });
+        assert_eq!(status.code(), Code::InvalidArgument);
+        assert!(status.message().contains("2147483632"), "{}", status.message());
     }
 
     #[test]
