@@ -23,3 +23,9 @@ import Equiv.RiscvStore
 import Equiv.RiscvStepStore
 import Equiv.StoreSim
 import Equiv.Run
+import Equiv.RiscvCtl
+import Equiv.RiscvStepGen
+import Equiv.RiscvDecodeCtl
+import Equiv.ZiskCtl
+import Equiv.BranchSim
+import Equiv.Prog
