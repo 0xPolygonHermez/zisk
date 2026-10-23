@@ -1,21 +1,20 @@
 ; ============================================================================
 ; blake2.zisk - diagnostic for the ZisK blake2 precompile (one Blake2b round).
 ;
-; The `blake2` op takes, in its `b` operand, the address of a 3-word header:
-;   b -> [ index (a value in [0,10)), &state(16 u64), &input(16 u64) ]
+; The `blake2b` op takes two direct operands, a = &state(16 u64) and
+; b = &input(16 u64), plus the round index (a value in [0,10)) as the static
+; argument of the instruction (extended arg, `j(index, 4)`).
 ; It runs one Blake2b compression round (precompiles_helpers::blake2b_round),
 ; updating the 16-word state in place and writing it back to &state.
 ;
 ; Reference note: `blake2br` is a ZisK-specific single-round function with no
 ; public test vector, so B2_EXPECT is a golden vector produced by calling the
 ; same library function directly - outside the emulator (checks the .zisk
-; encoding, the index+indirection ABI, and dispatch/writeback; the round math is
+; encoding, the a/b + static-index ABI, and dispatch/writeback; the round math is
 ; covered by that library's tests). index = 0, state[i] = i, input[i] = 0x100 + i.
 ;
 ; Returns r10 = 0 on success, or 0x2301 on the first mismatching state word.
 ;
-; The header's 2 pointers are filled at run time (data initializers can't yet be
-; symbol addresses).
 ; ============================================================================
 
 define WORDS 16
@@ -34,9 +33,6 @@ const u64 B2_INPUT[16] =
 	0x0000000000000108, 0x0000000000000109, 0x000000000000010a, 0x000000000000010b,
 	0x000000000000010c, 0x000000000000010d, 0x000000000000010e, 0x000000000000010f
 
-; header (RAM): [ index, &B2_STATE, &B2_INPUT ]; index = 0, pointers filled at run time
-u64 B2_HDR[3] = 0, 0, 0
-
 ; expected state after one round (golden vector, see header)
 const u64 B2_EXPECT[16] =
 	0x1942271f4b153e50, 0x48442c341e1e5a4b, 0x534685a12d9b468a, 0x46402e1a303c5e4d,
@@ -45,14 +41,8 @@ const u64 B2_EXPECT[16] =
 	0x7c4f5f4b201e1c39, 0x60b4447ec69568be, 0x785d51511c2c2027, 0x185a0e54323f6414
 
 blake2:
-	; header: [index=0, &B2_STATE, &B2_INPUT]  (B2_HDR[0] stays 0)
-	copyb(0, B2_HDR) -> r8
-	copyb(0, B2_STATE) -> r7
-	copyb(r8, r7) -> 8[a + 8]
-	copyb(0, B2_INPUT) -> r7
-	copyb(r8, r7) -> 8[a + 16]
-
-	blake2b(0, r8) -> r13             ; b = &B2_HDR ; one round, writes state back
+	; round index 0 travels in the extended arg (j(0, 4)); one round, writes state back
+	blake2b(B2_STATE, B2_INPUT) -> r13, j(0, 4)
 
 	copyb(0, B2_STATE) -> r7          ; result pointer
 	copyb(0, B2_EXPECT) -> r5         ; expected pointer

@@ -54,6 +54,15 @@ impl Coordinator {
                 ack.error_message.as_deref().unwrap_or("unknown error")
             );
         }
+        // How long this worker took, if the setup was sent to it.
+        let setup_seconds = self.take_setup_sent(&ack.worker_id, &ack.hash_id).await;
+        crate::metrics::record_setup_ack(
+            &ack.worker_id,
+            &ack.hash_id,
+            ack.success,
+            ack.error_message.as_deref(),
+            setup_seconds,
+        );
 
         // A successful SetupProgramAck proves the prover is healthy; any
         // lingering pending_recovery entry is stale (WRC will never arrive).
@@ -343,64 +352,65 @@ impl Coordinator {
             return Ok(());
         };
 
-        // Drop late acks for already-resolved jobs (mirrors execute-task path).
-        {
-            let job = job_entry.read().await;
+        // Check the job and change its state under one write lock: a cancel landing between a
+        // separate check and the change would otherwise be followed by a terminal event of ours,
+        // and turned into a failure by a failed ack (Failed is reachable from any state).
+        let outcome = {
+            let mut job = job_entry.write().await;
             if job.state().is_resolved() {
-                info!(
-                    "[Recurser] Ignoring late RunAggregateProofsAck from worker {} for resolved job {}",
-                    worker_id, ack.job_id
-                );
-                drop(job);
-                let _ =
-                    self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
-                return Ok(());
+                None
+            } else if !ack.success {
+                job.change_state(JobState::Failed);
+                Some(Err(ack.error_message.unwrap_or_else(|| "(no detail)".to_string())))
+            } else {
+                job.change_state(JobState::Completed);
+                // The ack carries a bincode-encoded `Proof` (see the worker's
+                // handle_run_aggregate_proofs); decode it so the completed job owns
+                // its proof like every other completion path does.
+                match Proof::from_bytes(&ack.proof) {
+                    Ok(proof) => job.proof = Some(proof),
+                    Err(e) => warn!(
+                        "[Recurser] Failed to deserialize aggregate proof for job {}: {}",
+                        job_id, e
+                    ),
+                }
+                Some(Ok(Self::format_job_metadata(job.metadata.as_ref())))
             }
-        }
+        };
 
         let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
 
-        if !ack.success {
-            let reason = ack.error_message.unwrap_or_else(|| "(no detail)".to_string());
-            {
-                let mut job = job_entry.write().await;
-                job.change_state(JobState::Failed);
-            }
-            self.fire_job_event(
-                &job_id,
-                CoordinatorJobEvent::Failed(format!(
-                    "Recurser prove failed on worker {worker_id}: {reason}"
-                )),
-            )
-            .await;
-            return Ok(());
-        }
-
-        {
-            let mut job = job_entry.write().await;
-            job.change_state(JobState::Completed);
-            // The ack carries a bincode-encoded `Proof` (see the worker's
-            // handle_run_aggregate_proofs); decode it so the completed job owns
-            // its proof like every other completion path does.
-            match bincode::serde::decode_from_slice::<Proof, _>(
-                &ack.proof,
-                bincode::config::standard(),
-            ) {
-                Ok((proof, _)) => job.proof = Some(proof),
-                Err(e) => warn!(
-                    "[Recurser] Failed to deserialize aggregate proof for job {}: {}",
-                    job_id, e
-                ),
-            }
-        }
-        self.fire_job_event(
-            &job_id,
-            CoordinatorJobEvent::Completed(
-                crate::job_events::CoordinatorJobResult::AggregateProofs { proof_bytes: ack.proof },
+        match outcome {
+            // Late ack for an already-resolved job (mirrors execute-task path).
+            None => info!(
+                "[Recurser] Ignoring late RunAggregateProofsAck from worker {} for resolved job {}",
+                worker_id, ack.job_id
             ),
-        )
-        .await;
-        info!("[Recurser] Job {} completed successfully on worker {}", job_id, worker_id);
+            Some(Err(reason)) => {
+                self.fire_job_event(
+                    &job_id,
+                    CoordinatorJobEvent::Failed(format!(
+                        "Recurser prove failed on worker {worker_id}: {reason}"
+                    )),
+                )
+                .await;
+            }
+            Some(Ok(metadata_str)) => {
+                self.fire_job_event(
+                    &job_id,
+                    CoordinatorJobEvent::Completed(
+                        crate::job_events::CoordinatorJobResult::AggregateProofs {
+                            proof_bytes: ack.proof,
+                        },
+                    ),
+                )
+                .await;
+                info!(
+                    "[Recurser] Job {} completed successfully on worker {}{}",
+                    job_id, worker_id, metadata_str
+                );
+            }
+        }
         Ok(())
     }
 
@@ -408,7 +418,12 @@ impl Coordinator {
         &self,
         worker_id: &WorkerId,
     ) -> CoordinatorResult<()> {
-        let was_pending = self.pending_recovery.write().await.remove(worker_id).is_some();
+        let parked_at = self.pending_recovery.write().await.remove(worker_id);
+        let was_pending = parked_at.is_some();
+        if let Some(parked_at) = parked_at {
+            let seconds = (Utc::now() - parked_at).num_milliseconds().max(0) as f64 / 1000.0;
+            crate::metrics::record_worker_recovered(worker_id, seconds);
+        }
         let state = self.workers_pool.worker_state(worker_id).await;
         let parked = state == Some(WorkerState::SettingUp);
 
@@ -474,6 +489,9 @@ impl Coordinator {
         if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
             return (false, e.to_string(), None);
         }
+        if let Err(e) = self.observe_snark_protocol(&req.worker_id, req.snark_protocol).await {
+            return (false, e.to_string(), None);
+        }
 
         let max_connections = self.config.coordinator.max_total_workers as usize;
         if self.workers_pool.num_workers().await >= max_connections {
@@ -516,8 +534,15 @@ impl Coordinator {
 
         match registered {
             Ok(()) => {
+                if let Some(exit) = req.previous_exit {
+                    self.record_worker_exit(&worker_id, exit);
+                }
+                if let Some(setup) = &first_setup {
+                    self.note_setup_sent(&worker_id, &setup.hash_id).await;
+                }
                 // Send any additional known setups (beyond the first) as messages.
                 for setup in setups {
+                    self.note_setup_sent(&worker_id, &setup.hash_id).await;
                     let msg = CoordinatorMessageDto::SetupProgram(setup);
                     if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
                         warn!("[Setup] Failed to send additional setup to {}: {}", worker_id, e);
@@ -562,6 +587,9 @@ impl Coordinator {
 
         let registering = self.registration.lock().await;
         if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
+            return (false, e.to_string(), None, None);
+        }
+        if let Err(e) = self.observe_snark_protocol(&req.worker_id, req.snark_protocol).await {
             return (false, e.to_string(), None, None);
         }
 
@@ -645,8 +673,12 @@ impl Coordinator {
             }
         }
 
+        if let Some(setup) = &first_setup {
+            self.note_setup_sent(&worker_id, &setup.hash_id).await;
+        }
         // Send any additional known setups (beyond the first) as messages.
         for setup in setups {
+            self.note_setup_sent(&worker_id, &setup.hash_id).await;
             let msg = CoordinatorMessageDto::SetupProgram(setup);
             if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
                 warn!(
@@ -829,6 +861,9 @@ impl Coordinator {
         &self,
         message: HeartbeatAckDto,
     ) -> CoordinatorResult<()> {
+        if let Some(telemetry) = message.telemetry {
+            self.store_worker_telemetry(&message.worker_id, telemetry).await;
+        }
         self.workers_pool.update_last_heartbeat(&message.worker_id).await
     }
 
@@ -1138,6 +1173,13 @@ impl Coordinator {
         };
 
         self.fail_job(&message.job_id, &reason).await?;
+
+        // `fail_job` parked every worker of the job to wait for its `WorkerRecoveryComplete`. One
+        // that failed without starting any work (`worker_in_recovery` false) is Ready again on its
+        // side and sends none: release it now rather than at the stuck-recovery sweep.
+        if !message.worker_in_recovery {
+            self.handle_stream_recovery_complete(&message.worker_id).await?;
+        }
 
         Err(CoordinatorError::WorkerError(format!(
             "Worker {} failed task for job {}: {}",

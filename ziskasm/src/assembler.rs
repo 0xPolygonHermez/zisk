@@ -1,6 +1,6 @@
 //! Assembles parsed `.zisk` instructions into a `ZiskRom`.
 //!
-//! This mirrors `transpilers/common/src/elf2rom.rs`, but the program instructions
+//! This mirrors `transpilers/riscv/src/elf2rom.rs`, but the program instructions
 //! come from the `.zisk` parser instead of the RISC-V transpiler:
 //!   1. start an empty ROM and add the BIOS end/lib block (`add_end_and_lib`),
 //!   2. place each assembled instruction at `ROM_ADDR + 4*index`,
@@ -13,6 +13,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
+use zisk_core::rom_layout::{add_end_and_lib, add_entry_exit_jmp, InlineBody};
 use zisk_core::zisk_inst::{ZiskInst, SRC_C, SRC_IMM, SRC_REG, STORE_MEM, STORE_REG};
 use zisk_core::zisk_inst_builder::ZiskInstBuilder;
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
@@ -20,7 +21,6 @@ use zisk_core::{
     GENERAL_RAM_ADDR, RAM_ADDR, RAM_SIZE, REGS_IN_MAIN_TO, REG_FIRST, ROM_ADDR, ROM_ADDR_MAX,
     ROM_ENTRY, ROM_SIZE, SYS_ADDR,
 };
-use zisk_riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp, InlineBody};
 
 use crate::parser::{
     self, ASource, BSource, Control, DataDecl, Instruction, JumpTarget, Kind, Num, Op, Program,
@@ -128,7 +128,7 @@ fn merge_public_defines<'a>(
 /// [`assemble`], there is no launcher / `_start` / BIOS: it is a set of callable
 /// functions placed at a fixed base, plus the exported symbol table (label / data
 /// name → address) used to resolve calls into it (see the zkvmcalls in
-/// `transpilers/common/src/elf2rom.rs`).
+/// `transpilers/riscv/src/elf2rom.rs`).
 pub struct ZiskLibrary {
     /// Assembled instructions keyed by ROM address (`rom_base + 4*i`, file order).
     pub insts: BTreeMap<u64, ZiskInstBuilder>,
@@ -653,6 +653,8 @@ fn encode(
             zib.op("and").unwrap();
             zib.set_pc();
             zib.j(0, INST_SIZE);
+            // Call-stack meta, as the RISC-V transpiler sets for `jalr r0, r1, 0`.
+            zib.set_meta_rs1_rd(1, 0);
         }
         Kind::Jump(target) => {
             // jump(target) : unconditional static jump to an absolute address.
@@ -679,6 +681,8 @@ fn encode(
             zib.op("flag").unwrap();
             zib.store_pc("reg", 1, false);
             zib.j(off, INST_SIZE);
+            // Call-stack meta, as the RISC-V transpiler sets for `jal r1, LABEL`.
+            zib.set_meta_rs1_rd(1, 1);
         }
         Kind::Op(op) => {
             encode_op(&mut zib, pc, op, symbols).map_err(|e| format!("{}: {e}", loc()))?

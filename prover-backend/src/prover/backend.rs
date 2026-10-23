@@ -5,13 +5,15 @@ use crate::{
 };
 use anyhow::Result;
 use colored::Colorize;
+use mpi::traits::{Communicator, Destination, MatchedReceiveVec, Source};
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
-    SnarkProtocol, SnarkWrapper, WitnessInfo,
+    SnarkProof, SnarkProtocol, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{ProofCtx, ProofOptions, RowInfo};
 use proofman_fields::Goldilocks;
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use proofman_verifier::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -21,12 +23,12 @@ use zisk_cluster_common::StreamMessage;
 use zisk_common::io::StreamSource;
 use zisk_common::stats_mark;
 use zisk_common::ZiskExecutorTime;
-use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
+use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, RandomSeed, ZiskExecutorSummary};
 use zisk_common::{
     program_publics, HashMode, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind,
     PublicValues, VadcopKind, PROGRAM_VK_LEN,
 };
-use zisk_executor::{AsmResources, EmulatorAsm, ZiskExecutor};
+use zisk_executor::{AsmJob, AsmResources, EmulatorAsm, ZiskExecutor};
 use zisk_precomp_hints::HintsProcessor;
 use zisk_recurser::prove::{
     prove_recurser_aggregator, register_recurser_setup, ProveRecurserAggregatorOptions,
@@ -43,6 +45,9 @@ pub(crate) struct ProverBackend {
     /// A recurser must be registered (via [`register_recurser`]) before it can
     /// prove — the same register-then-prove lifecycle as a regular program.
     registered_recursers: std::sync::Mutex<HashMap<String, RegisteredRecurser>>,
+    /// The program [`Self::register_program`] last registered, as its ROM path and
+    /// hints mode, so that registering it again is skipped.
+    registered_program: std::sync::Mutex<Option<(PathBuf, bool)>>,
 }
 
 impl ProverBackend {
@@ -60,6 +65,7 @@ impl ProverBackend {
             proving_key_path,
             proving_key_snark_path,
             registered_recursers: std::sync::Mutex::new(HashMap::new()),
+            registered_program: std::sync::Mutex::new(None),
         }
     }
 
@@ -149,14 +155,28 @@ impl ProverBackend {
         Ok(())
     }
 
-    /// Retires the previous job's ASM state.
-    ///
-    /// Goes through the executor rather than straight to the ASM emulator: the executor
-    /// owns the producers still reading that shared memory, so only it can retire them
-    /// before the rewind. `ZiskExecutor::reset_for_new_job` documents the ordering
-    /// callers must respect.
+    /// Retires what the previous run left, for a run on the Rust emulator, which begins
+    /// no assembly job; see `ZiskExecutor::reset_for_new_job`.
     pub(crate) fn reset(&self) -> Result<()> {
         self.executor.reset_for_new_job().map_err(Into::into)
+    }
+
+    /// Builds now what proofman otherwise builds in the first job's reset and keeps for the
+    /// rest of the process: on the GPU, the multiplicity state in the late region and the
+    /// streaming-commit programs and tables. Every proving entry point resets anyway, so
+    /// this only moves the work. Call it before any job; a failure is left to the first
+    /// job, whose reset repeats it.
+    pub(crate) fn warm_up(&self) {
+        timer_start_info!(WARMING_UP_PROOFMAN);
+        if let Err(e) = self.proofman.reset() {
+            tracing::warn!("Proofman warm-up failed, the first job will retry it: {e}");
+        }
+        timer_stop_and_log_info!(WARMING_UP_PROOFMAN);
+    }
+
+    /// Begins a job on the assembly backend; see `ZiskExecutor::begin_asm_job`.
+    pub(crate) fn begin_asm_job(&self, resources: Arc<AsmResources>) -> Result<AsmJob> {
+        self.executor.begin_asm_job(resources).map_err(Into::into)
     }
 
     pub(crate) fn cancel(&self) {
@@ -192,12 +212,23 @@ impl ProverBackend {
         })
     }
 
+    /// Registers a program's ROM with the executor and proofman, unless it is the
+    /// program last registered and nothing has been set up since: building its
+    /// instruction table is not free, and consecutive jobs often run one program.
     pub fn register_program(
         &self,
         zisk_rom: Arc<zisk_core::ZiskRom>,
         rom_bin_path: &std::path::Path,
         with_hints: bool,
     ) -> Result<()> {
+        let key = (rom_bin_path.to_path_buf(), with_hints);
+        let mut registered =
+            self.registered_program.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if registered.as_ref() == Some(&key) {
+            return Ok(());
+        }
+        // Cleared first, so that a registration failing part way is never trusted.
+        *registered = None;
         // Indexed Main: register this program's table before `set_rom` moves the Arc, on the
         // same gate the executor uses to pick the compact row.
         if self.executor.is_packed() {
@@ -226,19 +257,27 @@ impl ProverBackend {
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path.to_path_buf())]);
         self.proofman
             .register_custom_commits(custom_commits_map)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        *registered = Some(key);
+        Ok(())
     }
 
-    pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
-        self.executor.set_stdin(stdin).map_err(Into::into)
+    /// Makes the next [`Self::register_program`] register in full. Called by every
+    /// setup and recurser registration, which may change what proofman holds.
+    pub(crate) fn forget_registered_program(&self) {
+        *self.registered_program.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    }
+
+    pub fn set_stdin_and_random_seed(&self, stdin: ZiskStdin, seed: RandomSeed) -> Result<()> {
+        self.executor.set_stdin_and_random_seed(stdin, seed).map_err(Into::into)
     }
 
     pub fn execution_result(&self) -> Result<(ZiskExecutorSummary, ExecutorStatsHandle)> {
         Ok(self.executor.get_execution_result())
     }
 
-    pub(crate) fn execute(&self, stdin: ZiskStdin) -> Result<ExecuteOutput> {
-        self.executor.set_stdin(stdin)?;
+    pub(crate) fn execute(&self, stdin: ZiskStdin, seed: RandomSeed) -> Result<ExecuteOutput> {
+        self.executor.set_stdin_and_random_seed(stdin, seed)?;
 
         let start = std::time::Instant::now();
 
@@ -258,13 +297,14 @@ impl ProverBackend {
     pub(crate) fn stats(
         &self,
         stdin: ZiskStdin,
+        seed: RandomSeed,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         _mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
-        self.executor.set_stdin(stdin)?;
+        self.executor.set_stdin_and_random_seed(stdin, seed)?;
 
         let rank_info = self.proofman.get_rank_info();
 
@@ -334,13 +374,14 @@ impl ProverBackend {
     pub(crate) fn verify_constraints(
         &self,
         stdin: ZiskStdin,
+        seed: RandomSeed,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
         let start = std::time::Instant::now();
 
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
-        self.executor.set_stdin(stdin)?;
+        self.executor.set_stdin_and_random_seed(stdin, seed)?;
 
         self.proofman
             .verify_proof_constraints_from_lib(&debug_info)
@@ -362,6 +403,7 @@ impl ProverBackend {
     pub(crate) fn prove(
         &self,
         stdin: ZiskStdin,
+        seed: RandomSeed,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
@@ -373,7 +415,7 @@ impl ProverBackend {
 
         let start = std::time::Instant::now();
 
-        self.executor.set_stdin(stdin)?;
+        self.executor.set_stdin_and_random_seed(stdin, seed)?;
 
         let minimal = matches!(proof_kind, ProofKind::VadcopFinalMinimal);
 
@@ -417,65 +459,25 @@ impl ProverBackend {
 
                 // Freshly proven vadcop_final proof — stamp the default
                 // vadcop_final verkey (no override).
-                let snark_proof = self
-                    .snark_wrapper
-                    .as_ref()
-                    .unwrap()
-                    .generate_final_snark_proof(&vadcop_proof, None)?;
+                let snark_proof = self.final_snark_proof(&vadcop_proof, None)?;
 
-                let publics = PublicValues::new_from_u64(&vadcop_proof.public_values);
                 let program_vk = ProgramVK::new_from_publics_with_mode(
                     &vadcop_proof.public_values,
                     self.hash_mode()?,
                 );
-                if snark_proof.protocol_id == SnarkProtocol::Plonk.protocol_id() {
-                    let proving_key_snark =
-                        self.proving_key_snark_path.as_ref().ok_or_else(|| {
-                            anyhow::anyhow!("Proving key snark path is required for Plonk proofs")
-                        })?;
-                    let verkey_path = PathBuf::from(format!(
-                        "{}/{}/{}.verkey.json",
-                        proving_key_snark.display(),
-                        "final",
-                        "final"
-                    ));
-                    let plonk_vkey = PlonkVkey::load(&verkey_path)?;
-                    Ok(ProveOutput::new(
-                        execution_result,
-                        start.elapsed(),
-                        Proof {
-                            body: ProofBody::Plonk {
-                                proof_bytes: snark_proof.proof_bytes,
-                                plonk_vk: Box::new(PlonkVkBlob {
-                                    vadcop_vk: vadcop_vk_u64.clone(),
-                                    plonk_vkey,
-                                }),
-                                publics,
-                                // Canonical flag-free view, matching every other
-                                // `ProofBody::Plonk` producer. Storing the raw 69-word
-                                // vector here left consumers to strip the flag themselves.
-                                publics_full: program_publics(&vadcop_proof.public_values).to_vec(),
-                                rootc: vadcop_vk_u64,
-                            },
-                            program_vk,
-                        },
-                    ))
-                } else {
-                    Err(anyhow::anyhow!(
-                        "Unsupported snark protocol id: {}",
-                        snark_proof.protocol_id
-                    ))
-                }
+                let body =
+                    self.snark_proof_body(snark_proof, &vadcop_proof.public_values, vadcop_vk_u64)?;
+                Ok(ProveOutput::new(
+                    execution_result,
+                    start.elapsed(),
+                    Proof::new(body, program_vk),
+                ))
             }
             (_, Some(p)) => Ok(ProveOutput::new(
                 execution_result,
                 start.elapsed(),
-                Proof {
-                    program_vk: ProgramVK::new_from_publics_with_mode(
-                        &p.public_values,
-                        self.hash_mode()?,
-                    ),
-                    body: ProofBody::Vadcop {
+                Proof::new(
+                    ProofBody::Vadcop {
                         proof: p.proof,
                         zisk_vk: self.get_vadcop_vk(minimal)?,
                         // A freshly proven leaf is a raw vadcop_final proof
@@ -488,7 +490,8 @@ impl ProverBackend {
                         // for non-minimal proofs (captured in `kind` above).
                         publics_full: program_publics(&p.public_values).to_vec(),
                     },
-                },
+                    ProgramVK::new_from_publics_with_mode(&p.public_values, self.hash_mode()?),
+                ),
             )),
             (_, None) => Ok(ProveOutput::new_null(execution_result, start.elapsed())),
         }
@@ -507,6 +510,7 @@ impl ProverBackend {
         proof: &[u64],
         publics_full: &[u64],
         source_kind: VadcopKind,
+        seed: Option<RandomSeed>,
     ) -> Result<ProveOutput> {
         match source_kind {
             VadcopKind::Minimal => {
@@ -542,21 +546,22 @@ impl ProverBackend {
 
         let time = start.elapsed();
 
-        let proof = Proof {
-            program_vk: ProgramVK::new_from_publics_with_mode(
-                &minimal_proof.public_values,
-                self.hash_mode()?,
-            ),
-            body: ProofBody::Vadcop {
+        let program_vk =
+            ProgramVK::new_from_publics_with_mode(&minimal_proof.public_values, self.hash_mode()?);
+        let proof = Proof::new(
+            ProofBody::Vadcop {
                 proof: minimal_proof.proof.clone(),
                 zisk_vk: self.get_vadcop_vk(true)?,
                 kind: VadcopKind::Minimal,
                 hash,
                 publics_full: minimal_proof.public_values,
             },
-        };
+            program_vk,
+        );
 
-        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
+        // No guest runs here; the result keeps the seed of the execution the source proof
+        // attests to.
+        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof).with_random_seed(seed))
     }
 
     /// SNARK-wrap a vadcop_final proof. `source_kind` supplies the flag `RecursiveF`
@@ -566,6 +571,7 @@ impl ProverBackend {
         proof: &[u64],
         publics_full: &[u64],
         source_kind: VadcopKind,
+        seed: Option<RandomSeed>,
     ) -> Result<ProveOutput> {
         if self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(
@@ -600,43 +606,70 @@ impl ProverBackend {
         };
         let verkey_override = matches!(source_kind, VadcopKind::Recurser).then(|| rootc.as_slice());
 
-        let snark_proof = self
-            .snark_wrapper
-            .as_ref()
-            .unwrap()
-            .generate_final_snark_proof(&vadcop_final_proof, verkey_override)?;
+        let snark_proof = self.final_snark_proof(&vadcop_final_proof, verkey_override)?;
 
         let time = start.elapsed();
 
-        let proving_key_snark = self.proving_key_snark_path.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Proving key snark path is required for Plonk proofs")
-        })?;
-        let verkey_path = PathBuf::from(format!(
-            "{}/{}/{}.verkey.json",
-            proving_key_snark.display(),
-            "final",
-            "final"
-        ));
-        let plonk_vkey = PlonkVkey::load(&verkey_path)?;
-
-        let proof = Proof {
-            body: ProofBody::Plonk {
-                proof_bytes: snark_proof.proof_bytes.clone(),
-                plonk_vk: Box::new(PlonkVkBlob { vadcop_vk: rootc.clone(), plonk_vkey }),
-                publics: PublicValues::new_from_u64(&vadcop_final_proof.public_values),
-                // Store the canonical flag-free view.
-                publics_full: program_publics(&vadcop_final_proof.public_values).to_vec(),
-                // The key RecursiveF verified under, so `Proof::verify` reproduces
-                // the circuit's `publicsHash` preimage.
-                rootc,
-            },
-            program_vk: ProgramVK::new_from_publics_with_mode(
+        let body = self.snark_proof_body(snark_proof, &vadcop_final_proof.public_values, rootc)?;
+        let proof = Proof::new(
+            body,
+            ProgramVK::new_from_publics_with_mode(
                 &vadcop_final_proof.public_values,
                 self.hash_mode()?,
             ),
-        };
+        );
 
-        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
+        // No guest runs here; the result keeps the seed of the execution the source proof
+        // attests to.
+        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof).with_random_seed(seed))
+    }
+
+    /// The proof body of a final SNARK proof, by the protocol that proved it: the key sets the
+    /// protocol up, so the caller does not choose it. `rootc` is the key the recursivef verified
+    /// under, which the SNARK's public digest commits to.
+    fn snark_proof_body(
+        &self,
+        snark_proof: SnarkProof,
+        vadcop_public_values: &[u64],
+        rootc: Vec<u64>,
+    ) -> Result<ProofBody> {
+        let proving_key_snark = self.proving_key_snark_path.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Proving key snark path is required for SNARK proofs")
+        })?;
+        let publics = PublicValues::new_from_u64(vadcop_public_values);
+        // The canonical flag-free view, matching every producer of a SNARK body. Storing the
+        // raw 69-word vector left consumers to strip the flag themselves.
+        let publics_full = program_publics(vadcop_public_values).to_vec();
+
+        match snark_proof.protocol_id {
+            id if id == SnarkProtocol::Plonk.protocol_id() => {
+                let verkey_path = proving_key_snark.join("final").join("final.verkey.json");
+                let plonk_vkey = PlonkVkey::load(&verkey_path)?;
+                Ok(ProofBody::Plonk {
+                    proof_bytes: snark_proof.proof_bytes,
+                    plonk_vk: Box::new(PlonkVkBlob { vadcop_vk: rootc.clone(), plonk_vkey }),
+                    publics,
+                    publics_full,
+                    // The key RecursiveF verified under, so `Proof::verify` reproduces the
+                    // circuit's `publicsHash` preimage.
+                    rootc,
+                })
+            }
+            id if id == SnarkProtocol::Pilfflonk.protocol_id() => {
+                let vkey_path = pilfflonk_vkey_path(proving_key_snark)?;
+                let vkey_json = std::fs::read_to_string(&vkey_path).map_err(|e| {
+                    anyhow::anyhow!("Cannot read the pilfflonk vkey {}: {e}", vkey_path.display())
+                })?;
+                Ok(ProofBody::Pilfflonk {
+                    proof_bytes: snark_proof.proof_bytes,
+                    vkey_json,
+                    publics,
+                    publics_full,
+                    rootc,
+                })
+            }
+            id => Err(anyhow::anyhow!("Unsupported snark protocol id: {id}")),
+        }
     }
 
     pub(crate) fn prove_phase(
@@ -702,6 +735,7 @@ impl ProverBackend {
         if self.registered_recursers.lock().unwrap().contains_key(recurser_id) {
             return Ok(());
         }
+        self.forget_registered_program();
         let registered = register_recurser_setup(&self.proofman, output_dir, recurser_id)
             .map_err(|e| anyhow::anyhow!("recurser registration failed: {e:#}"))?;
         self.registered_recursers.lock().unwrap().insert(recurser_id.to_string(), registered);
@@ -719,6 +753,7 @@ impl ProverBackend {
         free_b: &[u64],
         root_c_recurser_agg: Option<[u64; 4]>,
     ) -> Result<VadcopFinalProof> {
+        self.forget_registered_program();
         let registered =
             self.registered_recursers.lock().unwrap().get(recurser_id).cloned().ok_or_else(
                 || {
@@ -740,6 +775,23 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!("recurser proof generation failed: {e:#}"))
     }
 
+    /// The final SNARK of a vadcop_final proof. It goes through `ProofMan`, not the wrapper
+    /// directly: a blake3 key's wrapper takes a recursivef proof, which `ProofMan` proves first.
+    fn final_snark_proof(
+        &self,
+        vadcop_final_proof: &VadcopFinalProof,
+        verkey_override: Option<&[u64]>,
+    ) -> Result<SnarkProof> {
+        let snark_wrapper = self.snark_wrapper.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Snark wrapper is not initialized. Cannot generate snark proof.")
+        })?;
+        Ok(self.proofman.generate_final_snark_proof(
+            snark_wrapper,
+            vadcop_final_proof,
+            verkey_override,
+        )?)
+    }
+
     pub(crate) fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         Ok(get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)?)
     }
@@ -755,5 +807,116 @@ impl ProverBackend {
 
     pub(crate) fn cluster_barrier(&self) {
         self.proofman.set_barrier();
+    }
+
+    /// Whether every rank succeeded, from each one's `ok`: a collective, which
+    /// every rank must call.
+    pub(crate) fn cluster_all_ok(&self, ok: bool) -> bool {
+        self.proofman.get_wcm().get_pctx().mpi_ctx.all_finished_ok(ok)
+    }
+
+    /// Send `data` to MPI rank `dest`, tagged `tag`.
+    pub(crate) fn mpi_send(&self, dest: i32, tag: i32, data: &[u8]) {
+        let pctx = self.proofman.get_wcm().get_pctx();
+        pctx.mpi_ctx.world.process_at_rank(dest).send_with_tag(data, tag);
+    }
+
+    /// A message tagged `tag` from any rank, if one has arrived: its source rank and
+    /// its data.
+    pub(crate) fn mpi_try_receive(&self, tag: i32) -> Option<(i32, Vec<u8>)> {
+        let pctx = self.proofman.get_wcm().get_pctx();
+        let (message, status) =
+            pctx.mpi_ctx.world.any_process().immediate_matched_probe_with_tag(tag)?;
+        let source = status.source_rank();
+        let (data, _) = (message, status).matched_receive_vec::<u8>();
+        Some((source, data))
+    }
+
+    /// End every rank of the MPI job, this one included, with exit `code`.
+    pub(crate) fn abort_cluster(&self, code: i32) -> ! {
+        self.proofman.get_wcm().get_pctx().mpi_ctx.world.abort(code)
+    }
+}
+
+/// The `pilfflonk.vkey.json` of a key set up with `--final-snark pilfflonk`, in
+/// `provingKeySnark/final/provingKey/<name>/pilfflonk/`. There is one `<name>`, the setup's.
+fn pilfflonk_vkey_path(proving_key_snark: &std::path::Path) -> Result<PathBuf> {
+    let dir = proving_key_snark.join("final").join("provingKey");
+    let mut found: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .map_err(|e| anyhow::anyhow!("Cannot read {}: {e}", dir.display()))?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path().join("pilfflonk").join("pilfflonk.vkey.json"))
+        .filter(|path| path.is_file())
+        .collect();
+    match found.len() {
+        1 => Ok(found.remove(0)),
+        n => Err(anyhow::anyhow!(
+            "Expected one pilfflonk.vkey.json under {}/<name>/pilfflonk/, found {n}",
+            dir.display()
+        )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pilfflonk_vkey_path;
+    use std::path::{Path, PathBuf};
+
+    /// A `provingKeySnark/` in a fresh directory, removed on drop.
+    struct SnarkKeyDir(PathBuf);
+
+    impl SnarkKeyDir {
+        fn new(tag: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "pilfflonk_vkey_{tag}_{}_{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+
+        fn add_vkey(&self, name: &str) {
+            let dir = self.0.join("final").join("provingKey").join(name).join("pilfflonk");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("pilfflonk.vkey.json"), "{}").unwrap();
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for SnarkKeyDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn the_pilfflonk_vkey_is_the_one_under_the_setups_name() {
+        let key = SnarkKeyDir::new("one");
+        key.add_vkey("zisk");
+        let path = pilfflonk_vkey_path(key.path()).unwrap();
+        assert!(path.ends_with("final/provingKey/zisk/pilfflonk/pilfflonk.vkey.json"), "{path:?}");
+    }
+
+    #[test]
+    fn a_plonk_key_has_no_pilfflonk_vkey() {
+        let key = SnarkKeyDir::new("none");
+        std::fs::create_dir_all(key.path().join("final")).unwrap();
+        std::fs::write(key.path().join("final").join("final.zkey"), "").unwrap();
+        assert!(pilfflonk_vkey_path(key.path()).is_err());
+    }
+
+    /// Two names would mean two setups in one key, and picking one would verify against the wrong vkey.
+    #[test]
+    fn two_pilfflonk_vkeys_are_refused() {
+        let key = SnarkKeyDir::new("two");
+        key.add_vkey("zisk");
+        key.add_vkey("other");
+        let err = pilfflonk_vkey_path(key.path()).unwrap_err().to_string();
+        assert!(err.contains("found 2"), "{err}");
     }
 }

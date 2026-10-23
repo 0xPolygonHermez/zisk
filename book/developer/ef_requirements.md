@@ -5,8 +5,8 @@ the `eth-act` working group at
 <https://github.com/eth-act/zkevm-standards/tree/main/standards>. These standards
 define a common contract between a zkVM and the guest programs it proves — the
 RISC-V target, the ELF it loads, the memory layout, the I/O and termination
-interfaces, the C ABI for cryptographic accelerators (the EVM precompiles), and
-the C ABI for 256-bit EVM-word arithmetic —
+interfaces, the C ABI for cryptographic accelerators (the EVM precompiles), the
+C ABI for 256-bit EVM-word arithmetic, and host randomness —
 so that a single guest can be built once and proven on any conforming zkVM.
 
 This document records, standard by standard, how ZisK currently measures up.
@@ -30,7 +30,8 @@ The guest reaches them through zkvmcalls.
 
 A zkvmcall takes one of two forms.
 
-**Thunk.** Every function in `zkvm_accelerators.h` and `zkvm_io.h`, the division
+**Thunk.** Every function in `zkvm_accelerators.h`, `zkvm_io.h` and
+`zkvm_random.h`, the division
 family and `exp` of `zkvm_u256.h` and `zkvm_u256_le.h`, and every function in
 ZisK's `zkvm_zisklib.h`, is a two-instruction thunk — for the C ABI in
 `ziskasm/lang/c/src/zkvm_calls.s`, for Rust guests as naked functions in the
@@ -189,6 +190,7 @@ conform but not yet audited against the spec.
 | 8 | [Standard termination semantics](#8-standard-termination-semantics) | **To verify** | `main` return maps to halt + host report; exact exit-code propagation to confirm. |
 | 9 | [Static library and linker script](#9-static-library-and-linker-script) | **Conformant** | `package.sh` stages `libzisklib_c.a` (`_start` incl. C++ ctors/dtors, I/O, all accelerators) + headers + the W^X linker script exporting `_heap_start`/`_heap_end`; verified by linking C and C++ guests against the installed artifacts alone. |
 | 10 | [Instruction-address-misaligned semantics](#10-instruction-address-misaligned-exception-semantics) | **Conformant** | At the default `IALIGN=32` (`compressed` off): misaligned entry points and executable-segment starts rejected at load; a misaligned computed jump hits its own `emu_end` slot in the per-byte jump map (rounding impossible by construction) and exits with `end=0`; the Rust emulator panics. |
+| 11 | [Host randomness](#11-host-randomness) | **Conformant** | `zkvm_random_u64` returns the SHAKE256 stream of a 256-bit seed drawn per execution from the OS CSPRNG (or provided with `--random-seed` to replay a run); the guest cannot set or observe it. Not available with hints. Standard still a draft (eth-act PR #42). |
 
 ---
 
@@ -331,7 +333,7 @@ segments only `PF_X` or `PF_X|PF_R`), and validate the entry point (aligned,
 inside a loaded executable segment). Invalid ELFs must be rejected with
 diagnostics before any state reaches the prover.
 
-**ZisK.** `transpilers/common/src/elf2rom.rs` (with the `elf_extraction` module)
+**ZisK.** `transpilers/riscv/src/elf2rom.rs` (with the `elf_extraction` module)
 builds the ROM exclusively from `PT_LOAD` segments, zero-fills BSS, checks every
 segment/address lies within the ZisK addressable space (and errors otherwise,
 e.g. the `PT_LOAD 0x0-0x0` rejection), and validates the entry point
@@ -356,7 +358,7 @@ fails; idempotent) and `void write_output(const uint8_t* output, size_t size)`
 
 **ZisK.** Both functions are implemented in the ZisK library (`zisklib_read_input`,
 `zisklib_write_output`) and reached through zkvmcalls (0x863, 0x864). Input is exposed at the memory-mapped
-free-input region (`INPUT_ADDR = 0x4000_0000`); output is written to the public
+free-input region (`INPUT_ADDR = 0x1000_0000`); output is written to the public
 output region (`OUTPUT_ADDR = 0xa041_0000`). Reads are non-failing and side-effect
 free; successive `write_output` calls concatenate. C guests get both from
 [`zkvm_io.h`](../../ziskasm/lang/c/include/zkvm_io.h) and the zkvmcall thunks in
@@ -379,8 +381,8 @@ linker script (`ziskbuild/zisk_linker_script.ld`):
 
 | Region | Address |
 |--------|---------|
-| Free input | `0x4000_0000` |
-| ROM (program) | `0x8000_0000` (len `0x0800_0000`) |
+| Free input | `0x1000_0000` (len `0x8000_0000`) |
+| ROM (program) | `0x9000_0000` (len `0x0800_0000`) |
 | RAM base / stack | `0xa000_0000` (stack 4 MB) |
 | System reserved | `0xa040_0000` |
 | Public output | `0xa041_0000` |
@@ -400,26 +402,29 @@ of at least 4 kB immediately below the stack bottom, contiguous with no gap.
 **ZisK.** Both guard regions are satisfied by the address map, and the invariant is
 now enforced rather than incidental.
 
-**Null-pointer trap.** Nothing below `ROM_ADDR = 0x8000_0000` is mapped, so the whole
-of `0x0000`–`0x0FFF` is unmapped and any access fails the `Mem` section bounds check
-and aborts.
+**Null-pointer trap.** The lowest data area is the input window at
+`INPUT_ADDR = 0x1000_0000`. Below it there is only the BIOS ROM (`0x1000`–`0x0fff_ffff`),
+which holds instructions and is never a data area: no `Mem` or `RomData` section covers
+any address below `INPUT_ADDR`. So a load or store anywhere in `0x0000`–`0x0FFF` fails the
+`Mem` section bounds check and aborts, and since no instruction lives there either, a jump
+into it aborts too.
 
 **Stack guard.** The stack bottom is `STACK_ADDR = RAM_ADDR = 0xa000_0000` — the
 lowest mapped RAM address — with the stack growing down from `0xa040_0000`. ROM ends
-at `0x87ff_ffff`, so the span `0x8800_0000`–`0x9fff_ffff` (384 MB) is unmapped. That
+at `0x97ff_ffff`, so the span `0x9800_0000`–`0x9fff_ffff` (128 MB) is unmapped. That
 region therefore begins at the byte immediately below the stack bottom, which is
 exactly the standard's "contiguous and adjacent to the bottom of the stack with no
 gap between them", and it is far larger than the required 4 kB.
 
 `core/src/mem.rs` names the region — `STACK_GUARD_ADDR` = `ROM_ADDR + ROM_SIZE`,
-`STACK_GUARD_SIZE` = `STACK_ADDR - STACK_GUARD_ADDR` (384 MB) — with
+`STACK_GUARD_SIZE` = `STACK_ADDR - STACK_GUARD_ADDR` (128 MB) — with
 `STACK_GUARD_MIN_SIZE` recording the 4 kB the standard demands. The assembly
 emulator's `GUARD_ADDR`/`GUARD_SIZE` are the same span, derived the same way, so the
 two cannot drift.
 
 The invariant is enforced at compile time: the stack must start at `RAM_ADDR`, the
 guard must be adjacent to it, at least `STACK_GUARD_MIN_SIZE`, and the input window
-must stay below it. Each failure mode was checked by making the change and observing
+must stay below the program ROM, which ends where the guard starts. Each failure mode was checked by making the change and observing
 the build stop — growing `ROM_SIZE` until under 4 kB remains, growing it past
 `RAM_ADDR` (which underflows the size computation and fails const evaluation),
 widening `MAX_INPUT_SIZE`, and moving `STACK_ADDR` off the RAM base.
@@ -438,7 +443,7 @@ and if anything landed in the span, a guest access into the guard would silently
 *succeed*.
 
 `server_setup()` (`emulator-asm/src/server.c`) therefore reserves the whole span
-`GUARD_ADDR`..`RAM_ADDR` (0x8800_0000–0x9fff_ffff, 384 MB) as
+`GUARD_ADDR`..`RAM_ADDR` (0x9800_0000–0x9fff_ffff, 128 MB) as
 `PROT_NONE | MAP_FIXED | MAP_NORESERVE`: the range is claimed so nothing else can be
 placed in it, any access faults, and `MAP_NORESERVE` keeps it off the commit charge
 (a single VMA, no backing pages). Measured before and after in a standalone harness:
@@ -678,6 +683,7 @@ builds the whole guest-side surface into one static library, **`zisklib_c`**:
 |---|---|
 | `_start` (gp/sp init, **C++ constructors**, `main`, **destructors**, termination) | `src/_start.s` |
 | I/O functions | `src/zkvm_calls.s` + [`include/zkvm_io.h`](../../ziskasm/lang/c/include/zkvm_io.h) |
+| Host randomness (`zkvm_random_u64`) | `src/zkvm_calls.s` + [`include/zkvm_random.h`](../../ziskasm/lang/c/include/zkvm_random.h) |
 | Accelerator functions | `src/zkvm_calls.s` (19 `zkvm_*` + 27 `zkvm_u256_*`; `zkvm_keccak_f1600` is inline in the header), plus ZisK's 24 `zkvm_zisklib_*` |
 
 Every entry is a zkvmcall thunk that the transpiler turns into a jump to the
@@ -714,7 +720,7 @@ not mention either name: both appear in `nm` output with the correct addresses.
 cross toolchain file (`zisk-guest-toolchain.cmake`) and stages it:
 
 ```
-dist/include/{zisklib.h,zkvm_accelerators.h,zkvm_io.h,zkvm_u256.h}
+dist/include/{zisklib.h,zkvm_accelerators.h,zkvm_io.h,zkvm_random.h,zkvm_u256.h}
 dist/lib/libzisklib_c.a
 dist/share/zisk/zisk_linker_script.ld
 ```
@@ -790,10 +796,82 @@ emulator. No rounding, no continuation, no successful termination.
 
 ---
 
+## 11. Host randomness
+
+**Standard.** Draft, [eth-act/zkevm-standards PR #42](https://github.com/eth-act/zkevm-standards/pull/42)
+(`standards/host-randomness`). The vendor static library must export
+`uint64_t zkvm_random_u64(void)` (`zkvm_random.h`). Each call returns 64 uniformly
+distributed bits, independent of every other call, and cannot fail. The host draws
+them from a cryptographically secure pseudorandom number generator, independently
+for each execution, so the author of the guest input cannot predict them. They are
+free witness values with no attestation: for a fixed input, the guest's public output
+and exit code must be the same for every sequence the function can return (that part
+is the guest's job). The host may force the values to replay a run; the guest has no
+seeding function and cannot tell whether they were forced. The motivation is hash-map
+seeding: without it, one set of colliding keys found offline would slow down every
+prover running the same guest.
+
+**ZisK.** Every execution has a **256-bit seed**, and `zkvm_random_u64` returns the
+**SHAKE256 output stream of the seed's 32 bytes**, read as consecutive little-endian
+64-bit words.
+
+- **The seed.** It is decided once per task, before any emulator runs, because every
+  emulation of the task (emulator threads, the ASM services, MPI ranks, distributed
+  workers) must see the same values. It is drawn from the OS CSPRNG unless the host
+  provides one with `--random-seed` / `ZISK_RANDOM_SEED` (every command that runs a
+  guest) to replay a run; every run reports the seed it used, and a remote coordinator
+  accepts a client random seed only if configured to allow it (`common/src/seed.rs`,
+  `RandomSeed`).
+- **Reaching the emulators.** The executor hands the seed to the active emulator: the
+  Rust emulator in `EmuOptions.random_seed`, the ASM services through the control-input
+  shared memory (words 4..7 hold the seed, word 8 is set once it is written), read when
+  each execution starts. Standalone, `ziskemu` takes or draws the seed itself (`-v`
+  prints it).
+- **The guest side.** `zkvm_random_u64` is a zkvmcall thunk (`0x8B3`) to
+  `ziskasm_zkvm_random_u64` (`ziskasm/zisklib/zkvm/random.zisk`). On the first call it
+  reads the seed with the `FCALL_RANDOM_SEED` fcall (27) and absorbs it as SHAKE256 does;
+  then each call returns the next word, and every 17 words one keccak-f precompile
+  squeezes the next block. The common case costs 5 steps. Rust guests get the same
+  routine through `ziskos` (`zkvm_random_u64`) or `zisklib::random_u64()`; it is also
+  exported by `libziskos.a` and `zisklib_c`.
+- **No seed, no values.** An emulator that was given no seed fails the fcall (and so
+  the execution) rather than fall back to a fixed default.
+
+The guest cannot reach the seed: there is no seeding function, and nothing in its
+inputs or memory reveals whether the seed was forced.
+
+**Not with hints.** A guest that uses `zkvm_random_u64` cannot be proven with
+precompile hints. The hints come from a separate native run of the guest, which would
+draw other values than the prover's, so the precompile calls it records could differ
+from the ones the prover executes. This is enforced in code: the hints setup of the
+ASM emulator rejects such a guest (`HINTS_WITH_RANDOM_ERROR`), and in a hints build the
+native `zkvm_random_u64` panics.
+
+**Validation.** `emulator/tests/zkvm_random.rs` runs a committed guest
+(`elf-regressions/zkvm_random/`, from `ziskasm/lang/c/example/zkvm_random_guest.c`)
+that draws 500 values and checks in the guest that they are distinct and that every
+bit varies. The test compares the output with SHAKE256 of the seed computed by Python's
+`hashlib`, covers the minimal-trace path and the hints rejection, and checks that a
+missing seed fails. The same guest was run through the SDK with provided seeds on both
+the Rust and the ASM emulator, and through the ASM server/client with the seed passed
+in the control input.
+
+**Assessment: Conformant.** The interface, the per-execution unpredictable seed and
+replay without guest visibility are all in place. Two caveats:
+
+- The standard's goal of following a recognized random bit generation specification
+  cites NIST SP 800-90A. SHAKE256 keyed with a 256-bit seed is a standard XOF at
+  256-bit security, but it is not one of the 800-90A DRBG constructions.
+- A guest that uses it cannot use hints (see above).
+
+---
+
 ## Roadmap
 
 - Confirm the **Partial**/**To verify** items above (the explicit stack-guard region; whether `ziskemu`'s offline
   unaligned-access count satisfies the EF "during proving" wording; exit-code
   propagation; `_heap_*` symbols and the packaged `.a`).
+- Track the **host randomness** draft (eth-act PR #42) until it is merged, and revisit
+  the generator if the standard ends up requiring an SP 800-90A DRBG.
 - Replace ziskethone with **evm-asm** as the conformance vehicle once it is ready,
   re-running the same real-block validation against the C ABI.

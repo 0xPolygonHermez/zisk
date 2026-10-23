@@ -19,6 +19,9 @@ zisk_common::zisk_precompile! {
 }
 
 #[cfg(test)]
+mod sha256f_mem_inputs_tests;
+
+#[cfg(test)]
 mod sha256f_tests {
     use zisk_common::io::ZiskStdin;
     use zisk_test_artifacts::ELF_SHA256;

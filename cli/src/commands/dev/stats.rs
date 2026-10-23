@@ -4,13 +4,17 @@ use std::{collections::HashMap, path::PathBuf};
 use tracing::warn;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::{ExecutorStatsHandle, Stats};
+use zisk_common::{ExecutorStatsHandle, RandomSeed, RandomSeedArgs, Stats};
 use zisk_pil::*;
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProverClientBuilder};
 
 use crate::common::detect_current_project_elf;
-use crate::ux::{print_banner, print_banner_command, print_banner_field};
+use crate::ux::{print_banner, print_banner_command, print_banner_field, print_random_seed};
+
+/// What a stats run reports: world rank, number of processes, the stats (`None` on inactive
+/// ranks) and the host randomness seed.
+type StatsRun = (i32, i32, Option<ExecutorStatsHandle>, RandomSeed);
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -32,6 +36,9 @@ pub(crate) struct StatsCmd {
     /// Precompiles hints file path for the guest
     #[arg(long, conflicts_with = "inputs")]
     hints: Option<String>,
+
+    #[command(flatten)]
+    random_seed: RandomSeedArgs,
 
     /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
@@ -146,7 +153,7 @@ impl StatsCmd {
             !self.asm
         };
 
-        let (world_rank, n_processes, stats) =
+        let (world_rank, n_processes, stats, seed) =
             if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin, hints_stream)? };
 
         if world_rank % 2 == 1 {
@@ -158,8 +165,8 @@ impl StatsCmd {
             format!("--- STATS SUMMARY RANK {}/{}", world_rank, n_processes),
             "-".repeat(55)
         );
-
         if let Some(stats) = &stats {
+            print_random_seed(Some(seed));
             Self::print_stats(&stats.witness_stats(), stats.collect_phase_wall_ms());
             stats.print_stats();
         }
@@ -167,10 +174,7 @@ impl StatsCmd {
         Ok(())
     }
 
-    pub(crate) fn run_emu(
-        &mut self,
-        stdin: ZiskStdin,
-    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
+    pub(crate) fn run_emu(&mut self, stdin: ZiskStdin) -> Result<StatsRun> {
         let mut prover_options = BackendProverOpts::default();
 
         if !self.no_packed {
@@ -206,6 +210,7 @@ impl StatsCmd {
         prover.stats(
             &guest_program,
             stdin,
+            self.random_seed.provided(),
             self.debug.clone(),
             self.minimal_memory,
             self.mpi_node.map(|n| n as u32),
@@ -216,7 +221,7 @@ impl StatsCmd {
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
-    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
+    ) -> Result<StatsRun> {
         let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
 
         if !self.no_packed {
@@ -269,11 +274,18 @@ impl StatsCmd {
             prover.setup(&guest_program).run()?;
         }
 
+        let job = prover.begin_job(&guest_program)?;
         if let Some(hints_stream) = hints_stream {
-            prover.register_hints_stream(hints_stream)?;
+            job.register_hints_stream(hints_stream)?;
         }
         let mpi_node = self.mpi_node.map(|n| n as u32);
-        prover.stats(&guest_program, stdin, self.debug.clone(), self.minimal_memory, mpi_node)
+        job.stats(
+            stdin,
+            self.random_seed.provided(),
+            self.debug.clone(),
+            self.minimal_memory,
+            mpi_node,
+        )
     }
 
     /// Prints stats individually and grouped, with aligned columns.

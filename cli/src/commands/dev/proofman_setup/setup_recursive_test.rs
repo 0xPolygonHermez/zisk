@@ -33,6 +33,10 @@ pub(crate) struct ZiskProofmanSetupRecursiveTest {
     #[arg(long)]
     blake3_lanes: Option<usize>,
 
+    /// starkstructs.json whose "recursion" entry picks the tree's low-degree test (default FRI)
+    #[arg(short = 's', long)]
+    starkstructs: Option<String>,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -60,6 +64,7 @@ impl ZiskProofmanSetupRecursiveTest {
             circom_name: self.circom_name.clone(),
             setup_type: self.r#type.clone(),
             blake3_lanes: self.blake3_lanes,
+            starkstructs: self.starkstructs.clone(),
             blowup: None,
             min_n_bits: None,
         };

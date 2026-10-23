@@ -23,7 +23,7 @@ require "arith/pil/arith.pil"
 require "big_int/pil/big_int_add.pil"
 require "arith_eq/pil/arith_eq.pil"
 require "arith_eq_384/pil/arith_eq_384.pil"
-require "babyjubjub/pil/babyjubjub.pil"
+require "twisted_edwards/pil/twisted_edwards.pil"
 require "keccakf/pil/keccakf.pil"
 require "sha256f/pil/sha256f.pil"
 require "dma/pil/dma.pil"
@@ -34,6 +34,8 @@ require "dma/pil/dma_byte_cmp_table.pil"
 require "dma/pil/dma_64_aligned.pil"
 require "dma/pil/dma_unaligned.pil"
 require "poseidon/pil/poseidon.pil"
+require "poseidon/pil/poseidon2_non_native.pil"
+require "poseidon/pil/poseidon2_koalabear.pil"
 require "blake2/pil/blake2br.pil"
 require "blake2/pil/blake2s.pil"
 require "blake3/pil/blake3f.pil"
@@ -91,8 +93,8 @@ airgroup Zisk {
 
     // Memory
     Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1, lanes_x_row: 4);
-    Mem(N: 2**22, base_address: 0x4000_0000, size_mb: 1024, large_mem: 1, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
-    RomData(N: 2**22, base_address: 0x8000_0000, size_mb: 128, enable_flag: enable_rom_data, lanes_x_row: 2);
+    Mem(N: 2**22, base_address: 0x1000_0000, size_mb: 2048, large_mem: 1, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
+    RomData(N: 2**22, base_address: 0x9000_0000, size_mb: 128, enable_flag: enable_rom_data, lanes_x_row: 2);
 
     MemAlign(N: 2**21);
     MemAlign(N: 2**23) alias MemAlignLarge;
@@ -149,18 +151,22 @@ airgroup Zisk {
     ArithEq384(N: 2**20);
     ArithEq384(N: 2**21) alias ArithEq384Large;
 
-    BabyJubJub(N: 2**18);
+    TwistedEdwards(N: 2**18);
     virtual ArithEqLtTable(ARITH_EQ_LT_TABLE_SIZE);
 
     Keccakf(N: 2**21, lanes_per_row: 5);
     virtual KeccakfChiTable(KECCAKF_CHI_TABLE_SIZE);
     virtual KeccakfXor5Table(KECCAKF_XOR5_TABLE_SIZE);
 
-    Sha256f(N: 2**18);
+    Sha256f(N: 2**19);
 
     Poseidon(N: 2**17);
+    Poseidon2NonNative(N: 2**20, OP: OP_POSEIDON2_KOALABEAR, P: KB_P, n: 16, SBOX_DEG: 3, RF: 8, RP: 20,
+                       M4: KB_M4, INT_SCALE: KB_INT_SCALE, D: KB_D_16, RC: KB_RC_16,
+                       IO_SCALE: KB_IO_SCALE)
+        alias Poseidon2KoalaBear;
 
-    Blake2br(N: 2**18);
+    Blake2br(N: 2**20);
     Blake3f(N: 2**20, LANES: 2);
     Blake2s(N: 2**20);
     virtual BlakeTable(BLAKE_TABLE_SIZE);

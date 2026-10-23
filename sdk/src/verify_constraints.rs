@@ -2,6 +2,7 @@ use std::ops::Deref;
 use std::time::Duration;
 
 use crate::Result;
+use zisk_common::RandomSeed;
 use zisk_prover_backend::{GuestProgram, VerifyConstraintsOutput};
 
 use crate::hints::HintsSource;
@@ -46,6 +47,7 @@ pub(crate) trait RunVerifyConstraints {
         program: &GuestProgram,
         stdin: ZiskStdin,
         hints: Option<HintsSource>,
+        seed: Option<RandomSeed>,
         debug_info: Option<Option<String>>,
         executor: Option<ExecutorKind>,
         timeout: Option<Duration>,
@@ -62,6 +64,7 @@ pub struct VerifyConstraintsRequest<'a, C> {
     program: &'a GuestProgram,
     stdin: ZiskStdin,
     hints: Option<HintsSource>,
+    random_seed: Option<RandomSeed>,
     /// `None` = no debug info; `Some(None)` = enable with default path;
     /// `Some(Some(path))` = enable with explicit output path.
     debug_info: Option<Option<String>>,
@@ -78,6 +81,7 @@ impl<'a, C> VerifyConstraintsRequest<'a, C> {
             program,
             stdin,
             hints: None,
+            random_seed: None,
             debug_info: None,
             executor: None,
             timeout: None,
@@ -100,6 +104,14 @@ impl<'a, C> VerifyConstraintsRequest<'a, C> {
     #[must_use]
     pub fn hints(mut self, hints: impl Into<HintsSource>) -> Self {
         self.hints = Some(hints.into());
+        self
+    }
+
+    /// Use this host randomness seed instead of drawing a fresh one. Every result reports the seed
+    /// it ran with.
+    #[must_use]
+    pub fn random_seed(mut self, seed: impl Into<Option<RandomSeed>>) -> Self {
+        self.random_seed = seed.into();
         self
     }
 
@@ -129,6 +141,7 @@ impl<'a, C: RunVerifyConstraints> VerifyConstraintsRequest<'a, C> {
             self.program,
             self.stdin,
             self.hints,
+            self.random_seed,
             self.debug_info,
             self.executor,
             self.timeout,

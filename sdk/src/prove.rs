@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::Result;
-use zisk_common::ProofKind;
+use zisk_common::{ProofKind, RandomSeed};
 use zisk_prover_backend::{GuestProgram, ProveOutput};
 
 use crate::hints::HintsSource;
@@ -72,10 +72,12 @@ pub struct ProveRequest<'a, C> {
     program: &'a GuestProgram,
     stdin: InputSource,
     hints: Option<HintsSource>,
+    random_seed: Option<RandomSeed>,
     executor: ExecutorKind,
     timeout: Option<Duration>,
     proof_kind: ProofKind,
     subscribers: Vec<Subscriber>,
+    metadata: BTreeMap<String, String>,
 }
 
 #[allow(private_bounds)]
@@ -91,10 +93,12 @@ impl<'a, C: Client> ProveRequest<'a, C> {
             program,
             stdin: stdin.into(),
             hints: None,
+            random_seed: None,
             executor,
             timeout: None,
             proof_kind: ProofKind::default(),
             subscribers: Vec::new(),
+            metadata: BTreeMap::new(),
         }
     }
 
@@ -106,6 +110,15 @@ impl<'a, C: Client> ProveRequest<'a, C> {
     #[must_use]
     pub fn hints(mut self, hints: impl Into<HintsSource>) -> Self {
         self.hints = Some(hints.into());
+        self
+    }
+
+    /// Use this host randomness seed instead of drawing a fresh one. Every result reports the seed
+    /// it ran with. A remote coordinator rejects it unless it is configured to allow client random
+    /// seeds.
+    #[must_use]
+    pub fn random_seed(mut self, seed: impl Into<Option<RandomSeed>>) -> Self {
+        self.random_seed = seed.into();
         self
     }
 
@@ -146,11 +159,23 @@ impl<'a, C: Client> ProveRequest<'a, C> {
             self.program,
             self.stdin,
             self.hints,
+            self.random_seed,
             self.executor,
             self.proof_kind,
             self.timeout,
             subs,
+            self.metadata,
         )
+    }
+}
+
+impl ProveRequest<'_, RemoteClient> {
+    /// Attach a job-level metadata key/value pair for the coordinator to keep with the job.
+    /// Call repeatedly to attach multiple pairs.
+    #[must_use]
+    pub fn metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(key.into(), value.into());
+        self
     }
 }
 
@@ -169,6 +194,7 @@ impl<'a, C: ClientSync> ProveRequest<'a, C> {
             self.program,
             self.stdin,
             self.hints,
+            self.random_seed,
             self.executor,
             self.proof_kind,
             subs,
@@ -176,99 +202,10 @@ impl<'a, C: ClientSync> ProveRequest<'a, C> {
     }
 }
 
-/// Extended prove request builder — identical to [`ProveRequest`] but adds
-/// opt-in, job-level [`metadata`](Self::metadata).
-///
-/// Remote backend only; obtain via
-/// [`RemoteClientExt::prove`](crate::RemoteClientExt::prove).
-pub struct ProveRequestExt<'a> {
-    client: &'a RemoteClient,
-    program: &'a GuestProgram,
-    stdin: InputSource,
-    hints: Option<HintsSource>,
-    executor: ExecutorKind,
-    timeout: Option<Duration>,
-    proof_kind: ProofKind,
-    subscribers: Vec<Subscriber>,
-    metadata: BTreeMap<String, String>,
-}
-
-impl<'a> ProveRequestExt<'a> {
-    pub(crate) fn new(
-        client: &'a RemoteClient,
-        program: &'a GuestProgram,
-        stdin: impl Into<InputSource>,
-    ) -> Self {
-        Self {
-            client,
-            program,
-            stdin: stdin.into(),
-            hints: None,
-            executor: ExecutorKind::default(),
-            timeout: None,
-            proof_kind: ProofKind::default(),
-            subscribers: Vec::new(),
-            metadata: BTreeMap::new(),
-        }
-    }
-
-    /// Attach a job-level metadata key/value pair forwarded to the coordinator.
-    /// Call repeatedly to attach multiple pairs; an empty map means no metadata.
-    #[must_use]
-    pub fn metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.metadata.insert(key.into(), value.into());
-        self
-    }
-
-    /// Attach a hints stream to this prove request.
-    #[must_use]
-    pub fn hints(mut self, hints: impl Into<HintsSource>) -> Self {
-        self.hints = Some(hints.into());
-        self
-    }
-
-    /// Override the executor for this prove call.
-    #[must_use]
-    pub fn executor(mut self, executor: ExecutorKind) -> Self {
-        self.executor = executor;
-        self
-    }
-
-    /// Set a timeout for proof generation.
-    #[must_use]
-    pub fn timeout(mut self, duration: Duration) -> Self {
-        self.timeout = Some(duration);
-        self
-    }
-
-    /// Set the proof wrapping mode.
-    #[must_use]
-    pub fn wrap(mut self, kind: ProofKind) -> Self {
-        self.proof_kind = kind;
-        self
-    }
-
-    /// Register a pre-submit event callback.
-    ///
-    /// Use [`JobEvent::All`] to subscribe to all events.
-    #[must_use]
-    pub fn on(mut self, event: JobEvent, cb: impl Fn(JobEvent) + Send + Sync + 'static) -> Self {
-        self.subscribers.push((event, Arc::new(cb)));
-        self
-    }
-
-    /// Submit proof generation, returning a [`JobHandle<ProveResult>`] immediately.
-    pub fn run(self) -> Result<JobHandle<ProveResult>> {
-        let subs: SubscriberList = subscriber_list_from(self.subscribers);
-        self.client.do_prove_ext(
-            self.program,
-            self.stdin,
-            self.hints,
-            self.executor,
-            self.proof_kind,
-            self.timeout,
-            subs,
-            self.metadata,
-        )
-    }
-}
+/// Prove request builder of the deprecated extended remote client.
+#[deprecated(
+    since = "1.4.0-alpha",
+    note = "use `ProveRequest`, whose `metadata` is available on the remote client; \
+            removed in the first non-alpha release"
+)]
+pub type ProveRequestExt<'a> = ProveRequest<'a, RemoteClient>;

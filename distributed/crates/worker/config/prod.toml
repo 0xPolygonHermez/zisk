@@ -47,6 +47,17 @@ reconnect_interval_seconds = 5
 # and attempts to reconnect.
 heartbeat_timeout_seconds = 30
 
+# ── Telemetry ─────────────────────────────────────────────────────────────────
+
+[telemetry]
+# Report this host's ZisK processes, shared memory and cgroup usage to the
+# coordinator with the heartbeat (Linux; elsewhere only the start-up times).
+# `--no-telemetry` turns it off too.
+enabled = true
+
+# Seconds between two reports; the heartbeat goes this often too (at most 30).
+interval_seconds = 10
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 
 [logging]

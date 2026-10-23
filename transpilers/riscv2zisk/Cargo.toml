@@ -1,6 +1,6 @@
 [package]
 name = "zisk-transpiler-riscv"
-description = "Transpiler from RISC-V to the ZisK instruction set"
+description = "Deprecated: use zisk-transpiler-common. Transpiler from RISC-V to the ZisK instruction set"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -10,6 +10,10 @@ repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
 
+# Deprecated, kept under its published name for existing users: the dispatcher now lives in
+# zisk-transpiler-common (see transpilers/README.md). This crate keeps the original, now
+# deprecated, `Riscv2zisk` API on top of it, and builds the `zisk-transpiler-riscv` binary.
+
 [[bin]]
 name = "zisk-transpiler-riscv"
 path = "src/bin/riscv2zisk.rs"
@@ -17,7 +21,6 @@ path = "src/bin/riscv2zisk.rs"
 [dependencies]
 zisk-core = { workspace = true }
 zisk-transpiler-common = { workspace = true }
-zisk-transpiler-wasm = { workspace = true }
 
 [build-dependencies]
 zisk-lib-float = { workspace = true, optional = true }
@@ -37,6 +40,6 @@ zbc_native = ["zisk-transpiler-common/zbc_native", "zisk-core/zbc_native"]
 zbkc_native = ["zisk-transpiler-common/zbkc_native", "zisk-core/zbkc_native"]
 zbkx_native = ["zisk-transpiler-common/zbkx_native", "zisk-core/zbkx_native"]
 zicond_native = ["zisk-transpiler-common/zicond_native", "zisk-core/zicond_native"]
-float = ["zisk-transpiler-common/float", "zisk-transpiler-wasm/float"]
+float = ["zisk-transpiler-common/float"]
 # RISC-V C (compressed) extension decoding (see zisk-riscv's `compressed`). OFF by default.
 compressed = ["zisk-transpiler-common/compressed"]

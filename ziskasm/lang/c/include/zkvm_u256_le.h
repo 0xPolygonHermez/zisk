@@ -19,7 +19,9 @@
  *     family (div, mod, divmod, sdiv, smod, sdivmod), most of them a single
  *     precompile on the operands in place (add256 for add/sub, arith256 for
  *     mul/exp, arith256_mod for addmod/mulmod). The division family needs the
- *     division hint, so it stays a call.
+ *     division hint, so it stays a call. The precompiles halt on a pointer that
+ *     is not 8-byte aligned, so a result that is not goes through an aligned
+ *     temporary (ZKVM_U256_LE_I_TO); an aligned one costs one test.
  * Guest code is the same either way.
  */
 #ifndef ZKVM_U256_LE_H
@@ -172,6 +174,30 @@ ZKVM_U256_LE_I void zkvm_u256_le_i_arith256_mod(const zkvm_u256_le* a, const zkv
     const void* p[5] = {a, b, c, m, d};
     __asm__ volatile("csrs 0x802, %0" : : "r"(p) : "memory");
 }
+/* r = x at any address. ZisK's plain stores accept an unaligned address (only the
+ * precompiles need 8-byte alignment), so four sd do it; a memcpy would become a
+ * call, and a call makes the caller save ra on its aligned path too. */
+ZKVM_U256_LE_I void zkvm_u256_le_i_store(zkvm_u256_le* r, const zkvm_u256_le* x) {
+    __asm__ volatile("sd %1, 0(%0)\n\tsd %2, 8(%0)\n\tsd %3, 16(%0)\n\tsd %4, 24(%0)"
+                     :
+                     : "r"(r), "r"(x->limbs[0]), "r"(x->limbs[1]), "r"(x->limbs[2]),
+                       "r"(x->limbs[3])
+                     : "memory");
+}
+/* Runs STMT with `dst` pointing at `result` when that is 8-byte aligned, else at an
+ * aligned temporary that is then stored to `result`: the precompiles halt on an
+ * unaligned pointer, and a caller's result buffer may be one. */
+#define ZKVM_U256_LE_I_TO(result, dst, STMT)                                          \
+    do {                                                                              \
+        if (__builtin_expect(((uintptr_t)(result) & 7) == 0, 1)) {                    \
+            zkvm_u256_le* dst = (result);                                             \
+            STMT;                                                                     \
+        } else {                                                                      \
+            zkvm_u256_le zkvm_u256_le_i_tmp, *dst = &zkvm_u256_le_i_tmp;              \
+            STMT;                                                                     \
+            zkvm_u256_le_i_store((result), dst);                                      \
+        }                                                                             \
+    } while (0)
 ZKVM_U256_LE_I int zkvm_u256_le_i_is_zero(const zkvm_u256_le* x) {
     return (x->limbs[0] | x->limbs[1] | x->limbs[2] | x->limbs[3]) == 0;
 }
@@ -211,7 +237,7 @@ ZKVM_U256_LE_I void zkvm_u256_le_i_shr(const uint64_t x[4], unsigned s, uint64_t
 
 ZKVM_U256_LE_I zkvm_status zkvm_u256_le_add(const zkvm_u256_le* a, const zkvm_u256_le* b,
                                             zkvm_u256_le* result) {
-    zkvm_u256_le_i_add256(a, b, 0, result);
+    ZKVM_U256_LE_I_TO(result, d, zkvm_u256_le_i_add256(a, b, 0, d));
     return ZKVM_EOK;
 }
 /* a - b = a + ~b + 1 */
@@ -220,14 +246,14 @@ ZKVM_U256_LE_I zkvm_status zkvm_u256_le_sub(const zkvm_u256_le* a, const zkvm_u2
     zkvm_u256_le nb;
     _Pragma("GCC unroll 4")
     for (int i = 0; i < 4; i++) nb.limbs[i] = ~b->limbs[i];
-    zkvm_u256_le_i_add256(a, &nb, 1, result);
+    ZKVM_U256_LE_I_TO(result, d, zkvm_u256_le_i_add256(a, &nb, 1, d));
     return ZKVM_EOK;
 }
 ZKVM_U256_LE_I zkvm_status zkvm_u256_le_mul(const zkvm_u256_le* a, const zkvm_u256_le* b,
                                             zkvm_u256_le* result) {
     static const zkvm_u256_le zero = {{0, 0, 0, 0}};
     zkvm_u256_le hi;
-    zkvm_u256_le_i_arith256(a, b, &zero, result, &hi);
+    ZKVM_U256_LE_I_TO(result, d, zkvm_u256_le_i_arith256(a, b, &zero, d, &hi));
     return ZKVM_EOK;
 }
 /* (a * 1 + b) mod n */
@@ -235,7 +261,7 @@ ZKVM_U256_LE_I zkvm_status zkvm_u256_le_addmod(const zkvm_u256_le* a, const zkvm
                                                const zkvm_u256_le* n, zkvm_u256_le* result) {
     static const zkvm_u256_le one = {{1, 0, 0, 0}};
     if (zkvm_u256_le_i_is_zero(n)) zkvm_u256_le_i_set_small(result, 0);
-    else zkvm_u256_le_i_arith256_mod(a, &one, b, n, result);
+    else ZKVM_U256_LE_I_TO(result, d, zkvm_u256_le_i_arith256_mod(a, &one, b, n, d));
     return ZKVM_EOK;
 }
 /* (a * b + 0) mod n */
@@ -243,7 +269,7 @@ ZKVM_U256_LE_I zkvm_status zkvm_u256_le_mulmod(const zkvm_u256_le* a, const zkvm
                                                const zkvm_u256_le* n, zkvm_u256_le* result) {
     static const zkvm_u256_le zero = {{0, 0, 0, 0}};
     if (zkvm_u256_le_i_is_zero(n)) zkvm_u256_le_i_set_small(result, 0);
-    else zkvm_u256_le_i_arith256_mod(a, b, &zero, n, result);
+    else ZKVM_U256_LE_I_TO(result, d, zkvm_u256_le_i_arith256_mod(a, b, &zero, n, d));
     return ZKVM_EOK;
 }
 /* Left-to-right square-and-multiply from the exponent's top set bit, with both

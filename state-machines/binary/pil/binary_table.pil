@@ -30,9 +30,10 @@ require "opids.pil"
     BREV8      2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     |     6,553,600
     SH1ADD     2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 3 (CIN)            =  3 * 2^17   |     6,946,816
     SH2ADD     2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 5 (CIN)            =  5 * 2^17   |     7,602,176
-    SH3ADD     2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 9 (CIN)            =  9 * 2^17   |     8,781,824  => BINARY_TABLE_SIZE
+    SH3ADD     2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 9 (CIN)            =  9 * 2^17   |     8,781,824
+    UNAL8      2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 3 (CIN)            =  3 * 2^17   |     9,175,040  => BINARY_TABLE_SIZE
 
-    Total N = 8,781,824 rows, with 2^23 (8,388,608) < N < 2^24 (16,777,216)
+    Total N = 9,175,040 rows, with 2^23 (8,388,608) < N < 2^24 (16,777,216)
     -------------------------------------------------------------------------------------------------------------------
     Notes:
     - MINU/MIN/MAXU/MAX: POS_IND=0 (2^18 rows with FLAGS), POS_IND=1 (2^17 rows without FLAGS)
@@ -43,9 +44,12 @@ require "opids.pil"
     - ANDN, ORN, XNOR, BREV8 are B-extension bitwise ops, single-byte like AND/OR/XOR (2^17 rows each)
     - SH1ADD/SH2ADD/SH3ADD (Zba) are additions of a shifted operand, so their carry also transports the
       bits shifted out of the previous byte: CIN, COUT in [0, 2^shift] (3, 5 and 9 values respectively)
+    - UNAL8 (1 iff a or b is not a multiple of 8) is decided by the first byte alone, so its carry is a
+      state the rest of bytes just propagate: CIN = 0 only in the first byte, then 1 (aligned) or 2
+      (misaligned) until the last byte turns it into the result (3 values)
 */
 
-const int BINARY_TABLE_SIZE = 8_781_824;
+const int BINARY_TABLE_SIZE = 9_175_040;
 const int BINARY_TABLE_SIZE_P2 = 2**24;
 const int OP_SEXT_00 = 0x200;
 const int OP_SEXT_FF = 0x201;
@@ -82,7 +86,8 @@ airtemplate BinaryTable(int N = 0) {
                          [0:P2_16, 1:P2_16]:4,              // ANDN,ORN,XNOR,BREV8
                          [0:P2_16, 1:P2_16]:3,              // SH1ADD
                          [0:P2_16, 1:P2_16]:5,              // SH2ADD
-                         [0:P2_16, 1:P2_16]:9]...;          // SH3ADD
+                         [0:P2_16, 1:P2_16]:9,              // SH3ADD
+                         [0:P2_16, 1:P2_16]:3]...;          // UNAL8
 
     // Input carry (<=4 bits)
     col fixed CIN = [[0:P2_16, 1:P2_16]:(3*2),        // MINU,MIN
@@ -98,7 +103,8 @@ airtemplate BinaryTable(int N = 0) {
                       0:(P2_17*4),                    // ANDN,ORN,XNOR,BREV8
                      [0:P2_17..2:P2_17],              // SH1ADD
                      [0:P2_17..4:P2_17],              // SH2ADD
-                     [0:P2_17..8:P2_17]]...;          // SH3ADD
+                     [0:P2_17..8:P2_17],              // SH3ADD
+                     [0:P2_17..2:P2_17]]...;          // UNAL8
 
     // Operation opcode
     col fixed OP = [OP_MINU:(P2_18 + P2_17), OP_MIN:(P2_18 + P2_17),     // MINU,MIN
@@ -115,7 +121,8 @@ airtemplate BinaryTable(int N = 0) {
                     OP_XNOR:P2_17, OP_BREV8:P2_17,                       // XNOR, BREV8
                     OP_SH1ADD:(3*P2_17),                                 // SH1ADD
                     OP_SH2ADD:(5*P2_17),                                 // SH2ADD
-                    OP_SH3ADD:(9*P2_17)]...;                             // SH3ADD
+                    OP_SH3ADD:(9*P2_17),                                 // SH3ADD
+                    OP_UNAL8:(3*P2_17)]...;                              // UNAL8
 
     col fixed C;     // Output C (8 bits)
     col fixed FLAGS; // Combined flags (8 bits): cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
@@ -418,6 +425,21 @@ airtemplate BinaryTable(int N = 0) {
                 // Encode the addition carry together with the bits shifted out of this byte.
                 // In the last byte both are discarded, since the result is truncated to 64 bits
                 cout = plast ? 0 : (shifted_sum >> 8) + (a >> (8 - shift));
+
+            case OP_UNAL8: // UNAL8: 1 iff a or b is not a multiple of 8, i.e. (a | b) & 0x07 != 0
+                // Example: UNAL8(0x10, 0x08) = 0, UNAL8(0x10, 0x03) = 1
+                //
+                // Only the 3 low bits of the first byte matter, but the table is looked up once per
+                // byte, so the carry is used as a state that the other bytes just propagate:
+                //   - cin = 0 identifies the first byte: the air feeds a constant 0 there and no cout
+                //     below is ever 0, so a middle byte can never look like a first one. Its cout is
+                //     the decision: 2 if some of the 3 low bits of a or b is set, 1 otherwise
+                //   - cin = 1 (aligned) / 2 (misaligned) is passed on unchanged
+                //   - the last byte turns the state into the result: cout = state - 1, i.e. the flag
+                const int state = (cin == 0) ? ((((a | b) & 0x07) != 0) ? 2 : 1) : cin;
+                cout = plast ? state - 1 : state;
+
+                c = 0;
 
             default:
                 error(`Invalid operation opcode: ${op} at row ${i}`);

@@ -12,8 +12,7 @@ def gen(curve):
     L, SM, PT = ('bsm', 'BN_SM_', 64) if bn else ('lsm', 'BLS_SM_', 96)
     pre = 'bn254_curve' if bn else 'bls12_381_curve'
     T = L.upper() + '_TAB'
-    data = [f'u64 {SM}P[{PT // 8}] = ' + ', '.join(['0'] * (PT // 8)),
-            f'const u64 {SM}HDRC[2] = {SM}Q, {SM}P']
+    data = [f'u64 {SM}P[{PT // 8}] = ' + ', '.join(['0'] * (PT // 8))]
     ent = []
     for t in range(256):
         ent.append(f'{L}_done' if t == 0 else (f'{L}_t{t}' if t % 64 == 0 else f'{L}_s{t}'))
@@ -35,7 +34,7 @@ def gen(curve):
         c += [f'{L}_s{t}:', f'\t{pre}_dbl(0, {SM}Q)', f'\tlt(r15, 0), j({L}_a{t})', '\tsll(r15, 1) -> r15']
     c += [f'\tjump({L}_done)']
     for t in range(1, 256):
-        c += [f'{L}_a{t}:', f'\t{pre}_add(0, {SM}HDRC)', '\tsll(r15, 1) -> r15', f'\tjump({nxt(t + 1)})']
+        c += [f'{L}_a{t}:', f'\t{pre}_add({SM}Q, {SM}P)', '\tsll(r15, 1) -> r15', f'\tjump({nxt(t + 1)})']
     return data, c
 
 def patch(text, curve):

@@ -4,14 +4,15 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::RandomSeedArgs;
 use zisk_sdk::{
     AsmOptions, EmbeddedClientBuilder, EmbeddedOpts, GuestProgram, ProofKind, ZiskHints, ZiskStdin,
 };
 
 use super::validate_asm_hints;
 use crate::common::{resolve_elf, resolve_output_path, ElfSelectorArgs};
-use crate::proof::select_prove_kind;
-use crate::ux::print_job_banner;
+use crate::proof::{select_prove_kind, SnarkArgs};
+use crate::ux::{print_job_banner, print_random_seed};
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -42,6 +43,9 @@ pub(crate) struct ZiskEmbeddedProve {
     #[arg(long)]
     hints: Option<String>,
 
+    #[command(flatten)]
+    random_seed: RandomSeedArgs,
+
     /// Use the ASM emulator instead of the default Rust emulator
     #[arg(short = 'a', long)]
     asm: bool,
@@ -54,9 +58,9 @@ pub(crate) struct ZiskEmbeddedProve {
     #[arg(short = 'k', long)]
     proving_key: Option<PathBuf>,
 
-    /// Path to a precomputed PLONK proving key
-    #[arg(short = 'w', long)]
-    proving_key_plonk: Option<PathBuf>,
+    /// Path to a precomputed SNARK proving key
+    #[arg(short = 'w', long, alias = "proving-key-plonk")]
+    proving_key_snark: Option<PathBuf>,
 
     /// Reduce memory footprint during proving at the cost of speed
     #[arg(short = 'm', long)]
@@ -70,13 +74,12 @@ pub(crate) struct ZiskEmbeddedProve {
     #[arg(short = 'u', long, requires = "asm")]
     unlock_mapped_memory: bool,
 
-    /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with --plonk
-    #[arg(short = 'c', long, conflicts_with = "plonk")]
+    /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with --plonk and --pilfflonk
+    #[arg(short = 'c', long, conflicts_with_all = ["plonk", "pilfflonk"])]
     minimal: bool,
 
-    /// PLONK proof. Required for on-chain verification via the EVM verifier. Mutually exclusive with --minimal
-    #[arg(long, conflicts_with = "minimal")]
-    plonk: bool,
+    #[command(flatten)]
+    snark: SnarkArgs,
 
     /// Verify the proof after generation
     #[arg(short = 'y', long)]
@@ -114,15 +117,15 @@ impl ZiskEmbeddedProve {
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
         let hints = self.hints.as_ref().map(ZiskHints::from_uri).transpose()?;
 
-        // VadcopFinal by default; --minimal / --plonk select a wrapped proof.
-        let proof_kind = select_prove_kind(self.plonk, self.minimal);
+        // VadcopFinal by default; --minimal / --plonk / --pilfflonk select a wrapped proof.
+        let proof_kind = select_prove_kind(self.snark.protocol(), self.minimal);
 
         let mut builder = EmbeddedClientBuilder::default().verbose(self.verbose);
         if self.asm {
             builder = builder.assembly();
         }
-        if self.plonk {
-            builder = builder.plonk();
+        if let Some(protocol) = self.snark.protocol() {
+            builder = builder.snark(protocol);
         }
         #[cfg(not(feature = "cpu-only"))]
         if self.gpu {
@@ -135,8 +138,8 @@ impl ZiskEmbeddedProve {
         if let Some(pk) = &self.proving_key {
             builder = builder.proving_key(pk.clone());
         }
-        if let Some(pk) = &self.proving_key_plonk {
-            builder = builder.proving_key_plonk(pk.clone());
+        if let Some(pk) = &self.proving_key_snark {
+            builder = builder.proving_key_snark(pk.clone());
         }
 
         let mut opts = EmbeddedOpts::default();
@@ -167,6 +170,7 @@ impl ZiskEmbeddedProve {
         if let Some(hints) = hints {
             request = request.hints(hints);
         }
+        request = request.random_seed(self.random_seed.provided());
         if proof_kind != ProofKind::VadcopFinal {
             request = request.wrap(proof_kind);
         }
@@ -188,6 +192,7 @@ impl ZiskEmbeddedProve {
             result.get_proving_time() as f64 / 1000.0,
             result.get_execution_steps()
         );
+        print_random_seed(result.get_random_seed());
         info!("Proof saved to {}", output_file.display());
 
         Ok(())

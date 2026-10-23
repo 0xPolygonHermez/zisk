@@ -101,6 +101,13 @@ jobs:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
 
+      # The compressed (C) decoder is off by default; check its traps fail too.
+      - name: Run the failed-execution tests with the compressed feature
+        run: cargo test --release -p ziskemu --features compressed --test failed_execution
+        env:
+          RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
+          RUST_BACKTRACE: 1
+
   zisk-contracts:
     name: Hardhat tests (zisk-contracts)
     runs-on: ubuntu-latest
@@ -266,6 +273,22 @@ jobs:
               ./build_setup.sh
             '
 
+      # Several programs, and several jobs, on the assembly executor's one set of shared
+      # memory per process. Ignored by default: they need the real services, room in
+      # /dev/shm and, for two of them, the proving key installed above. Built as ZisK was
+      # built above, so that build is reused.
+      - name: Test ASM programs sharing memory
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              cd /workspace/zisk
+              CUDA_ARCHS=major cargo test --release --target x86_64-unknown-linux-gnu \
+                -p integration-tests \
+                --test asm_two_execute_clients --test asm_two_programs --test asm_job_boundary \
+                -- --ignored --test-threads=1
+            '
+
       - name: Test sha_hasher (CPU)
         run: |
           .github/scripts/docker_exec.sh \
@@ -314,7 +337,7 @@ jobs:
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e ZEC_GUEST="${ZEC_GUEST}" \
-            -e BLOCK_INPUTS_SINGLE="mainnet_25431013_172_16_zec_ziskethone.bin,mainnet_25431039_325_25_zec_ziskethone.bin" \
+            -e BLOCK_INPUTS_SINGLE="mainnet_26235156_91_5_zec_ziskethone.bin,mainnet_26235168_260_29_zec_ziskethone.bin" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_eth_block.sh
@@ -325,7 +348,7 @@ jobs:
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e ZEC_GUEST="${ZEC_GUEST}" \
-            -e BLOCK_INPUTS_ETHPROOFS="mainnet_25431013_172_16_zec_ziskethone.bin,mainnet_25431039_325_25_zec_ziskethone.bin,mainnet_25431055_712_55_zec_ziskethone.bin" \
+            -e BLOCK_INPUTS_ETHPROOFS="mainnet_26235156_91_5_zec_ziskethone.bin,mainnet_26235168_260_29_zec_ziskethone.bin,mainnet_26235159_532_57_zec_ziskethone.bin" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_ethproofs.sh

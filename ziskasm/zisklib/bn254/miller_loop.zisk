@@ -4,26 +4,11 @@
 ; Prefix ml_. (hint-verification checks added in a later pass.)
 ; ============================================================================
 
-; inline-op headers (zopt): precompile parameter blocks
-const u64 ZBN2_MILLER_LOOP_H0[2] = ML_L, BN_F2_SB
-const u64 ZBN2_MILLER_LOOP_H1[2] = ML_L + 64, BN_F2_SB
-const u64 ZBN2_MILLER_LOOP_H2[2] = ML_X3, ML_LAMMU
-const u64 ZBN2_MILLER_LOOP_H3[2] = ML_T2, ML_T1
-const u64 ZBN2_MILLER_LOOP_H4[2] = ML_X3, ML_T2
-const u64 ZBN2_MILLER_LOOP_H5[2] = ML_Y3, ML_X3
-const u64 ZBN2_MILLER_LOOP_H6[2] = ML_T2, ML_Y3
-const u64 ZBN2_MILLER_LOOP_H7[2] = ML_Y3, BN_F2_NEGMUL
-const u64 ZBN2_MILLER_LOOP_H8[2] = ML_X3, ML_T1
-const u64 ZBN2_MILLER_LOOP_H9[2] = ML_C3, ML_C1
-const u64 ZBN2_MILLER_LOOP_H10[2] = ML_C3, ML_LAMMU + 64
-const u64 ZBN2_MILLER_LOOP_H11[2] = ML_C3, ML_C2
-const u64 ZBN2_MILLER_LOOP_H12[2] = ML_C3, ML_C3
-const u64 ZBN2_MILLER_LOOP_H13[2] = ML_C2, ML_C1
-const u64 ZBN2_MILLER_LOOP_H14[2] = ML_C2, BN_F2_SB
-const u64 ZBN2_MILLER_LOOP_H16[5] = ML_XPP, ML_YPP, BN_ZERO, BN_P, ML_XPP
-const u64 ZBN2_MILLER_LOOP_H17[5] = ML_YPP, BN_P_MINUS_ONE, BN_ZERO, BN_P, ML_NEGYPP
-u64 ZBN2_MILLER_LOOP_H15[5] = 0, BN_P_MINUS_ONE, BN_ZERO, BN_P, ML_XPP
-u64 ZBN2_MILLER_LOOP_H18[5] = 0, BN_P_MINUS_ONE, BN_ZERO, BN_P, ML_XPP
+; inline-op headers (zopt): arith256_mod / arith384_mod parameter blocks
+const u64 ZBN2_MILLER_LOOP_H1[5] = ML_XPP, ML_YPP, BN_ZERO, BN_P, ML_XPP
+const u64 ZBN2_MILLER_LOOP_H2[5] = ML_YPP, BN_P_MINUS_ONE, BN_ZERO, BN_P, ML_NEGYPP
+u64 ZBN2_MILLER_LOOP_H0[5] = 0, BN_P_MINUS_ONE, BN_ZERO, BN_P, ML_XPP
+u64 ZBN2_MILLER_LOOP_H3[5] = 0, BN_P_MINUS_ONE, BN_ZERO, BN_P, ML_XPP
 
 const u64 ML_LOOP[65] = 1, 1, 0, 1, 0, 0, 2, 0, 1, 1, 0, 0, 0, 2, 0, 0, 1, 1, 0, 0, 2, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 1, 1, 1, 0, 0, 0, 0, 2, 0, 1, 0, 0, 2, 0, 1, 1, 0, 0, 1, 0, 0, 2, 1, 0, 0, 2, 0, 1, 0, 1, 0, 0, 0
 
@@ -59,22 +44,7 @@ u64 ML_ILQ2[1] = 0
 zisklib_ml_dbl_coeffs_bn254:
 	fcall_param(16, r10)
 	fcall(FCALL_BN254_TWIST_DBL_LINE_COEFFS, 0)
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 8]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 16]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 24]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 32]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 40]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 48]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 56]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 64]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 72]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 80]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 88]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 96]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 104]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 112]
-	copyb(0, [FREE_INPUT]) -> [ML_LAMMU + 120]
+	dma_inputcpy(ML_LAMMU, 128) -> r5
 	ret
 
 ; void zisklib_ml_add_coeffs_bn254(const u64* r, const u64* qp)  [r10,r11] -> ML_LAMMU
@@ -82,22 +52,7 @@ zisklib_ml_add_coeffs_bn254:
 	fcall_param(16, r10)
 	fcall_param(16, r11)
 	fcall(FCALL_BN254_TWIST_ADD_LINE_COEFFS, 0)
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 8]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 16]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 24]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 32]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 40]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 48]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 56]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 64]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 72]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 80]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 88]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 96]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 104]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 112]
-	copyb(0, [FREE_INPUT]) -> [ML_LAMMU + 120]
+	dma_inputcpy(ML_LAMMU, 128) -> r5
 	ret
 
 ; void zisklib_ml_line_eval_bn254()  uses ML_LAMMU, ML_XPP, ML_NEGYPP -> ML_L
@@ -105,10 +60,10 @@ zisklib_ml_line_eval_bn254:
 	push r1
 	dma_xmemcpy(BN_F2_SB, ML_XPP) -> r5, j(32, 4)
 	dma_xmemcpy(ML_L, ML_LAMMU) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_MILLER_LOOP_H0)
+	bn254_complex_mul(ML_L, BN_F2_SB)
 	dma_xmemcpy(BN_F2_SB, ML_NEGYPP) -> r5, j(32, 4)
 	dma_xmemcpy(ML_L + 64, ML_LAMMU + 64) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_MILLER_LOOP_H1)
+	bn254_complex_mul(ML_L + 64, BN_F2_SB)
 	copyb(0, ML_LAMMU + 64) -> r10
 	copyb(0, ML_NEGYPP) -> r11
 	copyb(0, ML_L + 64) -> r12
@@ -121,16 +76,16 @@ zisklib_ml_dbl_wh_bn254:
 	copyb(0, r10) -> [ML_WP1]
 	dma_xmemcpy(ML_T1, r10) -> r5, j(64, 4)
 	dma_xmemcpy(ML_X3, ML_LAMMU) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_MILLER_LOOP_H2)
+	bn254_complex_mul(ML_X3, ML_LAMMU)
 	dma_xmemcpy(ML_T2, ML_T1) -> r5, j(64, 4)
-	bn254_complex_add(0, ZBN2_MILLER_LOOP_H3)
-	bn254_complex_sub(0, ZBN2_MILLER_LOOP_H4)
+	bn254_complex_add(ML_T2, ML_T1)
+	bn254_complex_sub(ML_X3, ML_T2)
 	dma_xmemcpy(ML_Y3, ML_LAMMU) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_MILLER_LOOP_H5)
+	bn254_complex_mul(ML_Y3, ML_X3)
 	dma_xmemcpy(ML_T2, ML_LAMMU + 64) -> r5, j(64, 4)
-	bn254_complex_add(0, ZBN2_MILLER_LOOP_H6)
+	bn254_complex_add(ML_T2, ML_Y3)
 	dma_xmemcpy(ML_Y3, ML_T2) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_MILLER_LOOP_H7)
+	bn254_complex_mul(ML_Y3, BN_F2_NEGMUL)
 	dma_xmemcpy(ML_R2, ML_X3) -> r5, j(64, 4)
 	dma_xmemcpy(ML_R2 + 64, ML_Y3) -> r5, j(64, 4)
 	copyb(0, ML_Y3) -> r10
@@ -147,15 +102,15 @@ zisklib_ml_add_wh_bn254:
 	dma_xmemcpy(ML_T1, r10) -> r5, j(64, 4)
 	dma_xmemcpy(ML_T2, r11) -> r5, j(64, 4)
 	dma_xmemcpy(ML_X3, ML_LAMMU) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_MILLER_LOOP_H2)
-	bn254_complex_sub(0, ZBN2_MILLER_LOOP_H8)
-	bn254_complex_sub(0, ZBN2_MILLER_LOOP_H4)
+	bn254_complex_mul(ML_X3, ML_LAMMU)
+	bn254_complex_sub(ML_X3, ML_T1)
+	bn254_complex_sub(ML_X3, ML_T2)
 	dma_xmemcpy(ML_Y3, ML_LAMMU) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_MILLER_LOOP_H5)
+	bn254_complex_mul(ML_Y3, ML_X3)
 	dma_xmemcpy(ML_T2, ML_LAMMU + 64) -> r5, j(64, 4)
-	bn254_complex_add(0, ZBN2_MILLER_LOOP_H6)
+	bn254_complex_add(ML_T2, ML_Y3)
 	dma_xmemcpy(ML_Y3, ML_T2) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_MILLER_LOOP_H7)
+	bn254_complex_mul(ML_Y3, BN_F2_NEGMUL)
 	dma_xmemcpy(ML_R2, ML_X3) -> r5, j(64, 4)
 	dma_xmemcpy(ML_R2 + 64, ML_Y3) -> r5, j(64, 4)
 	copyb(0, ML_Y3) -> r10
@@ -172,8 +127,8 @@ zisklib_ml_line_check_bn254:
 	add(r10, 64) -> r5
 	dma_xmemcpy(ML_C2, r5) -> r5, j(64, 4)
 	dma_xmemcpy(ML_C3, ML_LAMMU) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_MILLER_LOOP_H9)
-	bn254_complex_add(0, ZBN2_MILLER_LOOP_H10)
+	bn254_complex_mul(ML_C3, ML_C1)
+	bn254_complex_add(ML_C3, ML_LAMMU + 64)
 	dma_xmemcmp(ML_C3, ML_C2) -> r5, j(64, 4)
 	eq(r5, 0) -> r10
 	copyb(0, ML_C2) -> r11
@@ -199,12 +154,12 @@ zisklib_ml_is_tangent_bn254:
 	add([ML_WP2], 64) -> r5
 	dma_xmemcpy(ML_C2, r5) -> r5, j(64, 4)
 	dma_xmemcpy(ML_C3, ML_LAMMU) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_MILLER_LOOP_H11)
-	bn254_complex_add(0, ZBN2_MILLER_LOOP_H12)
+	bn254_complex_mul(ML_C3, ML_C2)
+	bn254_complex_add(ML_C3, ML_C3)
 	dma_xmemcpy(ML_C2, ML_C1) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_MILLER_LOOP_H13)
+	bn254_complex_mul(ML_C2, ML_C1)
 	dma_xmemcpy(BN_F2_SB, BN_THREE) -> r5, j(32, 4)
-	bn254_complex_mul(0, ZBN2_MILLER_LOOP_H14)
+	bn254_complex_mul(ML_C2, BN_F2_SB)
 	dma_xmemcmp(ML_C3, ML_C2) -> r5, j(64, 4)
 	eq(r5, 0) -> r10
 	copyb(0, ML_C2) -> r11
@@ -247,10 +202,10 @@ zisklib_miller_loop_bn254:
 	add(r10, 32) -> r10
 	copyb(0, ML_YPP) -> r11
 	call zisklib_inv_fp_bn254
-	copyb(0, [ML_P]) -> [ZBN2_MILLER_LOOP_H15]
-	arith256_mod(0, ZBN2_MILLER_LOOP_H15)
-	arith256_mod(0, ZBN2_MILLER_LOOP_H16)
-	arith256_mod(0, ZBN2_MILLER_LOOP_H17)
+	copyb(0, [ML_P]) -> [ZBN2_MILLER_LOOP_H0]
+	arith256_mod(0, ZBN2_MILLER_LOOP_H0)
+	arith256_mod(0, ZBN2_MILLER_LOOP_H1)
+	arith256_mod(0, ZBN2_MILLER_LOOP_H2)
 	copyb(0, [ML_Q]) -> r5
 	dma_xmemcpy(ML_R, r5) -> r5, j(128, 4)
 	copyb(0, 1) -> [ML_F]
@@ -444,9 +399,6 @@ zisklib_ml_batch_push_bn254:
 	copyb(0, r10) -> [MLB_SP]
 	copyb(0, r11) -> [MLB_SQ]
 	copyb(0, [MLB_N]) -> r6
-	eq(r6, 8), j(mlb_push_full)
-mlb_push_add:
-	copyb(0, [MLB_N]) -> r6
 	sll(r6, 3) -> r6
 	copyb(0, MLB_BP) -> r7
 	add(r7, r6) -> r7
@@ -459,11 +411,14 @@ mlb_push_add:
 	copyb(0, [MLB_N]) -> r6
 	add(r6, 1) -> r6
 	copyb(0, r6) -> [MLB_N]
+	; fold as soon as 8 pairs are pending, so slot [MLB_N] is always free to reuse
+	eq(r6, 8), j(mlb_push_full)
 	pop r1
 	ret
 mlb_push_full:
 	call mlb_fold
-	jump(mlb_push_add)
+	pop r1
+	ret
 
 ; void zisklib_ml_batch_finish_bn254(u64* dst)  [r10=dst]
 zisklib_ml_batch_finish_bn254:
@@ -523,10 +478,10 @@ mlb_pre_pl:
 	copyb(0, ML_YPP) -> r11
 	call zisklib_inv_fp_bn254
 	copyb(0, [ML_P]) -> r10
-	copyb(0, r10) -> [ZBN2_MILLER_LOOP_H18]
-	arith256_mod(0, ZBN2_MILLER_LOOP_H18)
-	arith256_mod(0, ZBN2_MILLER_LOOP_H16)
-	arith256_mod(0, ZBN2_MILLER_LOOP_H17)
+	copyb(0, r10) -> [ZBN2_MILLER_LOOP_H3]
+	arith256_mod(0, ZBN2_MILLER_LOOP_H3)
+	arith256_mod(0, ZBN2_MILLER_LOOP_H1)
+	arith256_mod(0, ZBN2_MILLER_LOOP_H2)
 	copyb(0, ML_YPP) -> r10
 	copyb(0, ML_NEGYPP) -> r11
 	copyb(0, ML_XPP) -> r12

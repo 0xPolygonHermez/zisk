@@ -142,6 +142,64 @@ message Heartbeat {
 
 message HeartbeatAck {
   string worker_id = 1;
+  // The worker's host and process telemetry, unless its operator turned it off. Informational:
+  // the coordinator bounds it and exposes it, and never acts on it.
+  WorkerTelemetry telemetry = 2;
+}
+
+// What a worker reports about its host and processes, as far as its platform lets it read.
+message WorkerTelemetry {
+  // Seconds since the worker process started.
+  double uptime_seconds = 1;
+  // Seconds from the worker process's start to its first accepted registration, and to its
+  // first program set up; 0 until then.
+  double start_to_registration_seconds = 2;
+  double start_to_ready_seconds = 3;
+  // The memory of the worker's processes, summed by role.
+  repeated ProcessMemory processes = 4;
+  // The ZisK shared memory on the worker's host, by segment kind and owner liveness.
+  repeated SharedMemory shared_memory = 5;
+  // The worker's cgroup, when it runs in one (as a service).
+  CgroupUsage cgroup = 6;
+}
+
+message ProcessMemory {
+  // "rankN", "asm-<service>-rankN" (service: mt, mo, moh, mol, rh), "mpirun" or "other".
+  string role = 1;
+  uint64 rss_bytes = 2;
+  uint64 anon_bytes = 3;
+  uint64 file_bytes = 4;
+  uint64 shmem_bytes = 5;
+}
+
+message SharedMemory {
+  // control_input, control_output, input, output, precompile, ram, rom, semaphore or other.
+  string kind = 1;
+  // Whether the process that created the segments still runs.
+  bool owner_alive = 2;
+  uint64 bytes = 3;
+  uint32 segments = 4;
+}
+
+message CgroupUsage {
+  uint64 memory_current_bytes = 1;
+  uint64 memory_peak_bytes = 2;
+  uint64 anon_bytes = 3;
+  uint64 file_bytes = 4;
+  uint64 shmem_bytes = 5;
+  double cpu_seconds = 6;
+}
+
+// How a worker's previous run ended, when it ended itself.
+message WorkerExit {
+  // panic, recovery_timeout or recovery_failed.
+  string reason = 1;
+  // A panic's source location, file:line.
+  string location = 2;
+  // When it ended, in seconds since the unix epoch.
+  int64 at_unix_seconds = 3;
+  // The MPI rank that ended it.
+  uint32 rank = 4;
 }
 
 message Shutdown {
@@ -153,6 +211,10 @@ message WorkerRegisterRequest {
   string worker_id = 1;
   ComputeCapacity compute_capacity = 2; // Maximum compute capacity of a node/cluster
   uint32 aggregation_arity = 3; // proving-key constant; the coordinator sizes fold groups with it
+  // How the worker's previous run ended, when it ended itself, unless telemetry is off.
+  WorkerExit previous_exit = 4;
+  // Any worker may wrap a job's final SNARK, so the coordinator requires the same on every worker.
+  SnarkProtocol snark_protocol = 5;
 }
 
 message WorkerReconnectRequest {
@@ -160,6 +222,14 @@ message WorkerReconnectRequest {
   ComputeCapacity compute_capacity = 2; // Maximum compute capacity of a node/cluster
   optional string last_known_job_id = 3;
   uint32 aggregation_arity = 4;
+  SnarkProtocol snark_protocol = 5;
+}
+
+// Protocol of the final SNARK a worker's SNARK proving key is set up for.
+enum SnarkProtocol {
+  SNARK_PROTOCOL_NONE      = 0; // no SNARK proving key (a worker started without --plonk)
+  SNARK_PROTOCOL_PLONK     = 1;
+  SNARK_PROTOCOL_PILFFLONK = 2;
 }
 
 message WorkerRegisterResponse {
@@ -182,7 +252,10 @@ message ExecuteTaskRequest {
     ContributionParams execution_params = 7; // Same params as contribution, but only executes without proof generation
     WrapParams wrap_params = 8;
   }
-  map<string, string> metadata = 9;
+  // DEPRECATED: carried the job's caller metadata, which no worker read; it
+  // stays on the coordinator, which no longer sets this field. Removed (and
+  // reserved) in the first non-alpha release.
+  map<string, string> metadata = 9 [deprecated = true];
 }
 
 enum TaskType {
@@ -214,6 +287,7 @@ message ContributionParams {
   repeated uint32 worker_allocation = 8;
   uint32 job_compute_units = 9;
   string hash_id = 11;
+  bytes random_seed = 12; // 32-byte host randomness seed, the same for every worker of the job
 }
 
 message ProveParams {

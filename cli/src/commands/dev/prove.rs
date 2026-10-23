@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::{ProofKind, ZiskExecutorTime};
+use zisk_common::{ProofKind, RandomSeedArgs, ZiskExecutorTime};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProveOutput, ProverClientBuilder};
 
@@ -37,11 +37,14 @@ pub(crate) struct ProveCmd {
     #[arg(long, conflicts_with = "inputs")]
     hints: Option<String>,
 
+    #[command(flatten)]
+    random_seed: RandomSeedArgs,
+
     /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
     proving_key: Option<PathBuf>,
 
-    /// Path to a precomputed PLONK proving key
+    /// Path to a precomputed SNARK proving key
     #[arg(short = 'w', long)]
     proving_key_plonk: Option<PathBuf>,
 
@@ -57,7 +60,7 @@ pub(crate) struct ProveCmd {
     #[arg(short = 'c', long, conflicts_with = "plonk")]
     minimal: bool,
 
-    /// PLONK proof. Required for on-chain verification via the EVM verifier. Mutually exclusive with minimal
+    /// SNARK proof, of the protocol of the proving key (pilfflonk, or PLONK). Mutually exclusive with minimal. Only a PLONK proof can be exported for the on-chain EVM verifier for now
     #[arg(long, conflicts_with = "minimal")]
     plonk: bool,
 
@@ -264,6 +267,7 @@ impl ProveCmd {
             &executor_time,
             result.get_proving_time(),
             result.get_execution_steps(),
+            result.get_random_seed(),
             "Proofman",
         );
 
@@ -281,7 +285,8 @@ impl ProveCmd {
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         prover.setup(&guest_program).run()?;
 
-        let mut builder = prover.prove(&guest_program, stdin);
+        let mut builder =
+            prover.prove(&guest_program, stdin).random_seed(self.random_seed.provided());
         if self.plonk {
             builder = builder.wrap_proof(ProofKind::Plonk);
         }
@@ -310,11 +315,12 @@ impl ProveCmd {
             prover.setup(&guest_program).run()?;
         }
 
+        let job = prover.begin_job(&guest_program)?;
         if let Some(hints_stream) = hints_stream {
-            prover.register_hints_stream(hints_stream)?;
+            job.register_hints_stream(hints_stream)?;
         }
 
-        let mut builder = prover.prove(&guest_program, stdin);
+        let mut builder = job.prove(stdin).random_seed(self.random_seed.provided());
         if self.plonk {
             builder = builder.wrap_proof(ProofKind::Plonk);
         }

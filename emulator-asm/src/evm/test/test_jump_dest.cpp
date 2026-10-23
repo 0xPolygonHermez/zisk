@@ -11,6 +11,7 @@
 #define EXTRA_PARAMETER_ADDR 0xA0400F00
 
 #define MOPS_ALIGNED_READ 0x0C
+#define MOPS_ALIGNED_WRITE 0x0D
 #define MOPS_ALIGNED_BLOCK_READ 0x0E
 #define MOPS_ALIGNED_BLOCK_WRITE 0x0F
 #define MOPS_BLOCK_COUNT_SBITS 4
@@ -269,16 +270,43 @@ void Test::run_case(const std::string &name, const std::vector<uint8_t> &code) {
     }
     if (!check_bitmap(expected)) return;
 
+    // The harness runs with r14 = 1024 steps left and chunk_size = 1 << 18, so every record of
+    // the call carries the same step field.
+    const uint64_t TAG = 1ull << 63;
+    const uint64_t step_read = (((uint64_t)(1 << 18) - 1024) << 2 | 2) << 38;
+    const uint64_t values_header = ((uint64_t)0x07 << 32) | ((step_read | (1ull << 38)) << 4) | TAG;
     std::vector<uint64_t> want;
-    want.push_back(encode_aligned_read(EXTRA_PARAMETER_ADDR));
+#ifdef MOPS_LIGHT
+    // Light form: one word per record, no steps, no values; block records carry the no-payload bit.
+    (void)step_read; (void)values_header;
+    const uint64_t NO_PAYLOAD = 1ull << 62;   // MOPS_NO_PAYLOAD_BIT (mops_format.hpp)
+    want.push_back(encode_aligned_read(EXTRA_PARAMETER_ADDR) | TAG);
     if (count > 0) {
         for (const auto &run : expected.runs) {
             want.push_back(encode_block(MOPS_ALIGNED_BLOCK_READ,
-                                        (uint64_t)src + run.first * 8, run.second));
+                                        (uint64_t)src + run.first * 8, run.second) | TAG | NO_PAYLOAD);
         }
-        want.push_back(
-            encode_block(MOPS_ALIGNED_BLOCK_WRITE, (uint64_t)dst, expected.bitmap.size()));
+        want.push_back(encode_block(MOPS_ALIGNED_BLOCK_WRITE, (uint64_t)dst, expected.bitmap.size()) | TAG | NO_PAYLOAD);
     }
+#else
+    want.push_back(encode_aligned_read(EXTRA_PARAMETER_ADDR) | step_read | TAG);
+    if (count > 0) {
+        for (const auto &run : expected.runs) {
+            want.push_back(encode_block(MOPS_ALIGNED_BLOCK_READ,
+                                        (uint64_t)src + run.first * 8, run.second) | TAG);
+            want.push_back(step_read);
+        }
+        // the bitmap words as value blocks of up to 63 words: header, top bits, values
+        for (size_t w0 = 0; w0 < expected.bitmap.size(); w0 += 63) {
+            const size_t n = std::min<size_t>(63, expected.bitmap.size() - w0);
+            want.push_back(((uint64_t)dst + w0 * 8) | ((uint64_t)n << 36) | values_header);
+            uint64_t tops = 0;
+            for (size_t i = 0; i < n; ++i) tops |= (expected.bitmap[w0 + i] >> 63) << i;
+            want.push_back(tops);
+            for (size_t i = 0; i < n; ++i) want.push_back(expected.bitmap[w0 + i] & ~TAG);
+        }
+    }
+#endif
 
     const uint64_t *mops = trace + 1;
     if (trace[0] != want.size()) {
@@ -298,7 +326,7 @@ void Test::run_case(const std::string &name, const std::vector<uint8_t> &code) {
         }
     }
     // The bound the buffer reservation is built on.
-    if (trace[0] > 2 + max_read_runs(count)) {
+    if (trace[0] > 1 + 2 * max_read_runs(count) + expected.bitmap.size() + 2 * (expected.bitmap.size() / 63 + 1)) {
         fail("mops: entry count exceeded the reserved worst case");
         return;
     }

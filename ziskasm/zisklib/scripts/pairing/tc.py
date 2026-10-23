@@ -9,8 +9,10 @@ f1 = f1 <op> f2 that updates f1 in place, so the compiler
   * gives each resulting chain of in-place ops one location: the output
     component it ends in (written directly through the result pointer) or a
     static temp slot (interval-allocated);
-  * uses const ROM headers when both operands are static, else a RAM header
-    whose dynamic slots are stored once per call.
+  * passes the two pointers to the precompile directly (a = the in-place
+    operand, b = the other one): a static slot as an immediate, a dynamic one
+    (argument pointer + offset) through r14 for a / r5 for b, each kept while
+    it stays valid (r5 is clobbered by every DMA op).
 Result pointers are guarded against aliasing an input pointer: if equal, the
 input is first copied into a private buffer.
 """
@@ -173,24 +175,20 @@ class Kernel:
                 alias.append((lab, f'{tw.lp}_{self.name}_c{j}', ir, inn, f'{tw.pfx}_SAVE{j}'))
                 tw.need_save(j, inn * SZ)
 
-        def fmt(l):
-            if l[0] == 'st':
-                return l[1], True
-            _, r, off = l
-            return (r, off), False
-
-        dynhdr = {}
-
-        def dyn_to(l, dest):
-            _, r, off = l
-            e(f'\tcopyb(0, {r}) -> [{dest}]' if off == 0 else f'\tadd({r}, {off}) -> [{dest}]')
+        held = {}                 # scratch register -> the dynamic location it holds
 
         def dyn_reg(l, scratch):
             _, r, off = l
             if off == 0:
                 return r
-            e(f'\tadd({r}, {off}) -> {scratch}')
+            if held.get(scratch) != l:
+                e(f'\tadd({r}, {off}) -> {scratch}')
+                held[scratch] = l
             return scratch
+
+        def dma(dst, src, n):
+            e(f'\tdma_xmemcpy({dst}, {src}) -> r5, j({n}, 4)')
+            held.pop('r5', None)
 
         nops = ncopies = 0
         for v in ops:
@@ -204,25 +202,12 @@ class Kernel:
                     ss, sstat = (src[1], True) if src[0] == 'st' else (None, False)
                     dr = ds if dstat else dyn_reg(dst, 'r14')
                     sr = ss if sstat else dyn_reg(src, 'r5')
-                    e(f'\tdma_xmemcpy({dr}, {sr}) -> r5, j({SZ}, 4)')
+                    dma(dr, sr, SZ)
                     ncopies += 1
             ol = loc[y]
-            h0 = dst[1] if dst[0] == 'st' else None
-            h1 = ol[1] if ol[0] == 'st' else None
-            if h0 is not None and h1 is not None:
-                h = tw.const_hdr(h0, h1)
-            else:
-                key = (dst, ol)
-                if key in dynhdr:
-                    h = dynhdr[key]
-                else:
-                    h = tw.ram_hdr(h0 or '0', h1 or '0')
-                    dynhdr[key] = h
-                    if h0 is None:
-                        dyn_to(dst, h)
-                    if h1 is None:
-                        dyn_to(ol, f'{h} + 8')
-            e(f'\t{c["pre"]}_{o}(0, {h})')
+            da = dst[1] if dst[0] == 'st' else dyn_reg(dst, 'r14')
+            ob = ol[1] if ol[0] == 'st' else dyn_reg(ol, 'r5')
+            e(f'\t{c["pre"]}_{o}({da}, {ob})')
             nops += 1
         # outputs not produced in place
         for a, idx, v in self.outs:
@@ -231,7 +216,7 @@ class Kernel:
                 src = loc[v]
                 dr = dyn_reg(want, 'r14')
                 sr = src[1] if src[0] == 'st' else dyn_reg(src, 'r5')
-                e(f'\tdma_xmemcpy({dr}, {sr}) -> r5, j({SZ}, 4)')
+                dma(dr, sr, SZ)
                 ncopies += 1
         e('\tret')
         for lab, back, ir, n, buf in alias:
@@ -250,8 +235,6 @@ class Tower:
         self.pfx = c['pfx']
         self.lp = self.pfx.lower()
         self.consts = {}      # name -> fp2 value (re, im)
-        self.chdr = {}
-        self.rhdr = []
         self.nslots = 0
         self.saves = {}
         self.kernels = []
@@ -272,17 +255,6 @@ class Tower:
         self.consts[sym] = val
         return sym
 
-    def const_hdr(self, a, b):
-        k = (a, b)
-        if k not in self.chdr:
-            self.chdr[k] = f'{self.pfx}_H{len(self.chdr) + len(self.rhdr)}'
-        return self.chdr[k]
-
-    def ram_hdr(self, a, b):
-        n = f'{self.pfx}_H{len(self.chdr) + len(self.rhdr)}'
-        self.rhdr.append((n, a, b))
-        return n
-
     def kernel(self, name, args, doc):
         k = Kernel(self, name, args, doc)
         self.kernels.append(k)
@@ -299,10 +271,6 @@ class Tower:
         L.append('')
         for sym, (re_, im) in self.consts.items():
             L.append(f'const u64 {sym}[{nl}] = ' + ', '.join(f'0x{x:x}' for x in limbs(re_, nl // 2) + limbs(im, nl // 2)))
-        for (a, b), n in self.chdr.items():
-            L.append(f'const u64 {n}[2] = {a}, {b}')
-        for n, a, b in self.rhdr:
-            L.append(f'u64 {n}[2] = {a}, {b}')
         for i in range(self.nslots):
             L.append(f'u64 {self.pfx}_T{i}[{nl}] = ' + ', '.join(['0'] * nl))
         for j, nb in sorted(self.saves.items()):

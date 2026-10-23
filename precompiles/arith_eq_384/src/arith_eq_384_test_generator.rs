@@ -50,9 +50,6 @@ fn main() {
         index += 1;
     }
 
-    code += "\tlet mut p1 = SyscallPoint384 { x: [0,0,0,0,0,0], y: [0,0,0,0,0,0] };\n";
-    code += "\tlet p2 = SyscallPoint384 { x: [0,0,0,0,0,0], y: [0,0,0,0,0,0] };\n";
-    code += "\tlet mut params = SyscallBls12_381CurveAddParams { p1: &mut p1, p2: &p2 };\n";
     let initial_index = index;
     while let Some((p1, p2, p3)) = get_bls12_381_curve_add_test_data(index - initial_index) {
         code += &format!(
@@ -69,16 +66,14 @@ fn main() {
         let p2_y: [u64; 6] = p2[6..12].try_into().unwrap();
         code +=
             &format!("\tlet p2 = SyscallPoint384 {{\n\t\tx: {p2_x:?},\n\t\ty: {p2_y:?}\n\t}};\n");
-        code += "\tparams.p1 = &mut p1;\n";
-        code += "\tparams.p2 = &p2;\n";
-        code += "\tsyscall_bls12_381_curve_add(&mut params);\n";
+        code += "\tsyscall_bls12_381_curve_add(&mut p1, &p2);\n";
 
         let p3_x: [u64; 6] = p3[0..6].try_into().unwrap();
         let p3_y: [u64; 6] = p3[6..12].try_into().unwrap();
         code +=
             &format!("\tlet p3 = SyscallPoint384 {{\n\t\tx: {p3_x:?},\n\t\ty: {p3_y:?}\n\t}};\n");
-        code += "\tassert_eq!(params.p1.x, p3.x);\n";
-        code += "\tassert_eq!(params.p1.y, p3.y);\n\n";
+        code += "\tassert_eq!(p1.x, p3.x);\n";
+        code += "\tassert_eq!(p1.y, p3.y);\n\n";
         index += 1;
     }
 
@@ -104,9 +99,6 @@ fn main() {
         index += 1;
     }
 
-    code += "\tlet mut f1 = SyscallComplex384 { x: [0,0,0,0,0,0], y: [0,0,0,0,0,0] };\n";
-    code += "\tlet f2 = SyscallComplex384 { x: [0,0,0,0,0,0], y: [0,0,0,0,0,0] };\n";
-    code += "\tlet mut params = SyscallBls12_381ComplexAddParams { f1: &mut f1, f2: &f2 };\n";
     let initial_index = index;
     while let Some((f1, f2, f3)) = get_bls12_381_complex_add_test_data(index - initial_index) {
         code += &format!(
@@ -123,20 +115,17 @@ fn main() {
         let f2_y: [u64; 6] = f2[6..12].try_into().unwrap();
         code +=
             &format!("\tlet f2 = SyscallComplex384 {{\n\t\tx: {f2_x:?},\n\t\ty: {f2_y:?}\n\t}};\n");
-        code += "\tparams.f1 = &mut f1;\n";
-        code += "\tparams.f2 = &f2;\n";
-        code += "\tsyscall_bls12_381_complex_add(&mut params);\n";
+        code += "\tsyscall_bls12_381_complex_add(&mut f1, &f2);\n";
 
         let f3_x: [u64; 6] = f3[0..6].try_into().unwrap();
         let f3_y: [u64; 6] = f3[6..12].try_into().unwrap();
         code +=
             &format!("\tlet f3 = SyscallComplex384 {{\n\t\tx: {f3_x:?},\n\t\ty: {f3_y:?}\n\t}};\n");
-        code += "\tassert_eq!(params.f1.x, f3.x);\n";
-        code += "\tassert_eq!(params.f1.y, f3.y);\n\n";
+        code += "\tassert_eq!(f1.x, f3.x);\n";
+        code += "\tassert_eq!(f1.y, f3.y);\n\n";
         index += 1;
     }
 
-    code += "\tlet mut params = SyscallBls12_381ComplexSubParams { f1: &mut f1, f2: &f2 };\n";
     let initial_index = index;
     while let Some((f1, f2, f3)) = get_bls12_381_complex_sub_test_data(index - initial_index) {
         code += &format!(
@@ -153,20 +142,17 @@ fn main() {
         let f2_y: [u64; 6] = f2[6..12].try_into().unwrap();
         code +=
             &format!("\tlet f2 = SyscallComplex384 {{\n\t\tx: {f2_x:?},\n\t\ty: {f2_y:?}\n\t}};\n");
-        code += "\tparams.f1 = &mut f1;\n";
-        code += "\tparams.f2 = &f2;\n";
-        code += "\tsyscall_bls12_381_complex_sub(&mut params);\n";
+        code += "\tsyscall_bls12_381_complex_sub(&mut f1, &f2);\n";
 
         let f3_x: [u64; 6] = f3[0..6].try_into().unwrap();
         let f3_y: [u64; 6] = f3[6..12].try_into().unwrap();
         code +=
             &format!("\tlet f3 = SyscallComplex384 {{\n\t\tx: {f3_x:?},\n\t\ty: {f3_y:?}\n\t}};\n");
-        code += "\tassert_eq!(params.f1.x, f3.x);\n";
-        code += "\tassert_eq!(params.f1.y, f3.y);\n\n";
+        code += "\tassert_eq!(f1.x, f3.x);\n";
+        code += "\tassert_eq!(f1.y, f3.y);\n\n";
         index += 1;
     }
 
-    code += "\tlet mut params = SyscallBls12_381ComplexMulParams { f1: &mut f1, f2: &f2 };\n";
     let initial_index = index;
     while let Some((f1, f2, f3)) = get_bls12_381_complex_mul_test_data(index - initial_index) {
         code += &format!(
@@ -183,16 +169,14 @@ fn main() {
         let f2_y: [u64; 6] = f2[6..12].try_into().unwrap();
         code +=
             &format!("\tlet f2 = SyscallComplex384 {{\n\t\tx: {f2_x:?},\n\t\ty: {f2_y:?}\n\t}};\n");
-        code += "\tparams.f1 = &mut f1;\n";
-        code += "\tparams.f2 = &f2;\n";
-        code += "\tsyscall_bls12_381_complex_mul(&mut params);\n";
+        code += "\tsyscall_bls12_381_complex_mul(&mut f1, &f2);\n";
 
         let f3_x: [u64; 6] = f3[0..6].try_into().unwrap();
         let f3_y: [u64; 6] = f3[6..12].try_into().unwrap();
         code +=
             &format!("\tlet f3 = SyscallComplex384 {{\n\t\tx: {f3_x:?},\n\t\ty: {f3_y:?}\n\t}};\n");
-        code += "\tassert_eq!(params.f1.x, f3.x);\n";
-        code += "\tassert_eq!(params.f1.y, f3.y);\n\n";
+        code += "\tassert_eq!(f1.x, f3.x);\n";
+        code += "\tassert_eq!(f1.y, f3.y);\n\n";
         index += 1;
     }
 

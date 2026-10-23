@@ -17,6 +17,7 @@ zisk-prover-backend = { workspace = true }
 # Common dependencies
 proofman-common = { workspace = true }
 zisk-common = { workspace = true }
+zisk-core = { workspace = true }
 zisk-build = { workspace = true }
 
 # Utilities
@@ -55,4 +56,5 @@ debug_frops = ["zisk-prover-backend/debug_frops"]
 cpu-only = ["zisk-prover-backend/cpu-only"]
 stats = ["zisk-prover-backend/stats"]
 witness_timers = ["zisk-prover-backend/witness_timers"]
+mem-witness-test = ["zisk-prover-backend/mem-witness-test"]
 diagnostic = ["zisk-prover-backend/diagnostic"]

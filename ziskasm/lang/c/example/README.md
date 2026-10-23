@@ -51,7 +51,8 @@ indistinguishable from a harness that never compared anything.
 
 [`u256_semantics_guest.c`](u256_semantics_guest.c) covers the sign-sensitive half of
 the U256 ABI that the aliasing guest does not touch: `slt`, `sgt`, `sdiv`, `smod`,
-`sar` and `signextend`. These are where EVM semantics are easiest to get subtly wrong
+`sar` and `signextend`, plus unsigned `mod` at its edge divisors. These are where EVM
+semantics are easiest to get subtly wrong
 — truncate-toward-zero rather than floor division, the modulo taking the sign of the
 *dividend*, the `-2^255 / -1` overflow that wraps to itself, arithmetic vs logical
 right shift, and shift counts ≥ 256 saturating to `0` or `-1`.
@@ -62,11 +63,11 @@ riscv64-unknown-elf-gcc -march=rv64ima_zicsr -mabi=lp64 -mcmodel=medany -nostdli
     ../src/_start.s u256_semantics_guest.c ../src/zkvm_calls.s
 : > /tmp/empty.bin
 ../../../../target/release/ziskemu -e /tmp/u256sem.elf -i /tmp/empty.bin -o /tmp/sem.bin
-xxd -p -l 43 -c 43 /tmp/sem.bin
+xxd -p -l 59 -c 59 /tmp/sem.bin
 ```
 
-41 cases, self-checking as above: `00` = pass, `01` = wrong value **or** a non-`EOK`
-status. Expected output: **41 zero bytes, then `0100`** (the same negative control).
+57 cases, self-checking as above: `00` = pass, `01` = wrong value **or** a non-`EOK`
+status. Expected output: **57 zero bytes, then `0100`** (the same negative control).
 
 The expected values are golden vectors from an *independent* Python model of the EVM
 semantics — deliberately not transcribed from this backend, so the test cannot agree
@@ -81,3 +82,29 @@ arithmetic, memory operations and I/O through this binding. Its
 [`cpp-guest/zisk/README.md`](../../../../../ziskethone/cpp-guest/zisk/README.md)
 explains how to build it and run a block through `ziskemu`; the public output (the
 block hash) must match the native guest's.
+
+## Host randomness
+
+[`zkvm_random_guest.c`](zkvm_random_guest.c) calls `zkvm_random_u64` (`zkvm_random.h`)
+500 times. It checks in the guest that the values are all distinct and that every bit
+varies, and it outputs the first 20 values (crossing the 17-word SHAKE256 block
+boundary), the XOR of all 500, and the result of those checks. The values are the
+SHAKE256 stream of the 256-bit seed, so pass the same seed (its 32 bytes as 64 hex
+digits) to the emulator and to
+[`zkvm_random_check.py`](zkvm_random_check.py), which compares the output with Python's
+`hashlib.shake_256`:
+
+```bash
+riscv64-unknown-elf-gcc -march=rv64ima_zicsr -mabi=lp64 -mcmodel=medany -nostdlib \
+    -ffreestanding -O2 -I../include -T ../../../../ziskbuild/zisk_linker_script.ld -o /tmp/random.elf \
+    ../src/_start.s zkvm_random_guest.c ../src/zkvm_calls.s
+: > /tmp/empty.bin
+SEED=000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+../../../../target/release/ziskemu -e /tmp/random.elf -i /tmp/empty.bin -o /tmp/random.bin \
+    --random-seed $SEED
+./zkvm_random_check.py $SEED /tmp/random.bin
+```
+
+Without `--random-seed`, ziskemu draws a fresh seed for each run (`-v` prints it, so
+the run can be replayed). The committed copy of this guest in
+`elf-regressions/zkvm_random/` is checked by `emulator/tests/zkvm_random.rs`.

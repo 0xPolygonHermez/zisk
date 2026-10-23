@@ -120,6 +120,8 @@ impl WitnessGenerator {
     /// * `should_add_instance` - Whether to add the computed AIR instance to the proof
     /// * `trace_buffer` - Buffer for trace data.
     /// * `_caller_stats_id` - Parent stats scope ID.
+    ///
+    /// On failure, the trace buffer comes back with the error when the instance handed it back.
     #[allow(clippy::too_many_arguments)]
     pub fn compute_secn_witness<F: PrimeField64>(
         &self,
@@ -131,7 +133,7 @@ impl WitnessGenerator {
         collectors: Vec<(usize, Box<dyn BusDevice<u64>>)>,
         trace_buffer: Vec<F>,
         _caller_stats_id: u64,
-    ) -> ExecutorResult<()> {
+    ) -> Result<(), (ExecutorError, Option<Vec<F>>)> {
         let witness_start_time = Instant::now();
 
         let _stats_msg = match secn_instance.instance_type() {
@@ -139,22 +141,33 @@ impl WitnessGenerator {
             InstanceType::Table => "AIR_WITNESS_TABLE",
         };
 
-        let (_airgroup_id, _air_id) = pctx.dctx_get_instance_info(global_id)?;
+        let (_airgroup_id, _air_id) = match pctx.dctx_get_instance_info(global_id) {
+            Ok(info) => info,
+            Err(e) => return Err((e.into(), Some(trace_buffer))),
+        };
 
         stats_begin!(state.stats, _caller_stats_id, _stats_scope, _stats_msg, _air_id);
 
-        let air_instance = secn_instance.compute_witness(
-            pctx,
-            sctx,
-            collectors,
-            trace_buffer,
-            self.packed.load(Ordering::Relaxed),
-        )?;
+        let air_instance = secn_instance
+            .compute_witness(
+                pctx,
+                sctx,
+                collectors,
+                trace_buffer,
+                self.packed.load(Ordering::Relaxed),
+            )
+            .map_err(|e| {
+                // Closed here too: a device failure is retried on the CPU, with a scope of its own.
+                stats_end!(state.stats, &_stats_scope);
+                (e.error.into(), e.trace_buffer)
+            })?;
 
         if let Some(air_instance) = air_instance {
             let should_add_instance = secn_instance.instance_type() == InstanceType::Instance
                 || (secn_instance.instance_type() == InstanceType::Table
-                    && pctx.dctx_is_my_process_instance(global_id)?);
+                    && pctx
+                        .dctx_is_my_process_instance(global_id)
+                        .map_err(|e| (e.into(), None))?);
 
             if should_add_instance {
                 pctx.add_air_instance(air_instance, global_id);

@@ -10,7 +10,7 @@ OUTPUT_DIR="elf-output"
 CLEAN_BUILD=0
 VERBOSE=0
 readonly ASSEMBLER_FLAGS="-march=rv64imac"
-readonly LINKER_FLAGS="-Ttext=0x80000000"
+readonly LINKER_FLAGS="-Ttext=0x90000000"
 
 # Colors for output (if terminal supports it)
 if [[ -t 1 ]]; then
@@ -148,7 +148,7 @@ compile_assembly_file() {
     echo "  Compiling: $asm_file"
     
     # Check for custom linker script in the directory
-    # If not just use the default 0x8000000000 from LINKER_FLAGS
+    # If not just use the default 0x90000000 from LINKER_FLAGS
     linker_script="$(find "${dir_name}" -maxdepth 1 -name "*.ld" -type f 2>/dev/null | head -1)"
     if [[ -n "$linker_script" && -f "$linker_script" ]]; then
         local linker_script_name="$(basename "$linker_script")"
@@ -259,6 +259,13 @@ process_all_directories() {
     while IFS= read -r -d '' dir; do
         # Skip output directory and hidden directories
         if [[ "$(basename "$dir")" == "$OUTPUT_DIR" ]] || [[ "$(basename "$dir")" == .* ]]; then
+            continue
+        fi
+
+        # Skip failed_execution: its guests must fail, which the test harness would
+        # report as failures. It has its own build.sh and committed ELFs, checked by
+        # emulator/tests/failed_execution.rs.
+        if [[ "$(basename "$dir")" == "failed_execution" ]]; then
             continue
         fi
         

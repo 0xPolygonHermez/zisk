@@ -1,7 +1,7 @@
 use anyhow::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
@@ -12,17 +12,17 @@ use zisk_cluster_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_cluster_common::{JobId, PartitionInfo};
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::{
-    AirInstanceCount, ProgramVK, Proof, ProofKind, SetupKey, StatsCostPerType, ZiskExecutorTime,
-    ZiskPaths,
+    AirInstanceCount, ProgramVK, Proof, ProofKind, RandomSeed, SetupKey, SnarkProtocol,
+    StatsCostPerType, ZiskExecutorTime, ZiskPaths,
 };
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
-    Asm, AsmOptions, BackendProverOpts, Emu, ProverClientBuilder, ProverEngine, ZiskBackend,
-    ZiskProver,
+    snark_protocol_of_key, Asm, AsmOptions, BackendProverOpts, Emu, ProverClientBuilder,
+    ProverEngine, ProverJob, ZiskBackend, ZiskProver,
 };
 
 use crate::stream_ordering::StreamOrderingActor;
-use crate::worker_node::run_recovery;
+use crate::worker_node::CANCEL_DONE_TAG;
 
 use proofman::ProvePhaseInputs;
 use proofman::WitnessInfo;
@@ -42,6 +42,19 @@ struct SetupMessage {
     emulator_only: bool,
 }
 
+/// What a `Cancel` broadcast carries: the job whose work the peer ranks stop, for
+/// their logs. See [`crate::worker_node::begin_cluster_recovery`].
+#[derive(BorshSerialize, BorshDeserialize)]
+struct CancelMessage {
+    job_id: String,
+}
+
+/// The broadcast that tells the peer ranks to stop `job_id`'s work and reply.
+pub(crate) fn cancel_broadcast(job_id: &str) -> Result<Vec<u8>> {
+    borsh::to_vec(&(WorkerMpiTag::Cancel, CancelMessage { job_id: job_id.to_string() }))
+        .map_err(|e| anyhow::anyhow!("Failed to serialize Cancel MPI broadcast: {e}"))
+}
+
 /// Tag byte used as the first byte of every MPI broadcast message.
 ///
 /// Variants must stay in this order (Borsh encodes variant index, not the repr value).
@@ -58,6 +71,8 @@ pub(crate) enum WorkerMpiTag {
     ContributionsInputsStream,
     ContributionsHintsStream,
     Setup,
+    /// Stop the current job's work and reply: rank 0's recovery.
+    Cancel,
 }
 
 /// Timeout for waiting for the stream-ordering actor to finish its current
@@ -247,6 +262,9 @@ pub struct ProverConfig {
     /// Path to the PLONK proving key
     pub proving_key_snark: Option<PathBuf>,
 
+    /// Protocol of the final SNARK the SNARK proving key is set up for, when there is one
+    pub snark_protocol: Option<SnarkProtocol>,
+
     /// Verbosity level for logging
     pub verbose: u8,
 
@@ -300,6 +318,13 @@ impl ProverConfig {
         } else {
             None
         };
+        // Reported at registration, where the coordinator requires the same of every worker. A
+        // key that is not a final SNARK key stops the worker here, not at a job's SNARK.
+        let snark_protocol = proving_key_snark
+            .as_deref()
+            .map(snark_protocol_of_key)
+            .transpose()
+            .map_err(|e| anyhow::anyhow!("--plonk needs a final SNARK proving key, but {e}"))?;
         let debug_info = match &prover_service_config.debug {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
@@ -317,6 +342,7 @@ impl ProverConfig {
             emulator,
             proving_key,
             proving_key_snark,
+            snark_protocol,
             verbose: prover_service_config.verbose,
             debug_info,
             unlock_mapped_memory: prover_service_config.unlock_mapped_memory,
@@ -343,6 +369,8 @@ pub struct JobContext {
     pub hash_id: String,
     /// Input/hints data context for the job.
     pub data_ctx: DataCtx,
+    /// Seed every emulation of the job runs with.
+    pub random_seed: RandomSeed,
     /// This worker's rank within the job.
     pub rank_id: u32,
     /// Total number of workers assigned to the job.
@@ -359,8 +387,6 @@ pub struct JobContext {
     pub instances: u64,
     /// When the current task was received (for latency accounting).
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
-    /// Job-level metadata propagated from the coordinator.
-    pub metadata: Option<BTreeMap<String, String>>,
 }
 
 /// A ZisK worker over backend `T`: holds the prover, the current job context
@@ -383,10 +409,11 @@ pub struct Worker<T: ZiskBackend + 'static> {
     stream_actor: Option<StreamOrderingActor>,
     /// All set-up programs, keyed by hash_id. Supports multiple concurrent programs.
     guest_programs: HashMap<String, Arc<GuestProgram>>,
-    /// `(hash_id, with_hints)` of the program the prover currently has registered, so
-    /// `prepare_for_new_job` can skip `register_program` when the next job runs the
-    /// same program. Cleared whenever a setup runs (see [`Self::forget_registered_program`]).
-    last_registered_program: Option<(String, bool)>,
+    /// The job on the prover, from [`Self::prepare_for_new_job`] until
+    /// [`Self::end_job`], and by each of its phase tasks while it runs. On the
+    /// assembly backend it holds the shared memory every program in the process
+    /// uses, so that no setup rewrites it under the job.
+    prover_job: Option<Arc<ProverJob>>,
     /// Two setups for the same program (one with hints, one without) coexist independently.
     program_vks: HashMap<SetupKey, ProgramVK>,
 }
@@ -449,7 +476,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             current_computation: None,
             current_mpi_task: None,
             guest_programs: HashMap::new(),
-            last_registered_program: None,
+            prover_job: None,
             program_vks: HashMap::new(),
             prover,
             prover_config,
@@ -521,7 +548,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             prover_config,
             stream_actor: None,
             guest_programs: HashMap::new(),
-            last_registered_program: None,
+            prover_job: None,
             program_vks: HashMap::new(),
         })
     }
@@ -539,38 +566,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     /// Number of MPI ranks sharing this job (`1` when MPI is unused).
     pub fn n_processes(&self) -> i32 {
         self.prover.n_processes()
-    }
-
-    /// Run setup for a guest program, storing it in the multi-program map.
-    /// Skips setup if this hash_id was already set up.
-    pub fn run_setup(
-        &mut self,
-        hash_id: &str,
-        with_hints: bool,
-        emulator_only: bool,
-        new_guest_program: Arc<GuestProgram>,
-    ) -> Result<ProgramVK> {
-        // Skip if already set up for this (hash_id, with_hints, emulator_only) combination.
-        if let Some(vk) = self.program_vk(hash_id, with_hints, emulator_only) {
-            info!(
-                "Received same guest program for setup (hash_id={}, with_hints={}, emulator_only={}). Skipping setup",
-                hash_id, with_hints, emulator_only
-            );
-            return Ok(vk);
-        }
-
-        let setup_result = Self::setup_compute(
-            self.prover.as_ref(),
-            hash_id,
-            with_hints,
-            emulator_only,
-            &new_guest_program,
-        );
-        // Setup may have replaced the prover's ASM resources even on failure.
-        self.forget_registered_program();
-        let vk = setup_result?;
-        self.register_setup(hash_id, with_hints, emulator_only, new_guest_program, vk.clone());
-        Ok(vk)
     }
 
     /// Content-addressed skip check: returns the cached VK if this program was
@@ -597,21 +592,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) {
         self.guest_programs.insert(hash_id.to_string(), program);
         self.program_vks.insert(SetupKey::new(hash_id, with_hints, emulator_only), vk);
-        self.forget_registered_program();
-    }
-
-    /// Invalidate the registered-program cache. Must run after every setup attempt,
-    /// successful or not: `setup_internal` installs the new program's ASM resources
-    /// before the cross-rank success check, so a failed setup can still have replaced
-    /// the resources `register_program` last installed.
-    pub fn forget_registered_program(&mut self) {
-        self.last_registered_program = None;
     }
 
     /// Blocking setup compute: broadcasts the ELF to secondary MPI ranks and runs
-    /// `setup_internal`. Split out of `run_setup` so it can run on a blocking pool
-    /// without the `&mut self` map access (which stays on the event loop via
-    /// [`Self::register_setup`]). Does not touch `self`.
+    /// `setup_internal`. Runs on a blocking pool, without the `&mut self` map
+    /// access, which stays on the event loop via [`Self::register_setup`]. Does not
+    /// touch `self`.
     pub fn setup_compute(
         prover: &ZiskProver<T>,
         hash_id: &str,
@@ -660,13 +646,33 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.current_job.clone()
     }
 
-    /// Set (or clear, with `None`) the current job context.
+    /// Set (or clear, with `None`) the current job context. Clearing it ends the job.
     pub fn set_current_job(&mut self, job: Option<JobContext>) {
         if let Some(job) = job {
             self.current_job = Some(Arc::new(Mutex::new(job)));
         } else {
             self.current_job = None;
+            self.end_job();
         }
+    }
+
+    /// End the job on the prover, once its last phase that uses the prover's shared
+    /// memory has run. A phase task still running keeps it until it returns.
+    ///
+    /// Ending a job can wait, for the ROM-histogram runner it joins: when this is the last
+    /// reference, it ends on the blocking pool rather than on the event loop. The next job
+    /// waits for it to end before it begins.
+    pub fn end_job(&mut self) {
+        let Some(job) = self.prover_job.take() else { return };
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => drop(runtime.spawn_blocking(move || drop(job))),
+            Err(_) => drop(job),
+        }
+    }
+
+    /// Whether a job on the prover has begun and not ended.
+    pub fn has_job(&self) -> bool {
+        self.prover_job.is_some()
     }
 
     /// Take the current compute task handle, leaving `None`.
@@ -713,6 +719,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.prover.aggregation_arity()
     }
 
+    /// Protocol of the final SNARK of the SNARK proving key, if any, reported at registration.
+    pub fn snark_protocol(&self) -> Option<SnarkProtocol> {
+        self.prover_config.snark_protocol
+    }
+
     /// A shared handle to the underlying prover.
     pub fn prover_arc(&self) -> Arc<ZiskProver<T>> {
         self.prover.clone()
@@ -728,12 +739,19 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     /// than dropping it, so recovery can await it off the event loop — letting
     /// the ASM child finish resetting before a new job reuses its shmem.
     pub fn cancel_current_computation(&mut self) -> CancelledWork {
-        if let Err(e) = self.prover.cancel() {
-            tracing::warn!("cancel_current_computation: prover.cancel failed: {e:#}");
+        let had_live_compute = self.has_live_computation();
+        let had_job_context = self.current_job.is_some() || self.has_job();
+        let had_stream_actor = self.stream_actor.is_some();
+        let should_cancel = had_live_compute || had_job_context || had_stream_actor;
+
+        if should_cancel {
+            if let Err(e) = self.prover.cancel() {
+                tracing::warn!("cancel_current_computation: prover.cancel failed: {e:#}");
+            }
         }
 
         let compute = self.current_computation.take();
-        if compute.is_some() {
+        if had_live_compute {
             self.prover.notify_cluster_cancellation();
         }
 
@@ -757,17 +775,21 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub fn clear_current_job(&mut self) -> CancelledWork {
         let cancelled = self.cancel_current_computation();
         self.current_job = None;
+        self.end_job();
         cancelled
     }
 
-    /// Register the program, reset backend state, and (re)activate services in
-    /// preparation for a new job on this worker.
+    /// Begin a new job on this worker: end the previous one, wait until the prover is
+    /// idle, begin the job on it, and (re)activate services. See [`Self::end_job`].
     pub fn prepare_for_new_job(
         &mut self,
         hash_id: &str,
         with_hints: bool,
         is_first_process: bool,
-    ) -> Result<()> {
+    ) -> Result<Arc<ProverJob>> {
+        // Beginning this job waits for the previous one to end.
+        self.end_job();
+
         let program_id = self
             .guest_programs
             .get(hash_id)
@@ -793,25 +815,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             );
         }
 
-        // register_program only depends on (program, with_hints): skip it when the
-        // previous job registered the same program and no setup has run since.
-        let same = self
-            .last_registered_program
-            .as_ref()
-            .is_some_and(|(p, h)| p == hash_id && *h == with_hints);
-        if !same {
-            // Clear first so a half-failed register_program is never trusted.
-            self.last_registered_program = None;
-            self.prover.register_program(&program_id, with_hints)?;
-            self.last_registered_program = Some((hash_id.to_string(), with_hints));
-        } else {
-            tracing::info!(
-                "[prep] program {hash_id} already registered, skipping register_program"
-            );
-        }
-        self.prover.reset()?;
+        let job = Arc::new(self.prover.begin_job_for(&program_id, with_hints)?);
         self.prover.set_active_services(is_first_process)?;
-        Ok(())
+        self.prover_job = Some(Arc::clone(&job));
+        Ok(job)
     }
 
     /// Install a fresh [`JobContext`] as the current job and mark the worker
@@ -823,17 +830,18 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         job_id: JobId,
         hash_id: String,
         data_ctx: DataCtx,
+        seed: RandomSeed,
         rank_id: u32,
         total_workers: u32,
         allocation: Vec<u32>,
         total_compute_units: u32,
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
-        metadata: Option<BTreeMap<String, String>>,
     ) -> Arc<Mutex<JobContext>> {
         let current_job = Arc::new(Mutex::new(JobContext {
             job_id: job_id.clone(),
             hash_id,
             data_ctx,
+            random_seed: seed,
             rank_id,
             total_workers,
             allocation,
@@ -842,7 +850,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             executed_steps: 0,
             task_received_time,
             instances: 0,
-            metadata,
         }));
         self.current_job = Some(current_job.clone());
 
@@ -890,6 +897,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     allocation: job.allocation.clone(),
                     worker_idx: job.rank_id as usize,
                 },
+                random_seed: *job.random_seed.as_bytes(),
             };
 
             borsh::to_vec(&(WorkerMpiTag::Contributions, message)).map_err(|e| {
@@ -909,8 +917,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: LoopEventSender,
     ) -> Result<JoinHandle<()>> {
         self.execution_only_mpi_broadcast(&job).await?;
-        let hash_id = job.lock().await.hash_id.clone();
-        Ok(self.execution_only(job, hash_id, tx))
+        Ok(self.execution_only(job, tx))
     }
 
     /// Broadcast the execution-only inputs to secondary MPI ranks.
@@ -941,6 +948,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     allocation: job.allocation.clone(),
                     worker_idx: job.rank_id as usize,
                 },
+                random_seed: *job.random_seed.as_bytes(),
             };
 
             borsh::to_vec(&(WorkerMpiTag::Execution, message)).map_err(|e| {
@@ -1013,6 +1021,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
         let options = self.get_prove_options(false);
+        // Held by the task too, so the job outlives it.
+        let prover_job = self.prover_job.clone();
 
         tokio::task::spawn_blocking(move || {
             let (job_id, task_received_time) = {
@@ -1032,21 +1042,29 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     let phase_inputs = proofman::ProvePhaseInputs::Contributions();
                     let inputs_source = guard.data_ctx.input_source.clone();
                     let hints_source = guard.data_ctx.hints_source.clone();
+                    let seed = guard.random_seed;
                     let partition_info = PartitionInfo {
                         total_compute_units: guard.total_compute_units as usize,
                         allocation: guard.allocation.clone(),
                         worker_idx: guard.rank_id as usize,
                     };
                     drop(guard);
-                    let result = Self::execute_contribution_task(
-                        job_id.clone(),
-                        &prover,
-                        phase_inputs,
-                        inputs_source,
-                        hints_source,
-                        partition_info,
-                        options,
-                    );
+                    let result = match prover_job.as_deref() {
+                        Some(prover_job) => Self::execute_contribution_task(
+                            job_id.clone(),
+                            &prover,
+                            prover_job,
+                            phase_inputs,
+                            inputs_source,
+                            hints_source,
+                            seed,
+                            partition_info,
+                            options,
+                        ),
+                        None => {
+                            Err(anyhow::anyhow!("contribution started without a job on the prover"))
+                        }
+                    };
 
                     let (witness_info, zisk_execution_time) = prover
                         .get_execution_info()
@@ -1104,15 +1122,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub fn execution_only(
         &self,
         job: Arc<Mutex<JobContext>>,
-        hash_id: String,
         tx: LoopEventSender,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
-        let guest_program = self
-            .guest_programs
-            .get(&hash_id)
-            .unwrap_or_else(|| panic!("Guest program not found for hash_id={hash_id}"))
-            .clone();
+        // Held by the task too, so the job outlives it.
+        let prover_job = self.prover_job.clone();
 
         tokio::task::spawn_blocking(move || {
             let (job_id, task_received_time) = {
@@ -1131,6 +1145,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
                     let inputs_source = guard.data_ctx.input_source.clone();
                     let hints_source = guard.data_ctx.hints_source.clone();
+                    let seed = guard.random_seed;
                     let partition_info = PartitionInfo {
                         total_compute_units: guard.total_compute_units as usize,
                         allocation: guard.allocation.clone(),
@@ -1139,13 +1154,19 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     drop(guard);
 
                     // Execute the program (same as contribution) but without generating challenges
-                    let result = Self::execute_execution_task(
-                        &prover,
-                        inputs_source,
-                        hints_source,
-                        partition_info,
-                        &guest_program,
-                    );
+                    let result = match prover_job.as_deref() {
+                        Some(prover_job) => Self::execute_execution_task(
+                            &prover,
+                            prover_job,
+                            inputs_source,
+                            hints_source,
+                            seed,
+                            partition_info,
+                        ),
+                        None => {
+                            Err(anyhow::anyhow!("execution started without a job on the prover"))
+                        }
+                    };
 
                     {
                         let mut guard = job.blocking_lock();
@@ -1215,9 +1236,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub fn execute_contribution_task(
         job_id: JobId,
         prover: &ZiskProver<T>,
+        job: &ProverJob,
         phase_inputs: ProvePhaseInputs,
         input_source: InputSourceDto,
         hints_source: HintsSourceDto,
+        seed: RandomSeed,
         partition_info: PartitionInfo,
         options: ProofOptions,
     ) -> Result<Vec<ContributionsInfo>> {
@@ -1234,11 +1257,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             match hints_source {
                 HintsSourceDto::HintsPath(hints_uri) => {
                     let hints_stream = StreamSource::from_uri(hints_uri)?;
-                    prover.register_hints_stream(hints_stream)?;
+                    prover.register_hints_stream(job, hints_stream)?;
                 }
                 HintsSourceDto::HintsData(hints_data) => {
                     let hints_stream = StreamSource::from_vec(hints_data.to_vec());
-                    prover.register_hints_stream(hints_stream)?;
+                    prover.register_hints_stream(job, hints_stream)?;
                 }
                 HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
                     // HintsStream: data is delivered via route_stream_data → actor → process_hints.
@@ -1247,7 +1270,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
         }
 
-        prover.set_stdin(stdin)?;
+        prover.set_stdin_and_random_seed(stdin, seed)?;
 
         if matches!(phase_inputs, ProvePhaseInputs::Contributions()) {
             prover.set_partition(
@@ -1278,15 +1301,39 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     }
 
     /// Run the execute-only phase synchronously and return
-    /// `(num_instances, public_outputs)`. Ends with a cluster barrier so all
-    /// ranks finish before success is reported.
+    /// `(num_instances, public_outputs)`. Ends with every rank agreeing on whether
+    /// they all succeeded, so all ranks finish before success is reported.
     #[allow(clippy::too_many_arguments)]
     pub fn execute_execution_task(
         prover: &ZiskProver<T>,
+        job: &ProverJob,
         input_source: InputSourceDto,
         hints_source: HintsSourceDto,
+        seed: RandomSeed,
         partition_info: PartitionInfo,
-        guest_program: &GuestProgram,
+    ) -> Result<(usize, Vec<u64>)> {
+        let outcome =
+            Self::run_execution(prover, job, input_source, hints_source, seed, partition_info);
+        // `execute` has no implicit MPI sync (each rank runs its own partition
+        // independently). Every rank says whether its own ran, failed or not, so
+        // that they all end the execution together, and all fail if any did: a rank
+        // left waiting for the others could never stop for a recovery.
+        let all_ok = prover.cluster_all_ok(outcome.is_ok());
+        let outcome = outcome?;
+        if !all_ok {
+            return Err(anyhow::anyhow!("another MPI rank failed its part of the execution"));
+        }
+        Ok(outcome)
+    }
+
+    /// [`Self::execute_execution_task`] on this rank alone.
+    fn run_execution(
+        prover: &ZiskProver<T>,
+        job: &ProverJob,
+        input_source: InputSourceDto,
+        hints_source: HintsSourceDto,
+        seed: RandomSeed,
+        partition_info: PartitionInfo,
     ) -> Result<(usize, Vec<u64>)> {
         let stdin = match input_source {
             InputSourceDto::InputPath(inputs_uri) => ZiskStdin::from_file(inputs_uri)?,
@@ -1299,11 +1346,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             match hints_source {
                 HintsSourceDto::HintsPath(hints_uri) => {
                     let hints_stream = StreamSource::from_uri(hints_uri)?;
-                    prover.register_hints_stream(hints_stream)?;
+                    prover.register_hints_stream(job, hints_stream)?;
                 }
                 HintsSourceDto::HintsData(hints_data) => {
                     let hints_stream = StreamSource::from_vec(hints_data.to_vec());
-                    prover.register_hints_stream(hints_stream)?;
+                    prover.register_hints_stream(job, hints_stream)?;
                 }
                 HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
                     // HintsStream: data is delivered via route_stream_data → actor → process_hints.
@@ -1312,25 +1359,17 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
         }
 
-        prover.set_stdin(stdin.clone())?;
-
         prover.set_partition(
             partition_info.total_compute_units,
             partition_info.allocation.clone(),
             partition_info.worker_idx,
         )?;
 
-        let result = prover.execute(guest_program, stdin)?;
+        let result = prover.execute_in(job, stdin, seed)?;
 
         let num_instances = prover.get_execution_info()?.0.total_instances;
 
         let publics_u64 = result.get_publics().public_u64();
-
-        // `execute` has no implicit MPI sync (each rank runs its own
-        // partition independently). Block until every rank has finished so
-        // rank 0 can't report success while peer ranks are still draining
-        // stale broadcasts queued behind a previous cancel/failure.
-        prover.cluster_barrier();
 
         Ok((num_instances, publics_u64))
     }
@@ -1349,10 +1388,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             _ => anyhow::bail!("Unsupported proof_dest for wrap: {}", proof_dest),
         };
 
-        let proof: Proof =
-            bincode::serde::decode_from_slice(&proof_data, bincode::config::standard())
-                .map(|(v, _)| v)
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize proof for wrap: {}", e))?;
+        let proof = Proof::from_bytes(&proof_data)
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize proof for wrap: {}", e))?;
 
         let result = prover.wrap_proof(&proof, proof_kind).run()?;
 
@@ -1424,8 +1461,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
         let options = self.get_prove_options(false);
+        // Held by the task too, so the job outlives it.
+        let prover_job = self.prover_job.clone();
 
         tokio::task::spawn_blocking(move || {
+            let _prover_job = prover_job;
             let job_id = job.blocking_lock().job_id.clone();
             let tx_panic = tx.clone();
             let job_id_panic = job_id.clone();
@@ -1678,6 +1718,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
             WorkerMpiTag::Setup => {
                 self.await_current_mpi_task().await;
+                // The previous job is over; its hold on the shared memory would keep
+                // this setup from starting its services.
+                self.end_job();
                 let message: SetupMessage = borsh::from_slice(&bytes[1..]).map_err(|e| {
                     anyhow::anyhow!("Failed to deserialize Setup MPI broadcast: {}", e)
                 })?;
@@ -1692,8 +1735,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 })
                 .await
                 .map_err(|e| anyhow::anyhow!("Setup spawn_blocking panicked: {}", e));
-                // Setup may have replaced the prover's ASM resources even on failure.
-                self.forget_registered_program();
                 setup_result??;
 
                 self.guest_programs.insert(message.hash_id.clone(), guest_program);
@@ -1712,37 +1753,32 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 let with_hints = !matches!(message.hints_source, HintsSourceDto::HintsNull);
                 let is_first_process =
                     message.partition_info.allocation.contains(&0) && self.world_rank() == 0;
-                self.prepare_for_new_job(&message.hash_id, with_hints, is_first_process)?;
+                let job =
+                    self.prepare_for_new_job(&message.hash_id, with_hints, is_first_process)?;
 
-                let guest_programs = self.guest_programs.clone();
                 let is_execution = matches!(tag, WorkerMpiTag::Execution);
                 let world_rank = self.world_rank();
+                let seed = RandomSeed::new(message.random_seed);
                 let handle = tokio::task::spawn_blocking(move || {
                     let run = || -> Result<()> {
                         if is_execution {
-                            let guest_program = guest_programs
-                                .get(&message.hash_id)
-                                .ok_or_else(|| {
-                                    anyhow::anyhow!(
-                                        "Guest program not found for hash_id={}",
-                                        message.hash_id
-                                    )
-                                })?
-                                .clone();
                             Self::execute_execution_task(
                                 &prover,
+                                &job,
                                 message.input_source,
                                 message.hints_source,
+                                seed,
                                 message.partition_info,
-                                &guest_program,
                             )?;
                         } else {
                             Self::execute_contribution_task(
                                 message.job_id,
                                 &prover,
+                                &job,
                                 message.phase_inputs,
                                 message.input_source,
                                 message.hints_source,
+                                seed,
                                 message.partition_info,
                                 message.options,
                             )?;
@@ -1750,24 +1786,17 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         Ok(())
                     };
 
-                    let task_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run));
-                    let task_failed = match task_result {
-                        Ok(Ok(())) => false,
+                    // A failure reaches rank 0 through the job's collectives, and its
+                    // recovery stops this rank too; see `stop_cancelled_job`.
+                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {
+                        Ok(Ok(())) => {}
                         Ok(Err(e)) => {
                             error!("MPI broadcast task failed: {}. Waiting for new job...", e);
-                            true
                         }
                         Err(_) => {
                             error!(
                                 "MPI broadcast task panicked on rank {world_rank}. Waiting for new job..."
                             );
-                            true
-                        }
-                    };
-
-                    if task_failed {
-                        if let Err(e) = run_recovery(&*prover) {
-                            error!("[Recovery] rank {world_rank}: recovery failed: {e:#}");
                         }
                     }
                 });
@@ -1781,7 +1810,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 })?;
 
                 let world_rank = self.world_rank();
+                // Held by the task too, so the job outlives it.
+                let job = self.prover_job.clone();
                 let handle = tokio::task::spawn_blocking(move || {
+                    let _job = job;
                     let task_result =
                         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                             Self::execute_prove_task(
@@ -1791,24 +1823,17 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 options,
                             )
                         }));
-                    let task_failed = match task_result {
-                        Ok(Ok(_)) => false,
+                    // As for the contribution's: rank 0's recovery stops this rank.
+                    match task_result {
+                        Ok(Ok(_)) => {}
                         Ok(Err(e)) => {
                             error!("MPI Prove task failed: {}. Waiting for new job...", e);
-                            true
                         }
                         Err(_) => {
                             error!(
                                 "MPI Prove task panicked on rank {world_rank}. Waiting for new job..."
                             );
-                            true
                         }
-                    };
-
-                    if task_failed {
-                        run_recovery(&*prover).unwrap_or_else(|e| {
-                            error!("[Recovery] rank {world_rank}: recovery failed: {e:#}");
-                        });
                     }
                 });
                 self.current_mpi_task = Some(handle);
@@ -1816,13 +1841,46 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             WorkerMpiTag::Aggregate => {
                 return Err(anyhow::anyhow!("Aggregate phase is not supported in MPI broadcast"));
             }
+            WorkerMpiTag::Cancel => {
+                let message: CancelMessage = borsh::from_slice(&bytes[1..]).map_err(|e| {
+                    anyhow::anyhow!("Failed to deserialize Cancel MPI broadcast: {}", e)
+                })?;
+                self.stop_cancelled_job(&message.job_id).await;
+            }
         }
         Ok(())
     }
 
+    /// A peer rank's part of rank 0's recovery: stop the cancelled job's task, end
+    /// the job, and reply once the prover is idle, which rank 0 waits for.
+    async fn stop_cancelled_job(&mut self, job_id: &str) {
+        let world_rank = self.world_rank();
+        warn!("[Recovery] rank {world_rank}: job {job_id} cancelled; stopping its work");
+        // Only while the job is held: its end resets the ASM services' cancel flag,
+        // which would otherwise reach the next job.
+        if self.has_job() {
+            if let Err(e) = self.prover.cancel() {
+                warn!("[Recovery] rank {world_rank}: cancelling the prover failed: {e:#}");
+            }
+        }
+        self.await_current_mpi_task().await;
+        self.end_job();
+
+        let prover = self.prover.clone();
+        let replied = tokio::task::spawn_blocking(move || {
+            prover.wait_until_proofman_ready();
+            prover.mpi_send(0, CANCEL_DONE_TAG, &[]);
+        })
+        .await;
+        match replied {
+            Ok(()) => info!("[Recovery] rank {world_rank}: job {job_id} stopped; told rank 0"),
+            Err(e) => error!("[Recovery] rank {world_rank}: replying to rank 0 failed: {e}"),
+        }
+    }
+
     /// Joins the previous MPI peer-rank task before starting a new one.
     /// Errors and panics from the joined task are logged here so the loop
-    /// keeps running — the task itself already ran `run_recovery` on failure.
+    /// keeps running; rank 0's recovery handles a failed job.
     async fn await_current_mpi_task(&mut self) {
         if let Some(handle) = self.current_mpi_task.take() {
             if let Err(e) = handle.await {

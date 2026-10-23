@@ -25,12 +25,12 @@ use emit::{Code, Fixup};
 use layout::*;
 use module::{parse_module, WasmModule};
 use zisk_core::mem::DataSection;
+use zisk_core::rom_layout::{add_end_and_lib, normalize_rw_data_sections};
 use zisk_core::zisk_rom::DataSection64;
 use zisk_core::{
     ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, MAX_ZISK_OS_ROM_ADDR, ROM_ADDR,
     ROM_ENTRY,
 };
-use zisk_riscv::add_end_and_lib;
 
 /// One past the last program ROM address generated functions may occupy.  With the `float`
 /// feature the top of the program ROM window holds the soft-float library (linked by
@@ -39,7 +39,6 @@ use zisk_riscv::add_end_and_lib;
 const PROGRAM_ROM_END: u64 = zisk_core::FLOAT_LIB_ROM_ADDR;
 #[cfg(not(feature = "float"))]
 const PROGRAM_ROM_END: u64 = zisk_core::ROM_ADDR_MAX + 1;
-use zisk_transpiler_common::elf2rom::normalize_rw_data_sections;
 
 /// Reserve below `WASM_STACK_TOP` for the synthetic entry "frame" that calls `_start`.
 const ENTRY_FRAME_RESERVE: i64 = 64;

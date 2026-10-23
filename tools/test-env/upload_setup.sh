@@ -7,9 +7,10 @@
 #
 # Artifacts (<VER> = SETUP_VERSION, <SFX> = SETUP_NAME_SUFFIX, empty by default):
 #   provingKey/                            -> zisk-provingkey-<VER><SFX>.tar.gz       (+ .md5)
-#   provingKey/.../vadcop_final.verkey.bin -> zisk-verifykey-<VER><SFX>.tar.gz        (+ .md5)
+#   provingKey/.../vadcop_final{,_compressed}.verkey.bin
+#                                          -> zisk-verifykey-<VER><SFX>.tar.gz        (+ .md5)
 #   circom/            (if present)        -> zisk-circuits-<VER><SFX>.tar.gz         (+ .md5)
-#   provingKeySnark/   (if present)        -> zisk-provingkey-plonk-<VER><SFX>.tar.gz (+ .md5)
+#   provingKeySnark/   (if present)        -> zisk-provingkey-<plonk|pilfflonk>-<VER><SFX>.tar.gz (+ .md5)
 #
 # Every tarball present is uploaded. circom/ comes out of the recursive setup;
 # provingKeySnark/ only when INCLUDE_SNARK=1.
@@ -156,7 +157,11 @@ main() {
     PROVINGKEY_FILE="zisk-provingkey-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
     VERIFYKEY_FILE="zisk-verifykey-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
     CIRCUITS_FILE="zisk-circuits-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
-    SNARK_FILE="zisk-provingkey-plonk-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
+    # Named by the final SNARK it holds: `final/provingKey/` is a pilfflonk key, `final/final.zkey`
+    # PLONK's. ziskup and the release workflow read the plonk name; the pilfflonk one is new.
+    SNARK_PROTOCOL=plonk
+    [[ -d build/provingKeySnark/final/provingKey ]] && SNARK_PROTOCOL=pilfflonk
+    SNARK_FILE="zisk-provingkey-${SNARK_PROTOCOL}-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
     HASH_FILE="${PROVINGKEY_FILE%.tar.gz}.hash"
     info "Publishing as ${PROVINGKEY_FILE} (gate: ${HASH_FILE})"
 
@@ -228,8 +233,14 @@ main() {
       --exclude='*.const_gpu' || return 1
 
     step "Compress verify key..."
-    ensure tar -czvf "${VERIFYKEY_FILE}" \
-      provingKey/zisk/vadcop_final/vadcop_final.verkey.bin || return 1
+    # One key per stage the setup builds: blake3 has no compressed stage.
+    local verkeys=(provingKey/zisk/vadcop_final/vadcop_final.verkey.bin)
+    local compressed_verkey=provingKey/zisk/vadcop_final_compressed/vadcop_final_compressed.verkey.bin
+    if [[ "${SETUP_MODE}" != "blake3" ]]; then
+      [[ -f "${compressed_verkey}" ]] || { err "${compressed_verkey} not found"; return 1; }
+      verkeys+=("${compressed_verkey}")
+    fi
+    ensure tar -czvf "${VERIFYKEY_FILE}" "${verkeys[@]}" || return 1
     write_md5 "${VERIFYKEY_FILE}" > "${VERIFYKEY_FILE}.md5" || { err "md5 failed for ${VERIFYKEY_FILE}"; return 1; }
     ARTIFACTS+=("${VERIFYKEY_FILE}" "${VERIFYKEY_FILE}.md5")
 

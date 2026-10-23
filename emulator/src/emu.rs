@@ -1,7 +1,10 @@
 use std::borrow::Cow;
 use std::mem;
 
-use crate::{ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, ParEmuOptions, RegStepCheck};
+use crate::{
+    ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, FailureReason, ParEmuOptions,
+    RegStepCheck,
+};
 use proofman_fields::PrimeField64;
 use zisk_common::{
     OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID,
@@ -1564,7 +1567,7 @@ impl<'a> Emu<'a> {
         if self.ctx.inst_ctx.error {
             eprintln!(
                 "Emu::run_fast() finished with error at step={} pc=0x{:x}",
-                self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
+                self.ctx.inst_ctx.error_step, self.ctx.inst_ctx.error_pc
             );
         }
     }
@@ -1721,6 +1724,15 @@ impl<'a> Emu<'a> {
                         (symbol.address + symbol.size - 1) as u32,
                         &symbol.name,
                     );
+                }
+                // The ZisK library merged into the ROM has no ELF symbols: its ROIs are found
+                // from the ROM and named after the library's labels.
+                if !self.rom.zkvmcalls.is_empty() {
+                    let symbols = ziskasm::assemble_zisk_library()
+                        .map(|library| library.symbols)
+                        .unwrap_or_default();
+                    let lib_rois = self.ctx.stats.add_zisklib_rois(self.rom, &symbols);
+                    println!("Added {lib_rois} ZisK library ROIs");
                 }
 
                 self.ctx.stats.load_rom_data(self.rom);
@@ -1999,7 +2011,7 @@ impl<'a> Emu<'a> {
         if self.ctx.inst_ctx.error {
             eprintln!(
                 "Emu::run() finished with error at step={} pc=0x{:x}",
-                self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
+                self.ctx.inst_ctx.error_step, self.ctx.inst_ctx.error_pc
             );
         }
 
@@ -2124,6 +2136,7 @@ impl<'a> Emu<'a> {
             } else {
                 // Check if is the first step of a new block
                 if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
+                    self.ctx.inst_ctx.blake2b_chain_cached = false;
                     emu_traces.push(EmuTrace {
                         start_state: EmuTraceStart {
                             pc: self.ctx.inst_ctx.pc,
@@ -2151,7 +2164,7 @@ impl<'a> Emu<'a> {
         if self.ctx.inst_ctx.error {
             eprintln!(
                 "Emu::par_run() finished with error at step={} pc=0x{:x}",
-                self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
+                self.ctx.inst_ctx.error_step, self.ctx.inst_ctx.error_pc
             );
         }
 
@@ -2179,6 +2192,7 @@ impl<'a> Emu<'a> {
         while !self.ctx.inst_ctx.end {
             // Check if is the first step of a new block
             if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
+                self.ctx.inst_ctx.blake2b_chain_cached = false;
                 emu_traces.push(EmuTrace {
                     start_state: EmuTraceStart {
                         pc: self.ctx.inst_ctx.pc,
@@ -2479,8 +2493,8 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             self.ctx.inst_ctx.extended_arg = instruction.jmp_offset1;
-            // round_up => (size + 7) >> 3
-            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            let number_of_mem_reads =
+                instruction.min_trace_words(self.ctx.inst_ctx.blake2b_chain_cached);
             for _ in 0..number_of_mem_reads {
                 let mem_read = mem_reads[*mem_reads_index];
                 *mem_reads_index += 1;
@@ -2557,8 +2571,8 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             self.ctx.inst_ctx.extended_arg = instruction.jmp_offset1;
-            // round_up => (size + 7) >> 3
-            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            let number_of_mem_reads =
+                instruction.min_trace_words(self.ctx.inst_ctx.blake2b_chain_cached);
             for _ in 0..number_of_mem_reads {
                 let mem_read = mem_reads[*mem_reads_index];
                 *mem_reads_index += 1;
@@ -2618,6 +2632,7 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step = emu_trace.start_state.step;
         self.ctx.inst_ctx.c = emu_trace.start_state.c;
         self.ctx.inst_ctx.regs = emu_trace.start_state.regs;
+        self.ctx.inst_ctx.blake2b_chain_cached = false;
         self.ctx.inst_ctx.emulation_mode = EmulationMode::ConsumeMemReads;
 
         let mut mem_reads_index: usize = 0;
@@ -2650,6 +2665,7 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step = emu_trace_start.step;
         self.ctx.inst_ctx.c = emu_trace_start.c;
         self.ctx.inst_ctx.regs = emu_trace_start.regs;
+        self.ctx.inst_ctx.blake2b_chain_cached = false;
         self.ctx.inst_ctx.emulation_mode = EmulationMode::ConsumeMemReads;
 
         let mut current_step_idx = 0;
@@ -2694,7 +2710,8 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             self.ctx.inst_ctx.extended_arg = instruction.jmp_offset1;
-            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            let number_of_mem_reads =
+                instruction.min_trace_words(self.ctx.inst_ctx.blake2b_chain_cached);
             for _ in 0..number_of_mem_reads {
                 let mem_read = mem_reads[*mem_reads_index];
                 *mem_reads_index += 1;
@@ -2794,7 +2811,8 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             self.ctx.inst_ctx.extended_arg = instruction.jmp_offset1;
-            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            let number_of_mem_reads =
+                instruction.min_trace_words(self.ctx.inst_ctx.blake2b_chain_cached);
             for _ in 0..number_of_mem_reads {
                 let mem_read = mem_reads[*mem_reads_index];
                 *mem_reads_index += 1;
@@ -2985,6 +3003,17 @@ impl<'a> Emu<'a> {
     /// Returns if the emulation ended
     pub fn terminated(&self) -> bool {
         self.ctx.inst_ctx.end
+    }
+
+    /// Returns why the execution failed and the step and pc of the failing instruction, or
+    /// None if it did not fail
+    pub fn failure(&self) -> Option<(FailureReason, u64, u64)> {
+        let ctx = &self.ctx.inst_ctx;
+        let reason = match ctx.error_code {
+            0 => FailureReason::Trap,
+            code => FailureReason::ExitCode(code),
+        };
+        ctx.error.then_some((reason, ctx.error_step, ctx.error_pc))
     }
 
     /// Returns the number of executed steps

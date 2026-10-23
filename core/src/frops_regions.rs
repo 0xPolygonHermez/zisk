@@ -285,17 +285,17 @@ static OP_27: [FropsRegion; 2] = [
 static OP_28: [FropsRegion; 3] = [
     // low_rect: a == 0 && b < 2901
     FropsRegion { a_lo: 0x0, a_count: 1, a_stride: 1, b_lo: 0x0, b_count: 2901, base_row: 23278059 },
-    // mid_box: a >= 0x800D5000 && a < 0x800D6000 && (a & 7) == 0 && b < 6
-    FropsRegion { a_lo: 0x800d5000, a_count: 512, a_stride: 8, b_lo: 0x0, b_count: 6, base_row: 23280960 },
-    // mid_box: a >= 0x800D5000 && a < 0x800D6000 && (a & 7) == 0 && b == 100
-    FropsRegion { a_lo: 0x800d5000, a_count: 512, a_stride: 8, b_lo: 0x64, b_count: 1, base_row: 23284032 },
+    // mid_box: a >= 0x900D5000 && a < 0x900D6000 && (a & 7) == 0 && b < 6
+    FropsRegion { a_lo: 0x900d5000, a_count: 512, a_stride: 8, b_lo: 0x0, b_count: 6, base_row: 23280960 },
+    // mid_box: a >= 0x900D5000 && a < 0x900D6000 && (a & 7) == 0 && b == 100
+    FropsRegion { a_lo: 0x900d5000, a_count: 512, a_stride: 8, b_lo: 0x64, b_count: 1, base_row: 23284032 },
 ];
 
 /// `signextend_w` (0x29)
 #[rustfmt::skip]
 static OP_29: [FropsRegion; 4] = [
-    // mid_box: a >= 0x800D5000 && a < 0x800D6000 && (a & 3) == 0 && b == 100
-    FropsRegion { a_lo: 0x800d5000, a_count: 1024, a_stride: 4, b_lo: 0x64, b_count: 1, base_row: 23284544 },
+    // mid_box: a >= 0x900D5000 && a < 0x900D6000 && (a & 3) == 0 && b == 100
+    FropsRegion { a_lo: 0x900d5000, a_count: 1024, a_stride: 4, b_lo: 0x64, b_count: 1, base_row: 23284544 },
     // mid_box: a >= 0xAABC9000 && a < 0xAABCA000 && (a & 7) == 0 && b < 15
     FropsRegion { a_lo: 0xaabc9000, a_count: 512, a_stride: 8, b_lo: 0x0, b_count: 15, base_row: 23285568 },
     // mid_box: a >= 0xAAC0C000 && a < 0xAAC0E000 && (a & 7) == 0 && b < 15

@@ -11,15 +11,17 @@ pub(crate) mod wrap;
 
 pub use execute_only::{EmbeddedExecuteOnlyBuilder, EmbeddedExecuteOnlyClient};
 
+use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use crate::setup::SetupResult;
+use crate::snark::{ensure_snark_key, SnarkProtocol};
 use crate::{Result, SdkError};
 use zisk_common::ProofKind;
-use zisk_common::{ProgramVK, Proof, PublicValues, ZiskPaths};
+use zisk_common::{ProgramVK, Proof, PublicValues, RandomSeed, ZiskPaths};
 use zisk_prover_backend::{Asm, AsmOptions, AsmProver, Emu, EmuProver, GuestProgram, ZiskProver};
 
 use crate::aggregate_proofs::{AggregateProofsRequest, AggregationInput};
@@ -177,6 +179,9 @@ pub struct EmbeddedClientBuilder<Out = EmbeddedClient> {
     asm_options: Option<AsmOptions>,
     proving_key: Option<PathBuf>,
     proving_key_snark: Option<PathBuf>,
+    /// The protocol of the final SNARK, if one is asked for: [`build`](EmbeddedClientBuilder::build)
+    /// refuses a SNARK proving key of another.
+    snark: Option<SnarkProtocol>,
     verbose: u8,
     no_aggregation: bool,
     verify_constraints: bool,
@@ -200,6 +205,7 @@ impl<Out> EmbeddedClientBuilder<Out> {
             asm_options: None,
             proving_key: None,
             proving_key_snark: None,
+            snark: None,
             verbose: 0,
             no_aggregation: false,
             verify_constraints: false,
@@ -294,11 +300,26 @@ impl<Out> EmbeddedClientBuilder<Out> {
         self
     }
 
-    /// Enable PLONK proof mode.
+    /// Enable the final SNARK proof mode, of `protocol`: proofs are wrapped with
+    /// [`ProofKind::Plonk`] into a SNARK of it. The SNARK proving key must be set up for it
+    /// (`setup-snark --final-snark`), or [`build`](EmbeddedClientBuilder::build) fails.
     #[must_use]
-    pub fn plonk(mut self) -> Self {
+    pub fn snark(mut self, protocol: SnarkProtocol) -> Self {
         self.proof_kind = ProofKind::Plonk;
+        self.snark = Some(protocol);
         self
+    }
+
+    /// Enable the PLONK final SNARK: [`snark`](Self::snark) of [`SnarkProtocol::Plonk`].
+    #[must_use]
+    pub fn plonk(self) -> Self {
+        self.snark(SnarkProtocol::Plonk)
+    }
+
+    /// Enable the pilfflonk final SNARK: [`snark`](Self::snark) of [`SnarkProtocol::Pilfflonk`].
+    #[must_use]
+    pub fn pilfflonk(self) -> Self {
+        self.snark(SnarkProtocol::Pilfflonk)
     }
 
     /// Set ASM-specific options. Only valid with the Assembly executor.
@@ -315,11 +336,19 @@ impl<Out> EmbeddedClientBuilder<Out> {
         self
     }
 
-    /// Set the path to the PLONK proving key directory.
+    /// Set the path to the SNARK proving key directory, set up for the protocol of
+    /// [`snark`](Self::snark).
     #[must_use]
-    pub fn proving_key_plonk(mut self, path: impl Into<PathBuf>) -> Self {
+    pub fn proving_key_snark(mut self, path: impl Into<PathBuf>) -> Self {
         self.proving_key_snark = Some(path.into());
         self
+    }
+
+    /// Set the path to the SNARK proving key directory.
+    #[deprecated(note = "the key may be of any final SNARK: use `proving_key_snark`")]
+    #[must_use]
+    pub fn proving_key_plonk(self, path: impl Into<PathBuf>) -> Self {
+        self.proving_key_snark(path)
     }
 
     /// Set the prover verbosity level (`0` = quiet, higher = more verbose).
@@ -387,6 +416,12 @@ impl<Out: From<EmbeddedClient>> EmbeddedClientBuilder<Out> {
     /// [`ProverClient::embedded`](crate::ProverClient::embedded), or an
     /// [`ZiskClient`](crate::ZiskClient) via [`ZiskClient::embedded`](crate::ZiskClient::embedded).
     pub fn build(self) -> Result<Out> {
+        // Before taking the single instance, so that a wrong key does not use it up.
+        if let Some(protocol) = self.snark {
+            let proving_key_snark =
+                self.proving_key_snark.as_ref().or(self.embedded_opts.proving_key_snark.as_ref());
+            ensure_snark_key(protocol, &ZiskPaths::get_proving_key_snark(proving_key_snark))?;
+        }
         crate::client::ensure_single_instance();
         if self.asm_options.is_some() && self.executor != ExecutorKind::Assembly {
             panic!(
@@ -401,7 +436,8 @@ impl<Out: From<EmbeddedClient>> EmbeddedClientBuilder<Out> {
         if let Some(pk) = self.proving_key_snark {
             embedded_opts.proving_key_snark = Some(pk);
         }
-        let mut backend_opts = embedded_opts.into_backend_opts(self.gpu);
+        let mut backend_opts =
+            embedded_opts.into_backend_opts(self.gpu, self.proof_kind == ProofKind::Plonk);
         if self.cpu_mops {
             backend_opts = backend_opts.cpu_mops();
         }
@@ -444,19 +480,6 @@ enum EmbeddedProver {
 }
 
 impl EmbeddedProver {
-    /// This client's job boundary: retires the previous job's state before this one
-    /// writes anything. A no-op on backends with nothing to retire.
-    ///
-    /// Must come before this job's hints registration and its input: retiring rewinds
-    /// both, so a stream registered ahead of it would never be started.
-    fn begin_job(&self) -> Result<()> {
-        match self {
-            EmbeddedProver::Emu(p) => p.reset(),
-            EmbeddedProver::Asm(p) => p.reset(),
-        }
-        .map_err(SdkError::backend)
-    }
-
     fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()> {
         match self {
             EmbeddedProver::Emu(p) => p.register_recurser(output_dir, recurser_id),
@@ -504,6 +527,8 @@ impl Clone for EmbeddedClient {
     }
 }
 
+// Job metadata is for a coordinator: only the remote client's requests set it, so the
+// embedded backend always receives an empty map.
 impl Client for EmbeddedClient {
     fn run_upload(&self, program: &GuestProgram) -> Result<crate::upload::UploadResult> {
         self.do_upload(program)
@@ -525,12 +550,14 @@ impl Client for EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        _metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
-        self.do_prove(program, stdin, hints, executor, proof_kind, timeout, subs)
+        self.do_prove(program, stdin, hints, seed, executor, proof_kind, timeout, subs)
     }
 
     fn run_execute(
@@ -538,11 +565,13 @@ impl Client for EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        _metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ExecuteResult>> {
-        self.do_execute(program, stdin, hints, executor, timeout, subs)
+        self.do_execute(program, stdin, hints, seed, executor, timeout, subs)
     }
 
     fn run_wrap(
@@ -553,6 +582,7 @@ impl Client for EmbeddedClient {
         override_program_vk: Option<ProgramVK>,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        _metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
         self.do_wrap(proof, proof_kind, override_publics, override_program_vk, timeout, subs)
     }
@@ -580,6 +610,7 @@ impl Client for EmbeddedClient {
         root_c_recurser_agg: Option<[u64; 4]>,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        _metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
         self.do_aggregate_proofs(
             agg,
@@ -618,11 +649,12 @@ impl ClientSync for EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         subs: SubscriberList,
     ) -> Result<crate::prove::ProveResult> {
-        self.do_prove_sync(program, stdin, hints, executor, proof_kind, subs)
+        self.do_prove_sync(program, stdin, hints, seed, executor, proof_kind, subs)
     }
 
     fn run_execute_sync(
@@ -630,10 +662,11 @@ impl ClientSync for EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         subs: SubscriberList,
     ) -> Result<ExecuteResult> {
-        self.do_execute_sync(program, stdin, hints, executor, subs)
+        self.do_execute_sync(program, stdin, hints, seed, executor, subs)
     }
 
     fn run_wrap_sync(

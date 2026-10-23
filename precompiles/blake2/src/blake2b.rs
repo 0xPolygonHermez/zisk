@@ -7,6 +7,7 @@ use std::sync::Arc;
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::OperationBlake2bData;
+use zisk_core::{BLAKE2B_GAP_SHIFT, BLAKE2B_RD_CHAIN, BLAKE2B_ROUND_MASK, BLAKE2B_WR_CHAIN};
 use zisk_pil::{Blake2brTraceRowOps, ZISK_AIRGROUP_ID};
 
 use super::blake2b_constants::{CLOCKS, R1_G, R2_G, R3_G, R4_G, SIGMA};
@@ -27,10 +28,12 @@ const G_INDICES: [(usize, usize, usize, usize); CLOCKS] = [
 /// Per-operation input record assembled from the bus payload.
 #[derive(Debug)]
 pub struct Blake2bInput {
-    pub addr_main: u32,
     pub step_main: u64,
+    /// Static argument of the instruction (first word of the payload): round index and chain mode.
     pub index: u64,
+    /// Main operand a: the state address (the result overwrites it).
     pub state_addr: u32,
+    /// Main operand b: the input block address.
     pub input_addr: u32,
     pub state: [u64; 16],
     pub input: [u64; 16],
@@ -38,14 +41,14 @@ pub struct Blake2bInput {
 
 impl Blake2bInput {
     pub fn from(values: &OperationBlake2bData<u64>) -> Self {
+        // op,op_type,a,b,step,index,state[16],input[16]
         Self {
-            addr_main: values[3] as u32,
             step_main: values[4],
             index: values[5],
-            state_addr: values[6] as u32,
-            input_addr: values[7] as u32,
-            state: values[8..24].try_into().unwrap(),
-            input: values[24..40].try_into().unwrap(),
+            state_addr: values[2] as u32,
+            input_addr: values[3] as u32,
+            state: values[6..22].try_into().unwrap(),
+            input: values[22..38].try_into().unwrap(),
         }
     }
 }
@@ -76,16 +79,16 @@ impl<F: PrimeField64> Blake2bSM<F> {
     /// * `trace` - The CLOCKS-row chunk of the trace assigned to this operation.
     #[inline(always)]
     pub fn process_input<R: Blake2brTraceRowOps<F>>(&self, input: &Blake2bInput, trace: &mut [R]) {
-        let idx_usize = input.index as usize;
+        let idx_usize = (input.index & BLAKE2B_ROUND_MASK) as usize;
         let s = &SIGMA[idx_usize];
+        let rd_chain = input.index & BLAKE2B_RD_CHAIN != 0;
+        let wr_chain = input.index & BLAKE2B_WR_CHAIN != 0;
+        let gap = (input.index >> BLAKE2B_GAP_SHIFT) as u8;
 
         // Fill the step_addr
         trace[0].set_step_addr(input.step_main); // STEP_MAIN
-        trace[1].set_step_addr(input.addr_main as u64); // ADDR_OP
-        trace[2].set_step_addr(input.state_addr as u64); // ADDR_STATE
-        trace[3].set_step_addr(input.input_addr as u64); // ADDR_INPUT
-        trace[4].set_step_addr(input.state_addr as u64); // ADDR_IND_0
-        trace[5].set_step_addr(input.input_addr as u64); // ADDR_IND_1
+        trace[1].set_step_addr(input.state_addr as u64); // ADDR_STATE (main operand a)
+        trace[2].set_step_addr(input.input_addr as u64); // ADDR_INPUT (main operand b)
 
         // Running state: each row's G function reads and writes 4 words of it
         let mut v = input.state;
@@ -93,6 +96,9 @@ impl<F: PrimeField64> Blake2bSM<F> {
         for (k, row) in trace.iter_mut().enumerate().take(CLOCKS) {
             row.set_in_use(true);
             row.set_round_idx_sel(idx_usize, true);
+            row.set_rd_chain(rd_chain);
+            row.set_wr_chain(wr_chain);
+            row.set_gap(gap);
 
             // Memory-ordered message words bound by the x/y memory ports at this clock
             let x_limbs = u64_to_limbs16(input.input[2 * k]);
