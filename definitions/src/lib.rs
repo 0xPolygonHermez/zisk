@@ -3,6 +3,9 @@
 mod syscall;
 pub use syscall::*;
 
+mod zkvmcall;
+pub use zkvmcall::*;
+
 mod profile;
 pub use profile::*;
 

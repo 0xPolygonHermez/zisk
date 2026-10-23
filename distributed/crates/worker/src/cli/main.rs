@@ -25,6 +25,10 @@ struct Cli {
     #[arg(long)]
     compute_capacity: Option<u32>,
 
+    /// Do not report host and process telemetry to the coordinator (overrides config file)
+    #[arg(long)]
+    no_telemetry: bool,
+
     /// Path to configuration file
     #[arg(
         long,
@@ -107,6 +111,8 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    zisk_worker::telemetry::mark_process_start();
+    zisk_worker::stop::stop_on_signals()?;
     let cli = Cli::parse();
 
     let worker_config = WorkerServiceConfig::load(
@@ -114,6 +120,7 @@ async fn main() -> Result<()> {
         cli.coordinator_url,
         cli.worker_id,
         cli.compute_capacity,
+        cli.no_telemetry,
     )
     .await?;
 
@@ -155,26 +162,10 @@ async fn main() -> Result<()> {
 
     if prover_config.emulator {
         let mut worker = WorkerNode::<Emu>::new_emu(worker_config, prover_config).await?;
-        run_with_signals(worker.run()).await
+        worker.run().await
     } else {
         let mut worker = WorkerNode::<Asm>::new_asm(worker_config, prover_config).await?;
-        run_with_signals(worker.run()).await
-    }
-}
-
-async fn run_with_signals(fut: impl std::future::Future<Output = Result<()>>) -> Result<()> {
-    use tokio::signal::unix::{signal, SignalKind};
-    let mut sigterm = signal(SignalKind::terminate())?;
-    tokio::select! {
-        res = fut => res,
-        _ = tokio::signal::ctrl_c() => {
-            tracing::info!("Received SIGINT, shutting down gracefully");
-            Ok(())
-        }
-        _ = sigterm.recv() => {
-            tracing::info!("Received SIGTERM, shutting down gracefully");
-            Ok(())
-        }
+        worker.run().await
     }
 }
 

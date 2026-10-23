@@ -7,4 +7,4 @@
 
 ; A u64 load from this address yields the current fcall free-input word (the
 ; host-provided hint stream). Used by every fcall-based routine.
-pub define FREE_INPUT 0x40000000
+pub define FREE_INPUT 0x10000000

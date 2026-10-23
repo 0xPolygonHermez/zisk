@@ -5,11 +5,12 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::{JobMetadataArgs, RandomSeedArgs};
 use zisk_sdk::{setup_logger, GuestProgram, ProofKind, RemoteClient, ZiskHints, ZiskStdin};
 
 use crate::common::{reject_quic_hints, resolve_elf, resolve_output_path, ElfSelectorArgs};
-use crate::proof::select_prove_kind;
-use crate::ux::print_job_banner;
+use crate::proof::{select_prove_kind, SnarkArgs};
+use crate::ux::{print_job_banner, print_random_seed};
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -36,17 +37,22 @@ pub(crate) struct ZiskRemoteProve {
     #[arg(long)]
     hints: Option<String>,
 
+    #[command(flatten)]
+    random_seed: RandomSeedArgs,
+
+    #[command(flatten)]
+    metadata: JobMetadataArgs,
+
     /// Save the generated proof to the specified file path
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
 
-    /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with --plonk
-    #[arg(short = 'c', long, conflicts_with = "plonk")]
+    /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with --plonk and --pilfflonk
+    #[arg(short = 'c', long, conflicts_with_all = ["plonk", "pilfflonk"])]
     minimal: bool,
 
-    /// PLONK proof. Required for on-chain verification via the EVM verifier. Mutually exclusive with --minimal
-    #[arg(long, conflicts_with = "minimal")]
-    plonk: bool,
+    #[command(flatten)]
+    pub(crate) snark: SnarkArgs,
 
     /// Proof timeout in seconds (0 = no timeout)
     #[arg(long, default_value_t = 0)]
@@ -73,20 +79,23 @@ impl ZiskRemoteProve {
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
         let hints = self.hints.as_ref().map(ZiskHints::from_uri).transpose()?;
 
-        // VadcopFinal by default; --minimal / --plonk select a wrapped proof.
-        let proof_kind = select_prove_kind(self.plonk, self.minimal);
+        // VadcopFinal by default; --minimal / --plonk / --pilfflonk select a wrapped proof. The
+        // client checks the protocol of the SNARK the workers return (`RemoteCmd::run`).
+        let proof_kind = select_prove_kind(self.snark.protocol(), self.minimal);
 
         let mut request = client.prove(&program, stdin);
         if let Some(hints) = hints {
             request = request.hints(hints);
         }
+        request = request.random_seed(self.random_seed.provided());
+        for (key, value) in self.metadata.to_map() {
+            request = request.metadata(key, value);
+        }
         if proof_kind != ProofKind::VadcopFinal {
             request = request.wrap(proof_kind);
         }
-        if self.timeout != 0 {
-            request = request.timeout(Duration::from_secs(self.timeout));
-        }
-        let result = request.run()?.await?;
+        let timeout = (self.timeout != 0).then(|| Duration::from_secs(self.timeout));
+        let result = super::await_job(request.run()?, timeout).await?;
 
         let output_file = resolve_output_path(self.output.clone(), result.job_id());
         result.save_proof(&output_file).map_err(|e| {
@@ -99,6 +108,7 @@ impl ZiskRemoteProve {
             result.get_proving_time() as f64 / 1000.0,
             result.get_execution_steps()
         );
+        print_random_seed(result.get_random_seed());
         info!("Proof saved to {}", output_file.display());
 
         Ok(())

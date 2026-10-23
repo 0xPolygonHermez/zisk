@@ -10,6 +10,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use zisk_common::RandomSeed;
 use zisk_prover_backend::{
     AsmOptions, BackendProverOpts, ExecuteClient, ExecuteOutput, GuestProgram, ProverClientBuilder,
 };
@@ -128,7 +129,7 @@ impl EmbeddedExecuteOnlyBuilder {
 /// let program = GuestProgram::from_uri("path/to/elf")?;
 ///
 /// client.setup(&program, false)?;
-/// let out = client.execute(&program, ZiskStdin::new(), None)?;
+/// let out = client.execute(&program, ZiskStdin::new(), /* hints */ None, /* seed */ None)?;
 /// assert!(out.get_execution_steps() > 0);
 /// ```
 pub struct EmbeddedExecuteOnlyClient {
@@ -157,12 +158,14 @@ impl EmbeddedExecuteOnlyClient {
 
     /// Run a single execution. `program` must match the one passed to
     /// `setup()`. Errors if `hints` is set with the Emulator backend —
-    /// mirroring the full embedded path's behavior.
+    /// mirroring the full embedded path's behavior. A `None` seed draws a
+    /// fresh one.
     pub fn execute(
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
         hints: Option<ZiskHints>,
+        seed: Option<RandomSeed>,
     ) -> Result<ExecuteOutput> {
         if hints.is_some() && self.executor == ExecutorKind::Emulator {
             return Err(SdkError::UnsupportedExecutor(
@@ -170,7 +173,7 @@ impl EmbeddedExecuteOnlyClient {
             ));
         }
         self.prover
-            .execute(program, stdin.into_inner(), hints.map(ZiskHints::into_inner))
+            .execute(program, stdin.into_inner(), hints.map(ZiskHints::into_inner), seed)
             .map_err(SdkError::backend)
     }
 }

@@ -22,10 +22,10 @@ contract ZiskVerifier is PlonkVerifier, IZiskVerifier {
     function getRootCVadcopFinal() external pure returns (bytes32) {
         return bytes32(
             abi.encodePacked(
-                uint64(360399122715172445),
-                uint64(11878402726895691845),
-                uint64(13091834582632818813),
-                uint64(5448516663002979456)));
+                uint64(7720455071669353216),
+                uint64(17350242473202279177),
+                uint64(12167441154672932695),
+                uint64(6676005994927600229)));
     }
 
     uint256 internal constant _RFIELD =

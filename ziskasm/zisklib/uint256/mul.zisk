@@ -4,6 +4,8 @@
 ; saturating/wrapping mul & square variants are Rust wrappers over the
 ; overflowing core; `inv256` also lives in mul.rs there). Shared data lives in
 ; common.zisk. Internal labels: `um_` (mul), `u2_` (inv256).
+; arith256 needs &dl 8-byte aligned; an unaligned mul result goes through
+; U256_UNAL (one `unal8` test on the aligned path, see common.zisk).
 ; FREE_INPUT / FCALL_UINT256_INV are `pub define`s in mem/fcall.
 ; ============================================================================
 
@@ -20,11 +22,13 @@ zisklib_overflowing_mul256:
 	copyb(r5, r11) -> 8[a + 8]         ; &b
 	copyb(0, U256_ZERO) -> r7
 	copyb(r5, r7) -> 8[a + 16]         ; &c = 0
-	copyb(r5, r12) -> 8[a + 24]        ; &dl = result (low 256 bits)
 	copyb(0, U256_DH) -> r7
 	copyb(r5, r7) -> 8[a + 32]         ; &dh (high 256 bits)
+	unal8(r12, 0), j(um_unal)          ; result not 8-aligned -> via scratch
+	copyb(r5, r12) -> 8[a + 24]        ; &dl = result (low 256 bits)
 	arith256(0, r5) -> r13             ; dl:dh = a*b + 0
 
+um_ovfchk:
 	; overflow = (dh != 0): scan the 4 high words
 	copyb(0, U256_DH) -> r6
 	copyb(0, 4) -> r7
@@ -41,6 +45,12 @@ um_next:
 um_noovf:
 	copyb(0, 0) -> r10                 ; high 256 bits all zero -> no overflow
 	ret
+um_unal:
+	copyb(0, U256_UNAL) -> r7
+	copyb(r5, r7) -> 8[a + 24]         ; &dl = U256_UNAL
+	arith256(0, r5) -> r13             ; dl:dh = a*b + 0
+	dma_xmemcpy(r12, U256_UNAL) -> r7, j(32, 4)
+	jump(um_ovfchk)
 
 ; ----------------------------------------------------------------------------
 ; u64 zisklib_inv256(const u64* a, u64* result)

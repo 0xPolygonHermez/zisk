@@ -22,6 +22,23 @@ pub const GTW_OP: u8 = GT_OP + M32_OFFSET;
 pub const LT_ABS_NP_OP: u8 = 0x50;
 pub const LT_ABS_PN_OP: u8 = 0x51;
 
+/// `LTU_DIV`: the bus tag for the `LTU` that `Arith` assumes on every division to check
+/// `0 <= remainder < divisor` when both are non-negative.
+///
+/// It is **not** an opcode `Binary` proves, and nothing in the PIL knows about it: the collectors
+/// turn it back into [`ZiskOp::LTU`] when they build the input ([`crate::BinaryInput::from`]), so
+/// the air only ever sees a plain `LTU` and the operation bus balances exactly as before.
+///
+/// Its only job is to keep those operations out of FROPS. A frequent operation is counted by the
+/// ROM-histogram assembly, which counts *instructions*; an operation `Arith` injects is not one, so
+/// the assembly can never see it and the two producers of the multiplicity column would disagree.
+/// Giving it a code with no FROPS boxes settles that by construction, and costs one row in the
+/// Binary air per injected operation that would otherwise have been frequent.
+///
+/// The code comes from the range `zisk_ops.rs` reserves for binary (0x59-0x5f); nothing may be
+/// assigned to it, nor to its m32 shadow 0x69, while this tag uses it.
+pub const LTU_DIV_OP: u8 = 0x59;
+
 /// The m32 offset: `Binary` proves `b_op + M32_OFFSET * mode32` (see `binary.pil`).
 pub const M32_OFFSET: u8 = 0x10;
 
@@ -59,6 +76,26 @@ mod tests {
             }
         }
         ops
+    }
+
+    /// The division tag is a bus-level alias, so the only thing that must hold is that its code is
+    /// free: not a ZisK opcode, not one of the internal ones, and not the m32 shadow of either.
+    #[test]
+    fn the_division_tag_uses_a_free_code() {
+        assert!(
+            ZiskOp::try_from_code(LTU_DIV_OP).is_err(),
+            "0x{LTU_DIV_OP:02x} is a ZisK opcode, it cannot also be the division tag"
+        );
+        assert!(!INTERNAL_OPS.contains(&LTU_DIV_OP));
+        let shadow = LTU_DIV_OP + M32_OFFSET;
+        assert!(
+            ZiskOp::try_from_code(shadow).is_err() && !INTERNAL_OPS.contains(&shadow),
+            "the m32 shadow 0x{shadow:02x} of the division tag is taken"
+        );
+        for op in binary_opcodes() {
+            assert_ne!(op, LTU_DIV_OP, "the division tag collides with a binary opcode");
+            assert_ne!(op + M32_OFFSET, LTU_DIV_OP, "the division tag is an m32 shadow");
+        }
     }
 
     #[test]

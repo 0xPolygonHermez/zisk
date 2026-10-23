@@ -12,10 +12,9 @@
 ; Internal labels: `pa_` (point_add), `oc_` (is_on_curve).
 ; ============================================================================
 
-; RAM scratch: the running point for point_add, the secp256k1_add 2-ptr header,
-; and the is_on_curve arith256_mod header + operands.
+; RAM scratch: the running point for point_add (secp256k1_add takes a=&R, b=&p2
+; directly), and the is_on_curve arith256_mod header + operands.
 u64 SECP_PT_R[8]   = 0, 0, 0, 0, 0, 0, 0, 0
-u64 SECP_PT_HDR[2] = 0, 0
 u64 SECP_OC_HDR[5] = 0, 0, 0, 0, 0
 u64 SECP_OC_LHS[4] = 0, 0, 0, 0
 u64 SECP_OC_T[4]   = 0, 0, 0, 0
@@ -74,11 +73,8 @@ pa_yn:
 	sub(r7, 1) -> r7
 	jump(pa_yl)
 pa_doadd:
-	copyb(0, SECP_PT_HDR) -> r5
-	copyb(0, SECP_PT_R) -> r6
-	copyb(r5, r6) -> 8[a + 0]          ; &p1 = &R
-	copyb(r5, r11) -> 8[a + 8]         ; &p2
-	secp256k1_add(0, r5)               ; R += p2 (in place)
+	copyb(0, SECP_PT_R) -> r5
+	secp256k1_add(r5, r11)               ; R += p2 (in place)
 	jump(pa_store)
 pa_dodbl:
 	copyb(0, SECP_PT_R) -> r5
@@ -188,11 +184,10 @@ oc_no:
 	ret
 
 ; RAM scratch for scalar_mul: the reduced scalar, the base point, the running
-; accumulator, the secp256k1_add header, and the saved result pointer.
+; accumulator, and the saved result pointer.
 u64 SECP_SM_K[4]     = 0, 0, 0, 0
 u64 SECP_SM_BASE[8]  = 0, 0, 0, 0, 0, 0, 0, 0
 u64 SECP_SM_RES[8]   = 0, 0, 0, 0, 0, 0, 0, 0
-u64 SECP_SM_HDR[2]   = 0, 0
 u64 SECP_SM_RESPTR[1] = 0
 
 ; u64 zisklib_scalar_mul_secp256k1(const u64* k, const u64* p, u64* result)
@@ -358,12 +353,9 @@ sm_yn:
 	sub(r7, 1) -> r7
 	jump(sm_yl)
 sm_doadd:
-	copyb(0, SECP_SM_HDR) -> r5
-	copyb(0, SECP_SM_RES) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, SECP_SM_RES) -> r5
 	copyb(0, SECP_SM_BASE) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	secp256k1_add(0, r5)
+	secp256k1_add(r5, r6)
 	jump(sm_next)
 sm_dodbl2:
 	copyb(0, SECP_SM_RES) -> r5

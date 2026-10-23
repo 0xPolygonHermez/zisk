@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use std::fmt;
-use zisk_common::ProfilingMode;
+use zisk_common::{ProfilingMode, RandomSeed};
 use zisk_core::{DEFAULT_MAX_STEPS, DEFAULT_MAX_STEPS_STR, MAX_INPUT_SIZE};
 
 pub const ZISK_VERSION_MESSAGE: &str = concat!(
@@ -291,6 +291,12 @@ pub struct EmuOptions {
     pub disasm: Option<String>,
     #[clap(long, value_name = "MAX_INPUT_MEM", default_value = "134217728")] // 128 MiB
     pub max_input_mem: u64,
+    /// Host randomness seed (`zkvm_random_u64`). Not a flag here: ziskemu takes it through
+    /// `--random-seed` and fills it in. A full emulation needs one, as there is no safe default;
+    /// re-emulating chunks from minimal traces does not read it (the fcall results come from the
+    /// traces).
+    #[clap(skip)]
+    pub random_seed: Option<RandomSeed>,
     /// In mode fast, without stats, show coverage steps consumed without stats.
     #[clap(long, default_value = "false")]
     pub steps: bool,
@@ -397,6 +403,7 @@ impl Default for EmuOptions {
             top_roi_filter: false,
             disasm: None,
             max_input_mem: MAX_INPUT_SIZE,
+            random_seed: None,
             steps: false,
             with_progress: false,
             legacy_inputs: None,
@@ -447,6 +454,7 @@ impl fmt::Display for EmuOptions {
         writeln!(f, "TOP_ROI_FILTER: {:?}", self.top_roi_filter)?;
         writeln!(f, "DISASM: {:?}", self.disasm)?;
         writeln!(f, "MAX_INPUT_MEM: {:?}", self.max_input_mem)?;
+        writeln!(f, "RANDOM_SEED: {:?}", self.random_seed)?;
         writeln!(f, "STEPS: {:?}", self.steps)?;
         writeln!(f, "WITH_PROGRESS: {:?}", self.with_progress)?;
         Ok(())

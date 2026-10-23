@@ -14,6 +14,7 @@ use tokio_stream::StreamExt as _;
 use tracing::warn;
 use uuid::Uuid;
 use zisk_cluster_common::{JobPhase, JobState};
+use zisk_common::RandomSeed;
 use zisk_coordinator::{
     job_events::{CoordinatorExecutionStats, CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator,
@@ -50,7 +51,7 @@ impl CoordinatorBackend {
 
 // ── Type mapping helpers ─────────────────────────────────────────────────────
 
-fn make_proof(hash_id: String, data: Vec<u8>) -> DomainProof {
+fn make_proof(hash_id: String, data: Vec<u8>, seed: Option<RandomSeed>) -> DomainProof {
     DomainProof {
         proof_id: Uuid::new_v4(),
         hash_id,
@@ -60,6 +61,7 @@ fn make_proof(hash_id: String, data: Vec<u8>) -> DomainProof {
         public_inputs: vec![],
         started_at: Some(Utc::now()),
         completed_at: Some(Utc::now()),
+        random_seed: seed,
     }
 }
 
@@ -98,21 +100,31 @@ fn coord_result_to_domain(result: CoordinatorJobResult, hash_id: &str) -> Domain
         CoordinatorJobResult::Setup { vk, hash_mode } => {
             DomainJobKindResponse::Setup { vk, hash_mode }
         }
-        CoordinatorJobResult::Prove { proof_bytes, stats } => DomainJobKindResponse::Prove {
-            proof: make_proof(hash_id.to_string(), proof_bytes),
-            stats: coord_stats_to_domain(stats),
-        },
-        CoordinatorJobResult::Execute { stats, public_outputs } => {
-            DomainJobKindResponse::Execute { stats: coord_stats_to_domain(stats), public_outputs }
+        CoordinatorJobResult::Prove { proof_bytes, stats, random_seed: seed } => {
+            DomainJobKindResponse::Prove {
+                proof: make_proof(hash_id.to_string(), proof_bytes, seed),
+                stats: coord_stats_to_domain(stats),
+            }
         }
-        CoordinatorJobResult::Wrap { proof_bytes } => {
-            DomainJobKindResponse::Wrap(make_proof(hash_id.to_string(), proof_bytes))
+        CoordinatorJobResult::Execute { stats, public_outputs, random_seed: seed } => {
+            DomainJobKindResponse::Execute {
+                stats: coord_stats_to_domain(stats),
+                public_outputs,
+                random_seed: seed,
+            }
+        }
+        CoordinatorJobResult::Wrap { proof_bytes, random_seed: seed } => {
+            DomainJobKindResponse::Wrap(make_proof(hash_id.to_string(), proof_bytes, seed))
         }
         CoordinatorJobResult::SetupAggregationProgram { vk, hash_mode } => {
             DomainJobKindResponse::SetupAggregationProgram { vk, hash_mode }
         }
         CoordinatorJobResult::AggregateProofs { proof_bytes } => {
-            DomainJobKindResponse::AggregateProofs(make_proof(hash_id.to_string(), proof_bytes))
+            DomainJobKindResponse::AggregateProofs(make_proof(
+                hash_id.to_string(),
+                proof_bytes,
+                None,
+            ))
         }
     }
 }
@@ -207,9 +219,13 @@ fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
         },
         CoordinatorError::NotFoundOrInaccessible => ApiError::Internal("resource not found".into()),
         CoordinatorError::ProgramNotFound(hash_id) => ApiError::ProgramNotFound(hash_id),
+        CoordinatorError::ProgramNotSetup(hash_id) => ApiError::ProgramNotSetup(hash_id),
         CoordinatorError::InvalidArgument(msg) | CoordinatorError::InvalidRequest(msg) => {
             ApiError::InvalidJobState { reason: msg }
         }
+        CoordinatorError::ClientRandomSeedNotAllowed => ApiError::ClientRandomSeedNotAllowed,
+        CoordinatorError::JobMetadataNotAllowed => ApiError::JobMetadataNotAllowed,
+        CoordinatorError::SnarkUnavailable(reason) => ApiError::SnarkUnavailable(reason),
         CoordinatorError::WorkerError(msg) | CoordinatorError::Internal(msg) => {
             ApiError::Internal(msg)
         }
@@ -284,6 +300,10 @@ fn catchup_events(state: &JobState, job_id: Uuid) -> Vec<DomainJobEvent> {
 
 #[async_trait]
 impl BackendService for CoordinatorBackend {
+    async fn render_metrics(&self) -> String {
+        self.coordinator.render_metrics().await
+    }
+
     async fn register_guest_program(&self, elf: Vec<u8>) -> ApiResult<String> {
         // blake3 hashing + the multi-MB ELF `fs::write` are blocking; run them off
         // the async runtime so they don't stall a tonic worker thread.
@@ -317,7 +337,7 @@ impl BackendService for CoordinatorBackend {
         Ok(recurser_id)
     }
 
-    async fn submit_job_with_metadata(
+    async fn submit_job(
         &self,
         kind: DomainJobKind,
         metadata: Option<std::collections::BTreeMap<String, String>>,
@@ -354,6 +374,8 @@ impl BackendService for CoordinatorBackend {
                         metadata,
                         execution_only: false,
                         proof_type,
+                        snark_protocol: r.snark_protocol,
+                        random_seed: r.random_seed,
                     })
                     .await
                     .map_err(coord_err_to_api)?;
@@ -378,6 +400,8 @@ impl BackendService for CoordinatorBackend {
                         metadata,
                         execution_only: true,
                         proof_type: ProofKind::VadcopFinal,
+                        snark_protocol: None,
+                        random_seed: r.random_seed,
                     })
                     .await
                     .map_err(coord_err_to_api)?;
@@ -394,7 +418,14 @@ impl BackendService for CoordinatorBackend {
                 };
                 let response = self
                     .coordinator
-                    .launch_wrap(LaunchWrapRequestDto { proof_data: r.proof.data, proof_dest })
+                    .launch_wrap(
+                        LaunchWrapRequestDto {
+                            proof_data: r.proof.data,
+                            proof_dest,
+                            snark_protocol: r.snark_protocol,
+                        },
+                        metadata,
+                    )
                     .await
                     .map_err(coord_err_to_api)?;
                 let job_id = Uuid::parse_str(&response.job_id.as_string())
@@ -421,6 +452,7 @@ impl BackendService for CoordinatorBackend {
                         r.free_inputs_a,
                         r.free_inputs_b,
                         r.root_c_recurser_agg,
+                        metadata,
                     )
                     .await
                     .map_err(coord_err_to_api)?;

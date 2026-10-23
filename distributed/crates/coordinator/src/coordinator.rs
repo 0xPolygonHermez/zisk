@@ -33,6 +33,7 @@
 pub(crate) mod aggregate;
 pub(crate) mod contributions;
 pub(crate) mod prove;
+mod telemetry;
 pub(crate) mod worker_handlers;
 pub(crate) mod wrap;
 
@@ -50,7 +51,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     sync::{atomic::AtomicU64, Arc},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::sync::{broadcast, RwLock};
 use tracing::{debug, error, info, warn};
@@ -58,9 +59,10 @@ use zisk_cluster_common::{
     AggregationProgramSpecDto, ComputeCapacity, CoordinatorMessageDto, DataId, HintsModeDto,
     InputsModeDto, Job, JobExecutionMode, JobId, JobPhase, JobResultData, JobState,
     LaunchProofRequestDto, LaunchProofResponseDto, PhaseTimings, ProofKind,
-    SetupAggregationProgramDto, SetupProgramDto, StatsCostPerType, WorkerId, WorkerState,
+    SetupAggregationProgramDto, SetupProgramDto, SnarkProtocol, StatsCostPerType, WorkerId,
+    WorkerState,
 };
-use zisk_common::{AirInstanceCount, SetupKey, ZiskExecutorTime, ZiskPaths};
+use zisk_common::{AirInstanceCount, RandomSeed, SetupKey, ZiskExecutorTime, ZiskPaths};
 
 struct SetupPendingState {
     pending: HashSet<WorkerId>,
@@ -137,6 +139,19 @@ pub struct Coordinator {
     /// Concurrent storage for active jobs.
     jobs: RwLock<HashMap<JobId, Arc<RwLock<Job>>>>,
 
+    /// Aggregation arity the workers report (a proving-key constant), 0 until the first one does.
+    /// A mutex, not an atomic: adopting a value reads the pool first.
+    agg_arity: tokio::sync::Mutex<u64>,
+
+    /// Protocol of the final SNARK the workers' SNARK proving key is set up for, `Some(None)` when
+    /// they have none, `None` until the first one reports. Kept like `agg_arity`.
+    snark_protocol: tokio::sync::Mutex<Option<Option<SnarkProtocol>>>,
+
+    /// Held from the arity and SNARK checks until the worker is in the pool, so two first
+    /// registrations cannot both see an empty fleet and adopt different values. Taken only by the
+    /// registration handlers, so it never nests inside a job lock.
+    registration: tokio::sync::Mutex<()>,
+
     /// Number of registrations accumulated.
     registrations: AtomicU64,
 
@@ -180,6 +195,11 @@ pub struct Coordinator {
     /// timestamp the worker was parked, used by the stuck-recovery sweep
     /// to evict workers that never confirm.
     pending_recovery: RwLock<HashMap<WorkerId, DateTime<Utc>>>,
+    /// When each program's setup was last sent to each worker, until the worker acks it: for
+    /// the setup's duration.
+    setups_sent: RwLock<HashMap<(WorkerId, String), Instant>>,
+    /// The last telemetry each worker reported, bounded, and when it arrived.
+    worker_telemetry: RwLock<HashMap<WorkerId, (Instant, zisk_cluster_common::WorkerTelemetryDto)>>,
 }
 
 /// Bookkeeping captured by `Coordinator::terminate_job` and consumed by
@@ -187,6 +207,18 @@ pub struct Coordinator {
 struct TerminationOutcome {
     worker_ids: Vec<WorkerId>,
     phase1_start: Option<DateTime<Utc>>,
+    /// Seconds from the job's first phase to its termination, if any phase started.
+    duration: Option<f64>,
+    /// Steps the job had executed, if its execution finished before it ended.
+    executed_steps: Option<u64>,
+}
+
+/// A worker's SNARK proving key, in a message: of `protocol`, or none.
+fn snark_key(protocol: Option<SnarkProtocol>) -> String {
+    match protocol {
+        Some(protocol) => format!("a {} SNARK proving key", protocol.name()),
+        None => "no SNARK proving key".to_string(),
+    }
 }
 
 /// Structural equality on `AggregationProgramSpecDto`. The DTO has no `PartialEq` derive.
@@ -271,12 +303,16 @@ impl Coordinator {
     /// * `config` - Configuration settings
     pub fn new(config: Config) -> Self {
         let start_time_utc = Utc::now();
+        crate::metrics::record_coordinator_started();
 
         Self {
             config,
             start_time_utc,
             workers_pool: Arc::new(WorkersPool::new()),
             jobs: RwLock::new(HashMap::new()),
+            agg_arity: tokio::sync::Mutex::new(0),
+            snark_protocol: tokio::sync::Mutex::new(None),
+            registration: tokio::sync::Mutex::new(()),
             registrations: AtomicU64::new(0),
             reconnections: AtomicU64::new(0),
             job_events: RwLock::new(HashMap::new()),
@@ -287,6 +323,8 @@ impl Coordinator {
             active_recurser_setups: RwLock::new(HashSet::new()),
             grpc_hints_senders: Arc::new(RwLock::new(HashMap::new())),
             pending_recovery: RwLock::new(HashMap::new()),
+            setups_sent: RwLock::new(HashMap::new()),
+            worker_telemetry: RwLock::new(HashMap::new()),
         }
     }
 
@@ -374,11 +412,18 @@ impl Coordinator {
         };
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Cancelled).await;
-        crate::metrics::record_job_terminal(
-            crate::metrics::OUTCOME_CANCELLED,
-            &outcome.worker_ids,
-            outcome.phase1_start,
-        );
+        crate::metrics::record_job_terminal(crate::metrics::JobOutcome {
+            job_id,
+            outcome: crate::metrics::OUTCOME_CANCELLED,
+            reason: None,
+            workers: &outcome.worker_ids,
+            contributions_started: outcome.phase1_start,
+            duration: outcome.duration,
+            phases: None,
+            steps: outcome.executed_steps,
+            instances: None,
+            costs: None,
+        });
         info!("Cancelled job {}", job_id);
 
         Ok(true)
@@ -411,13 +456,22 @@ impl Coordinator {
             jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         drop(jobs_map);
 
-        let (worker_ids, phase1_start) = {
+        let (worker_ids, phase1_start, duration, executed_steps) = {
             let mut job = job_entry.write().await;
             if job.state().is_resolved() {
                 return Ok(None);
             }
             job.change_state(terminal_state);
-            (job.workers.clone(), job.phase_start_time(&JobPhase::Contributions))
+            let outcome = (
+                job.workers.clone(),
+                job.phase_start_time(&JobPhase::Contributions),
+                job.duration_ms.map(|ms| ms as f64 / 1000.0),
+                job.executed_steps,
+            );
+            // Free the proof payloads now. A failed phase-3 job otherwise pins every
+            // retained aggregation set for the whole lifetime of the map entry.
+            job.cleanup();
+            outcome
         };
 
         let parked = self.workers_pool.mark_computing_workers_settingup(job_id, &worker_ids).await;
@@ -430,7 +484,7 @@ impl Coordinator {
         }
         self.cancel_job_workers(&worker_ids, job_id, cancel_reason).await;
 
-        Ok(Some(TerminationOutcome { worker_ids, phase1_start }))
+        Ok(Some(TerminationOutcome { worker_ids, phase1_start, duration, executed_steps }))
     }
 
     /// Content-addresses ELF bytes with blake3, writes to cache if absent, returns `hash_id`.
@@ -448,7 +502,7 @@ impl Coordinator {
             }
             fs::write(&path, &elf_bytes)
                 .map_err(|e| CoordinatorError::Internal(format!("write ELF cache: {e}")))?;
-            metrics::gauge!("coordinator_registered_programs_total").increment(1.0);
+            crate::metrics::record_program_registered(&hash_id, elf_bytes.len());
         }
 
         Ok(hash_id)
@@ -540,6 +594,7 @@ impl Coordinator {
                 with_hints,
                 emulator_only,
             });
+            self.note_setup_sent(worker_id, hash_id).await;
             if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
                 warn!("[Setup] Failed to send SetupProgram to worker {}: {}", worker_id, e);
                 self.setup_pending.write().await.entry(job_id.clone()).and_modify(|s| {
@@ -684,6 +739,7 @@ impl Coordinator {
     /// Sends a `RunAggregateProofs` task to a single idle worker. Mirrors
     /// `launch_wrap`: the job lives in `self.jobs` so worker-disconnect machinery
     /// fails it automatically if the worker dies mid-prove.
+    #[allow(clippy::too_many_arguments)]
     pub async fn launch_aggregate_proofs(
         &self,
         recurser_id: String,
@@ -692,7 +748,9 @@ impl Coordinator {
         free_inputs_a: Vec<u64>,
         free_inputs_b: Vec<u64>,
         root_c_recurser_agg: Option<[u64; 4]>,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
+        let metadata = self.admit_job_metadata(metadata)?;
         if !self.aggregation_program_specs.read().await.contains_key(&recurser_id) {
             return Err(CoordinatorError::InvalidRequest(format!(
                 "recurser_id '{recurser_id}' is not registered; call register + setup first"
@@ -718,7 +776,7 @@ impl Coordinator {
             vec![worker_id.clone()],
             Vec::<Vec<u32>>::new(),
             JobExecutionMode::Standard,
-            None,
+            metadata,
             false,
             ProofKind::VadcopFinal,
         );
@@ -849,6 +907,7 @@ impl Coordinator {
                 with_hints: key.with_hints,
                 emulator_only: key.emulator_only,
             });
+            self.note_setup_sent(&worker_id, &key.hash_id).await;
             if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
                 // Unreachable: drop from pending + disconnect so it can't hang the
                 // entry (same failed-send handling as `setup_program`).
@@ -945,6 +1004,16 @@ impl Coordinator {
         self: &Arc<Self>,
         request: LaunchProofRequestDto,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
+        let seed = self.resolve_random_seed(request.random_seed)?;
+        let metadata = self.admit_job_metadata(request.metadata.clone())?;
+        // A worker holds only the programs set up on it: sent any other, it fails the task.
+        if !self.is_set_up(&request.hash_id).await {
+            return Err(CoordinatorError::ProgramNotSetup(request.hash_id.clone()));
+        }
+        // The worker that aggregates wraps the SNARK, so one the workers cannot prove fails here.
+        if request.proof_type == ProofKind::Plonk {
+            self.ensure_snark_available(request.snark_protocol).await?;
+        }
         let (requested, minimum) = self.resolve_capacity(&request).await?;
 
         // Generate job_id up-front so we can atomically reserve workers
@@ -966,17 +1035,19 @@ impl Coordinator {
                 request.inputs_mode,
                 request.hints_mode,
                 request.simulated_node,
-                request.metadata.clone(),
+                metadata,
                 request.execution_only,
                 request.proof_type,
             )
             .await?;
+        job.random_seed = Some(seed);
 
         info!(
-            "[Job] Started {} successfully Capacity: {} Workers: {}",
+            "[Job] Started {} successfully Capacity: {} Workers: {} Random seed: {}",
             job.job_id,
             job.compute_capacity,
             job.workers.len(),
+            seed,
         );
 
         // Initialize job state
@@ -1017,9 +1088,21 @@ impl Coordinator {
         // timeout will call `record_job_terminal` (which decrements). Without
         // the matching increment here, the gauge would underflow on the
         // dispatch-failure path.
-        crate::metrics::record_job_started();
-
         let job = job_arc.read().await;
+        crate::metrics::record_job_started(
+            &job_id,
+            crate::metrics::job_kind(job.execution_only),
+            job.workers.len(),
+        );
+        crate::metrics::record_job_phase(
+            &job_id,
+            if job.execution_only {
+                crate::metrics::PHASE_EXECUTION
+            } else {
+                crate::metrics::PHASE_CONTRIBUTIONS
+            },
+        );
+
         if let Err(e) = self.dispatch_contributions_messages(&job, &active_workers).await {
             drop(job);
             // Dispatch flaked (e.g. a worker's channel broke). The job is
@@ -1036,6 +1119,12 @@ impl Coordinator {
         info!("[Phase1] Started with {} workers for {}", active_workers.len(), job_id);
 
         Ok(LaunchProofResponseDto { job_id })
+    }
+
+    /// Whether `hash_id` is set up on the workers, in any mode: what a worker checks before it
+    /// runs one of its tasks.
+    async fn is_set_up(&self, hash_id: &str) -> bool {
+        self.active_setups.read().await.keys().any(|key| key.hash_id == hash_id)
     }
 
     /// Resolve the compute capacity for an incoming job request.
@@ -1179,6 +1268,7 @@ impl Coordinator {
         let duration_ms = job.duration_ms.unwrap_or(0);
         let job_state = job.state.clone();
         let executed_steps = job.executed_steps;
+        let seed = job.random_seed;
         let proof_data = job
             .proof
             .as_ref()
@@ -1199,6 +1289,7 @@ impl Coordinator {
                         duration_ms,
                         "JOB_FAILED".to_string(),
                         "The job has failed during execution.".to_string(),
+                        seed,
                     )
                     .await
                 } else {
@@ -1208,6 +1299,7 @@ impl Coordinator {
                         duration_ms,
                         executed_steps,
                         proof_data.clone(),
+                        seed,
                     )
                     .await
                 };
@@ -1242,6 +1334,37 @@ impl Coordinator {
                 }
             }
         });
+    }
+
+    /// The job's host randomness seed: a fresh one, or the client's when it sent one and
+    /// `allow_client_random_seed` is set; a client random seed is otherwise rejected
+    /// (`ClientRandomSeedNotAllowed`). Decided here, once per job, because every worker must run
+    /// with it.
+    fn resolve_random_seed(&self, requested: Option<RandomSeed>) -> CoordinatorResult<RandomSeed> {
+        match requested {
+            Some(_) if !self.config.coordinator.allow_client_random_seed => {
+                Err(CoordinatorError::ClientRandomSeedNotAllowed)
+            }
+            Some(seed) => {
+                warn!("[Job] Using a client-supplied random seed: {seed}");
+                Ok(seed)
+            }
+            None => RandomSeed::random().map_err(|e| CoordinatorError::Internal(e.to_string())),
+        }
+    }
+
+    /// The job's caller metadata, an empty map read as none. Metadata is rejected
+    /// (`JobMetadataNotAllowed`) unless `allow_job_metadata` is set.
+    fn admit_job_metadata(
+        &self,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
+    ) -> CoordinatorResult<Option<std::collections::BTreeMap<String, String>>> {
+        match metadata.filter(|m| !m.is_empty()) {
+            Some(_) if !self.config.coordinator.allow_job_metadata => {
+                Err(CoordinatorError::JobMetadataNotAllowed)
+            }
+            metadata => Ok(metadata),
+        }
     }
 
     /// Creates a new proof generation job with allocated resources.
@@ -1389,11 +1512,18 @@ impl Coordinator {
         };
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Failed(reason.to_string())).await;
-        crate::metrics::record_job_terminal(
-            crate::metrics::OUTCOME_FAILURE,
-            &outcome.worker_ids,
-            outcome.phase1_start,
-        );
+        crate::metrics::record_job_terminal(crate::metrics::JobOutcome {
+            job_id,
+            outcome: crate::metrics::OUTCOME_FAILURE,
+            reason: Some(reason),
+            workers: &outcome.worker_ids,
+            contributions_started: outcome.phase1_start,
+            duration: outcome.duration,
+            phases: None,
+            steps: outcome.executed_steps,
+            instances: None,
+            costs: None,
+        });
         error!("Failed job {} (reason: {})", job_id, reason);
 
         // Only fails when the job is already gone from `self.jobs`, in which
@@ -1405,85 +1535,100 @@ impl Coordinator {
         Ok(())
     }
 
-    /// Determines recurser assignment and manages worker state transitions for Phase 3.
-    ///
-    /// # Parameters
-    ///
-    /// * `job` - Mutable reference to job for state updates
-    /// * `candidate_worker_id` - Worker that just completed Phase 2 and could become recurser
-    ///
-    /// # Returns
-    ///
-    /// * The worker ID of the worker assigned as recurser
-    ///
-    /// # Recurser Selection Strategy
-    ///
-    /// The system uses a "first-to-complete" recurser selection approach, so the first worker
-    /// to complete Phase 2 becomes the recurser
-    async fn resolve_recurser_assignment(
+    /// Record the arity a worker reports; one that disagrees with the cluster is rejected.
+    /// Callers hold `registration` until the worker is registered.
+    pub(crate) async fn observe_agg_arity(
         &self,
-        job: &mut Job,
-        candidate_worker_id: &WorkerId,
-    ) -> CoordinatorResult<WorkerId> {
-        match job.agg_worker_id.as_ref() {
-            Some(existing_recurser_id) => {
-                // Recurser already exists - mark the candidate as idle since it's not the recurser
-                // This immediately frees up the worker's resources for other jobs
-                self.workers_pool
-                    .mark_worker_with_state(candidate_worker_id, WorkerState::Ready)
-                    .await?;
-                Ok(existing_recurser_id.clone())
+        worker_id: &WorkerId,
+        arity: u32,
+    ) -> CoordinatorResult<()> {
+        // 0 means a worker too old to send it.
+        if arity == 0 {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Worker {worker_id} did not report an aggregation arity; it is too old for this \
+                 coordinator"
+            )));
+        }
+
+        // An empty pool (the fleet cycled, maybe re-keyed) adopts the first value reported.
+        let mut current = self.agg_arity.lock().await;
+        let pool_empty = self.workers_pool.num_workers().await == 0;
+        if *current == 0 || pool_empty {
+            *current = arity as u64;
+            return Ok(());
+        }
+        if *current == arity as u64 {
+            return Ok(());
+        }
+
+        Err(CoordinatorError::InvalidRequest(format!(
+            "Worker {worker_id} reports aggregation arity {arity} but the cluster is on {}; \
+             workers must share a proving key",
+            *current
+        )))
+    }
+
+    /// Record the protocol of the final SNARK a worker's SNARK proving key is set up for (`None`:
+    /// it has none); one that disagrees with the cluster is rejected, since any worker may wrap a
+    /// job's SNARK. Callers hold `registration` until the worker is registered.
+    pub(crate) async fn observe_snark_protocol(
+        &self,
+        worker_id: &WorkerId,
+        protocol: Option<SnarkProtocol>,
+    ) -> CoordinatorResult<()> {
+        // An empty pool (the fleet cycled, maybe re-keyed) adopts the first value reported.
+        let mut current = self.snark_protocol.lock().await;
+        let pool_empty = self.workers_pool.num_workers().await == 0;
+        let Some(cluster) = current.filter(|_| !pool_empty) else {
+            *current = Some(protocol);
+            return Ok(());
+        };
+        if cluster == protocol {
+            return Ok(());
+        }
+
+        Err(CoordinatorError::InvalidRequest(format!(
+            "Worker {worker_id} has {} but the cluster's workers have {}; workers must share a \
+             SNARK proving key",
+            snark_key(protocol),
+            snark_key(cluster)
+        )))
+    }
+
+    /// Refuses a final SNARK job the workers cannot prove: they have no SNARK proving key, or one
+    /// of another protocol than `asked` (`None`: any). Until a worker registers there is no
+    /// protocol to check, and no worker to run the job either.
+    async fn ensure_snark_available(&self, asked: Option<SnarkProtocol>) -> CoordinatorResult<()> {
+        match (*self.snark_protocol.lock().await, asked) {
+            (Some(None), _) => Err(CoordinatorError::SnarkUnavailable(
+                "the workers have no SNARK proving key".to_string(),
+            )),
+            (Some(Some(cluster)), Some(asked)) if cluster != asked => {
+                Err(CoordinatorError::SnarkUnavailable(format!(
+                    "a {} final SNARK was asked for, but the workers' SNARK proving key is set \
+                     up for {}",
+                    asked.name(),
+                    cluster.name()
+                )))
             }
-            None => {
-                // No recurser yet - assign the candidate as recurser
-                // This represents the first worker to complete Phase 2, implementing "first-wins" selection
-                job.agg_worker_id = Some(candidate_worker_id.clone());
-                job.change_state(JobState::Running(JobPhase::Recurse));
-
-                let job_id = job.job_id.clone();
-
-                // Update worker state
-                self.workers_pool
-                    .mark_worker_with_state(
-                        candidate_worker_id,
-                        WorkerState::Computing((job_id.clone(), JobPhase::Recurse)),
-                    )
-                    .await?;
-
-                self.fire_job_event(&job_id, CoordinatorJobEvent::Progress(JobPhase::Recurse))
-                    .await;
-
-                info!(
-                    "[Phase3] Assigned worker {} as recurser for job {}",
-                    candidate_worker_id, job_id
-                );
-
-                Ok(candidate_worker_id.clone())
-            }
+            _ => Ok(()),
         }
     }
 
-    /// Checks if all workers have completed Phase 2 proofs and validates success.
-    ///
-    /// # Parameters
-    ///
-    /// * `job` - Reference to the job to check
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(true)` - All workers completed successfully, ready for aggregation
-    /// * `Ok(false)` - Still waiting for more workers to complete
-    ///
-    /// # Completion Criteria
-    ///
-    /// Phase 2 is considered complete when:
-    /// - All assigned workers have submitted proof results
-    /// - All submitted proofs report successful generation
-    async fn check_phase2_completion(
-        &self,
-        job: &Job,
-        worker_id: &WorkerId,
-    ) -> CoordinatorResult<bool> {
+    /// Aggregation arity for scheduling. Registration rejects a worker that does
+    /// not report one, so by the time a job has workers this is always set.
+    pub(crate) async fn agg_arity(&self) -> CoordinatorResult<usize> {
+        match *self.agg_arity.lock().await {
+            0 => Err(CoordinatorError::Internal(
+                "No aggregation arity known; no worker has reported one".to_string(),
+            )),
+            n => Ok(n as usize),
+        }
+    }
+
+    /// Logs a worker's phase-2 completion and reports whether every assigned worker is
+    /// done. A failed response never gets here: `handle_task_failure` takes it first.
+    fn check_phase2_completion(&self, job: &Job, worker_id: &WorkerId) -> bool {
         let empty_results = HashMap::new();
         let phase2_results = job.results.get(&JobPhase::Prove).unwrap_or(&empty_results);
 
@@ -1507,42 +1652,7 @@ impl Coordinator {
             duration_ms.as_secs_f32()
         );
 
-        // Check if all assigned workers have completed their proof generation
-        // Early return allows other workers to continue working while we wait
-        if phase2_results.len() < job.workers.len() {
-            return Ok(false);
-        }
-
-        // Validate that all completed proofs are successful
-        // Any failure triggers job-level failure to prevent invalid aggregation
-        let all_successful = phase2_results.values().all(|result| result.success);
-
-        if !all_successful {
-            // Build comprehensive failure report identifying all failed workers
-            // This detailed error context helps with debugging and system improvement
-            let failed_workers: Vec<WorkerId> = phase2_results
-                .iter()
-                .filter_map(
-                    |(worker_id, result)| {
-                        if !result.success {
-                            Some(worker_id.clone())
-                        } else {
-                            None
-                        }
-                    },
-                )
-                .collect();
-
-            // Trigger job failure with detailed context about which workers failed
-            let reason =
-                format!("Phase2 failed for workers {:?} in job {}", failed_workers, job.job_id);
-            self.fail_job(&job.job_id, reason).await?;
-
-            // Returns error to prevent further processing of this failed job
-            return Err(CoordinatorError::Internal("Phase2 failed".to_string()));
-        }
-
-        Ok(true)
+        phase2_results.len() >= job.workers.len()
     }
 
     /// Formats a number with dots as thousand separators (e.g., 12.345.567).
@@ -1652,7 +1762,13 @@ impl Coordinator {
         for (job_id, job_lock) in entries {
             let job = job_lock.read().await;
             if let JobState::Running(ref phase) = job.state {
-                let timeout_secs = self.phase_timeout_secs(phase);
+                // Aggregation starts on the first phase-2 result but its clock only once
+                // every leaf is in; until then the job is still bound by phase 2's.
+                let phase = match phase {
+                    JobPhase::Recurse if job.phase_start_time(phase).is_none() => &JobPhase::Prove,
+                    _ => phase,
+                };
+                let timeout_secs = self.phase_timeout_secs(phase, job.execution_only);
                 if timeout_secs == 0 {
                     continue;
                 }
@@ -1681,10 +1797,15 @@ impl Coordinator {
         }
     }
 
-    /// Returns the configured timeout in seconds for a given phase.
-    fn phase_timeout_secs(&self, phase: &JobPhase) -> u64 {
+    /// Returns the configured timeout in seconds for a given phase. An
+    /// execution-only job runs in `Running(Contributions)` (`JobPhase::Execution`
+    /// is only a timing key), so its timeout is told apart by `execution_only`.
+    fn phase_timeout_secs(&self, phase: &JobPhase, execution_only: bool) -> u64 {
         match phase {
             JobPhase::Execution => self.config.coordinator.execution_timeout_seconds,
+            JobPhase::Contributions if execution_only => {
+                self.config.coordinator.execution_timeout_seconds
+            }
             JobPhase::Contributions
             | JobPhase::ContributionsInputsStream
             | JobPhase::ContributionsHintsStream => self.config.coordinator.phase1_timeout_seconds,
@@ -1701,16 +1822,17 @@ impl Coordinator {
         );
         let stale = self.workers_pool.get_stale_computing_workers(threshold).await;
 
-        // Deduplicate by job_id
-        let mut failed_jobs = std::collections::HashSet::new();
+        let mut handled_jobs = std::collections::HashSet::new();
         for (worker_id, job_id, _phase) in &stale {
-            if failed_jobs.insert(job_id.clone()) {
-                let reason =
-                    format!("[Monitor] Worker {} missed heartbeats for job {}", worker_id, job_id);
-                warn!("{}", reason);
-                if let Err(e) = self.fail_job(job_id, &reason).await {
-                    error!("Failed to abort job {} due to stale heartbeat: {}", job_id, e);
-                }
+            if !handled_jobs.insert(job_id.clone()) {
+                continue;
+            }
+
+            let reason =
+                format!("[Monitor] Worker {} missed heartbeats for job {}", worker_id, job_id);
+            warn!("{}", reason);
+            if let Err(e) = self.fail_job(job_id, &reason).await {
+                error!("Failed to abort job {} due to stale heartbeat: {}", job_id, e);
             }
         }
     }
@@ -1766,6 +1888,7 @@ impl Coordinator {
                         "[Recovery] Worker {} stuck in pending_recovery > {}s; unregistering",
                         wid, threshold_secs
                     );
+                    crate::metrics::record_worker_recovery_expired(&wid, threshold_secs as f64);
                     if let Err(e) = self.unregister_worker(&wid).await {
                         warn!("Failed to unregister stuck-recovery worker {}: {}", wid, e);
                     }
@@ -2036,6 +2159,65 @@ mod tests {
         assert_eq!(entry.read().await.state, JobState::Failed);
     }
 
+    /// A job enters `Recurse` on its first phase-2 result, before the Recurse clock
+    /// starts. A prover that never answers must still time it out on phase 2's clock.
+    #[tokio::test]
+    async fn test_check_phase_timeouts_recurse_before_all_leaves() {
+        let (coordinator, _workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Recurse, |c| {
+                c.coordinator.phase2_timeout_seconds = 300;
+            })
+            .await;
+
+        {
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            let mut job = entry.write().await;
+            job.phase_timings.remove(&JobPhase::Recurse);
+            job.phase_timings.insert(
+                JobPhase::Prove,
+                PhaseTimings {
+                    start_time: Utc::now() - chrono::Duration::seconds(600),
+                    end_time: None,
+                },
+            );
+        }
+
+        coordinator.check_phase_timeouts().await;
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
+    /// An execution-only job runs in `Running(Contributions)`, yet is bound by the
+    /// execution timeout, not phase 1's.
+    #[tokio::test]
+    async fn test_check_phase_timeouts_execution_only_job() {
+        let (coordinator, _workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |c| {
+                c.coordinator.execution_timeout_seconds = 60;
+                c.coordinator.phase1_timeout_seconds = 300;
+            })
+            .await;
+
+        {
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            let mut job = entry.write().await;
+            job.execution_only = true;
+            job.phase_timings.insert(
+                JobPhase::Contributions,
+                PhaseTimings {
+                    start_time: Utc::now() - chrono::Duration::seconds(120),
+                    end_time: None,
+                },
+            );
+        }
+
+        coordinator.check_phase_timeouts().await;
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
     #[tokio::test]
     async fn test_check_phase_timeouts_no_false_positive() {
         let (coordinator, _workers, job_id) =
@@ -2155,6 +2337,58 @@ mod tests {
         assert!(coordinator.pending_recovery.read().await.contains_key(&w0_id));
     }
 
+    /// A worker that fails a task before starting it (`worker_in_recovery` false) sends no
+    /// `WorkerRecoveryComplete`: parked, it would wait for the stuck-recovery sweep.
+    #[tokio::test]
+    async fn a_worker_that_failed_without_starting_is_ready_again() {
+        use zisk_cluster_common::ExecuteTaskResponseDto;
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+        let failure = ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: w0_id.clone(),
+            success: false,
+            error_message: Some("Guest program not found".into()),
+            result_data: None,
+            worker_in_recovery: false,
+        };
+
+        let result = coordinator.handle_stream_execute_task_response(failure).await;
+
+        assert!(matches!(result, Err(CoordinatorError::WorkerError(_))));
+        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
+        assert!(!coordinator.pending_recovery.read().await.contains_key(&w0_id));
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
+    #[tokio::test]
+    async fn a_worker_that_failed_in_recovery_stays_parked_for_it() {
+        use zisk_cluster_common::ExecuteTaskResponseDto;
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+        let failure = ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: w0_id.clone(),
+            success: false,
+            error_message: Some("contribution failed".into()),
+            result_data: None,
+            worker_in_recovery: true,
+        };
+
+        let _ = coordinator.handle_stream_execute_task_response(failure).await;
+
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0_id).await,
+            Some(WorkerState::SettingUp)
+        );
+        assert!(coordinator.pending_recovery.read().await.contains_key(&w0_id));
+    }
+
     /// Builds a `FinalProof` response with the given proof bytes.
     fn final_proof_response(
         job_id: &JobId,
@@ -2214,23 +2448,39 @@ mod tests {
         }
     }
 
-    /// Designates `worker_id` as the job's recurser. `inflight_all_done` arms an
-    /// in-flight aggregation task carrying that flag; `None` leaves the slot empty.
+    /// Makes `worker_id` the job's draining node: `Some(true)` the root, `Some(false)` an
+    /// intermediate node, `None` no node at all.
     async fn arm_recurser(
         coordinator: &Coordinator,
         job_id: &JobId,
         worker_id: &WorkerId,
         inflight_all_done: Option<bool>,
     ) {
+        use std::collections::BTreeSet;
+        use zisk_cluster_common::{AggScheduler, AggSet};
+
         let entry = coordinator.jobs.read().await.get(job_id).cloned().unwrap();
         let mut job = entry.write().await;
-        job.agg_worker_id = Some(worker_id.clone());
-        job.agg_task_inflight =
-            inflight_all_done.map(|all_done| zisk_cluster_common::PendingAggTask {
+
+        // Two sets close a group at arity 2; `n_leaves` decides whether that group
+        // covers the job, and so whether the node is the root.
+        let n_leaves = match inflight_all_done {
+            Some(true) => 2,
+            _ => 8,
+        };
+        let mut scheduler = AggScheduler::new(2, n_leaves, true);
+
+        if inflight_all_done.is_some() {
+            let set = |covers: [u32; 1], location: WorkerId| AggSet {
                 proofs: vec![],
-                all_done,
-                proof_type: ProofKind::VadcopFinal,
-            });
+                covers: BTreeSet::from(covers),
+                location,
+            };
+            scheduler.on_set_ready(set([0], worker_id.clone()));
+            scheduler.on_set_ready(set([1], WorkerId::new()));
+        }
+
+        job.agg = Some(scheduler);
     }
 
     /// The headline vector of audits#36: an assigned worker submitting a
@@ -2238,7 +2488,7 @@ mod tests {
     /// used to be routed on payload variant alone, so this reached
     /// `handle_recurser_completion` — which completed the job from any bytes
     /// that deserialized as a `Proof`, and panicked on
-    /// `agg_worker_id.unwrap()` when they didn't get that far.
+    /// assumed an aggregation node when they didn't get that far.
     #[tokio::test]
     async fn test_final_proof_rejected_in_contributions_phase() {
         let (coordinator, workers, job_id) =
@@ -2347,12 +2597,16 @@ mod tests {
         let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
         let job = entry.read().await;
         assert_eq!(job.state, JobState::Running(JobPhase::Recurse));
-        assert!(job.agg_task_inflight.is_some(), "in-flight task must survive a rejected ack");
+        assert!(
+            job.agg.as_ref().unwrap().live_node(&w0_id).is_some(),
+            "the draining node must survive a rejected ack"
+        );
     }
 
     /// One sample of every `ExecuteTaskResponseResultDataDto` variant, in
-    /// declaration order: Execution, Challenges, Proofs, FinalProof, WrapResult.
-    fn sample_payloads() -> [zisk_cluster_common::ExecuteTaskResponseResultDataDto; 5] {
+    /// declaration order: Execution, Challenges, Proofs, FinalProof, WrapResult,
+    /// PartialAggProofs.
+    fn sample_payloads() -> [zisk_cluster_common::ExecuteTaskResponseResultDataDto; 6] {
         use zisk_cluster_common::{
             ChallengesDto, ContributionsResultDataDto, ExecuteTaskResponseResultDataDto as Payload,
             ExecutionResultDataDto, FinalProofDto, ProofStarkDto, WitnessInfoDto, WrapResultDto,
@@ -2392,13 +2646,22 @@ mod tests {
                 zisk_executor_time,
                 cost_per_type: StatsCostPerType::default(),
             }),
-            Payload::Proofs(vec![ProofStarkDto { airgroup_id: 0, values: vec![], worker_idx: 0 }]),
+            Payload::Proofs(vec![ProofStarkDto {
+                airgroup_id: 0,
+                values: vec![],
+                worker_indexes: vec![0],
+            }]),
             Payload::FinalProof(FinalProofDto {
                 proof_data: vec![],
                 executed_steps: 0,
                 instances: 0,
             }),
             Payload::WrapResult(WrapResultDto { proof_data: vec![] }),
+            Payload::PartialAggProofs(vec![ProofStarkDto {
+                airgroup_id: 0,
+                values: vec![],
+                worker_indexes: vec![0],
+            }]),
         ]
     }
 
@@ -2430,6 +2693,9 @@ mod tests {
                 Payload::Proofs(_) => ("Proofs", JobPhase::Contributions, false),
                 Payload::FinalProof(_) => ("FinalProof", JobPhase::Contributions, false),
                 Payload::WrapResult(_) => ("WrapResult", JobPhase::Contributions, false),
+                Payload::PartialAggProofs(_) => {
+                    ("PartialAggProofs", JobPhase::Contributions, false)
+                }
             };
 
             let (coordinator, workers, job_id) =
@@ -2472,7 +2738,7 @@ mod tests {
     /// The payload/phase mapping, including the two cases that must stay
     /// permissive:
     ///
-    /// * `Proofs` in `Recurse` — `resolve_recurser_assignment` flips the job to
+    /// * `Proofs` in `Recurse` — the aggregation scheduler flips the job to
     ///   `Recurse` when the *first* worker finishes Phase 2, so the rest report
     ///   in afterwards. Rejecting these would break every multi-worker job.
     /// * `Execution` in `Contributions` — execution-only jobs never enter
@@ -2481,7 +2747,7 @@ mod tests {
     fn test_payload_phase_mapping() {
         use zisk_cluster_common::ExecuteTaskResponseResultDataDto as Payload;
 
-        let [execution, challenges, proofs, final_proof, wrap] = sample_payloads();
+        let [execution, challenges, proofs, final_proof, wrap, partial_agg] = sample_payloads();
 
         let job_id = JobId::new();
         let worker_id = WorkerId::from("w0".to_string());
@@ -2513,6 +2779,9 @@ mod tests {
         assert!(!accepted(JobPhase::Contributions, false, &final_proof));
         assert!(accepted(JobPhase::Recurse, false, &wrap));
         assert!(!accepted(JobPhase::Contributions, false, &wrap));
+        assert!(accepted(JobPhase::Recurse, false, &partial_agg));
+        assert!(!accepted(JobPhase::Prove, false, &partial_agg));
+        assert!(!accepted(JobPhase::Contributions, false, &partial_agg));
 
         // A job that is not running accepts nothing.
         for state in [JobState::Created, JobState::Completed] {
@@ -2612,6 +2881,8 @@ mod tests {
         let (sender2, _msgs2) = MockMessageSender::new();
         let req = WorkerReconnectRequestDto {
             worker_id: w0_id.clone(),
+            aggregation_arity: 2,
+            snark_protocol: None,
             compute_capacity: 1u32.into(),
             last_known_job_id: None,
         };
@@ -3185,12 +3456,19 @@ mod tests {
         let hash_id = coordinator.register_guest_program(elf_bytes).unwrap();
         assert!(fs::metadata(zisk_common::ZiskPaths::global().elf_cache(&hash_id)).is_ok());
 
+        // The proof is of another program, set up earlier: the two race for the worker only.
+        let proven = "proven-hash".to_string();
+        coordinator.active_setups.write().await.insert(
+            SetupKey::new(proven.clone(), false, false),
+            ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() },
+        );
+
         let coord_a = coordinator.clone();
         let coord_b = coordinator.clone();
         let hash_id_a = hash_id.clone();
         let prove_req = LaunchProofRequestDto {
             data_id: "data".to_string().into(),
-            hash_id,
+            hash_id: proven,
             compute_capacity: Some(1),
             minimal_compute_capacity: Some(1),
             inputs_mode: zisk_cluster_common::InputsModeDto::InputsNone,
@@ -3199,6 +3477,8 @@ mod tests {
             metadata: None,
             execution_only: false,
             proof_type: zisk_cluster_common::ProofKind::VadcopFinal,
+            snark_protocol: None,
+            random_seed: None,
         };
 
         let setup_task = tokio::spawn(async move {
@@ -3429,7 +3709,7 @@ mod tests {
             setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
         let w0_id = workers[0].0.clone();
 
-        // The aggregator path requires `agg_worker_id` to be set on the
+        // The aggregator path requires a node to be draining on the
         // job. Set it manually to match the worker we'll deliver a result
         // for.
         arm_recurser(&coordinator, &job_id, &w0_id, None).await;
@@ -3486,7 +3766,10 @@ mod tests {
         let (sender, _msgs) = MockMessageSender::new();
         let req = WorkerRegisterRequestDto {
             worker_id: worker_id.clone(),
+            aggregation_arity: 2,
+            snark_protocol: None,
             compute_capacity: 1u32.into(),
+            previous_exit: None,
         };
         let (accepted, _msg, _setup) =
             coordinator.handle_stream_registration(req, Box::new(sender)).await;
@@ -3725,12 +4008,14 @@ mod tests {
             .await
             .unwrap();
 
-        let req_a = LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0 };
-        let req_b = LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0 };
+        let req_a =
+            LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, snark_protocol: None };
+        let req_b =
+            LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, snark_protocol: None };
         let coord_a = coordinator.clone();
         let coord_b = coordinator.clone();
-        let task_a = tokio::spawn(async move { coord_a.launch_wrap(req_a).await });
-        let task_b = tokio::spawn(async move { coord_b.launch_wrap(req_b).await });
+        let task_a = tokio::spawn(async move { coord_a.launch_wrap(req_a, None).await });
+        let task_b = tokio::spawn(async move { coord_b.launch_wrap(req_b, None).await });
         let (ra, rb) = tokio::join!(task_a, task_b);
         let ra = ra.unwrap();
         let rb = rb.unwrap();
@@ -4023,7 +4308,7 @@ mod tests {
     }
 
     /// Regression: `fail_job(A)` must NOT park workers that were freed from
-    /// Job A (e.g. via `resolve_recurser_assignment` after Phase 2) and
+    /// Job A (e.g. once phase 3 starts) and
     /// subsequently reassigned to a different live Job B. Under the previous
     /// `mark_computing_workers_settingup` that ignored job_id, terminating
     /// Job A would clobber `Computing(B, _)` → `SettingUp` and add the
@@ -4038,7 +4323,7 @@ mod tests {
         let w1 = workers[1].0.clone();
 
         // Simulate w1 having been freed from Job A's Phase 2 (the
-        // non-aggregator path in `resolve_recurser_assignment` marks the
+        // released-donor path in the aggregation scheduler marks the
         // worker Ready) and then picked up by Job B's reservation.
         let job_b = JobId::new();
         coordinator
@@ -4266,7 +4551,10 @@ mod tests {
             .unwrap();
 
         let response = coordinator
-            .launch_wrap(LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0 })
+            .launch_wrap(
+                LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, snark_protocol: None },
+                None,
+            )
             .await
             .unwrap();
         let job_id = response.job_id;
@@ -4707,6 +4995,46 @@ mod tests {
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready),);
     }
 
+    /// Success ack: job → Completed with its terminal event, worker → Ready.
+    #[tokio::test]
+    async fn test_run_aggregate_proofs_success_ack_completes_job() {
+        let (coordinator, workers) = coordinator_with_idle_workers(1).await;
+        let w0 = workers[0].0.clone();
+
+        let mut job = create_test_job(std::slice::from_ref(&w0));
+        job.change_state(JobState::Running(JobPhase::Recurse));
+        let job_id = job.job_id.clone();
+        coordinator.jobs.write().await.insert(job_id.clone(), Arc::new(RwLock::new(job)));
+        coordinator.alloc_job_events(&job_id).await;
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(
+                &w0,
+                WorkerState::Computing((job_id.clone(), JobPhase::Recurse)),
+            )
+            .await
+            .unwrap();
+
+        let ack = RunAggregateProofsAckDto {
+            job_id: job_id.as_string(),
+            worker_id: w0.clone(),
+            success: true,
+            error_message: None,
+            proof: vec![],
+        };
+        coordinator.handle_stream_run_aggregate_proofs_ack(ack).await.unwrap();
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Completed);
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(matches!(
+            coordinator.get_terminal_event(&job_id).await,
+            Some(CoordinatorJobEvent::Completed(
+                crate::job_events::CoordinatorJobResult::AggregateProofs { .. }
+            ))
+        ));
+    }
+
     /// Failure ack: job → Failed, worker → Ready, error message preserved verbatim.
     #[tokio::test]
     async fn test_run_aggregate_proofs_failure_ack_fails_job() {
@@ -4797,6 +5125,8 @@ mod tests {
             .handle_stream_reconnection(
                 WorkerReconnectRequestDto {
                     worker_id: w0_id.clone(),
+                    aggregation_arity: 2,
+                    snark_protocol: None,
                     compute_capacity: ComputeCapacity::from(1u32),
                     last_known_job_id: Some(job_id),
                 },
@@ -4824,6 +5154,8 @@ mod tests {
             .handle_stream_reconnection(
                 WorkerReconnectRequestDto {
                     worker_id: w0_id.clone(),
+                    aggregation_arity: 2,
+                    snark_protocol: None,
                     compute_capacity: ComputeCapacity::from(1u32),
                     last_known_job_id: Some(job_id),
                 },
@@ -4859,6 +5191,8 @@ mod tests {
             .handle_stream_reconnection(
                 WorkerReconnectRequestDto {
                     worker_id: w0_id.clone(),
+                    aggregation_arity: 2,
+                    snark_protocol: None,
                     compute_capacity: ComputeCapacity::from(1u32),
                     last_known_job_id: Some(job_id),
                 },
@@ -4890,6 +5224,523 @@ mod tests {
         assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
     }
 
+    // --- resolve_random_seed --------------------------------------------------------
+
+    const CLIENT_RANDOM_SEED: RandomSeed = RandomSeed::new([7; RandomSeed::LEN]);
+
+    #[tokio::test]
+    async fn resolve_random_seed_rejects_a_client_random_seed_by_default() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert!(matches!(
+            coordinator.resolve_random_seed(Some(CLIENT_RANDOM_SEED)),
+            Err(CoordinatorError::ClientRandomSeedNotAllowed)
+        ));
+    }
+
+    #[tokio::test]
+    async fn resolve_random_seed_honours_a_client_random_seed_when_allowed() {
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.allow_client_random_seed = true));
+        assert_eq!(
+            coordinator.resolve_random_seed(Some(CLIENT_RANDOM_SEED)).unwrap(),
+            CLIENT_RANDOM_SEED
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_random_seed_draws_a_fresh_seed_per_job() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert_ne!(
+            coordinator.resolve_random_seed(None).unwrap(),
+            coordinator.resolve_random_seed(None).unwrap()
+        );
+    }
+
+    // --- admit_job_metadata ---------------------------------------------------------
+
+    fn job_metadata() -> std::collections::BTreeMap<String, String> {
+        std::collections::BTreeMap::from([("team".to_string(), "zkvm".to_string())])
+    }
+
+    #[tokio::test]
+    async fn admit_job_metadata_keeps_metadata_by_default() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert_eq!(
+            coordinator.admit_job_metadata(Some(job_metadata())).unwrap(),
+            Some(job_metadata())
+        );
+    }
+
+    #[tokio::test]
+    async fn admit_job_metadata_reads_an_empty_map_as_none() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert_eq!(coordinator.admit_job_metadata(Some(Default::default())).unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn admit_job_metadata_rejects_metadata_when_not_allowed() {
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.allow_job_metadata = false));
+        assert!(matches!(
+            coordinator.admit_job_metadata(Some(job_metadata())),
+            Err(CoordinatorError::JobMetadataNotAllowed)
+        ));
+        // A job without metadata is unaffected by the policy.
+        assert_eq!(coordinator.admit_job_metadata(Some(Default::default())).unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn launch_wrap_keeps_the_job_metadata() {
+        use zisk_cluster_common::LaunchWrapRequestDto;
+
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        let worker_id = WorkerId::from("w-wrap".to_string());
+        let (sender, _messages) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(worker_id, 1u32, Box::new(sender), WorkerState::Ready)
+            .await
+            .unwrap();
+
+        let job_id = coordinator
+            .launch_wrap(
+                LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, snark_protocol: None },
+                Some(job_metadata()),
+            )
+            .await
+            .unwrap()
+            .job_id;
+
+        let job = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(job.read().await.metadata, Some(job_metadata()));
+    }
+
+    /// A rejected wrap must not hold the worker it would have run on.
+    #[tokio::test]
+    async fn launch_wrap_rejects_metadata_when_not_allowed_without_reserving_a_worker() {
+        use zisk_cluster_common::LaunchWrapRequestDto;
+
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.allow_job_metadata = false));
+        let worker_id = WorkerId::from("w-wrap".to_string());
+        let (sender, _messages) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(worker_id.clone(), 1u32, Box::new(sender), WorkerState::Ready)
+            .await
+            .unwrap();
+
+        let result = coordinator
+            .launch_wrap(
+                LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, snark_protocol: None },
+                Some(job_metadata()),
+            )
+            .await;
+
+        assert!(matches!(result, Err(CoordinatorError::JobMetadataNotAllowed)));
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&worker_id).await,
+            Some(WorkerState::Ready)
+        );
+    }
+
+    /// A coordinator with a registered recurser spec and one Ready worker to run it.
+    async fn recurser_coordinator(overrides: impl FnOnce(&mut Config)) -> Coordinator {
+        let coordinator = Coordinator::new(test_config_with(overrides));
+        coordinator
+            .register_aggregation_program(
+                "recurser".to_string(),
+                AggregationProgramSpecDto {
+                    normalize: None,
+                    aggregate_publics_body: String::new(),
+                    n_free: 0,
+                    n_publics_agg: 0,
+                    program_vks: vec![],
+                },
+            )
+            .await
+            .unwrap();
+        let (sender, _messages) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(
+                WorkerId::from("w-recurser".to_string()),
+                1u32,
+                Box::new(sender),
+                WorkerState::Ready,
+            )
+            .await
+            .unwrap();
+        coordinator
+    }
+
+    async fn launch_test_aggregate_proofs(
+        coordinator: &Coordinator,
+    ) -> CoordinatorResult<LaunchProofResponseDto> {
+        coordinator
+            .launch_aggregate_proofs(
+                "recurser".to_string(),
+                vec![],
+                vec![],
+                vec![],
+                vec![],
+                None,
+                Some(job_metadata()),
+            )
+            .await
+    }
+
+    #[tokio::test]
+    async fn launch_aggregate_proofs_keeps_the_job_metadata() {
+        let coordinator = recurser_coordinator(|_| {}).await;
+
+        let job_id = launch_test_aggregate_proofs(&coordinator).await.unwrap().job_id;
+
+        let job = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(job.read().await.metadata, Some(job_metadata()));
+    }
+
+    /// A rejected aggregation must not hold the worker it would have run on.
+    #[tokio::test]
+    async fn launch_aggregate_proofs_rejects_metadata_when_not_allowed_without_reserving_a_worker()
+    {
+        let coordinator = recurser_coordinator(|c| c.coordinator.allow_job_metadata = false).await;
+
+        let result = launch_test_aggregate_proofs(&coordinator).await;
+
+        assert!(matches!(result, Err(CoordinatorError::JobMetadataNotAllowed)));
+        let worker = WorkerId::from("w-recurser".to_string());
+        assert_eq!(coordinator.workers_pool.worker_state(&worker).await, Some(WorkerState::Ready));
+        assert!(coordinator.jobs.read().await.is_empty());
+    }
+
+    /// Every worker re-executes the whole program, so all must get the job's one seed.
+    #[tokio::test]
+    async fn contributions_carry_the_job_seed_to_every_worker() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |_| {}).await;
+        let coordinator = Arc::new(coordinator);
+        let job_entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        job_entry.write().await.random_seed = Some(CLIENT_RANDOM_SEED);
+        let worker_ids: Vec<_> = workers.iter().map(|(id, _)| id.clone()).collect();
+
+        let job = job_entry.read().await;
+        coordinator.dispatch_contributions_messages(&job, &worker_ids).await.unwrap();
+
+        for (worker_id, messages) in &workers {
+            let messages = messages.lock().unwrap();
+            let seeds: Vec<_> = messages
+                .iter()
+                .filter_map(|m| match m {
+                    CoordinatorMessageDto::ExecuteTaskRequest(req) => match &req.params {
+                        zisk_cluster_common::ExecuteTaskRequestTypeDto::ContributionParams(p) => {
+                            Some(p.random_seed)
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(seeds, vec![CLIENT_RANDOM_SEED], "worker {worker_id}");
+        }
+    }
+
+    /// The policy check runs before capacity is reserved, so a rejected job leaves no trace.
+    #[tokio::test]
+    async fn launch_proof_rejects_a_client_random_seed_before_reserving_workers() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
+        add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
+        let mut request = capacity_request(None, None);
+        request.random_seed = Some(CLIENT_RANDOM_SEED);
+
+        let result = coordinator.launch_proof(request).await;
+
+        assert!(matches!(result, Err(CoordinatorError::ClientRandomSeedNotAllowed)));
+        let w0 = WorkerId::from("w0".to_string());
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(coordinator.jobs.read().await.is_empty());
+    }
+
+    /// Like a random seed, metadata is checked before capacity is reserved.
+    #[tokio::test]
+    async fn launch_proof_rejects_metadata_when_not_allowed_before_reserving_workers() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|c| {
+            c.coordinator.allow_job_metadata = false
+        })));
+        add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
+        let mut request = capacity_request(None, None);
+        request.metadata = Some(job_metadata());
+
+        let result = coordinator.launch_proof(request).await;
+
+        assert!(matches!(result, Err(CoordinatorError::JobMetadataNotAllowed)));
+        let w0 = WorkerId::from("w0".to_string());
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(coordinator.jobs.read().await.is_empty());
+    }
+
+    /// A worker has only the programs set up on it; a job for any other would fail on it.
+    #[tokio::test]
+    async fn launch_proof_refuses_a_program_that_is_not_set_up_before_reserving_workers() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
+        add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
+        coordinator.active_setups.write().await.insert(
+            SetupKey::new("another-program".to_string(), false, false),
+            ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() },
+        );
+
+        let result = coordinator.launch_proof(capacity_request(None, None)).await;
+
+        assert!(matches!(result, Err(CoordinatorError::ProgramNotSetup(ref h)) if h == "hash"));
+        let w0 = WorkerId::from("w0".to_string());
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(coordinator.jobs.read().await.is_empty());
+    }
+
+    // --- SNARK protocol -------------------------------------------------------
+
+    const PLONK: Option<SnarkProtocol> = Some(SnarkProtocol::Plonk);
+    const PILFFLONK: Option<SnarkProtocol> = Some(SnarkProtocol::Pilfflonk);
+
+    /// Register worker `id`, with a SNARK proving key of `snark_protocol`, as its stream does.
+    async fn register_with_snark(
+        coordinator: &Coordinator,
+        id: &str,
+        snark_protocol: Option<SnarkProtocol>,
+    ) -> (bool, String) {
+        let (sender, _msgs) = MockMessageSender::new();
+        let req = zisk_cluster_common::WorkerRegisterRequestDto {
+            worker_id: WorkerId::from(id.to_string()),
+            compute_capacity: 1u32.into(),
+            aggregation_arity: 2,
+            snark_protocol,
+            previous_exit: None,
+        };
+        let (accepted, message, _setup) =
+            coordinator.handle_stream_registration(req, Box::new(sender)).await;
+        (accepted, message)
+    }
+
+    /// Any worker may wrap a job's SNARK: the first one sets the cluster's key, and the others
+    /// must have one of its protocol, or none when it has none.
+    #[tokio::test]
+    async fn workers_must_share_a_snark_proving_key() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert!(register_with_snark(&coordinator, "w0", PLONK).await.0);
+        assert!(register_with_snark(&coordinator, "w1", PLONK).await.0);
+
+        let (accepted, message) = register_with_snark(&coordinator, "w2", PILFFLONK).await;
+        assert!(!accepted);
+        assert!(message.contains("w2"), "{message}");
+        assert!(
+            message.contains(
+                "has a pilfflonk SNARK proving key but the cluster's workers have a PLONK SNARK \
+                 proving key; workers must share a SNARK proving key"
+            ),
+            "{message}"
+        );
+        let (accepted, message) = register_with_snark(&coordinator, "w3", None).await;
+        assert!(!accepted);
+        assert!(message.contains("w3"), "{message}");
+        assert!(message.contains("has no SNARK proving key but"), "{message}");
+        assert_eq!(coordinator.workers_pool.num_workers().await, 2);
+    }
+
+    #[tokio::test]
+    async fn a_reconnecting_worker_must_share_the_snark_proving_key() {
+        use zisk_cluster_common::WorkerReconnectRequestDto;
+
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert!(register_with_snark(&coordinator, "w0", None).await.0);
+
+        let (sender, _msgs) = MockMessageSender::new();
+        let req = WorkerReconnectRequestDto {
+            worker_id: WorkerId::from("w1".to_string()),
+            compute_capacity: 1u32.into(),
+            last_known_job_id: None,
+            aggregation_arity: 2,
+            snark_protocol: PLONK,
+        };
+        let (accepted, message, _directive, _setup) =
+            coordinator.handle_stream_reconnection(req, Box::new(sender)).await;
+
+        assert!(!accepted);
+        assert!(
+            message.contains("has a PLONK SNARK proving key but the cluster's workers have no"),
+            "{message}"
+        );
+    }
+
+    /// An emptied pool (the fleet cycled, maybe re-keyed) adopts the next worker's key, or its
+    /// lack of one.
+    #[tokio::test]
+    async fn an_emptied_pool_adopts_the_next_snark_proving_key() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert!(register_with_snark(&coordinator, "w0", PLONK).await.0);
+        coordinator
+            .workers_pool
+            .unregister_worker(&WorkerId::from("w0".to_string()))
+            .await
+            .unwrap();
+
+        assert!(register_with_snark(&coordinator, "w1", None).await.0);
+        let (accepted, message) = register_with_snark(&coordinator, "w2", PLONK).await;
+        assert!(!accepted);
+        assert!(message.contains("the cluster's workers have no SNARK proving key"), "{message}");
+    }
+
+    /// A Ready worker `w0` for `hash`, on a cluster whose workers' SNARK proving key is of
+    /// `cluster` (`None`: they have none).
+    async fn coordinator_with_snark(cluster: Option<SnarkProtocol>) -> Arc<Coordinator> {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
+        add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
+        coordinator.active_setups.write().await.insert(
+            SetupKey::new("hash".to_string(), false, false),
+            ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() },
+        );
+        *coordinator.snark_protocol.lock().await = Some(cluster);
+        coordinator
+    }
+
+    /// The SNARK would fail on the worker that wraps it, after the whole proof; refused up front,
+    /// it leaves no trace.
+    #[tokio::test]
+    async fn launch_proof_refuses_a_snark_the_workers_cannot_prove_before_reserving_workers() {
+        for (cluster, asked, refusal) in [
+            (None, None, "the workers have no SNARK proving key"),
+            (None, PLONK, "the workers have no SNARK proving key"),
+            (
+                PLONK,
+                PILFFLONK,
+                "a pilfflonk final SNARK was asked for, but the workers' SNARK proving key is \
+                 set up for PLONK",
+            ),
+        ] {
+            let coordinator = coordinator_with_snark(cluster).await;
+            let mut request = capacity_request(None, None);
+            request.proof_type = ProofKind::Plonk;
+            request.snark_protocol = asked;
+
+            let result = coordinator.launch_proof(request).await;
+
+            assert!(
+                matches!(result, Err(CoordinatorError::SnarkUnavailable(ref m)) if m == refusal),
+                "{cluster:?} asked {asked:?}: {:?}",
+                result.as_ref().err()
+            );
+            let w0 = WorkerId::from("w0".to_string());
+            assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+            assert!(coordinator.jobs.read().await.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn launch_wrap_refuses_a_snark_the_workers_cannot_prove_before_reserving_workers() {
+        use zisk_cluster_common::LaunchWrapRequestDto;
+
+        for (cluster, asked) in [(None, None), (PILFFLONK, PLONK)] {
+            let coordinator = coordinator_with_snark(cluster).await;
+            let request = LaunchWrapRequestDto {
+                proof_data: vec![],
+                proof_dest: ProofKind::Plonk.into(),
+                snark_protocol: asked,
+            };
+
+            let result = coordinator.launch_wrap(request, None).await;
+
+            assert!(
+                matches!(result, Err(CoordinatorError::SnarkUnavailable(_))),
+                "{cluster:?} asked {asked:?}: {:?}",
+                result.as_ref().err()
+            );
+            let w0 = WorkerId::from("w0".to_string());
+            assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+            assert!(coordinator.jobs.read().await.is_empty());
+        }
+    }
+
+    /// Only a final SNARK needs the key; one of the workers' protocol, or of any, runs.
+    #[tokio::test]
+    async fn launch_wrap_runs_what_the_workers_can_prove() {
+        use zisk_cluster_common::LaunchWrapRequestDto;
+
+        for (cluster, proof_dest, asked) in [
+            (None, ProofKind::VadcopFinalMinimal, None),
+            (PLONK, ProofKind::Plonk, PLONK),
+            (PILFFLONK, ProofKind::Plonk, None),
+        ] {
+            let coordinator = coordinator_with_snark(cluster).await;
+            let request = LaunchWrapRequestDto {
+                proof_data: vec![],
+                proof_dest: proof_dest.into(),
+                snark_protocol: asked,
+            };
+
+            let result = coordinator.launch_wrap(request, None).await;
+
+            assert!(
+                result.is_ok(),
+                "{cluster:?} {proof_dest:?} asked {asked:?}: {:?}",
+                result.as_ref().err()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn contributions_are_not_dispatched_without_a_job_seed() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let coordinator = Arc::new(coordinator);
+        let job_entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        let worker_ids: Vec<_> = workers.iter().map(|(id, _)| id.clone()).collect();
+
+        let job = job_entry.read().await;
+        let err = coordinator.dispatch_contributions_messages(&job, &worker_ids).await.unwrap_err();
+
+        assert!(matches!(err, CoordinatorError::Internal(_)), "got {err:?}");
+        assert!(workers[0].1.lock().unwrap().is_empty(), "no task may reach a worker");
+    }
+
+    /// Workers assemble the final proof from proof words alone; the coordinator is the one place
+    /// that gives it the job's seed, and every copy it hands out must carry it.
+    #[tokio::test]
+    async fn final_proof_carries_the_job_seed() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+        arm_recurser(&coordinator, &job_id, &w0_id, Some(true)).await;
+        let job_entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        job_entry.write().await.random_seed = Some(CLIENT_RANDOM_SEED);
+        coordinator.alloc_job_events(&job_id).await;
+        let mut events = coordinator.subscribe_job_events(&job_id).await.unwrap();
+        let seedless =
+            bincode::serde::encode_to_vec(Proof::default(), bincode::config::standard()).unwrap();
+
+        coordinator
+            .handle_stream_execute_task_response(final_proof_response(&job_id, &w0_id, seedless))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            job_entry.read().await.proof.as_ref().unwrap().random_seed,
+            Some(CLIENT_RANDOM_SEED)
+        );
+        match events.recv().await.unwrap() {
+            CoordinatorJobEvent::Completed(crate::job_events::CoordinatorJobResult::Prove {
+                proof_bytes,
+                random_seed: seed,
+                ..
+            }) => {
+                assert_eq!(seed, Some(CLIENT_RANDOM_SEED));
+                assert_eq!(
+                    Proof::from_bytes(&proof_bytes).unwrap().random_seed,
+                    Some(CLIENT_RANDOM_SEED)
+                );
+            }
+            other => panic!("expected a completed prove, got {other:?}"),
+        }
+    }
+
     // --- resolve_capacity ----------------------------------------------------
 
     fn capacity_request(
@@ -4907,6 +5758,8 @@ mod tests {
             metadata: None,
             execution_only: false,
             proof_type: ProofKind::VadcopFinal,
+            snark_protocol: None,
+            random_seed: None,
         }
     }
 

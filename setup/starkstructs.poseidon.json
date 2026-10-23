@@ -1,16 +1,16 @@
 {
   "Keccakf": {
-    "powBits": 21,
+    "grindingBits": 21,
     "hasCompressor": true
   },
   "VirtualTableZisk0": {
-    "powBits": 20
+    "grindingBits": 20
   },
   "VirtualTableZisk1": {
-    "powBits": 23
+    "grindingBits": 23
   },
   "Rom": {
-    "powBits": 20
+    "grindingBits": 20
   },
   "Sha256f": {
     "hasCompressor": true
@@ -33,6 +33,9 @@
   "Blake2s": {
     "hasCompressor": true
   },
+  "Poseidon2KoalaBear": {
+    "hasCompressor": true
+  },
   "Arith256": {
     "hasCompressor": true
   },
@@ -48,10 +51,46 @@
   "ArithBn254Complex": {
     "hasCompressor": true
   },
-  "BabyJubJub": {
+  "TwistedEdwards": {
     "hasCompressor": true
   },
   "Main": {
+    "hasCompressor": true
+  },
+  "BinaryLarge": {
+    "hasCompressor": true
+  },
+  "Arith256XLarge": {
+    "hasCompressor": true
+  },
+  "BinaryHuge": {
+    "hasCompressor": true
+  },
+  "MemAlignLarge": {
+    "hasCompressor": true
+  },
+  "Dma64AlignedLarge": {
+    "hasCompressor": true
+  },
+  "ArithSecp256K1Large": {
+    "hasCompressor": true
+  },
+  "ArithBn254": {
+    "hasCompressor": true
+  },
+  "BinaryAddHiHuge": {
+    "hasCompressor": true
+  },
+  "ArithBn254Large": {
+    "hasCompressor": true
+  },
+  "BinaryExtensionLarge": {
+    "hasCompressor": true
+  },
+  "ArithEq384Large": {
+    "hasCompressor": true
+  },
+  "ArithEqLarge": {
     "hasCompressor": true
   }
 }

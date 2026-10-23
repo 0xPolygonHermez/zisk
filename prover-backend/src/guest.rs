@@ -3,9 +3,9 @@ use std::borrow::Cow;
 use std::fs;
 use std::path::Path;
 use zisk_common::io::ZiskStdin;
-use zisk_common::ProgramVK;
+use zisk_common::{ProgramVK, RandomSeed};
 use zisk_rom_setup::{rom_merkle_setup_verkey, rom_merkle_setup_verkey_opt, HashMode};
-use zisk_transpiler_riscv::Riscv2zisk;
+use zisk_transpiler_common::ZiskTranspiler;
 use ziskemu::ZiskEmulator;
 pub use ziskemu::{EmuOptions, ProfilingMode};
 
@@ -194,9 +194,21 @@ impl GuestProgram {
     ///
     /// Pass `Some(ProfilingMode)` to enable profiling output, or `None` for a plain run.
     pub fn run_emulation(&self, stdin: ZiskStdin, profiling: Option<ProfilingMode>) -> Result<()> {
-        let zisk_transpiler_riscv = Riscv2zisk::new(self.elf());
+        self.run_emulation_with_random_seed(stdin, profiling, None).map(|_| ())
+    }
 
-        let zisk_rom = zisk_transpiler_riscv
+    /// [`run_emulation`](Self::run_emulation) with a provided host randomness seed; `None` draws a
+    /// fresh one. Returns the seed the run used.
+    pub fn run_emulation_with_random_seed(
+        &self,
+        stdin: ZiskStdin,
+        profiling: Option<ProfilingMode>,
+        seed: Option<RandomSeed>,
+    ) -> Result<RandomSeed> {
+        let seed = seed.map_or_else(RandomSeed::random, Ok)?;
+        let transpiler = ZiskTranspiler::new(self.elf());
+
+        let zisk_rom = transpiler
             .run()
             .map_err(|e| anyhow::anyhow!("Failed to convert ELF to ZISK ROM: {e:?}"))?;
 
@@ -204,7 +216,7 @@ impl GuestProgram {
 
         let inputs = stdin.read_data();
 
-        let mut options = EmuOptions::default();
+        let mut options = EmuOptions { random_seed: Some(seed), ..EmuOptions::default() };
         // Temporary file written only when profiling needs symbol resolution.
         // Stored in a variable so it lives until after process_rom returns.
         let _tmp_elf;
@@ -234,7 +246,7 @@ impl GuestProgram {
                 if let Some(path) = &options.profiler_output {
                     println!("Profiler output written to: {path}");
                 }
-                Ok(())
+                Ok(seed)
             }
             Err(e) => {
                 eprintln!("Error during emulation: {e:?}");
@@ -247,3 +259,36 @@ impl GuestProgram {
 // `load_program!` is now a proc macro defined in the `zisk-program-macros` crate (re-exported
 // from this crate's root). For fully dynamic loading from a file path at runtime, use
 // `GuestProgram::from_uri()` instead.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A committed guest that calls `zkvm_random_u64`, which panics the emulator if the run has
+    /// no seed.
+    fn zkvm_random_guest() -> GuestProgram {
+        let path =
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../elf-regressions/zkvm_random/zkvm_random.elf");
+        GuestProgram::from_uri(path).unwrap()
+    }
+
+    #[test]
+    fn run_emulation_gives_the_guest_a_seed() {
+        zkvm_random_guest().run_emulation(ZiskStdin::new(), None).unwrap();
+    }
+
+    #[test]
+    fn run_emulation_with_random_seed_uses_the_provided_seed_or_draws_one() {
+        let guest = zkvm_random_guest();
+        let provided = RandomSeed::new([7; RandomSeed::LEN]);
+        assert_eq!(
+            guest.run_emulation_with_random_seed(ZiskStdin::new(), None, Some(provided)).unwrap(),
+            provided
+        );
+
+        let drawn = guest.run_emulation_with_random_seed(ZiskStdin::new(), None, None).unwrap();
+        let drawn_again =
+            guest.run_emulation_with_random_seed(ZiskStdin::new(), None, None).unwrap();
+        assert_ne!(drawn, drawn_again);
+    }
+}

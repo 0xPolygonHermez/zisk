@@ -4,8 +4,8 @@ ziskos::entrypoint!(main);
 mod constants;
 mod hash_to_curve;
 // Everything except hash_to_curve exercises internal helpers (fp/twist/pairing/
-// msm/...) or entry points with no redirected ziskasm binding — only
-// hash_to_curve_g2 is redirected. They build against the Rust zisklib only.
+// msm/...) or entry points with no ziskasm binding — only hash_to_curve_g2 has
+// one. They build against the Rust zisklib only.
 #[cfg(not(feature = "ziskasm"))]
 mod cyclotomic;
 #[cfg(not(feature = "ziskasm"))]

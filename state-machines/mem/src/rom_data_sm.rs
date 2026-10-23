@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use crate::{mem_sm::MemPreviousSegment, MemModule, MemOps};
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
@@ -14,6 +13,57 @@ use zisk_core::{ROM_ADDR, ROM_ADDR_MAX};
 use zisk_pil::{
     RomDataAirValues, RomDataTrace, RomDataTraceRow, RomDataTraceRowOps, RomDataTraceRowPacked,
 };
+
+/// The scalars a RomData instance's air values are built from: the last lane and the padding.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct RomDataFillOutput {
+    last_addr: u32,
+    last_value: [u32; 2],
+    padding_size: u32,
+}
+
+impl RomDataFillOutput {
+    /// The scalars of the row-hash dump (`mem-witness-test`).
+    #[cfg(feature = "mem-witness-test")]
+    fn scalars(
+        &self,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+    ) -> [u64; 8] {
+        [
+            usize::from(segment_id) as u64,
+            is_last_segment as u64,
+            previous_segment.addr as u64,
+            previous_segment.value,
+            self.last_addr as u64,
+            self.last_value[0] as u64,
+            self.last_value[1] as u64,
+            self.padding_size as u64,
+        ]
+    }
+
+    fn air_values<F: PrimeField64>(
+        &self,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+    ) -> RomDataAirValues<'static, F> {
+        let mut air_values = RomDataAirValues::<F>::new();
+        air_values.padding_size = F::from_u32(self.padding_size);
+        air_values.segment_id = F::from_usize(segment_id.into());
+        air_values.is_first_segment = F::from_bool(segment_id == 0);
+        air_values.is_last_segment = F::from_bool(is_last_segment);
+        air_values.previous_segment_addr =
+            F::from_u32(if segment_id == 0 { 0 } else { previous_segment.addr });
+        air_values.segment_last_addr = F::from_u32(self.last_addr);
+        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
+        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
+        air_values.segment_last_value[0] = F::from_u32(self.last_value[0]);
+        air_values.segment_last_value[1] = F::from_u32(self.last_value[1]);
+        air_values
+    }
+}
 use zisk_sm_mem_common::{
     MemHelpers, MemLanes, MemModuleSegmentCheckPoint, MEMORY_INIT_STEP, MEM_BYTES_BITS,
 };
@@ -56,10 +106,7 @@ fn set_rom_data_padding_lane<F: PrimeField64, R: RomDataTraceRowOps<F>>(
 }
 
 pub struct RomDataSM<F: PrimeField64> {
-    /// PIL2 standard library
-    std: Arc<Std<F>>,
-
-    range_24bits_id: usize,
+    _phantom: std::marker::PhantomData<F>,
 }
 
 const OFFSET_USE_FLAG: u32 = 0x8000_0000;
@@ -67,10 +114,10 @@ const OFFSET_VALUE_MASK: u32 = 0x7FFF_FFFF;
 
 #[allow(unused, unused_variables)]
 impl<F: PrimeField64> RomDataSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let range_24bits_id =
-            std.get_range_id(0, (1 << 24) - 1, None).expect("Failed to get 24 bits range ID");
-        Arc::new(Self { range_24bits_id, std: std.clone() })
+    /// Takes no `Std`: the only thing this machine used it for was range checks, which the prover
+    /// now computes from the committed trace.
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: std::marker::PhantomData })
     }
     pub fn get_from_addr() -> u32 {
         ROM_DATA_W_ADDR_INIT
@@ -202,10 +249,6 @@ impl<F: PrimeField64> RomDataSM<F> {
         air_values.segment_last_value[0] = F::from_u32(pad_value[0]);
         air_values.segment_last_value[1] = F::from_u32(pad_value[1]);
 
-        if is_last_segment {
-            self.std.range_check_one(self.range_24bits_id, padding_size as u64);
-        }
-
         #[cfg(feature = "debug_mem")]
         {
             let path = std::env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
@@ -246,6 +289,52 @@ impl<F: PrimeField64> RomDataSM<F> {
                 seg,
             )
         }
+    }
+
+    /// The bits a packed RomData row uses.
+    #[cfg(feature = "mem-witness-test")]
+    fn packed_used_bits() -> usize {
+        crate::mem_gpu_fill::packed_used_bits(
+            RomDataTrace::<()>::AIRGROUP_ID,
+            RomDataTrace::<()>::AIR_ID,
+        )
+        .unwrap_or(RomDataTraceRowPacked::<F>::PACKED_WORDS * 64)
+    }
+
+    /// The device's scalars of an instance as its fill output and continuation.
+    fn from_result(
+        res: &zisk_sm_mem_planner::MemFillResult,
+        n_rows: usize,
+    ) -> (RomDataFillOutput, MemPreviousSegment) {
+        let num_slots = n_rows * zisk_sm_mem_common::rom_data_lanes_x_row();
+        let out = RomDataFillOutput {
+            last_addr: res.last_addr_w,
+            last_value: [res.last_value as u32, (res.last_value >> 32) as u32],
+            padding_size: (num_slots - res.n_lanes as usize) as u32,
+        };
+        let prev = MemPreviousSegment {
+            addr: res.prev_addr_w,
+            step: res.prev_step,
+            value: res.prev_value,
+        };
+        (out, prev)
+    }
+
+    fn device_rows(
+        rows: &mut [u64],
+        n_rows: usize,
+        segment_id: SegmentId,
+    ) -> Result<(RomDataFillOutput, MemPreviousSegment), String> {
+        let res = zisk_sm_mem_planner::gpu_rom_witness_fill(
+            usize::from(segment_id) as u32,
+            rows,
+            n_rows as u32,
+        )?;
+        crate::mem_gpu_fill::check_scalars(
+            &res,
+            n_rows * zisk_sm_mem_common::rom_data_lanes_x_row(),
+        )?;
+        Ok(Self::from_result(&res, n_rows))
     }
     /// Fills the witness trace using a precomputed **offset table** (GPU path).
     ///
@@ -401,24 +490,24 @@ impl<F: PrimeField64> RomDataSM<F> {
             "All intermediate segments must fill all lanes"
         );
 
-        let mut air_values = RomDataAirValues::<F>::new();
-        let padding_size = num_slots - count;
-        air_values.padding_size = F::from_u32(padding_size as u32);
-        air_values.segment_id = F::from_usize(segment_id.into());
-        air_values.is_first_segment = F::from_bool(segment_id == 0);
-        air_values.is_last_segment = F::from_bool(is_last_segment);
-        air_values.previous_segment_addr = F::from_u32(previous_segment_addr);
-        air_values.segment_last_addr = F::from_u32(last_addr);
-
-        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
-        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
-
-        air_values.segment_last_value[0] = F::from_u32(last_value[0]);
-        air_values.segment_last_value[1] = F::from_u32(last_value[1]);
-
-        if is_last_segment {
-            self.std.range_check_one(self.range_24bits_id, padding_size as u64);
+        let out =
+            RomDataFillOutput { last_addr, last_value, padding_size: (num_slots - count) as u32 };
+        #[cfg(feature = "mem-witness-test")]
+        {
+            use proofman_common::trace::TraceRow;
+            let used_bits =
+                if R::IS_PACKED { Self::packed_used_bits() } else { std::mem::size_of::<R>() * 8 };
+            crate::mem_trace_hash::dump_scalars(
+                self.get_mem_name(),
+                usize::from(segment_id),
+                crate::mem_gpu_fill::rows_as_words(&trace.buffer),
+                &out.scalars(segment_id, is_last_segment, previous_segment),
+                std::mem::size_of::<R>() / 8,
+                used_bits,
+            );
         }
+        let mut air_values = out.air_values::<F>(segment_id, is_last_segment, previous_segment);
+        debug_assert_eq!(air_values.previous_segment_addr, F::from_u32(previous_segment_addr));
 
         #[cfg(feature = "debug_mem")]
         {
@@ -510,6 +599,55 @@ impl<F: PrimeField64> RomDataSM<F> {
 }
 
 impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
+    fn compute_witness_gpu_arena(
+        &self,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> zisk_common::WitnessResult<F> {
+        if !packed {
+            return Err(zisk_common::WitnessError::with_buffer(
+                proofman_common::ProofmanError::InvalidParameters(
+                    "the device memory witness needs the packed RomData trace".to_string(),
+                ),
+                trace_buffer,
+            ));
+        }
+        let seg_idx = usize::from(segment_id);
+        // The device rows cover every row of the instance, padding included.
+        let mut trace = RomDataTrace::<RomDataTraceRowPacked<F>>::new_from_vec(trace_buffer)?;
+        let n_rows = trace.num_rows();
+        let (out, previous_segment) = {
+            let words = crate::mem_gpu_fill::rows_as_words_mut(&mut trace.buffer);
+            Self::device_rows(words, n_rows, segment_id)
+        }
+        .map_err(|e| {
+            let error = proofman_common::ProofmanError::InvalidParameters(format!(
+                "RomData[{seg_idx}] witness from the GPU planner failed: {e}"
+            ));
+            zisk_common::WitnessError::with_buffer(error, trace.get_buffer())
+        })?;
+        assert!(
+            is_last_segment || out.padding_size == 0,
+            "RomDataSM: padding_size must be 0 for non last segment, but got {}",
+            out.padding_size
+        );
+        #[cfg(feature = "mem-witness-test")]
+        crate::mem_trace_hash::dump_scalars(
+            self.get_mem_name(),
+            seg_idx,
+            crate::mem_gpu_fill::rows_as_words(&trace.buffer),
+            &out.scalars(segment_id, is_last_segment, &previous_segment),
+            RomDataTraceRowPacked::<F>::PACKED_WORDS,
+            Self::packed_used_bits(),
+        );
+        let mut air_values = out.air_values::<F>(segment_id, is_last_segment, &previous_segment);
+        Ok(Some(AirInstance::new_from_trace(
+            FromTrace::new(&mut trace).with_air_values(&mut air_values),
+        )))
+    }
+
     fn get_addr_range(&self) -> (u32, u32) {
         (ROM_DATA_W_ADDR_INIT, ROM_DATA_W_ADDR_END)
     }

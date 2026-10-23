@@ -13,9 +13,10 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::RandomSeed;
 use zisk_core::ZiskRom;
 use zisk_executor::{AsmResources, ZiskExecutor};
-use zisk_transpiler_riscv::Riscv2zisk;
+use zisk_transpiler_common::ZiskTranspiler;
 
 use crate::execute_client::ExecuteClient;
 use crate::guest::GuestProgram;
@@ -24,6 +25,9 @@ use crate::output::ExecuteOutput;
 struct AsmSetupState {
     zisk_rom: Arc<ZiskRom>,
     with_hints: bool,
+    /// Kept to activate before every run: another client in this process may
+    /// have run another program on the shared segments since.
+    resources: Arc<AsmResources>,
 }
 
 /// Execute-only client backed by the ASM emulator.
@@ -69,25 +73,32 @@ impl AsmExecClient {
             )
             .context("AsmResources::new_standalone failed")?,
         );
-        self.executor.set_asm_resources(resources)?;
 
         tracing::debug!("Parsing ELF into ZiskRom");
-        let zisk_rom = Riscv2zisk::new(program.elf())
+        let zisk_rom = ZiskTranspiler::new(program.elf())
             .run()
             .map_err(|e| anyhow::anyhow!("failed to parse ELF: {e}"))?;
         *self.program.lock().expect("program mutex") =
-            Some(AsmSetupState { zisk_rom: Arc::new(zisk_rom), with_hints });
+            Some(AsmSetupState { zisk_rom: Arc::new(zisk_rom), with_hints, resources });
         tracing::info!("AsmExecClient ready");
         Ok(())
     }
 
     /// Run the program set up by [`setup`](Self::setup) once with the given
     /// stdin. `hints` installs a precompile hints stream (only effective when
-    /// the client was set up with `with_hints = true`). Returns an error if
-    /// `setup` has not been called.
-    pub fn execute(&self, stdin: ZiskStdin, hints: Option<StreamSource>) -> Result<ExecuteOutput> {
+    /// the client was set up with `with_hints = true`). A `None` seed draws a
+    /// fresh one. Returns an error if `setup` has not been called.
+    pub fn execute(
+        &self,
+        stdin: ZiskStdin,
+        hints: Option<StreamSource>,
+        seed: Option<RandomSeed>,
+    ) -> Result<ExecuteOutput> {
         let guard = self.program.lock().expect("program mutex");
         let setup = guard.as_ref().context("call setup(program, with_hints) before execute")?;
+
+        // Held to the end, past the last read of the job's results.
+        let _job = self.executor.begin_asm_job(Arc::clone(&setup.resources))?;
 
         if let Some(stream) = hints {
             tracing::debug!("Installing hints stream source");
@@ -98,23 +109,28 @@ impl AsmExecClient {
             }
         }
 
+        let seed = seed.map_or_else(RandomSeed::random, Ok)?;
         tracing::info!("Running ASM execute (with_hints={})", setup.with_hints);
         let started = Instant::now();
-        let (summary, pub_outs, plan) =
-            self.executor.execute_standalone(setup.zisk_rom.clone(), stdin, setup.with_hints)?;
+        let (summary, pub_outs, plan) = self.executor.execute_standalone(
+            setup.zisk_rom.clone(),
+            stdin,
+            seed,
+            setup.with_hints,
+        )?;
         Ok(ExecuteOutput::new_standalone(started.elapsed(), summary, &pub_outs, plan))
     }
 
-    /// Resolves cached `<base>-mt.bin` path. Generates all 3 ASM binaries
+    /// Resolves cached `<base>-mt.bin` path. Generates the four ASM binaries
     /// via `zisk_rom_setup::generate_assembly` if any are missing.
     fn ensure_asm_binaries(&self, program: &GuestProgram, with_hints: bool) -> Result<PathBuf> {
-        let [mt, rh, mo] = zisk_rom_setup::get_assembly_file_paths_from_id(
+        let [mt, rh, mo, mol] = zisk_rom_setup::get_assembly_file_paths_from_id(
             program.hash(),
             &self.asm_cache_dir,
             with_hints,
         );
 
-        if mt.exists() && rh.exists() && mo.exists() {
+        if mt.exists() && rh.exists() && mo.exists() && mol.exists() {
             tracing::debug!(
                 "Using cached ASM binaries for ELF '{}' at {}",
                 program.name(),
@@ -152,7 +168,8 @@ impl ExecuteClient for AsmExecClient {
         _program: &GuestProgram,
         stdin: ZiskStdin,
         hints: Option<StreamSource>,
+        seed: Option<RandomSeed>,
     ) -> Result<ExecuteOutput> {
-        AsmExecClient::execute(self, stdin, hints)
+        AsmExecClient::execute(self, stdin, hints, seed)
     }
 }

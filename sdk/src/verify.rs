@@ -7,6 +7,7 @@ pub struct VerifyBuilder<'a> {
     publics: Option<&'a PublicValues>,
     program_vk: Option<&'a ProgramVK>,
     plonk_vk: Option<&'a PlonkVkey>,
+    pilfflonk_vkey: Option<&'a str>,
     setup_vk: Option<&'a [u64]>,
 }
 
@@ -33,6 +34,15 @@ impl<'a> VerifyBuilder<'a> {
         self
     }
 
+    /// Optional trusted pilfflonk key, the JSON of `pilfflonk.vkey.json`; if unset, the
+    /// proof's embedded key is used. Verification rejects it if the proof is not a
+    /// pilfflonk proof.
+    #[must_use]
+    pub fn with_pilfflonk_vkey(mut self, vkey_json: &'a str) -> Self {
+        self.pilfflonk_vkey = Some(vkey_json);
+        self
+    }
+
     /// Optional trusted recursion setup key (4 u64 limbs); if unset, the proof's
     /// embedded key is used.
     #[must_use]
@@ -52,6 +62,9 @@ impl<'a> VerifyBuilder<'a> {
         }
         if let Some(k) = self.plonk_vk {
             builder = builder.with_plonk_vk(k);
+        }
+        if let Some(k) = self.pilfflonk_vkey {
+            builder = builder.with_pilfflonk_vkey(k);
         }
         if let Some(k) = self.setup_vk {
             builder = builder.with_setup_vk(k);

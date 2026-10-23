@@ -56,6 +56,7 @@ impl EmuContext {
         }
 
         ctx.inst_ctx.input_len = input.len() as u64;
+        ctx.inst_ctx.random_seed = options.random_seed.map(|seed| seed.to_le_words());
 
         // Skip memory data allocation when in chunk mode, since memory reads are obtained from the
         // minimal traces, not from memory

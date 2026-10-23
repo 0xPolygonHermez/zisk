@@ -27,8 +27,18 @@ state-machines/frequent-ops/src/frequent_ops_fixed.bin
 state-machines/arith/src/arith_frops_fixed.bin
 state-machines/binary/src/binary_basic_frops_fixed.bin
 state-machines/binary/src/binary_extension_frops_fixed.bin
+precompiles/evm/src/jump_dest_bitmap_table_fixed.bin
 reth-inputs/
 /hints
 /benchmark
 dist/
+# ziskasm/lang/c/package.sh scratch build dir
+build-pkg/
 package-lock.json
+/emulator-asm/src/dma/test/build_light/
+/emulator-asm/src/dma/test/test_dma
+/emulator-asm/src/dma/test/test_dma_light
+/emulator-asm/src/evm/test/build_light/
+/emulator-asm/src/evm/test/test_jump_dest
+/emulator-asm/src/evm/test/test_jump_dest_light
+/state-machines/mem-cpp/cpp/build/

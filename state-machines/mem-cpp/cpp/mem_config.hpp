@@ -1,12 +1,13 @@
 #ifndef __MEM_CONFIG_HPP__
 #define __MEM_CONFIG_HPP__
 
-#define ROM_ADDR 0x80000000
-#define INPUT_ADDR 0x40000000
+// Must match core/src/mem.rs
+#define ROM_ADDR 0x90000000
+#define INPUT_ADDR 0x10000000
 #define RAM_ADDR 0xA0000000
 
 #define ROM_SIZE_MB 128
-#define INPUT_SIZE_MB 1024
+#define INPUT_SIZE_MB 2048
 #define RAM_SIZE_MB 512
 
 #define CHUNK_SIZE_BITS 18
@@ -39,13 +40,33 @@
 #define MAX_THREADS (1 << THREAD_BITS)
 #define ADDR_MASK ((MAX_THREADS - 1) * 8)
 
-#define MAX_PAGES 26
-#define ADDR_PAGE_BITS (23 - THREAD_BITS)
+// Each page covers 64MB (2^ADDR_BLOCK_BITS bytes) of address space, the pages of each memory area
+// are consecutive: ROM pages first, then INPUT pages and then RAM pages.
+#define ADDR_BLOCK_BITS 26
+#define ADDR_BLOCK_MB (1 << (ADDR_BLOCK_BITS - 20))
+#define ROM_PAGES (ROM_SIZE_MB / ADDR_BLOCK_MB)
+#define INPUT_PAGES (INPUT_SIZE_MB / ADDR_BLOCK_MB)
+#define RAM_PAGES (RAM_SIZE_MB / ADDR_BLOCK_MB)
+#define ROM_FIRST_PAGE 0
+#define INPUT_FIRST_PAGE (ROM_FIRST_PAGE + ROM_PAGES)
+#define RAM_FIRST_PAGE (INPUT_FIRST_PAGE + INPUT_PAGES)
+#define MAX_PAGES (RAM_FIRST_PAGE + RAM_PAGES)
+#define ADDR_PAGE_BITS (ADDR_BLOCK_BITS - ADDR_LOW_BITS)
 #define ADDR_PAGE_SIZE (1 << ADDR_PAGE_BITS)
 #define RELATIVE_OFFSET_MASK (ADDR_PAGE_SIZE - 1)
 #define ADDR_TABLE_SIZE (ADDR_PAGE_SIZE * MAX_PAGES)
-#define OFFSET_BITS (25 + 4 - THREAD_BITS) // 4 bits (3 bits for 6 pages, 1 bit security)
+#define OFFSET_BITS (ADDR_PAGE_BITS + 6) // 6 bits for up to 64 pages
 #define OFFSET_PAGE_SHIFT_BITS (OFFSET_BITS - 3)
+
+#if (ROM_ADDR % (1 << ADDR_BLOCK_BITS)) || (INPUT_ADDR % (1 << ADDR_BLOCK_BITS)) || (RAM_ADDR % (1 << ADDR_BLOCK_BITS))
+#error "memory areas must start at a page boundary"
+#endif
+#if (ROM_SIZE_MB % ADDR_BLOCK_MB) || (INPUT_SIZE_MB % ADDR_BLOCK_MB) || (RAM_SIZE_MB % ADDR_BLOCK_MB)
+#error "memory area sizes must be a multiple of the page size"
+#endif
+#if MAX_PAGES > (1 << (OFFSET_BITS - ADDR_PAGE_BITS))
+#error "too many pages for OFFSET_BITS"
+#endif
 
 #define MAX_SLOT_GB 6
 #define ADDR_SLOT_BITS 5
@@ -77,34 +98,6 @@
 // write_flag (1)    4
 // clear_flag (1)    5
 
-// ALIGNED WRITE BLOCKS FLAGS
-//                bits
-// bytes(4)        0-3   (14 read block/15 write block)
-// word_count(28) 4-31   2^28 * 2^3 = 2^31 bytes = 2GB MAX_MEMCPY_SIZE
-
-
-#define MOPS_WRITE_FLAG 0x10
-#define MOPS_WRITE_BYTE_CLEAR_FLAG 0x20
-
-#define MOPS_READ_8   0x08
-#define MOPS_READ_4   0x04
-#define MOPS_READ_2   0x02
-#define MOPS_READ_1   0x01
-
-#define MOPS_WRITE_8  0x18
-#define MOPS_WRITE_4  0x14
-#define MOPS_WRITE_2  0x12
-#define MOPS_WRITE_1  0x11
-
-#define MOPS_CWRITE_1 0x31
-
-#define MOPS_BLOCK_READ 0x0A
-#define MOPS_BLOCK_WRITE 0x0B
-#define MOPS_ALIGNED_READ 0x0C
-#define MOPS_ALIGNED_WRITE 0x0D
-#define MOPS_ALIGNED_BLOCK_READ 0x0E
-#define MOPS_ALIGNED_BLOCK_WRITE 0x0F
-
-#define MOPS_BLOCK_COUNT_SBITS      4
+#include "mops_format.hpp"
 
 #endif

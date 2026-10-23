@@ -11,13 +11,14 @@ use crate::ux::{print_banner, print_banner_command};
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-/// Export the four ABI fields of a wrapped PLONK proof as JSON for the Solidity verifier.
+/// Export the four ABI fields of a wrapped PLONK proof as JSON for the Solidity verifier. A pilfflonk
+/// proof is not exported yet.
 ///
 /// Test fixture only: `programVK` and `rootCVadcopFinal` are read out of the proof
 /// itself. A production integration must hold both as contract constants, or
 /// verification is self-keyed.
 pub(crate) struct ExportSolidityCalldataCmd {
-    /// Path to the wrapped PLONK proof file (output of `cargo-zisk wrap-proof --plonk`)
+    /// Path to the wrapped PLONK proof file (output of `cargo-zisk wrap-proof --plonk` with a PLONK proving key)
     #[arg(short = 'p', long)]
     proof: PathBuf,
 
@@ -57,9 +58,16 @@ impl ExportSolidityCalldataCmd {
             ProofBody::Plonk { proof_bytes, publics_full, rootc, .. } => {
                 (proof_bytes.as_slice(), rootc.as_slice(), publics_full.as_slice())
             }
+            ProofBody::Pilfflonk { .. } => {
+                return Err(anyhow!(
+                    "This is a pilfflonk proof: only PLONK proofs are exported for the Solidity \
+                     verifier so far. Wrap with a PLONK proving key (setup-snark --final-snark plonk, \
+                     on a Poseidon key)."
+                ));
+            }
             _ => {
                 return Err(anyhow!(
-                    "Expected a Plonk-wrapped proof; got {:?}. Run `cargo-zisk wrap-proof --plonk` first.",
+                    "Expected a PLONK-wrapped proof; got {:?}. Run `cargo-zisk wrap-proof --plonk` first.",
                     proof.kind()
                 ));
             }

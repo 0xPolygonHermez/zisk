@@ -201,10 +201,8 @@ struct StageVerifier {
 /// The single routing table. Every dispatch below goes through it, so adding a family
 /// or a stage is one edit rather than three that can drift apart.
 ///
-/// `None` means that pair has no verifier: an unknown family, or blake3 compressed —
-/// blake3 proving keys are built without the `vadcop_final_compressed` stage, so no
-/// minimal proof can come from one. See [`crate::blake3`] for why ZisK commits its own
-/// verifiers rather than using proofman's.
+/// `None` means that pair has no verifier: an unknown family. ZisK commits its own
+/// verifiers rather than using proofman's because they bind ZisK's publics (see the crate docs).
 fn stage_verifier(hash: &str, minimal: bool) -> Option<StageVerifier> {
     macro_rules! stage {
         ($module:path) => {{
@@ -219,6 +217,7 @@ fn stage_verifier(hash: &str, minimal: bool) -> Option<StageVerifier> {
 
     Some(match (hash, minimal) {
         ("blake3", false) => stage!(crate::blake3::vadcop_final),
+        ("blake3", true) => stage!(crate::blake3::vadcop_final_compressed),
         ("Poseidon1", false) => stage!(crate::poseidon1::vadcop_final),
         ("Poseidon1", true) => stage!(crate::poseidon1::vadcop_final_compressed),
         ("Poseidon2", false) => stage!(crate::poseidon2::vadcop_final),
@@ -386,6 +385,7 @@ mod tests {
     fn every_built_stage_has_a_whole_word_proof_size() {
         for (hash, minimal) in [
             ("blake3", false),
+            ("blake3", true),
             ("Poseidon1", false),
             ("Poseidon1", true),
             ("Poseidon2", false),
@@ -396,8 +396,6 @@ mod tests {
             assert_eq!(bytes % 8, 0, "{hash} minimal={minimal}");
             assert!(bytes > 0, "{hash} minimal={minimal}");
         }
-        // blake3 builds no compressed stage.
-        assert_eq!(expected_proof_bytes("blake3", true), None);
         assert_eq!(expected_proof_bytes("poseidon3", false), None);
     }
 

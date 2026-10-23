@@ -42,7 +42,7 @@ cargo run -p ziskasm --bin zisk2zisk -- ziskasm/examples/doubler out.asm --gen=0
 
 ## Architecture
 
-The assembler mirrors `transpilers/common/src/elf2rom.rs`, but the program
+The assembler mirrors `transpilers/riscv/src/elf2rom.rs`, but the program
 instructions come from the `.zisk` parser instead of the RISC-V transpiler:
 
 1. Parse each file → a flat list of instructions (labels attached to the
@@ -64,7 +64,7 @@ instructions come from the `.zisk` parser instead of the RISC-V transpiler:
 - **Output** is read from `OUTPUT_ADDR` (32 u64 = 64 u32 public words) by the BIOS
   finalization / `get_output_*`.
 - **Entry point**: the `_start` label. The assembler places the file that defines
-  `_start` first, so `_start` lands at `ROM_ADDR` (0x80000000) — matching the ELF
+  `_start` first, so `_start` lands at `ROM_ADDR` (0x90000000) — matching the ELF
   convention that the entry point is the program base, and what the fast emulator
   expects. Source files may be given/collected in any order (a `-z <dir>` run
   sorts them by name), so this reordering is done automatically; the `_start`
@@ -81,6 +81,9 @@ instructions come from the `.zisk` parser instead of the RISC-V transpiler:
   `DataSection64 = Vec<u64>` granularity). Both emulators initialize memory from
   these sections. Sections are 8-byte aligned; the 32-byte alignment the RISC-V
   transpiler applies is *not* required for emulation (verified on both emulators).
+  A `u64` initializer may also be a symbol (label or data name, forward references
+  included), which stores its address: `u64 PARAM_B = NB0` presets a pointer in a
+  precompile parameter block, so the routine doesn't store it on every call.
 - **Symbolic operands**: a `Num` operand is a literal *or* a symbol (label or data
   name) resolved at assemble time. `NAME` = the symbol's address; `[NAME]` = the
   value at it. Array elements use a register base + indirect `W[a + N]`.

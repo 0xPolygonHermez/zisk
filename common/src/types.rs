@@ -1,6 +1,8 @@
 use std::fmt;
 use std::time::Instant;
 
+use crate::RandomSeed;
+
 /// Type representing a chunk identifier.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ChunkId(pub usize);
@@ -198,6 +200,9 @@ pub struct ZiskExecutorSummary {
     pub cost_per_type: StatsCostPerType,
     /// Per-AIR instance plan. Empty unless produced by a planning executor run.
     pub plan: Vec<AirInstanceCount>,
+    /// Host randomness seed the execution ran with. `None` only for summaries that do not come
+    /// from an execution.
+    pub random_seed: Option<RandomSeed>,
 }
 
 impl ZiskExecutorSummary {
@@ -225,7 +230,10 @@ pub struct Stats {
     pub air_id: usize,
     /// Collect start time
     pub collect_start_time: Instant,
-    /// Collect duration in microseconds
+    /// Per-instance collect span in ms: first chunk touching this instance to
+    /// its last. Instances share one rayon pool so these overlap heavily --
+    /// do not sum them. For the phase total use
+    /// `ExecutorStats::collect_phase_wall_ms`.
     pub collect_duration: u64,
     /// Witness start time
     pub witness_start_time: Instant,

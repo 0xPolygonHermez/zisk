@@ -3,7 +3,10 @@
 //! # RISC-V registers memory mapping
 //!
 //! The 32 8-bytes RISC-V registers are mapped to RW memory starting at address SYS_ADDR.
-//! They occupy 32x8=256 bytes of memory space.
+//! They occupy 32x8=256 bytes of memory space. They are followed by 8 extra registers,
+//! r32..r39 (REG_X32..REG_X39), that RISC-V code does not see: the transpiler uses them as
+//! scratch, and hand-written ZisK assembly as extra registers. The main trace holds
+//! r1..r39 (REGS_IN_MAIN_FROM..=REGS_IN_MAIN_TO), 40x8=320 bytes in all.
 //!
 //! References:
 //!     - https://riscv-non-isa.github.io/riscv-elf-psabi-doc/#_register_convention
@@ -83,7 +86,17 @@ pub const REG_X29: u64 = REG_FIRST + 29_u64 * 8;
 pub const REG_X30: u64 = REG_FIRST + 30_u64 * 8;
 pub const REG_X31: u64 = REG_FIRST + 31_u64 * 8;
 
-pub const REG_LAST: u64 = REG_X31;
+// Extra registers, not visible to RISC-V code, also held in the main trace.
+pub const REG_X32: u64 = REG_FIRST + 32_u64 * 8;
+pub const REG_X33: u64 = REG_FIRST + 33_u64 * 8;
+pub const REG_X34: u64 = REG_FIRST + 34_u64 * 8;
+pub const REG_X35: u64 = REG_FIRST + 35_u64 * 8;
+pub const REG_X36: u64 = REG_FIRST + 36_u64 * 8;
+pub const REG_X37: u64 = REG_FIRST + 37_u64 * 8;
+pub const REG_X38: u64 = REG_FIRST + 38_u64 * 8;
+pub const REG_X39: u64 = REG_FIRST + 39_u64 * 8;
+
+pub const REG_LAST: u64 = REG_X39;
 
 // ABI register names.
 pub const REG_ZERO: u64 = REG_X0;
@@ -120,9 +133,9 @@ pub const REG_T5: u64 = REG_X30; // Temporary register 5
 pub const REG_T6: u64 = REG_X31; // Temporary register 6
 
 pub const REGS_IN_MAIN_FROM: usize = 1; // First non-zero register in main trace
-pub const REGS_IN_MAIN_TO: usize = 31; // Last non-zero register in main trace
+pub const REGS_IN_MAIN_TO: usize = 39; // Last non-zero register in main trace
 pub const REGS_IN_MAIN: usize = REGS_IN_MAIN_TO - REGS_IN_MAIN_FROM + 1;
-pub const REGS_IN_MAIN_TOTAL_NUMBER: usize = 32; // Total number of registers in main, including the zero register
+pub const REGS_IN_MAIN_TOTAL_NUMBER: usize = REGS_IN_MAIN_TO + 1; // Total number of registers in main, including the zero register
 
 // Float registers memory address definitions
 pub const FREG_F0: u64 = FREG_FIRST;

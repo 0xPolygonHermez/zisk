@@ -21,12 +21,9 @@ pub(crate) struct MinimalTraceResponse {
 }
 
 impl FromResponsePayload for MinimalTraceResponse {
+    const RESPONSE_ID: u64 = CMD_MT_RESPONSE_ID;
+
     fn from_response_payload(payload: ResponseData) -> Self {
-        assert!(
-            payload[0] == CMD_MT_RESPONSE_ID,
-            "Expected CMD_MT_RESPONSE_ID but got {}",
-            payload[0]
-        );
         MinimalTraceResponse {
             result: payload[1] as u8,
             allocated_len: payload[2],

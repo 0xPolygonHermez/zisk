@@ -1,8 +1,8 @@
-//! Demo guest: calls a function implemented in the ZisK library (`ziskasm/zisklib/`)
-//! rather than in Rust. The `ziskos_add` stub (see `ziskos.rs`) is redirected by
-//! the transpiler to the hand-written `zisklib_add` routine, which runs as ZisK
-//! instructions in the guest's place. The committed result (7) proves the
-//! redirect happened — the stub's own body would return 0xBAD.
+//! Demo guest: calls functions implemented in the ZisK library (`ziskasm/zisklib/`)
+//! rather than in Rust. Each `zisklib` function is a zkvmcall thunk, which the
+//! transpiler turns into a jump to the hand-written `.zisk` routine (here
+//! `zkvm_zisklib_add` → `zisklib_add`), so the routine runs as ZisK instructions in
+//! the guest's place. The committed result (7) shows it ran.
 
 #![no_main]
 
@@ -19,7 +19,7 @@ use zisklib::{
     secp256k1_ecdsa_recover, secp256k1_ecdsa_verify, secp256k1_schnorr_verify,
     secp256r1_ecdsa_verify, sha256, square_mod256, wrapping_add256, wrapping_mul256,
     wrapping_neg256, wrapping_pow256, wrapping_rem256, wrapping_square256, wrapping_sub256,
-    ziskos_add,
+    zkvm_keccak_f1600, zkvm_zisklib_add,
 };
 
 // ---- BN254 (alt_bn128) ecPairing vectors: e(G1,G2)·e(-G1,G2) == 1, so the
@@ -405,13 +405,13 @@ const SHA256_56A: [u8; 32] = [
     0x59, 0x0c, 0xe2, 0x0f, 0x1b, 0xde, 0x70, 0x90, 0xef, 0x79, 0x70, 0x68, 0x6e, 0xc6, 0x73, 0x8a,
 ];
 
-/// keccak256 via the ziskasm-backed wrapper (`zisklib::keccak256` → redirected
-/// `zisklib_keccak`), checked against a hardcoded expected digest.
+/// keccak256 via the ziskasm-backed wrapper (`zisklib::keccak256` → the
+/// `zkvm_keccak256` zkvmcall), checked against a hardcoded expected digest.
 fn keccak_matches(input: &[u8], expected: &[u8; 32]) -> bool {
     &keccak256(input) == expected
 }
 
-/// SHA-256 via `zisklib::sha256` (→ redirected `zisklib_sha256`), checked against
+/// SHA-256 via `zisklib::sha256` (→ the `zkvm_sha256` zkvmcall), checked against
 /// a hardcoded expected digest.
 fn sha256_matches(input: &[u8], expected: &[u8; 32]) -> bool {
     &sha256(input) == expected
@@ -421,7 +421,8 @@ fn main() {
     // 1. Simple function: `black_box` keeps args opaque so the call is real.
     let a = black_box(3u64);
     let b = black_box(4u64);
-    let sum = ziskos_add(a, b);
+    // SAFETY: zkvm_zisklib_add takes two values and touches no memory.
+    let sum = unsafe { zkvm_zisklib_add(a, b) };
 
     // 2. keccak256, checked against the reference ziskos implementation. Inputs
     // are 8-byte aligned with len % 8 == 0 (the current zisklib_keccak constraint):
@@ -440,6 +441,29 @@ fn main() {
     let sha_ok = sha256_matches(&[], &SHA256_EMPTY)
         && sha256_matches(b"abc", &SHA256_ABC)
         && sha256_matches(&a56, &SHA256_56A);
+
+    // 2b'. keccak-f[1600] in place: the precompile needs an 8-byte aligned state, so
+    // the binding permutes an unaligned one in an aligned copy. At every byte offset
+    // 0..7 the state must end up as the aligned permutation of the same input.
+    let seed: [u64; 25] =
+        core::array::from_fn(|i| (i as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15));
+    let mut want = seed;
+    // SAFETY: `want` is a writable [u64; 25].
+    unsafe { zkvm_keccak_f1600(want.as_mut_ptr()) };
+    let mut keccakf_ok = want != seed;
+    let mut kbuf = [0u64; 26];
+    for off in 0..8 {
+        let mut got = [0u64; 25];
+        // SAFETY: kbuf holds 208 bytes, so 200 bytes at any offset 0..7 fit; the
+        // copies are bytewise, so the unaligned pointer is never dereferenced as u64.
+        unsafe {
+            let p = (kbuf.as_mut_ptr() as *mut u8).add(off);
+            core::ptr::copy_nonoverlapping(seed.as_ptr() as *const u8, p, 200);
+            zkvm_keccak_f1600(black_box(p as *mut u64));
+            core::ptr::copy_nonoverlapping(p as *const u8, got.as_mut_ptr() as *mut u8, 200);
+        }
+        keccakf_ok &= got == want;
+    }
 
     // 2c. BLAKE2b compression: one final compression of the empty message
     // reproduces blake2b512("") = 786a02f7...9be2ce, checking the state ends up
@@ -643,6 +667,7 @@ fn main() {
         && odd_ok
         && sha_ok
         && blake2b_ok
+        && keccakf_ok
         && inv_ok
         && noinv_ok
         && addsub_ok
@@ -658,6 +683,6 @@ fn main() {
         && bn_pair_ok;
     ziskos::io::commit(&ok);
     println!(
-        "add=0x{sum:x} keccak(empty)={empty_ok} keccak(144B)={big_ok} keccak(13B)={odd_ok} sha256={sha_ok} blake2b={blake2b_ok} inv256={inv_ok} noinv={noinv_ok} addsub={addsub_ok} mul={mul_ok} div={div_ok} mod={mod_ok} invmod={invmod_ok} pow={pow_ok} k1_ecdsa={k1_ecdsa_ok} k1_recover={k1_recover_ok} k1_schnorr={k1_schnorr_ok} r1_ecdsa={r1_ecdsa_ok} bn254_pairing={bn_pair_ok} bls_pairing={bls_pair_ok} bls_map={bls_map_ok} bls_htc={bls_htc_ok} bls_sig={bls_sig_ok} bls_kzg={bls_kzg_ok} modexp={modexp_ok} => ok={ok}"
+        "add=0x{sum:x} keccak(empty)={empty_ok} keccak(144B)={big_ok} keccak(13B)={odd_ok} sha256={sha_ok} blake2b={blake2b_ok} keccakf={keccakf_ok} inv256={inv_ok} noinv={noinv_ok} addsub={addsub_ok} mul={mul_ok} div={div_ok} mod={mod_ok} invmod={invmod_ok} pow={pow_ok} k1_ecdsa={k1_ecdsa_ok} k1_recover={k1_recover_ok} k1_schnorr={k1_schnorr_ok} r1_ecdsa={r1_ecdsa_ok} bn254_pairing={bn_pair_ok} bls_pairing={bls_pair_ok} bls_map={bls_map_ok} bls_htc={bls_htc_ok} bls_sig={bls_sig_ok} bls_kzg={bls_kzg_ok} modexp={modexp_ok} => ok={ok}"
     );
 }

@@ -1,6 +1,6 @@
 [package]
 name = "zisk-transpiler-riscv"
-description = "Transpiler from RISC-V to the ZisK instruction set"
+description = "Deprecated: use zisk-transpiler-common. Transpiler from RISC-V to the ZisK instruction set"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -9,6 +9,10 @@ homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
+
+# Deprecated, kept under its published name for existing users: the dispatcher now lives in
+# zisk-transpiler-common (see transpilers/README.md). This crate keeps the original, now
+# deprecated, `Riscv2zisk` API on top of it, and builds the `zisk-transpiler-riscv` binary.
 
 [[bin]]
 name = "zisk-transpiler-riscv"
@@ -39,6 +43,3 @@ zicond_native = ["zisk-transpiler-common/zicond_native", "zisk-core/zicond_nativ
 float = ["zisk-transpiler-common/float"]
 # RISC-V C (compressed) extension decoding (see zisk-riscv's `compressed`). OFF by default.
 compressed = ["zisk-transpiler-common/compressed"]
-# Enable the ZisK-library assembly + symbol redirect in elf2rom (see
-# zisk-transpiler-common's `ziskasm` feature). OFF by default.
-ziskasm = ["zisk-transpiler-common/ziskasm"]

@@ -95,8 +95,7 @@ jobs:
         id: resolve
         run: |
           # blake3 is what the tests run on, so it is the one published by default.
-          # Poseidon1 (and with it the macOS dylibs and the SNARK setup) is only
-          # built when asked for on workflow_dispatch.
+          # Poseidon1 only builds when asked for on workflow_dispatch.
           BUILD_POSEIDON1="${{ inputs.include_poseidon1 && '1' || '0' }}"
           BUILD_BLAKE3="${{ (github.event_name != 'workflow_dispatch' || inputs.include_blake3) && '1' || '0' }}"
           if [ "$BUILD_POSEIDON1" = "0" ] && [ "$BUILD_BLAKE3" = "0" ]; then
@@ -118,11 +117,11 @@ jobs:
 
           VERSION="${{ inputs.version }}"
           if [ -z "$VERSION" ]; then
-            # Take the workspace package version from Cargo.toml and prefix it
-            # with "pre-" (e.g. 1.0.0-alpha => pre-1.0.0-alpha).
-            CARGO_VERSION="$(sed -nE 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p' "$GITHUB_WORKSPACE/Cargo.toml" | head -n1)"
-            [ -n "$CARGO_VERSION" ] || { echo "could not read version from Cargo.toml"; exit 1; }
-            VERSION="pre-${CARGO_VERSION}"
+            # The setup version (setup/Cargo.toml) with the "pre-" prefix. Only a
+            # workflow_dispatch with an explicit version publishes without it.
+            SETUP_VERSION="$(sed -nE 's/^setup_version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$GITHUB_WORKSPACE/setup/Cargo.toml")"
+            [ -n "$SETUP_VERSION" ] || { echo "could not read setup_version from setup/Cargo.toml"; exit 1; }
+            VERSION="pre-${SETUP_VERSION}"
           fi
           [ -n "$VERSION" ] || { echo "could not resolve version"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -133,8 +132,8 @@ jobs:
           echo "include_dylib=$INCLUDE_DYLIB" >> "$GITHUB_OUTPUT"
           echo "include_dylib: $INCLUDE_DYLIB"
 
-          # SNARK setup: only when asked for on workflow_dispatch.
-          # Only the Poseidon1 round builds it — blake3 has no SNARK support.
+          # SNARK setup: only when asked for on workflow_dispatch. Both rounds build it,
+          # each with the pilfflonk SNARK of its hash mode (zisk-provingkey-pilfflonk-<VER>[-blake3]).
           INCLUDE_SNARK="${{ inputs.include_snark && '1' || '0' }}"
           echo "include_snark=$INCLUDE_SNARK" >> "$GITHUB_OUTPUT"
           echo "include_snark: $INCLUDE_SNARK"
@@ -214,8 +213,9 @@ jobs:
         if: ${{ steps.resolve.outputs.build_blake3 == '1' }}
         env:
           HASH_MODE: blake3
-          INCLUDE_SNARK: "0"
+          INCLUDE_SNARK: ${{ steps.resolve.outputs.include_snark }}
           DYLIB_INPUT_FILES: ${{ steps.resolve.outputs.include_dylib }}
+          PTAU_PATH: /home/ziskuser/output/powersOfTau28_hez_final_24.ptau
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
@@ -223,6 +223,7 @@ jobs:
             -e HASH_MODE="$HASH_MODE" \
             -e INCLUDE_SNARK="$INCLUDE_SNARK" \
             -e DYLIB_INPUT_FILES="$DYLIB_INPUT_FILES" \
+            -e PTAU_PATH="$PTAU_PATH" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./build_setup.sh

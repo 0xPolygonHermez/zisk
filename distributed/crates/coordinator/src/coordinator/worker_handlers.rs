@@ -54,6 +54,15 @@ impl Coordinator {
                 ack.error_message.as_deref().unwrap_or("unknown error")
             );
         }
+        // How long this worker took, if the setup was sent to it.
+        let setup_seconds = self.take_setup_sent(&ack.worker_id, &ack.hash_id).await;
+        crate::metrics::record_setup_ack(
+            &ack.worker_id,
+            &ack.hash_id,
+            ack.success,
+            ack.error_message.as_deref(),
+            setup_seconds,
+        );
 
         // A successful SetupProgramAck proves the prover is healthy; any
         // lingering pending_recovery entry is stale (WRC will never arrive).
@@ -343,64 +352,65 @@ impl Coordinator {
             return Ok(());
         };
 
-        // Drop late acks for already-resolved jobs (mirrors execute-task path).
-        {
-            let job = job_entry.read().await;
+        // Check the job and change its state under one write lock: a cancel landing between a
+        // separate check and the change would otherwise be followed by a terminal event of ours,
+        // and turned into a failure by a failed ack (Failed is reachable from any state).
+        let outcome = {
+            let mut job = job_entry.write().await;
             if job.state().is_resolved() {
-                info!(
-                    "[Recurser] Ignoring late RunAggregateProofsAck from worker {} for resolved job {}",
-                    worker_id, ack.job_id
-                );
-                drop(job);
-                let _ =
-                    self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
-                return Ok(());
+                None
+            } else if !ack.success {
+                job.change_state(JobState::Failed);
+                Some(Err(ack.error_message.unwrap_or_else(|| "(no detail)".to_string())))
+            } else {
+                job.change_state(JobState::Completed);
+                // The ack carries a bincode-encoded `Proof` (see the worker's
+                // handle_run_aggregate_proofs); decode it so the completed job owns
+                // its proof like every other completion path does.
+                match Proof::from_bytes(&ack.proof) {
+                    Ok(proof) => job.proof = Some(proof),
+                    Err(e) => warn!(
+                        "[Recurser] Failed to deserialize aggregate proof for job {}: {}",
+                        job_id, e
+                    ),
+                }
+                Some(Ok(Self::format_job_metadata(job.metadata.as_ref())))
             }
-        }
+        };
 
         let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
 
-        if !ack.success {
-            let reason = ack.error_message.unwrap_or_else(|| "(no detail)".to_string());
-            {
-                let mut job = job_entry.write().await;
-                job.change_state(JobState::Failed);
-            }
-            self.fire_job_event(
-                &job_id,
-                CoordinatorJobEvent::Failed(format!(
-                    "Recurser prove failed on worker {worker_id}: {reason}"
-                )),
-            )
-            .await;
-            return Ok(());
-        }
-
-        {
-            let mut job = job_entry.write().await;
-            job.change_state(JobState::Completed);
-            // The ack carries a bincode-encoded `Proof` (see the worker's
-            // handle_run_aggregate_proofs); decode it so the completed job owns
-            // its proof like every other completion path does.
-            match bincode::serde::decode_from_slice::<Proof, _>(
-                &ack.proof,
-                bincode::config::standard(),
-            ) {
-                Ok((proof, _)) => job.proof = Some(proof),
-                Err(e) => warn!(
-                    "[Recurser] Failed to deserialize aggregate proof for job {}: {}",
-                    job_id, e
-                ),
-            }
-        }
-        self.fire_job_event(
-            &job_id,
-            CoordinatorJobEvent::Completed(
-                crate::job_events::CoordinatorJobResult::AggregateProofs { proof_bytes: ack.proof },
+        match outcome {
+            // Late ack for an already-resolved job (mirrors execute-task path).
+            None => info!(
+                "[Recurser] Ignoring late RunAggregateProofsAck from worker {} for resolved job {}",
+                worker_id, ack.job_id
             ),
-        )
-        .await;
-        info!("[Recurser] Job {} completed successfully on worker {}", job_id, worker_id);
+            Some(Err(reason)) => {
+                self.fire_job_event(
+                    &job_id,
+                    CoordinatorJobEvent::Failed(format!(
+                        "Recurser prove failed on worker {worker_id}: {reason}"
+                    )),
+                )
+                .await;
+            }
+            Some(Ok(metadata_str)) => {
+                self.fire_job_event(
+                    &job_id,
+                    CoordinatorJobEvent::Completed(
+                        crate::job_events::CoordinatorJobResult::AggregateProofs {
+                            proof_bytes: ack.proof,
+                        },
+                    ),
+                )
+                .await;
+                info!(
+                    "[Recurser] Job {} completed successfully on worker {}{}",
+                    job_id, worker_id, metadata_str
+                );
+            }
+        }
         Ok(())
     }
 
@@ -408,7 +418,12 @@ impl Coordinator {
         &self,
         worker_id: &WorkerId,
     ) -> CoordinatorResult<()> {
-        let was_pending = self.pending_recovery.write().await.remove(worker_id).is_some();
+        let parked_at = self.pending_recovery.write().await.remove(worker_id);
+        let was_pending = parked_at.is_some();
+        if let Some(parked_at) = parked_at {
+            let seconds = (Utc::now() - parked_at).num_milliseconds().max(0) as f64 / 1000.0;
+            crate::metrics::record_worker_recovered(worker_id, seconds);
+        }
         let state = self.workers_pool.worker_state(worker_id).await;
         let parked = state == Some(WorkerState::SettingUp);
 
@@ -470,6 +485,14 @@ impl Coordinator {
     ) -> (bool, String, Option<SetupProgramDto>) {
         self.registrations.fetch_add(1, Ordering::Relaxed);
 
+        let registering = self.registration.lock().await;
+        if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
+            return (false, e.to_string(), None);
+        }
+        if let Err(e) = self.observe_snark_protocol(&req.worker_id, req.snark_protocol).await {
+            return (false, e.to_string(), None);
+        }
+
         let max_connections = self.config.coordinator.max_total_workers as usize;
         if self.workers_pool.num_workers().await >= max_connections {
             return (
@@ -503,14 +526,23 @@ impl Coordinator {
             );
         }
 
-        match self
+        let registered = self
             .workers_pool
             .register_worker(req.worker_id, req.compute_capacity, msg_sender, initial_state)
-            .await
-        {
+            .await;
+        drop(registering);
+
+        match registered {
             Ok(()) => {
+                if let Some(exit) = req.previous_exit {
+                    self.record_worker_exit(&worker_id, exit);
+                }
+                if let Some(setup) = &first_setup {
+                    self.note_setup_sent(&worker_id, &setup.hash_id).await;
+                }
                 // Send any additional known setups (beyond the first) as messages.
                 for setup in setups {
+                    self.note_setup_sent(&worker_id, &setup.hash_id).await;
                     let msg = CoordinatorMessageDto::SetupProgram(setup);
                     if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
                         warn!("[Setup] Failed to send additional setup to {}: {}", worker_id, e);
@@ -553,6 +585,14 @@ impl Coordinator {
     ) -> (bool, String, Option<ReconnectionDirectiveDto>, Option<SetupProgramDto>) {
         self.reconnections.fetch_add(1, Ordering::Relaxed);
 
+        let registering = self.registration.lock().await;
+        if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
+            return (false, e.to_string(), None, None);
+        }
+        if let Err(e) = self.observe_snark_protocol(&req.worker_id, req.snark_protocol).await {
+            return (false, e.to_string(), None, None);
+        }
+
         // Check max connections — but allow if the worker already exists (reconnection)
         let max_connections = self.config.coordinator.max_total_workers as usize;
         if self.workers_pool.num_workers().await >= max_connections
@@ -572,8 +612,13 @@ impl Coordinator {
         // Compute the directive first so we know whether to preserve the worker's
         // Computing state. Doing this before register_worker avoids a window where
         // the worker briefly appears Idle and becomes eligible for new job dispatch.
-        let directive =
-            self.compute_reconnection_directive(&worker_id, last_known_job_id.clone()).await;
+        let (directive, keep_phase) = match self
+            .compute_reconnection_directive(&worker_id, last_known_job_id.clone())
+            .await
+        {
+            Some((d, phase)) => (Some(d), phase),
+            None => (None, None),
+        };
 
         // Non-KeepComputing reconnects won't produce a matching WRC, so any
         // leftover pending_recovery entry is stale and would wedge the worker
@@ -589,10 +634,10 @@ impl Coordinator {
         let default_state =
             if first_setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
 
-        let initial_state = if matches!(directive, Some(ReconnectionDirectiveDto::KeepComputing)) {
-            self.workers_pool.worker_state(&worker_id).await.unwrap_or(default_state)
-        } else {
-            default_state
+        // `do_disconnect` overwrote the stored state, so it is rebuilt from the job.
+        let initial_state = match (keep_phase, last_known_job_id.as_ref()) {
+            (Some(phase), Some(job_id)) => WorkerState::Computing((job_id.clone(), phase)),
+            _ => default_state,
         };
 
         if let Err(e) = self
@@ -602,6 +647,7 @@ impl Coordinator {
         {
             return (false, format!("Reconnection failed: {e}"), None, None);
         }
+        drop(registering);
 
         if let Some(ref d) = directive {
             match d {
@@ -627,8 +673,12 @@ impl Coordinator {
             }
         }
 
+        if let Some(setup) = &first_setup {
+            self.note_setup_sent(&worker_id, &setup.hash_id).await;
+        }
         // Send any additional known setups (beyond the first) as messages.
         for setup in setups {
+            self.note_setup_sent(&worker_id, &setup.hash_id).await;
             let msg = CoordinatorMessageDto::SetupProgram(setup);
             if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
                 warn!(
@@ -658,7 +708,7 @@ impl Coordinator {
         &self,
         worker_id: &WorkerId,
         last_known_job_id: Option<JobId>,
-    ) -> Option<ReconnectionDirectiveDto> {
+    ) -> Option<(ReconnectionDirectiveDto, Option<JobPhase>)> {
         let claimed_job_id = last_known_job_id?;
 
         let job_entry = {
@@ -666,7 +716,7 @@ impl Coordinator {
             match jobs_map.get(&claimed_job_id) {
                 None => {
                     // Coordinator has no record (restarted or job expired)
-                    return Some(ReconnectionDirectiveDto::CancelStaleJob);
+                    return Some((ReconnectionDirectiveDto::CancelStaleJob, None));
                 }
                 Some(entry) => entry.clone(),
             }
@@ -675,17 +725,26 @@ impl Coordinator {
         let job = job_entry.read().await;
 
         if job.state.is_resolved() {
-            return Some(ReconnectionDirectiveDto::CancelStaleJob);
+            return Some((ReconnectionDirectiveDto::CancelStaleJob, None));
         }
 
         if !job.workers.contains(worker_id) {
-            return Some(ReconnectionDirectiveDto::CancelStaleJob);
+            return Some((ReconnectionDirectiveDto::CancelStaleJob, None));
         }
 
-        // Job is active and worker is still assigned — process survived the
-        // disconnect so the computation may still be running. Let the worker
-        // continue; the re-established channel will deliver the result.
-        Some(ReconnectionDirectiveDto::KeepComputing)
+        // Still assigned: keep computing in the phase it was in. A donor already
+        // released (leaf in, nothing held) is done with the job.
+        let submitted =
+            job.results.get(&JobPhase::Prove).is_some_and(|r| r.contains_key(worker_id));
+        let phase = match &job.state {
+            JobState::Running(JobPhase::Recurse) if !submitted => JobPhase::Prove,
+            JobState::Running(phase) => phase.clone(),
+            _ => JobPhase::Contributions,
+        };
+        if submitted && !job.agg.as_ref().is_some_and(|a| a.holds_work(worker_id)) {
+            return Some((ReconnectionDirectiveDto::CancelStaleJob, None));
+        }
+        Some((ReconnectionDirectiveDto::KeepComputing, Some(phase)))
     }
 
     /// If the worker was Computing, fail its job via `fail_job` so every
@@ -802,6 +861,9 @@ impl Coordinator {
         &self,
         message: HeartbeatAckDto,
     ) -> CoordinatorResult<()> {
+        if let Some(telemetry) = message.telemetry {
+            self.store_worker_telemetry(&message.worker_id, telemetry).await;
+        }
         self.workers_pool.update_last_heartbeat(&message.worker_id).await
     }
 
@@ -940,7 +1002,8 @@ impl Coordinator {
             ExecuteTaskResponseResultDataDto::Proofs(_) => {
                 self.handle_proofs_completion(message).await
             }
-            ExecuteTaskResponseResultDataDto::FinalProof(_) => {
+            ExecuteTaskResponseResultDataDto::FinalProof(_)
+            | ExecuteTaskResponseResultDataDto::PartialAggProofs(_) => {
                 self.handle_recurser_completion(message).await
             }
             ExecuteTaskResponseResultDataDto::WrapResult(_) => {
@@ -1036,7 +1099,7 @@ impl Coordinator {
     /// Two deliberate asymmetries in the mapping:
     ///
     /// * `Proofs` is accepted in `Recurse` as well as `Prove`.
-    ///   `resolve_recurser_assignment` flips the job to `Recurse` as soon as the
+    ///   the aggregation scheduler flips the job to `Recurse` as soon as the
     ///   *first* worker finishes Phase 2, so the remaining workers legitimately
     ///   report in while the job is already recursing.
     /// * Execution-only jobs run in `Running(Contributions)` — `JobPhase::Execution`
@@ -1075,6 +1138,9 @@ impl Coordinator {
                 ("Proofs", matches!(phase, JobPhase::Prove | JobPhase::Recurse), "Prove or Recurse")
             }
             Payload::FinalProof(_) => ("FinalProof", *phase == JobPhase::Recurse, "Recurse"),
+            Payload::PartialAggProofs(_) => {
+                ("PartialAggProofs", *phase == JobPhase::Recurse, "Recurse")
+            }
             Payload::WrapResult(_) => ("WrapResult", *phase == JobPhase::Recurse, "Recurse"),
         };
 
@@ -1107,6 +1173,13 @@ impl Coordinator {
         };
 
         self.fail_job(&message.job_id, &reason).await?;
+
+        // `fail_job` parked every worker of the job to wait for its `WorkerRecoveryComplete`. One
+        // that failed without starting any work (`worker_in_recovery` false) is Ready again on its
+        // side and sends none: release it now rather than at the stuck-recovery sweep.
+        if !message.worker_in_recovery {
+            self.handle_stream_recovery_complete(&message.worker_id).await?;
+        }
 
         Err(CoordinatorError::WorkerError(format!(
             "Worker {} failed task for job {}: {}",

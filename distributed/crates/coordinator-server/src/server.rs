@@ -10,6 +10,7 @@ use tracing::{info, warn};
 
 use crate::backend::BackendService;
 use crate::config::Config as CoordinatorServerConfig;
+use crate::connections;
 use crate::grpc::GrpcAdapter;
 use crate::handler::CoordinatorHandler;
 use crate::metrics;
@@ -38,7 +39,9 @@ impl<B: BackendService> CoordinatorServer<B> {
     /// Run the server until the cancellation token fires, then shut down
     /// gracefully within the configured timeout.
     pub async fn run(self) -> Result<()> {
-        metrics::start(&self.config.metrics, self.cancel.clone()).await?;
+        metrics::record_info(&self.config.service);
+        metrics::start(&self.config.metrics, self.cancel.clone(), Arc::clone(&self.backend))
+            .await?;
 
         let addr = self.config.grpc_addr().parse()?;
         let service = GrpcAdapter::new(CoordinatorHandler::new(Arc::clone(&self.backend)));
@@ -54,7 +57,8 @@ impl<B: BackendService> CoordinatorServer<B> {
             .max_decoding_message_size(MAX_MESSAGE_SIZE)
             .max_encoding_message_size(MAX_MESSAGE_SIZE);
 
-        // Extended API: same handler, carries opt-in job-level metadata.
+        // Deprecated extended API: an alias of `JobRequest`, kept until the first non-alpha
+        // release for clients built against it.
         let ext_service = GrpcAdapter::new(CoordinatorHandler::new(Arc::clone(&self.backend)));
         let ext_svc = ZiskCoordinatorApiExtServer::new(ext_service)
             .max_decoding_message_size(MAX_MESSAGE_SIZE)
@@ -79,7 +83,8 @@ impl<B: BackendService> CoordinatorServer<B> {
             .add_service(health_svc)
             .add_service(svc)
             .add_service(ext_svc)
-            .serve_with_shutdown(addr, async move {
+            // Bound as `serve_with_shutdown` binds, with each connection counted per client.
+            .serve_with_incoming_shutdown(connections::incoming(addr)?, async move {
                 shutdown_signal().await;
                 info!("shutdown signal received — draining in-flight requests");
                 cancel.cancel();

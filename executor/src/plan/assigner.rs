@@ -1,9 +1,10 @@
 //! Instance assignment (global-id allocation) for the ZiskExecutor.
 
 use crate::error::{ExecutorResult, RwLockExt};
+use proofman_common::WitnessPriority;
 use std::sync::RwLock;
 use zisk_common::{InstanceType, Plan};
-use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{ROM_AIR_IDS, VIRTUAL_TABLE_ZISK_0_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::ports::{GlobalId, InstanceInfo, ProofRegistry};
 use crate::AirClassifier;
@@ -24,7 +25,24 @@ impl InstanceAssigner {
     /// # Errors
     /// Returns an error if the registry rejects the assignment.
     pub fn assign_rom_instance(registry: &dyn ProofRegistry) -> ExecutorResult<GlobalId> {
-        registry.add_instance_assign(InstanceInfo::new(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]))
+        // Assigned first, and that is load-bearing: the rank is picked by least-loaded
+        // partition, so being the first instance registered is what puts ROM on the first
+        // process — the only one that runs the ROM-histogram assembly. Computed last all the
+        // same: the `Last` band buys the histogram runner every other instance's compute time.
+        let rom_gid = registry.add_instance_assign(InstanceInfo::with_priority(
+            ZISK_AIRGROUP_ID,
+            ROM_AIR_IDS[0],
+            WitnessPriority::Last,
+        ))?;
+
+        // The virtual table rides along on the ROM instance's process; `assign_table_to`
+        // ignores the priority, so the default is fine here.
+        registry.assign_table_to(
+            InstanceInfo::new(ZISK_AIRGROUP_ID, VIRTUAL_TABLE_ZISK_0_AIR_IDS[0]),
+            rom_gid,
+        )?;
+
+        Ok(rom_gid)
     }
 
     /// Assigns main instances to the proof context.
@@ -68,13 +86,21 @@ impl InstanceAssigner {
     /// # Errors
     /// Returns an error if any registry assignment fails or if
     /// `global_ids` is poisoned.
+    /// `place_on_registration`: the secondaries are registered in two rounds (the minimal-trace
+    /// side first, the memory side when the memory-ops runner joins) and the first round's
+    /// witnesses start before the second is known, which the batch balancer at the end of the
+    /// execution would be too late for; otherwise the balancer places them, as one round did.
     pub fn assign_secn_instances(
         registry: &dyn ProofRegistry,
         global_ids: &RwLock<Vec<usize>>,
         plans: &mut [Plan],
+        place_on_registration: bool,
     ) -> ExecutorResult<()> {
         for plan in plans.iter_mut() {
-            let info = InstanceInfo::new(plan.airgroup_id, plan.air_id);
+            // Secondaries are announced only once their collectors have run, so they are the
+            // ones already waiting on a slot when they reach the channel.
+            let info =
+                InstanceInfo::with_priority(plan.airgroup_id, plan.air_id, WitnessPriority::First);
 
             // ROM instances need special first-partition assignment look up the global id
             // stamped by `assign_rom_instance` earlier in the phase.
@@ -84,8 +110,14 @@ impl InstanceAssigner {
                 registry.add_instance_assign(info)?
             } else {
                 match plan.instance_type {
+                    InstanceType::Instance if place_on_registration => {
+                        registry.add_instance_assign(info)?
+                    }
                     InstanceType::Instance => registry.add_instance(info)?,
-                    InstanceType::Table => registry.add_table(info)?,
+                    // Tables are not witness-dispatched; the band is irrelevant to them.
+                    InstanceType::Table => {
+                        registry.add_table(InstanceInfo::new(plan.airgroup_id, plan.air_id))?
+                    }
                 }
             };
 
@@ -108,11 +140,22 @@ mod tests {
 
         let gid = InstanceAssigner::assign_rom_instance(&registry).expect("ok");
 
+        // Two registrations: the ROM instance itself, then the virtual table
+        // pinned to the same gid so the table rides along with the ROM rank.
         let calls = registry.additions.borrow();
-        assert_eq!(calls.len(), 1);
+        assert_eq!(calls.len(), 2);
         assert_eq!(calls[0].kind, AddKind::InstanceAssign);
-        assert_eq!(calls[0].info, InstanceInfo::new(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]));
+        assert_eq!(
+            calls[0].info,
+            InstanceInfo::with_priority(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], WitnessPriority::Last)
+        );
         assert_eq!(calls[0].gid, gid);
+        assert_eq!(calls[1].kind, AddKind::Table);
+        assert_eq!(
+            calls[1].info,
+            InstanceInfo::new(ZISK_AIRGROUP_ID, VIRTUAL_TABLE_ZISK_0_AIR_IDS[0])
+        );
+        assert_eq!(calls[1].gid, gid);
     }
 
     #[test]
@@ -154,16 +197,22 @@ mod tests {
         let registry = FakeProofRegistry::new();
         let global_ids = RwLock::new(Vec::<usize>::new());
 
-        // Plain Instance → add_instance, Table → add_table.
-        let mut plans = vec![
+        // Plain Instance → add_instance (batch placement) or add_instance_assign (placed on
+        // registration), Table → add_table.
+        let mut plans = [
             Plan::new(7, 200, None, InstanceType::Instance, zisk_common::CheckPoint::None, None),
             Plan::new(7, 201, None, InstanceType::Table, zisk_common::CheckPoint::None, None),
+            Plan::new(7, 202, None, InstanceType::Instance, zisk_common::CheckPoint::None, None),
         ];
 
-        InstanceAssigner::assign_secn_instances(&registry, &global_ids, &mut plans).expect("ok");
+        InstanceAssigner::assign_secn_instances(&registry, &global_ids, &mut plans[..2], false)
+            .expect("ok");
+        InstanceAssigner::assign_secn_instances(&registry, &global_ids, &mut plans[2..], true)
+            .expect("ok");
 
         let calls = registry.additions.borrow();
-        assert_eq!(calls.len(), 2);
+        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[2].kind, AddKind::InstanceAssign);
         assert_eq!(calls[0].kind, AddKind::Instance);
         assert_eq!(calls[1].kind, AddKind::Table);
     }

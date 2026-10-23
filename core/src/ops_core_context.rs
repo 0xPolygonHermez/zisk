@@ -491,6 +491,12 @@ pub fn opc_sh3add(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_sh3add(ctx.a, ctx.b);
 }
 
+/// InstContext-based wrapper over op_unal8()
+#[inline(always)]
+pub fn opc_unal8(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_unal8(ctx.a, ctx.b);
+}
+
 /// InstContext-based wrapper over op_sh3add_u_w()
 #[inline(always)]
 pub fn opc_sh3add_u_w(ctx: &mut InstContext) {

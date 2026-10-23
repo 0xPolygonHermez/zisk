@@ -18,7 +18,7 @@ zisk-pil = { workspace = true }
 zisk-stream = { workspace = true, features = ["quic"] }
 
 proofman-common = { workspace = true }
-proofman-verifier = { workspace = true, features = ["parallel"] }
+proofman-verifier = { workspace = true, default-features = true, features = ["parallel"] }
 proofman = { workspace = true }
 proofman-fields = { workspace = true }
 clap = { workspace = true }
@@ -29,6 +29,8 @@ thiserror = { workspace = true }
 sha2 = { workspace = true }
 num-bigint = { workspace = true }
 dirs = "6"
+getrandom = { workspace = true }
+hex = { workspace = true }
 alloy-sol-types = { workspace = true }
 
 bincode = { workspace = true }

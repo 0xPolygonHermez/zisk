@@ -4,13 +4,17 @@ use std::{collections::HashMap, path::PathBuf};
 use tracing::warn;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::{ExecutorStatsHandle, Stats};
+use zisk_common::{ExecutorStatsHandle, RandomSeed, RandomSeedArgs, Stats};
 use zisk_pil::*;
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProverClientBuilder};
 
 use crate::common::detect_current_project_elf;
-use crate::ux::{print_banner, print_banner_command, print_banner_field};
+use crate::ux::{print_banner, print_banner_command, print_banner_field, print_random_seed};
+
+/// What a stats run reports: world rank, number of processes, the stats (`None` on inactive
+/// ranks) and the host randomness seed.
+type StatsRun = (i32, i32, Option<ExecutorStatsHandle>, RandomSeed);
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -32,6 +36,9 @@ pub(crate) struct StatsCmd {
     /// Precompiles hints file path for the guest
     #[arg(long, conflicts_with = "inputs")]
     hints: Option<String>,
+
+    #[command(flatten)]
+    random_seed: RandomSeedArgs,
 
     /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
@@ -146,7 +153,7 @@ impl StatsCmd {
             !self.asm
         };
 
-        let (world_rank, n_processes, stats) =
+        let (world_rank, n_processes, stats, seed) =
             if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin, hints_stream)? };
 
         if world_rank % 2 == 1 {
@@ -158,19 +165,16 @@ impl StatsCmd {
             format!("--- STATS SUMMARY RANK {}/{}", world_rank, n_processes),
             "-".repeat(55)
         );
-
         if let Some(stats) = &stats {
-            Self::print_stats(&stats.witness_stats());
+            print_random_seed(Some(seed));
+            Self::print_stats(&stats.witness_stats(), stats.collect_phase_wall_ms());
             stats.print_stats();
         }
 
         Ok(())
     }
 
-    pub(crate) fn run_emu(
-        &mut self,
-        stdin: ZiskStdin,
-    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
+    pub(crate) fn run_emu(&mut self, stdin: ZiskStdin) -> Result<StatsRun> {
         let mut prover_options = BackendProverOpts::default();
 
         if !self.no_packed {
@@ -206,6 +210,7 @@ impl StatsCmd {
         prover.stats(
             &guest_program,
             stdin,
+            self.random_seed.provided(),
             self.debug.clone(),
             self.minimal_memory,
             self.mpi_node.map(|n| n as u32),
@@ -216,7 +221,7 @@ impl StatsCmd {
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
-    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
+    ) -> Result<StatsRun> {
         let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
 
         if !self.no_packed {
@@ -269,24 +274,31 @@ impl StatsCmd {
             prover.setup(&guest_program).run()?;
         }
 
+        let job = prover.begin_job(&guest_program)?;
         if let Some(hints_stream) = hints_stream {
-            prover.register_hints_stream(hints_stream)?;
+            job.register_hints_stream(hints_stream)?;
         }
         let mpi_node = self.mpi_node.map(|n| n as u32);
-        prover.stats(&guest_program, stdin, self.debug.clone(), self.minimal_memory, mpi_node)
+        job.stats(
+            stdin,
+            self.random_seed.provided(),
+            self.debug.clone(),
+            self.minimal_memory,
+            mpi_node,
+        )
     }
 
     /// Prints stats individually and grouped, with aligned columns.
     ///
     /// # Arguments
     /// * `stats_mutex` - A reference to the Mutex holding the stats vector.
-    pub(crate) fn print_stats(air_stats: &HashMap<usize, Stats>) {
+    pub(crate) fn print_stats(air_stats: &HashMap<usize, Stats>, collect_wall_ms: u64) {
         println!("    Number of airs: {}", air_stats.len());
         println!();
         println!("    Stats by Air:");
         println!(
             "    {:<8} {:<25} {:<8} {:<12} {:<12}",
-            "air id", "Name", "chunks", "collect (ms)", "witness (ms)",
+            "air id", "Name", "chunks", "collect span", "witness (ms)",
         );
         println!("    {}", "-".repeat(70));
 
@@ -294,7 +306,6 @@ impl StatsCmd {
         let mut sorted_stats: Vec<&Stats> = air_stats.values().collect();
         sorted_stats.sort_by_key(|stat| (stat.airgroup_id, stat.air_id));
 
-        let mut total_collect_time = 0;
         let mut total_witness_time = 0;
         for stat in sorted_stats.iter() {
             let collect_ms = stat.collect_duration;
@@ -308,8 +319,6 @@ impl StatsCmd {
                 collect_ms,
                 witness_ms,
             );
-            // Accumulate total times
-            total_collect_time += collect_ms;
             total_witness_time += witness_ms;
         }
 
@@ -323,7 +332,7 @@ impl StatsCmd {
         println!("    Grouped Stats:");
         println!(
             "    {:<8} {:<25}   {:<6}   {:<20}   {:<20}   {:<20}",
-            "Air id", "Name", "Count", "Chunks", "Collect (ms)", "Witness (ms)",
+            "Air id", "Name", "Count", "Chunks", "Collect span", "Witness (ms)",
         );
         println!(
             "    {:<8} {:<25}   {:<6}   {:<6} {:<6} {:<6}   {:<6} {:<6} {:<6}   {:<6} {:<6} {:<6}",
@@ -376,11 +385,10 @@ impl StatsCmd {
         }
         println!();
         println!("    Total Stats:");
+        // 'collect span' is per-instance and overlaps across instances, so it is
+        // not summable; the phase wall is measured once around collect() itself.
         println!(
-            "    Collect: {:10}ms Witness: {:10}ms Total: {:10}ms",
-            total_collect_time,
-            total_witness_time,
-            total_collect_time + total_witness_time
+            "    Collect (phase wall): {collect_wall_ms:6}ms   Witness (sum): {total_witness_time:6}ms"
         );
     }
 

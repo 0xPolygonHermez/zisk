@@ -84,6 +84,7 @@ OTHER_OBJS = $(BUILD_DIR)/alt_bn128.o \
              $(BUILD_DIR)/ec.o \
              $(BUILD_DIR)/bn254.o \
              $(BUILD_DIR)/babyjubjub.o \
+             $(BUILD_DIR)/ed25519.o \
              $(BUILD_DIR)/bls12_381.o \
              $(BUILD_DIR)/fcall.o \
              $(BUILD_DIR)/keccakf_cache.o \
@@ -93,6 +94,7 @@ OTHER_OBJS = $(BUILD_DIR)/alt_bn128.o \
              $(BUILD_DIR)/globals.o \
              $(BUILD_DIR)/goldilocks_base_field.o \
              $(BUILD_DIR)/poseidon2_goldilocks.o \
+             $(BUILD_DIR)/poseidon2_non_native.o \
              $(BUILD_DIR)/poseidon1_goldilocks.o \
              $(BUILD_DIR)/blake2.o \
              $(BUILD_DIR)/blake3.o \
@@ -166,6 +168,14 @@ endif
 $(BUILD_DIR)/clib: $(SRC_DIR)/main.cpp $(ALL_OBJS)
 	gcc $(CFLAGS) $(INCLUDES) $< -lc $(ALL_OBJS) -o $@ -lgmp -lstdc++ -lgmpxx -Wl,-z,noexecstack
 
+# Differential test of the precompile entry points, not built by default; test/difftest.sh
+# builds it against a reference commit and the working tree, and runs it
+.PHONY: difftest
+difftest: $(BUILD_DIR)/difftest
+
+$(BUILD_DIR)/difftest: test/difftest.cpp $(LIB_FILE)
+	g++ -O2 -std=c++17 $(INCLUDES) $< $(LIB_FILE) -o $@ -lgmpxx -lgmp -lpthread
+
 # x86_64 NASM rules (used only when FIELD_BACKEND=asm_x86_64)
 $(BUILD_DIR)/%_asm.o: $(SRC_DIR)/ffiasm/%.asm | $(BUILD_DIR)
 	nasm -felf64 $< -o $@
@@ -211,6 +221,9 @@ $(BUILD_DIR)/bn254.o: $(SRC_DIR)/bn254/bn254.cpp $(SRC_DIR)/bn254/bn254.hpp $(SR
 $(BUILD_DIR)/babyjubjub.o: $(SRC_DIR)/babyjubjub/babyjubjub.cpp $(SRC_DIR)/babyjubjub/babyjubjub.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
+$(BUILD_DIR)/ed25519.o: $(SRC_DIR)/ed25519/ed25519.cpp $(SRC_DIR)/ed25519/ed25519.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
 $(BUILD_DIR)/bls12_381.o: $(SRC_DIR)/bls12_381/bls12_381.cpp $(SRC_DIR)/bls12_381/bls12_381.hpp $(SRC_DIR)/bls12_381/bls12_381_fe.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
@@ -236,6 +249,9 @@ $(BUILD_DIR)/goldilocks_base_field.o: $(SRC_DIR)/poseidon2/goldilocks_base_field
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/poseidon2_goldilocks.o: $(SRC_DIR)/poseidon2/poseidon2_goldilocks.cpp $(SRC_DIR)/poseidon2/poseidon2_goldilocks.hpp $(SRC_DIR)/poseidon2/poseidon2_goldilocks_constants.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/poseidon2_non_native.o: $(SRC_DIR)/poseidon2/poseidon2_non_native.cpp $(SRC_DIR)/poseidon2/poseidon2_non_native.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/poseidon1_goldilocks.o: $(SRC_DIR)/poseidon1/poseidon1_goldilocks.cpp $(SRC_DIR)/poseidon1/poseidon1_goldilocks.hpp $(SRC_DIR)/poseidon1/poseidon1_goldilocks_constants.hpp | $(BUILD_DIR)

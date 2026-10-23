@@ -6,7 +6,7 @@ use std::{
 };
 use zisk_common::ZiskPaths;
 use zisk_core::{is_elf_file, AsmGenerationMethod};
-use zisk_transpiler_riscv::Riscv2zisk;
+use zisk_transpiler_common::ZiskTranspiler;
 
 use crate::get_elf_data_hash;
 use crate::get_elf_data_hash_from_path;
@@ -184,8 +184,13 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
 
 /// Base filename for a program's ASM artifacts.
 ///
-/// Content-addressed by the ELF hash only — the same ELF always maps to the same
-/// artifacts regardless of the program name, so a given hash is generated once.
+/// Content-addressed by the ELF hash and the hints mode — the same ELF always maps to the same
+/// artifacts regardless of the program name, so a given hash is generated once. The
+/// name says nothing about which `emulator-asm` sources built the binary, so a
+/// change to those sources needs the cache cleared.
+///
+/// The single definition of the base name. The `-mt`/`-rh`/`-mo` suffixes are added
+/// where the files are generated and resolved.
 fn asm_file_base(hash: &str, hints: bool) -> String {
     if hints {
         format!("{hash}-hints")
@@ -205,17 +210,19 @@ pub fn get_assembly_file_paths(
 }
 
 /// Variant of [`get_assembly_file_paths`] that takes the ELF hash directly
-/// (caller already computed it). Returns `[mt, rh, mo]`.
+/// (caller already computed it). Returns `[mt, rh, moh, mol]`: the memory-ops emulator with
+/// values and steps (`moh`) and its light form (`mol`), named apart from a plain `-mo` build's.
 pub fn get_assembly_file_paths_from_id(
     elf_hash: &str,
     output_path: &Path,
     hints: bool,
-) -> [PathBuf; 3] {
+) -> [PathBuf; 4] {
     let base = asm_file_base(elf_hash, hints);
     [
         output_path.join(format!("{base}-mt.bin")),
         output_path.join(format!("{base}-rh.bin")),
-        output_path.join(format!("{base}-mo.bin")),
+        output_path.join(format!("{base}-moh.bin")),
+        output_path.join(format!("{base}-mol.bin")),
     ]
 }
 
@@ -250,8 +257,8 @@ pub fn gen_assembly(
     Ok(())
 }
 
-/// Generate the three ASM binaries — minimal traces (`-mt`), ROM histogram
-/// (`-rh`), and memory ops (`-mo`) — for `elf` into `output_path`.
+/// Generate the four ASM binaries — minimal traces (`-mt`), ROM histogram (`-rh`), memory ops
+/// (`-moh`) and light memory ops (`-mol`) — for `elf` into `output_path`.
 ///
 /// Resolves and prepares the `emulator-asm` toolchain, transpiles the ELF to
 /// assembly for each trace target, and builds each binary via `make`. `hints`
@@ -272,7 +279,8 @@ pub fn generate_assembly(
 
     let bin_mt_file = output_path.join(format!("{base}-mt.bin"));
     let bin_rh_file = output_path.join(format!("{base}-rh.bin"));
-    let bin_mo_file = output_path.join(format!("{base}-mo.bin"));
+    let bin_mo_file = output_path.join(format!("{base}-moh.bin"));
+    let bin_mol_file = output_path.join(format!("{base}-mol.bin"));
 
     let (emulator_asm_path, asm_source) = resolve_emulator_asm()?;
     ensure_ziskclib(&emulator_asm_path, asm_source)?;
@@ -280,14 +288,15 @@ pub fn generate_assembly(
     let emulator_asm_path =
         emulator_asm_path.to_str().context("Failed to convert emulator-asm path to string")?;
 
-    for (file, gen_method, trace_target) in [
-        (bin_mt_file, AsmGenerationMethod::AsmMinimalTraces, "MT"),
-        (bin_rh_file, AsmGenerationMethod::AsmRomHistogram, "RH"),
-        (bin_mo_file, AsmGenerationMethod::AsmMemOp, "MO"),
+    for (file, gen_method, trace_target, light) in [
+        (bin_mt_file, AsmGenerationMethod::AsmMinimalTraces, "MT", false),
+        (bin_rh_file, AsmGenerationMethod::AsmRomHistogram, "RH", false),
+        (bin_mo_file, AsmGenerationMethod::AsmMemOp, "MO", false),
+        (bin_mol_file, AsmGenerationMethod::AsmMemOpLight, "MO", true),
     ] {
         let asm_file = file.with_extension("asm");
         // Convert the ELF file to Zisk format and generates an assembly file
-        let rv2zk = Riscv2zisk::new(elf);
+        let rv2zk = ZiskTranspiler::new(elf);
         let asm_file_str =
             asm_file.to_str().context("Failed to convert asm_file path to string")?;
         rv2zk
@@ -313,6 +322,7 @@ pub fn generate_assembly(
             .arg(format!("EMU_PATH={}", asm_file_str))
             .arg(format!("OUT_PATH={}", out_file_str))
             .arg(format!("TRACE_TARGET={trace_target}"))
+            .arg(format!("MOPS_LIGHT={}", if light { 1 } else { 0 }))
             .current_dir(emulator_asm_path)
             .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
             .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })

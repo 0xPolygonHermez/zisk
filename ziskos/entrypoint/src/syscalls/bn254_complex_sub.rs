@@ -8,19 +8,12 @@ use core::arch::asm;
 
 use super::complex::SyscallComplex256;
 
-#[derive(Debug)]
-#[repr(C)]
-pub struct SyscallBn254ComplexSubParams<'a> {
-    pub f1: &'a mut SyscallComplex256,
-    pub f2: &'a SyscallComplex256,
-}
-
 /// Performs the subtraction of two complex field elements on a complex extension of the BN254 base field curve,
 /// storing the result in the first field element.
 ///
 /// `Bn254ComplexSub` operates on two field elements, each with two coordinates of 256 bits.
 /// Each coordinate is represented as an array of four `u64` elements.
-/// The syscall takes as a parameter the address of a structure containing field elements `f1` and `f2`.
+/// The syscall takes the addresses of field elements `f1` and `f2` as two direct operands (no parameter struct).
 /// The result of the subtraction is stored in `f1`.
 ///
 /// ### Safety
@@ -36,19 +29,20 @@ pub struct SyscallBn254ComplexSubParams<'a> {
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_bn254_complex_sub")]
 pub extern "C" fn syscall_bn254_complex_sub(
-    params: &mut SyscallBn254ComplexSubParams,
+    f1: &mut SyscallComplex256,
+    f2: &SyscallComplex256,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     #[cfg(zisk_guest)]
-    ziskos_syscall!(zisk_definitions::SYSCALL_BN254_COMPLEX_SUB_ID, params);
+    ziskos_syscall!(zisk_definitions::SYSCALL_BN254_COMPLEX_SUB_ID, a: f1, b: f2);
     #[cfg(not(zisk_guest))]
     {
-        let f1 = [params.f1.x, params.f1.y].concat().try_into().unwrap();
-        let f2 = [params.f2.x, params.f2.y].concat().try_into().unwrap();
+        let f1_coords = [f1.x, f1.y].concat().try_into().unwrap();
+        let f2_coords = [f2.x, f2.y].concat().try_into().unwrap();
         let mut f3: [u64; 8] = [0; 8];
-        zisk_precomp_helpers::bn254_complex_sub(&f1, &f2, &mut f3);
-        params.f1.x.copy_from_slice(&f3[0..4]);
-        params.f1.y.copy_from_slice(&f3[4..8]);
+        zisk_precomp_helpers::bn254_complex_sub(&f1_coords, &f2_coords, &mut f3);
+        f1.x.copy_from_slice(&f3[0..4]);
+        f1.y.copy_from_slice(&f3[4..8]);
         #[cfg(feature = "hints")]
         {
             hints.extend_from_slice(&f3);

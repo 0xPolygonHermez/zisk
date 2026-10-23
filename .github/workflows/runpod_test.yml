@@ -18,9 +18,6 @@ on:
         type: number
         default: 60
 
-  schedule:
-    - cron: "0 1 * * *"
-
 jobs:
   runpod-test:
     runs-on:

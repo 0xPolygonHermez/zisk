@@ -4853,17 +4853,13 @@ fn q_verify_chunk_45(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] + evals[53];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[34] = tmp_3[0] + Goldilocks::new(1);
+    tmp_3[34] = tmp_3[0] + challenges[1];
     tmp_3[0] = evals[51] * Goldilocks::new(12275445934081160404);
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[54];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[51] * Goldilocks::new(4756475762779100925);
     tmp_3[0] = tmp_3[0] * challenges[0];
@@ -4871,8 +4867,6 @@ fn q_verify_chunk_45(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[51] * Goldilocks::new(1279992132519201448);
     tmp_3[0] = tmp_3[0] * challenges[0];
@@ -4880,23 +4874,19 @@ fn q_verify_chunk_45(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-}
-
-#[inline(never)]
-#[rustfmt::skip]
-#[allow(clippy::all)]
-fn q_verify_chunk_46(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: &[CubicExtensionField<Goldilocks>], evals: &[CubicExtensionField<Goldilocks>]) {
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[51] * Goldilocks::new(8312008622371998338);
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[57];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
+}
+
+#[inline(never)]
+#[rustfmt::skip]
+#[allow(clippy::all)]
+fn q_verify_chunk_46(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: &[CubicExtensionField<Goldilocks>], evals: &[CubicExtensionField<Goldilocks>]) {
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[51] * Goldilocks::new(7781028390488215464);
     tmp_3[0] = tmp_3[0] * challenges[0];
@@ -4904,8 +4894,6 @@ fn q_verify_chunk_46(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[51] * Goldilocks::new(11302600489504509467);
     tmp_3[0] = tmp_3[0] * challenges[0];
@@ -4913,72 +4901,54 @@ fn q_verify_chunk_46(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[34] * tmp_3[0];
     tmp_3[50] = evals[102] * tmp_3[0];
     tmp_3[0] = evals[7] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[53];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[34] = tmp_3[0] + Goldilocks::new(1);
+    tmp_3[34] = tmp_3[0] + challenges[1];
     tmp_3[0] = evals[8] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[54];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[9] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[55];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[10] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[56];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[11] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[57];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[12] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[58];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[13] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[59];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[14] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[60];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = tmp_3[50] - tmp_3[0];
     tmp_3[0] = tmp_3[12] + tmp_3[0];
@@ -4986,25 +4956,15 @@ fn q_verify_chunk_46(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = evals[51] * Goldilocks::new(4549350404001778198);
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[60];
-}
-
-#[inline(never)]
-#[rustfmt::skip]
-#[allow(clippy::all)]
-fn q_verify_chunk_47(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: &[CubicExtensionField<Goldilocks>], evals: &[CubicExtensionField<Goldilocks>]) {
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[12] = tmp_3[0] + Goldilocks::new(1);
+    tmp_3[12] = tmp_3[0] + challenges[1];
     tmp_3[0] = evals[51] * Goldilocks::new(3688660304411827445);
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[61];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[12] = tmp_3[12] * tmp_3[0];
     tmp_3[0] = evals[51] * Goldilocks::new(16725109960945739746);
     tmp_3[0] = tmp_3[0] * challenges[0];
@@ -5012,8 +4972,6 @@ fn q_verify_chunk_47(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[12] = tmp_3[12] * tmp_3[0];
     tmp_3[0] = evals[51] * Goldilocks::new(16538725463549498621);
     tmp_3[0] = tmp_3[0] * challenges[0];
@@ -5021,8 +4979,6 @@ fn q_verify_chunk_47(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[12] = tmp_3[12] * tmp_3[0];
     tmp_3[0] = evals[51] * Goldilocks::new(12756200801261202346);
     tmp_3[0] = tmp_3[0] * challenges[0];
@@ -5030,8 +4986,12 @@ fn q_verify_chunk_47(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
+}
+
+#[inline(never)]
+#[rustfmt::skip]
+#[allow(clippy::all)]
+fn q_verify_chunk_47(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: &[CubicExtensionField<Goldilocks>], evals: &[CubicExtensionField<Goldilocks>]) {
     tmp_3[12] = tmp_3[12] * tmp_3[0];
     tmp_3[0] = evals[51] * Goldilocks::new(15099809066790865939);
     tmp_3[0] = tmp_3[0] * challenges[0];
@@ -5039,8 +4999,6 @@ fn q_verify_chunk_47(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[12] = tmp_3[12] * tmp_3[0];
     tmp_3[0] = evals[51] * Goldilocks::new(17214954929431464349);
     tmp_3[0] = tmp_3[0] * challenges[0];
@@ -5048,8 +5006,6 @@ fn q_verify_chunk_47(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[12] * tmp_3[0];
     tmp_3[50] = evals[103] * tmp_3[0];
     tmp_3[0] = evals[15] * challenges[0];
@@ -5057,62 +5013,42 @@ fn q_verify_chunk_47(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[12] = evals[102] * tmp_3[0];
     tmp_3[0] = evals[16] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[62];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[12] = tmp_3[12] * tmp_3[0];
     tmp_3[0] = evals[17] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[63];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[12] = tmp_3[12] * tmp_3[0];
     tmp_3[0] = evals[18] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[64];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[12] = tmp_3[12] * tmp_3[0];
     tmp_3[0] = evals[19] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[65];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[12] = tmp_3[12] * tmp_3[0];
-}
-
-#[inline(never)]
-#[rustfmt::skip]
-#[allow(clippy::all)]
-fn q_verify_chunk_48(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: &[CubicExtensionField<Goldilocks>], evals: &[CubicExtensionField<Goldilocks>]) {
     tmp_3[0] = evals[20] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[66];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[12] = tmp_3[12] * tmp_3[0];
     tmp_3[0] = evals[21] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[67];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[12] * tmp_3[0];
     tmp_3[0] = tmp_3[50] - tmp_3[0];
     tmp_3[0] = tmp_3[34] + tmp_3[0];
@@ -5122,17 +5058,13 @@ fn q_verify_chunk_48(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] + evals[67];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[34] = tmp_3[0] + Goldilocks::new(1);
+    tmp_3[34] = tmp_3[0] + challenges[1];
     tmp_3[0] = evals[51] * Goldilocks::new(11274872323250451096);
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[68];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[51] * Goldilocks::new(6534114114080170934);
     tmp_3[0] = tmp_3[0] * challenges[0];
@@ -5140,8 +5072,6 @@ fn q_verify_chunk_48(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[51] * Goldilocks::new(13047390008333835222);
     tmp_3[0] = tmp_3[0] * challenges[0];
@@ -5149,8 +5079,6 @@ fn q_verify_chunk_48(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[51] * Goldilocks::new(11189528522318044176);
     tmp_3[0] = tmp_3[0] * challenges[0];
@@ -5158,17 +5086,19 @@ fn q_verify_chunk_48(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[51] * Goldilocks::new(3320735505586735876);
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[72];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
+}
+
+#[inline(never)]
+#[rustfmt::skip]
+#[allow(clippy::all)]
+fn q_verify_chunk_48(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: &[CubicExtensionField<Goldilocks>], evals: &[CubicExtensionField<Goldilocks>], zi: &[CubicExtensionField<Goldilocks>]) {
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[51] * Goldilocks::new(7240278926970958133);
     tmp_3[0] = tmp_3[0] * challenges[0];
@@ -5176,8 +5106,6 @@ fn q_verify_chunk_48(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[34] * tmp_3[0];
     tmp_3[50] = evals[104] * tmp_3[0];
     tmp_3[0] = evals[22] * challenges[0];
@@ -5185,62 +5113,42 @@ fn q_verify_chunk_48(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = evals[103] * tmp_3[0];
     tmp_3[0] = evals[23] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[69];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[24] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[70];
-}
-
-#[inline(never)]
-#[rustfmt::skip]
-#[allow(clippy::all)]
-fn q_verify_chunk_49(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: &[CubicExtensionField<Goldilocks>], evals: &[CubicExtensionField<Goldilocks>], zi: &[CubicExtensionField<Goldilocks>]) {
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[25] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[71];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[26] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[72];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[27] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[73];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[34] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = evals[28] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[74];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[34] * tmp_3[0];
     tmp_3[0] = tmp_3[50] - tmp_3[0];
     tmp_3[0] = tmp_3[12] + tmp_3[0];
@@ -5250,17 +5158,13 @@ fn q_verify_chunk_49(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] + evals[74];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[12] = tmp_3[0] + Goldilocks::new(1);
+    tmp_3[12] = tmp_3[0] + challenges[1];
     tmp_3[0] = evals[51] * Goldilocks::new(12693612801792047873);
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[75];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[12] = tmp_3[12] * tmp_3[0];
     tmp_3[0] = evals[51] * Goldilocks::new(9404062091095256088);
     tmp_3[0] = tmp_3[0] * challenges[0];
@@ -5268,8 +5172,6 @@ fn q_verify_chunk_49(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[12] * tmp_3[0];
     tmp_3[34] = evals[101] * tmp_3[0];
     tmp_3[0] = evals[52].sub_from_scalar(Goldilocks::new(1));
@@ -5280,16 +5182,12 @@ fn q_verify_chunk_49(tmp_3: &mut [CubicExtensionField<Goldilocks>], challenges: 
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[12] = evals[104] * tmp_3[0];
     tmp_3[0] = evals[30] * challenges[0];
     tmp_3[0] = tmp_3[0] + evals[76];
     tmp_3[0] = tmp_3[0] * challenges[0];
     tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[0] + challenges[1];
-    tmp_3[0] = tmp_3[0] - Goldilocks::new(1);
-    tmp_3[0] = tmp_3[0] + Goldilocks::new(1);
     tmp_3[0] = tmp_3[12] * tmp_3[0];
     tmp_3[0] = tmp_3[50] * tmp_3[0];
     tmp_3[0] = tmp_3[34] - tmp_3[0];
@@ -5353,8 +5251,7 @@ fn q_verify(challenges: &[CubicExtensionField<Goldilocks>], evals: &[CubicExtens
     q_verify_chunk_45(&mut tmp_3, challenges, evals);
     q_verify_chunk_46(&mut tmp_3, challenges, evals);
     q_verify_chunk_47(&mut tmp_3, challenges, evals);
-    q_verify_chunk_48(&mut tmp_3, challenges, evals);
-    q_verify_chunk_49(&mut tmp_3, challenges, evals, zi);
+    q_verify_chunk_48(&mut tmp_3, challenges, evals, zi);
     return tmp_3[0];
 }
 
@@ -5379,11 +5276,11 @@ fn verifier_info() -> VerifierInfo {
         opening_points: vec![-2, -1, 0, 1, 2],
         boundaries: vec![Boundary { name: "everyRow".to_string(), offset_min: None, offset_max: None }],
         fri_ev_groups: vec![
-            FriEvalGroup { opening: 0, refs: vec![FriEvalRef::new(0, 34, 1), FriEvalRef::new(0, 35, 1), FriEvalRef::new(0, 43, 1)] },
-            FriEvalGroup { opening: 1, refs: vec![FriEvalRef::new(0, 34, 1), FriEvalRef::new(0, 35, 1), FriEvalRef::new(0, 43, 1), FriEvalRef::new(2, 0, 3)] },
-            FriEvalGroup { opening: 2, refs: vec![FriEvalRef::new(0, 0, 1), FriEvalRef::new(0, 1, 1), FriEvalRef::new(0, 2, 1), FriEvalRef::new(0, 3, 1), FriEvalRef::new(0, 4, 1), FriEvalRef::new(0, 5, 1), FriEvalRef::new(0, 6, 1), FriEvalRef::new(0, 7, 1), FriEvalRef::new(0, 8, 1), FriEvalRef::new(0, 9, 1), FriEvalRef::new(0, 10, 1), FriEvalRef::new(0, 11, 1), FriEvalRef::new(0, 12, 1), FriEvalRef::new(0, 13, 1), FriEvalRef::new(0, 14, 1), FriEvalRef::new(0, 15, 1), FriEvalRef::new(0, 16, 1), FriEvalRef::new(0, 17, 1), FriEvalRef::new(0, 18, 1), FriEvalRef::new(0, 19, 1), FriEvalRef::new(0, 20, 1), FriEvalRef::new(0, 21, 1), FriEvalRef::new(0, 22, 1), FriEvalRef::new(0, 23, 1), FriEvalRef::new(0, 24, 1), FriEvalRef::new(0, 25, 1), FriEvalRef::new(0, 26, 1), FriEvalRef::new(0, 27, 1), FriEvalRef::new(0, 28, 1), FriEvalRef::new(0, 29, 1), FriEvalRef::new(0, 30, 1), FriEvalRef::new(0, 31, 1), FriEvalRef::new(0, 32, 1), FriEvalRef::new(0, 33, 1), FriEvalRef::new(0, 34, 1), FriEvalRef::new(0, 35, 1), FriEvalRef::new(0, 36, 1), FriEvalRef::new(0, 37, 1), FriEvalRef::new(0, 38, 1), FriEvalRef::new(0, 39, 1), FriEvalRef::new(0, 40, 1), FriEvalRef::new(0, 41, 1), FriEvalRef::new(0, 42, 1), FriEvalRef::new(0, 43, 1), FriEvalRef::new(0, 44, 1), FriEvalRef::new(0, 45, 1), FriEvalRef::new(1, 0, 1), FriEvalRef::new(1, 1, 1), FriEvalRef::new(1, 2, 1), FriEvalRef::new(1, 3, 1), FriEvalRef::new(1, 4, 1), FriEvalRef::new(1, 5, 1), FriEvalRef::new(1, 6, 1), FriEvalRef::new(1, 7, 1), FriEvalRef::new(1, 8, 1), FriEvalRef::new(1, 9, 1), FriEvalRef::new(1, 10, 1), FriEvalRef::new(1, 11, 1), FriEvalRef::new(1, 12, 1), FriEvalRef::new(1, 13, 1), FriEvalRef::new(1, 14, 1), FriEvalRef::new(1, 15, 1), FriEvalRef::new(1, 16, 1), FriEvalRef::new(1, 17, 1), FriEvalRef::new(1, 18, 1), FriEvalRef::new(1, 19, 1), FriEvalRef::new(1, 20, 1), FriEvalRef::new(1, 21, 1), FriEvalRef::new(1, 22, 1), FriEvalRef::new(1, 23, 1), FriEvalRef::new(1, 24, 1), FriEvalRef::new(1, 25, 1), FriEvalRef::new(1, 26, 1), FriEvalRef::new(1, 27, 1), FriEvalRef::new(1, 28, 1), FriEvalRef::new(1, 29, 1), FriEvalRef::new(1, 30, 1), FriEvalRef::new(1, 31, 1), FriEvalRef::new(1, 32, 1), FriEvalRef::new(1, 33, 1), FriEvalRef::new(1, 34, 1), FriEvalRef::new(1, 35, 1), FriEvalRef::new(1, 36, 1), FriEvalRef::new(1, 37, 1), FriEvalRef::new(1, 38, 1), FriEvalRef::new(1, 39, 1), FriEvalRef::new(1, 40, 1), FriEvalRef::new(1, 41, 1), FriEvalRef::new(1, 42, 1), FriEvalRef::new(1, 43, 1), FriEvalRef::new(1, 44, 1), FriEvalRef::new(1, 45, 1), FriEvalRef::new(1, 46, 1), FriEvalRef::new(1, 47, 1), FriEvalRef::new(2, 0, 3), FriEvalRef::new(2, 3, 3), FriEvalRef::new(2, 6, 3), FriEvalRef::new(2, 9, 3), FriEvalRef::new(3, 0, 3), FriEvalRef::new(3, 3, 3), FriEvalRef::new(3, 6, 3), FriEvalRef::new(3, 9, 3), FriEvalRef::new(3, 12, 3), FriEvalRef::new(3, 15, 3), FriEvalRef::new(3, 18, 3)] },
-            FriEvalGroup { opening: 3, refs: vec![FriEvalRef::new(0, 36, 1), FriEvalRef::new(0, 45, 1), FriEvalRef::new(1, 0, 1), FriEvalRef::new(1, 1, 1), FriEvalRef::new(1, 2, 1), FriEvalRef::new(1, 3, 1), FriEvalRef::new(1, 4, 1), FriEvalRef::new(1, 5, 1), FriEvalRef::new(1, 15, 1), FriEvalRef::new(1, 16, 1), FriEvalRef::new(1, 17, 1), FriEvalRef::new(1, 18, 1), FriEvalRef::new(1, 19, 1), FriEvalRef::new(1, 20, 1), FriEvalRef::new(1, 21, 1), FriEvalRef::new(1, 22, 1), FriEvalRef::new(1, 23, 1), FriEvalRef::new(1, 24, 1), FriEvalRef::new(1, 25, 1), FriEvalRef::new(1, 26, 1), FriEvalRef::new(1, 27, 1), FriEvalRef::new(1, 28, 1), FriEvalRef::new(1, 29, 1), FriEvalRef::new(1, 30, 1), FriEvalRef::new(1, 31, 1)] },
-            FriEvalGroup { opening: 4, refs: vec![FriEvalRef::new(1, 15, 1)] }
+            FriEvalGroup { opening: 0, refs: vec![FriEvalRef::new(0, 34, 1, 0), FriEvalRef::new(0, 35, 1, 1), FriEvalRef::new(0, 43, 1, 2)] },
+            FriEvalGroup { opening: 1, refs: vec![FriEvalRef::new(0, 34, 1, 0), FriEvalRef::new(0, 35, 1, 1), FriEvalRef::new(0, 43, 1, 2), FriEvalRef::new(2, 0, 3, 3)] },
+            FriEvalGroup { opening: 2, refs: vec![FriEvalRef::new(0, 0, 1, 4), FriEvalRef::new(0, 1, 1, 5), FriEvalRef::new(0, 2, 1, 6), FriEvalRef::new(0, 3, 1, 7), FriEvalRef::new(0, 4, 1, 8), FriEvalRef::new(0, 5, 1, 9), FriEvalRef::new(0, 6, 1, 10), FriEvalRef::new(0, 7, 1, 11), FriEvalRef::new(0, 8, 1, 12), FriEvalRef::new(0, 9, 1, 13), FriEvalRef::new(0, 10, 1, 14), FriEvalRef::new(0, 11, 1, 15), FriEvalRef::new(0, 12, 1, 16), FriEvalRef::new(0, 13, 1, 17), FriEvalRef::new(0, 14, 1, 18), FriEvalRef::new(0, 15, 1, 19), FriEvalRef::new(0, 16, 1, 20), FriEvalRef::new(0, 17, 1, 21), FriEvalRef::new(0, 18, 1, 22), FriEvalRef::new(0, 19, 1, 23), FriEvalRef::new(0, 20, 1, 24), FriEvalRef::new(0, 21, 1, 25), FriEvalRef::new(0, 22, 1, 26), FriEvalRef::new(0, 23, 1, 27), FriEvalRef::new(0, 24, 1, 28), FriEvalRef::new(0, 25, 1, 29), FriEvalRef::new(0, 26, 1, 30), FriEvalRef::new(0, 27, 1, 31), FriEvalRef::new(0, 28, 1, 32), FriEvalRef::new(0, 29, 1, 33), FriEvalRef::new(0, 30, 1, 34), FriEvalRef::new(0, 31, 1, 35), FriEvalRef::new(0, 32, 1, 36), FriEvalRef::new(0, 33, 1, 37), FriEvalRef::new(0, 34, 1, 0), FriEvalRef::new(0, 35, 1, 1), FriEvalRef::new(0, 36, 1, 38), FriEvalRef::new(0, 37, 1, 39), FriEvalRef::new(0, 38, 1, 40), FriEvalRef::new(0, 39, 1, 41), FriEvalRef::new(0, 40, 1, 42), FriEvalRef::new(0, 41, 1, 43), FriEvalRef::new(0, 42, 1, 44), FriEvalRef::new(0, 43, 1, 2), FriEvalRef::new(0, 44, 1, 45), FriEvalRef::new(0, 45, 1, 46), FriEvalRef::new(1, 0, 1, 47), FriEvalRef::new(1, 1, 1, 48), FriEvalRef::new(1, 2, 1, 49), FriEvalRef::new(1, 3, 1, 50), FriEvalRef::new(1, 4, 1, 51), FriEvalRef::new(1, 5, 1, 52), FriEvalRef::new(1, 6, 1, 53), FriEvalRef::new(1, 7, 1, 54), FriEvalRef::new(1, 8, 1, 55), FriEvalRef::new(1, 9, 1, 56), FriEvalRef::new(1, 10, 1, 57), FriEvalRef::new(1, 11, 1, 58), FriEvalRef::new(1, 12, 1, 59), FriEvalRef::new(1, 13, 1, 60), FriEvalRef::new(1, 14, 1, 61), FriEvalRef::new(1, 15, 1, 62), FriEvalRef::new(1, 16, 1, 63), FriEvalRef::new(1, 17, 1, 64), FriEvalRef::new(1, 18, 1, 65), FriEvalRef::new(1, 19, 1, 66), FriEvalRef::new(1, 20, 1, 67), FriEvalRef::new(1, 21, 1, 68), FriEvalRef::new(1, 22, 1, 69), FriEvalRef::new(1, 23, 1, 70), FriEvalRef::new(1, 24, 1, 71), FriEvalRef::new(1, 25, 1, 72), FriEvalRef::new(1, 26, 1, 73), FriEvalRef::new(1, 27, 1, 74), FriEvalRef::new(1, 28, 1, 75), FriEvalRef::new(1, 29, 1, 76), FriEvalRef::new(1, 30, 1, 77), FriEvalRef::new(1, 31, 1, 78), FriEvalRef::new(1, 32, 1, 79), FriEvalRef::new(1, 33, 1, 80), FriEvalRef::new(1, 34, 1, 81), FriEvalRef::new(1, 35, 1, 82), FriEvalRef::new(1, 36, 1, 83), FriEvalRef::new(1, 37, 1, 84), FriEvalRef::new(1, 38, 1, 85), FriEvalRef::new(1, 39, 1, 86), FriEvalRef::new(1, 40, 1, 87), FriEvalRef::new(1, 41, 1, 88), FriEvalRef::new(1, 42, 1, 89), FriEvalRef::new(1, 43, 1, 90), FriEvalRef::new(1, 44, 1, 91), FriEvalRef::new(1, 45, 1, 92), FriEvalRef::new(1, 46, 1, 93), FriEvalRef::new(1, 47, 1, 94), FriEvalRef::new(2, 0, 3, 3), FriEvalRef::new(2, 3, 3, 95), FriEvalRef::new(2, 6, 3, 96), FriEvalRef::new(2, 9, 3, 97), FriEvalRef::new(3, 0, 3, 98), FriEvalRef::new(3, 3, 3, 99), FriEvalRef::new(3, 6, 3, 100), FriEvalRef::new(3, 9, 3, 101), FriEvalRef::new(3, 12, 3, 102), FriEvalRef::new(3, 15, 3, 103), FriEvalRef::new(3, 18, 3, 104)] },
+            FriEvalGroup { opening: 3, refs: vec![FriEvalRef::new(0, 36, 1, 38), FriEvalRef::new(0, 45, 1, 46), FriEvalRef::new(1, 0, 1, 47), FriEvalRef::new(1, 1, 1, 48), FriEvalRef::new(1, 2, 1, 49), FriEvalRef::new(1, 3, 1, 50), FriEvalRef::new(1, 4, 1, 51), FriEvalRef::new(1, 5, 1, 52), FriEvalRef::new(1, 15, 1, 62), FriEvalRef::new(1, 16, 1, 63), FriEvalRef::new(1, 17, 1, 64), FriEvalRef::new(1, 18, 1, 65), FriEvalRef::new(1, 19, 1, 66), FriEvalRef::new(1, 20, 1, 67), FriEvalRef::new(1, 21, 1, 68), FriEvalRef::new(1, 22, 1, 69), FriEvalRef::new(1, 23, 1, 70), FriEvalRef::new(1, 24, 1, 71), FriEvalRef::new(1, 25, 1, 72), FriEvalRef::new(1, 26, 1, 73), FriEvalRef::new(1, 27, 1, 74), FriEvalRef::new(1, 28, 1, 75), FriEvalRef::new(1, 29, 1, 76), FriEvalRef::new(1, 30, 1, 77), FriEvalRef::new(1, 31, 1, 78)] },
+            FriEvalGroup { opening: 4, refs: vec![FriEvalRef::new(1, 15, 1, 62)] }
         ],
         q_deg: 7,
         q_index: 105,

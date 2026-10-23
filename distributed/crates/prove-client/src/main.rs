@@ -5,17 +5,19 @@
 #![warn(rustdoc::all)]
 #![deny(rustdoc::missing_crate_level_docs)]
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use tracing::info;
+use tracing::{error, info, warn};
+use zisk_common::{JobMetadataArgs, RandomSeed, RandomSeedArgs};
 use zisk_coordinator_api::dto::{
     deadline_from_now, DomainExecuteRequest, DomainInputChunk, DomainInputKind, DomainJobKind,
     DomainJobKindResponse, DomainProofKind, DomainProveRequest, DomainSetupRequest, TerminalStatus,
 };
-use zisk_coordinator_client::CoordinatorClient;
+use zisk_coordinator_client::{CoordinatorClient, Job};
 
 #[derive(Parser)]
 #[command(name = "zisk-prove-client", about = "Submit jobs to the ZisK coordinator")]
@@ -83,6 +85,12 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
+        #[command(flatten)]
+        random_seed: RandomSeedArgs,
+
+        #[command(flatten)]
+        metadata: JobMetadataArgs,
+
         /// Proof timeout in seconds (0 = no timeout)
         #[arg(long, default_value_t = 0)]
         timeout: u64,
@@ -105,6 +113,12 @@ enum Commands {
         /// Save the public outputs to this file
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        #[command(flatten)]
+        random_seed: RandomSeedArgs,
+
+        #[command(flatten)]
+        metadata: JobMetadataArgs,
 
         /// Execute timeout in seconds (0 = no timeout)
         #[arg(long, default_value_t = 0)]
@@ -150,6 +164,32 @@ fn register_elf(client: &CoordinatorClient, elf_path: &PathBuf) -> Result<(Strin
     Ok((hash_id, program_name))
 }
 
+/// Wait for `job` to end, and cancel it on Ctrl-C, or once `timeout` seconds (`0`:
+/// none) have passed: it would otherwise go on running after the client gave up.
+fn wait_or_cancel(job: &Job, timeout: u64) -> Result<TerminalStatus> {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(async {
+            let expired = async {
+                match timeout {
+                    0 => std::future::pending().await,
+                    secs => tokio::time::sleep(Duration::from_secs(secs)).await,
+                }
+            };
+            let why = tokio::select! {
+                status = job.wait_async(None) => return status,
+                _ = tokio::signal::ctrl_c() => "interrupted".to_string(),
+                () = expired => format!("timed out after {timeout}s"),
+            };
+            match job.cancel_async().await {
+                Ok(true) => warn!("Job {why}; cancelled it"),
+                Ok(false) => warn!("Job {why}; it had already ended"),
+                Err(e) => error!("Job {why}; cancelling it failed: {e}"),
+            }
+            anyhow::bail!("job {why}")
+        })
+    })
+}
+
 fn run_setup(
     client: &CoordinatorClient,
     hash_id: &str,
@@ -167,13 +207,20 @@ fn run_setup(
         emulator_only,
     }))?;
     info!("Setup job submitted. job_id = {}", job.job_id());
-    match job.wait(None)? {
+    match wait_or_cancel(&job, 0)? {
         TerminalStatus::Completed(_) => {
             info!("Setup completed successfully.");
             Ok(())
         }
         TerminalStatus::Failed(f) => anyhow::bail!("Setup job failed: {f:?}"),
         TerminalStatus::Cancelled => anyhow::bail!("Setup job was cancelled."),
+    }
+}
+
+/// Report the seed a job ran with, so it can be replayed with `--random-seed`.
+fn print_random_seed(seed: Option<RandomSeed>) {
+    if let Some(seed) = seed {
+        println!("Random seed: {seed}");
     }
 }
 
@@ -206,6 +253,7 @@ fn spawn_watch(job: &zisk_coordinator_client::Job) -> zisk_coordinator_client::W
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_prove(
     client: &CoordinatorClient,
     hash_id: &str,
@@ -213,6 +261,8 @@ fn run_prove(
     hints: Option<&PathBuf>,
     proof: &DomainProofKind,
     output: Option<&PathBuf>,
+    seed: Option<RandomSeed>,
+    metadata: BTreeMap<String, String>,
     timeout: u64,
 ) -> Result<()> {
     let input_kind = match input {
@@ -229,20 +279,25 @@ fn run_prove(
     let timeout_opt = (timeout != 0).then(|| deadline_from_now(Duration::from_secs(timeout)));
 
     info!("Submitting prove job (proof_dest = {proof:?}) …");
-    let job = client.submit_job(DomainJobKind::Prove(DomainProveRequest {
-        hash_id: hash_id.to_string(),
-        input: input_kind,
-        hints: hints_kind,
-        proof_dest: proof.clone(),
-        proof_timeout: timeout_opt,
-    }))?;
+    let job = client.submit_job_with_metadata(
+        DomainJobKind::Prove(DomainProveRequest {
+            hash_id: hash_id.to_string(),
+            input: input_kind,
+            hints: hints_kind,
+            random_seed: seed,
+            proof_dest: proof.clone(),
+            snark_protocol: None,
+            proof_timeout: timeout_opt,
+        }),
+        metadata,
+    )?;
     let job_id = job.job_id();
     info!("Prove job submitted. job_id = {job_id}");
 
     let _watch = spawn_watch(&job);
 
     info!("Waiting for proof …");
-    match job.wait(None)? {
+    match wait_or_cancel(&job, timeout)? {
         TerminalStatus::Completed(DomainJobKindResponse::Prove { proof: p, stats }) => {
             info!(
                 steps = stats.steps,
@@ -252,6 +307,7 @@ fn run_prove(
                 bytes = p.data.len(),
                 "Prove completed."
             );
+            print_random_seed(p.random_seed);
 
             let out_path =
                 output.cloned().unwrap_or_else(|| PathBuf::from(format!("{job_id}.proof.bin")));
@@ -277,12 +333,15 @@ fn run_prove(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_execute(
     client: &CoordinatorClient,
     hash_id: &str,
     input: Option<&PathBuf>,
     hints: Option<&PathBuf>,
     output: Option<&PathBuf>,
+    seed: Option<RandomSeed>,
+    metadata: BTreeMap<String, String>,
     timeout: u64,
 ) -> Result<()> {
     let input_kind = match input {
@@ -299,25 +358,34 @@ fn run_execute(
     let timeout_opt = (timeout != 0).then(|| deadline_from_now(Duration::from_secs(timeout)));
 
     info!("Submitting execute job …");
-    let job = client.submit_job(DomainJobKind::Execute(DomainExecuteRequest {
-        hash_id: hash_id.to_string(),
-        input: input_kind,
-        hints: hints_kind,
-        execute_timeout: timeout_opt,
-    }))?;
+    let job = client.submit_job_with_metadata(
+        DomainJobKind::Execute(DomainExecuteRequest {
+            hash_id: hash_id.to_string(),
+            input: input_kind,
+            hints: hints_kind,
+            random_seed: seed,
+            execute_timeout: timeout_opt,
+        }),
+        metadata,
+    )?;
     let job_id = job.job_id();
     info!("Execute job submitted. job_id = {job_id}");
 
     let _watch = spawn_watch(&job);
 
     info!("Waiting for execution …");
-    match job.wait(None)? {
-        TerminalStatus::Completed(DomainJobKindResponse::Execute { stats, public_outputs }) => {
+    match wait_or_cancel(&job, timeout)? {
+        TerminalStatus::Completed(DomainJobKindResponse::Execute {
+            stats,
+            public_outputs,
+            random_seed: seed,
+        }) => {
             info!(
                 steps = stats.steps,
                 duration_ms = stats.duration_nanos / 1_000_000,
                 "Execute completed."
             );
+            print_random_seed(seed);
 
             if !public_outputs.is_empty() {
                 let out_path = output
@@ -365,7 +433,16 @@ async fn main() -> Result<()> {
             println!("Setup completed for Hash ID: {hash_id}");
         }
 
-        Commands::Prove { hash_id, input, hints, proof, output, timeout } => {
+        Commands::Prove {
+            hash_id,
+            input,
+            hints,
+            proof,
+            output,
+            random_seed: seed,
+            metadata,
+            timeout,
+        } => {
             run_prove(
                 &client,
                 hash_id,
@@ -373,17 +450,29 @@ async fn main() -> Result<()> {
                 hints.as_ref(),
                 proof,
                 output.as_ref(),
+                seed.provided(),
+                metadata.to_map(),
                 *timeout,
             )?;
         }
 
-        Commands::Execute { hash_id, input, hints, output, timeout } => {
+        Commands::Execute {
+            hash_id,
+            input,
+            hints,
+            output,
+            random_seed: seed,
+            metadata,
+            timeout,
+        } => {
             run_execute(
                 &client,
                 hash_id,
                 input.as_ref(),
                 hints.as_ref(),
                 output.as_ref(),
+                seed.provided(),
+                metadata.to_map(),
                 *timeout,
             )?;
         }

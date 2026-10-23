@@ -3,7 +3,7 @@
 //! The `Mem` airtemplate packs `lanes_x_row` independent memory lanes on every
 //! trace row (see `lanes_x_row` in `state-machines/mem/pil/mem.pil`). Each lane
 //! carries the full set of columns that used to belong to a row — `addr`,
-//! `step`, `sel`, `addr_changes`, `value`, `wr`, the increments and, with
+//! `step`, `addr_changes` (plus `sel` in the immutable memories), `value`, `wr`, the increments and, with
 //! `dual_mem`, its own `step_dual`/`sel_dual` — and the lane at index `l > 0`
 //! chains from lane `l - 1` of the same row, while lane `0` chains from the last
 //! lane of the previous row.
@@ -72,6 +72,23 @@ pub fn input_data_lanes_x_row() -> usize {
 /// `lanes_x_row` of the `RomData` air, read from the generated trace row.
 pub fn rom_data_lanes_x_row() -> usize {
     RomDataTraceRow::<Goldilocks>::default().get_all_addr().len()
+}
+
+/// Rows of a MemAlign air (the seven of the family), `None` for any other air.
+pub fn mem_align_air_rows(air_id: usize) -> Option<usize> {
+    use zisk_pil::*;
+    [
+        (MemAlignTrace::<()>::AIR_ID, MemAlignTrace::<()>::NUM_ROWS),
+        (MemAlignLargeTrace::<()>::AIR_ID, MemAlignLargeTrace::<()>::NUM_ROWS),
+        (MemAlignByteTrace::<()>::AIR_ID, MemAlignByteTrace::<()>::NUM_ROWS),
+        (MemAlignByteLargeTrace::<()>::AIR_ID, MemAlignByteLargeTrace::<()>::NUM_ROWS),
+        (MemAlignReadByteTrace::<()>::AIR_ID, MemAlignReadByteTrace::<()>::NUM_ROWS),
+        (MemAlignReadByteLargeTrace::<()>::AIR_ID, MemAlignReadByteLargeTrace::<()>::NUM_ROWS),
+        (MemAlignWriteByteTrace::<()>::AIR_ID, MemAlignWriteByteTrace::<()>::NUM_ROWS),
+    ]
+    .into_iter()
+    .find(|(a, _)| *a == air_id)
+    .map(|(_, n)| n)
 }
 
 #[cfg(test)]

@@ -5,10 +5,10 @@
 ; k1*P1 + k2*phi-adjusted with k1,k2 < 2^128 (glv_decompose, already verified),
 ; halving the doublings via an interleaved Strauss-Shamir loop.
 ;
-; glv_double_scalar_mul_with_g computes k1*G + k2*p as
-; glv_scalar_mul(k1,G) + glv_scalar_mul(k2,p) (each ~128 doublings) -- a 2x
-; speedup over the plain double_scalar_mul. The full 4-way interleave (ziskos'
-; 11-precompute Strauss-Shamir, ~4x) is a further optimization left for later.
+; secp_glv_dsm_general computes k1*G + k2*p over one shared ladder with two
+; 2-bit pair tables (up to two additions per bit). It is the general case of
+; zisklib_glv_double_scalar_mul_with_g_secp256k1 (glv4.zisk, one 16-entry
+; table), used when that table is degenerate.
 ;
 ; Internal labels: `gsm_` (glv_scalar_mul), `gd_` (glv_double).
 ; ============================================================================
@@ -21,7 +21,6 @@ u64 SECP_GLV_P2[8]     = 0, 0, 0, 0, 0, 0, 0, 0
 u64 SECP_GLV_T[8]      = 0, 0, 0, 0, 0, 0, 0, 0
 u64 SECP_GLV_TINF[1]   = 0
 u64 SECP_GLV_RES[8]    = 0, 0, 0, 0, 0, 0, 0, 0
-u64 SECP_GLV_HDR[2]    = 0, 0
 u64 SECP_GLV_PPTR[1]   = 0
 u64 SECP_GLV_RESPTR[1] = 0
 u64 SECP_GLV_PTPTR[1]  = 0
@@ -224,13 +223,10 @@ gsm_yn:
 	sub(r7, 1) -> r7
 	jump(gsm_yl)
 gsm_doadd:
-	copyb(0, SECP_GLV_HDR) -> r5
-	copyb(0, SECP_GLV_RES) -> r6
-	copyb(r5, r6) -> 8[a + 0]          ; &res
+	copyb(0, SECP_GLV_RES) -> r5
 	copyb(0, SECP_GLV_PTPTR) -> r6
 	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 8]          ; &pt
-	secp256k1_add(0, r5)
+	secp256k1_add(r5, r6)
 	jump(gsm_next)
 gsm_dodbl:
 	copyb(0, SECP_GLV_RES) -> r5
@@ -274,7 +270,6 @@ u64 SECP_D4_PPAIR[34] = 0
 u64 SECP_D4_RES[8]    = 0
 u64 SECP_D4_RESPTR[1] = 0
 u64 SECP_D4_PTPTR[1]  = 0
-u64 SECP_D4_HDR[2]    = 0
 u64 SECP_D4_SAVE[2]   = 0
 u64 SECP_PB_BASE[1]   = 0
 u64 SECP_PB_REGION[1] = 0
@@ -455,23 +450,22 @@ sa_yn:
 	sub(r7, 1) -> r7
 	jump(sa_yl)
 sa_doadd:
-	copyb(0, SECP_D4_HDR) -> r5
-	copyb(0, SECP_D4_RES) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, SECP_D4_RES) -> r5
 	copyb(0, SECP_D4_PTPTR) -> r6
 	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	secp256k1_add(0, r5)
+	secp256k1_add(r5, r6)
 	ret
 sa_dodbl:
 	copyb(0, SECP_D4_RES) -> r5
 	secp256k1_dbl(0, r5)
 	ret
 
-; u64 zisklib_glv_double_scalar_mul_with_g_secp256k1(k1, k2, p, result)
+; u64 secp_glv_dsm_general(k1, k2, p, result)
 ;   [r10=k1, r11=k2, r12=p, r13=result] -> r10 = 1 if k1*G + k2*p is infinity.
-;   4-way GLV interleave: ONE shared doubling ladder over both scalars (~128 dbl).
-zisklib_glv_double_scalar_mul_with_g_secp256k1:
+;   One shared doubling ladder over both scalars (~128 dbl), two pair tables.
+;   The general case of zisklib_glv_double_scalar_mul_with_g_secp256k1
+;   (glv4.zisk), which runs it when its 16-entry table is degenerate.
+secp_glv_dsm_general:
 	push r1
 	copyb(0, SECP_D4_RESPTR) -> r5
 	copyb(r5, r13) -> 8[a + 0]

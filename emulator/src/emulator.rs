@@ -9,7 +9,7 @@
 //!      \
 //!       process_elf_file()
 //!        \
-//!         - Riscv2zisk::run()
+//!         - ZiskTranspiler::run()
 //!         - process_rom()
 //!            \
 //!             Emu::run()
@@ -26,7 +26,7 @@ use std::{
 use sysinfo::System;
 use zisk_common::{DataBusTrait, EmuTrace};
 use zisk_core::ZiskRom;
-use zisk_transpiler_riscv::Riscv2zisk;
+use zisk_transpiler_common::ZiskTranspiler;
 
 pub trait Emulator {
     fn emulate(
@@ -79,13 +79,12 @@ impl ZiskEmulator {
         let elf = fs::read(&elf_filename)
             .map_err(|e| ZiskEmulatorErr::Unknown(format!("Error reading ELF file: {e}")))?;
 
-        // Create an instance of the RISC-V -> ZisK program transpiler (Riscv2zisk) with the ELF
-        // file name
-        let zisk_transpiler_riscv = Riscv2zisk::new(&elf);
+        // Create an instance of the guest -> ZisK program transpiler (ZiskTranspiler) with the ELF
+        // file contents
+        let transpiler = ZiskTranspiler::new(&elf);
 
         // Convert the ELF file to ZisK ROM calling the transpiler run() method
-        let zisk_rom =
-            zisk_transpiler_riscv.run().map_err(|err| ZiskEmulatorErr::Unknown(err.to_string()))?;
+        let zisk_rom = transpiler.run().map_err(|err| ZiskEmulatorErr::Unknown(err.to_string()))?;
 
         // Process the Zisk rom with the provided inputs, according to the configured options
         Self::process_rom(&zisk_rom, inputs, options, callback)
@@ -131,6 +130,11 @@ impl ZiskEmulator {
         // of the program
         if !emu.terminated() {
             return Err(ZiskEmulatorErr::EmulationNoCompleted);
+        }
+
+        // A failed execution has no valid result
+        if let Some((reason, step, pc)) = emu.failure() {
+            return Err(ZiskEmulatorErr::ExecutionFailed { reason, step, pc });
         }
 
         // Store the duration of the emulation process as a difference vs. the start time
@@ -210,6 +214,10 @@ impl ZiskEmulator {
                     let trace = emu.par_run(inputs.to_owned(), options, &par_emu_options);
                     if !emu.terminated() {
                         return Err(ZiskEmulatorErr::EmulationNoCompleted);
+                    }
+                    // A failed execution must never be proven
+                    if let Some((reason, step, pc)) = emu.failure() {
+                        return Err(ZiskEmulatorErr::ExecutionFailed { reason, step, pc });
                     }
                     Ok(trace)
                 }))
@@ -391,25 +399,17 @@ impl Emulator for ZiskEmulator {
             // Call process_rom_file()
             Self::process_rom_file(rom_filename, &inputs, options, callback)
         }
-        // If a ZisK assembly path is provided, assemble it into a ROM and run it
-        // (requires the `ziskasm` feature; without it, `-z` is rejected).
+        // If a ZisK assembly path is provided, assemble it into a ROM and run it.
         else if options.zisk.is_some() {
-            #[cfg(not(feature = "ziskasm"))]
-            return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
-                "ZisK assembly (-z) requires building ziskemu with the `ziskasm` feature",
-            )));
-            #[cfg(feature = "ziskasm")]
-            {
-                let zisk_path = options.zisk.clone().unwrap();
-                let files = ziskasm::collect_zisk_files(&zisk_path)
-                    .map_err(|msg| ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(msg)))?;
-                let rom = ziskasm::assemble_files(&files).map_err(|e| {
-                    ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(format!(
-                        "Could not assemble ZisK assembly at '{zisk_path}': {e}"
-                    )))
-                })?;
-                Self::process_rom(&rom, &inputs, options, callback)
-            }
+            let zisk_path = options.zisk.clone().unwrap();
+            let files = ziskasm::collect_zisk_files(&zisk_path)
+                .map_err(|msg| ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(msg)))?;
+            let rom = ziskasm::assemble_files(&files).map_err(|e| {
+                ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(format!(
+                    "Could not assemble ZisK assembly at '{zisk_path}': {e}"
+                )))
+            })?;
+            Self::process_rom(&rom, &inputs, options, callback)
         }
         // Process the ELF file
         else {
