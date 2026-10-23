@@ -28,4 +28,7 @@ import Equiv.RiscvStepGen
 import Equiv.RiscvDecodeCtl
 import Equiv.ZiskCtl
 import Equiv.BranchSim
+import Equiv.RiscvJump
+import Equiv.ZiskJump
+import Equiv.JumpSim
 import Equiv.Prog

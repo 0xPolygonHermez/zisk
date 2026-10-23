@@ -3,10 +3,10 @@
   sail-riscv's main loop and n steps of ZisK from related states end in
   related states, when at each step the instruction at the pc sail-riscv has
   reached is one of those proved (register, immediate, shift, load, store,
-  branch) and good to run there. A branch's target is wherever its
+  branch, lui, auipc, jal, jalr) and good to run there. A branch's target is wherever its
   condition, in that state, sends it; so loops are runs too.
 -/
-import Equiv.BranchSim
+import Equiv.JumpSim
 
 namespace Equiv.Sim
 
@@ -17,12 +17,19 @@ open LeanZiskRV LeanZiskRV.Functions Sail Sail.ArchSem
 inductive Instr2 where
   | op (o : Op)
   | br (i : BInstr)
+  | u (i : UInstr)
+  | j (i : JInstr)
+  | jr (i : JrInstr)
 
 /-- What instruction `o` needs to run at pc in state s. -/
 def StepOk2 (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) : Instr2 → Prop
   | .op o => StepOk s rs pc zrom o
   | .br i => BAt s rs pc zrom i
+  | .u i => UAt s rs pc zrom i
+  | .j i => JAt s rs pc zrom i
+  | .jr i => JrAt s rs pc zrom i ∧
+      ∃ v1, getX s i.rs1.toNat = some v1 ∧ (jalrTarget v1 i.imm)[0] = false ∧ (jalrTarget v1 i.imm)[1] = false
 
 /-- For each of the next k steps, from the state sail-riscv reaches, the
     instruction at its pc is one proved and good to run. -/
@@ -49,6 +56,15 @@ theorem step_rel2 (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     obtain ⟨xs, -, agree⟩ := hrel.regs
     obtain ⟨s', z', h1, h2, h3, -⟩ := brstep_rel s z rs hrel pc hpc zrom i hi _ _
       (agree i.rs1.toNat (by omega) l1) (agree i.rs2.toNat (by omega) l2) n
+    exact ⟨s', z', h1, h2, h3⟩
+  | .u i, hi =>
+    obtain ⟨s', z', h1, h2, h3, -⟩ := ustep_rel s z rs hrel pc hpc zrom i hi n
+    exact ⟨s', z', h1, h2, h3⟩
+  | .j i, hi =>
+    obtain ⟨s', z', h1, h2, h3, -⟩ := jstep_rel s z rs hrel pc hpc zrom i hi n
+    exact ⟨s', z', h1, h2, h3⟩
+  | .jr i, ⟨hi, v1, hv1, t0, t1⟩ =>
+    obtain ⟨s', z', h1, h2, h3, -⟩ := jrstep_rel s z rs hrel pc hpc zrom i hi v1 hv1 ⟨t0, t1⟩ n
     exact ⟨s', z', h1, h2, h3⟩
 
 /-- The simulation over k steps: from related states, when each step's
