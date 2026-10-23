@@ -77,7 +77,9 @@ pub trait BackendService: Send + Sync + 'static {
 
     /// Prometheus text read from the backend's state when `/metrics` is scraped, appended to
     /// the recorder's output. Called before the recorder renders, so it can set gauges first.
-    async fn render_metrics(&self) -> String {
+    /// `take` says whether the scrape takes the timestamped series' next samples (see
+    /// `crate::metrics`).
+    async fn render_metrics(&self, _take: bool) -> String {
         String::new()
     }
 }
