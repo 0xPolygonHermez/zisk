@@ -2657,6 +2657,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ));
         }
 
+        // Written here first: a chunk that does not fit the input region fails on this rank
+        // alone. Broadcast first, the peer ranks would fail on it too and exit, taking the
+        // whole worker down.
+        self.worker.append_raw_input(&input_data.payload)?;
+
         // gRPC `InputStreamData` only reaches rank 0. Mirror it to peer ranks
         // via MPI so their ASM children get the same bytes — without this
         // they wait on `chunk_done` until the semaphore times out (~10 s) and
@@ -2679,8 +2684,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             .map_err(|e| anyhow!("Failed to serialize input stream broadcast: {e}"))?;
             self.worker.prover_arc().mpi_broadcast(&mut serialized)?;
         }
-
-        self.worker.append_raw_input(&input_data.payload)
+        Ok(())
     }
 
     async fn handle_wrap_task(
