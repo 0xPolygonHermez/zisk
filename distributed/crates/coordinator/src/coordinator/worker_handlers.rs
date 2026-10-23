@@ -68,10 +68,25 @@ impl Coordinator {
         // lingering pending_recovery entry is stale (WRC will never arrive).
         // A failure proves the opposite — no artifacts for this program — so the
         // worker goes back to `Idle` (out of dispatch, still back-fillable) and
-        // keeps any pending_recovery entry.
+        // keeps any pending_recovery entry. A refused cached-only setup changed
+        // nothing on the worker, so one that was `Ready` stays so.
         let worker_id = ack.worker_id.clone();
+        let ready_before = ack.not_cached
+            && self
+                .setup_pending
+                .read()
+                .await
+                .get(&job_id)
+                .is_some_and(|state| state.ready_before.contains(&worker_id));
         if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp) {
-            if ack.success {
+            if ready_before {
+                let _ =
+                    self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
+                info!(
+                    "[Setup] Worker {} has no cached setup of {}; back to Ready",
+                    ack.worker_id, ack.hash_id
+                );
+            } else if ack.success {
                 if self.pending_recovery.write().await.remove(&worker_id).is_some() {
                     warn!(
                         "[Recovery] Dropped stale pending_recovery for {} on SetupProgramAck",

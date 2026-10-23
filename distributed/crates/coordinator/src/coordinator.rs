@@ -31,6 +31,7 @@
 //! - **Simulation Support**: Supporting simulated execution modes for testing and development
 
 pub(crate) mod aggregate;
+mod autosetup;
 pub(crate) mod contributions;
 pub(crate) mod prove;
 mod telemetry;
@@ -71,6 +72,9 @@ struct SetupPendingState {
     program_name: String,
     with_hints: bool,
     emulator_only: bool,
+    /// Workers that were `Ready` when the setup reserved them: one that refuses a cached-only
+    /// setup goes back to `Ready`, since it changed nothing.
+    ready_before: HashSet<WorkerId>,
 }
 
 /// Per-program record for setups already applied to the cluster.
@@ -173,6 +177,9 @@ pub struct Coordinator {
     /// VK is retained so a follow-up `setup_program` call for an already-set-up
     /// program returns success immediately without re-broadcasting.
     pub(crate) active_setups: RwLock<HashMap<SetupKey, ActiveSetup>>,
+    /// Setups of registered programs that jobs started again after a restart, one per program
+    /// and mode while it runs; see [`Self::ensure_set_up`].
+    autosetups: tokio::sync::Mutex<HashMap<SetupKey, autosetup::Autosetup>>,
 
     /// Registered recurser specs, keyed by `recurser_id`. In-memory
     /// only; coordinator restart loses the map and clients must re-register.
@@ -318,6 +325,7 @@ impl Coordinator {
             job_events: RwLock::new(HashMap::new()),
             setup_pending: RwLock::new(HashMap::new()),
             active_setups: RwLock::new(HashMap::new()),
+            autosetups: tokio::sync::Mutex::new(HashMap::new()),
             aggregation_program_specs: RwLock::new(HashMap::new()),
             recurser_setup_pending: RwLock::new(HashMap::new()),
             active_recurser_setups: RwLock::new(HashSet::new()),
@@ -523,6 +531,19 @@ impl Coordinator {
         with_hints: bool,
         emulator_only: bool,
     ) -> CoordinatorResult<JobId> {
+        self.setup_program_with(hash_id, program_name, with_hints, emulator_only, false).await
+    }
+
+    /// [`Self::setup_program`]; `cached_only` asks the workers to set the program up only from
+    /// what their caches hold for the proving key they run, and to refuse it otherwise.
+    pub(crate) async fn setup_program_with(
+        &self,
+        hash_id: &str,
+        program_name: String,
+        with_hints: bool,
+        emulator_only: bool,
+        cached_only: bool,
+    ) -> CoordinatorResult<JobId> {
         let job_id = JobId::new();
 
         // Idempotent fast-path: this exact program is already set up.
@@ -572,6 +593,13 @@ impl Coordinator {
         self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
 
         // Track which workers must ACK before the setup is considered complete.
+        let ready_before = reserved
+            .iter()
+            .filter(|(_, left)| *left == WorkerState::Ready)
+            .map(|(worker_id, _)| worker_id.clone())
+            .collect();
+        let reserved: Vec<WorkerId> =
+            reserved.into_iter().map(|(worker_id, _)| worker_id).collect();
         let pending: HashSet<WorkerId> = reserved.iter().cloned().collect();
         self.setup_pending.write().await.insert(
             job_id.clone(),
@@ -582,6 +610,7 @@ impl Coordinator {
                 program_name: program_name.clone(),
                 with_hints,
                 emulator_only,
+                ready_before,
             },
         );
 
@@ -593,7 +622,7 @@ impl Coordinator {
                 program_name: program_name.clone(),
                 with_hints,
                 emulator_only,
-                cached_only: false,
+                cached_only,
             });
             self.note_setup_sent(worker_id, hash_id).await;
             if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
@@ -896,6 +925,7 @@ impl Coordinator {
                 program_name: program_name.to_string(),
                 with_hints: key.with_hints,
                 emulator_only: key.emulator_only,
+                ready_before: HashSet::new(),
             },
         );
 
@@ -1009,10 +1039,10 @@ impl Coordinator {
     ) -> CoordinatorResult<LaunchProofResponseDto> {
         let seed = self.resolve_random_seed(request.random_seed)?;
         let metadata = self.admit_job_metadata(request.metadata.clone())?;
-        // A worker holds only the programs set up on it: sent any other, it fails the task.
-        if !self.is_set_up(&request.hash_id).await {
-            return Err(CoordinatorError::ProgramNotSetup(request.hash_id.clone()));
-        }
+        // A worker holds only the programs set up on it: sent any other, it fails the task. A
+        // registered program that is not set up since the coordinator started is set up again.
+        let with_hints = !matches!(request.hints_mode, HintsModeDto::HintsNone);
+        self.ensure_set_up(&request.hash_id, with_hints).await?;
         // The worker that aggregates wraps the SNARK, so one the workers cannot prove fails here.
         if request.proof_type == ProofKind::Plonk {
             self.ensure_snark_available(request.snark_protocol).await?;
@@ -1124,10 +1154,14 @@ impl Coordinator {
         Ok(LaunchProofResponseDto { job_id })
     }
 
-    /// Whether `hash_id` is set up on the workers, in any mode: what a worker checks before it
-    /// runs one of its tasks.
-    async fn is_set_up(&self, hash_id: &str) -> bool {
-        self.active_setups.read().await.keys().any(|key| key.hash_id == hash_id)
+    /// Whether `hash_id` is set up on the workers in the hints mode a job takes, for proving or
+    /// emulation only: what a worker looks for before it runs one of its tasks.
+    async fn is_set_up(&self, hash_id: &str, with_hints: bool) -> bool {
+        self.active_setups
+            .read()
+            .await
+            .keys()
+            .any(|key| key.hash_id == hash_id && key.with_hints == with_hints)
     }
 
     /// Resolve the compute capacity for an incoming job request.
@@ -2967,6 +3001,7 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
+                ready_before: HashSet::new(),
             },
         );
 
@@ -4085,6 +4120,7 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
+                ready_before: HashSet::new(),
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
@@ -4164,6 +4200,7 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
+                ready_before: HashSet::new(),
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
@@ -4300,6 +4337,7 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
+                ready_before: HashSet::new(),
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
@@ -4487,6 +4525,7 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
+                ready_before: HashSet::new(),
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
@@ -5488,9 +5527,10 @@ mod tests {
         assert!(coordinator.jobs.read().await.is_empty());
     }
 
-    /// A worker has only the programs set up on it; a job for any other would fail on it.
+    /// A worker has only the programs set up on it; a job for a program that was never
+    /// registered is refused, before any worker is reserved.
     #[tokio::test]
-    async fn launch_proof_refuses_a_program_that_is_not_set_up_before_reserving_workers() {
+    async fn launch_proof_refuses_an_unregistered_program_before_reserving_workers() {
         let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
         add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
         coordinator.active_setups.write().await.insert(
@@ -5500,10 +5540,220 @@ mod tests {
 
         let result = coordinator.launch_proof(capacity_request(None, None)).await;
 
-        assert!(matches!(result, Err(CoordinatorError::ProgramNotSetup(ref h)) if h == "hash"));
+        assert!(matches!(result, Err(CoordinatorError::ProgramNotFound(ref h)) if h == "hash"));
         let w0 = WorkerId::from("w0".to_string());
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
         assert!(coordinator.jobs.read().await.is_empty());
+    }
+
+    /// A worker of `coordinator` in `state`, and the messages it is sent.
+    async fn add_worker_with_messages(
+        coordinator: &Coordinator,
+        id: &str,
+        state: WorkerState,
+    ) -> (WorkerId, Arc<std::sync::Mutex<Vec<CoordinatorMessageDto>>>) {
+        let worker_id = WorkerId::from(id.to_string());
+        let (sender, messages) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(worker_id.clone(), 1, Box::new(sender), state)
+            .await
+            .unwrap();
+        (worker_id, messages)
+    }
+
+    /// The setup `messages` hold, as `(job_id, hash_id, with_hints, emulator_only, cached_only)`.
+    fn setups_sent(
+        messages: &std::sync::Mutex<Vec<CoordinatorMessageDto>>,
+    ) -> Vec<(String, String, bool, bool, bool)> {
+        messages
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|msg| match msg {
+                CoordinatorMessageDto::SetupProgram(dto) => Some((
+                    dto.job_id.clone(),
+                    dto.hash_id.clone(),
+                    dto.with_hints,
+                    dto.emulator_only,
+                    dto.cached_only,
+                )),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Waits for `messages` to hold a setup, and returns its job id.
+    async fn setup_job_sent(messages: &std::sync::Mutex<Vec<CoordinatorMessageDto>>) -> String {
+        for _ in 0..500 {
+            if let Some((job_id, ..)) = setups_sent(messages).into_iter().next() {
+                return job_id;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        panic!("no SetupProgram was sent");
+    }
+
+    /// `worker`'s answer to the setup `job_id` of `hash_id`: set up with a VK, or no cached setup.
+    fn setup_answer(
+        job_id: &str,
+        worker: &WorkerId,
+        hash_id: &str,
+        set_up: bool,
+    ) -> zisk_cluster_common::SetupProgramAckDto {
+        zisk_cluster_common::SetupProgramAckDto {
+            job_id: job_id.to_string(),
+            worker_id: worker.clone(),
+            hash_id: hash_id.to_string(),
+            success: set_up,
+            error_message: (!set_up).then(|| "not in the cache".to_string()),
+            vk: if set_up { vec![1, 2, 3] } else { Vec::new() },
+            hash_mode: if set_up { "Poseidon1".into() } else { String::new() },
+            not_cached: !set_up,
+        }
+    }
+
+    /// A job for `hash_id`, set up without hints, on one worker.
+    fn job_for(hash_id: &str) -> LaunchProofRequestDto {
+        LaunchProofRequestDto { hash_id: hash_id.to_string(), ..capacity_request(Some(1), Some(1)) }
+    }
+
+    /// After a restart the coordinator has its ELFs but no setups: a job for a registered
+    /// program sets it up again, from the workers' caches only, and then runs.
+    #[tokio::test]
+    async fn launch_proof_sets_a_registered_program_up_again_from_the_workers_caches() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
+        let hash_id = coordinator.register_guest_program(b"autosetup-runs-elf".to_vec()).unwrap();
+        let (w0, messages) = add_worker_with_messages(&coordinator, "w0", WorkerState::Idle).await;
+
+        let launch = tokio::spawn({
+            let coordinator = Arc::clone(&coordinator);
+            let request = job_for(&hash_id);
+            async move { coordinator.launch_proof(request).await }
+        });
+        let setup_job = setup_job_sent(&messages).await;
+        assert_eq!(
+            setups_sent(&messages),
+            vec![(setup_job.clone(), hash_id.clone(), false, false, true)]
+        );
+        coordinator
+            .handle_stream_setup_program_ack(setup_answer(&setup_job, &w0, &hash_id, true))
+            .await
+            .unwrap();
+
+        let launched = launch.await.unwrap().expect("the job runs once its program is set up");
+        assert!(coordinator.jobs.read().await.contains_key(&launched.job_id));
+        assert!(matches!(
+            coordinator.workers_pool.worker_state(&w0).await,
+            Some(WorkerState::Computing(_))
+        ));
+        assert!(coordinator.active_setups.read().await.contains_key(&SetupKey::new(
+            hash_id.clone(),
+            false,
+            false
+        )));
+        assert!(coordinator.autosetups.lock().await.is_empty(), "nothing is left in flight");
+    }
+
+    /// A worker without the program's setup for its proving key in its cache (a new key, an
+    /// emptied cache) refuses it: the job is refused as not set up, and the worker, which changed
+    /// nothing, keeps serving the programs it had.
+    #[tokio::test]
+    async fn launch_proof_refuses_a_program_no_worker_has_cached_and_leaves_the_workers_ready() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
+        let hash_id =
+            coordinator.register_guest_program(b"autosetup-uncached-elf".to_vec()).unwrap();
+        coordinator.active_setups.write().await.insert(
+            SetupKey::new("another-program".to_string(), false, false),
+            ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() },
+        );
+        let (w0, messages) = add_worker_with_messages(&coordinator, "w0", WorkerState::Ready).await;
+
+        let launch = tokio::spawn({
+            let coordinator = Arc::clone(&coordinator);
+            let request = job_for(&hash_id);
+            async move { coordinator.launch_proof(request).await }
+        });
+        let setup_job = setup_job_sent(&messages).await;
+        coordinator
+            .handle_stream_setup_program_ack(setup_answer(&setup_job, &w0, &hash_id, false))
+            .await
+            .unwrap();
+
+        let result = launch.await.unwrap();
+        assert!(matches!(result, Err(CoordinatorError::ProgramNotSetup(ref h)) if *h == hash_id));
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(coordinator.jobs.read().await.is_empty());
+        assert_eq!(coordinator.active_setups.read().await.len(), 1);
+    }
+
+    /// Jobs for the same program arriving together share one autosetup.
+    #[tokio::test]
+    async fn concurrent_jobs_for_a_program_share_one_autosetup() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
+        let hash_id = coordinator.register_guest_program(b"autosetup-shared-elf".to_vec()).unwrap();
+        let (w0, m0) = add_worker_with_messages(&coordinator, "w0", WorkerState::Idle).await;
+        let (w1, m1) = add_worker_with_messages(&coordinator, "w1", WorkerState::Idle).await;
+
+        let launches: Vec<_> = (0..2)
+            .map(|_| {
+                let coordinator = Arc::clone(&coordinator);
+                let request = job_for(&hash_id);
+                tokio::spawn(async move { coordinator.launch_proof(request).await })
+            })
+            .collect();
+        let setup_job = setup_job_sent(&m0).await;
+        // Both jobs are waiting by now: give the second one time to start a setup of its own.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        for worker in [&w0, &w1] {
+            coordinator
+                .handle_stream_setup_program_ack(setup_answer(&setup_job, worker, &hash_id, true))
+                .await
+                .unwrap();
+        }
+
+        for launch in launches {
+            launch.await.unwrap().expect("both jobs run");
+        }
+        assert_eq!(setups_sent(&m0).len(), 1, "one setup for both jobs");
+        assert_eq!(setups_sent(&m1).len(), 1, "one setup for both jobs");
+        assert_eq!(coordinator.jobs.read().await.len(), 2);
+    }
+
+    /// Setup cannot overlap a running job, so an autosetup waits for the workers to finish theirs.
+    #[tokio::test]
+    async fn an_autosetup_waits_for_workers_that_are_computing() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
+        let hash_id = coordinator.register_guest_program(b"autosetup-busy-elf".to_vec()).unwrap();
+        let (w0, messages) = add_worker_with_messages(&coordinator, "w0", WorkerState::Idle).await;
+        let (busy, _) = add_worker_with_messages(&coordinator, "busy", WorkerState::Idle).await;
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(
+                &busy,
+                WorkerState::Computing((JobId::new(), JobPhase::Contributions)),
+            )
+            .await
+            .unwrap();
+
+        let launch = tokio::spawn({
+            let coordinator = Arc::clone(&coordinator);
+            let request = job_for(&hash_id);
+            async move { coordinator.launch_proof(request).await }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+        assert!(setups_sent(&messages).is_empty(), "no setup while a worker computes");
+        assert!(!launch.is_finished(), "the job waits instead of failing");
+
+        coordinator.workers_pool.mark_worker_with_state(&busy, WorkerState::Ready).await.unwrap();
+        let setup_job = setup_job_sent(&messages).await;
+        for worker in [&w0, &busy] {
+            coordinator
+                .handle_stream_setup_program_ack(setup_answer(&setup_job, worker, &hash_id, true))
+                .await
+                .unwrap();
+        }
+        launch.await.unwrap().expect("the job runs once the workers are free");
     }
 
     // --- SNARK protocol -------------------------------------------------------
