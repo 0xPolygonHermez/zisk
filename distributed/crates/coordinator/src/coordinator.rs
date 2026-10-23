@@ -739,6 +739,7 @@ impl Coordinator {
     /// Sends a `RunAggregateProofs` task to a single idle worker. Mirrors
     /// `launch_wrap`: the job lives in `self.jobs` so worker-disconnect machinery
     /// fails it automatically if the worker dies mid-prove.
+    #[allow(clippy::too_many_arguments)]
     pub async fn launch_aggregate_proofs(
         &self,
         recurser_id: String,
@@ -747,7 +748,9 @@ impl Coordinator {
         free_inputs_a: Vec<u64>,
         free_inputs_b: Vec<u64>,
         root_c_recurser_agg: Option<[u64; 4]>,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
+        let metadata = self.admit_job_metadata(metadata)?;
         if !self.aggregation_program_specs.read().await.contains_key(&recurser_id) {
             return Err(CoordinatorError::InvalidRequest(format!(
                 "recurser_id '{recurser_id}' is not registered; call register + setup first"
@@ -773,7 +776,7 @@ impl Coordinator {
             vec![worker_id.clone()],
             Vec::<Vec<u32>>::new(),
             JobExecutionMode::Standard,
-            None,
+            metadata,
             false,
             ProofKind::VadcopFinal,
         );
@@ -1002,6 +1005,7 @@ impl Coordinator {
         request: LaunchProofRequestDto,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
         let seed = self.resolve_random_seed(request.random_seed)?;
+        let metadata = self.admit_job_metadata(request.metadata.clone())?;
         // A worker holds only the programs set up on it: sent any other, it fails the task.
         if !self.is_set_up(&request.hash_id).await {
             return Err(CoordinatorError::ProgramNotSetup(request.hash_id.clone()));
@@ -1031,7 +1035,7 @@ impl Coordinator {
                 request.inputs_mode,
                 request.hints_mode,
                 request.simulated_node,
-                request.metadata.clone(),
+                metadata,
                 request.execution_only,
                 request.proof_type,
             )
@@ -1346,6 +1350,20 @@ impl Coordinator {
                 Ok(seed)
             }
             None => RandomSeed::random().map_err(|e| CoordinatorError::Internal(e.to_string())),
+        }
+    }
+
+    /// The job's caller metadata, an empty map read as none. Metadata is rejected
+    /// (`JobMetadataNotAllowed`) unless `allow_job_metadata` is set.
+    fn admit_job_metadata(
+        &self,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
+    ) -> CoordinatorResult<Option<std::collections::BTreeMap<String, String>>> {
+        match metadata.filter(|m| !m.is_empty()) {
+            Some(_) if !self.config.coordinator.allow_job_metadata => {
+                Err(CoordinatorError::JobMetadataNotAllowed)
+            }
+            metadata => Ok(metadata),
         }
     }
 
@@ -3996,8 +4014,8 @@ mod tests {
             LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, snark_protocol: None };
         let coord_a = coordinator.clone();
         let coord_b = coordinator.clone();
-        let task_a = tokio::spawn(async move { coord_a.launch_wrap(req_a).await });
-        let task_b = tokio::spawn(async move { coord_b.launch_wrap(req_b).await });
+        let task_a = tokio::spawn(async move { coord_a.launch_wrap(req_a, None).await });
+        let task_b = tokio::spawn(async move { coord_b.launch_wrap(req_b, None).await });
         let (ra, rb) = tokio::join!(task_a, task_b);
         let ra = ra.unwrap();
         let rb = rb.unwrap();
@@ -4533,11 +4551,10 @@ mod tests {
             .unwrap();
 
         let response = coordinator
-            .launch_wrap(LaunchWrapRequestDto {
-                proof_data: vec![],
-                proof_dest: 0,
-                snark_protocol: None,
-            })
+            .launch_wrap(
+                LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, snark_protocol: None },
+                None,
+            )
             .await
             .unwrap();
         let job_id = response.job_id;
@@ -4978,6 +4995,46 @@ mod tests {
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready),);
     }
 
+    /// Success ack: job → Completed with its terminal event, worker → Ready.
+    #[tokio::test]
+    async fn test_run_aggregate_proofs_success_ack_completes_job() {
+        let (coordinator, workers) = coordinator_with_idle_workers(1).await;
+        let w0 = workers[0].0.clone();
+
+        let mut job = create_test_job(std::slice::from_ref(&w0));
+        job.change_state(JobState::Running(JobPhase::Recurse));
+        let job_id = job.job_id.clone();
+        coordinator.jobs.write().await.insert(job_id.clone(), Arc::new(RwLock::new(job)));
+        coordinator.alloc_job_events(&job_id).await;
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(
+                &w0,
+                WorkerState::Computing((job_id.clone(), JobPhase::Recurse)),
+            )
+            .await
+            .unwrap();
+
+        let ack = RunAggregateProofsAckDto {
+            job_id: job_id.as_string(),
+            worker_id: w0.clone(),
+            success: true,
+            error_message: None,
+            proof: vec![],
+        };
+        coordinator.handle_stream_run_aggregate_proofs_ack(ack).await.unwrap();
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Completed);
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(matches!(
+            coordinator.get_terminal_event(&job_id).await,
+            Some(CoordinatorJobEvent::Completed(
+                crate::job_events::CoordinatorJobResult::AggregateProofs { .. }
+            ))
+        ));
+    }
+
     /// Failure ack: job → Failed, worker → Ready, error message preserved verbatim.
     #[tokio::test]
     async fn test_run_aggregate_proofs_failure_ack_fails_job() {
@@ -5199,6 +5256,164 @@ mod tests {
         );
     }
 
+    // --- admit_job_metadata ---------------------------------------------------------
+
+    fn job_metadata() -> std::collections::BTreeMap<String, String> {
+        std::collections::BTreeMap::from([("team".to_string(), "zkvm".to_string())])
+    }
+
+    #[tokio::test]
+    async fn admit_job_metadata_keeps_metadata_by_default() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert_eq!(
+            coordinator.admit_job_metadata(Some(job_metadata())).unwrap(),
+            Some(job_metadata())
+        );
+    }
+
+    #[tokio::test]
+    async fn admit_job_metadata_reads_an_empty_map_as_none() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert_eq!(coordinator.admit_job_metadata(Some(Default::default())).unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn admit_job_metadata_rejects_metadata_when_not_allowed() {
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.allow_job_metadata = false));
+        assert!(matches!(
+            coordinator.admit_job_metadata(Some(job_metadata())),
+            Err(CoordinatorError::JobMetadataNotAllowed)
+        ));
+        // A job without metadata is unaffected by the policy.
+        assert_eq!(coordinator.admit_job_metadata(Some(Default::default())).unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn launch_wrap_keeps_the_job_metadata() {
+        use zisk_cluster_common::LaunchWrapRequestDto;
+
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        let worker_id = WorkerId::from("w-wrap".to_string());
+        let (sender, _messages) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(worker_id, 1u32, Box::new(sender), WorkerState::Ready)
+            .await
+            .unwrap();
+
+        let job_id = coordinator
+            .launch_wrap(
+                LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, snark_protocol: None },
+                Some(job_metadata()),
+            )
+            .await
+            .unwrap()
+            .job_id;
+
+        let job = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(job.read().await.metadata, Some(job_metadata()));
+    }
+
+    /// A rejected wrap must not hold the worker it would have run on.
+    #[tokio::test]
+    async fn launch_wrap_rejects_metadata_when_not_allowed_without_reserving_a_worker() {
+        use zisk_cluster_common::LaunchWrapRequestDto;
+
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.allow_job_metadata = false));
+        let worker_id = WorkerId::from("w-wrap".to_string());
+        let (sender, _messages) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(worker_id.clone(), 1u32, Box::new(sender), WorkerState::Ready)
+            .await
+            .unwrap();
+
+        let result = coordinator
+            .launch_wrap(
+                LaunchWrapRequestDto { proof_data: vec![], proof_dest: 0, snark_protocol: None },
+                Some(job_metadata()),
+            )
+            .await;
+
+        assert!(matches!(result, Err(CoordinatorError::JobMetadataNotAllowed)));
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&worker_id).await,
+            Some(WorkerState::Ready)
+        );
+    }
+
+    /// A coordinator with a registered recurser spec and one Ready worker to run it.
+    async fn recurser_coordinator(overrides: impl FnOnce(&mut Config)) -> Coordinator {
+        let coordinator = Coordinator::new(test_config_with(overrides));
+        coordinator
+            .register_aggregation_program(
+                "recurser".to_string(),
+                AggregationProgramSpecDto {
+                    normalize: None,
+                    aggregate_publics_body: String::new(),
+                    n_free: 0,
+                    n_publics_agg: 0,
+                    program_vks: vec![],
+                },
+            )
+            .await
+            .unwrap();
+        let (sender, _messages) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(
+                WorkerId::from("w-recurser".to_string()),
+                1u32,
+                Box::new(sender),
+                WorkerState::Ready,
+            )
+            .await
+            .unwrap();
+        coordinator
+    }
+
+    async fn launch_test_aggregate_proofs(
+        coordinator: &Coordinator,
+    ) -> CoordinatorResult<LaunchProofResponseDto> {
+        coordinator
+            .launch_aggregate_proofs(
+                "recurser".to_string(),
+                vec![],
+                vec![],
+                vec![],
+                vec![],
+                None,
+                Some(job_metadata()),
+            )
+            .await
+    }
+
+    #[tokio::test]
+    async fn launch_aggregate_proofs_keeps_the_job_metadata() {
+        let coordinator = recurser_coordinator(|_| {}).await;
+
+        let job_id = launch_test_aggregate_proofs(&coordinator).await.unwrap().job_id;
+
+        let job = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(job.read().await.metadata, Some(job_metadata()));
+    }
+
+    /// A rejected aggregation must not hold the worker it would have run on.
+    #[tokio::test]
+    async fn launch_aggregate_proofs_rejects_metadata_when_not_allowed_without_reserving_a_worker()
+    {
+        let coordinator = recurser_coordinator(|c| c.coordinator.allow_job_metadata = false).await;
+
+        let result = launch_test_aggregate_proofs(&coordinator).await;
+
+        assert!(matches!(result, Err(CoordinatorError::JobMetadataNotAllowed)));
+        let worker = WorkerId::from("w-recurser".to_string());
+        assert_eq!(coordinator.workers_pool.worker_state(&worker).await, Some(WorkerState::Ready));
+        assert!(coordinator.jobs.read().await.is_empty());
+    }
+
     /// Every worker re-executes the whole program, so all must get the job's one seed.
     #[tokio::test]
     async fn contributions_carry_the_job_seed_to_every_worker() {
@@ -5241,6 +5456,24 @@ mod tests {
         let result = coordinator.launch_proof(request).await;
 
         assert!(matches!(result, Err(CoordinatorError::ClientRandomSeedNotAllowed)));
+        let w0 = WorkerId::from("w0".to_string());
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(coordinator.jobs.read().await.is_empty());
+    }
+
+    /// Like a random seed, metadata is checked before capacity is reserved.
+    #[tokio::test]
+    async fn launch_proof_rejects_metadata_when_not_allowed_before_reserving_workers() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|c| {
+            c.coordinator.allow_job_metadata = false
+        })));
+        add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
+        let mut request = capacity_request(None, None);
+        request.metadata = Some(job_metadata());
+
+        let result = coordinator.launch_proof(request).await;
+
+        assert!(matches!(result, Err(CoordinatorError::JobMetadataNotAllowed)));
         let w0 = WorkerId::from("w0".to_string());
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
         assert!(coordinator.jobs.read().await.is_empty());
@@ -5413,7 +5646,7 @@ mod tests {
                 snark_protocol: asked,
             };
 
-            let result = coordinator.launch_wrap(request).await;
+            let result = coordinator.launch_wrap(request, None).await;
 
             assert!(
                 matches!(result, Err(CoordinatorError::SnarkUnavailable(_))),
@@ -5443,7 +5676,7 @@ mod tests {
                 snark_protocol: asked,
             };
 
-            let result = coordinator.launch_wrap(request).await;
+            let result = coordinator.launch_wrap(request, None).await;
 
             assert!(
                 result.is_ok(),

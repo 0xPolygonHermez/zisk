@@ -11,6 +11,7 @@ pub(crate) mod wrap;
 
 pub use execute_only::{EmbeddedExecuteOnlyBuilder, EmbeddedExecuteOnlyClient};
 
+use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -526,6 +527,8 @@ impl Clone for EmbeddedClient {
     }
 }
 
+// Job metadata is for a coordinator: only the remote client's requests set it, so the
+// embedded backend always receives an empty map.
 impl Client for EmbeddedClient {
     fn run_upload(&self, program: &GuestProgram) -> Result<crate::upload::UploadResult> {
         self.do_upload(program)
@@ -552,6 +555,7 @@ impl Client for EmbeddedClient {
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        _metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
         self.do_prove(program, stdin, hints, seed, executor, proof_kind, timeout, subs)
     }
@@ -565,6 +569,7 @@ impl Client for EmbeddedClient {
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        _metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ExecuteResult>> {
         self.do_execute(program, stdin, hints, seed, executor, timeout, subs)
     }
@@ -577,6 +582,7 @@ impl Client for EmbeddedClient {
         override_program_vk: Option<ProgramVK>,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        _metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
         self.do_wrap(proof, proof_kind, override_publics, override_program_vk, timeout, subs)
     }
@@ -604,6 +610,7 @@ impl Client for EmbeddedClient {
         root_c_recurser_agg: Option<[u64; 4]>,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        _metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
         self.do_aggregate_proofs(
             agg,

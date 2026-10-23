@@ -44,6 +44,9 @@ pub enum CoordinatorError {
     #[error("Client-supplied random seeds are not allowed by this coordinator")]
     ClientRandomSeedNotAllowed,
 
+    /// The request carried job metadata but the coordinator does not accept it.
+    #[error("Job metadata is not allowed by this coordinator")]
+    JobMetadataNotAllowed,
     /// The job asks for a final SNARK the workers cannot prove: they have no SNARK proving key,
     /// or one of another protocol.
     #[error("Final SNARK unavailable: {0}")]
@@ -93,6 +96,10 @@ impl From<CoordinatorError> for Status {
             CoordinatorError::ClientRandomSeedNotAllowed => Status::new(
                 Code::PermissionDenied,
                 "Client-supplied random seeds are not allowed by this coordinator",
+            ),
+            CoordinatorError::JobMetadataNotAllowed => Status::new(
+                Code::PermissionDenied,
+                "Job metadata is not allowed by this coordinator",
             ),
             CoordinatorError::SnarkUnavailable(msg) => {
                 Status::new(Code::FailedPrecondition, format!("Final SNARK unavailable: {msg}"))

@@ -2709,6 +2709,7 @@ dependencies = [
 name = "input-2gb-host"
 version = "0.1.0"
 dependencies = [
+ "tokio",
  "zisk-sdk",
  "zisk-test-artifacts",
 ]
@@ -6820,6 +6821,7 @@ dependencies = [
  "proofman",
  "proofman-common",
  "serde",
+ "sysinfo 0.38.4",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",

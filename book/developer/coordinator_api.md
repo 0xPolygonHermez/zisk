@@ -130,6 +130,7 @@ struct RegisterGuestProgramResponse {
 ```rust
 struct JobRequest {
     job_kind: JobKind,
+    metadata: Map<String, String>, // caller-defined labels; see "Job metadata"
 }
 
 struct JobResponse {
@@ -425,6 +426,25 @@ A provided seed is accepted only when the coordinator config sets
 who could otherwise craft inputs that are expensive under that seed (for example hash-map
 collisions), so keep the option off when clients are not trusted.
 
+### Job metadata
+
+A `JobRequest` can carry caller-defined key/value labels in `metadata` (at most 32 keys, each up to
+128 bytes, with values up to 1024 bytes). The coordinator keeps them with the job and writes them in
+the line it logs when the job completes. Prove, execute, wrap and aggregate jobs take metadata; setup
+jobs (`SetupRequest`, `SetupAggregationProgramRequest`) reject a non-empty map with
+`INVALID_ARGUMENT`.
+
+From the command line, pass `--metadata KEY=VALUE` (repeatable) to `cargo-zisk remote prove`,
+`execute`, `wrap` and `aggregate`, or to `zisk-prove-client prove` and `execute`. With the SDK, call
+`.metadata(key, value)` on a `RemoteClient`'s `prove`, `execute`, `wrap_proof` or `aggregate_proofs`
+request.
+
+Metadata is accepted unless the coordinator config sets `coordinator.allow_job_metadata = false`;
+jobs that carry metadata are then rejected with `JOB_METADATA_NOT_ALLOWED`.
+
+The extended service `ZiskCoordinatorApiExt.JobRequestExt` is a deprecated alias of `JobRequest`
+for prove and execute jobs. It is removed in the first non-alpha release.
+
 ## Error Handling
 
 All RPC methods may return `ApiError`. Common error codes:
@@ -437,7 +457,8 @@ All RPC methods may return `ApiError`. Common error codes:
 | 1004 | `INVALID_JOB_STATE` | Operation not valid for current job state (e.g., `PushJobInput` on non-input job) |
 | 1005 | `INVALID_PROOF_CONVERSION` | Unsupported `proof_dest` for given `proof_kind` |
 | 1006 | `CLIENT_RANDOM_SEED_NOT_ALLOWED` | Request provided a random seed and the coordinator does not allow client random seeds |
-| 1007 | `SNARK_UNAVAILABLE` | Request asks for a `Plonk` proof the workers cannot prove: they have no SNARK proving key, or one of another `snark_protocol` |
+| 1007 | `JOB_METADATA_NOT_ALLOWED` | Request carried job metadata and the coordinator does not allow it |
+| 1008 | `SNARK_UNAVAILABLE` | Request asks for a `Plonk` proof the workers cannot prove: they have no SNARK proving key, or one of another `snark_protocol` |
 | 2001 | `CLUSTER_UNAVAILABLE` | No coordinator available |
 | 3001 | `INTERNAL` | Unexpected server error; include `trace_id` in support requests |
 

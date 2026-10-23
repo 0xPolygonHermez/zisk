@@ -42,6 +42,7 @@ impl Coordinator {
                 )
                 .await?;
 
+            #[allow(deprecated)] // `metadata` is deprecated and left empty.
             let req = ExecuteTaskRequestDto {
                 worker_id: worker_id.clone(),
                 job_id: job_id.clone(),

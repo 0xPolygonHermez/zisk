@@ -5,7 +5,7 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::RandomSeedArgs;
+use zisk_common::{JobMetadataArgs, RandomSeedArgs};
 use zisk_sdk::{setup_logger, GuestProgram, ProofKind, RemoteClient, ZiskHints, ZiskStdin};
 
 use crate::common::{reject_quic_hints, resolve_elf, resolve_output_path, ElfSelectorArgs};
@@ -39,6 +39,9 @@ pub(crate) struct ZiskRemoteProve {
 
     #[command(flatten)]
     random_seed: RandomSeedArgs,
+
+    #[command(flatten)]
+    metadata: JobMetadataArgs,
 
     /// Save the generated proof to the specified file path
     #[arg(short = 'o', long)]
@@ -85,6 +88,9 @@ impl ZiskRemoteProve {
             request = request.hints(hints);
         }
         request = request.random_seed(self.random_seed.provided());
+        for (key, value) in self.metadata.to_map() {
+            request = request.metadata(key, value);
+        }
         if proof_kind != ProofKind::VadcopFinal {
             request = request.wrap(proof_kind);
         }

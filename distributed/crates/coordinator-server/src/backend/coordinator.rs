@@ -224,6 +224,7 @@ fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
             ApiError::InvalidJobState { reason: msg }
         }
         CoordinatorError::ClientRandomSeedNotAllowed => ApiError::ClientRandomSeedNotAllowed,
+        CoordinatorError::JobMetadataNotAllowed => ApiError::JobMetadataNotAllowed,
         CoordinatorError::SnarkUnavailable(reason) => ApiError::SnarkUnavailable(reason),
         CoordinatorError::WorkerError(msg) | CoordinatorError::Internal(msg) => {
             ApiError::Internal(msg)
@@ -336,7 +337,7 @@ impl BackendService for CoordinatorBackend {
         Ok(recurser_id)
     }
 
-    async fn submit_job_with_metadata(
+    async fn submit_job(
         &self,
         kind: DomainJobKind,
         metadata: Option<std::collections::BTreeMap<String, String>>,
@@ -417,11 +418,14 @@ impl BackendService for CoordinatorBackend {
                 };
                 let response = self
                     .coordinator
-                    .launch_wrap(LaunchWrapRequestDto {
-                        proof_data: r.proof.data,
-                        proof_dest,
-                        snark_protocol: r.snark_protocol,
-                    })
+                    .launch_wrap(
+                        LaunchWrapRequestDto {
+                            proof_data: r.proof.data,
+                            proof_dest,
+                            snark_protocol: r.snark_protocol,
+                        },
+                        metadata,
+                    )
                     .await
                     .map_err(coord_err_to_api)?;
                 let job_id = Uuid::parse_str(&response.job_id.as_string())
@@ -448,6 +452,7 @@ impl BackendService for CoordinatorBackend {
                         r.free_inputs_a,
                         r.free_inputs_b,
                         r.root_c_recurser_agg,
+                        metadata,
                     )
                     .await
                     .map_err(coord_err_to_api)?;
