@@ -69,4 +69,7 @@ port = 50051
 
 # Optional: path to a coordinator core config file.
 # If omitted, the embedded coordinator uses its own built-in defaults.
+# This table takes only `port` and `config_file`: the coordinator's own settings (phase timeouts,
+# heartbeats, default_compute_units, min_compute_units, ...) go in that file, under its own
+# [coordinator] table; see distributed/crates/coordinator/config/prod.toml.
 # config_file = "/etc/zisk/coordinator-core.toml"

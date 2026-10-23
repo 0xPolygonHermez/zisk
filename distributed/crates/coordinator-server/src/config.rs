@@ -206,7 +206,7 @@ impl Config {
         if let Some(level) = log_level {
             builder = builder.set_override("logging.level", level)?;
         }
-        Ok(builder.build()?.try_deserialize()?)
+        builder.build()?.try_deserialize().map_err(misplaced_coordinator_setting)
     }
 
     /// The `host:port` address the gRPC API server binds to.
@@ -217,6 +217,22 @@ impl Config {
     /// The `host:port` address the metrics endpoint binds to.
     pub fn metrics_addr(&self) -> String {
         format!("{}:{}", self.metrics.host, self.metrics.port)
+    }
+}
+
+/// The server's `[coordinator]` takes only `config_file` and `port`; the coordinator's own settings
+/// (timeouts, compute units, …) go in the file `config_file` names. Serde's "unknown field" says
+/// what is wrong but not where the setting belongs, so this says it.
+fn misplaced_coordinator_setting(e: config::ConfigError) -> anyhow::Error {
+    let message = e.to_string();
+    if message.contains("expected `config_file` or `port`") {
+        anyhow::anyhow!(
+            "{message}: the server's [coordinator] takes only `config_file` and `port`; the \
+             coordinator's own settings (timeouts, default_compute_units, min_compute_units, …) \
+             go in the TOML file that `config_file` names"
+        )
+    } else {
+        e.into()
     }
 }
 
@@ -274,6 +290,22 @@ mod tests {
     fn cli_metrics_port_override() {
         let cfg = Config::load(CliArgs { metrics_port: Some(9999), ..Default::default() }).unwrap();
         assert_eq!(cfg.metrics.port, 9999);
+    }
+
+    #[test]
+    fn a_coordinator_setting_in_the_server_file_says_where_it_goes() {
+        let file = std::env::temp_dir()
+            .join(format!("zisk-coordinator-misplaced-{}.toml", std::process::id()));
+        std::fs::write(&file, "[coordinator]\nmin_compute_units = 40\n").unwrap();
+        let result = Config::load(CliArgs {
+            config_file: Some(file.to_string_lossy().into_owned()),
+            ..Default::default()
+        });
+        std::fs::remove_file(&file).unwrap();
+
+        let message = result.expect_err("an unknown field is refused").to_string();
+        assert!(message.contains("min_compute_units"), "{message}");
+        assert!(message.contains("go in the TOML file that `config_file` names"), "{message}");
     }
 
     #[test]
