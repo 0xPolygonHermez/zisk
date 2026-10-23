@@ -350,8 +350,11 @@ run_gen_exps() {
 }
 
 # Non-interactive ssh for the remote cache: CI must never wait on a password or
-# a host-key prompt. accept-new stores a new host key, a changed one still fails.
-SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
+# a host-key prompt. The peer's host key must already be in known_hosts: an
+# unknown or changed one fails the connection (exit 255), so a spoofed peer can
+# never hand us a proving key. The caller then falls back to the next peer or
+# to a local build.
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes)
 
 # Pull this key's entry from the cache root of peer $1 ([user@]host:/path) into
 # $CACHE_ENTRY, so the lookup then sees a local hit. The peer only ever runs

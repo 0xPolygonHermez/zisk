@@ -69,8 +69,9 @@ echo "setup cache peers: ${REMOTE_CACHE_SETUP:-none}"
 
 # The ssh key ziskuser pulls the setup cache with. Mounted only on a runner
 # that has one. Owned by UID 1000, mode 700, key 600. Read-only, so the
-# container cannot change it; known_hosts is filled on the host with
-# ssh-keyscan (without it accept-new still connects and only warns).
+# container cannot change it. known_hosts must hold the peers' host keys under
+# the names in SETUP_CACHE_WORKERS (ssh-keyscan on the host): the pull uses
+# StrictHostKeyChecking=yes, so a peer missing there is skipped.
 if [[ -d /home/gha/ziskuser-ssh ]]; then
     CACHE_ARGS+=(-v /home/gha/ziskuser-ssh:/home/ziskuser/.ssh:ro)
 fi
