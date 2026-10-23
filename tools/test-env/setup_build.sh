@@ -47,10 +47,12 @@
 # content key's path list.
 #
 # --remote-cache-dir [user@]host:/path (repeatable) names the same cache root on
-# other workers. On a local miss the peers are tried in order and the entry for
-# the key is pulled over rsync/ssh into the local cache, then used as a local
-# hit, so the next run on this host needs no network. A peer that is down or
-# has no entry is skipped; none with it is a plain miss.
+# other workers, as the peer's ssh account sees it. Only rsync runs on the peer,
+# so its key can be locked to `rrsync -ro <root>` in authorized_keys; the path
+# is then relative to that root, i.e. /. On a local miss the peers are tried in
+# order and the entry for the key is pulled over rsync/ssh into the local cache,
+# then used as a local hit, so the next run on this host needs no network. A
+# peer that is down or has no entry is skipped; none with it is a plain miss.
 #
 # The pil2-proofman checkout is resolved from `cargo metadata` — whatever cargo
 # compiled into cargo-zisk-dev, be it the git dep's checkout under
@@ -89,11 +91,13 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--remote-cache-dir HOST:PATH]
                          a plain filesystem cache.
   --remote-cache-dir [user@]host:/path
                          Cache root of another worker, same layout as
-                         --cache-dir. Repeatable; peers are tried in order. On
-                         a local miss the entry is pulled from the first peer
-                         that has it (rsync over ssh) into the local cache
-                         before building. Needs --cache-dir. No peer with the
-                         entry => normal miss.
+                         --cache-dir, as the peer's ssh account sees it (with
+                         a key locked to rrsync -ro ROOT, that is /). Repeatable;
+                         peers are tried in order. On a local miss the entry is
+                         pulled from the first peer that has it (rsync over ssh)
+                         into the local cache before building. Only rsync runs
+                         on the peer. Needs --cache-dir. No peer with the entry
+                         => normal miss.
   --recursive-jobs N     Concurrent recursive1 air pipelines (circom + pil2com).
                          Default 1. Each job can use several GB; size by RAM.
                          Also settable via RECURSIVE_JOBS env var.
@@ -350,14 +354,16 @@ run_gen_exps() {
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 
 # Pull this key's entry from the cache root of peer $1 ([user@]host:/path) into
-# $CACHE_ENTRY, so the lookup then sees a local hit. Returns 1 on any failure
-# (no ssh/rsync, peer down, no entry, broken transfer): the caller moves on to
-# the next peer, or builds.
+# $CACHE_ENTRY, so the lookup then sees a local hit. The peer only ever runs
+# rsync (the probe is a listing), which is what lets its key be locked to
+# rrsync -ro. Returns 1 on any failure (no ssh/rsync, peer down, no entry,
+# broken transfer): the caller moves on to the next peer, or builds.
 fetch_remote_cache_entry() {
   local host="${1%%:*}" root="${1#*:}"
-  local remote_entry="$root/$platform/$cache_key"
+  local remote_entry="${root%/}/$platform/$cache_key"
   local partial="$CACHE_ENTRY.partial"
-  local tool rc=0
+  local rsync_ssh="ssh ${SSH_OPTS[*]}"
+  local tool rc=0 probe_err
 
   for tool in ssh rsync; do
     command -v "$tool" >/dev/null 2>&1 && continue
@@ -365,12 +371,13 @@ fetch_remote_cache_entry() {
     return 1
   done
 
-  # 0: entry present, 1: absent, 255: ssh could not connect.
-  ssh "${SSH_OPTS[@]}" "$host" "test -d '$remote_entry/provingKey'" || rc=$?
+  # 0: entry present, 23: absent, 255: ssh could not connect.
+  probe_err="$(rsync --list-only -e "$rsync_ssh" "$host:$remote_entry/provingKey/" 2>&1 >/dev/null)" || rc=$?
   case $rc in
     0) ;;
-    1) echo "==> remote cache miss: $host:$remote_entry"; return 1 ;;
-    *) echo "==> remote cache: cannot reach $host (ssh exit $rc), skipping" >&2; return 1 ;;
+    23) echo "==> remote cache miss: $host:$remote_entry"; return 1 ;;
+    255) echo "==> remote cache: cannot reach $host, skipping" >&2; echo "$probe_err" >&2; return 1 ;;
+    *) echo "==> remote cache: listing $host:$remote_entry failed (rsync exit $rc), skipping" >&2; echo "$probe_err" >&2; return 1 ;;
   esac
 
   # Into a .partial dir, renamed only when complete: a cut transfer never leaves
@@ -378,7 +385,7 @@ fetch_remote_cache_entry() {
   # the next run resumes it.
   echo "==> remote cache hit: $host:$remote_entry (pulling provingKey)"
   mkdir -p "$partial"
-  if ! rsync -a --delete --partial -e "ssh ${SSH_OPTS[*]}" \
+  if ! rsync -a --delete --partial -e "$rsync_ssh" \
        "$host:$remote_entry/provingKey/" "$partial/provingKey/" 1>&2; then
     echo "==> remote cache: rsync from $host failed, skipping" >&2
     return 1
