@@ -219,9 +219,11 @@ fi
 
 if [ "${#REMOTE_CACHE_DIRS[@]}" -gt 0 ]; then
   [ -n "$CACHE_DIR" ] || { echo "error: --remote-cache-dir needs --cache-dir (the pulled entry is stored there)" >&2; exit 1; }
+  # Strict charset: the value ends up as a remote rsync argument, so nothing a
+  # shell could read as syntax gets through.
   for peer in "${REMOTE_CACHE_DIRS[@]}"; do
-    if [ "${peer%%:*}" = "$peer" ] || [ -z "${peer%%:*}" ] || [ -z "${peer#*:}" ]; then
-      echo "error: --remote-cache-dir must be [user@]host:/path, got '$peer'" >&2
+    if ! [[ "$peer" =~ ^([A-Za-z0-9._-]+@)?[A-Za-z0-9._-]+:[A-Za-z0-9._/-]+$ ]]; then
+      echo "error: --remote-cache-dir must be [user@]host:/path (letters, digits, . _ - / only), got '$peer'" >&2
       exit 1
     fi
   done
@@ -367,6 +369,13 @@ fetch_remote_cache_entry() {
   local partial="$CACHE_ENTRY.partial"
   local rsync_ssh="ssh ${SSH_OPTS[*]}"
   local tool rc=0 probe_err
+
+  # platform and cache_key join the path; keep the whole of it in the charset
+  # the flag was checked against.
+  if ! [[ "$remote_entry" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+    echo "==> remote cache: unsafe remote path '$remote_entry', skipping $host" >&2
+    return 1
+  fi
 
   for tool in ssh rsync; do
     command -v "$tool" >/dev/null 2>&1 && continue
