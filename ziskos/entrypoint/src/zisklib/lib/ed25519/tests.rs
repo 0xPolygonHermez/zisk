@@ -2,9 +2,10 @@
 
 use super::{
     add_points_ed25519, compress_ed25519,
-    constants::{B, B_TABLE, IDENTITY, P_MINUS_ONE},
-    decompress_ed25519, double_scalar_mul_with_base_ed25519, ed25519_verify, ed25519_verify_strict,
-    is_small_order_ed25519, neg_point_ed25519,
+    constants::{B, B_TABLE, IDENTITY, P, P_MINUS_ONE},
+    decompress_ed25519, double_scalar_mul_with_base_ed25519, double_scalar_mul_with_base_ed25519_c,
+    ed25519_verify, ed25519_verify_strict, is_on_curve_ed25519, is_small_order_ed25519,
+    neg_point_ed25519,
     test_vectors::CASES,
 };
 
@@ -63,4 +64,64 @@ fn small_order_detection() {
     // (0, -1) has order 2
     let m = P_MINUS_ONE;
     assert!(is_small_order_ed25519(&[0, 0, 0, 0, m[0], m[1], m[2], m[3]]));
+}
+
+#[test]
+fn on_curve_check() {
+    assert!(is_on_curve_ed25519(&IDENTITY));
+    assert!(is_on_curve_ed25519(&B));
+    assert!(is_on_curve_ed25519(&neg_point_ed25519(&B_TABLE[5])));
+    // (0, 2) is not on the curve
+    assert!(!is_on_curve_ed25519(&[0, 0, 0, 0, 2, 0, 0, 0]));
+    // (0, 1 + p) is the identity with a non-canonical y
+    let y = [P[0] + 1, P[1], P[2], P[3]];
+    assert!(!is_on_curve_ed25519(&[0, 0, 0, 0, y[0], y[1], y[2], y[3]]));
+}
+
+#[test]
+fn double_scalar_mul_c_interface() {
+    let to_bytes = |p: &[u64; 8]| -> [u8; 64] {
+        let mut out = [0u8; 64];
+        for (i, limb) in p.iter().enumerate() {
+            out[8 * i..8 * i + 8].copy_from_slice(&limb.to_le_bytes());
+        }
+        out
+    };
+    let scalar_bytes = |k: &[u64; 4]| -> [u8; 32] {
+        let mut out = [0u8; 32];
+        for (i, limb) in k.iter().enumerate() {
+            out[8 * i..8 * i + 8].copy_from_slice(&limb.to_le_bytes());
+        }
+        out
+    };
+
+    let a = neg_point_ed25519(&B_TABLE[7]);
+    let k = [0x0123_4567_89ab_cdef, 0xfedc_ba98_7654_3210, 0x1111_2222_3333_4444, u64::MAX];
+    let s = [0xdead_beef, 0, 0x8000_0000_0000_0000, 0x0fff_ffff_ffff_ffff];
+    let expected = double_scalar_mul_with_base_ed25519(&k, &a, &s);
+
+    let mut result = [0u8; 64];
+    let ok = unsafe {
+        double_scalar_mul_with_base_ed25519_c(
+            scalar_bytes(&k).as_ptr(),
+            to_bytes(&a).as_ptr(),
+            scalar_bytes(&s).as_ptr(),
+            result.as_mut_ptr(),
+        )
+    };
+    assert!(ok);
+    assert_eq!(result, to_bytes(&expected));
+
+    // Off-curve input is rejected and the output is left untouched
+    let mut result = [0xAAu8; 64];
+    let ok = unsafe {
+        double_scalar_mul_with_base_ed25519_c(
+            scalar_bytes(&k).as_ptr(),
+            to_bytes(&[0, 0, 0, 0, 2, 0, 0, 0]).as_ptr(),
+            scalar_bytes(&s).as_ptr(),
+            result.as_mut_ptr(),
+        )
+    };
+    assert!(!ok);
+    assert_eq!(result, [0xAAu8; 64]);
 }

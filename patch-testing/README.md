@@ -15,16 +15,17 @@ these programs do.
 
 ```
 patch-testing/
-├── run.sh          # build + emulate every guest, print a summary
-├── common/         # tiny check harness (Suite, hex, deterministic Rng)
-├── sha2/           # zisk-patch-hashes          sha2
-├── sha3/           # zisk-patch-hashes          sha3
-├── tiny-keccak/    # zisk-patch-tiny-keccak     tiny-keccak
-├── k256/           # zisk-patch-elliptic-curves k256
-├── substrate-bn/   # zisk-patch-bn              substrate-bn
-├── blst/           # zisk-patch-blst            blst
-├── modexp/         # zisk-patch-modexp          aurora-engine-modexp
-└── ruint/          # zisk-patch-ruint           ruint
+├── run.sh               # build + emulate every guest, print a summary
+├── common/              # tiny check harness (Suite, hex, deterministic Rng)
+├── sha2/                # zisk-patch-hashes               sha2
+├── sha3/                # zisk-patch-hashes               sha3
+├── tiny-keccak/         # zisk-patch-tiny-keccak          tiny-keccak
+├── k256/                # zisk-patch-elliptic-curves      k256
+├── substrate-bn/        # zisk-patch-bn                   substrate-bn
+├── blst/                # zisk-patch-blst                 blst
+├── modexp/              # zisk-patch-modexp               aurora-engine-modexp
+├── ruint/               # zisk-patch-ruint                ruint
+└── curve25519-dalek-ng/ # zisk-patch-curve25519-dalek-ng  curve25519-dalek-ng
 ```
 
 The exact patch revision (tag or branch) each guest tests lives in its
