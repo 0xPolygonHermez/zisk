@@ -33,3 +33,11 @@ import Equiv.ZiskJump
 import Equiv.JumpSim
 import Equiv.Prog
 import Equiv.FusedSim
+import Equiv.RiscvLoadW
+import Equiv.ZiskLoadW
+import Equiv.RiscvDecodeLoad
+import Equiv.LoadWSim
+import Equiv.RiscvStoreW
+import Equiv.ZiskStoreW
+import Equiv.RiscvDecodeStore
+import Equiv.StoreWSim

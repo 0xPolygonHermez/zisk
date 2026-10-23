@@ -34,8 +34,9 @@ output.
   model), plus the documented ZisK extras (start, exit, precompile and fcall
   CSR calls).
 - **sail-zisk** is our formal specification of the ZisK machine.
-- **T** is the transpiler. How T exists inside the proof is still open: the
-  proofs so far take the transpiler's output as a hypothesis.
+- **T** is the transpiler. In the proof it will be a hand-written spec in
+  Lean, kept in step with the Rust by a CI check (see the to-do list below);
+  the proofs so far take the transpiler's output as a hypothesis.
 
 ## What Sail is, and why the ISA is not written in Lean directly
 
@@ -146,10 +147,8 @@ op functions on 320 vectors (`make optest`) — and the ones that work on
 memory or on the free input: DMA, fcall, `jump_dest`, and the 28
 precompiles — the hashes, the Poseidon permutations, the elliptic-curve and
 big-integer arithmetic. So is the memory map: what may be read and what
-written. Still to come: the
-equivalence proofs, whose shape depends on how the transpiler is represented
-— a hand-written spec, differentially tested against the Rust, or the Rust
-itself translated to Lean — which is still to be decided.
+written. The
+equivalence proofs are under way (`lean/`, see the to-do list below).
 
 The model runs: compiled to C, it executes `ziskasm/examples/doubler-min` —
 BIOS, launcher and program, 253 steps — `test/programs/halt`, ziskasm's
@@ -169,6 +168,24 @@ ZisK's profile — and so does ZisK's RISC-V
 calls ZisK adds. Run on sail-riscv's executable Lean, it ends every
 compliance test, and the fibonacci guest, as sail-zisk ends its
 transpilation.
+
+### To do
+
+- **The transpiler in the proof, short term (option A):** a hand-written
+  spec of the transpiler in Lean, the per-instruction translation as a pure
+  function, kept in step with the Rust (`transpilers/riscv`) by a CI check;
+  the equivalence proofs then take T(P) from it instead of as a hypothesis.
+- **The transpiler in the proof, long term (option D), not now:** rewrite
+  the transpiler in Lean and ship it, so that the transpiler that runs is the
+  one proved.
+- **The remaining instruction forms:** the x0-operand forms (the
+  transpiler's substitutions when an operand is x0, and rd = x0 storing
+  nothing), then M, A, B, Zbkb, the CSRs and `ecall`.
+- **The link to `lean/ZiskRiscv`:** the simulation stated against the
+  contract machine, ending in the theorem above.
+- **zkvmcalls** (CSRs 0x850–0x8BF, the ZisK library's routines): outside the
+  contract for now ([`doc/riscv_contract.md`](doc/riscv_contract.md) § 9), a
+  later, separate effort.
 
 An earlier model of 8 operations, and Lean proofs that ZisK's circuits
 implement it, lived in `../sail/`; they are at the git tag `sail-air-v0`, for
@@ -194,7 +211,7 @@ As sail-riscv's:
 | `model/zisk_rom_table.sail` | The C emulator's ROM: any program's, read from a table in memory. |
 | `model/zisk_step.sail` | The execution step. |
 | `model/main.sail` | The C emulator's main loop and trace. |
-| `lean/` | The equivalence proofs: a Lake package importing both generated models. On the RISC-V side, `Equiv/Riscv.lean` and `Equiv/RiscvImm.lean`, sail-riscv's semantics instruction by instruction (R-type, I-type, immediate shifts, `beq`); `Equiv/RiscvMem.lean`, `Equiv/RiscvLoad.lean` and `Equiv/RiscvStore.lean`, its memory accesses down to the bytes (fetch, `ld`, `sd`); `Equiv/RiscvDecode*.lean`, its decoder on those instructions (slow to check: about an hour in all); `Equiv/RiscvStep*.lean`, a whole sail-riscv step. On the ZisK side, `Equiv/Zisk*.lean`, sail-zisk's semantics for the instructions the transpiler emits. Between them, `Equiv/MemRead.lean` and `Equiv/MemWrite.lean`, what both interpreters' memory accesses compute; `Equiv/Sim.lean`, `Equiv/StepSim.lean`, `Equiv/Block.lean` and `Equiv/Program.lean`, the simulation: one whole step on each side keeps their registers, pc and memory related, and so does straight-line code of R-type, I-type and immediate-shift instructions (`code_sim`); `Equiv/LoadSim.lean` and `Equiv/StoreSim.lean`, the step on `ld` and `sd`, given the access is good when it runs; `Equiv/Run.lean`, straight-line runs of all of them (`run_sim`), each instruction good to run in the state sail-riscv reaches; `Equiv/BranchSim.lean` and `Equiv/JumpSim.lean`, the step on a conditional branch, lui, auipc, jal and jalr, both sides at the target; `Equiv/Prog.lean`, whole runs, loops included (`prog_sim`): k steps on each side from related states end related; `Equiv/FusedSim.lean`, the auipc-jalr pair the transpiler fuses into one ZisK instruction (two sail-riscv steps, one ZisK step), jalr with an odd offset, which it splits into two (one sail-riscv step, two ZisK steps), and whole runs with both (`prog_sim3`). `ZiskRiscv/`, ZisK's RISC-V as a machine over sail-riscv; `ZiskRiscvRun/`, the machine on sail-riscv's executable Lean, and `zisk_riscv_run`, which runs programs on it. |
+| `lean/` | The equivalence proofs: a Lake package importing both generated models. On the RISC-V side, `Equiv/Riscv.lean` and `Equiv/RiscvImm.lean`, sail-riscv's semantics instruction by instruction (R-type, I-type, immediate shifts, `beq`); `Equiv/RiscvMem.lean`, `Equiv/RiscvLoad*.lean` and `Equiv/RiscvStore*.lean`, its memory accesses down to the bytes (fetch, every load and store); `Equiv/RiscvDecode*.lean`, its decoder on those instructions (slow to check: about an hour in all); `Equiv/RiscvStep*.lean`, a whole sail-riscv step. On the ZisK side, `Equiv/Zisk*.lean`, sail-zisk's semantics for the instructions the transpiler emits. Between them, `Equiv/MemRead.lean` and `Equiv/MemWrite.lean`, what both interpreters' memory accesses compute; `Equiv/Sim.lean`, `Equiv/StepSim.lean`, `Equiv/Block.lean` and `Equiv/Program.lean`, the simulation: one whole step on each side keeps their registers, pc and memory related, and so does straight-line code of R-type, I-type and immediate-shift instructions (`code_sim`); `Equiv/LoadSim.lean`, `Equiv/StoreSim.lean`, `Equiv/LoadWSim.lean` and `Equiv/StoreWSim.lean`, the step on every load and store (`ld`, `sd`, then the narrow ones), given the access is good when it runs; `Equiv/Run.lean`, straight-line runs of all of them (`run_sim`), each instruction good to run in the state sail-riscv reaches; `Equiv/BranchSim.lean` and `Equiv/JumpSim.lean`, the step on a conditional branch, lui, auipc, jal and jalr, both sides at the target; `Equiv/Prog.lean`, whole runs, loops included (`prog_sim`): k steps on each side from related states end related; `Equiv/FusedSim.lean`, the auipc-jalr pair the transpiler fuses into one ZisK instruction (two sail-riscv steps, one ZisK step), jalr with an odd offset, which it splits into two (one sail-riscv step, two ZisK steps), and whole runs with both (`prog_sim3`). `ZiskRiscv/`, ZisK's RISC-V as a machine over sail-riscv; `ZiskRiscvRun/`, the machine on sail-riscv's executable Lean, and `zisk_riscv_run`, which runs programs on it. |
 | `test/` | The per-operation checks (`make optest`); `programs/`, the ZisK assembly programs `make difftest-all` runs besides the doubler, `memmap/` among them, the accesses ZisK refuses; and `compliance/`, the RISC-V architectural tests' harness for ZisK (`make compliance`). |
 | `riscv/` | `zisk_profile.py`: sail-riscv's configuration for the RISC-V ZisK runs; `gen_lean_registers.py`: the register set-up of sail-riscv's Lean emulator, for `zisk_riscv_run`. |
 | `doc/riscv_contract.md` | ZisK's RISC-V: what a RISC-V program means when ZisK runs it, where ZisK departs from RISC-V. |
