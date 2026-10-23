@@ -8164,6 +8164,7 @@ dependencies = [
  "zisk-asm",
  "zisk-common",
  "zisk-core",
+ "zisk-riscv",
  "zisk-transpiler-common",
  "ziskemu",
 ]

@@ -48,7 +48,7 @@ EXPECT_FAULT ?=
 NAME  ?= $(if $(ELF),$(basename $(notdir $(ELF))),$(notdir $(firstword $(PROG))))
 DIFF_DIR = build/difftest/$(NAME)
 
-.PHONY: all check ops compliance lean lean-build riscv riscv-sim riscv-lean riscv-run zisk-riscv equiv emu difftest difftest-all constants optest opsdoc sail-version clean
+.PHONY: all check ops compliance transpiler-check lean lean-build riscv riscv-sim riscv-lean riscv-run zisk-riscv equiv emu difftest difftest-all constants optest opsdoc sail-version clean
 
 all: check ops
 
@@ -190,6 +190,23 @@ compliance:
 	python3 test/compliance/run.py --arch-test '$(ARCH_TEST)' --gcc '$(RISCV_GCC)' \
 	  $(if $(wildcard $(RISCV_SIM)),--riscv-sim '$(RISCV_SIM)') \
 	  $(if $(and $(wildcard $(RISCV_SIM)),$(wildcard $(ZISK_RISCV_RUN))),--zisk-riscv) $(SUITES)
+
+## The transpiler's spec in Lean (lean/Transpiler/Spec.lean) against the
+## transpiler: for each RISC-V ELF of TRANSPILER_ELFS, the ROM the Rust builds
+## and what the spec gives, compared instruction by instruction, field by
+## field (lean/TranspilerCheck). By default the ELFs `make compliance` built,
+## for SUITES; an ELF the transpiler rejects (Zbc's) is skipped, and said so.
+TRANSPILER_ELFS ?= $(foreach s,$(SUITES),$(wildcard build/compliance/$(s)/*.elf))
+transpiler-check:
+	cargo build --release -q -p zisk-sail-difftest
+	cd lean && $(LAKE) build transpiler_check
+	@rm -rf build/transpiler-check && mkdir -p build/transpiler-check
+	@for e in $(TRANSPILER_ELFS); do \
+	  n=$$(basename $$(dirname $$e))-$$(basename $$e .elf); \
+	  ../target/release/sail-difftest rom -e $$e -o build/transpiler-check/$$n.rom > /dev/null 2>&1 \
+	    || echo "skip $$e: the transpiler rejects it"; \
+	done
+	lean/.lake/build/bin/transpiler_check build/transpiler-check/*.rom
 
 ## Every program the model is difftested on.
 # ziskasm's diagnostic program: every family of operations, each checked

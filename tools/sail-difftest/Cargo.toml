@@ -20,5 +20,6 @@ zisk-core = { workspace = true }
 ziskemu = { workspace = true }
 ziskasm = { workspace = true }
 zisk-transpiler-common = { workspace = true }
+zisk-riscv = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }

@@ -17,6 +17,10 @@
 //! The ROM is built and the memory laid out exactly as `ziskemu -z` does, by
 //! the same code: `ziskasm::assemble_files` and `Emu::create_emu_context`.
 //!
+//! `rom` writes, for checking the transpiler's spec in Lean against it
+//! (sail-zisk/lean/TranspilerCheck), a RISC-V ELF's code sections, as the
+//! transpiler reads them, and its ROM, as the table entries `prepare` writes.
+//!
 //! And `ops` writes test vectors for every operation that is a pure function
 //! of `a` and `b`: `<mnemonic> <a> <b> <c> <flag>`, with `(c, flag)` what
 //! `ZiskOp::call_ab` returns, the emulator's own op functions.
@@ -69,6 +73,18 @@ enum Command {
         #[arg(long, value_parser = parse_range)]
         dump: Option<(u64, u64)>,
     },
+    /// Write a RISC-V ELF's code and its transpilation, as text: `code <addr>
+    /// <bytes>` for each executable segment, then `inst <pc> <w0> .. <w5>` for
+    /// each instruction, its ROM table entry's first six words (all hex), or
+    /// `skip <pc>` for one the model does not describe.
+    Rom {
+        /// The RISC-V ELF.
+        #[arg(short = 'e', long)]
+        elf: PathBuf,
+        /// Output file.
+        #[arg(short, long)]
+        out: PathBuf,
+    },
     /// Write test vectors for every pure operation: `<op> <a> <b> <c> <flag>`.
     Ops {
         /// Output file.
@@ -102,6 +118,7 @@ fn main() -> Result<()> {
             };
             prepare(rom, input.as_deref(), &out, max_steps, dump)
         }
+        Command::Rom { elf, out } => rom_listing(&elf, &out),
         Command::Ops { out, random } => op_vectors(&out, random),
     }
 }
@@ -172,7 +189,9 @@ fn op_vectors(out: &Path, random: usize) -> Result<()> {
 
 /// `<begin>,<end>`, in hex, with or without `0x`.
 fn parse_range(s: &str) -> std::result::Result<(u64, u64), String> {
-    let hex = |t: &str| u64::from_str_radix(t.trim().trim_start_matches("0x"), 16).map_err(|e| e.to_string());
+    let hex = |t: &str| {
+        u64::from_str_radix(t.trim().trim_start_matches("0x"), 16).map_err(|e| e.to_string())
+    };
     let (a, b) = s.split_once(',').ok_or("expected <begin>,<end>")?;
     let (a, b) = (hex(a)?, hex(b)?);
     if a > b || (b - a) % 4 != 0 {
@@ -387,6 +406,34 @@ fn rom_entry(i: &ZiskInst) -> Result<[u64; 8]> {
         | (m.is_end as u64) << 42
         | (i.op as u64) << 48;
     Ok([w0, m.a_imm, m.b_imm, m.store_off as u64, m.jmp_off1 as u64, m.jmp_off2 as u64, 0, 0])
+}
+
+/// The `rom` listing: the ELF's code sections and its ROM's table entries.
+fn rom_listing(elf: &Path, out: &Path) -> Result<()> {
+    let bytes = fs::read(elf).with_context(|| format!("reading {}", elf.display()))?;
+    let payload = zisk_riscv::elf_extraction::collect_elf_payload_from_bytes(&bytes)
+        .map_err(|e| anyhow!("{e}"))?;
+    let rom = zisk_transpiler_common::program2rom(&bytes).map_err(|e| anyhow!("{e}"))?;
+    let mut s = String::new();
+    for section in &payload.exec {
+        write!(s, "code {:x} ", section.addr)?;
+        for b in &section.data {
+            write!(s, "{b:02x}")?;
+        }
+        s.push('\n');
+    }
+    for (&pc, builder) in &rom.insts {
+        match rom_entry(&builder.i) {
+            Ok(e) => writeln!(
+                s,
+                "inst {pc:x} {:x} {:x} {:x} {:x} {:x} {:x}",
+                e[0], e[1], e[2], e[3], e[4], e[5]
+            )?,
+            Err(_) => writeln!(s, "skip {pc:x}")?,
+        }
+    }
+    fs::write(out, s).with_context(|| format!("writing {}", out.display()))?;
+    Ok(())
 }
 
 /// Write the ROM as the table the model's C emulator reads it from

@@ -11,7 +11,7 @@
 # step, and sail-zisk's operations for the calls ZisK adds.
 
 name = "SailZiskEquiv"
-defaultTargets = ["Equiv", "ZiskRiscv"]
+defaultTargets = ["Equiv", "ZiskRiscv", "Transpiler"]
 moreLeanArgs = ["--tstack=400000"]
 
 [[require]]
@@ -45,3 +45,15 @@ root = "ZiskRiscvRun.Main"
 
 [[lean_lib]]
 name = "Equiv"
+
+# The transpiler as a function in Lean: a hand-written spec, checked against
+# the Rust by transpiler_check (`make transpiler-check`).
+[[lean_lib]]
+name = "Transpiler"
+
+[[lean_lib]]
+name = "TranspilerCheck"
+
+[[lean_exe]]
+name = "transpiler_check"
+root = "TranspilerCheck.Main"
