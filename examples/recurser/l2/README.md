@@ -49,14 +49,15 @@ Non-contiguous fold correctly rejected.
 Foreign programVK correctly rejected by the allow-list.
 ```
 
-### Optional: wrap to PLONK
+### Optional: wrap to a SNARK
 
-Set `ZISK_L2_PLONK=1` to also wrap the final folded proof into a PLONK/SNARK and
-verify it. It's off by default because it's heavy (BN128 setup) and needs the
-`provingKeySnark` artifacts:
+Set `ZISK_L2_PILFFLONK=1` or `ZISK_L2_PLONK=1` to also wrap the final folded proof into that SNARK
+and verify it.
+The `provingKeySnark` must be set up for that protocol: pilfflonk is the default.
+It's off by default because it's heavy (BN128 setup) and needs the `provingKeySnark` artifacts:
 
 ```bash
-ZISK_L2_PLONK=1 cargo run --release -p recurser-l2-host
+ZISK_L2_PILFFLONK=1 cargo run --release -p recurser-l2-host
 ```
 
 Notes:

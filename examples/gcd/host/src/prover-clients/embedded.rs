@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         minimal_memory: false,
         proving_key: None,
         proving_key_snark: None,
-        preload_plonk: false,
+        preload_snark: false,
         max_witness_stored: None,
         number_threads_witness: None,
         max_streams: None,

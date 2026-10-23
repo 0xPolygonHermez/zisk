@@ -489,6 +489,9 @@ impl Coordinator {
         if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
             return (false, e.to_string(), None);
         }
+        if let Err(e) = self.observe_snark_protocol(&req.worker_id, req.snark_protocol).await {
+            return (false, e.to_string(), None);
+        }
 
         let max_connections = self.config.coordinator.max_total_workers as usize;
         if self.workers_pool.num_workers().await >= max_connections {
@@ -584,6 +587,9 @@ impl Coordinator {
 
         let registering = self.registration.lock().await;
         if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
+            return (false, e.to_string(), None, None);
+        }
+        if let Err(e) = self.observe_snark_protocol(&req.worker_id, req.snark_protocol).await {
             return (false, e.to_string(), None, None);
         }
 

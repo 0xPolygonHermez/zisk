@@ -784,6 +784,7 @@ mod tests {
                     random_seed: None,
                     proof_timeout: None,
                     proof_dest: DomainProofKind::Stark,
+                    snark_protocol: None,
                 }),
                 None,
             )
@@ -872,6 +873,7 @@ mod tests {
                 DomainJobKind::Wrap(DomainWrapRequest {
                     proof: src_proof,
                     proof_dest: DomainProofKind::Plonk,
+                    snark_protocol: None,
                     wrap_timeout: None,
                 }),
                 None,

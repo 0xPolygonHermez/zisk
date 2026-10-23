@@ -47,6 +47,10 @@ pub enum CoordinatorError {
     /// The request carried job metadata but the coordinator does not accept it.
     #[error("Job metadata is not allowed by this coordinator")]
     JobMetadataNotAllowed,
+    /// The job asks for a final SNARK the workers cannot prove: they have no SNARK proving key,
+    /// or one of another protocol.
+    #[error("Final SNARK unavailable: {0}")]
+    SnarkUnavailable(String),
 
     // Internal errors - logged but not exposed to clients
     /// An unexpected internal error (logged, not exposed to clients).
@@ -97,6 +101,9 @@ impl From<CoordinatorError> for Status {
                 Code::PermissionDenied,
                 "Job metadata is not allowed by this coordinator",
             ),
+            CoordinatorError::SnarkUnavailable(msg) => {
+                Status::new(Code::FailedPrecondition, format!("Final SNARK unavailable: {msg}"))
+            }
             // All internal errors return generic messages
             CoordinatorError::Internal(_) => {
                 Status::new(Code::Internal, "An internal error occurred")

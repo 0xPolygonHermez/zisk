@@ -23,7 +23,8 @@ gcd/
     └── proof-formats/
         ├── stark.rs           # Plain STARK proof
         ├── minimal.rs         # Compact VadcopFinalMinimal proof
-        └── plonk.rs           # PLONK proof for on-chain verification
+        ├── plonk.rs           # PLONK proof for on-chain verification (PLONK SNARK key)
+        └── pilfflonk.rs       # pilfflonk proof (pilfflonk SNARK key, the default)
 ```
 
 ## Host
@@ -58,8 +59,11 @@ cargo run --release --bin stark-host -- 48 36 --asm
 # Compact (VadcopFinalMinimal)
 cargo run --release --bin minimal-host -- 48 36 --asm
 
-# PLONK (on-chain verification)
+# PLONK (on-chain verification): a SNARK proving key set up for PLONK
 cargo run --release --bin plonk-host -- 48 36 --asm
+
+# pilfflonk: a SNARK proving key set up for pilfflonk, the default
+cargo run --release --bin pilfflonk-host -- 48 36 --asm
 ```
 
 ## Guest
