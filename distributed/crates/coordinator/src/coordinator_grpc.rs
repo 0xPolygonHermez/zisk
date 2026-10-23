@@ -196,6 +196,7 @@ impl CoordinatorGrpc {
                             },
                             vk: ack.vk,
                             hash_mode: ack.hash_mode,
+                            not_cached: ack.not_cached,
                         })
                         .await
                 }
