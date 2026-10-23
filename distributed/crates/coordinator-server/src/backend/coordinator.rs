@@ -241,6 +241,9 @@ fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
         CoordinatorError::NotFoundOrInaccessible => ApiError::Internal("resource not found".into()),
         CoordinatorError::ProgramNotFound(hash_id) => ApiError::ProgramNotFound(hash_id),
         CoordinatorError::ProgramNotSetup(hash_id) => ApiError::ProgramNotSetup(hash_id),
+        CoordinatorError::ProgramSetUpForEmulationOnly(hash_id) => ApiError::ProgramNotSetup(
+            format!("{hash_id} is set up for emulation only; set it up in full to prove it"),
+        ),
         CoordinatorError::InvalidArgument(msg) | CoordinatorError::InvalidRequest(msg) => {
             ApiError::InvalidJobState { reason: msg }
         }

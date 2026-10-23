@@ -1010,6 +1010,11 @@ impl Coordinator {
         if !self.is_set_up(&request.hash_id).await {
             return Err(CoordinatorError::ProgramNotSetup(request.hash_id.clone()));
         }
+        // An emulator-only setup skips what a proof needs: proven on one worker it may still
+        // verify, but split over several the aggregation fails.
+        if !request.execution_only && !self.is_set_up_to_prove(&request.hash_id).await {
+            return Err(CoordinatorError::ProgramSetUpForEmulationOnly(request.hash_id.clone()));
+        }
         // The worker that aggregates wraps the SNARK, so one the workers cannot prove fails here.
         if request.proof_type == ProofKind::Snark {
             self.ensure_snark_available(request.snark_protocol).await?;
@@ -1125,6 +1130,15 @@ impl Coordinator {
     /// runs one of its tasks.
     async fn is_set_up(&self, hash_id: &str) -> bool {
         self.active_setups.read().await.keys().any(|key| key.hash_id == hash_id)
+    }
+
+    /// Whether `hash_id` has a full setup, not only an emulator-only one: what a proof needs.
+    async fn is_set_up_to_prove(&self, hash_id: &str) -> bool {
+        self.active_setups
+            .read()
+            .await
+            .keys()
+            .any(|key| key.hash_id == hash_id && !key.emulator_only)
     }
 
     /// Resolve the compute capacity for an incoming job request.
@@ -5579,6 +5593,33 @@ mod tests {
         let w0 = WorkerId::from("w0".to_string());
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
         assert!(coordinator.jobs.read().await.is_empty());
+    }
+
+    /// A proof needs a full setup: an emulator-only one is refused for a proof, before any
+    /// worker is reserved, and still serves an execution.
+    #[tokio::test]
+    async fn launch_proof_refuses_to_prove_on_an_emulator_only_setup() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
+        add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
+        coordinator.active_setups.write().await.insert(
+            SetupKey::new("hash".to_string(), false, true),
+            ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() },
+        );
+
+        let result = coordinator.launch_proof(capacity_request(None, None)).await;
+        assert!(
+            matches!(result, Err(CoordinatorError::ProgramSetUpForEmulationOnly(ref h)) if h == "hash"),
+            "{:?}",
+            result.err()
+        );
+        let w0 = WorkerId::from("w0".to_string());
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(coordinator.jobs.read().await.is_empty());
+
+        let execution =
+            LaunchProofRequestDto { execution_only: true, ..capacity_request(None, None) };
+        coordinator.launch_proof(execution).await.expect("an execution runs on it");
+        assert_eq!(coordinator.jobs.read().await.len(), 1);
     }
 
     // --- SNARK protocol -------------------------------------------------------
