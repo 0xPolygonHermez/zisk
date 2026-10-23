@@ -1176,71 +1176,58 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     let proof_data = if !final_proof.is_empty() {
                         let is_plonk = proof_type == ProofKind::Plonk;
                         let flat_proof: Vec<u64> = final_proof.into_iter().flatten().collect();
-                        // Compression strips the flag that marks this a fold, taking the
-                        // recursion-domain check in `Proof::verify` with it.
-                        if !fold_allows_kind(proof_type) {
-                            fail_aggregation(
+                        // Proofman's tree split across workers: the root is a leaf of this one
+                        // job (flag=1), like a single-node proof, so it may be compressed.
+                        // Recurser folds go through `handle_run_aggregate_proofs`, which still refuses it.
+                        let minimal = proof_type == ProofKind::VadcopFinalMinimal;
+                        // A missing verkey or hash family yields an unusable proof
+                        // (new_from_vadcop_proof rejects an unrecognized/empty hash).
+                        // Treat it as a hard failure rather than emitting a "success"
+                        // response carrying empty proof_data.
+                        let verkey = self
+                            .worker
+                            .get_vadcop_vk(minimal)
+                            .context("Failed to get vadcop verification key")?;
+                        let hash =
+                            self.worker.hash().context("Failed to get proving-key hash family")?;
+                        match Proof::new_from_vadcop_proof(&flat_proof, minimal, verkey, hash) {
+                            Ok(zisk_proof) => {
+                                // On wrap failure, emit nothing: returning the
+                                // unwrapped Vadcop proof would answer a PLONK request
+                                // with a different proof kind.
+                                let final_proof: Option<Proof> = if is_plonk {
+                                    match self
+                                        .worker
+                                        .prover_arc()
+                                        .wrap_proof(&zisk_proof, ProofKind::Plonk)
+                                        .run()
+                                    {
+                                        Ok(wrapped) => Some(wrapped.get_proof().clone()),
+                                        Err(e) => {
+                                            fail_aggregation(
+                                                &mut success,
+                                                &mut error_message,
+                                                format!(
+                                                    "Failed to wrap Plonk proof for \
+                                                     {job_id}: {e}"
+                                                ),
+                                            );
+                                            None
+                                        }
+                                    }
+                                } else {
+                                    Some(zisk_proof)
+                                };
+                                match final_proof {
+                                    Some(p) => p.to_bincode().unwrap_or_default(),
+                                    None => vec![],
+                                }
+                            }
+                            Err(e) => fail_aggregation(
                                 &mut success,
                                 &mut error_message,
-                                format!(
-                                    "refusing to return the aggregated proof for {job_id} as \
-                                     {proof_type:?}: compression drops the recursion-domain \
-                                     marker"
-                                ),
-                            )
-                        } else {
-                            // A missing verkey or hash family yields an unusable proof
-                            // (new_from_vadcop_proof rejects an unrecognized/empty hash).
-                            // Treat it as a hard failure rather than emitting a "success"
-                            // response carrying empty proof_data.
-                            // `fold_allows_kind` above leaves only uncompressed kinds here.
-                            let verkey = self
-                                .worker
-                                .get_vadcop_vk(false)
-                                .context("Failed to get vadcop verification key")?;
-                            let hash = self
-                                .worker
-                                .hash()
-                                .context("Failed to get proving-key hash family")?;
-                            match Proof::new_from_vadcop_proof(&flat_proof, false, verkey, hash) {
-                                Ok(zisk_proof) => {
-                                    // On wrap failure, emit nothing: returning the
-                                    // unwrapped Vadcop proof would answer a PLONK request
-                                    // with a different proof kind.
-                                    let final_proof: Option<Proof> = if is_plonk {
-                                        match self
-                                            .worker
-                                            .prover_arc()
-                                            .wrap_proof(&zisk_proof, ProofKind::Plonk)
-                                            .run()
-                                        {
-                                            Ok(wrapped) => Some(wrapped.get_proof().clone()),
-                                            Err(e) => {
-                                                fail_aggregation(
-                                                    &mut success,
-                                                    &mut error_message,
-                                                    format!(
-                                                        "Failed to wrap Plonk proof for \
-                                                         {job_id}: {e}"
-                                                    ),
-                                                );
-                                                None
-                                            }
-                                        }
-                                    } else {
-                                        Some(zisk_proof)
-                                    };
-                                    match final_proof {
-                                        Some(p) => p.to_bincode().unwrap_or_default(),
-                                        None => vec![],
-                                    }
-                                }
-                                Err(e) => fail_aggregation(
-                                    &mut success,
-                                    &mut error_message,
-                                    format!("Failed to build Proof: {e}"),
-                                ),
-                            }
+                                format!("Failed to build Proof: {e}"),
+                            ),
                         }
                     } else {
                         vec![]
@@ -2740,15 +2727,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     }
 }
 
-/// Whether a fold may be returned in `proof_type`.
-///
-/// `FinalCompressed` strips the `is_vadcop_final_proof` flag, and `Proof::verify` keys the
-/// recursion-domain check on it -- so a compressed fold verifies weaker than the one that
-/// was produced.
-fn fold_allows_kind(proof_type: ProofKind) -> bool {
-    proof_type != ProofKind::VadcopFinalMinimal
-}
-
 /// Record an aggregation failure and return the (empty) `proof_data` the response carries.
 ///
 /// The diagnostic, the log line and the `success` flag move together: an empty
@@ -2764,13 +2742,6 @@ fn fail_aggregation(success: &mut bool, error_message: &mut String, diagnostic: 
 #[cfg(test)]
 mod aggregate_response_tests {
     use super::*;
-
-    #[test]
-    fn a_fold_may_not_be_returned_compressed() {
-        assert!(!fold_allows_kind(ProofKind::VadcopFinalMinimal));
-        assert!(fold_allows_kind(ProofKind::VadcopFinal));
-        assert!(fold_allows_kind(ProofKind::Plonk));
-    }
 
     /// The pairing the coordinator depends on: a failure never looks like an ack.
     #[test]
