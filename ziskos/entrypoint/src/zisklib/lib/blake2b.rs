@@ -2,6 +2,9 @@
 
 use crate::syscalls::syscall_blake2b_rounds_chain;
 
+use super::{read_maybe_unaligned, write_maybe_unaligned};
+use crate::zisklib::let_input;
+
 /// BLAKE2b initialization vectors
 const IV: [u64; 8] = [
     0x6A09E667F3BCC908,
@@ -64,25 +67,23 @@ pub(crate) unsafe fn blake2b_compress_c(
     final_block: u8,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    // Parse state
-    let state_slice = core::slice::from_raw_parts_mut(state, 8);
-    let state_array: &mut [u64; 8] = &mut *(state_slice.as_mut_ptr() as *mut [u64; 8]);
+    // Parse state: the caller's in/out state need not be 8-byte aligned, so work
+    // on a local copy and store it back.
+    let state = state as *mut [u64; 8];
+    let mut state_array = read_maybe_unaligned(state);
 
-    // Parse message
-    let message_slice = core::slice::from_raw_parts(message, 16);
-    let message_array: &[u64; 16] = &*(message_slice.as_ptr() as *const [u64; 16]);
-
-    // Parse offset
-    let offset_slice = core::slice::from_raw_parts(offset, 2);
-    let offset_array: &[u64; 2] = &*(offset_slice.as_ptr() as *const [u64; 2]);
+    // Parse message and offset (in place when 8-byte aligned, else copied)
+    let_input!(message_array = message; [u64; 16]);
+    let_input!(offset_array = offset; [u64; 2]);
 
     blake2b_compress(
         rounds,
-        state_array,
+        &mut state_array,
         message_array,
         offset_array,
         final_block != 0,
         #[cfg(feature = "hints")]
         hints,
     );
+    write_maybe_unaligned(state, state_array);
 }

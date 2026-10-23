@@ -9,6 +9,7 @@ use super::{
         inv_fp12_bls12_381, mul_fp12_bls12_381,
     },
 };
+use crate::zisklib::unaligned_redirect;
 
 // TODO: The final exp could be optimized by using the optimizations described in https://eprint.iacr.org/2024/640.pdf
 // However, I dont think its a good idea in general to optimize verification "at all costs".
@@ -155,11 +156,26 @@ pub unsafe extern "C" fn final_exp_bls12_381_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [f_ptr: 72],
+        [result_ptr: 72],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64) = final_exp_bls12_381_c;
+            core::hint::black_box(f)(ins[0], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = final_exp_bls12_381_c;
+            core::hint::black_box(f)(ins[0], outs[0], &mut *hints)
+        }
+    );
     let f = &*(f_ptr as *const [u64; 72]);
-    let result = &mut *(result_ptr as *mut [u64; 72]);
-    *result = final_exp_bls12_381(
+    (result_ptr as *mut [u64; 72]).write(final_exp_bls12_381(
         f,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }

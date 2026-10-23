@@ -1,5 +1,6 @@
 //! Operations in the scalar field Fn of the secp256k1 curve
 
+use crate::zisklib::unaligned_redirect;
 use crate::{
     syscalls::{syscall_arith256_mod, SyscallArith256ModParams},
     zisklib::{eq, fcall_secp256k1_fn_inv, fcall_secp256k1_glv_decompose, is_zero, lt},
@@ -242,13 +243,28 @@ pub unsafe extern "C" fn reduce_fn_secp256k1_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [x_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64) = reduce_fn_secp256k1_c;
+            core::hint::black_box(f)(ins[0], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = reduce_fn_secp256k1_c;
+            core::hint::black_box(f)(ins[0], outs[0], &mut *hints)
+        }
+    );
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = reduce_fn_secp256k1(
+    (result_ptr as *mut [u64; 4]).write(reduce_fn_secp256k1(
         x,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// Addition in Fn of the secp256k1 curve.
@@ -265,15 +281,31 @@ pub unsafe extern "C" fn add_fn_secp256k1_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [x_ptr: 4, y_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) = add_fn_secp256k1_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = add_fn_secp256k1_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let x = &*(x_ptr as *const [u64; 4]);
     let y = &*(y_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = add_fn_secp256k1(
+    (result_ptr as *mut [u64; 4]).write(add_fn_secp256k1(
         x,
         y,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// Negation in Fn of the secp256k1 curve.
@@ -288,13 +320,24 @@ pub unsafe extern "C" fn neg_fn_secp256k1_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [x_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64) = neg_fn_secp256k1_c;
+            core::hint::black_box(f)(ins[0], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64, &mut Vec<u64>) = neg_fn_secp256k1_c;
+            core::hint::black_box(f)(ins[0], outs[0], &mut *hints)
+        }
+    );
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = neg_fn_secp256k1(
+    (result_ptr as *mut [u64; 4]).write(neg_fn_secp256k1(
         x,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// Subtraction in Fn of the secp256k1 curve.
@@ -311,15 +354,31 @@ pub unsafe extern "C" fn sub_fn_secp256k1_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [x_ptr: 4, y_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) = sub_fn_secp256k1_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = sub_fn_secp256k1_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let x = &*(x_ptr as *const [u64; 4]);
     let y = &*(y_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = sub_fn_secp256k1(
+    (result_ptr as *mut [u64; 4]).write(sub_fn_secp256k1(
         x,
         y,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// Multiplication in Fn of the secp256k1 curve.
@@ -336,15 +395,31 @@ pub unsafe extern "C" fn mul_fn_secp256k1_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [x_ptr: 4, y_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) = mul_fn_secp256k1_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = mul_fn_secp256k1_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let x = &*(x_ptr as *const [u64; 4]);
     let y = &*(y_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = mul_fn_secp256k1(
+    (result_ptr as *mut [u64; 4]).write(mul_fn_secp256k1(
         x,
         y,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// Squaring in Fn of the secp256k1 curve.
@@ -359,13 +434,28 @@ pub unsafe extern "C" fn square_fn_secp256k1_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [x_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64) = square_fn_secp256k1_c;
+            core::hint::black_box(f)(ins[0], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = square_fn_secp256k1_c;
+            core::hint::black_box(f)(ins[0], outs[0], &mut *hints)
+        }
+    );
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = square_fn_secp256k1(
+    (result_ptr as *mut [u64; 4]).write(square_fn_secp256k1(
         x,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// Inversion in Fn of the secp256k1 curve. Returns 0 for input 0.
@@ -380,11 +470,22 @@ pub unsafe extern "C" fn inv_fn_secp256k1_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [x_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64) = inv_fn_secp256k1_c;
+            core::hint::black_box(f)(ins[0], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64, &mut Vec<u64>) = inv_fn_secp256k1_c;
+            core::hint::black_box(f)(ins[0], outs[0], &mut *hints)
+        }
+    );
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = inv_fn_secp256k1(
+    (result_ptr as *mut [u64; 4]).write(inv_fn_secp256k1(
         x,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
