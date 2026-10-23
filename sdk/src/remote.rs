@@ -264,6 +264,14 @@ pub(crate) fn requested_snark(
     snark.filter(|_| proof_kind == ProofKind::Plonk)
 }
 
+/// Fail a remote proof that is not a final SNARK of `protocol`. The coordinator sends
+/// `Proof::to_bincode`, not the saved format `Proof::from_bytes` reads.
+fn ensure_remote_snark_proof(protocol: SnarkProtocol, data: &[u8]) -> Result<()> {
+    let proof = Proof::from_bincode(data)
+        .map_err(|e| SdkError::Serialization(format!("failed to deserialize remote proof: {e}")))?;
+    ensure_snark_proof(protocol, &proof)
+}
+
 impl RemoteClient {
     /// On completion, fail a final SNARK proof that is not of the protocol this client asks for.
     pub(crate) fn check_snark(
@@ -277,10 +285,7 @@ impl RemoteClient {
         handle.set_pre_process(move |status: &TerminalStatus| match status {
             TerminalStatus::Completed(DomainJobKindResponse::Prove { proof, .. })
             | TerminalStatus::Completed(DomainJobKindResponse::Wrap(proof)) => {
-                let proof = Proof::from_bytes(&proof.data).map_err(|e| {
-                    SdkError::Serialization(format!("failed to deserialize remote proof: {e}"))
-                })?;
-                ensure_snark_proof(protocol, &proof)
+                ensure_remote_snark_proof(protocol, &proof.data)
             }
             _ => Ok(()),
         });
@@ -599,6 +604,25 @@ mod tests {
         for stark in [ProofKind::VadcopFinal, ProofKind::VadcopFinalMinimal] {
             assert_eq!(requested_snark(pilfflonk, stark), None);
         }
+    }
+
+    /// The protocol check reads the coordinator's bincode, the format it sends.
+    #[test]
+    fn a_remote_snark_proof_is_read_as_the_coordinator_sends_it() {
+        let pilfflonk = Proof {
+            body: zisk_common::ProofBody::Pilfflonk {
+                proof_bytes: Vec::new(),
+                vkey_json: String::new(),
+                publics: Default::default(),
+                publics_full: Vec::new(),
+                rootc: Vec::new(),
+            },
+            ..Default::default()
+        };
+        let data = pilfflonk.to_bincode().unwrap();
+        ensure_remote_snark_proof(SnarkProtocol::Pilfflonk, &data).unwrap();
+        assert!(ensure_remote_snark_proof(SnarkProtocol::Plonk, &data).is_err());
+        assert!(ensure_remote_snark_proof(SnarkProtocol::Pilfflonk, &[1, 2, 3]).is_err());
     }
 
     #[test]
