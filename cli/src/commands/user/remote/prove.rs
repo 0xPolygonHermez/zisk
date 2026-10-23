@@ -9,7 +9,7 @@ use zisk_common::{JobMetadataArgs, RandomSeedArgs};
 use zisk_sdk::{setup_logger, GuestProgram, ProofKind, RemoteClient, ZiskHints, ZiskStdin};
 
 use crate::common::{reject_quic_hints, resolve_elf, resolve_output_path, ElfSelectorArgs};
-use crate::proof::select_prove_kind;
+use crate::proof::{select_prove_kind, SnarkArgs};
 use crate::ux::{print_job_banner, print_random_seed};
 
 #[derive(clap::Args, Debug)]
@@ -47,13 +47,12 @@ pub(crate) struct ZiskRemoteProve {
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
 
-    /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with --plonk
-    #[arg(short = 'c', long, conflicts_with = "plonk")]
+    /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with --plonk and --pilfflonk
+    #[arg(short = 'c', long, conflicts_with_all = ["plonk", "pilfflonk"])]
     minimal: bool,
 
-    /// SNARK proof, of the protocol of the proving key (pilfflonk, or PLONK). Mutually exclusive with --minimal. Either is exported for the on-chain EVM verifier with `cargo-zisk-dev export-solidity-calldata`
-    #[arg(long, conflicts_with = "minimal")]
-    plonk: bool,
+    #[command(flatten)]
+    pub(crate) snark: SnarkArgs,
 
     /// Proof timeout in seconds (0 = no timeout)
     #[arg(long, default_value_t = 0)]
@@ -80,8 +79,9 @@ impl ZiskRemoteProve {
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
         let hints = self.hints.as_ref().map(ZiskHints::from_uri).transpose()?;
 
-        // VadcopFinal by default; --minimal / --plonk select a wrapped proof.
-        let proof_kind = select_prove_kind(self.plonk, self.minimal);
+        // VadcopFinal by default; --minimal / --plonk / --pilfflonk select a wrapped proof. The
+        // client checks the protocol of the SNARK the workers return (`RemoteCmd::run`).
+        let proof_kind = select_prove_kind(self.snark.protocol(), self.minimal);
 
         let mut request = client.prove(&program, stdin);
         if let Some(hints) = hints {

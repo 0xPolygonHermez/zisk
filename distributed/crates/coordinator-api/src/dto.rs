@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
-use zisk_common::RandomSeed;
+use zisk_common::{RandomSeed, SnarkProtocol};
 
 /// Convert a [`Duration`] into a future deadline.
 ///
@@ -203,6 +203,8 @@ pub struct DomainProveRequest {
     pub proof_timeout: Option<DateTime<Utc>>,
     /// The desired output proof kind.
     pub proof_dest: DomainProofKind,
+    /// The protocol a [`DomainProofKind::Plonk`] proof must be of; `None` takes the workers'.
+    pub snark_protocol: Option<SnarkProtocol>,
 }
 
 /// Request to wrap an existing proof into another kind.
@@ -212,6 +214,8 @@ pub struct DomainWrapRequest {
     pub proof: DomainProof,
     /// The desired output proof kind.
     pub proof_dest: DomainProofKind,
+    /// The protocol a [`DomainProofKind::Plonk`] proof must be of; `None` takes the workers'.
+    pub snark_protocol: Option<SnarkProtocol>,
     /// Optional deadline for the wrap.
     pub wrap_timeout: Option<DateTime<Utc>>,
 }

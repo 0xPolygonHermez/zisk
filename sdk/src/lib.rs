@@ -22,6 +22,7 @@ mod prove;
 mod recurser;
 mod remote;
 mod setup;
+mod snark;
 mod stdin;
 mod upload;
 mod verify_constraints;
@@ -49,6 +50,7 @@ pub use recurser::{AggregationProgram, AggregationProgramBuilder, Recurser};
 pub use remote::setup::SetupByIdRequest;
 pub use remote::{RemoteClient, RemoteClientBuilder};
 pub use setup::SetupRequest;
+pub use snark::SnarkProtocol;
 pub use stdin::ZiskStdin;
 pub use upload::UploadRequest;
 pub use verify_constraints::{

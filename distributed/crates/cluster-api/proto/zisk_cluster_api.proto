@@ -213,6 +213,8 @@ message WorkerRegisterRequest {
   uint32 aggregation_arity = 3; // proving-key constant; the coordinator sizes fold groups with it
   // How the worker's previous run ended, when it ended itself, unless telemetry is off.
   WorkerExit previous_exit = 4;
+  // Any worker may wrap a job's final SNARK, so the coordinator requires the same on every worker.
+  SnarkProtocol snark_protocol = 5;
 }
 
 message WorkerReconnectRequest {
@@ -220,6 +222,14 @@ message WorkerReconnectRequest {
   ComputeCapacity compute_capacity = 2; // Maximum compute capacity of a node/cluster
   optional string last_known_job_id = 3;
   uint32 aggregation_arity = 4;
+  SnarkProtocol snark_protocol = 5;
+}
+
+// Protocol of the final SNARK a worker's SNARK proving key is set up for.
+enum SnarkProtocol {
+  SNARK_PROTOCOL_NONE      = 0; // no SNARK proving key (a worker started without --plonk)
+  SNARK_PROTOCOL_PLONK     = 1;
+  SNARK_PROTOCOL_PILFFLONK = 2;
 }
 
 message WorkerRegisterResponse {

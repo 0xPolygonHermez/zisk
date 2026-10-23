@@ -146,8 +146,8 @@ jobs:
             '
 
       - name: Build setup
-        # INCLUDE_SNARK adds the pilfflonk setup the --plonk combinations need (the
-        # flag asks for the SNARK kind, and the key sets the protocol); unlike the
+        # INCLUDE_SNARK adds the pilfflonk setup the --pilfflonk combinations need (the
+        # key sets the protocol up, and the flag must name it); unlike the
         # proving key it is not cached, so it is rebuilt on every run. INSTALL_SETUP
         # installs both into $HOME/.zisk. The hash mode is the blake3 default, which
         # wraps with pilfflonk.

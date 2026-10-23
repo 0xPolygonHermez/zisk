@@ -286,6 +286,7 @@ fn run_prove(
             hints: hints_kind,
             random_seed: seed,
             proof_dest: proof.clone(),
+            snark_protocol: None,
             proof_timeout: timeout_opt,
         }),
         metadata,

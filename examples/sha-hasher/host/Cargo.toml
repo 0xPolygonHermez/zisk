@@ -29,6 +29,10 @@ name = "plonk"
 path = "bin/embedded/plonk.rs"
 
 [[bin]]
+name = "pilfflonk"
+path = "bin/embedded/pilfflonk.rs"
+
+[[bin]]
 name = "minimal"
 path = "bin/embedded/minimal.rs"
 
@@ -47,6 +51,10 @@ path = "bin/remote/execute.rs"
 [[bin]]
 name = "plonk-remote"
 path = "bin/remote/plonk.rs"
+
+[[bin]]
+name = "pilfflonk-remote"
+path = "bin/remote/pilfflonk.rs"
 
 [[bin]]
 name = "minimal-remote"

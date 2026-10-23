@@ -1,4 +1,4 @@
-use super::{job_inputs, JobInputs, RemoteClient};
+use super::{job_inputs, requested_snark, JobInputs, RemoteClient};
 use crate::{
     hints::HintsSource,
     input_source::InputSource,
@@ -46,6 +46,7 @@ impl RemoteClient {
             random_seed: seed,
             proof_timeout,
             proof_dest,
+            snark_protocol: requested_snark(self.snark, proof_kind),
         });
 
         let remote_job = if self.legacy_ext && !metadata.is_empty() {
@@ -64,6 +65,7 @@ impl RemoteClient {
 
         let mut handle = JobHandle::new_remote(remote_job, subs, timeout, stream, hints_stream);
         handle.set_input_pushes(pushes);
+        self.check_snark(&mut handle, proof_kind);
         Ok(handle)
     }
 }

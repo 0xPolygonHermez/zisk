@@ -11,7 +11,7 @@ use zisk_sdk::{
 
 use super::validate_asm_hints;
 use crate::common::{resolve_elf, resolve_output_path, ElfSelectorArgs};
-use crate::proof::select_prove_kind;
+use crate::proof::{select_prove_kind, SnarkArgs};
 use crate::ux::{print_job_banner, print_random_seed};
 
 #[derive(clap::Args, Debug)]
@@ -59,8 +59,8 @@ pub(crate) struct ZiskEmbeddedProve {
     proving_key: Option<PathBuf>,
 
     /// Path to a precomputed SNARK proving key
-    #[arg(short = 'w', long)]
-    proving_key_plonk: Option<PathBuf>,
+    #[arg(short = 'w', long, alias = "proving-key-plonk")]
+    proving_key_snark: Option<PathBuf>,
 
     /// Reduce memory footprint during proving at the cost of speed
     #[arg(short = 'm', long)]
@@ -74,13 +74,12 @@ pub(crate) struct ZiskEmbeddedProve {
     #[arg(short = 'u', long, requires = "asm")]
     unlock_mapped_memory: bool,
 
-    /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with --plonk
-    #[arg(short = 'c', long, conflicts_with = "plonk")]
+    /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with --plonk and --pilfflonk
+    #[arg(short = 'c', long, conflicts_with_all = ["plonk", "pilfflonk"])]
     minimal: bool,
 
-    /// SNARK proof, of the protocol of the proving key (pilfflonk, or PLONK). Mutually exclusive with --minimal. Either is exported for the on-chain EVM verifier with `cargo-zisk-dev export-solidity-calldata`
-    #[arg(long, conflicts_with = "minimal")]
-    plonk: bool,
+    #[command(flatten)]
+    snark: SnarkArgs,
 
     /// Verify the proof after generation
     #[arg(short = 'y', long)]
@@ -118,15 +117,15 @@ impl ZiskEmbeddedProve {
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
         let hints = self.hints.as_ref().map(ZiskHints::from_uri).transpose()?;
 
-        // VadcopFinal by default; --minimal / --plonk select a wrapped proof.
-        let proof_kind = select_prove_kind(self.plonk, self.minimal);
+        // VadcopFinal by default; --minimal / --plonk / --pilfflonk select a wrapped proof.
+        let proof_kind = select_prove_kind(self.snark.protocol(), self.minimal);
 
         let mut builder = EmbeddedClientBuilder::default().verbose(self.verbose);
         if self.asm {
             builder = builder.assembly();
         }
-        if self.plonk {
-            builder = builder.plonk();
+        if let Some(protocol) = self.snark.protocol() {
+            builder = builder.snark(protocol);
         }
         #[cfg(not(feature = "cpu-only"))]
         if self.gpu {
@@ -139,8 +138,8 @@ impl ZiskEmbeddedProve {
         if let Some(pk) = &self.proving_key {
             builder = builder.proving_key(pk.clone());
         }
-        if let Some(pk) = &self.proving_key_plonk {
-            builder = builder.proving_key_plonk(pk.clone());
+        if let Some(pk) = &self.proving_key_snark {
+            builder = builder.proving_key_snark(pk.clone());
         }
 
         let mut opts = EmbeddedOpts::default();

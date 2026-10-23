@@ -1,4 +1,4 @@
-use super::RemoteClient;
+use super::{requested_snark, RemoteClient};
 use crate::job_handle::{JobHandle, SubscriberList};
 use crate::prove::ProveResult;
 use std::collections::BTreeMap;
@@ -39,11 +39,18 @@ impl RemoteClient {
         let proof_dest = proof.proof_kind.clone();
         let wrap_timeout = timeout.map(deadline_from_now);
 
-        let job_kind = DomainJobKind::Wrap(DomainWrapRequest { proof, proof_dest, wrap_timeout });
+        let job_kind = DomainJobKind::Wrap(DomainWrapRequest {
+            proof,
+            proof_dest,
+            snark_protocol: requested_snark(self.snark, proof_kind),
+            wrap_timeout,
+        });
 
         let remote_job =
             self.gw.submit_job_with_metadata(job_kind, metadata).map_err(SdkError::backend)?;
 
-        Ok(JobHandle::new_remote(remote_job, subs, timeout, None, None))
+        let mut handle = JobHandle::new_remote(remote_job, subs, timeout, None, None);
+        self.check_snark(&mut handle, proof_kind);
+        Ok(handle)
     }
 }

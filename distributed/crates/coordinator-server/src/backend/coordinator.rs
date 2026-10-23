@@ -225,6 +225,7 @@ fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
         }
         CoordinatorError::ClientRandomSeedNotAllowed => ApiError::ClientRandomSeedNotAllowed,
         CoordinatorError::JobMetadataNotAllowed => ApiError::JobMetadataNotAllowed,
+        CoordinatorError::SnarkUnavailable(reason) => ApiError::SnarkUnavailable(reason),
         CoordinatorError::WorkerError(msg) | CoordinatorError::Internal(msg) => {
             ApiError::Internal(msg)
         }
@@ -373,6 +374,7 @@ impl BackendService for CoordinatorBackend {
                         metadata,
                         execution_only: false,
                         proof_type,
+                        snark_protocol: r.snark_protocol,
                         random_seed: r.random_seed,
                     })
                     .await
@@ -398,6 +400,7 @@ impl BackendService for CoordinatorBackend {
                         metadata,
                         execution_only: true,
                         proof_type: ProofKind::VadcopFinal,
+                        snark_protocol: None,
                         random_seed: r.random_seed,
                     })
                     .await
@@ -416,7 +419,11 @@ impl BackendService for CoordinatorBackend {
                 let response = self
                     .coordinator
                     .launch_wrap(
-                        LaunchWrapRequestDto { proof_data: r.proof.data, proof_dest },
+                        LaunchWrapRequestDto {
+                            proof_data: r.proof.data,
+                            proof_dest,
+                            snark_protocol: r.snark_protocol,
+                        },
                         metadata,
                     )
                     .await
