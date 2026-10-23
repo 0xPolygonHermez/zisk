@@ -179,15 +179,101 @@ theorem ZRun.append {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {a b : Nat} {z 
     rw [show m + 1 + b = (m + b) + 1 by omega]
     exact .step h (ih h2)
 
+/-- jalr `i` with the transpiler's two-instruction form (for an odd offset;
+    any offset, as far as the proof goes): its word in executable memory at
+    pc, rs1 ≠ x0, the add at pc and the and at the internal address ia. -/
+structure JoAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
+    (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : JrInstr) (ia : BitVec 64) : Prop where
+  al : pc.toNat % 4 = 0
+  x1 : ExecAt rs pc
+  x2 : ExecAt rs (pc + 2)
+  h0 : s.mem.get? pc.toNat = some (byte i.encode 0)
+  h1 : s.mem.get? (pc.toNat + 1) = some (byte i.encode 1)
+  h2 : s.mem.get? (pc.toNat + 2) = some (byte i.encode 2)
+  h3 : s.mem.get? (pc.toNat + 3) = some (byte i.encode 3)
+  rs1 : i.rs1 ≠ 0
+  rom1 : zrom pc = Equiv.Zisk.jalrAddInst i.rs1.toNat (i.imm.signExtend 64) (ia - pc)
+  rom2 : zrom ia = Equiv.Zisk.jalrAndInst i.rd.toNat (pc + 4 - ia)
+
+set_option maxHeartbeats 4000000 in
+/-- jalr in the transpiler's two-instruction form: one sail-riscv step and
+    two ZisK steps keep the states related, both at the target, when it is
+    4-aligned. -/
+theorem jo_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hrel : Rel s z rs)
+    (pc : BitVec 64) (hpc : s.regs.get? Register.PC = some pc)
+    (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : JrInstr) (ia : BitVec 64) (hi : JoAt s rs pc zrom i ia)
+    (v1 : BitVec 64) (hv1 : getX s i.rs1.toNat = some v1)
+    (tal : (jalrTarget v1 i.imm)[0] = false ∧ (jalrTarget v1 i.imm)[1] = false) (n : Nat) :
+    ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧ ZRun zrom 2 z z' ∧
+      Rel s' z' rs ∧ s'.regs.get? Register.PC = some (jalrTarget v1 i.imm) := by
+  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst⟩, hzm⟩ := hrel
+  have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
+  subst this
+  obtain ⟨-, -, -, -, -, hc⟩ := i.fields
+  have hw : WordAt s rs pc' (byte i.encode 0) (byte i.encode 1) (byte i.encode 2) (byte i.encode 3) :=
+    ⟨hi.al, hi.x1, hi.x2, hi.h0, hi.h1, hi.h2, hi.h3, hc⟩
+  obtain ⟨s', hrun, hmem, hr', hpc'', hxs'⟩ := rv_jalr_step s rs hr pc' hpc i hw v1 hv1 tal n
+  have ld : i.rd.toNat < 32 := i.rd.isLt
+  have l1 : i.rs1.toNat < 32 := i.rs1.isLt
+  have e1 := ne_zero_toNat hi.rs1
+  have a1 := agree i.rs1.toNat (by omega) l1
+  have hxv : xs[(i.rs1.toNat : Int)]! = v1 := by
+    rw [getElem!_int]; rw [hv1] at a1; exact (Option.some.inj a1).symm
+  -- ZisK, step 1: the add, on to ia
+  have hz1 := Equiv.Zisk.execute_jalr_add z i.rs1.toNat (i.imm.signExtend 64) (ia - pc') (by omega) xs pc' st
+    hx hzpc hst
+  rw [← hi.rom1, ← zstep_run zrom z pc' hzpc] at hz1
+  -- ZisK, step 2: the and, from ia
+  have eia : pc' + (ia - pc') = ia := by rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
+  have hz2 := Equiv.Zisk.execute_jalr_and { z with regs := (((z.regs.insert _root_.Zisk.Register.Zc
+      (i.imm.signExtend 64 + xs[(i.rs1.toNat : Int)]!)).insert _root_.Zisk.Register.Zflag false).insert
+      _root_.Zisk.Register.Step (BitVec.addInt st 1)).insert _root_.Zisk.Register.PC (pc' + (ia - pc')) }
+    i.rd.toNat (pc' + 4 - ia) ld xs ia (BitVec.addInt st 1) (i.imm.signExtend 64 + xs[(i.rs1.toNat : Int)]!)
+    (by simp [Std.ExtDHashMap.get?_insert, hx]) (by simp [eia])
+    (by simp [Std.ExtDHashMap.get?_insert]) (by simp [Std.ExtDHashMap.get?_insert])
+  rw [← hi.rom2, ← zstep_run zrom _ ia (by simp [eia])] at hz2
+  refine ⟨s', _, hrun, .step hz1 (.step hz2 (.done _)), ⟨hr', ⟨Equiv.Zisk.xsUpd xs i.rd.toNat (pc' + 4), ?_, ?_⟩,
+    ⟨_, hpc'', ?_⟩, ⟨BitVec.addInt (BitVec.addInt st 1) 1, by simp [Std.ExtDHashMap.get?_insert]⟩, ?_⟩, hpc''⟩
+  · have e4 : ia + (pc' + 4 - ia) = pc' + 4 := by rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
+    simp only [Std.ExtDHashMap.get?_insert, beq_iff_eq, reduceCtorEq, dite_false, e4]
+    · exact linkRegs_xs _ xs i.rd.toNat (pc' + 4) (by simp [Std.ExtDHashMap.get?_insert, hx])
+  · intro k hk1 hk2; rw [hxs' k hk2]; exact regs_after0 s xs i.rd.toNat (pc' + 4) ld agree k hk1 hk2
+  · simp only [Std.ExtDHashMap.get?_insert, beq_self_eq_true, dite_true, cast_eq, Option.some.injEq]
+    rw [hxv]
+    simp only [Equiv.Zisk.JALR_MASK, jalrTarget, Sail.BitVec.update, Sail.BitVec.updateSubrange']
+    bv_decide
+  · show z.mem = s'.mem
+    rw [hmem, hzm]
+
+/-- One step of sail-riscv, from s at its pc: an instruction proved, or a
+    jalr in the transpiler's two-instruction form; ZisK takes one step or
+    two. -/
+def OneOk (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (s : RVState) : Prop :=
+  ∃ pc, s.regs.get? Register.PC = some pc ∧
+    ((∃ o, StepOk2 s rs pc zrom o) ∨
+     (∃ i ia, JoAt s rs pc zrom i ia ∧ ∃ v1, getX s i.rs1.toNat = some v1 ∧
+        (jalrTarget v1 i.imm)[0] = false ∧ (jalrTarget v1 i.imm)[1] = false))
+
+theorem one_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hrel : Rel s z rs)
+    (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (h : OneOk rs zrom s) (n : Nat) :
+    ∃ s' z' k', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧ ZRun zrom k' z z' ∧
+      Rel s' z' rs := by
+  obtain ⟨pc, hpc, ho | ⟨i, ia, hi, v1, hv1, t0, t1⟩⟩ := h
+  · obtain ⟨o, ho⟩ := ho
+    obtain ⟨s', z', h1, h2, h3⟩ := step_rel2 s z rs hrel pc hpc zrom o ho n
+    exact ⟨s', z', 1, h1, .step h2 (.done _), h3⟩
+  · obtain ⟨s', z', h1, h2, h3, -⟩ := jo_rel s z rs hrel pc hpc zrom i ia hi v1 hv1 ⟨t0, t1⟩ n
+    exact ⟨s', z', 2, h1, h2, h3⟩
+
 /-- For the next k steps of sail-riscv, from the state it reaches: each one
-    an instruction proved, or, two at a time, a fused auipc-jalr pair. -/
+    an instruction proved (or a jalr in two ZisK instructions), or, two at a
+    time, a fused auipc-jalr pair. -/
 def RunOk3 (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) :
     Nat → RVState → Nat → Prop
   | 0, _, _ => True
-  | 1, s, _ => (∃ pc o, s.regs.get? Register.PC = some pc ∧ StepOk2 s rs pc zrom o)
+  | 1, s, _ => OneOk rs zrom s
   | k + 2, s, n =>
-    ((∃ pc o, s.regs.get? Register.PC = some pc ∧ StepOk2 s rs pc zrom o) ∧
-        RunOk3 rs zrom (k + 1) (rvNext n s) (n + 1)) ∨
+    (OneOk rs zrom s ∧ RunOk3 rs zrom (k + 1) (rvNext n s) (n + 1)) ∨
       ((∃ pc i, s.regs.get? Register.PC = some pc ∧ FAt s rs pc zrom i) ∧
         RunOk3 rs zrom k (rvNext (n + 1) (rvNext n s)) (n + 2))
 
@@ -199,15 +285,14 @@ theorem prog_sim3 (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA_Re
       Rel s z rs → RunOk3 rs zrom k s n →
       ∃ s' z' k', RVRun n k s s' ∧ ZRun zrom k' z z' ∧ Rel s' z' rs
   | 0, s, z, n, hrel, _ => ⟨s, z, 0, .done n s, .done z, hrel⟩
-  | 1, s, z, n, hrel, ⟨pc, o, hpc, ho⟩ => by
-    obtain ⟨s1, z1, hrun, hzrun, hrel1⟩ := step_rel2 s z rs hrel pc hpc zrom o ho n
-    exact ⟨s1, z1, 1, .step hrun (.done _ _), .step hzrun (.done _), hrel1⟩
-  | k + 2, s, z, n, hrel, .inl ⟨⟨pc, o, hpc, ho⟩, hrest⟩ => by
-    obtain ⟨s1, z1, hrun, hzrun, hrel1⟩ := step_rel2 s z rs hrel pc hpc zrom o ho n
+  | 1, s, z, n, hrel, ho => by
+    obtain ⟨s1, z1, k1, hrun, hzrun, hrel1⟩ := one_step s z rs hrel zrom ho n
+    exact ⟨s1, z1, k1, .step hrun (.done _ _), hzrun, hrel1⟩
+  | k + 2, s, z, n, hrel, .inl ⟨ho, hrest⟩ => by
+    obtain ⟨s1, z1, k1, hrun, hzrun, hrel1⟩ := one_step s z rs hrel zrom ho n
     rw [rvNext_of hrun] at hrest
     obtain ⟨s2, z2, k2, hrun2, hzrun2, hrel2⟩ := prog_sim3 zrom rs (k + 1) s1 z1 (n + 1) hrel1 hrest
-    exact ⟨s2, z2, k2 + 1, .step hrun hrun2, by simpa [Nat.add_comm] using ZRun.append (.step hzrun (.done _)) hzrun2,
-      hrel2⟩
+    exact ⟨s2, z2, k1 + k2, .step hrun hrun2, ZRun.append hzrun hzrun2, hrel2⟩
   | k + 2, s, z, n, hrel, .inr ⟨⟨pc, i, hpc, hi⟩, hrest⟩ => by
     obtain ⟨s2, z1, hrun, hzrun, hrel1, -⟩ := fused_rel s z rs hrel pc hpc zrom i hi n
     have hnext : rvNext (n + 1) (rvNext n s) = s2 := by
