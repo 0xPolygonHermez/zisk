@@ -268,11 +268,27 @@ main() {
     printf '%s' "${SETUP_HASH}" > "${OUTPUT_DIR}/${HASH_FILE}" || { err "failed to write ${HASH_FILE}"; return 1; }
     ( cd "${OUTPUT_DIR}" && ensure gcloud storage cp "${HASH_FILE}" "${BUCKET}/" ) || return 1
 
+    # Publish the <name>.pilout sidecar: the PILOUT_HASH of this commit's PIL, which a build of the
+    # same PIL compiles in, so a key can be matched with a build. A pre-release key is republished
+    # under the same name when the PIL changes. Informational: a failure here only warns.
+    PILOUT_FILE="${PROVINGKEY_FILE%.tar.gz}.pilout"
+    local pilout_hash
+    pilout_hash="$(sed -n 's/^pub const PILOUT_HASH: &str = "\([0-9a-f]*\)";$/\1/p' \
+      "${ZISK_REPO}/pil/src/pil_helpers/traces.rs" 2>/dev/null)"
+    if [[ -n "${pilout_hash}" ]]; then
+      step "Uploading proving key PIL sidecar ${PILOUT_FILE}..."
+      printf '%s' "${pilout_hash}" > "${OUTPUT_DIR}/${PILOUT_FILE}" \
+        && ( cd "${OUTPUT_DIR}" && gcloud storage cp "${PILOUT_FILE}" "${BUCKET}/" ) \
+        || warn "failed to upload ${PILOUT_FILE}"
+    else
+      warn "PILOUT_HASH not found in ${ZISK_REPO}/pil/src/pil_helpers/traces.rs; ${PILOUT_FILE} not published"
+    fi
+
     # Already in the bucket. In CI ${OUTPUT_DIR} is shared with the setup cache and
     # the ptau, so these must not pile up run after run.
     if [[ "${SETUP_PRUNE_LOCAL:-0}" == "1" ]]; then
       step "Removing uploaded artifacts from ${OUTPUT_DIR}..."
-      for f in "${ARTIFACTS[@]}" "${HASH_FILE}"; do
+      for f in "${ARTIFACTS[@]}" "${HASH_FILE}" "${PILOUT_FILE}"; do
         rm -f "${OUTPUT_DIR}/${f}"
       done
     fi
