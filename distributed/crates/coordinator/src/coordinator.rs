@@ -593,6 +593,7 @@ impl Coordinator {
                 program_name: program_name.clone(),
                 with_hints,
                 emulator_only,
+                cached_only: false,
             });
             self.note_setup_sent(worker_id, hash_id).await;
             if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
@@ -906,6 +907,7 @@ impl Coordinator {
                 program_name: program_name.to_string(),
                 with_hints: key.with_hints,
                 emulator_only: key.emulator_only,
+                cached_only: false,
             });
             self.note_setup_sent(&worker_id, &key.hash_id).await;
             if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
@@ -962,6 +964,7 @@ impl Coordinator {
                     program_name: setup.program_name,
                     with_hints,
                     emulator_only,
+                    cached_only: false,
                 }),
                 Err(e) => warn!("[Setup] Failed to read cached ELF for {}: {}", hash_id, e),
             }
@@ -4097,6 +4100,7 @@ mod tests {
                 error_message: None,
                 vk: vec![1, 2, 3],
                 hash_mode: "Poseidon1".into(),
+                not_cached: false,
             })
             .await
             .unwrap();
@@ -4172,6 +4176,7 @@ mod tests {
             error_message: (!success).then(|| "'make' failed with exit code: Some(2)".to_string()),
             vk: if success { vec![1, 2, 3] } else { Vec::new() },
             hash_mode: if success { "Poseidon1".into() } else { String::new() },
+            not_cached: false,
         };
 
         // w1's build failed — it must be parked out of the dispatchable pool.
@@ -4498,6 +4503,7 @@ mod tests {
                 error_message: None,
                 vk: vec![0xFF, 0xFF],
                 hash_mode: "Poseidon1".into(),
+                not_cached: false,
             })
             .await
             .unwrap();
@@ -4512,6 +4518,7 @@ mod tests {
                 error_message: None,
                 vk: vec![1, 2, 3],
                 hash_mode: "Poseidon1".into(),
+                not_cached: false,
             })
             .await
             .unwrap();
@@ -5099,6 +5106,7 @@ mod tests {
                 error_message: None,
                 vk: vec![1, 2, 3],
                 hash_mode: "Poseidon1".into(),
+                not_cached: false,
             })
             .await
             .unwrap();
@@ -5217,6 +5225,7 @@ mod tests {
                 error_message: None,
                 vk: vec![1, 2, 3],
                 hash_mode: "Poseidon1".into(),
+                not_cached: false,
             })
             .await
             .unwrap();

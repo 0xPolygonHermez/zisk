@@ -66,6 +66,10 @@ message SetupProgram {
   bool with_hints = 4;
   string program_name = 5;
   bool emulator_only = 6;
+  // Set the program up only from what the worker's cache already holds for the proving key it
+  // runs, and otherwise refuse it (SetupProgramAck.not_cached). A worker that predates this field
+  // ignores it and sets the program up in full.
+  bool cached_only = 7;
 }
 
 message SetupProgramAck {
@@ -76,6 +80,9 @@ message SetupProgramAck {
   string error_message = 5;
   bytes vk = 6;
   string hash_mode = 7;
+  // A cached_only setup refused: the worker's cache holds no setup of the program for its
+  // proving key, and nothing on the worker changed.
+  bool not_cached = 8;
 }
 
 message NormalizeCircuit {

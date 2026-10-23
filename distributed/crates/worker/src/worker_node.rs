@@ -25,7 +25,9 @@ use zisk_cluster_common::{
 };
 use zisk_cluster_common::{DataId, JobId};
 use zisk_common::{ProgramVK, Proof, RandomSeed, StatsCostPerType, ZiskExecutorTime, ZiskPaths};
-use zisk_prover_backend::{Asm, Emu, GuestProgram, ZiskBackend, ZiskProver};
+use zisk_prover_backend::{
+    has_cached_program_setup, Asm, Emu, GuestProgram, ZiskBackend, ZiskProver,
+};
 
 use crate::config::WorkerServiceConfig;
 use crate::telemetry::{self, ExitReason};
@@ -1444,6 +1446,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 error_message,
                 vk,
                 hash_mode,
+                not_cached: false,
             })),
         }
     }
@@ -1772,6 +1775,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         if self.ack_if_set_up(&setup, message_sender) {
             return;
         }
+        if setup.cached_only && !self.has_cached_setup(&setup.hash_id) {
+            self.refuse_uncached_setup(&setup, message_sender);
+            return;
+        }
         if self.deferred.is_empty() && self.may_start_setup() {
             self.start_setup(setup, loop_tx);
         } else {
@@ -1804,6 +1811,43 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             warn!("Failed to send SetupProgramAck: {}", e);
         }
         true
+    }
+
+    /// Whether this worker's cache holds a setup of `hash_id` for the proving key it runs, which
+    /// a cached-only setup needs. One it cannot tell counts as none.
+    fn has_cached_setup(&self, hash_id: &str) -> bool {
+        match self.worker.hash().and_then(|hash| has_cached_program_setup(hash_id, &hash)) {
+            Ok(cached) => cached,
+            Err(e) => {
+                warn!("[Setup] Cannot tell whether hash_id {hash_id} is in the cache: {e:#}");
+                false
+            }
+        }
+    }
+
+    /// Refuses a cached-only setup that the cache cannot serve. Nothing is set up or torn down,
+    /// so the ack says `not_cached` and the coordinator leaves the worker as it was.
+    fn refuse_uncached_setup(
+        &self,
+        setup: &SetupProgram,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+    ) {
+        info!(
+            "[Setup] job_id {} Refusing cached-only setup for hash_id {}: not in the cache for this proving key",
+            setup.job_id, setup.hash_id
+        );
+        let mut ack = Self::build_setup_program_ack(
+            setup.job_id.clone(),
+            self.worker_config.worker.worker_id.as_string(),
+            setup.hash_id.clone(),
+            Err("no setup of this program for this proving key in the worker's cache".to_string()),
+        );
+        if let Some(worker_message::Payload::SetupProgramAck(ack)) = ack.payload.as_mut() {
+            ack.not_cached = true;
+        }
+        if let Err(e) = message_sender.send(ack) {
+            warn!("Failed to send SetupProgramAck: {}", e);
+        }
     }
 
     /// Whether a setup may start: no job, computation, recovery or other setup is
