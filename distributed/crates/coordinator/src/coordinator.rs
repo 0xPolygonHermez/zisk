@@ -72,9 +72,11 @@ struct SetupPendingState {
     program_name: String,
     with_hints: bool,
     emulator_only: bool,
-    /// Workers that were `Ready` when the setup reserved them: one that refuses a cached-only
-    /// setup goes back to `Ready`, since it changed nothing.
-    ready_before: HashSet<WorkerId>,
+    /// The state each reserved worker left: one that refuses a cached-only setup changed nothing,
+    /// so it goes back to that state.
+    state_before: HashMap<WorkerId, WorkerState>,
+    /// Whether the workers were asked to set the program up only from their caches.
+    cached_only: bool,
 }
 
 /// Per-program record for setups already applied to the cluster.
@@ -593,11 +595,7 @@ impl Coordinator {
         self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
 
         // Track which workers must ACK before the setup is considered complete.
-        let ready_before = reserved
-            .iter()
-            .filter(|(_, left)| *left == WorkerState::Ready)
-            .map(|(worker_id, _)| worker_id.clone())
-            .collect();
+        let state_before = reserved.iter().cloned().collect();
         let reserved: Vec<WorkerId> =
             reserved.into_iter().map(|(worker_id, _)| worker_id).collect();
         let pending: HashSet<WorkerId> = reserved.iter().cloned().collect();
@@ -610,7 +608,8 @@ impl Coordinator {
                 program_name: program_name.clone(),
                 with_hints,
                 emulator_only,
-                ready_before,
+                state_before,
+                cached_only,
             },
         );
 
@@ -925,7 +924,8 @@ impl Coordinator {
                 program_name: program_name.to_string(),
                 with_hints: key.with_hints,
                 emulator_only: key.emulator_only,
-                ready_before: HashSet::new(),
+                state_before: HashMap::new(),
+                cached_only: false,
             },
         );
 
@@ -3001,7 +3001,8 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
-                ready_before: HashSet::new(),
+                state_before: HashMap::new(),
+                cached_only: false,
             },
         );
 
@@ -4120,7 +4121,8 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
-                ready_before: HashSet::new(),
+                state_before: HashMap::new(),
+                cached_only: false,
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
@@ -4200,7 +4202,8 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
-                ready_before: HashSet::new(),
+                state_before: HashMap::new(),
+                cached_only: false,
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
@@ -4337,7 +4340,8 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
-                ready_before: HashSet::new(),
+                state_before: HashMap::new(),
+                cached_only: false,
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
@@ -4525,7 +4529,8 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
-                ready_before: HashSet::new(),
+                state_before: HashMap::new(),
+                cached_only: false,
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
@@ -5659,7 +5664,8 @@ mod tests {
     /// emptied cache) refuses it: the job is refused as not set up, and the worker, which changed
     /// nothing, keeps serving the programs it had.
     #[tokio::test]
-    async fn launch_proof_refuses_a_program_no_worker_has_cached_and_leaves_the_workers_ready() {
+    async fn launch_proof_refuses_a_program_no_worker_has_cached_and_leaves_the_workers_as_they_were(
+    ) {
         let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
         let hash_id =
             coordinator.register_guest_program(b"autosetup-uncached-elf".to_vec()).unwrap();
@@ -5667,22 +5673,34 @@ mod tests {
             SetupKey::new("another-program".to_string(), false, false),
             ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() },
         );
-        let (w0, messages) = add_worker_with_messages(&coordinator, "w0", WorkerState::Ready).await;
+        let (w0, m0) = add_worker_with_messages(&coordinator, "w0", WorkerState::Ready).await;
+        // One that registered after the other program's setup holds no program yet.
+        let (w1, m1) = add_worker_with_messages(&coordinator, "w1", WorkerState::Idle).await;
 
         let launch = tokio::spawn({
             let coordinator = Arc::clone(&coordinator);
             let request = job_for(&hash_id);
             async move { coordinator.launch_proof(request).await }
         });
-        let setup_job = setup_job_sent(&messages).await;
-        coordinator
-            .handle_stream_setup_program_ack(setup_answer(&setup_job, &w0, &hash_id, false))
-            .await
-            .unwrap();
+        let setup_job = setup_job_sent(&m0).await;
+        assert_eq!(setup_job_sent(&m1).await, setup_job);
+        for worker in [&w0, &w1] {
+            coordinator
+                .handle_stream_setup_program_ack(setup_answer(&setup_job, worker, &hash_id, false))
+                .await
+                .unwrap();
+        }
 
         let result = launch.await.unwrap();
         assert!(matches!(result, Err(CoordinatorError::ProgramNotSetup(ref h)) if *h == hash_id));
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert_eq!(coordinator.workers_pool.worker_state(&w1).await, Some(WorkerState::Idle));
+        // Told apart from a failed setup: no VK mismatch.
+        let terminal = coordinator.get_terminal_event(&JobId::from(setup_job)).await;
+        assert!(
+            matches!(terminal, Some(CoordinatorJobEvent::Failed(ref reason)) if reason.contains("cached")),
+            "{terminal:?}"
+        );
         assert!(coordinator.jobs.read().await.is_empty());
         assert_eq!(coordinator.active_setups.read().await.len(), 1);
     }
