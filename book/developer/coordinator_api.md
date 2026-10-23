@@ -459,6 +459,7 @@ All RPC methods may return `ApiError`. Common error codes:
 | 1006 | `CLIENT_RANDOM_SEED_NOT_ALLOWED` | Request provided a random seed and the coordinator does not allow client random seeds |
 | 1007 | `JOB_METADATA_NOT_ALLOWED` | Request carried job metadata and the coordinator does not allow it |
 | 1008 | `SNARK_UNAVAILABLE` | Request asks for a `Plonk` proof the workers cannot prove: they have no SNARK proving key, or one of another `snark_protocol` |
+| 1009 | `INPUT_TOO_LARGE` | `PushJobInput` sent more input than the guest's input region holds (2 GiB − 16 bytes); the job fails |
 | 2001 | `CLUSTER_UNAVAILABLE` | No coordinator available |
 | 3001 | `INTERNAL` | Unexpected server error; include `trace_id` in support requests |
 

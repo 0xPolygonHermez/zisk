@@ -19,6 +19,7 @@ use zisk_coordinator::{
     job_events::{CoordinatorExecutionStats, CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator,
 };
+use zisk_core::MAX_STDIN_SIZE;
 
 use super::{
     BackendService, DomainAggregationProgramSpec, DomainAirInstanceCount, DomainAsmExecution,
@@ -200,6 +201,26 @@ fn domain_hints_to_dto(hints: Option<DomainInputKind>) -> HintsModeDto {
         Some(DomainInputKind::StreamUri(uri)) => HintsModeDto::HintsStream(uri),
         None => HintsModeDto::HintsNone,
     }
+}
+
+/// The bytes of input a job was submitted with inline. Chunks pushed to the job count after them:
+/// `PushJobInput` also appends to such a job.
+fn inline_input_len(inputs: &InputsModeDto) -> u64 {
+    match inputs {
+        InputsModeDto::InputsData(data) => data.len() as u64,
+        _ => 0,
+    }
+}
+
+/// Counts a pushed input chunk of `len` bytes into the `received` so far, and refuses it when the
+/// input no longer fits the guest's input region. A refused chunk is not forwarded: a worker would
+/// fail on it, and with several MPI ranks it would take the whole worker down.
+fn admit_input_chunk(received: &mut u64, len: usize) -> ApiResult<()> {
+    *received += len as u64;
+    if *received > MAX_STDIN_SIZE {
+        return Err(ApiError::InputTooLarge { limit: MAX_STDIN_SIZE });
+    }
+    Ok(())
 }
 
 fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
@@ -594,14 +615,14 @@ impl BackendService for CoordinatorBackend {
     async fn push_job_input(&self, job_id: Uuid, mut chunks: InputChunkStream) -> ApiResult<()> {
         let job_id_internal = zisk_cluster_common::JobId::from(job_id.to_string());
 
-        // Look up the job and grab the worker list.
-        let workers = {
+        // Look up the job and grab the worker list, and how much input it already carries.
+        let (workers, mut received) = {
             let jobs = self.coordinator.jobs().read().await;
             let job_arc = jobs
                 .get(&job_id_internal)
                 .ok_or_else(|| ApiError::Internal(format!("job {} not found", job_id)))?;
             let job = job_arc.read().await;
-            job.workers.clone()
+            (job.workers.clone(), inline_input_len(&job.inputs_mode))
         };
 
         if workers.is_empty() {
@@ -614,6 +635,7 @@ impl BackendService for CoordinatorBackend {
             while let Some(chunk_result) = chunks.next().await {
                 let chunk =
                     chunk_result.map_err(|e| internal(format!("input stream error: {e}")))?;
+                admit_input_chunk(&mut received, chunk.data.len())?;
                 // Converted once so each worker's send is a refcount bump.
                 let payload = Bytes::from(chunk.data);
                 for worker_id in &workers {
@@ -693,5 +715,33 @@ impl BackendService for CoordinatorBackend {
             self.job_hash.write().await.remove(&job_id.to_string());
         }
         Ok(cancelled)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pushed_input_is_admitted_up_to_what_the_input_region_holds() {
+        let mut received = 0;
+        admit_input_chunk(&mut received, MAX_STDIN_SIZE as usize - 1).unwrap();
+        admit_input_chunk(&mut received, 1).unwrap();
+        assert_eq!(received, MAX_STDIN_SIZE);
+        let err = admit_input_chunk(&mut received, 1).unwrap_err();
+        assert!(
+            matches!(err, ApiError::InputTooLarge { limit } if limit == MAX_STDIN_SIZE),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn pushed_chunks_count_after_the_inline_input() {
+        let inline = InputsModeDto::InputsData(Bytes::from(vec![0u8; 24]));
+        let mut received = inline_input_len(&inline);
+        assert_eq!(received, 24);
+        admit_input_chunk(&mut received, MAX_STDIN_SIZE as usize - 24).unwrap();
+        assert!(admit_input_chunk(&mut received, 8).is_err());
+        assert_eq!(inline_input_len(&InputsModeDto::InputsStream("grpc://push".into())), 0);
     }
 }

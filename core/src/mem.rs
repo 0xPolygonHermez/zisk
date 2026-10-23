@@ -117,6 +117,9 @@ use core::fmt;
 pub const INPUT_ADDR: u64 = 0x1000_0000;
 /// Maximum size of the input data
 pub const MAX_INPUT_SIZE: u64 = 0x8000_0000; // 2GB
+/// Maximum size of a guest's stdin: the input region less its first word, the free input, and its
+/// last one, as the ASM client checks an input file
+pub const MAX_STDIN_SIZE: u64 = MAX_INPUT_SIZE - 16;
 /// Free input data memory address = first input address
 pub const FREE_INPUT_ADDR: u64 = INPUT_ADDR;
 /// First global RW memory address

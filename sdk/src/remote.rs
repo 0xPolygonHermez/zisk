@@ -469,9 +469,8 @@ impl Delivery {
     }
 }
 
-/// The most stdin bytes the guest's input region holds: 2 GB less its first word, the free
-/// input, and its last one, as the ASM client checks an input file.
-const MAX_STDIN_BYTES: usize = zisk_core::MAX_INPUT_SIZE as usize - 16;
+/// The most stdin bytes the guest's input region holds, as the coordinator also checks.
+const MAX_STDIN_BYTES: usize = zisk_core::MAX_STDIN_SIZE as usize;
 
 /// Errors when `len` bytes of stdin do not fit the guest's input region: the worker refuses
 /// them, and the job would fail only once the input has been sent.
@@ -547,7 +546,7 @@ pub(crate) fn job_inputs(stdin: InputSource, hints: Option<HintsSource>) -> Resu
     let input = match stdin {
         InputSource::Stream(stream) => Payload::Stream(stream),
         InputSource::Stdin(s) => {
-            let data = s.into_inner().read_data();
+            let data = s.into_inner().into_data();
             ensure_fits_input_region(data.len())?;
             Payload::Data(data)
         }
