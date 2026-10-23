@@ -25,10 +25,6 @@ name = "execute"
 path = "bin/embedded/execute.rs"
 
 [[bin]]
-name = "plonk"
-path = "bin/embedded/plonk.rs"
-
-[[bin]]
 name = "pilfflonk"
 path = "bin/embedded/pilfflonk.rs"
 
@@ -47,10 +43,6 @@ path = "bin/remote/prove.rs"
 [[bin]]
 name = "execute-remote"
 path = "bin/remote/execute.rs"
-
-[[bin]]
-name = "plonk-remote"
-path = "bin/remote/plonk.rs"
 
 [[bin]]
 name = "pilfflonk-remote"

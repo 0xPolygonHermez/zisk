@@ -30,9 +30,5 @@ name = "minimal-host"
 path = "src/proof-formats/minimal.rs"
 
 [[bin]]
-name = "plonk-host"
-path = "src/proof-formats/plonk.rs"
-
-[[bin]]
 name = "pilfflonk-host"
 path = "src/proof-formats/pilfflonk.rs"
