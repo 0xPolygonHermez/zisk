@@ -129,16 +129,19 @@ impl Coordinator {
             ));
         };
 
-        let zisk_proof = Proof::from_bincode(&wrap_result.proof_data).map_err(|e| {
-            CoordinatorError::Internal(format!("Failed to deserialize wrap proof: {}", e))
-        })?;
-        // A proof that cannot be saved would complete the job with no proof for its webhook.
-        if let Err(e) = zisk_proof.ensure_saveable() {
-            drop(job);
-            let reason = format!("Wrap proof from worker {worker_id} is malformed: {e}");
-            let _ = self.fail_job(job_id, &reason).await;
-            return Err(CoordinatorError::Internal(reason));
-        }
+        // A proof that does not decode, or cannot be saved (which would complete the job with
+        // no proof for its webhook), fails the job.
+        let zisk_proof = match Proof::from_bincode(&wrap_result.proof_data)
+            .and_then(|p| p.ensure_saveable().map(|()| p))
+        {
+            Ok(p) => p,
+            Err(e) => {
+                drop(job);
+                let reason = format!("Wrap proof from worker {worker_id} is malformed: {e}");
+                let _ = self.fail_job(job_id, &reason).await;
+                return Err(CoordinatorError::Internal(reason));
+            }
+        };
         let seed = zisk_proof.random_seed;
         job.proof = Some(zisk_proof);
         job.change_state(JobState::Completed);

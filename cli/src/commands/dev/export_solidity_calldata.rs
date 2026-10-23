@@ -137,21 +137,15 @@ fn pilfflonk_calldata(
 ) -> Result<Vec<u8>> {
     use proofman_pilfflonk::{Calldata, FrBytes, Proof as PilfflonkProof, ProofNames, Vkey};
 
-    if rootc.len() != 4 {
-        return Err(anyhow!("rootc has unexpected length {} (expected 4 u64s)", rootc.len()));
-    }
     let vkey: Vkey =
         serde_json::from_str(vkey_json).context("the proof's pilfflonk vkey does not parse")?;
     vkey.check_digest().map_err(|e| anyhow!("the proof's pilfflonk vkey: {e}"))?;
-    let digest = serde_json::from_str::<serde_json::Value>(vkey_json)?
-        .get("digest")
-        .and_then(|d| d.as_str().map(str::to_owned));
     if let Some(release) = release_digest {
-        if digest.as_deref() != Some(release) {
+        let digest = vkey.digest.to_hex();
+        if digest != release {
             return Err(anyhow!(
-                "the proof is wrapped under pilfflonk key {}, not this release's {release}: the \
-                 release's verifier contract would refuse it",
-                digest.as_deref().unwrap_or("?")
+                "the proof is wrapped under pilfflonk key {digest}, not this release's {release}: \
+                 the release's verifier contract would refuse it"
             ));
         }
     }

@@ -3710,6 +3710,33 @@ mod tests {
         assert!(job.proof.is_none());
     }
 
+    /// A wrap result that does not decode fails the job rather than leaving it unresolved.
+    #[tokio::test]
+    async fn test_wrap_completion_with_an_undecodable_proof_fails_the_job() {
+        use zisk_cluster_common::{
+            ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, WrapResultDto,
+        };
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
+        let response = ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: workers[0].0.clone(),
+            success: true,
+            error_message: None,
+            result_data: Some(ExecuteTaskResponseResultDataDto::WrapResult(WrapResultDto {
+                proof_data: vec![1, 2, 3],
+            })),
+            worker_in_recovery: false,
+        };
+        assert!(coordinator.handle_wrap_completion(response).await.is_err());
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        let job = entry.read().await;
+        assert_eq!(job.state, JobState::Failed);
+        assert!(job.proof.is_none());
+    }
+
     /// Regression: `handle_wrap_completion` must not flip the worker
     /// `Ready` (overwriting `SettingUp`) when the job has been resolved
     /// concurrently — recovery owns the worker via `pending_recovery`.

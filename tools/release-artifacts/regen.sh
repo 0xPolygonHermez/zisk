@@ -73,7 +73,8 @@ log() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
 # The expression-kernel codegen writes GBs of temporary sources: keep them off a small /tmp.
 mkdir -p "$BUILD_ROOT/tmp"
-export TMPDIR="$REPO_ROOT/$BUILD_ROOT/tmp"
+TMPDIR="$(cd "$BUILD_ROOT/tmp" && pwd)"
+export TMPDIR
 
 log "Building cargo-zisk-dev"
 cargo build --release -p cargo-zisk --bin cargo-zisk-dev

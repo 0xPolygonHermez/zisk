@@ -1056,9 +1056,7 @@ impl<'a> ZiskVerifyBuilder<'a> {
         }
 
         match &self.proof_with_values.body {
-            ProofBody::Plonk {
-                proof_bytes, plonk_vk, publics_full, rootc: stored_rootc, ..
-            } => {
+            ProofBody::Plonk { proof_bytes, publics_full, rootc: stored_rootc, .. } => {
                 if self.trusted_pilfflonk_vkey.is_some() {
                     return Err(CommonError::InvalidProof(
                         "a pilfflonk verification key was pinned (with_pilfflonk_vkey) for a PLONK proof"
@@ -1092,13 +1090,6 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     // The proof was checked and rejected.
                     ProofmanError::InvalidProof(reason) => {
                         tracing::warn!("PLONK proof not verified: {reason}");
-                        // Only a proof wrapped under another key can be helped by passing it.
-                        if self.trusted_plonk_vk.is_none() && plonk_vk.plonk_vkey != *plonk_vkey {
-                            tracing::warn!(
-                                "a PLONK proof from a non-release setup verifies under that \
-                                 setup's final.verkey.json (`--plonk-vk`)"
-                            );
-                        }
                         CommonError::NotVerified
                     }
                     // snarkjs could not run (missing, no temp dir, ...): nothing was checked.
@@ -1312,11 +1303,11 @@ impl Proof {
 
     /// The bytes [`save`](Self::save) writes.
     ///
-    /// A Vadcop proof is ZisK's flat layout, [`get_proof_bytes`](Self::get_proof_bytes),
-    /// which guests and ethproofs take. A proof with a [`random_seed`](Self::random_seed)
-    /// ends with it as the verifier's seed trailer ([`SEED_TRAILER_TAG`]), which
-    /// `zisk_verifier` reads and verification ignores. A PLONK proof is
-    /// [`PLONK_FILE_MAGIC`] followed by the bincode `Proof`, seed included.
+    /// A Vadcop proof is ZisK's flat layout, [`get_proof_bytes`](Self::get_proof_bytes). A
+    /// proof with a [`random_seed`](Self::random_seed) ends with it as the verifier's seed
+    /// trailer ([`SEED_TRAILER_TAG`]), which hosts read and ignore and guests refuse: give a
+    /// guest [`to_bytes_without_seed_trailer`](Self::to_bytes_without_seed_trailer). A PLONK
+    /// proof is [`PLONK_FILE_MAGIC`] followed by the bincode `Proof`, seed included.
     ///
     /// # Errors
     ///

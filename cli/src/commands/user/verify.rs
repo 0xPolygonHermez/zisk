@@ -12,8 +12,8 @@ pub(crate) struct VerifyCmd {
     #[clap(short = 'p', long)]
     proof: String,
 
-    /// Trusted PLONK circuit key (`final.verkey.json`). If omitted, this release's key for
-    /// the proof's family; the key the proof carries is never used.
+    /// Trusted PLONK circuit key (`final.verkey.json`), required for a PLONK proof: the release
+    /// publishes none, and the key the proof carries is never used.
     #[clap(short = 'k', long = "plonk-vk")]
     plonk_vk: Option<String>,
 
