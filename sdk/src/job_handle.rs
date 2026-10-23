@@ -133,6 +133,11 @@ impl InputPushes {
         }));
     }
 
+    /// Whether a push is still sending its data.
+    fn running(&self) -> bool {
+        self.tasks.iter().any(|task| !task.is_finished())
+    }
+
     /// Stops the pushes still going, the job being over, and returns the error one met.
     fn finish(self) -> Option<String> {
         for task in &self.tasks {
@@ -327,6 +332,12 @@ impl<T: FromWaitResult> JobHandle<T> {
     ) -> Result<T> {
         let job_id = JobId(remote_job.job_id().to_string());
         let terminal = remote_job.wait_async(timeout).await;
+        // A wait that ends without the job's end (its timeout, a failed wait) leaves the job running
+        // in the coordinator, which does not time it out: once its push stops, it would run on part
+        // of its input. So it is cancelled first, as a failed push cancels it.
+        if terminal.is_err() && input_pushes.as_ref().is_some_and(InputPushes::running) {
+            let _ = remote_job.cancel_async().await;
+        }
         let push_failure = input_pushes.and_then(InputPushes::finish);
         let terminal = terminal.map_err(SdkError::backend)?;
 
@@ -552,5 +563,28 @@ impl FromWaitResult for crate::execute::ExecuteResult {
             TerminalStatus::Failed(f) => Err(SdkError::JobFailed(format_failure(&f))),
             TerminalStatus::Cancelled => Err(SdkError::Cancelled),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Only a push still sending its data makes an unfinished wait cancel the job.
+    #[tokio::test]
+    async fn a_push_runs_until_its_task_ends() {
+        let mut pushes = InputPushes::default();
+        assert!(!pushes.running());
+
+        let done = tokio::spawn(async {});
+        while !done.is_finished() {
+            tokio::task::yield_now().await;
+        }
+        pushes.tasks.push(done);
+        assert!(!pushes.running());
+
+        pushes.tasks.push(tokio::spawn(std::future::pending::<()>()));
+        assert!(pushes.running());
+        assert_eq!(pushes.finish(), None);
     }
 }
