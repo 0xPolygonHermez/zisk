@@ -4922,6 +4922,46 @@ mod tests {
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready),);
     }
 
+    /// Success ack: job → Completed with its terminal event, worker → Ready.
+    #[tokio::test]
+    async fn test_run_aggregate_proofs_success_ack_completes_job() {
+        let (coordinator, workers) = coordinator_with_idle_workers(1).await;
+        let w0 = workers[0].0.clone();
+
+        let mut job = create_test_job(std::slice::from_ref(&w0));
+        job.change_state(JobState::Running(JobPhase::Recurse));
+        let job_id = job.job_id.clone();
+        coordinator.jobs.write().await.insert(job_id.clone(), Arc::new(RwLock::new(job)));
+        coordinator.alloc_job_events(&job_id).await;
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(
+                &w0,
+                WorkerState::Computing((job_id.clone(), JobPhase::Recurse)),
+            )
+            .await
+            .unwrap();
+
+        let ack = RunAggregateProofsAckDto {
+            job_id: job_id.as_string(),
+            worker_id: w0.clone(),
+            success: true,
+            error_message: None,
+            proof: vec![],
+        };
+        coordinator.handle_stream_run_aggregate_proofs_ack(ack).await.unwrap();
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Completed);
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(matches!(
+            coordinator.get_terminal_event(&job_id).await,
+            Some(CoordinatorJobEvent::Completed(
+                crate::job_events::CoordinatorJobResult::AggregateProofs { .. }
+            ))
+        ));
+    }
+
     /// Failure ack: job → Failed, worker → Ready, error message preserved verbatim.
     #[tokio::test]
     async fn test_run_aggregate_proofs_failure_ack_fails_job() {
