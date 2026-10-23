@@ -115,15 +115,16 @@ template Main(nPublics) {
     isFinalB * (1 - isRegisteredProgramB) === 0;
 {% if program_index %}
 
-    // -- Allow-list position of each leaf's program, for NormalizePublics (VKs are unique).
+    // -- Allow-list position of each leaf's program, for NormalizePublics (VKs are unique); 0 on
+    //    an aggregate, whose programVK is its recursion domain, not a listed program.
     var indexA = 0;
     var indexB = 0;
     for (var k = 1; k < {{ n_programs }}; k++) {
         indexA += k * eqA[k];
         indexB += k * eqB[k];
     }
-    signal programIndexA <== indexA;
-    signal programIndexB <== indexB;
+    signal programIndexA <== isFinalA * indexA;
+    signal programIndexB <== isFinalB * indexB;
 {% endif %}
 {% endif %}
 

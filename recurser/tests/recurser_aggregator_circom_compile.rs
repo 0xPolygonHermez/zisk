@@ -213,7 +213,7 @@ fn program_index_is_the_leafs_allow_list_position() {
     fs::write(dir.join("iszero.circom"), STUB_ISZERO).unwrap();
     fs::write(dir.join("publics_helpers.circom"), STUB_PUBLICS_HELPERS).unwrap();
     let compiled = Command::new("circom")
-        .args(["--wasm", "--prime", "goldilocks", "-l"])
+        .args(["--wasm", "--sym", "--prime", "goldilocks", "-l"])
         .arg(&dir)
         .arg(dir.join("agg.circom"))
         .arg("-o")
@@ -221,6 +221,35 @@ fn program_index_is_the_leafs_allow_list_position() {
         .output()
         .unwrap();
     assert!(compiled.status.success(), "{}", String::from_utf8_lossy(&compiled.stderr));
+    // The witness index of each named signal of the main component.
+    let sym = fs::read_to_string(dir.join("agg.sym")).unwrap();
+    let signal = |name: &str| -> usize {
+        sym.lines()
+            .find_map(|l| {
+                let f: Vec<&str> = l.split(',').collect();
+                (f.get(3) == Some(&format!("main.{name}").as_str())).then(|| f[1].parse().unwrap())
+            })
+            .unwrap_or_else(|| panic!("no signal main.{name}"))
+    };
+    let witness_of = |input: serde_json::Value| -> Vec<String> {
+        fs::write(dir.join("in.json"), input.to_string()).unwrap();
+        let witness = Command::new("node")
+            .arg(dir.join("agg_js/generate_witness.js"))
+            .arg(dir.join("agg_js/agg.wasm"))
+            .arg(dir.join("in.json"))
+            .arg(dir.join("w.wtns"))
+            .output()
+            .unwrap();
+        assert!(witness.status.success(), "{}", String::from_utf8_lossy(&witness.stderr));
+        let export = Command::new("snarkjs")
+            .arg("wej")
+            .arg(dir.join("w.wtns"))
+            .arg(dir.join("w.json"))
+            .output()
+            .unwrap();
+        assert!(export.status.success());
+        serde_json::from_str(&fs::read_to_string(dir.join("w.json")).unwrap()).unwrap()
+    };
 
     // A leaf's publics: flag 1, its program VK, user public 0 = 1000.
     let leaf = |k: usize| -> Vec<String> {
@@ -231,31 +260,21 @@ fn program_index_is_the_leafs_allow_list_position() {
         p
     };
     for k in 0..3 {
-        let input = serde_json::json!({ "a_sv_publics": leaf(k), "b_sv_publics": leaf(1), "rootCRecurserAgg": ["9", "9", "9", "9"] });
-        fs::write(dir.join("in.json"), input.to_string()).unwrap();
-        let witness = Command::new("node")
-            .arg(dir.join("agg_js/generate_witness.js"))
-            .arg(dir.join("agg_js/agg.wasm"))
-            .arg(dir.join("in.json"))
-            .arg(dir.join("w.wtns"))
-            .output()
-            .unwrap();
-        assert!(
-            witness.status.success(),
-            "program {k}: {}",
-            String::from_utf8_lossy(&witness.stderr)
+        let w = witness_of(
+            serde_json::json!({ "a_sv_publics": leaf(k), "b_sv_publics": leaf(1), "rootCRecurserAgg": ["9", "9", "9", "9"] }),
         );
-        let export = Command::new("snarkjs")
-            .arg("wej")
-            .arg(dir.join("w.wtns"))
-            .arg(dir.join("w.json"))
-            .output()
-            .unwrap();
-        assert!(export.status.success());
-        let w: Vec<String> =
-            serde_json::from_str(&fs::read_to_string(dir.join("w.json")).unwrap()).unwrap();
         // Witness 0 is the constant 1; the main outputs follow, aggregatedPublics[5] is user public 0.
         assert_eq!(w[1 + 5], (1000 + k).to_string(), "leaf of allow-list program {k}");
     }
+
+    // An aggregate's programVK is its recursion domain. Even one equal to a listed program's
+    // VK gets index 0, as the builder documents: its normalize output is discarded.
+    let mut aggregate = leaf(2);
+    aggregate[0] = "0".into();
+    let w = witness_of(
+        serde_json::json!({ "a_sv_publics": aggregate, "b_sv_publics": leaf(1), "rootCRecurserAgg": ["9", "9", "9", "9"] }),
+    );
+    assert_eq!(w[signal("programIndexA")], "0", "an aggregate's program index");
+    assert_eq!(w[signal("programIndexB")], "1", "the leaf's program index");
     let _ = fs::remove_dir_all(&dir);
 }
