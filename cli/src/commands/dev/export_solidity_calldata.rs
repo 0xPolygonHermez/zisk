@@ -137,6 +137,10 @@ fn pilfflonk_calldata(
 ) -> Result<Vec<u8>> {
     use proofman_pilfflonk::{Calldata, FrBytes, Proof as PilfflonkProof, ProofNames, Vkey};
 
+    // Before snark_publics_hash, which expects four.
+    if rootc.len() != 4 {
+        return Err(anyhow!("rootc has unexpected length {} (expected 4 u64s)", rootc.len()));
+    }
     let vkey: Vkey =
         serde_json::from_str(vkey_json).context("the proof's pilfflonk vkey does not parse")?;
     vkey.check_digest().map_err(|e| anyhow!("the proof's pilfflonk vkey: {e}"))?;

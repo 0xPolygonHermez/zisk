@@ -339,6 +339,9 @@ impl ZiskClient {
     }
 
     /// Submit a wrap/convert proof request.
+    ///
+    /// A wrapped aggregate verifies only under its recurser's verkey, which the caller passes
+    /// with [`ProveResult::with_setup_vk`]: the one the proof carries is not trusted.
     #[must_use]
     pub fn wrap_proof<'a>(
         &'a self,
