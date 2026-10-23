@@ -57,3 +57,9 @@ name = "TranspilerCheck"
 [[lean_exe]]
 name = "transpiler_check"
 root = "TranspilerCheck.Main"
+
+# sail-riscv's decoder on every word the transpiler's decoder can tell apart,
+# for comparing the two (`make decoder-diff`).
+[[lean_exe]]
+name = "decode_diff"
+root = "DecodeDiff.Main"

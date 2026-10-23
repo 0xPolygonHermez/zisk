@@ -48,7 +48,7 @@ EXPECT_FAULT ?=
 NAME  ?= $(if $(ELF),$(basename $(notdir $(ELF))),$(notdir $(firstword $(PROG))))
 DIFF_DIR = build/difftest/$(NAME)
 
-.PHONY: all check ops compliance transpiler-check lean lean-build riscv riscv-sim riscv-lean riscv-run zisk-riscv equiv emu difftest difftest-all constants optest opsdoc sail-version clean
+.PHONY: all check ops compliance transpiler-check decoder-diff lean lean-build riscv riscv-sim riscv-lean riscv-run zisk-riscv equiv emu difftest difftest-all constants optest opsdoc sail-version clean
 
 all: check ops
 
@@ -207,6 +207,20 @@ transpiler-check:
 	    || echo "skip $$e: the transpiler rejects it"; \
 	done
 	lean/.lake/build/bin/transpiler_check build/transpiler-check/*.rom
+
+## The transpiler's decoder against sail-riscv's, in ZisK's profile: every
+## word the transpiler's decoder can tell apart (opcode, funct3, bits 31:20,
+## rd and rs1 x0 or not), what the transpiler does with it against what
+## sail-riscv decodes it to; fails where they differ outside what the
+## contract allows. Run `make riscv-run` first: sail-riscv's side runs on its
+## executable Lean (lean/DecodeDiff). ~11 min.
+decoder-diff:
+	cargo build --release -q -p zisk-sail-difftest
+	cd lean && $(LAKE) build decode_diff
+	@mkdir -p build/decoder-diff
+	lean/.lake/build/bin/decode_diff build/decoder-diff/sail.bin build/decoder-diff/names.txt
+	../target/release/sail-difftest decode-diff --sail build/decoder-diff/sail.bin \
+	  --names build/decoder-diff/names.txt | tee build/decoder-diff/report.txt
 
 ## Every program the model is difftested on.
 # ziskasm's diagnostic program: every family of operations, each checked

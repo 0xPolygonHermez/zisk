@@ -27,6 +27,14 @@ Zicond, the privileged instructions (`mret`, `wfi`, `sfence.vma`).
   outside the contract: ZisK runs code from a read-only ROM.
 - `ebreak`, an instruction outside the set, and a reserved encoding end the
   run in failure (§ 4).
+- The transpiler decodes as RISC-V does, in this profile: a word RISC-V
+  rejects becomes a halt, never another instruction, and a word of an
+  extension outside the set fails only if it runs, as on RISC-V; it does not
+  stop the whole program from transpiling. `make decoder-diff` checks this
+  on every word the transpiler's decoder can tell apart, against
+  sail-riscv's decoder. The only differences are on opcode SYSTEM, and this
+  document describes them: `ebreak`, `mret`, `sret` and `wfi` end the run in
+  failure (above), and the CSRs are ZisK's (§§ 6–9).
 
 ## 2. Memory
 

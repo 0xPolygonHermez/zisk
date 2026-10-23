@@ -21,6 +21,11 @@
 //! (sail-zisk/lean/TranspilerCheck), a RISC-V ELF's code sections, as the
 //! transpiler reads them, and its ROM, as the table entries `prepare` writes.
 //!
+//! `decode-diff` compares the transpiler's decoder with sail-riscv's, in
+//! ZisK's profile, on the words sail-zisk/lean/DecodeDiff lists: for each,
+//! what `convert` does with it (an instruction, a halt, or a panic, which
+//! rejects the whole program) against what sail-riscv's decoder makes of it.
+//!
 //! And `ops` writes test vectors for every operation that is a pure function
 //! of `a` and `b`: `<mnemonic> <a> <b> <c> <flag>`, with `(c, flag)` what
 //! `ZiskOp::call_ab` returns, the emulator's own op functions.
@@ -85,6 +90,17 @@ enum Command {
         #[arg(short, long)]
         out: PathBuf,
     },
+    /// Compare the transpiler's decoder with sail-riscv's, from what
+    /// `decode_diff` (sail-zisk/lean/DecodeDiff) wrote, and print where they
+    /// differ.
+    DecodeDiff {
+        /// decode_diff's verdicts.
+        #[arg(long)]
+        sail: PathBuf,
+        /// decode_diff's instruction names.
+        #[arg(long)]
+        names: PathBuf,
+    },
     /// Write test vectors for every pure operation: `<op> <a> <b> <c> <flag>`.
     Ops {
         /// Output file.
@@ -119,6 +135,7 @@ fn main() -> Result<()> {
             prepare(rom, input.as_deref(), &out, max_steps, dump)
         }
         Command::Rom { elf, out } => rom_listing(&elf, &out),
+        Command::DecodeDiff { sail, names } => decode_diff(&sail, &names),
         Command::Ops { out, random } => op_vectors(&out, random),
     }
 }
@@ -433,6 +450,143 @@ fn rom_listing(elf: &Path, out: &Path) -> Result<()> {
         }
     }
     fs::write(out, s).with_context(|| format!("writing {}", out.display()))?;
+    Ok(())
+}
+
+/// What `convert` does with a word: emits instructions, or a halt (the
+/// run fails there), or panics (the transpiler rejects the program).
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+enum Conversion {
+    Translates,
+    Halts,
+    /// With the panic's message.
+    Panics(String),
+}
+
+fn convert_word(w: u32) -> (&'static str, Conversion) {
+    let code = [(w & 0xffff) as u16, (w >> 16) as u16];
+    let insts = zisk_riscv::riscv_interpreter(0x8000_0000, &code);
+    let inst = &insts[0];
+    let name = inst.inst_name.as_str();
+    let result = std::panic::catch_unwind(|| {
+        let mut rom = ZiskRom::default();
+        let mut ctx = zisk_riscv::Riscv2ZiskContext::new(&mut rom);
+        ctx.convert(inst, &[]);
+        rom.insts.values().any(|b| b.i.op_str == "halt" && b.i.end)
+    });
+    match result {
+        Ok(true) => (name, Conversion::Halts),
+        Ok(false) => (name, Conversion::Translates),
+        Err(e) => {
+            let msg = e
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| e.downcast_ref::<&str>().map(|m| m.to_string()))
+                .unwrap_or_default();
+            // The first line, without the instruction's own fields.
+            let msg =
+                msg.lines().next().unwrap_or("").split(" at 0x").next().unwrap_or("").to_owned();
+            (name, Conversion::Panics(msg))
+        }
+    }
+}
+
+/// The words decode_diff lists, in its order.
+fn decode_diff_words() -> Vec<u32> {
+    let regs = [0u32, 1, 5];
+    let mut ws = Vec::with_capacity(32 * 8 * 4096 * 9);
+    for o in 0..32u32 {
+        for f3 in 0..8u32 {
+            for hi in 0..4096u32 {
+                for rd in regs {
+                    for rs1 in regs {
+                        ws.push((hi << 20) | (rs1 << 15) | (f3 << 12) | (rd << 7) | (o << 2) | 3);
+                    }
+                }
+            }
+        }
+    }
+    ws
+}
+
+/// A kind of word where the decoders differ: what differs, the opcode and
+/// funct3, the transpiler's name for it and sail-riscv's, and why the
+/// transpiler panics, if it does.
+type DiffKey = (&'static str, u32, u32, &'static str, String, String);
+
+fn decode_diff(sail: &Path, names: &Path) -> Result<()> {
+    let verdicts = fs::read(sail).with_context(|| format!("reading {}", sail.display()))?;
+    let names: Vec<String> = fs::read_to_string(names)?.lines().map(str::to_owned).collect();
+    let words = decode_diff_words();
+    if verdicts.len() != 2 * words.len() {
+        bail!("{} has {} verdicts for {} words", sail.display(), verdicts.len() / 2, words.len());
+    }
+    std::panic::set_hook(Box::new(|_| {}));
+    // A kind of word -> how many, and one of them.
+    let mut groups: std::collections::BTreeMap<DiffKey, (u64, u32)> = Default::default();
+    let mut agree = 0u64;
+    for (k, &w) in words.iter().enumerate() {
+        let v = u16::from_le_bytes([verdicts[2 * k], verdicts[2 * k + 1]]);
+        let (name, conv) = convert_word(w);
+        let sail_name = match v {
+            0 => "ILLEGAL".to_owned(),
+            0xffff => "?".to_owned(),
+            n => names[n as usize - 1].clone(),
+        };
+        let why = match &conv {
+            Conversion::Panics(m) if v != 0 => m.clone(),
+            _ => String::new(),
+        };
+        let what = match (conv, v) {
+            (_, 0xffff) => "sail-riscv's executable model cannot tell",
+            (Conversion::Translates, 0) => "LENIENT: the transpiler runs a word RISC-V rejects",
+            (Conversion::Halts, 0) => {
+                agree += 1;
+                continue;
+            }
+            (Conversion::Panics(_), 0) => "rejected: RISC-V rejects it too, but only if it runs",
+            (Conversion::Halts, _) => "STRICT: the transpiler halts on a word RISC-V decodes",
+            (Conversion::Panics(_), _) => "STRICT: the transpiler rejects a word RISC-V decodes",
+            (Conversion::Translates, _) => {
+                agree += 1;
+                continue;
+            }
+        };
+        let e =
+            groups.entry((what, w & 0x7f, (w >> 12) & 7, name, sail_name, why)).or_insert((0, w));
+        e.0 += 1;
+    }
+    println!(
+        "{} words; {agree} on which both decoders agree, accepting or rejecting.",
+        words.len()
+    );
+    let mut last = "";
+    for ((what, op, f3, name, sail_name, why), (n, w)) in &groups {
+        if *what != last {
+            println!("\n{what}");
+            last = what;
+        }
+        let why = if why.is_empty() { String::new() } else { format!(" ({why})") };
+        println!(
+            "  opcode {op:#04x} funct3 {f3}: {name} / {sail_name}: {n} words, e.g. {w:#010x}{why}"
+        );
+    }
+    // What the contract allows (sail-zisk/doc/riscv_contract.md): on opcode
+    // SYSTEM, ebreak, the privileged instructions and the CSRs are ZisK's own
+    // (§§ 1, 5-9), and words the executable model cannot tell are left to the
+    // reader. Anything else fails the check.
+    let bad: Vec<_> = groups
+        .keys()
+        .filter(|(what, op, ..)| {
+            !(what.starts_with("STRICT") && *op == 0x73) && !what.starts_with("sail-riscv")
+        })
+        .collect();
+    if !bad.is_empty() {
+        bail!(
+            "{} kinds of word where the decoders differ outside what the contract allows",
+            bad.len()
+        );
+    }
     Ok(())
 }
 

@@ -316,10 +316,13 @@ theorem JInstr.rom_of_spec (i : JInstr)
     storeReg_link, Equiv.Zisk.jalInst]
 
 theorem JrInstr.spec_fields (i : JrInstr) :
-    Transpiler.opcode i.encode = 0x67#7 ∧ Transpiler.rd i.encode = i.rd.toNat ∧
+    Transpiler.opcode i.encode = 0x67#7 ∧ Transpiler.funct3 i.encode = 0#3 ∧
+    Transpiler.rd i.encode = i.rd.toNat ∧
     Transpiler.rs1 i.encode = i.rs1.toNat ∧ Transpiler.immI i.encode = i.imm.signExtend 64 := by
-  simp only [Transpiler.opcode, Transpiler.rd, Transpiler.rs1, Transpiler.immI, JrInstr.encode]
-  refine ⟨?_, ?_, ?_, ?_⟩
+  simp only [Transpiler.opcode, Transpiler.funct3, Transpiler.rd, Transpiler.rs1, Transpiler.immI,
+    JrInstr.encode]
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  · bv_decide
   · bv_decide
   · congr 1; bv_decide
   · congr 1; bv_decide
@@ -334,10 +337,10 @@ theorem JrInstr.rom_of_spec (i : JrInstr) (h1 : i.rs1 ≠ 0) (heven : i.imm[0] =
     {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {pc : BitVec 64} {next : Option (BitVec 32)}
     (h : Transpiled zrom pc i.encode next) :
     zrom pc = Equiv.Zisk.jalrInst i.rd.toNat i.rs1.toNat (i.imm.signExtend 64) := by
-  obtain ⟨hop, hrd, hr1, himm⟩ := i.spec_fields
+  obtain ⟨hop, hf3, hrd, hr1, himm⟩ := i.spec_fields
   have e1 := ne_zero_toNat h1
   refine h.one fun ia => ?_
-  simp [Transpiler.convert, Transpiler.decode, hop, hrd, hr1, himm, i.lsb, heven, e1, Transpiler.jalr,
+  simp [Transpiler.convert, Transpiler.decode, hop, hf3, hrd, hr1, himm, i.lsb, heven, e1, Transpiler.jalr,
     Transpiler.mk, srcB_ne e1, storeReg_link, Equiv.Zisk.jalrInst, Transpiler.JALR_MASK,
     Equiv.Zisk.JALR_MASK]
 
@@ -348,10 +351,10 @@ theorem JrInstr.rom_of_spec_odd (i : JrInstr) (h1 : i.rs1 ≠ 0) (hodd : i.imm[0
     (h : Transpiled zrom pc i.encode next) :
     ∃ ia, zrom pc = Equiv.Zisk.jalrAddInst i.rs1.toNat (i.imm.signExtend 64) (ia - pc) ∧
       zrom ia = Equiv.Zisk.jalrAndInst i.rd.toNat (pc + 4 - ia) := by
-  obtain ⟨hop, hrd, hr1, himm⟩ := i.spec_fields
+  obtain ⟨hop, hf3, hrd, hr1, himm⟩ := i.spec_fields
   have e1 := ne_zero_toNat h1
   obtain ⟨ia, l, hl, hz⟩ := h
-  simp [Transpiler.convert, Transpiler.decode, hop, hrd, hr1, himm, i.lsb, hodd, Transpiler.jalr] at hl
+  simp [Transpiler.convert, Transpiler.decode, hop, hf3, hrd, hr1, himm, i.lsb, hodd, Transpiler.jalr] at hl
   subst hl
   simp only [List.mem_cons, List.mem_singleton, forall_eq_or_imp, forall_eq, List.not_mem_nil,
     or_false] at hz
@@ -380,14 +383,14 @@ theorem FInstr.rom_of_spec (i : FInstr) (hd : i.rd ≠ 0) (hl : i.rd2 = i.rd ∨
     (h : Transpiled zrom pc i.auipc.encode (some i.jalr.encode)) :
     zrom pc = Equiv.Zisk.constJInst i.rd.toNat (i.c pc) (i.T pc - pc) := by
   obtain ⟨uop, urd, uimm⟩ := i.auipc.spec_fields
-  obtain ⟨jop, jrd, jr1, jimm⟩ := i.jalr.spec_fields
+  obtain ⟨jop, jf3, jrd, jr1, jimm⟩ := i.jalr.spec_fields
   simp only [FInstr.auipc, uopEnc] at uop urd uimm
-  simp only [FInstr.jalr] at jop jrd jr1 jimm
+  simp only [FInstr.jalr] at jop jf3 jrd jr1 jimm
   have ed := ne_zero_toNat hd
   have hf : Transpiler.fuses i.auipc.encode i.jalr.encode = true := by
     have : i.rd2.toNat = i.rd.toNat ∨ i.rd2.toNat = 0 := by
       rcases hl with e | e <;> simp [e]
-    simp [Transpiler.fuses, Transpiler.decode, jop, jr1, jrd, FInstr.auipc, FInstr.jalr, urd, ed, this, jalr_beq]
+    simp [Transpiler.fuses, Transpiler.decode, jop, jf3, jr1, jrd, FInstr.auipc, FInstr.jalr, urd, ed, this, jalr_beq]
   refine h.one fun ia => ?_
   simp only [FInstr.auipc, FInstr.jalr] at hf
   simp [Transpiler.convert, Transpiler.decode, uop, Transpiler.auipc, hf, urd, uimm, jrd, jimm, ed,

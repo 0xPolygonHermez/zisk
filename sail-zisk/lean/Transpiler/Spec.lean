@@ -96,8 +96,8 @@ inductive Inst
   deriving BEq, Repr
 
 /-- What `decode_32` decodes a word to, among the instructions described.
-    As in the Rust, jalr is any funct3, and lui, auipc and jal any word with
-    their opcode. -/
+    As in the Rust (and RISC-V), lui, auipc and jal are any word with their
+    opcode. -/
 def decode (w : BitVec 32) : Option Inst :=
   let f3 := (funct3 w).toNat
   let f7 := (funct7 w).toNat
@@ -140,7 +140,7 @@ def decode (w : BitVec 32) : Option Inst :=
   | 99 => match f3 with
     | 0 => some (.branch .beq) | 1 => some (.branch .bne) | 4 => some (.branch .blt)
     | 5 => some (.branch .bge) | 6 => some (.branch .bltu) | 7 => some (.branch .bgeu) | _ => none
-  | 103 => some .jalr
+  | 103 => if f3 == 0 then some .jalr else none
   | 111 => some .jal
   | _ => none
 
