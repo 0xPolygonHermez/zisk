@@ -68,3 +68,6 @@ import Equiv.RamOnly
 import Equiv.SpecRom
 import Equiv.MemMono
 import Equiv.Sparse
+import Equiv.Regions
+import Equiv.RegionFacts
+import Equiv.Final

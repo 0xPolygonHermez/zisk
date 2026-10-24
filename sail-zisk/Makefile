@@ -108,6 +108,7 @@ riscv: sail-version
 	    encdec_backwards_matches encdec_compressed_forwards encdec_compressed_backwards \
 	    encdec_compressed_forwards_matches encdec_compressed_backwards_matches,--lean-noncomputable-function $(f)) \
 	  --lean-import-file ../handwritten_support/RiscvExtras.lean -o Lean_ZiskRV --all-modules riscv.sail_project
+	python3 riscv/gen_lean_regions.py build/riscv-lean/Lean_ZiskRV/LeanZiskRV.lean lean/Equiv/Regions.lean
 
 ## Build sail-riscv's C emulator, sail_riscv_sim, for `make compliance` to
 ## compare signatures with, in ZisK's profile. Run `make riscv` first; long
