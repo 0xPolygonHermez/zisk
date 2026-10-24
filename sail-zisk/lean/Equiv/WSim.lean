@@ -233,7 +233,7 @@ theorem rwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw
     (.RTYPEW (.Regidx i.rs2, .Regidx i.rs1, .Regidx i.rd, i.op)) ?_ i.rd.toNat i.rd.isLt
     (rtypewVal i.op (regv xs i.rs1.toNat) (regv xs i.rs2.toNat)) (pc' + 4) ?_ zrom ?_ n
-  · intro t htp ⟨w, hw'⟩
+  · intro t htp ⟨w, hw'⟩ hmt
     have := decode_rtypew t _ i.op hop hf3 hf7 htp w hw'
     rw [hr2x, hr1x, hrdx] at this; exact this
   · intro t he _ _ _ _ hnext _
@@ -278,7 +278,7 @@ theorem iwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw
     (.ADDIW (i.imm, .Regidx i.rs1, .Regidx i.rd)) ?_ i.rd.toNat i.rd.isLt
     (addiwVal (regv xs i.rs1.toNat) i.imm) (pc' + 4) ?_ zrom ?_ n
-  · intro t htp ⟨w, hw'⟩
+  · intro t htp ⟨w, hw'⟩ hmt
     have := decode_addiw t _ hop hf3 htp w hw'
     rw [himm, hr1x, hrdx] at this; exact this
   · intro t he _ _ _ _ hnext _
@@ -319,7 +319,7 @@ theorem siwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw
     (.SHIFTIWOP (i.sh, .Regidx i.rs1, .Regidx i.rd, i.op)) ?_ i.rd.toNat i.rd.isLt
     (shiftiwVal i.op (regv xs i.rs1.toNat) i.sh) (pc' + 4) ?_ zrom ?_ n
-  · intro t htp ⟨w, hw'⟩
+  · intro t htp ⟨w, hw'⟩ hmt
     have := decode_shiftiwop t _ i.op hop hf3 hf7 htp w hw'
     rw [hshx, hr1x, hrdx] at this; exact this
   · intro t he _ _ _ _ hnext _

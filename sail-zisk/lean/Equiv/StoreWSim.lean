@@ -134,7 +134,7 @@ theorem swstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   obtain ⟨s', hrun, hmem, hwf, hpc'', hxs', ho⟩ :=
     try_step_store s rs hr pc' hpc _ _ _ _ hw
       (.STORE (i.immHi ++ i.immLo, .Regidx i.rs2, .Regidx i.rs1, (i.k.w : Int)))
-      (by intro t htp ⟨w, hw'⟩
+      (by intro t htp ⟨w, hw'⟩ hmt
           have := i.k.decode t _ hop hf3 htp w hw'
           rw [hhi, hlo, hr2x, hr1x] at this; exact this)
       (Equiv.memWrite (n := i.k.w) s.mem (v1 + (i.immHi ++ i.immLo).signExtend 64).toNat (v2.setWidth (8 * i.k.w)))

@@ -52,3 +52,7 @@ import Equiv.RiscvDecodeW
 import Equiv.WSim
 import Equiv.RiscvM
 import Equiv.SimM
+import Equiv.RiscvDecodeMBase
+import Equiv.RiscvDecodeM
+import Equiv.RiscvDecodeMul
+import Equiv.MSim

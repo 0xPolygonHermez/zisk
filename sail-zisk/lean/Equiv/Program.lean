@@ -34,6 +34,7 @@ theorem alu_step_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region
     (b0 b1 b2 b3 : BitVec 8) (hw : WordAt s rs pc b0 b1 b2 b3) (ins : instruction)
     (hdec : ∀ t : RVState, t.regs.get? Register.cur_privilege = some .Machine →
       (∃ v, t.regs.get? Register.mseccfg = some v) →
+      (∃ v, t.regs.get? Register.misa = some v ∧ _get_Misa_M v = 1#1) →
       (interpretSailEffects (ext_decode (b3 ++ b2 ++ (b1 ++ b0)))).run t = .ok ins t)
     (rd : Nat) (hrd : rd ≠ 0) (ld : rd < 32) (val : BitVec 64)
     (hexec : ∀ t : RVState, (∀ k, k < 32 → getX t k = getX s k) → t.mem = s.mem → MemReady t rs →
@@ -126,7 +127,7 @@ theorem istep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
   refine alu_step_rel s z rs hr xs hx agree pc' hpc hzpc _ _ _ _ hw
     (.ITYPE (i.imm, .Regidx i.rs1, .Regidx i.rd, i.op)) ?_ i.rd.toNat ed ld
     (itypeVal i.op xs[i.rs1.toNat]! i.imm) ?_ zrom hzm ?_ n
-  · intro t htp ⟨v, hv⟩
+  · intro t htp ⟨v, hv⟩ _
     have := decode_itype t _ i.op hop hf3 hrd5 htp v hv
     rw [himm, hr1x, hrdx] at this; exact this
   · intro t he _ _ _ _
@@ -197,7 +198,7 @@ theorem sstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
   refine alu_step_rel s z rs hr xs hx agree pc' hpc hzpc _ _ _ _ hw
     (.SHIFTIOP (i.sh, .Regidx i.rs1, .Regidx i.rd, i.op)) ?_ i.rd.toNat ed ld
     (shiftVal i.op xs[i.rs1.toNat]! i.sh) ?_ zrom hzm ?_ n
-  · intro t htp ⟨v, hv⟩
+  · intro t htp ⟨v, hv⟩ _
     have := decode_shiftiop t _ i.op hop hf3 hf6 hrd5 htp v hv
     rw [hsh, hr1x, hrdx] at this; exact this
   · intro t he _ _ _ _

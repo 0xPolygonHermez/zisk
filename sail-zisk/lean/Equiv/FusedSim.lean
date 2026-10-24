@@ -26,7 +26,7 @@ theorem rv_auipc_step (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
   obtain ⟨mi, hmi⟩ := hr.mem.misa
   obtain ⟨s1, hrun, hmem, hwf, hpc1, hxs, ho⟩ :=
     try_step_gen s rs hr pc hpc _ _ _ _ hw (.UTYPE (uimm, .Regidx rd, .AUIPC))
-      (by intro t htp ⟨w, hw'⟩
+      (by intro t htp ⟨w, hw'⟩ hmt
           have := decode_utype t _ .AUIPC hop htp w hw'
           rw [himm, hrdx] at this; exact this)
       rd.toNat (utypeVal .AUIPC pc uimm) (pc + 4)
@@ -53,7 +53,7 @@ theorem rv_jalr_step (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
   obtain ⟨sv, hsv, -⟩ := hr.pmm
   obtain ⟨s2, hrun, hmem, hwf, hpc2, hxs, ho⟩ :=
     try_step_gen s rs hr pc hpc _ _ _ _ hw (.JALR (i.imm, .Regidx i.rs1, .Regidx i.rd))
-      (by intro t htp ⟨w, hw'⟩
+      (by intro t htp ⟨w, hw'⟩ hmt
           have := decode_jalr t _ hop hf3 htp w hw'
           rw [himm, hr1x, hrdx] at this; exact this)
       i.rd.toNat (pc + 4) (jalrTarget v1 i.imm)

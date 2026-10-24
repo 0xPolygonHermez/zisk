@@ -16,7 +16,7 @@
     (`registerOp`, `immediateOp`, `copyb`, `loadOp`, `storeOp`, ...), and
     `convert`, which picks one per instruction.
 
-  So far: RV64I but for fence, ecall, ebreak and the CSRs. An instruction it
+  So far: RV64I but for fence, ecall, ebreak and the CSRs; and M. An instruction it
   does not describe is `none`.
 
   Internal addresses (the odd ROM addresses a translation of more than one
@@ -89,10 +89,14 @@ inductive LOp | lb | lh | lw | ld | lbu | lhu | lwu
 inductive SzOp | sb | sh | sw | sd
   deriving BEq, Repr
 
+/-- The M extension's ops. -/
+inductive MOp | mul | mulh | mulhsu | mulhu | div | divu | rem | remu | mulw | divw | divuw | remw | remuw
+  deriving BEq, Repr
+
 /-- An instruction the spec describes, as `RiscvDecoder::decode_32` names it. -/
 inductive Inst
   | r (op : ROp) | i (op : IOp) | shift (op : SOp) | branch (op : BOp)
-  | load (op : LOp) | store (op : SzOp) | lui | auipc | jal | jalr
+  | load (op : LOp) | store (op : SzOp) | lui | auipc | jal | jalr | m (op : MOp)
   deriving BEq, Repr
 
 /-- What `decode_32` decodes a word to, among the instructions described.
@@ -132,11 +136,16 @@ def decode (w : BitVec 32) : Option Inst :=
   | 51 => match f3, f7 with
     | 0, 0 => some (.r .add) | 0, 32 => some (.r .sub) | 1, 0 => some (.r .sll) | 2, 0 => some (.r .slt)
     | 3, 0 => some (.r .sltu) | 4, 0 => some (.r .xor) | 5, 0 => some (.r .srl) | 5, 32 => some (.r .sra)
-    | 6, 0 => some (.r .or) | 7, 0 => some (.r .and) | _, _ => none
+    | 6, 0 => some (.r .or) | 7, 0 => some (.r .and)
+    | 0, 1 => some (.m .mul) | 1, 1 => some (.m .mulh) | 2, 1 => some (.m .mulhsu) | 3, 1 => some (.m .mulhu)
+    | 4, 1 => some (.m .div) | 5, 1 => some (.m .divu) | 6, 1 => some (.m .rem) | 7, 1 => some (.m .remu)
+    | _, _ => none
   | 55 => some .lui
   | 59 => match f3, f7 with
     | 0, 0 => some (.r .addw) | 0, 32 => some (.r .subw) | 1, 0 => some (.r .sllw)
-    | 5, 0 => some (.r .srlw) | 5, 32 => some (.r .sraw) | _, _ => none
+    | 5, 0 => some (.r .srlw) | 5, 32 => some (.r .sraw)
+    | 0, 1 => some (.m .mulw) | 4, 1 => some (.m .divw) | 5, 1 => some (.m .divuw) | 6, 1 => some (.m .remw)
+    | 7, 1 => some (.m .remuw) | _, _ => none
   | 99 => match f3 with
     | 0 => some (.branch .beq) | 1 => some (.branch .bne) | 4 => some (.branch .blt)
     | 5 => some (.branch .bge) | 6 => some (.branch .bltu) | 7 => some (.branch .bgeu) | _ => none
@@ -257,6 +266,13 @@ def ROp.zop : ROp → zisk_op
   | .or => .ZOP_OR () | .and => .ZOP_AND () | .addw => .ZOP_ADD_W () | .subw => .ZOP_SUB_W ()
   | .sllw => .ZOP_SLL_W () | .srlw => .ZOP_SRL_W () | .sraw => .ZOP_SRA_W ()
 
+/-- The op the transpiler emits for each M instruction (riscv2zisk_context.rs). -/
+def MOp.zop : MOp → zisk_op
+  | .mul => .ZOP_MUL () | .mulh => .ZOP_MULH () | .mulhsu => .ZOP_MULSUH () | .mulhu => .ZOP_MULUH ()
+  | .div => .ZOP_DIV () | .divu => .ZOP_DIVU () | .rem => .ZOP_REM () | .remu => .ZOP_REMU ()
+  | .mulw => .ZOP_MUL_W () | .divw => .ZOP_DIV_W () | .divuw => .ZOP_DIVU_W () | .remw => .ZOP_REM_W ()
+  | .remuw => .ZOP_REMU_W ()
+
 def SOp.zop : SOp → zisk_op
   | .slli => .ZOP_SLL () | .srli => .ZOP_SRL () | .srai => .ZOP_SRA ()
   | .slliw => .ZOP_SLL_W () | .srliw => .ZOP_SRL_W () | .sraiw => .ZOP_SRA_W ()
@@ -309,5 +325,6 @@ def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : B
   | some .auipc => one (auipc w pc next)
   | some .jal => one (jal w)
   | some .jalr => some (jalr w pc ia)
+  | some (.m op) => one (registerOp w op.zop)
 
 end Transpiler

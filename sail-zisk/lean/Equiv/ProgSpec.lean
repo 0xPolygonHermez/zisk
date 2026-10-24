@@ -11,6 +11,7 @@
 -/
 import Equiv.X0Sim
 import Equiv.WSim
+import Equiv.MSim
 
 namespace Equiv.Sim
 
@@ -84,7 +85,7 @@ theorem FtAt.toFAt {s rs pc zrom i} (h : FtAt s rs pc zrom i) : FAt s rs pc zrom
 /-! ## One step -/
 
 /-- An instruction of the runs: every one proved, any registers (RV64I's
-    word instructions among them). -/
+    word instructions and the M extension among them). -/
 inductive InstrT where
   | r (i : RInstr)
   | i (i : IInstr)
@@ -100,6 +101,7 @@ inductive InstrT where
   | rw (i : RwInstr)
   | iw (i : IwInstr)
   | siw (i : SiwInstr)
+  | m (i : MInstr)
 
 /-- What instruction `o` needs to run at pc in state s, in one step on each
     side: to be there, in memory and, as the spec translates it, in the ZisK
@@ -128,6 +130,7 @@ def StepOkT (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   | .rw i => ∃ nx, RwAt s rs pc zrom i nx
   | .iw i => ∃ nx, IwAt s rs pc zrom i nx
   | .siw i => ∃ nx, SiwAt s rs pc zrom i nx
+  | .m i => ∃ nx, MAt s rs pc zrom i nx
 
 theorem getX_some {s : RVState} {z : Equiv.Zisk.ZState} {rs : List PMA_Region} (hrel : Rel s z rs)
     {r : Nat} (hr : r < 32) : ∃ v, getX s r = some v := by
@@ -183,6 +186,9 @@ theorem step_relT (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     exact ⟨s', z', h1, h2, h3⟩
   | .siw i, ⟨nx, hi⟩ =>
     obtain ⟨s', z', h1, h2, h3, -⟩ := siwstep_rel s z rs hrel pc hpc zrom i nx hi n
+    exact ⟨s', z', h1, h2, h3⟩
+  | .m i, ⟨nx, hi⟩ =>
+    obtain ⟨s', z', h1, h2, h3, -⟩ := mstep_rel s z rs hrel pc hpc zrom i nx hi n
     exact ⟨s', z', h1, h2, h3⟩
 
 /-- What one step of sail-riscv needs: an instruction, run in one ZisK step,

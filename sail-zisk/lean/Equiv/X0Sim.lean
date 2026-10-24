@@ -118,7 +118,7 @@ theorem rtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw
     (.RTYPE (.Regidx i.rs2, .Regidx i.rs1, .Regidx i.rd, i.op)) ?_ i.rd.toNat i.rd.isLt
     (rtypeVal i.op (regv xs i.rs1.toNat) (regv xs i.rs2.toNat)) (pc' + 4) ?_ zrom ?_ n
-  · intro t htp ⟨w, hw'⟩
+  · intro t htp ⟨w, hw'⟩ hmt
     have := decode_rtype0 t _ i.op hop hf3 hf7 htp w hw'
     rw [hr2x, hr1x, hrdx] at this; exact this
   · intro t he _ _ _ _ hnext _
@@ -270,7 +270,7 @@ theorem itstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw
     (.ITYPE (i.imm, .Regidx i.rs1, .Regidx i.rd, i.op)) ?_ i.rd.toNat i.rd.isLt
     (itypeVal i.op (regv xs i.rs1.toNat) i.imm) (pc' + 4) ?_ zrom ?_ n
-  · intro t htp ⟨w, hw'⟩
+  · intro t htp ⟨w, hw'⟩ hmt
     have := decode_itype0 t _ i.op hop hf3 htp w hw'
     rw [himm, hr1x, hrdx] at this; exact this
   · intro t he _ _ _ _ hnext _
@@ -324,7 +324,7 @@ theorem ststep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw
     (.SHIFTIOP (i.sh, .Regidx i.rs1, .Regidx i.rd, i.op)) ?_ i.rd.toNat i.rd.isLt
     (shiftVal i.op (regv xs i.rs1.toNat) i.sh) (pc' + 4) ?_ zrom ?_ n
-  · intro t htp ⟨w, hw'⟩
+  · intro t htp ⟨w, hw'⟩ hmt
     have := decode_shiftiop0 t _ i.op hop hf3 hf6 htp w hw'
     rw [hshx, hr1x, hrdx] at this; exact this
   · intro t he _ _ _ _ hnext _
@@ -385,7 +385,7 @@ theorem utstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   obtain ⟨mi, hmi⟩ := hr.mem.misa
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw (.UTYPE (i.imm, .Regidx i.rd, i.op))
     ?_ i.rd.toNat i.rd.isLt (utypeVal i.op pc' i.imm) (pc' + 4) ?_ zrom ?_ n
-  · intro t htp ⟨w, hw'⟩
+  · intro t htp ⟨w, hw'⟩ hmt
     have := decode_utype t _ i.op hop htp w hw'
     rw [himm, hrdx] at this; exact this
   · intro t _ _ _ _ _ hnext hother
@@ -448,7 +448,7 @@ theorem btstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   obtain ⟨mi, hmi⟩ := hr.mem.misa
   obtain ⟨s', hrun, hmem, hwf, hpc'', hxs', ho⟩ :=
     try_step_gen s rs hr pc' hpc _ _ _ _ hw (.BTYPE (i.imm, .Regidx i.rs2, .Regidx i.rs1, i.op))
-      (by intro t htp ⟨w, hw'⟩
+      (by intro t htp ⟨w, hw'⟩ hmt
           have := decode_btype t _ i.op hop hf3 htp w hw'
           rw [h12, h11, h10, h4, hr2x, hr1x] at this; exact this)
       0 0 (i.target pc' v1 v2)
@@ -539,7 +539,7 @@ theorem swtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
   obtain ⟨s', hrun, hmem, hwf, hpc'', hxs', ho⟩ :=
     try_step_store s rs hr pc' hpc _ _ _ _ hw
       (.STORE (i.immHi ++ i.immLo, .Regidx i.rs2, .Regidx i.rs1, (i.k.w : Int)))
-      (by intro t htp ⟨w, hw'⟩
+      (by intro t htp ⟨w, hw'⟩ hmt
           have := i.k.decode t _ hop hf3 htp w hw'
           rw [hhi, hlo, hr2x, hr1x] at this; exact this)
       (Equiv.memWrite (n := i.k.w) s.mem (v1 + (i.immHi ++ i.immLo).signExtend 64).toNat (v2.setWidth (8 * i.k.w)))
@@ -600,7 +600,7 @@ theorem sdtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
   obtain ⟨hal, ⟨r, hm, hwr⟩, hzw, hzn⟩ := hok
   obtain ⟨s', hrun, hmem, hwf, hpc'', hxs', ho⟩ :=
     try_step_store s rs hr pc' hpc _ _ _ _ hw (.STORE (i.immHi ++ i.immLo, .Regidx i.rs2, .Regidx i.rs1, 8))
-      (by intro t htp ⟨w, hw'⟩
+      (by intro t htp ⟨w, hw'⟩ hmt
           have := decode_sd t _ hop hf3 htp w hw'
           rw [hhi, hlo, hr2x, hr1x] at this; exact this)
       (Equiv.memWrite (n := 8) s.mem (v1 + (i.immHi ++ i.immLo).signExtend 64).toNat v2)
@@ -673,7 +673,7 @@ theorem lwtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw
     (.LOAD (i.imm, .Regidx i.rs1, .Regidx i.rd, i.k.u, (i.k.w : Int))) ?_ i.rd.toNat i.rd.isLt
     (extend_value i.k.u v) (pc' + 4) ?_ zrom ?_ n
-  · intro t htp ⟨w, hw'⟩
+  · intro t htp ⟨w, hw'⟩ hmt
     have := decode_load0 t _ hop hvalid htp w hw'
     rw [himm, hr1x, hrdx, hu, hwd] at this; exact this
   · intro t he htm hmr hsec hwf hnext _
@@ -738,7 +738,7 @@ theorem ldtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
   obtain ⟨hal, ⟨r, hm, hrb⟩, hzr, hzn, hzi, hbytes⟩ := hok
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw
     (.LOAD (i.imm, .Regidx i.rs1, .Regidx i.rd, false, 8)) ?_ i.rd.toNat i.rd.isLt v (pc' + 4) ?_ zrom ?_ n
-  · intro t htp ⟨w, hw'⟩
+  · intro t htp ⟨w, hw'⟩ hmt
     have := decode_load0 t _ hop (by rw [h13, h14]; decide) htp w hw'
     rw [himm, hr1x, hrdx, h13, h14] at this; exact this
   · intro t he htm hmr hsec hwf hnext _
