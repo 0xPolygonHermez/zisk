@@ -232,21 +232,24 @@ transpilation.
   started as the contract says, on memory as ZisK starts it (every byte of
   its regions defined, `lean/Equiv/Full.lean`; sail-riscv never forgets a
   byte, `lean/Equiv/MemGrow.lean`), with a ZisK program that holds the
-  BIOS and, at every executable word the spec describes, the spec's
-  translation (`SpecRom`, `lean/Equiv/SpecRom.lean`: a hypothesis on the
-  program; a run, which changes only the RAM, keeps it, given no code in
-  the RAM), and whose run the simulation covers (`RunOkT`, of the RISC-V
-  side: every step an instruction proved, with its accesses good) up to the
+  BIOS and, at every code address (the ones the transpiler walks) whose
+  word the spec describes, the spec's translation (`SpecRom`,
+  `lean/Equiv/SpecRom.lean`: a hypothesis on the program; a run, which
+  changes only the RAM, keeps it, given no code in the RAM), and whose run
+  stays at code addresses (`RunIn`) and the simulation covers (`RunOkT`, of
+  the RISC-V side: every step an instruction proved, with its accesses
+  good) up to the
   exit system call or the return to the initial ra, the machine's run ends
   in `exit c` and sail-zisk's, BIOS included, in success with the same
   memory — so the same output — when c is 0, in error with code c
   otherwise. The theorems rest on Lean's axioms,
   on `bv_decide`'s (it trusts its compiled checker), and on the primitives
   sail-riscv's Lean leaves undefined (softfloat, reservations, platform
-  hooks), which the proofs never look into. Still to do: `SpecRom` checked
-  of the transpiler's ROM (the spec's translation at each word, internal
-  addresses included, which `make transpiler-check` compares instruction by
-  instruction but not as this statement); the run's conditions that are not
+  hooks), which the proofs never look into. `make transpiler-check` checks
+  `SpecRom` of the Rust's ROM on its programs, for the code addresses it
+  walks (the last word of a section read with no next word, where the
+  machine would read whatever memory follows: it matters only if that is a
+  jalr after an auipc). Still to do: the run's conditions that are not
   the program's — an access aligned and in its region, a jump's target
   aligned — shown to fail alike on both sides when they do not hold (in
   ZisK's profile sail-riscv allows misaligned loads and stores, as

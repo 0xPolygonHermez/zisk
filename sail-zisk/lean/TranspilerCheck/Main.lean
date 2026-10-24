@@ -9,7 +9,9 @@
   entries (sail-zisk/model/zisk_rom_table.sail). The code is walked as
   riscv_interpreter.rs walks it; for each 32-bit instruction the spec
   describes, every ZisK instruction it gives must be in the ROM, at the same
-  address, field for field. The internal address a translation continues
+  address, field for field — the proofs' hypothesis `SpecRom`
+  (Equiv/SpecRom.lean), its code addresses the ones walked here and the
+  next word the four bytes after. The internal address a translation continues
   at is the Rust ROM's (see the spec's header). Exits 1 on any difference.
 -/
 import Transpiler.Spec
@@ -93,7 +95,14 @@ def check (name : String) (l : Listing) : IO Tally := do
     let ps := parcels base data
     for k in [0:ps.size] do
       let (pc, some w) := ps[k]! | continue
-      let next := (ps[k + 1]?).bind (·.2)
+      -- The next word as `SpecRom` (Equiv/SpecRom.lean) reads it: the four
+      -- bytes at pc + 4, whatever they are, when the section holds them.
+      let o := pc - base
+      let next : Option (BitVec 32) :=
+        if o + 8 ≤ data.size then
+          some (BitVec.ofNat 32 (data[o + 4]!.toNat + 256 * data[o + 5]!.toNat +
+            65536 * data[o + 6]!.toNat + 16777216 * data[o + 7]!.toNat))
+        else none
       -- The internal address the Rust's translation continues at, if any.
       let ia : BitVec 64 := match l.rom.get? pc with
         | some (some i) => BitVec.ofNat 64 pc + i.jmp_off1
