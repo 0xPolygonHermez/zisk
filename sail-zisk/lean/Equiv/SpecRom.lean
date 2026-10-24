@@ -120,7 +120,7 @@ theorem prog_rom (zr zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA_
     ∀ (k : Nat) (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState) (n : Nat),
       Rel S.rv z rs → RunOkT rs zr k S.rv n → RunIn C k S.rv n → SpecRom zrom C S.rv.mem →
       ∃ s' z' k', RVRun n k S.rv s' ∧ ZRun zrom k' z z' ∧ Rel s' z' rs ∧ RamOnly S.rv.mem s'.mem ∧
-        (PcOk s' → MRun k S { S with rv := s' })
+        (PcOk s' → MRunR k S { S with rv := s' })
   | 0, S, z, n, hrel, _, _, _ =>
     ⟨S.rv, z, 0, .done n _, .done z, hrel, RamOnly.refl _, fun _ => .done _⟩
   | 1, S, z, n, hrel, ho, hin, hs => by
@@ -128,7 +128,7 @@ theorem prog_rom (zr zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA_
       one_stepT S.rv z rs hrel zrom (OneOkT.retarget hs (fun _ h => hin.head h) ho) n
     obtain ⟨pc, hpc, hw⟩ := OneOkT.word ho
     exact ⟨s1, z1, k1, .step hrun (.done _ _), hzrun, hrel1, hm1,
-      fun hp => .step (mstep S rs hrel.ready pc hpc hw hx hrun hp) (.done _)⟩
+      fun hp => .step (mstepR S rs hrel.ready pc hpc hw hx hrun hp) (.done _)⟩
   | k + 2, S, z, n, hrel, .inl ⟨ho, hrest⟩, hin, hs => by
     obtain ⟨s1, z1, k1, hrun, hzrun, hrel1, hm1⟩ :=
       one_stepT S.rv z rs hrel zrom (OneOkT.retarget hs (fun _ h => hin.head h) ho) n
@@ -136,7 +136,7 @@ theorem prog_rom (zr zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA_
     have hin1 := hin.tail
     rw [rvNext_of hrun] at hrest hin1
     obtain ⟨p1, hp1, hx1⟩ := RunOkT.exec hrest
-    have hmr1 := mstep S rs hrel.ready pc hpc hw hx hrun (PcOk.of_exec ht hp1 hx1)
+    have hmr1 := mstepR S rs hrel.ready pc hpc hw hx hrun (PcOk.of_exec ht hp1 hx1)
     obtain ⟨s2, z2, k2, hrun2, hzrun2, hrel2, hm2, hmr2⟩ :=
       prog_rom zr zrom rs C hx ht hnx (k + 1) { S with rv := s1 } z1 (n + 1) hrel1 hrest hin1 (hs.keep hm1 hnx)
     exact ⟨s2, z2, k1 + k2, .step hrun hrun2, ZRun.append hzrun hzrun2, hrel2, hm1.trans hm2,
@@ -169,9 +169,9 @@ theorem prog_rom (zr zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA_
       cases k with
       | zero => cases hrun3; exact hp
       | succ k => obtain ⟨p, hp', hx'⟩ := RunOkT.exec hrest; exact PcOk.of_exec ht hp' hx'
-    have m1 := mstep S rs hrel.ready pc hpc hw1 hx h1 (PcOk.of_exec ht hpc1 hi.x3)
-    have m2 := mstep { S with rv := t1 } rs hr1 (pc + 4) hpc1 hw2 hx h2 hp2
+    have m1 := mstepR S rs hrel.ready pc hpc hw1 hx h1 (PcOk.of_exec ht hpc1 hi.x3)
+    have m2 := mstepR { S with rv := t1 } rs hr1 (pc + 4) hpc1 hw2 hx h2 hp2
     rw [show k + 2 = 0 + 1 + 1 + k by omega]
-    exact MRun.append (.step m1 (.step m2 (.done _))) (hmr3 hp)
+    exact MRunR.append (.step m1 (.step m2 (.done _))) (hmr3 hp)
 
 end Equiv.Sim

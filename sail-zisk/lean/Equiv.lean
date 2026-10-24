@@ -66,3 +66,5 @@ import Equiv.Full
 import Equiv.Theorem
 import Equiv.RamOnly
 import Equiv.SpecRom
+import Equiv.MemMono
+import Equiv.Sparse

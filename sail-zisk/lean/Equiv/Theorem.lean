@@ -53,7 +53,7 @@ theorem covered_run (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec
     (fc : ZiskRiscv.Fcall) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat) (hrun : RunOkT rs zr k s0 0) (hin : RunIn C k s0 0) :
     ∃ z' n, RVRun 0 k s0 (rvIter 0 k s0) ∧ ZRun zrom n z0 z' ∧ Rel (rvIter 0 k s0) z' rs ∧
       SpecRom zrom C (rvIter 0 k s0).mem ∧
-      (PcOk (rvIter 0 k s0) → MRun k ⟨s0, fc⟩ ⟨rvIter 0 k s0, fc⟩) := by
+      (PcOk (rvIter 0 k s0) → MRunR k ⟨s0, fc⟩ ⟨rvIter 0 k s0, fc⟩) := by
   obtain ⟨st, hst⟩ := hzst
   obtain ⟨z1, r1, hrel1⟩ := start_rel zrom entry hb m0 z0 st hzx hzpc hst hze hzm s0 rs hs0
   have hs : SpecRom zrom C s0.mem := by
@@ -100,7 +100,7 @@ theorem exit_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64
       (by rw [hg]; exact hw) (by simp [model, h17])
     have hc : model.getX (rvIter 0 k s0) 10 = c := by simp [model, h10]
     rw [hc] at he
-    exact run_of hmr he (by simp) fuel
+    exact run_of hmr.toMRun he (by simp) fuel
   · by_cases h0 : c = 0
     · subst h0
       obtain ⟨z', he, hz, hzm'⟩ := rel_exit_ok zrom entry hb _ z1 rs hrel pc hpc hrom h17 h10
@@ -131,7 +131,7 @@ theorem return_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 
     exact this.grow (RVRun.grows hrv)
   refine ⟨fun fuel => ?_, ?_⟩
   · have he := step_return (⟨rvIter 0 k s0, fc⟩ : ZiskRiscv.State model) (by simp [model, hpc]; rfl)
-    exact run_of hmr he (by simp) fuel
+    exact run_of hmr.toMRun he (by simp) fuel
   · obtain ⟨z', he, hz, hzm'⟩ := rel_return_end zrom entry hb _ z1 rs hrel hpc
       hfull'.outBytes hfull'.inBytes
     exact ⟨z', ZEnds.of_run hz1 he, hz, hzm'⟩

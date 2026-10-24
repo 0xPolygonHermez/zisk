@@ -184,6 +184,55 @@ theorem mstep (S : ZiskRiscv.State model) (rs : List PMA_Region) (hr : StepReady
   · rw [hg]; exact decode_riscv he hop
   · simp [model, hp, hpt]
 
+/-! ## Runs of plain RISC-V steps -/
+
+/-- A machine step left to sail-riscv, from S to its model state t: not at
+    the exit address, a word not of SYSTEM's opcode at pc, the model's step
+    taken and not trapped. -/
+structure RStep (S : ZiskRiscv.State model) (t : model.State) : Prop where
+  pcx : model.getPC S.rv ≠ model.exitAddr
+  word : ∃ e : BitVec 32, ZiskRiscv.readWord (model.mem S.rv) (model.getPC S.rv).toNat = some e ∧
+    e.extractLsb' 0 7 ≠ 0x73#7
+  step : model.step S.rv = .ok t
+  trap : model.trapped t = false
+
+theorem RStep.mstep {S : ZiskRiscv.State model} {t : model.State} (h : RStep S t) :
+    ZiskRiscv.step S = .ok ({ S with rv := t }, .running) := by
+  obtain ⟨e, he, hop⟩ := h.word
+  exact step_riscv S t h.pcx (decode_riscv he hop) h.step h.trap
+
+/-- `n` machine steps, each left to sail-riscv. -/
+inductive MRunR : Nat → ZiskRiscv.State model → ZiskRiscv.State model → Prop
+  | done (S : ZiskRiscv.State model) : MRunR 0 S S
+  | step {n : Nat} {S S'' : ZiskRiscv.State model} {t : model.State} :
+      RStep S t → MRunR n { S with rv := t } S'' → MRunR (n + 1) S S''
+
+theorem MRunR.toMRun {n : Nat} {S S' : ZiskRiscv.State model} (h : MRunR n S S') : MRun n S S' := by
+  induction h with
+  | done => exact .done _
+  | step h1 _ ih => exact .step h1.mstep ih
+
+theorem MRunR.append {a b : Nat} {S T U : ZiskRiscv.State model} (h1 : MRunR a S T) (h2 : MRunR b T U) :
+    MRunR (a + b) S U := by
+  induction h1 with
+  | done => simpa using h2
+  | @step m _ _ _ h r ih =>
+    rw [show m + 1 + b = (m + b) + 1 by omega]
+    exact .step h (ih h2)
+
+/-- `mstep`, recording the step. -/
+theorem mstepR (S : ZiskRiscv.State model) (rs : List PMA_Region) (hr : StepReady S.rv rs) (pc : BitVec 64)
+    (hpc : S.rv.regs.get? Register.PC = some pc) (hw : WordOk S.rv.mem rs pc) (hx : ¬ ExecAt rs EXIT_ADDR)
+    {n : Nat} {s' : RVState} (hrun : (interpretSailEffects (try_step n false)).run S.rv = .ok false s')
+    (ht : PcOk s') : RStep S s' := by
+  obtain ⟨hex, e, he, hop⟩ := hw
+  obtain ⟨p, hp, hpt⟩ := ht
+  have hg : model.getPC S.rv = pc := by simp [model, hpc]
+  refine ⟨?_, ⟨e, ?_, hop⟩, model_step hr hrun, ?_⟩
+  · rw [hg]; intro h; have h' : pc = EXIT_ADDR := h; exact hx (h' ▸ hex)
+  · rw [hg]; exact he
+  · simp [model, hp, hpt]
+
 /-! ## Whole runs on the machine -/
 
 set_option maxHeartbeats 1000000 in
