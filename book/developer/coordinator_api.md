@@ -447,21 +447,28 @@ for prove and execute jobs. It is removed in the first non-alpha release.
 
 ## Error Handling
 
-All RPC methods may return `ApiError`. Common error codes:
+All RPC methods may return `ApiError`. Its status carries the code and the name in the response
+metadata, `zisk-error-code` and `zisk-error-name`, so a program acts on the code rather than on the
+message. Only `UNAVAILABLE` is worth retrying; the other errors come back the same until the request
+or the cluster changes.
 
-| Code | Name |  Description |
-|------|------|-------------|
-| 1001 | `JOB_NOT_FOUND` | Invalid `job_id` |
-| 1002 | `PROGRAM_NOT_FOUND` | Unknown `hash_id` |
-| 1003 | `PROGRAM_NOT_SETUP` | Program exists but setup not completed |
-| 1004 | `INVALID_JOB_STATE` | Operation not valid for current job state (e.g., `PushJobInput` on non-input job) |
-| 1005 | `INVALID_PROOF_CONVERSION` | Unsupported `proof_dest` for given `proof_kind` |
-| 1006 | `CLIENT_RANDOM_SEED_NOT_ALLOWED` | Request provided a random seed and the coordinator does not allow client random seeds |
-| 1007 | `JOB_METADATA_NOT_ALLOWED` | Request carried job metadata and the coordinator does not allow it |
-| 1008 | `SNARK_UNAVAILABLE` | Request asks for a `Plonk` proof the workers cannot prove: they have no SNARK proving key, or one of another `snark_protocol` |
-| 1009 | `INPUT_TOO_LARGE` | `PushJobInput` sent more input than the guest's input region holds (2 GiB − 16 bytes); the job fails |
-| 2001 | `CLUSTER_UNAVAILABLE` | No coordinator available |
-| 3001 | `INTERNAL` | Unexpected server error; include `trace_id` in support requests |
+| Code | Name | gRPC status | Description |
+|------|------|-------------|-------------|
+| 1001 | `JOB_NOT_FOUND` | `NOT_FOUND` | Invalid `job_id` |
+| 1002 | `PROGRAM_NOT_FOUND` | `NOT_FOUND` | Unknown `hash_id` |
+| 1003 | `PROGRAM_NOT_SETUP` | `NOT_FOUND` | Program exists but setup not completed, or no ready worker has a program set up; call setup first |
+| 1004 | `INVALID_JOB_STATE` | `INVALID_ARGUMENT` | Operation not valid for current job state (e.g., `PushJobInput` on non-input job) |
+| 1005 | `INVALID_PROOF_CONVERSION` | `INVALID_ARGUMENT` | Unsupported `proof_dest` for given `proof_kind` |
+| 1006 | `CLIENT_RANDOM_SEED_NOT_ALLOWED` | `PERMISSION_DENIED` | Request provided a random seed and the coordinator does not allow client random seeds |
+| 1007 | `JOB_METADATA_NOT_ALLOWED` | `PERMISSION_DENIED` | Request carried job metadata and the coordinator does not allow it |
+| 1008 | `SNARK_UNAVAILABLE` | `FAILED_PRECONDITION` | Request asks for a `Plonk` proof the workers cannot prove: they have no SNARK proving key, or one of another `snark_protocol` |
+| 1009 | `INPUT_TOO_LARGE` | `INVALID_ARGUMENT` | `PushJobInput` sent more input than the guest's input region holds (2 GiB − 16 bytes); the job fails |
+| 2001 | `CLUSTER_UNAVAILABLE` | `UNAVAILABLE` | The cluster cannot take the job now: its workers are busy with another job, setting up, or not connected yet; retry later |
+| 2002 | `CLUSTER_TOO_SMALL` | `FAILED_PRECONDITION` | The cluster's ready capacity is below the job's minimum and no worker is busy or recovering; retrying fails the same way until the cluster grows |
+| 3001 | `INTERNAL` | `INTERNAL` | Unexpected server error; include `trace_id` in support requests |
+
+A request the server cannot parse (a missing field, an empty stream, a malformed id) fails with
+`INVALID_ARGUMENT` and no code.
 
 Jobs that fail during execution report `JobFailure` variants:
 

@@ -227,7 +227,7 @@ fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
     use zisk_coordinator::CoordinatorError;
     match e {
         CoordinatorError::InsufficientCapacity => {
-            ApiError::ClusterUnavailable { reason: "insufficient ready capacity for the request" }
+            ApiError::ClusterUnavailable { reason: "no ready workers for the job; retry shortly" }
         }
         CoordinatorError::WorkersSettingUp => {
             ApiError::ClusterUnavailable { reason: "workers are setting up; retry shortly" }
@@ -235,9 +235,13 @@ fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
         CoordinatorError::WorkersBusy => ApiError::ClusterUnavailable {
             reason: "workers are busy running another job; retry shortly",
         },
-        CoordinatorError::WorkersNotSetup => ApiError::ClusterUnavailable {
-            reason: "workers connected but setup not done; call setup() first",
-        },
+        // A retry cannot help until someone runs setup, so it is not CLUSTER_UNAVAILABLE.
+        CoordinatorError::WorkersNotSetup => ApiError::ProgramNotSetup(
+            "no ready worker has a program set up; call setup() first".to_string(),
+        ),
+        CoordinatorError::ClusterTooSmall { available, minimum } => {
+            ApiError::ClusterTooSmall { available, minimum }
+        }
         CoordinatorError::NotFoundOrInaccessible => ApiError::Internal("resource not found".into()),
         CoordinatorError::ProgramNotFound(hash_id) => ApiError::ProgramNotFound(hash_id),
         CoordinatorError::ProgramNotSetup(hash_id) => ApiError::ProgramNotSetup(hash_id),
@@ -743,5 +747,29 @@ mod tests {
         admit_input_chunk(&mut received, MAX_STDIN_SIZE as usize - 24).unwrap();
         assert!(admit_input_chunk(&mut received, 8).is_err());
         assert_eq!(inline_input_len(&InputsModeDto::InputsStream("grpc://push".into())), 0);
+    }
+
+    #[test]
+    fn only_shortages_a_retry_can_fix_are_cluster_unavailable() {
+        use zisk_coordinator::CoordinatorError;
+
+        use crate::errors::codes;
+
+        for retryable in [
+            CoordinatorError::WorkersBusy,
+            CoordinatorError::WorkersSettingUp,
+            CoordinatorError::InsufficientCapacity,
+        ] {
+            let api = coord_err_to_api(retryable);
+            assert_eq!(api.code(), codes::CLUSTER_UNAVAILABLE, "{api}");
+        }
+        assert_eq!(
+            coord_err_to_api(CoordinatorError::WorkersNotSetup).code(),
+            codes::PROGRAM_NOT_SETUP
+        );
+        assert_eq!(
+            coord_err_to_api(CoordinatorError::ClusterTooSmall { available: 4, minimum: 8 }).code(),
+            codes::CLUSTER_TOO_SMALL
+        );
     }
 }

@@ -1189,6 +1189,9 @@ impl Coordinator {
         // Shortage: the ready pool can't meet the floor. `recovering` and `busy`
         // are transient (they rejoin the ready pool), so the shortfall is
         // retryable rather than a hard failure; `recovering` reports first.
+        // With none of them, ready capacity below the floor is a cluster too
+        // small for the job, which no retry fixes; no ready capacity at all
+        // means no worker has joined yet.
         if resolved == 0 || resolved < minimum_units {
             if recovering > 0 {
                 return Err(CoordinatorError::WorkersSettingUp);
@@ -1198,6 +1201,12 @@ impl Coordinator {
             }
             if snapshot.idle_workers > 0 {
                 return Err(CoordinatorError::WorkersNotSetup);
+            }
+            if available > 0 {
+                return Err(CoordinatorError::ClusterTooSmall {
+                    available,
+                    minimum: minimum_units,
+                });
             }
             return Err(CoordinatorError::InsufficientCapacity);
         }
@@ -5923,6 +5932,40 @@ mod tests {
 
         let err = coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap_err();
         assert!(matches!(err, CoordinatorError::InsufficientCapacity), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_below_configured_minimum_is_cluster_too_small() {
+        // Every set-up worker is Ready and none can join: a minimum above the
+        // fleet is not a shortage a retry can fix.
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.min_compute_units = 8));
+        add_worker(&coordinator, "w0", 4, WorkerState::Ready).await;
+
+        let err = coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap_err();
+        assert!(
+            matches!(err, CoordinatorError::ClusterTooSmall { available: 4, minimum: 8 }),
+            "got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_below_minimum_while_busy_stays_retryable() {
+        // The same shortfall with a busy worker that will free its units is
+        // WorkersBusy, not ClusterTooSmall.
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.min_compute_units = 8));
+        add_worker(&coordinator, "w0", 4, WorkerState::Ready).await;
+        add_worker(
+            &coordinator,
+            "w1",
+            4,
+            WorkerState::Computing((JobId::new(), JobPhase::Contributions)),
+        )
+        .await;
+
+        let err = coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap_err();
+        assert!(matches!(err, CoordinatorError::WorkersBusy), "got {err:?}");
     }
 
     #[tokio::test]
