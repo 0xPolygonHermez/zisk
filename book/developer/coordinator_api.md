@@ -470,6 +470,12 @@ or the cluster changes.
 A request the server cannot parse (a missing field, an empty stream, a malformed id) fails with
 `INVALID_ARGUMENT` and no code.
 
+In Rust, `zisk_coordinator_client::ApiError::from_error` reads the code, the name and whether a
+retry can help from a failed `CoordinatorClient` call; the SDK returns the same as
+`SdkError::Coordinator`, with `SdkError::is_retryable`. Neither retries on its own: opt in with
+`CoordinatorClient::with_retry` or `RemoteClientBuilder::retry_busy`, which submit a job again with
+a growing backoff while the coordinator answers `UNAVAILABLE`.
+
 Jobs that fail during execution report `JobFailure` variants:
 
 | Variant | When |

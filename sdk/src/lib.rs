@@ -38,6 +38,7 @@ pub use embedded::{
 };
 pub use error::{Result, SdkError};
 pub use zisk_client::ZiskClient;
+pub use zisk_coordinator_client::{ApiError, RetryPolicy};
 
 pub use execute::{ExecuteRequest, ExecuteResult};
 pub use hints::{HintsSource, ZiskHints};

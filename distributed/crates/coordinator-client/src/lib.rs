@@ -10,11 +10,14 @@
 
 /// Coordinator connection and top-level RPCs.
 pub mod client;
+/// The coordinator's answer to a refused call.
+pub mod error;
 /// Persistent stdin/hints input streams to a running job.
 pub mod input_sender;
 /// Handle for tracking a submitted job.
 pub mod job;
 
-pub use client::CoordinatorClient;
+pub use client::{CoordinatorClient, RetryPolicy};
+pub use error::ApiError;
 pub use input_sender::{InputSender, InputSenderPushAdapter};
 pub use job::{Job, WatchHandle};

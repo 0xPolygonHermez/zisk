@@ -53,7 +53,7 @@ impl RemoteClient {
             emulator_only,
         });
 
-        let remote_job = self.gw.submit_job(job_kind).map_err(SdkError::backend)?;
+        let remote_job = self.gw.submit_job(job_kind).map_err(SdkError::coordinator)?;
 
         Ok(JobHandle::new_remote(remote_job, subs, timeout, None, None))
     }

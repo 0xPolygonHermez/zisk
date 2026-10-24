@@ -2,6 +2,8 @@
 
 use std::time::Duration;
 
+use zisk_coordinator_client::ApiError;
+
 /// Boxed, thread-safe source error preserved by [`SdkError::Backend`].
 type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
@@ -43,6 +45,11 @@ pub enum SdkError {
     #[error("recurser: {0}")]
     Recurser(String),
 
+    /// The coordinator refused the call. [`ApiError::code`] tells which error it was, and
+    /// [`ApiError::is_retryable`] whether the same call can succeed later.
+    #[error("coordinator refused the call: {0}")]
+    Coordinator(ApiError),
+
     /// A filesystem or other standard I/O operation failed.
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -58,6 +65,22 @@ impl SdkError {
     /// Wrap a foreign error into [`SdkError::Backend`].
     pub(crate) fn backend(err: impl Into<BoxError>) -> Self {
         Self::Backend(err.into())
+    }
+
+    /// Wrap the error of a coordinator call: [`SdkError::Coordinator`] when the coordinator
+    /// answered it, [`SdkError::Backend`] when the call failed before that.
+    pub(crate) fn coordinator(err: impl Into<BoxError>) -> Self {
+        let err = err.into();
+        match ApiError::from_error(&*err) {
+            Some(api) => Self::Coordinator(api),
+            None => Self::Backend(err),
+        }
+    }
+
+    /// Whether the same call can succeed later: the coordinator refused it as busy, setting up
+    /// or without ready workers, or could not be reached.
+    pub fn is_retryable(&self) -> bool {
+        matches!(self, Self::Coordinator(api) if api.is_retryable())
     }
 }
 
@@ -101,6 +124,31 @@ mod tests {
         assert!(join_err.is_cancelled());
         let err: SdkError = join_err.into();
         assert!(matches!(err, SdkError::Backend(_)));
+    }
+
+    #[test]
+    fn a_refusal_from_the_coordinator_keeps_what_it_said() {
+        // As a coordinator client call returns it: the status behind the call's context.
+        let refused = Err::<(), _>(tonic::Status::unavailable("workers are busy"));
+        let err = SdkError::coordinator(
+            anyhow::Context::context(refused, "JobRequest RPC failed").unwrap_err(),
+        );
+        match &err {
+            SdkError::Coordinator(api) => assert_eq!(api.message(), "workers are busy"),
+            other => panic!("expected Coordinator, got {other:?}"),
+        }
+        assert!(err.is_retryable());
+
+        let err = SdkError::coordinator(tonic::Status::failed_precondition("cluster too small"));
+        assert!(matches!(err, SdkError::Coordinator(_)));
+        assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn a_call_that_failed_before_the_coordinator_answered_stays_backend() {
+        let err = SdkError::coordinator(std::io::Error::other("no route to host"));
+        assert!(matches!(err, SdkError::Backend(_)));
+        assert!(!err.is_retryable());
     }
 
     #[test]
