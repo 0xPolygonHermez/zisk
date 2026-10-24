@@ -117,25 +117,25 @@ def WordOk (m : Equiv.Mem) (rs : List PMA_Region) (pc : BitVec 64) : Prop :=
 
 theorem StepOkT.word {s : RVState} {rs : List PMA_Region} {pc : BitVec 64}
     {zrom : BitVec 64 → _root_.Zisk.zisk_inst} : ∀ o, StepOkT s rs pc zrom o → WordOk s.mem rs pc
-  | .r i, ⟨_, hi⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_r i⟩
-  | .i i, ⟨_, hi⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_i i⟩
-  | .sh i, ⟨_, hi⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_sh i⟩
-  | .u i, ⟨_, hi⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_u i⟩
-  | .ld i, ⟨⟨_, hi⟩, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_ld i⟩
-  | .lw i, ⟨⟨_, hi⟩, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_lw i⟩
-  | .sd i, ⟨⟨_, hi⟩, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_sd i⟩
-  | .sw i, ⟨⟨_, hi⟩, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_sw i⟩
-  | .br i, ⟨_, hi⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_br i⟩
-  | .j i, ⟨_, hi⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_j i⟩
-  | .jr i, ⟨⟨_, hi⟩, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_jr i⟩
-  | .rw i, ⟨_, hi⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_rw i⟩
-  | .iw i, ⟨_, hi⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_iw i⟩
-  | .siw i, ⟨_, hi⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_siw i⟩
-  | .m i, ⟨_, hi⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_m i⟩
+  | .r i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_r i⟩
+  | .i i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_i i⟩
+  | .sh i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_sh i⟩
+  | .u i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_u i⟩
+  | .ld i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_ld i⟩
+  | .lw i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_lw i⟩
+  | .sd i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_sd i⟩
+  | .sw i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_sw i⟩
+  | .br i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_br i⟩
+  | .j i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_j i⟩
+  | .jr i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_jr i⟩
+  | .rw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_rw i⟩
+  | .iw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_iw i⟩
+  | .siw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_siw i⟩
+  | .m i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_m i⟩
 
 theorem OneOkT.word {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {s : RVState}
     (h : OneOkT rs zrom s) : ∃ pc, s.regs.get? Register.PC = some pc ∧ WordOk s.mem rs pc := by
-  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, nx, hi, -⟩⟩ := h
+  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, -⟩⟩ := h
   · exact ⟨pc, hpc, StepOkT.word o ho⟩
   · exact ⟨pc, hpc, hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_jr i⟩
 
@@ -200,12 +200,12 @@ theorem prog_machine (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA
         (PcOk s' → MRun k S { S with rv := s' })
   | 0, S, z, n, hrel, _ => ⟨S.rv, z, 0, .done n _, .done z, hrel, fun _ => .done _⟩
   | 1, S, z, n, hrel, ho => by
-    obtain ⟨s1, z1, k1, hrun, hzrun, hrel1⟩ := one_stepT S.rv z rs hrel zrom ho n
+    obtain ⟨s1, z1, k1, hrun, hzrun, hrel1, -⟩ := one_stepT S.rv z rs hrel zrom ho n
     obtain ⟨pc, hpc, hw⟩ := OneOkT.word ho
     exact ⟨s1, z1, k1, .step hrun (.done _ _), hzrun, hrel1,
       fun hp => .step (mstep S rs hrel.ready pc hpc hw hx hrun hp) (.done _)⟩
   | k + 2, S, z, n, hrel, .inl ⟨ho, hrest⟩ => by
-    obtain ⟨s1, z1, k1, hrun, hzrun, hrel1⟩ := one_stepT S.rv z rs hrel zrom ho n
+    obtain ⟨s1, z1, k1, hrun, hzrun, hrel1, -⟩ := one_stepT S.rv z rs hrel zrom ho n
     obtain ⟨pc, hpc, hw⟩ := OneOkT.word ho
     rw [rvNext_of hrun] at hrest
     obtain ⟨p1, hp1, hx1⟩ := RunOkT.exec hrest
@@ -215,7 +215,7 @@ theorem prog_machine (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA
     exact ⟨s2, z2, k1 + k2, .step hrun hrun2, ZRun.append hzrun hzrun2, hrel2,
       fun hp => .step hm1 (hm2 hp)⟩
   | k + 2, S, z, n, hrel, .inr ⟨⟨pc, i, hpc, hi⟩, hrest⟩ => by
-    obtain ⟨s2, z1, hrun, hzrun, hrel1, -, hr1, hpc1, hmem1⟩ :=
+    obtain ⟨s2, z1, hrun, hzrun, hrel1, -, hr1, hpc1, hmem1, -⟩ :=
       fused_rel S.rv z rs hrel pc hpc zrom i hi.toFAt n
     obtain ⟨t1, h1, h2⟩ : ∃ t1, (interpretSailEffects (try_step n false)).run S.rv = .ok false t1 ∧
         (interpretSailEffects (try_step (n + 1) false)).run t1 = .ok false s2 := by

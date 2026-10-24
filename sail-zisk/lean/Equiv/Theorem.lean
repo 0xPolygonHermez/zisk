@@ -1,14 +1,19 @@
 /-
-  The theorem, as far as it goes: for a program whose run the simulation
-  covers (`RunOkT`: every step an instruction proved, the ZisK program the
-  spec's translation at it), started as the contract says on memory as ZisK
-  starts it, ZisK's RISC-V machine and sail-zisk running the program with
-  the BIOS end the same way: the exit system call with code c, success with
-  the same memory — so the same output — when c is 0, the error with code c
-  otherwise; or the return to the initial ra, success with the same memory.
+  The theorem, as far as it goes. A program started as the contract says,
+  on memory as ZisK starts it; a ZisK program that holds the BIOS and, at
+  every executable word the spec describes, the spec's translation of it
+  (`SpecRom`, a hypothesis on the program, with no code in the RAM); and a
+  run the simulation covers (`RunOkT`, stated with any ZisK program: of the
+  RISC-V side, every step an instruction proved, with its accesses good).
+  Then ZisK's RISC-V machine and sail-zisk running the program with the
+  BIOS end the same way: the exit system call with code c, success with
+  the same memory — so the same output — when c is 0, the error with code
+  c otherwise; or the return to the initial ra, success with the same
+  memory.
 -/
 import Equiv.Full
 import Equiv.Machine
+import Equiv.SpecRom
 
 namespace Equiv.Top
 
@@ -52,20 +57,24 @@ theorem RVRun.iter {n k : Nat} {s s' : RVState} (h : RVRun n k s s') : s' = rvIt
     the machine's steps, and sail-zisk's from the BIOS's start, to related
     states. -/
 theorem covered_run (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
-    (rs : List PMA_Region) (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC)
-    (m0 : Mem) (s0 : RVState) (hs0 : Start s0 rs entry m0)
+    (rs : List PMA_Region) (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC) (hnx : NoExecRam rs)
+    (m0 : Mem) (hspec : SpecRom zrom rs m0) (s0 : RVState) (hs0 : Start s0 rs entry m0)
     (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
     (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
-    (fc : ZiskRiscv.Fcall) (k : Nat) (hrun : RunOkT rs zrom k s0 0) :
+    (fc : ZiskRiscv.Fcall) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat) (hrun : RunOkT rs zr k s0 0) :
     ∃ z' n, RVRun 0 k s0 (rvIter 0 k s0) ∧ ZRun zrom n z0 z' ∧ Rel (rvIter 0 k s0) z' rs ∧
+      SpecRom zrom rs (rvIter 0 k s0).mem ∧
       (PcOk (rvIter 0 k s0) → MRun k ⟨s0, fc⟩ ⟨rvIter 0 k s0, fc⟩) := by
   obtain ⟨st, hst⟩ := hzst
   obtain ⟨z1, r1, hrel1⟩ := start_rel zrom entry hb m0 z0 st hzx hzpc hst hze hzm s0 rs hs0
-  obtain ⟨s', z', k', hrv, hzr, hrel, hm⟩ := prog_machine zrom rs hx ht k ⟨s0, fc⟩ z1 0 hrel1 hrun
+  have hs : SpecRom zrom rs s0.mem := by
+    rw [hs0.mem]
+    exact hspec.keep ((memWrite_ramOnly _ _ _ arch_writable.1).trans (memWrite_ramOnly _ _ _ mtvec_writable.1)) hnx
+  obtain ⟨s', z', k', hrv, hzr, hrel, hro, hm⟩ := prog_rom zr zrom rs hx ht hnx k ⟨s0, fc⟩ z1 0 hrel1 hrun hs
   have e := RVRun.iter hrv
   subst e
-  exact ⟨z', 6 + k', hrv, ZRun.append r1 hzr, hrel, hm⟩
+  exact ⟨z', 6 + k', hrv, ZRun.append r1 hzr, hrel, hs.keep hro hnx, hm⟩
 
 /-! ## The ends -/
 
@@ -73,23 +82,25 @@ theorem covered_run (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec
     sail-zisk's in success with the same memory when c is 0, else in error
     with code c. -/
 theorem exit_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
-    (rs : List PMA_Region) (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC)
-    (m0 : Mem) (hfull : Full m0) (s0 : RVState) (hs0 : Start s0 rs entry m0)
+    (rs : List PMA_Region) (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC) (hnx : NoExecRam rs)
+    (m0 : Mem) (hfull : Full m0) (hspec : SpecRom zrom rs m0) (s0 : RVState) (hs0 : Start s0 rs entry m0)
     (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
     (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
-    (fc : ZiskRiscv.Fcall) (k : Nat) (hrun : RunOkT rs zrom k s0 0)
+    (fc : ZiskRiscv.Fcall) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat) (hrun : RunOkT rs zr k s0 0)
     (pc : BitVec 64) (hpc : (rvIter 0 k s0).regs.get? Register.PC = some pc) (hpx : ExecAt rs pc)
-    (hw : ZiskRiscv.readWord (rvIter 0 k s0).mem pc.toNat = some ECALL) (hrom : zrom pc = Transpiler.ecall)
+    (hw : ZiskRiscv.readWord (rvIter 0 k s0).mem pc.toNat = some ECALL)
     (h17 : getX (rvIter 0 k s0) 17 = some 93) (c : BitVec 64) (h10 : getX (rvIter 0 k s0) 10 = some c) :
     (∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0, fc⟩ : ZiskRiscv.State model) =
         .ok (⟨rvIter 0 k s0, fc⟩, .exit c, k)) ∧
     ∃ z', ZEnds zrom z0 z' ∧
       (c = 0 → z'.regs.get? .Zerror = some false ∧ z'.mem = (rvIter 0 k s0).mem) ∧
       (c ≠ 0 → z'.regs.get? .Zerror = some true ∧ z'.regs.get? .Zerror_code = some c) := by
-  obtain ⟨z1, n1, hrv, hz1, hrel, hm⟩ :=
-    covered_run zrom entry hb rs hx ht m0 s0 hs0 z0 hzx hzpc hzst hze hzm fc k hrun
+  obtain ⟨z1, n1, hrv, hz1, hrel, hsp, hm⟩ :=
+    covered_run zrom entry hb rs hx ht hnx m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc zr k hrun
   have hmr := hm (PcOk.of_exec ht hpc hpx)
+  have hrom : zrom pc = Transpiler.ecall :=
+    (hsp pc ECALL hpx hw ⟨0, _, rfl⟩).one (fun _ => rfl)
   have hfull' : Full (rvIter 0 k s0).mem := by
     have := startMem_full hfull
     rw [← hs0.mem] at this
@@ -113,18 +124,18 @@ theorem exit_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64
 /-- The return to the initial ra: the machine's run ends in `exit 0`;
     sail-zisk's in success with the same memory. -/
 theorem return_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
-    (rs : List PMA_Region) (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC)
-    (m0 : Mem) (hfull : Full m0) (s0 : RVState) (hs0 : Start s0 rs entry m0)
+    (rs : List PMA_Region) (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC) (hnx : NoExecRam rs)
+    (m0 : Mem) (hfull : Full m0) (hspec : SpecRom zrom rs m0) (s0 : RVState) (hs0 : Start s0 rs entry m0)
     (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
     (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
-    (fc : ZiskRiscv.Fcall) (k : Nat) (hrun : RunOkT rs zrom k s0 0)
+    (fc : ZiskRiscv.Fcall) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat) (hrun : RunOkT rs zr k s0 0)
     (hpc : (rvIter 0 k s0).regs.get? Register.PC = some Transpiler.OUTPUT_BLOCK) :
     (∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0, fc⟩ : ZiskRiscv.State model) =
         .ok (⟨rvIter 0 k s0, fc⟩, .exit 0, k)) ∧
     ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some false ∧ z'.mem = (rvIter 0 k s0).mem := by
-  obtain ⟨z1, n1, hrv, hz1, hrel, hm⟩ :=
-    covered_run zrom entry hb rs hx ht m0 s0 hs0 z0 hzx hzpc hzst hze hzm fc k hrun
+  obtain ⟨z1, n1, hrv, hz1, hrel, hsp, hm⟩ :=
+    covered_run zrom entry hb rs hx ht hnx m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc zr k hrun
   have hmr := hm ⟨_, hpc, by decide⟩
   have hfull' : Full (rvIter 0 k s0).mem := by
     have := startMem_full hfull

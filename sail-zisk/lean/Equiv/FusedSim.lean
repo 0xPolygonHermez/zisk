@@ -114,7 +114,7 @@ theorem fused_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     ∃ s2 z', RVRun n 2 s s2 ∧ ZRun zrom 1 z z' ∧ Rel s2 z' rs ∧
       s2.regs.get? Register.PC = some (i.T pc) ∧
       StepReady (rvNext n s) rs ∧ (rvNext n s).regs.get? Register.PC = some (pc + 4) ∧
-      (rvNext n s).mem = s.mem := by
+      (rvNext n s).mem = s.mem ∧ s2.mem = s.mem := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -142,7 +142,8 @@ theorem fused_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     ⟨hr2, ⟨vectorUpdate xs i.rd.toNat (i.c pc'), by simp [Std.ExtDHashMap.get?_insert], ?_⟩,
       ⟨_, hpc2, ?_⟩,
       ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, ?_⟩, hpc2,
-    by rw [rvNext_of hrun1]; exact hr1, by rw [rvNext_of hrun1]; exact hpc1, by rw [rvNext_of hrun1]; exact hmem1⟩
+    by rw [rvNext_of hrun1]; exact hr1, by rw [rvNext_of hrun1]; exact hpc1, by rw [rvNext_of hrun1]; exact hmem1,
+    hmem2.trans hmem1⟩
   · intro k hk1 hk2
     have e8 : pc' + 4 + 4 = pc' + 8 := by rw [BitVec.add_assoc]; rfl
     rw [hxs2 k hk2]
@@ -208,7 +209,7 @@ theorem jo_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hre
     (v1 : BitVec 64) (hv1 : getX s i.rs1.toNat = some v1)
     (tal : (jalrTarget v1 i.imm)[0] = false ∧ (jalrTarget v1 i.imm)[1] = false) (n : Nat) :
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧ ZRun zrom 2 z z' ∧
-      Rel s' z' rs ∧ s'.regs.get? Register.PC = some (jalrTarget v1 i.imm) := by
+      Rel s' z' rs ∧ s'.regs.get? Register.PC = some (jalrTarget v1 i.imm) ∧ s'.mem = s.mem := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -237,7 +238,7 @@ theorem jo_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hre
   rw [← hi.rom2, ← zstep_run zrom _ ia (by simp [eia])] at hz2
   refine ⟨s', _, hrun, .step hz1 (.step hz2 (.done _)), ⟨hr', ⟨Equiv.Zisk.xsUpd xs i.rd.toNat (pc' + 4), ?_, ?_⟩,
     ⟨_, hpc'', ?_⟩, ⟨BitVec.addInt (BitVec.addInt st 1) 1, by simp [Std.ExtDHashMap.get?_insert],
-      by simp [Std.ExtDHashMap.get?_insert, hze]⟩, ?_⟩, hpc''⟩
+      by simp [Std.ExtDHashMap.get?_insert, hze]⟩, ?_⟩, hpc'', hmem⟩
   · have e4 : ia + (pc' + 4 - ia) = pc' + 4 := by rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
     simp only [Std.ExtDHashMap.get?_insert, beq_iff_eq, reduceCtorEq, dite_false, e4]
     · exact linkRegs_xs _ xs i.rd.toNat (pc' + 4) (by simp [Std.ExtDHashMap.get?_insert, hx])
@@ -298,7 +299,7 @@ theorem prog_sim3 (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA_Re
     obtain ⟨s2, z2, k2, hrun2, hzrun2, hrel2⟩ := prog_sim3 zrom rs (k + 1) s1 z1 (n + 1) hrel1 hrest
     exact ⟨s2, z2, k1 + k2, .step hrun hrun2, ZRun.append hzrun hzrun2, hrel2⟩
   | k + 2, s, z, n, hrel, .inr ⟨⟨pc, i, hpc, hi⟩, hrest⟩ => by
-    obtain ⟨s2, z1, hrun, hzrun, hrel1, -, -, -, -⟩ := fused_rel s z rs hrel pc hpc zrom i hi n
+    obtain ⟨s2, z1, hrun, hzrun, hrel1, -, -, -, -, -⟩ := fused_rel s z rs hrel pc hpc zrom i hi n
     have hnext : rvNext (n + 1) (rvNext n s) = s2 := by
       cases hrun with
       | step h1 r => cases r with

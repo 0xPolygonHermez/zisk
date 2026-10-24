@@ -64,3 +64,5 @@ import Equiv.Machine
 import Equiv.MemGrow
 import Equiv.Full
 import Equiv.Theorem
+import Equiv.RamOnly
+import Equiv.SpecRom

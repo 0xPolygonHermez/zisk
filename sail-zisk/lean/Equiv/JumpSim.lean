@@ -69,11 +69,12 @@ theorem jump_step_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
       (∃ st, z'.regs.get? _root_.Zisk.Register.Step = some st ∧
         z'.regs.get? _root_.Zisk.Register.Zerror = some false) ∧ z'.mem = z.mem) (n : Nat) :
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
-      (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧ s'.regs.get? Register.PC = some tgt := by
+      (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧ s'.regs.get? Register.PC = some tgt ∧
+      s'.mem = s.mem := by
   obtain ⟨s', hrun, hmem, hwf, hpc', hxs', ho⟩ := try_step_gen s rs hr pc hpc b0 b1 b2 b3 hw ins hdec rd v tgt hexec n
   obtain ⟨z', hzrun, hx', hzpc', hst', hzmem⟩ := hz
   refine ⟨s', z', hrun, hzrun,
-    ⟨hr.keep hwf ho, ⟨_, hx', ?_⟩, ⟨_, hpc', hzpc'⟩, hst', hzmem.trans (hzm.trans hmem.symm)⟩, hpc'⟩
+    ⟨hr.keep hwf ho, ⟨_, hx', ?_⟩, ⟨_, hpc', hzpc'⟩, hst', hzmem.trans (hzm.trans hmem.symm)⟩, hpc', hmem⟩
   intro k hk1 hk2
   rw [hxs' k hk2]
   exact regs_after0 s xs rd v ld agree k hk1 hk2
@@ -122,7 +123,7 @@ theorem ustep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     (pc : BitVec 64) (hpc : s.regs.get? Register.PC = some pc)
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : UInstr) (hi : UAt s rs pc zrom i) (n : Nat) :
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
-      (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) := by
+      (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) ∧ s'.mem = s.mem := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -185,7 +186,7 @@ theorem jstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : JInstr) (hi : JAt s rs pc zrom i) (n : Nat) :
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
       (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧
-      s'.regs.get? Register.PC = some (pc + i.imm.signExtend 64) := by
+      s'.regs.get? Register.PC = some (pc + i.imm.signExtend 64) ∧ s'.mem = s.mem := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -250,7 +251,7 @@ theorem jrstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
     (tal : (jalrTarget v1 i.imm)[0] = false ∧ (jalrTarget v1 i.imm)[1] = false) (n : Nat) :
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
       (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧
-      s'.regs.get? Register.PC = some (jalrTarget v1 i.imm) := by
+      s'.regs.get? Register.PC = some (jalrTarget v1 i.imm) ∧ s'.mem = s.mem := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this

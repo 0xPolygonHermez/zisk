@@ -219,7 +219,7 @@ theorem rwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : RwInstr) (next : Option (BitVec 32))
     (hi : RwAt s rs pc zrom i next) (n : Nat) :
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
-      (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) := by
+      (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) ∧ s'.mem = s.mem := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -265,7 +265,7 @@ theorem iwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : IwInstr) (next : Option (BitVec 32))
     (hi : IwAt s rs pc zrom i next) (n : Nat) :
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
-      (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) := by
+      (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) ∧ s'.mem = s.mem := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -307,7 +307,7 @@ theorem siwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : SiwInstr) (next : Option (BitVec 32))
     (hi : SiwAt s rs pc zrom i next) (n : Nat) :
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
-      (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) := by
+      (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) ∧ s'.mem = s.mem := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this

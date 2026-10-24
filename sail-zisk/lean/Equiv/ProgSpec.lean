@@ -12,6 +12,8 @@
 import Equiv.X0Sim
 import Equiv.WSim
 import Equiv.MSim
+import ZiskRiscv.Machine
+import Equiv.RamOnly
 
 namespace Equiv.Sim
 
@@ -103,34 +105,40 @@ inductive InstrT where
   | siw (i : SiwInstr)
   | m (i : MInstr)
 
+/-- The word after pc, as the transpiler reads it to translate the one at
+    pc (riscv2zisk_context.rs: the next instruction, for the auipc-jalr
+    pair). -/
+noncomputable def nextWord (s : RVState) (pc : BitVec 64) : Option (BitVec 32) :=
+  ZiskRiscv.readWord s.mem (pc + 4).toNat
+
 /-- What instruction `o` needs to run at pc in state s, in one step on each
     side: to be there, in memory and, as the spec translates it, in the ZisK
     program; and, for a memory access, its address good, for a jump, its
     target 4-aligned. -/
 def StepOkT (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) : InstrT → Prop
-  | .r i => ∃ nx, RtAt s rs pc zrom i nx
-  | .i i => ∃ nx, ItAt s rs pc zrom i nx
-  | .sh i => ∃ nx, StAt s rs pc zrom i nx
-  | .u i => ∃ nx, UtAt s rs pc zrom i nx
-  | .ld i => (∃ nx, LdtAt s rs pc zrom i nx) ∧
+  | .r i => RtAt s rs pc zrom i (nextWord s pc)
+  | .i i => ItAt s rs pc zrom i (nextWord s pc)
+  | .sh i => StAt s rs pc zrom i (nextWord s pc)
+  | .u i => UtAt s rs pc zrom i (nextWord s pc)
+  | .ld i => LdtAt s rs pc zrom i (nextWord s pc) ∧
       ∃ v1 v, getX s i.rs1.toNat = some v1 ∧ LdOk s rs (v1 + i.imm.signExtend 64) v
-  | .lw i => (∃ nx, LwtAt s rs pc zrom i nx) ∧
+  | .lw i => LwtAt s rs pc zrom i (nextWord s pc) ∧
       ∃ v1 v, getX s i.rs1.toNat = some v1 ∧ LwOk s rs (v1 + i.imm.signExtend 64) i.k.w v
-  | .sd i => (∃ nx, SdtAt s rs pc zrom i nx) ∧
+  | .sd i => SdtAt s rs pc zrom i (nextWord s pc) ∧
       ∃ v1 v2, getX s i.rs1.toNat = some v1 ∧ getX s i.rs2.toNat = some v2 ∧
         SdOk rs (v1 + (i.immHi ++ i.immLo).signExtend 64)
-  | .sw i => (∃ nx, SwtAt s rs pc zrom i nx) ∧
+  | .sw i => SwtAt s rs pc zrom i (nextWord s pc) ∧
       ∃ v1 v2, getX s i.rs1.toNat = some v1 ∧ getX s i.rs2.toNat = some v2 ∧
         SwOk rs (v1 + (i.immHi ++ i.immLo).signExtend 64) i.k.w
-  | .br i => ∃ nx, BtAt s rs pc zrom i nx
-  | .j i => ∃ nx, JtAt s rs pc zrom i nx
-  | .jr i => (∃ nx, JrtAt s rs pc zrom i nx) ∧ i.imm[0] = false ∧
+  | .br i => BtAt s rs pc zrom i (nextWord s pc)
+  | .j i => JtAt s rs pc zrom i (nextWord s pc)
+  | .jr i => JrtAt s rs pc zrom i (nextWord s pc) ∧ i.imm[0] = false ∧
       ∃ v1, getX s i.rs1.toNat = some v1 ∧ (jalrTarget v1 i.imm)[0] = false ∧ (jalrTarget v1 i.imm)[1] = false
-  | .rw i => ∃ nx, RwAt s rs pc zrom i nx
-  | .iw i => ∃ nx, IwAt s rs pc zrom i nx
-  | .siw i => ∃ nx, SiwAt s rs pc zrom i nx
-  | .m i => ∃ nx, MAt s rs pc zrom i nx
+  | .rw i => RwAt s rs pc zrom i (nextWord s pc)
+  | .iw i => IwAt s rs pc zrom i (nextWord s pc)
+  | .siw i => SiwAt s rs pc zrom i (nextWord s pc)
+  | .m i => MAt s rs pc zrom i (nextWord s pc)
 
 theorem getX_some {s : RVState} {z : Equiv.Zisk.ZState} {rs : List PMA_Region} (hrel : Rel s z rs)
     {r : Nat} (hr : r < 32) : ∃ v, getX s r = some v := by
@@ -141,74 +149,74 @@ theorem step_relT (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     (pc : BitVec 64) (hpc : s.regs.get? Register.PC = some pc)
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (o : InstrT) (ho : StepOkT s rs pc zrom o) (n : Nat) :
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
-      (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs := by
+      (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧ RamOnly s.mem s'.mem := by
   match o, ho with
-  | .r i, ⟨nx, hi⟩ =>
-    obtain ⟨s', z', h1, h2, h3, -⟩ := rtstep_rel s z rs hrel pc hpc zrom i nx hi n
-    exact ⟨s', z', h1, h2, h3⟩
-  | .i i, ⟨nx, hi⟩ =>
-    obtain ⟨s', z', h1, h2, h3, -⟩ := itstep_rel s z rs hrel pc hpc zrom i nx hi n
-    exact ⟨s', z', h1, h2, h3⟩
-  | .sh i, ⟨nx, hi⟩ =>
-    obtain ⟨s', z', h1, h2, h3, -⟩ := ststep_rel s z rs hrel pc hpc zrom i nx hi n
-    exact ⟨s', z', h1, h2, h3⟩
-  | .u i, ⟨nx, hi⟩ =>
-    obtain ⟨s', z', h1, h2, h3, -⟩ := utstep_rel s z rs hrel pc hpc zrom i nx hi n
-    exact ⟨s', z', h1, h2, h3⟩
-  | .ld i, ⟨⟨nx, hi⟩, v1, v, hv1, hok⟩ =>
-    obtain ⟨s', z', h1, h2, h3, -⟩ := ldtstep_rel s z rs hrel pc hpc zrom i nx hi v1 hv1 v hok n
-    exact ⟨s', z', h1, h2, h3⟩
-  | .lw i, ⟨⟨nx, hi⟩, v1, v, hv1, hok⟩ =>
-    obtain ⟨s', z', h1, h2, h3, -⟩ := lwtstep_rel s z rs hrel pc hpc zrom i nx hi v1 hv1 v hok n
-    exact ⟨s', z', h1, h2, h3⟩
-  | .sd i, ⟨⟨nx, hi⟩, v1, v2, hv1, hv2, hok⟩ =>
-    obtain ⟨s', z', h1, h2, h3, -⟩ := sdtstep_rel s z rs hrel pc hpc zrom i nx hi v1 v2 hv1 hv2 hok n
-    exact ⟨s', z', h1, h2, h3⟩
-  | .sw i, ⟨⟨nx, hi⟩, v1, v2, hv1, hv2, hok⟩ =>
-    obtain ⟨s', z', h1, h2, h3, -⟩ := swtstep_rel s z rs hrel pc hpc zrom i nx hi v1 v2 hv1 hv2 hok n
-    exact ⟨s', z', h1, h2, h3⟩
-  | .br i, ⟨nx, hi⟩ =>
+  | .r i, hi =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := rtstep_rel s z rs hrel pc hpc zrom i _ hi n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
+  | .i i, hi =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := itstep_rel s z rs hrel pc hpc zrom i _ hi n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
+  | .sh i, hi =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := ststep_rel s z rs hrel pc hpc zrom i _ hi n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
+  | .u i, hi =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := utstep_rel s z rs hrel pc hpc zrom i _ hi n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
+  | .ld i, ⟨hi, v1, v, hv1, hok⟩ =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := ldtstep_rel s z rs hrel pc hpc zrom i _ hi v1 hv1 v hok n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
+  | .lw i, ⟨hi, v1, v, hv1, hok⟩ =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := lwtstep_rel s z rs hrel pc hpc zrom i _ hi v1 hv1 v hok n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
+  | .sd i, ⟨hi, v1, v2, hv1, hv2, hok⟩ =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := sdtstep_rel s z rs hrel pc hpc zrom i _ hi v1 v2 hv1 hv2 hok n
+    exact ⟨s', z', h1, h2, h3, by rw [hm]; exact memWrite_ramOnly _ _ _ hok.zwrite⟩
+  | .sw i, ⟨hi, v1, v2, hv1, hv2, hok⟩ =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := swtstep_rel s z rs hrel pc hpc zrom i _ hi v1 v2 hv1 hv2 hok n
+    exact ⟨s', z', h1, h2, h3, by rw [hm]; exact memWrite_ramOnly _ _ _ hok.zwrite⟩
+  | .br i, hi =>
     obtain ⟨v1, hv1⟩ := getX_some hrel i.rs1.isLt
     obtain ⟨v2, hv2⟩ := getX_some hrel i.rs2.isLt
-    obtain ⟨s', z', h1, h2, h3, -⟩ := btstep_rel s z rs hrel pc hpc zrom i nx hi v1 v2 hv1 hv2 n
-    exact ⟨s', z', h1, h2, h3⟩
-  | .j i, ⟨nx, hi⟩ =>
-    obtain ⟨s', z', h1, h2, h3, -⟩ := jstep_rel s z rs hrel pc hpc zrom i hi.toJAt n
-    exact ⟨s', z', h1, h2, h3⟩
-  | .jr i, ⟨⟨nx, hi⟩, he, v1, hv1, t0, t1⟩ =>
-    obtain ⟨s', z', h1, h2, h3, -⟩ := jrstep_rel s z rs hrel pc hpc zrom i (hi.toJrAt he) v1 hv1 ⟨t0, t1⟩ n
-    exact ⟨s', z', h1, h2, h3⟩
-  | .rw i, ⟨nx, hi⟩ =>
-    obtain ⟨s', z', h1, h2, h3, -⟩ := rwstep_rel s z rs hrel pc hpc zrom i nx hi n
-    exact ⟨s', z', h1, h2, h3⟩
-  | .iw i, ⟨nx, hi⟩ =>
-    obtain ⟨s', z', h1, h2, h3, -⟩ := iwstep_rel s z rs hrel pc hpc zrom i nx hi n
-    exact ⟨s', z', h1, h2, h3⟩
-  | .siw i, ⟨nx, hi⟩ =>
-    obtain ⟨s', z', h1, h2, h3, -⟩ := siwstep_rel s z rs hrel pc hpc zrom i nx hi n
-    exact ⟨s', z', h1, h2, h3⟩
-  | .m i, ⟨nx, hi⟩ =>
-    obtain ⟨s', z', h1, h2, h3, -⟩ := mstep_rel s z rs hrel pc hpc zrom i nx hi n
-    exact ⟨s', z', h1, h2, h3⟩
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := btstep_rel s z rs hrel pc hpc zrom i _ hi v1 v2 hv1 hv2 n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
+  | .j i, hi =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := jstep_rel s z rs hrel pc hpc zrom i hi.toJAt n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
+  | .jr i, ⟨hi, he, v1, hv1, t0, t1⟩ =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := jrstep_rel s z rs hrel pc hpc zrom i (hi.toJrAt he) v1 hv1 ⟨t0, t1⟩ n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
+  | .rw i, hi =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := rwstep_rel s z rs hrel pc hpc zrom i _ hi n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
+  | .iw i, hi =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := iwstep_rel s z rs hrel pc hpc zrom i _ hi n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
+  | .siw i, hi =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := siwstep_rel s z rs hrel pc hpc zrom i _ hi n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
+  | .m i, hi =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := mstep_rel s z rs hrel pc hpc zrom i _ hi n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
 
 /-- What one step of sail-riscv needs: an instruction, run in one ZisK step,
     or a jalr with an odd offset, in two. -/
 def OneOkT (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (s : RVState) : Prop :=
   ∃ pc, s.regs.get? Register.PC = some pc ∧
     ((∃ o, StepOkT s rs pc zrom o) ∨
-     (∃ i nx, JrtAt s rs pc zrom i nx ∧ i.imm[0] = true ∧ ∃ v1, getX s i.rs1.toNat = some v1 ∧
+     (∃ i, JrtAt s rs pc zrom i (nextWord s pc) ∧ i.imm[0] = true ∧ ∃ v1, getX s i.rs1.toNat = some v1 ∧
         (jalrTarget v1 i.imm)[0] = false ∧ (jalrTarget v1 i.imm)[1] = false))
 
 theorem one_stepT (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hrel : Rel s z rs)
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (h : OneOkT rs zrom s) (n : Nat) :
     ∃ s' z' k', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧ ZRun zrom k' z z' ∧
-      Rel s' z' rs := by
-  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, nx, hi, hodd, v1, hv1, t0, t1⟩⟩ := h
-  · obtain ⟨s', z', h1, h2, h3⟩ := step_relT s z rs hrel pc hpc zrom o ho n
-    exact ⟨s', z', 1, h1, .step h2 (.done _), h3⟩
+      Rel s' z' rs ∧ RamOnly s.mem s'.mem := by
+  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, hodd, v1, hv1, t0, t1⟩⟩ := h
+  · obtain ⟨s', z', h1, h2, h3, h4⟩ := step_relT s z rs hrel pc hpc zrom o ho n
+    exact ⟨s', z', 1, h1, .step h2 (.done _), h3, h4⟩
   · obtain ⟨ia, hjo⟩ := hi.toJoAt hodd
-    obtain ⟨s', z', h1, h2, h3, -⟩ := jo_rel s z rs hrel pc hpc zrom i ia hjo v1 hv1 ⟨t0, t1⟩ n
-    exact ⟨s', z', 2, h1, h2, h3⟩
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := jo_rel s z rs hrel pc hpc zrom i ia hjo v1 hv1 ⟨t0, t1⟩ n
+    exact ⟨s', z', 2, h1, h2, h3, RamOnly.of_eq hm⟩
 
 /-- For the next k steps of sail-riscv, from the state it reaches: each one
     an instruction proved, or, two at a time, a fused auipc-jalr pair. -/
@@ -230,15 +238,15 @@ theorem prog_spec (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA_Re
       ∃ s' z' k', RVRun n k s s' ∧ ZRun zrom k' z z' ∧ Rel s' z' rs
   | 0, s, z, n, hrel, _ => ⟨s, z, 0, .done n s, .done z, hrel⟩
   | 1, s, z, n, hrel, ho => by
-    obtain ⟨s1, z1, k1, hrun, hzrun, hrel1⟩ := one_stepT s z rs hrel zrom ho n
+    obtain ⟨s1, z1, k1, hrun, hzrun, hrel1, -⟩ := one_stepT s z rs hrel zrom ho n
     exact ⟨s1, z1, k1, .step hrun (.done _ _), hzrun, hrel1⟩
   | k + 2, s, z, n, hrel, .inl ⟨ho, hrest⟩ => by
-    obtain ⟨s1, z1, k1, hrun, hzrun, hrel1⟩ := one_stepT s z rs hrel zrom ho n
+    obtain ⟨s1, z1, k1, hrun, hzrun, hrel1, -⟩ := one_stepT s z rs hrel zrom ho n
     rw [rvNext_of hrun] at hrest
     obtain ⟨s2, z2, k2, hrun2, hzrun2, hrel2⟩ := prog_spec zrom rs (k + 1) s1 z1 (n + 1) hrel1 hrest
     exact ⟨s2, z2, k1 + k2, .step hrun hrun2, ZRun.append hzrun hzrun2, hrel2⟩
   | k + 2, s, z, n, hrel, .inr ⟨⟨pc, i, hpc, hi⟩, hrest⟩ => by
-    obtain ⟨s2, z1, hrun, hzrun, hrel1, -, -, -, -⟩ := fused_rel s z rs hrel pc hpc zrom i hi.toFAt n
+    obtain ⟨s2, z1, hrun, hzrun, hrel1, -, -, -, -, -⟩ := fused_rel s z rs hrel pc hpc zrom i hi.toFAt n
     have hnext : rvNext (n + 1) (rvNext n s) = s2 := by
       cases hrun with
       | step h1 r => cases r with

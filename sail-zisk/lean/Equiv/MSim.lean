@@ -187,7 +187,7 @@ theorem mstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : MInstr) (next : Option (BitVec 32))
     (hi : MAt s rs pc zrom i next) (n : Nat) :
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
-      (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) := by
+      (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) ∧ s'.mem = s.mem := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
