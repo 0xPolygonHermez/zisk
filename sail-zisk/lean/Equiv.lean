@@ -46,3 +46,9 @@ import Equiv.ZiskSpec
 import Equiv.RiscvDecodeX0
 import Equiv.X0Sim
 import Equiv.ProgSpec
+import Equiv.RiscvW
+import Equiv.SimW
+import Equiv.RiscvDecodeW
+import Equiv.WSim
+import Equiv.RiscvM
+import Equiv.SimM

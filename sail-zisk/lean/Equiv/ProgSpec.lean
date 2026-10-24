@@ -10,6 +10,7 @@
   (Equiv/FromSpec.lean).
 -/
 import Equiv.X0Sim
+import Equiv.WSim
 
 namespace Equiv.Sim
 
@@ -82,7 +83,8 @@ theorem FtAt.toFAt {s rs pc zrom i} (h : FtAt s rs pc zrom i) : FAt s rs pc zrom
 
 /-! ## One step -/
 
-/-- An instruction of the runs: every one proved, any registers. -/
+/-- An instruction of the runs: every one proved, any registers (RV64I's
+    word instructions among them). -/
 inductive InstrT where
   | r (i : RInstr)
   | i (i : IInstr)
@@ -95,6 +97,9 @@ inductive InstrT where
   | br (i : BInstr)
   | j (i : JInstr)
   | jr (i : JrInstr)
+  | rw (i : RwInstr)
+  | iw (i : IwInstr)
+  | siw (i : SiwInstr)
 
 /-- What instruction `o` needs to run at pc in state s, in one step on each
     side: to be there, in memory and, as the spec translates it, in the ZisK
@@ -120,6 +125,9 @@ def StepOkT (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   | .j i => ∃ nx, JtAt s rs pc zrom i nx
   | .jr i => (∃ nx, JrtAt s rs pc zrom i nx) ∧ i.imm[0] = false ∧
       ∃ v1, getX s i.rs1.toNat = some v1 ∧ (jalrTarget v1 i.imm)[0] = false ∧ (jalrTarget v1 i.imm)[1] = false
+  | .rw i => ∃ nx, RwAt s rs pc zrom i nx
+  | .iw i => ∃ nx, IwAt s rs pc zrom i nx
+  | .siw i => ∃ nx, SiwAt s rs pc zrom i nx
 
 theorem getX_some {s : RVState} {z : Equiv.Zisk.ZState} {rs : List PMA_Region} (hrel : Rel s z rs)
     {r : Nat} (hr : r < 32) : ∃ v, getX s r = some v := by
@@ -166,6 +174,15 @@ theorem step_relT (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     exact ⟨s', z', h1, h2, h3⟩
   | .jr i, ⟨⟨nx, hi⟩, he, v1, hv1, t0, t1⟩ =>
     obtain ⟨s', z', h1, h2, h3, -⟩ := jrstep_rel s z rs hrel pc hpc zrom i (hi.toJrAt he) v1 hv1 ⟨t0, t1⟩ n
+    exact ⟨s', z', h1, h2, h3⟩
+  | .rw i, ⟨nx, hi⟩ =>
+    obtain ⟨s', z', h1, h2, h3, -⟩ := rwstep_rel s z rs hrel pc hpc zrom i nx hi n
+    exact ⟨s', z', h1, h2, h3⟩
+  | .iw i, ⟨nx, hi⟩ =>
+    obtain ⟨s', z', h1, h2, h3, -⟩ := iwstep_rel s z rs hrel pc hpc zrom i nx hi n
+    exact ⟨s', z', h1, h2, h3⟩
+  | .siw i, ⟨nx, hi⟩ =>
+    obtain ⟨s', z', h1, h2, h3, -⟩ := siwstep_rel s z rs hrel pc hpc zrom i nx hi n
     exact ⟨s', z', h1, h2, h3⟩
 
 /-- What one step of sail-riscv needs: an instruction, run in one ZisK step,
