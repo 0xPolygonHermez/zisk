@@ -75,7 +75,8 @@ impl Coordinator {
             &mut out,
             "coordinator_worker_state",
             "gauge",
-            "Each worker's state: 0 disconnected, 1 ready, 2 setting up, 3 computing, 4 recovering, 5 error",
+            "Each worker's state: 0 disconnected, 1 ready, 2 setting up, 3 computing, 4 recovering, 5 error, \
+             6 idle (no program set up)",
         );
         for (worker_id, state) in &workers {
             let code = worker_state_code(state, recovering.contains_key(worker_id));
