@@ -17,14 +17,6 @@ open Equiv.Riscv
 open LeanZiskRV LeanZiskRV.Functions Sail Sail.ArchSem
 open Equiv.Zisk (regv ASrc BSrc)
 
-/-- A register's value on both sides: sail-riscv's (x0 reads 0) is the
-    ZisK operand's. -/
-theorem getX_regv {s : RVState} {xs : Vector (BitVec 64) 40} (agree : RegsAgree s xs) {r : Nat}
-    (hr : r < 32) : getX s r = some (regv xs r) := by
-  unfold regv
-  by_cases h0 : r = 0
-  · subst h0; simp [getX]
-  · rw [if_neg h0, getElem!_int]; exact agree r (by omega) hr
 
 /-! ## R-type -/
 

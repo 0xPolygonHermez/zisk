@@ -37,7 +37,7 @@ structure JtAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
 theorem JtAt.toJAt {s rs pc zrom i next} (h : JtAt s rs pc zrom i next) : JAt s rs pc zrom i :=
   ⟨h.al, h.x1, h.x2, h.h0, h.h1, h.h2, h.h3, h.tal, i.rom_of_spec h.tr⟩
 
-/-- jalr at pc, rs1 not x0, either offset. -/
+/-- jalr at pc, any rs1 (x0 reads 0), either offset. -/
 structure JrtAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : JrInstr) (next : Option (BitVec 32)) : Prop where
   al : pc.toNat % 4 = 0
@@ -47,17 +47,16 @@ structure JrtAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   h1 : s.mem.get? (pc.toNat + 1) = some (byte i.encode 1)
   h2 : s.mem.get? (pc.toNat + 2) = some (byte i.encode 2)
   h3 : s.mem.get? (pc.toNat + 3) = some (byte i.encode 3)
-  rs1 : i.rs1 ≠ 0
   tr : Transpiled zrom pc i.encode next
 
 theorem JrtAt.toJrAt {s rs pc zrom i next} (h : JrtAt s rs pc zrom i next) (he : i.imm[0] = false) :
     JrAt s rs pc zrom i :=
-  ⟨h.al, h.x1, h.x2, h.h0, h.h1, h.h2, h.h3, h.rs1, he, i.rom_of_spec h.rs1 he h.tr⟩
+  ⟨h.al, h.x1, h.x2, h.h0, h.h1, h.h2, h.h3, he, i.rom_of_spec he h.tr⟩
 
 theorem JrtAt.toJoAt {s rs pc zrom i next} (h : JrtAt s rs pc zrom i next) (ho : i.imm[0] = true) :
     ∃ ia, JoAt s rs pc zrom i ia := by
-  obtain ⟨ia, r1, r2⟩ := i.rom_of_spec_odd h.rs1 ho h.tr
-  exact ⟨ia, ⟨h.al, h.x1, h.x2, h.h0, h.h1, h.h2, h.h3, h.rs1, r1, r2⟩⟩
+  obtain ⟨ia, r1, r2⟩ := i.rom_of_spec_odd ho h.tr
+  exact ⟨ia, ⟨h.al, h.x1, h.x2, h.h0, h.h1, h.h2, h.h3, r1, r2⟩⟩
 
 /-- The fused pair at pc, its ZisK instruction from the spec. -/
 structure FtAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)

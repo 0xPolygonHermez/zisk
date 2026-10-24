@@ -37,7 +37,7 @@ theorem rv_auipc_step (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
   exact ⟨s1, hrun, hmem, hr.keep hwf ho, hpc1, hxs⟩
 
 set_option maxHeartbeats 4000000 in
-/-- sail-riscv's step on jalr (rs1 ≠ x0) to a 4-aligned target: rd gets
+/-- sail-riscv's step on jalr (any rs1) to a 4-aligned target: rd gets
     pc + 4, pc the target. -/
 theorem rv_jalr_step (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
     (pc : BitVec 64) (hpc : s.regs.get? Register.PC = some pc) (i : JrInstr)
@@ -185,7 +185,7 @@ theorem ZRun.append {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {a b : Nat} {z 
 
 /-- jalr `i` with the transpiler's two-instruction form (for an odd offset;
     any offset, as far as the proof goes): its word in executable memory at
-    pc, rs1 ≠ x0, the add at pc and the and at the internal address ia. -/
+    pc, any rs1, the add at pc and the and at the internal address ia. -/
 structure JoAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : JrInstr) (ia : BitVec 64) : Prop where
   al : pc.toNat % 4 = 0
@@ -195,7 +195,6 @@ structure JoAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   h1 : s.mem.get? (pc.toNat + 1) = some (byte i.encode 1)
   h2 : s.mem.get? (pc.toNat + 2) = some (byte i.encode 2)
   h3 : s.mem.get? (pc.toNat + 3) = some (byte i.encode 3)
-  rs1 : i.rs1 ≠ 0
   rom1 : zrom pc = Equiv.Zisk.jalrAddInst i.rs1.toNat (i.imm.signExtend 64) (ia - pc)
   rom2 : zrom ia = Equiv.Zisk.jalrAndInst i.rd.toNat (pc + 4 - ia)
 
@@ -219,20 +218,18 @@ theorem jo_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hre
   obtain ⟨s', hrun, hmem, hr', hpc'', hxs'⟩ := rv_jalr_step s rs hr pc' hpc i hw v1 hv1 tal n
   have ld : i.rd.toNat < 32 := i.rd.isLt
   have l1 : i.rs1.toNat < 32 := i.rs1.isLt
-  have e1 := ne_zero_toNat hi.rs1
-  have a1 := agree i.rs1.toNat (by omega) l1
-  have hxv : xs[(i.rs1.toNat : Int)]! = v1 := by
-    rw [getElem!_int]; rw [hv1] at a1; exact (Option.some.inj a1).symm
+  have hxv : Equiv.Zisk.regv xs i.rs1.toNat = v1 := by
+    have a1 := getX_regv agree l1; rw [hv1] at a1; exact (Option.some.inj a1).symm
   -- ZisK, step 1: the add, on to ia
-  have hz1 := Equiv.Zisk.execute_jalr_add z i.rs1.toNat (i.imm.signExtend 64) (ia - pc') (by omega) xs pc' st
+  have hz1 := Equiv.Zisk.execute_jalr_add z i.rs1.toNat (i.imm.signExtend 64) (ia - pc') l1 xs pc' st
     hx hzpc hst
   rw [← hi.rom1, ← zstep_run zrom z pc' hzpc] at hz1
   -- ZisK, step 2: the and, from ia
   have eia : pc' + (ia - pc') = ia := by rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
   have hz2 := Equiv.Zisk.execute_jalr_and { z with regs := (((z.regs.insert _root_.Zisk.Register.Zc
-      (i.imm.signExtend 64 + xs[(i.rs1.toNat : Int)]!)).insert _root_.Zisk.Register.Zflag false).insert
+      (i.imm.signExtend 64 + Equiv.Zisk.regv xs i.rs1.toNat)).insert _root_.Zisk.Register.Zflag false).insert
       _root_.Zisk.Register.Step (BitVec.addInt st 1)).insert _root_.Zisk.Register.PC (pc' + (ia - pc')) }
-    i.rd.toNat (pc' + 4 - ia) ld xs ia (BitVec.addInt st 1) (i.imm.signExtend 64 + xs[(i.rs1.toNat : Int)]!)
+    i.rd.toNat (pc' + 4 - ia) ld xs ia (BitVec.addInt st 1) (i.imm.signExtend 64 + Equiv.Zisk.regv xs i.rs1.toNat)
     (by simp [Std.ExtDHashMap.get?_insert, hx]) (by simp [eia])
     (by simp [Std.ExtDHashMap.get?_insert]) (by simp [Std.ExtDHashMap.get?_insert])
   rw [← hi.rom2, ← zstep_run zrom _ ia (by simp [eia])] at hz2

@@ -9,6 +9,8 @@ import Equiv.ZiskJump
 
 namespace Equiv.Sim
 
+open Equiv.Zisk (regv)
+
 open Equiv.Riscv
 open LeanZiskRV LeanZiskRV.Functions Sail Sail.ArchSem
 
@@ -226,8 +228,17 @@ theorem JrInstr.fields (i : JrInstr) :
     (byte i.encode 0).extractLsb 1 0 = 3#2 := by
   intro v; simp only [v, JrInstr.encode, byte]; refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩ <;> bv_decide
 
+/-- A register's value on both sides: sail-riscv's (x0 reads 0) is the
+    ZisK operand's. -/
+theorem getX_regv {s : RVState} {xs : Vector (BitVec 64) 40} (agree : RegsAgree s xs) {r : Nat}
+    (hr : r < 32) : getX s r = some (regv xs r) := by
+  unfold regv
+  by_cases h0 : r = 0
+  · subst h0; simp [getX]
+  · rw [if_neg h0, getElem!_int]; exact agree r (by omega) hr
+
 /-- jalr `i` at pc, with an even offset (the transpiler's one-instruction
-    form) and rs1 ≠ x0. -/
+    form), rs1 any (x0 reads 0). -/
 structure JrAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : JrInstr) : Prop where
   al : pc.toNat % 4 = 0
@@ -237,7 +248,6 @@ structure JrAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   h1 : s.mem.get? (pc.toNat + 1) = some (byte i.encode 1)
   h2 : s.mem.get? (pc.toNat + 2) = some (byte i.encode 2)
   h3 : s.mem.get? (pc.toNat + 3) = some (byte i.encode 3)
-  rs1 : i.rs1 ≠ 0
   even : i.imm[0] = false
   rom : zrom pc = Equiv.Zisk.jalrInst i.rd.toNat i.rs1.toNat (i.imm.signExtend 64)
 
@@ -260,9 +270,8 @@ theorem jrstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
     ⟨hi.al, hi.x1, hi.x2, hi.h0, hi.h1, hi.h2, hi.h3, hc⟩
   have ld : i.rd.toNat < 32 := i.rd.isLt
   have l1 : i.rs1.toNat < 32 := i.rs1.isLt
-  have e1 := ne_zero_toNat hi.rs1
-  have a1 := agree i.rs1.toNat (by omega) l1
-  have hxv : xs[i.rs1.toNat]! = v1 := by rw [hv1] at a1; exact (Option.some.inj a1).symm
+  have hxv : regv xs i.rs1.toNat = v1 := by
+    have a1 := getX_regv agree l1; rw [hv1] at a1; exact (Option.some.inj a1).symm
   obtain ⟨mi, hmi⟩ := hr.mem.misa
   obtain ⟨sv, hsv, -⟩ := hr.pmm
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw (.JALR (i.imm, .Regidx i.rs1, .Regidx i.rd))
@@ -276,11 +285,10 @@ theorem jrstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
       hmr.priv sv (hsec.trans hsv) tal]
     rfl
   · rw [zstep_run zrom z pc' hzpc, hi.rom]
-    have hxv' : xs[(i.rs1.toNat : Int)]! = v1 := by rw [getElem!_int]; exact hxv
-    refine ⟨_, Equiv.Zisk.execute_jalr z i.rd.toNat i.rs1.toNat _ ld (by omega) xs pc' st hx hzpc hst, ?_,
+    refine ⟨_, Equiv.Zisk.execute_jalr z i.rd.toNat i.rs1.toNat _ ld l1 xs pc' st hx hzpc hst, ?_,
       ?_, ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, rfl⟩
     · simp only [Std.ExtDHashMap.get?_insert]
       simpa using linkRegs_xs z.regs xs i.rd.toNat (pc' + 4) hx
-    · simp [hxv', jalr_target v1 i.imm hi.even]
+    · simp [hxv, jalr_target v1 i.imm hi.even]
 
 end Equiv.Sim

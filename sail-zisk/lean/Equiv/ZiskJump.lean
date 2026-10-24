@@ -31,9 +31,17 @@ def jalInst (rd : Nat) (off : BitVec 64) : zisk_inst :=
 /-- jalr's mask: bit 0 cleared. -/
 def JALR_MASK : BitVec 64 := 0xfffffffffffffffe#64
 
+/-- A register's value as an operand: x0 reads 0. -/
+def regv (xs : Vector (BitVec 64) 40) (r : Nat) : BitVec 64 := if r = 0 then 0 else xs[(r : Int)]!
+
+/-- A register as a b operand, as the transpiler makes it (`srcB`): x0 is
+    the immediate 0. -/
+def srcBsrc (r : Nat) : b_src := if r = 0 then .B_IMM else .B_REG
+def srcBimm (r : Nat) : BitVec 64 := if r = 0 then 0 else .ofNat 64 r
+
 /-- The instruction the transpiler emits for jalr with an even offset. -/
 def jalrInst (rd rs1 : Nat) (off : BitVec 64) : zisk_inst :=
-  { a_src := .A_IMM, a_imm := JALR_MASK, b_src := .B_REG, b_imm := .ofNat 64 rs1,
+  { a_src := .A_IMM, a_imm := JALR_MASK, b_src := srcBsrc rs1, b_imm := srcBimm rs1,
     ind_width := 8, op := .ZOP_AND (), store := linkStore rd, store_off := .ofNat 64 rd,
     store_pc := decide (rd ≠ 0), set_pc := true, jmp_off1 := off, jmp_off2 := 4, is_end := false }
 
@@ -102,28 +110,24 @@ theorem execute_jal (s : ZState) (rd : Nat) (off : BitVec 64) (hd : rd < 32)
 set_option maxHeartbeats 4000000 in
 /-- jalr with an even offset as the transpiler emits it: rd (if not x0) gets
     pc + 4, and the step goes to (r[rs1] with bit 0 cleared) + off. -/
-theorem execute_jalr (s : ZState) (rd rs1 : Nat) (off : BitVec 64) (hd : rd < 32) (h1 : 1 ≤ rs1 ∧ rs1 < 32)
+theorem execute_jalr (s : ZState) (rd rs1 : Nat) (off : BitVec 64) (hd : rd < 32) (h1 : rs1 < 32)
     (xs : Vector (BitVec 64) 40) (pc st : BitVec 64)
     (hx : s.regs.get? Xs = some xs) (hpc : s.regs.get? PC = some pc) (hst : s.regs.get? Step = some st) :
     (zisk_execute (jalrInst rd rs1 off)).run s = .ok false
-      { s with regs := ((((linkRegs s.regs xs rd (pc + 4)).insert Zc (JALR_MASK &&& xs[(rs1 : Int)]!)).insert
-          Zflag false).insert Step (BitVec.addInt st 1)).insert PC ((JALR_MASK &&& xs[(rs1 : Int)]!) + off) } := by
+      { s with regs := ((((linkRegs s.regs xs rd (pc + 4)).insert Zc (JALR_MASK &&& regv xs rs1)).insert
+          Zflag false).insert Step (BitVec.addInt st 1)).insert PC ((JALR_MASK &&& regv xs rs1) + off) } := by
   have ld : (rd : Int) < 40 := by omega
   have l1 : (rs1 : Int) < 40 := by omega
-  have n1 : rs1 ≠ 0 := by omega
   have hm := and_pure.mem
   have hp := and_pure.notPre
   have hv : ∀ a b, zisk_exec (.ZOP_AND ()) a b = (a &&& b, false) := fun _ _ => rfl
-  by_cases h0 : rd = 0
-  · subst h0
-    simp [zisk_execute, jalrInst, linkStore, linkRegs, source_a, source_b, rX, store_c, value_to_store,
-      next_pc, hm, hp, hv, reg_index rs1 (by omega), Zisk.assert, Sail.ConcurrencyInterfaceV1.PreSail.assert,
-      n1, l1, writeReg_run]
-    repeat (rw [readReg_run']; (try simp only [Std.ExtDHashMap.get?_insert]); simp [hst, hx])
-  · simp [zisk_execute, jalrInst, linkStore, linkRegs, h0, source_a, source_b, rX, wX, store_c, value_to_store,
-      next_pc, hm, hp, hv, reg_index rd (by omega), reg_index rs1 (by omega), Zisk.assert,
-      Sail.ConcurrencyInterfaceV1.PreSail.assert, n1, l1, ld, writeReg_run]
-    repeat (rw [readReg_run']; (try simp only [Std.ExtDHashMap.get?_insert]); simp [hst, hpc, hx])
+  have r1 := reg_index rs1 (by omega)
+  have rd' := reg_index rd (by omega)
+  by_cases n1 : rs1 = 0 <;> by_cases h0 : rd = 0
+  all_goals simp [zisk_execute, jalrInst, srcBsrc, srcBimm, regv, linkStore, linkRegs, h0, n1, source_a, source_b,
+    rX, wX, store_c, value_to_store, next_pc, hm, hp, hv, r1, rd', Zisk.assert,
+    Sail.ConcurrencyInterfaceV1.PreSail.assert, l1, ld, writeReg_run]
+  all_goals repeat (rw [readReg_run']; (try simp only [Std.ExtDHashMap.get?_insert]); simp [hst, hpc, hx])
 
 /-- The instruction the transpiler emits for auipc fused with the jalr after
     it: the constant c to rd, and the step goes to pc + j (both computed at
@@ -154,7 +158,7 @@ theorem execute_constj (s : ZState) (rd : Nat) (c j : BitVec 64) (hd : 1 ≤ rd 
 /-- The first instruction the transpiler emits for jalr with an odd offset:
     imm + r[rs1] to c, no store, on to the internal address (pc + j). -/
 def jalrAddInst (rs1 : Nat) (imm j : BitVec 64) : zisk_inst :=
-  { a_src := .A_IMM, a_imm := imm, b_src := .B_REG, b_imm := .ofNat 64 rs1,
+  { a_src := .A_IMM, a_imm := imm, b_src := srcBsrc rs1, b_imm := srcBimm rs1,
     ind_width := 8, op := .ZOP_ADD (), store := .ST_NONE, store_off := 0,
     store_pc := false, set_pc := false, jmp_off1 := j, jmp_off2 := j, is_end := false }
 
@@ -169,22 +173,24 @@ theorem add_pure : PureOp (.ZOP_ADD ()) := by
   refine ⟨fun a b e => ?_, ?_, fun u => ?_⟩ <;> first | rfl | simp | decide
 
 set_option maxHeartbeats 4000000 in
-theorem execute_jalr_add (s : ZState) (rs1 : Nat) (imm j : BitVec 64) (h1 : 1 ≤ rs1 ∧ rs1 < 32)
+theorem execute_jalr_add (s : ZState) (rs1 : Nat) (imm j : BitVec 64) (h1 : rs1 < 32)
     (xs : Vector (BitVec 64) 40) (pc st : BitVec 64)
     (hx : s.regs.get? Xs = some xs) (hpc : s.regs.get? PC = some pc) (hst : s.regs.get? Step = some st) :
     (zisk_execute (jalrAddInst rs1 imm j)).run s = .ok false
-      { s with regs := (((s.regs.insert Zc (imm + xs[(rs1 : Int)]!)).insert Zflag false).insert
+      { s with regs := (((s.regs.insert Zc (imm + regv xs rs1)).insert Zflag false).insert
           Step (BitVec.addInt st 1)).insert PC (pc + j) } := by
-  have n1 : rs1 ≠ 0 := by omega
   have l1 : (rs1 : Int) < 40 := by omega
   have hm := add_pure.mem
   have hp := add_pure.notPre
   have hv : ∀ a b, zisk_exec (.ZOP_ADD ()) a b = (a + b, false) := fun _ _ => rfl
-  simp [zisk_execute, jalrAddInst, source_a, source_b, rX, store_c, value_to_store, next_pc,
-    hm, hp, hv, reg_index rs1 (by omega), Zisk.assert, Sail.ConcurrencyInterfaceV1.PreSail.assert, n1, l1,
+  have r1 := reg_index rs1 (by omega)
+  by_cases n1 : rs1 = 0
+  all_goals simp [zisk_execute, jalrAddInst, srcBsrc, srcBimm, regv, n1, source_a, source_b, rX, store_c,
+    value_to_store, next_pc, hm, hp, hv, r1, Zisk.assert, Sail.ConcurrencyInterfaceV1.PreSail.assert, l1,
     writeReg_run]
-  rw [readReg_run s Xs xs hx]; try dsimp only
-  repeat (rw [readReg_run']; (try simp only [Std.ExtDHashMap.get?_insert]); simp [hst, hpc])
+  all_goals repeat (first
+    | (rw [readReg_run s Xs xs hx]; try dsimp only)
+    | (rw [readReg_run']; (try simp only [Std.ExtDHashMap.get?_insert]); simp [hst, hpc]))
 
 set_option maxHeartbeats 4000000 in
 theorem execute_jalr_and (s : ZState) (rd : Nat) (j2 : BitVec 64) (hd : rd < 32)

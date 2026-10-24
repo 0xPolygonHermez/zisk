@@ -17,8 +17,6 @@ namespace Equiv.Zisk
 open _root_.Zisk _root_.Zisk.Functions Sail Sail.ConcurrencyInterfaceV1
 open Register
 
-/-- A register's value as an operand: x0 reads 0. -/
-def regv (xs : Vector (BitVec 64) 40) (r : Nat) : BitVec 64 := if r = 0 then 0 else xs[(r : Int)]!
 
 /-- The a source `ra` reads v: an immediate v, or a register 1..31 holding v. -/
 def ASrc (ra : a_src × BitVec 64) (xs : Vector (BitVec 64) 40) (v : BitVec 64) : Prop :=

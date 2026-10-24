@@ -331,28 +331,27 @@ theorem JrInstr.spec_fields (i : JrInstr) :
 theorem JrInstr.lsb (i : JrInstr) : (i.imm.signExtend 64)[0] = i.imm[0] := by
   simp [BitVec.getElem_signExtend]
 
-/-- jalr with an even offset, rs1 not x0: the spec's translation is the one
-    JrAt assumes. -/
-theorem JrInstr.rom_of_spec (i : JrInstr) (h1 : i.rs1 ≠ 0) (heven : i.imm[0] = false)
+/-- jalr with an even offset: the spec's translation is the one JrAt
+    assumes. -/
+theorem JrInstr.rom_of_spec (i : JrInstr) (heven : i.imm[0] = false)
     {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {pc : BitVec 64} {next : Option (BitVec 32)}
     (h : Transpiled zrom pc i.encode next) :
     zrom pc = Equiv.Zisk.jalrInst i.rd.toNat i.rs1.toNat (i.imm.signExtend 64) := by
   obtain ⟨hop, hf3, hrd, hr1, himm⟩ := i.spec_fields
-  have e1 := ne_zero_toNat h1
   refine h.one fun ia => ?_
+  by_cases e1 : i.rs1.toNat = 0 <;>
   simp [Transpiler.convert, Transpiler.decode, hop, hf3, hrd, hr1, himm, i.lsb, heven, e1, Transpiler.jalr,
-    Transpiler.mk, srcB_ne e1, storeReg_link, Equiv.Zisk.jalrInst, Transpiler.JALR_MASK,
-    Equiv.Zisk.JALR_MASK]
+    Transpiler.mk, Transpiler.srcB, storeReg_link, Equiv.Zisk.jalrInst, Equiv.Zisk.srcBsrc, Equiv.Zisk.srcBimm,
+    Transpiler.JALR_MASK, Equiv.Zisk.JALR_MASK]
 
-/-- jalr with an odd offset, rs1 not x0: the spec's two instructions are the
-    ones JoAt assumes, at the internal address the translation uses. -/
-theorem JrInstr.rom_of_spec_odd (i : JrInstr) (h1 : i.rs1 ≠ 0) (hodd : i.imm[0] = true)
+/-- jalr with an odd offset: the spec's two instructions are the ones JoAt
+    assumes, at the internal address the translation uses. -/
+theorem JrInstr.rom_of_spec_odd (i : JrInstr) (hodd : i.imm[0] = true)
     {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {pc : BitVec 64} {next : Option (BitVec 32)}
     (h : Transpiled zrom pc i.encode next) :
     ∃ ia, zrom pc = Equiv.Zisk.jalrAddInst i.rs1.toNat (i.imm.signExtend 64) (ia - pc) ∧
       zrom ia = Equiv.Zisk.jalrAndInst i.rd.toNat (pc + 4 - ia) := by
   obtain ⟨hop, hf3, hrd, hr1, himm⟩ := i.spec_fields
-  have e1 := ne_zero_toNat h1
   obtain ⟨ia, l, hl, hz⟩ := h
   simp [Transpiler.convert, Transpiler.decode, hop, hf3, hrd, hr1, himm, i.lsb, hodd, Transpiler.jalr] at hl
   subst hl
@@ -360,7 +359,8 @@ theorem JrInstr.rom_of_spec_odd (i : JrInstr) (h1 : i.rs1 ≠ 0) (hodd : i.imm[0
     or_false] at hz
   obtain ⟨hp, hq⟩ := hz
   refine ⟨ia, hp.trans ?_, hq.trans ?_⟩
-  · simp [Transpiler.mk, srcB_ne e1, Equiv.Zisk.jalrAddInst]
+  · by_cases e1 : i.rs1.toNat = 0 <;>
+      simp [Transpiler.mk, Transpiler.srcB, e1, Equiv.Zisk.jalrAddInst, Equiv.Zisk.srcBsrc, Equiv.Zisk.srcBimm]
   · simp [Transpiler.mk, storeReg_link, Equiv.Zisk.jalrAndInst, Transpiler.JALR_MASK, Equiv.Zisk.JALR_MASK]
 
 /-! ## The fused auipc-jalr pair -/

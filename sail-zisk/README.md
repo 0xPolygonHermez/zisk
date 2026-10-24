@@ -206,8 +206,9 @@ transpilation.
 - **The transpiler in the proof, long term (option D), not now:** rewrite
   the transpiler in Lean and ship it, so that the transpiler that runs is the
   one proved.
-- **The remaining instruction forms:** `jalr` with rs1 = x0 (a jump to an
-  absolute address); then A, B, Zbkb and the CSRs. (`ecall` is in the
+- **The remaining instruction forms:** A, B, Zbkb and the CSRs (`jalr`
+  with rs1 = x0, a jump to an absolute address, is in `prog_spec` now, the
+  transpiler's immediate 0 for x0 as its b operand). (`ecall` is in the
   spec; it ends the run, which the link below covers. The other
   x0 forms — `mv`, `li`, `nop`, hints, `beqz`, `sd zero, …`, a load to x0 —
   are in `prog_spec`.)
