@@ -150,7 +150,8 @@ def decode (w : BitVec 32) : Option Inst :=
     | 0 => some (.branch .beq) | 1 => some (.branch .bne) | 4 => some (.branch .blt)
     | 5 => some (.branch .bge) | 6 => some (.branch .bltu) | 7 => some (.branch .bgeu) | _ => none
   | 103 => if f3 == 0 then some .jalr else none
-  | 115 => if f3 == 0 && (w.extractLsb 31 20).toNat == 0 then some .ecall else none
+  -- ecall is the one word 0x00000073 (riscv_interpreter.rs): rd and rs1 0 too
+  | 115 => if w == 0x00000073#32 then some .ecall else none
   | 111 => some .jal
   | _ => none
 

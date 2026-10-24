@@ -59,3 +59,5 @@ import Equiv.MSim
 import Equiv.ZiskBios
 import Equiv.BiosSim
 import Equiv.BiosEnd
+import Equiv.RiscvTryStep
+import Equiv.Machine

@@ -238,7 +238,7 @@ theorem prog_spec (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA_Re
     obtain ⟨s2, z2, k2, hrun2, hzrun2, hrel2⟩ := prog_spec zrom rs (k + 1) s1 z1 (n + 1) hrel1 hrest
     exact ⟨s2, z2, k1 + k2, .step hrun hrun2, ZRun.append hzrun hzrun2, hrel2⟩
   | k + 2, s, z, n, hrel, .inr ⟨⟨pc, i, hpc, hi⟩, hrest⟩ => by
-    obtain ⟨s2, z1, hrun, hzrun, hrel1, -⟩ := fused_rel s z rs hrel pc hpc zrom i hi.toFAt n
+    obtain ⟨s2, z1, hrun, hzrun, hrel1, -, -, -, -⟩ := fused_rel s z rs hrel pc hpc zrom i hi.toFAt n
     have hnext : rvNext (n + 1) (rvNext n s) = s2 := by
       cases hrun with
       | step h1 r => cases r with

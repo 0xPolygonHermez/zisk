@@ -112,7 +112,9 @@ theorem fused_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     (pc : BitVec 64) (hpc : s.regs.get? Register.PC = some pc)
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : FInstr) (hi : FAt s rs pc zrom i) (n : Nat) :
     ∃ s2 z', RVRun n 2 s s2 ∧ ZRun zrom 1 z z' ∧ Rel s2 z' rs ∧
-      s2.regs.get? Register.PC = some (i.T pc) := by
+      s2.regs.get? Register.PC = some (i.T pc) ∧
+      StepReady (rvNext n s) rs ∧ (rvNext n s).regs.get? Register.PC = some (pc + 4) ∧
+      (rvNext n s).mem = s.mem := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -139,7 +141,8 @@ theorem fused_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
   refine ⟨s2, _, .step hrun1 (.step hrun2 (.done _ _)), .step hzrun (.done _),
     ⟨hr2, ⟨vectorUpdate xs i.rd.toNat (i.c pc'), by simp [Std.ExtDHashMap.get?_insert], ?_⟩,
       ⟨_, hpc2, ?_⟩,
-      ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, ?_⟩, hpc2⟩
+      ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, ?_⟩, hpc2,
+    by rw [rvNext_of hrun1]; exact hr1, by rw [rvNext_of hrun1]; exact hpc1, by rw [rvNext_of hrun1]; exact hmem1⟩
   · intro k hk1 hk2
     have e8 : pc' + 4 + 4 = pc' + 8 := by rw [BitVec.add_assoc]; rfl
     rw [hxs2 k hk2]
@@ -295,7 +298,7 @@ theorem prog_sim3 (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA_Re
     obtain ⟨s2, z2, k2, hrun2, hzrun2, hrel2⟩ := prog_sim3 zrom rs (k + 1) s1 z1 (n + 1) hrel1 hrest
     exact ⟨s2, z2, k1 + k2, .step hrun hrun2, ZRun.append hzrun hzrun2, hrel2⟩
   | k + 2, s, z, n, hrel, .inr ⟨⟨pc, i, hpc, hi⟩, hrest⟩ => by
-    obtain ⟨s2, z1, hrun, hzrun, hrel1, -⟩ := fused_rel s z rs hrel pc hpc zrom i hi n
+    obtain ⟨s2, z1, hrun, hzrun, hrel1, -, -, -, -⟩ := fused_rel s z rs hrel pc hpc zrom i hi n
     have hnext : rvNext (n + 1) (rvNext n s) = s2 := by
       cases hrun with
       | step h1 r => cases r with
