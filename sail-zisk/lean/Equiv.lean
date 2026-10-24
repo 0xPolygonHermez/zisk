@@ -61,3 +61,6 @@ import Equiv.BiosSim
 import Equiv.BiosEnd
 import Equiv.RiscvTryStep
 import Equiv.Machine
+import Equiv.MemGrow
+import Equiv.Full
+import Equiv.Theorem
