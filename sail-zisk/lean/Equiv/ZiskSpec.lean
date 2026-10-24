@@ -44,14 +44,15 @@ theorem srcB_BSrc (xs : Vector (BitVec 64) 40) (r : Nat) (h : r < 32) :
 
 set_option maxHeartbeats 4000000 in
 /-- Any pure op on register-or-immediate operands, its result to rd (none
-    for x0), on to pc + j1 if its flag is set, else pc + j2. -/
+    for x0), on to pc + j1 if its flag is set, else pc + j2. The indirect
+    width `w`, which these operands never read, is any. -/
 theorem execute_mkj (s : ZState) (ra : a_src × BitVec 64) (rb : b_src × BitVec 64) (op : zisk_op)
     (hop : PureOp op) (rd : Nat) (hd : rd < 32) (j1 j2 : BitVec 64)
     (xs : Vector (BitVec 64) 40) (pc st : BitVec 64)
     (hx : s.regs.get? Xs = some xs) (hpc : s.regs.get? PC = some pc) (hst : s.regs.get? Step = some st)
-    (va vb : BitVec 64) (ha : ASrc ra xs va) (hb : BSrc rb xs vb) :
+    (va vb : BitVec 64) (ha : ASrc ra xs va) (hb : BSrc rb xs vb) (w : Int := 8) :
     let r := zisk_exec op va vb
-    (zisk_execute (Transpiler.mk ra rb op (Transpiler.storeReg rd) j1 j2)).run s = .ok false
+    (zisk_execute (Transpiler.mk ra rb op (Transpiler.storeReg rd) j1 j2 (w := w))).run s = .ok false
       { s with regs := ((((linkRegs s.regs xs rd r.1).insert Zc r.1).insert Zflag r.2).insert
           Step (BitVec.addInt st 1)).insert PC (if r.2 then pc + j1 else pc + j2) } := by
   intro r

@@ -70,6 +70,12 @@ def linkRegs (m : Std.ExtDHashMap Register RegisterType) (xs : Vector (BitVec 64
     (v : BitVec 64) : Std.ExtDHashMap Register RegisterType :=
   if rd = 0 then m else m.insert Xs (vectorUpdate xs rd v)
 
+@[simp] theorem linkRegs_get_ne (m : Std.ExtDHashMap Register RegisterType) (xs : Vector (BitVec 64) 40)
+    (rd : Nat) (v : BitVec 64) (r : Register) (hr : r ≠ Xs) : (linkRegs m xs rd v).get? r = m.get? r := by
+  unfold linkRegs; split
+  · rfl
+  · simp [Std.ExtDHashMap.get?_insert, Ne.symm hr]
+
 set_option maxHeartbeats 4000000 in
 /-- jal as the transpiler emits it: rd (if not x0) gets pc + 4, and the step
     goes to pc + off. -/

@@ -69,6 +69,7 @@ theorem rtype_step_sim (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs
       s'.regs.get? Register.PC = some (pc + 4) ∧
       z'.regs.get? _root_.Zisk.Register.PC = some (pc + 4) ∧
       z'.regs.get? _root_.Zisk.Register.Step = some (BitVec.addInt st 1) ∧
+      z'.regs.get? _root_.Zisk.Register.Zerror = z.regs.get? _root_.Zisk.Register.Zerror ∧
       StepReady s' rs ∧ s'.mem = s.mem ∧ z'.mem = z.mem := by
   intro rd rs1 rs2
   have e1 : rs1.toNat ≠ 0 := hr1
@@ -87,7 +88,7 @@ theorem rtype_step_sim (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs
     Equiv.Zisk.execute_regop z (ziskOp op) (pureOp op) rd.toNat rs1.toNat rs2.toNat
       (by omega) (by omega) (by omega) xs pc st hx hzpc hst,
     by simp [Std.ExtDHashMap.get?_insert], ?_, hpc', by simp, by simp [Std.ExtDHashMap.get?_insert],
-    hr.keep hwf ho, hmem, rfl⟩
+    by simp [Std.ExtDHashMap.get?_insert], hr.keep hwf ho, hmem, rfl⟩
   intro k hk1 hk2
   rw [hxs' k hk2]
   have := hag k hk1 hk2

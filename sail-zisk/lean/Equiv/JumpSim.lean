@@ -66,7 +66,8 @@ theorem jump_step_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
     (hz : ∃ z', (zstep zrom).run z = .ok false z' ∧
       z'.regs.get? _root_.Zisk.Register.Xs = some (Equiv.Zisk.xsUpd xs rd v) ∧
       z'.regs.get? _root_.Zisk.Register.PC = some tgt ∧
-      (∃ st, z'.regs.get? _root_.Zisk.Register.Step = some st) ∧ z'.mem = z.mem) (n : Nat) :
+      (∃ st, z'.regs.get? _root_.Zisk.Register.Step = some st ∧
+        z'.regs.get? _root_.Zisk.Register.Zerror = some false) ∧ z'.mem = z.mem) (n : Nat) :
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
       (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧ s'.regs.get? Register.PC = some tgt := by
   obtain ⟨s', hrun, hmem, hwf, hpc', hxs', ho⟩ := try_step_gen s rs hr pc hpc b0 b1 b2 b3 hw ins hdec rd v tgt hexec n
@@ -122,7 +123,7 @@ theorem ustep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : UInstr) (hi : UAt s rs pc zrom i) (n : Nat) :
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
       (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) := by
-  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst⟩, hzm⟩ := hrel
+  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
   obtain ⟨hop, himm, hrdx, hc⟩ := i.fields
@@ -142,7 +143,7 @@ theorem ustep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     rfl
   · rw [zstep_run zrom z pc' hzpc, hi.rom]
     refine ⟨_, Equiv.Zisk.execute_const z i.rd.toNat _ (by omega) xs pc' st hx hzpc hst, ?_, by simp,
-      ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert]⟩, rfl⟩
+      ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, rfl⟩
     simp [Std.ExtDHashMap.get?_insert, Equiv.Zisk.xsUpd, ed]
 
 /-! ### jal -/
@@ -185,7 +186,7 @@ theorem jstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
       (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧
       s'.regs.get? Register.PC = some (pc + i.imm.signExtend 64) := by
-  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst⟩, hzm⟩ := hrel
+  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
   obtain ⟨hop, h20, h19, h11, h10, hrdx, hc⟩ := i.fields
@@ -204,7 +205,7 @@ theorem jstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     rfl
   · rw [zstep_run zrom z pc' hzpc, hi.rom]
     refine ⟨_, Equiv.Zisk.execute_jal z i.rd.toNat _ ld xs pc' st hx hzpc hst, ?_, by simp,
-      ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert]⟩, rfl⟩
+      ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, rfl⟩
     simp only [Std.ExtDHashMap.get?_insert]
     simpa using linkRegs_xs z.regs xs i.rd.toNat (pc' + 4) hx
 
@@ -250,7 +251,7 @@ theorem jrstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
       (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧
       s'.regs.get? Register.PC = some (jalrTarget v1 i.imm) := by
-  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst⟩, hzm⟩ := hrel
+  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
   obtain ⟨hop, hf3, himm, hr1x, hrdx, hc⟩ := i.fields
@@ -276,7 +277,7 @@ theorem jrstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   · rw [zstep_run zrom z pc' hzpc, hi.rom]
     have hxv' : xs[(i.rs1.toNat : Int)]! = v1 := by rw [getElem!_int]; exact hxv
     refine ⟨_, Equiv.Zisk.execute_jalr z i.rd.toNat i.rs1.toNat _ ld (by omega) xs pc' st hx hzpc hst, ?_,
-      ?_, ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert]⟩, rfl⟩
+      ?_, ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, rfl⟩
     · simp only [Std.ExtDHashMap.get?_insert]
       simpa using linkRegs_xs z.regs xs i.rd.toNat (pc' + 4) hx
     · simp [hxv', jalr_target v1 i.imm hi.even]

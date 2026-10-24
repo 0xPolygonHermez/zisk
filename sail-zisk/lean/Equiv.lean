@@ -56,3 +56,6 @@ import Equiv.RiscvDecodeMBase
 import Equiv.RiscvDecodeM
 import Equiv.RiscvDecodeMul
 import Equiv.MSim
+import Equiv.ZiskBios
+import Equiv.BiosSim
+import Equiv.BiosEnd

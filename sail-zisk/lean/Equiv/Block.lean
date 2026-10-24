@@ -43,12 +43,15 @@ inductive ZRun (zrom : BitVec 64 → _root_.Zisk.zisk_inst) : Nat → Equiv.Zisk
       (zstep zrom).run z = .ok false z' → ZRun zrom n z' z'' → ZRun zrom (n + 1) z z''
 
 /-- A RISC-V state and a ZisK state in step: sail-riscv's ready for a step,
-    the registers agree, the same pc, and ZisK has a step count. -/
+    the registers agree, the same pc, ZisK has a step count and no error. -/
 structure Rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) : Prop where
   ready : StepReady s rs
   regs : ∃ xs, z.regs.get? _root_.Zisk.Register.Xs = some xs ∧ RegsAgree s xs
   pc : ∃ pc, s.regs.get? Register.PC = some pc ∧ z.regs.get? _root_.Zisk.Register.PC = some pc
-  step : ∃ st, z.regs.get? _root_.Zisk.Register.Step = some st
+  /-- ZisK's step counter, and no halt so far: Zerror false, as a run starts
+      it, until the BIOS halts on an exit code (only a halt sets it). -/
+  step : ∃ st, z.regs.get? _root_.Zisk.Register.Step = some st ∧
+    z.regs.get? _root_.Zisk.Register.Zerror = some false
   /-- The same memory: both models keep it as a map of bytes. -/
   mem : z.mem = s.mem
 
@@ -110,7 +113,7 @@ theorem rstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
       (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧
       s'.regs.get? Register.PC = some (pc + 4) ∧ s'.mem = s.mem := by
-  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst⟩, hzm⟩ := hrel
+  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
   obtain ⟨hop, hf3, hf7, hrdx, hr1x, hr2x, hc⟩ := i.fields
@@ -120,9 +123,10 @@ theorem rstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     (by rw [hrdx]; exact ne_zero_toNat hi.rd) (by rw [hr1x]; exact ne_zero_toNat hi.rs1)
     (by rw [hr2x]; exact ne_zero_toNat hi.rs2) n z xs st hx hzpc hst agree
   simp only [hrdx, hr1x, hr2x] at this
-  obtain ⟨s', z', xs', hrun, hzrun, hx', hag, hpc'', hzpc', hst', hready, hmem, hzmem⟩ := this
+  obtain ⟨s', z', xs', hrun, hzrun, hx', hag, hpc'', hzpc', hst', hze', hready, hmem, hzmem⟩ := this
   refine ⟨s', z', hrun, ?_,
-    ⟨hready, ⟨xs', hx', hag⟩, ⟨_, hpc'', hzpc'⟩, ⟨_, hst'⟩, hzmem.trans (hzm.trans hmem.symm)⟩, hpc'', hmem⟩
+    ⟨hready, ⟨xs', hx', hag⟩, ⟨_, hpc'', hzpc'⟩, ⟨_, hst', hze'.trans hze⟩, hzmem.trans (hzm.trans hmem.symm)⟩,
+    hpc'', hmem⟩
   rw [zstep_run zrom z pc' hzpc, hi.rom]; exact hzrun
 
 /-- A block of R-type instructions at pc, pc + 4, …. -/

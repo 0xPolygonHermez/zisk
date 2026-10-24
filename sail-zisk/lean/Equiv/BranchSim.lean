@@ -111,7 +111,7 @@ theorem brstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
       (zstep zrom).run z = .ok false z' ∧ Rel s' z' rs ∧
       s'.regs.get? Register.PC = some (i.target pc v1 v2) ∧ s'.mem = s.mem := by
-  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst⟩, hzm⟩ := hrel
+  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
   obtain ⟨hop, hf3, h12, h11, h10, h4, hr2x, hr1x, hc⟩ := i.fields
@@ -149,7 +149,7 @@ theorem brstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   have hz := Equiv.Zisk.execute_branch z (zbopOp i.op) (zbop_pure i.op) i.rs1.toNat i.rs2.toNat
     i.zjumps.1 i.zjumps.2 (by omega) (by omega) xs pc' st hx hzpc hst
   refine ⟨s', _, hrun, by rw [zstep_run zrom z pc' hzpc, hi.rom]; exact hz, ⟨hr.keep hwf ho, ⟨xs, ?_, ?_⟩,
-    ⟨_, hpc'', ?_⟩, ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert]⟩, ?_⟩, hpc'', hmem⟩
+    ⟨_, hpc'', ?_⟩, ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, ?_⟩, hpc'', hmem⟩
   · simp [Std.ExtDHashMap.get?_insert, hx]
   · intro k hk1 hk2; rw [hxs' k hk2]; simp only [setX, if_true]; exact agree k hk1 hk2
   · simp only [Std.ExtDHashMap.get?_insert, beq_self_eq_true, dite_true, cast_eq, Option.some.injEq]

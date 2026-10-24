@@ -13,6 +13,7 @@
   at is the Rust ROM's (see the spec's header). Exits 1 on any difference.
 -/
 import Transpiler.Spec
+import Transpiler.Bios
 
 open _root_.Zisk Transpiler
 
@@ -115,6 +116,18 @@ def check (name : String) (l : Listing) : IO Tally := do
           | none =>
             t := { t with differences := t.differences + 1 }
             IO.println s!"{name}: at {hex a.toNat}, no instruction in the Rust's ROM"
+  -- The BIOS, for the entry the Rust's BIOS calls.
+  if let some (some call) := l.rom.get? 0x1018 then
+    for (a, i) in bios call.b_imm do
+      t := { t with described := t.described + 1 }
+      match l.rom.get? a.toNat with
+      | some (some r) =>
+        if r != i then
+          t := { t with differences := t.differences + 1 }
+          IO.println s!"{name}: BIOS at {hex a.toNat}:\n  spec {repr i}\n  rust {repr r}"
+      | _ =>
+        t := { t with differences := t.differences + 1 }
+        IO.println s!"{name}: BIOS at {hex a.toNat}: no instruction in the Rust's ROM"
   return t
 
 def main (args : List String) : IO UInt32 := do

@@ -16,7 +16,7 @@
     (`registerOp`, `immediateOp`, `copyb`, `loadOp`, `storeOp`, ...), and
     `convert`, which picks one per instruction.
 
-  So far: RV64I but for fence, ecall, ebreak and the CSRs; and M. An instruction it
+  So far: RV64I but for fence, ebreak and the CSRs; and M. An instruction it
   does not describe is `none`.
 
   Internal addresses (the odd ROM addresses a translation of more than one
@@ -96,7 +96,7 @@ inductive MOp | mul | mulh | mulhsu | mulhu | div | divu | rem | remu | mulw | d
 /-- An instruction the spec describes, as `RiscvDecoder::decode_32` names it. -/
 inductive Inst
   | r (op : ROp) | i (op : IOp) | shift (op : SOp) | branch (op : BOp)
-  | load (op : LOp) | store (op : SzOp) | lui | auipc | jal | jalr | m (op : MOp)
+  | load (op : LOp) | store (op : SzOp) | lui | auipc | jal | jalr | m (op : MOp) | ecall
   deriving BEq, Repr
 
 /-- What `decode_32` decodes a word to, among the instructions described.
@@ -150,6 +150,7 @@ def decode (w : BitVec 32) : Option Inst :=
     | 0 => some (.branch .beq) | 1 => some (.branch .bne) | 4 => some (.branch .blt)
     | 5 => some (.branch .bge) | 6 => some (.branch .bltu) | 7 => some (.branch .bgeu) | _ => none
   | 103 => if f3 == 0 then some .jalr else none
+  | 115 => if f3 == 0 && (w.extractLsb 31 20).toNat == 0 then some .ecall else none
   | 111 => some .jal
   | _ => none
 
@@ -177,6 +178,10 @@ def mk (a : a_src × BitVec 64) (b : b_src × BitVec 64) (op : zisk_op)
     jmp_off1 := j1, jmp_off2 := j2, is_end := false }
 
 /-! ## The translations (riscv2zisk_context.rs) -/
+
+/-- The BIOS's ecall handler, where `ecall` jumps (core/src/rom_layout.rs,
+    default build: 0x1008 + 4 · (13 + 15 + 1)). -/
+def ECALL_HANDLER_ADDR : BitVec 64 := 0x107C#64
 
 /-- The ROM's mask for a jalr target: bit 0 cleared (`JALR_MASK`). -/
 def JALR_MASK : BitVec 64 := 0xfffffffffffffffe#64
@@ -258,6 +263,10 @@ def auipc (pc : BitVec 64) (next : Option (BitVec 32)) : zisk_inst :=
   | none => plain
 where plain := mk (.A_IMM, 0) (.B_IMM, pc + immU w) (.ZOP_COPYB ()) (storeReg (rd w)) 4 4
 
+/-- `ecall`: pc + 4 -> r[ra], on to the BIOS's ecall handler. -/
+def ecall : zisk_inst :=
+  mk (.A_IMM, 0) (.B_IMM, ECALL_HANDLER_ADDR) (.ZOP_COPYB ()) (storeReg 1 true) 0 4 (setPc := true)
+
 end Translations
 
 def ROp.zop : ROp → zisk_op
@@ -326,5 +335,6 @@ def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : B
   | some .jal => one (jal w)
   | some .jalr => some (jalr w pc ia)
   | some (.m op) => one (registerOp w op.zop)
+  | some .ecall => one ecall
 
 end Transpiler

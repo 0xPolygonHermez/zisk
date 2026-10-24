@@ -113,7 +113,7 @@ theorem fused_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : FInstr) (hi : FAt s rs pc zrom i) (n : Nat) :
     ∃ s2 z', RVRun n 2 s s2 ∧ ZRun zrom 1 z z' ∧ Rel s2 z' rs ∧
       s2.regs.get? Register.PC = some (i.T pc) := by
-  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst⟩, hzm⟩ := hrel
+  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
   obtain ⟨-, -, -, hc1⟩ := UInstr.fields i.auipc
@@ -139,7 +139,7 @@ theorem fused_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
   refine ⟨s2, _, .step hrun1 (.step hrun2 (.done _ _)), .step hzrun (.done _),
     ⟨hr2, ⟨vectorUpdate xs i.rd.toNat (i.c pc'), by simp [Std.ExtDHashMap.get?_insert], ?_⟩,
       ⟨_, hpc2, ?_⟩,
-      ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert]⟩, ?_⟩, hpc2⟩
+      ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, ?_⟩, hpc2⟩
   · intro k hk1 hk2
     have e8 : pc' + 4 + 4 = pc' + 8 := by rw [BitVec.add_assoc]; rfl
     rw [hxs2 k hk2]
@@ -206,7 +206,7 @@ theorem jo_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hre
     (tal : (jalrTarget v1 i.imm)[0] = false ∧ (jalrTarget v1 i.imm)[1] = false) (n : Nat) :
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧ ZRun zrom 2 z z' ∧
       Rel s' z' rs ∧ s'.regs.get? Register.PC = some (jalrTarget v1 i.imm) := by
-  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst⟩, hzm⟩ := hrel
+  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
   obtain ⟨-, -, -, -, -, hc⟩ := i.fields
@@ -233,7 +233,8 @@ theorem jo_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hre
     (by simp [Std.ExtDHashMap.get?_insert]) (by simp [Std.ExtDHashMap.get?_insert])
   rw [← hi.rom2, ← zstep_run zrom _ ia (by simp [eia])] at hz2
   refine ⟨s', _, hrun, .step hz1 (.step hz2 (.done _)), ⟨hr', ⟨Equiv.Zisk.xsUpd xs i.rd.toNat (pc' + 4), ?_, ?_⟩,
-    ⟨_, hpc'', ?_⟩, ⟨BitVec.addInt (BitVec.addInt st 1) 1, by simp [Std.ExtDHashMap.get?_insert]⟩, ?_⟩, hpc''⟩
+    ⟨_, hpc'', ?_⟩, ⟨BitVec.addInt (BitVec.addInt st 1) 1, by simp [Std.ExtDHashMap.get?_insert],
+      by simp [Std.ExtDHashMap.get?_insert, hze]⟩, ?_⟩, hpc''⟩
   · have e4 : ia + (pc' + 4 - ia) = pc' + 4 := by rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
     simp only [Std.ExtDHashMap.get?_insert, beq_iff_eq, reduceCtorEq, dite_false, e4]
     · exact linkRegs_xs _ xs i.rd.toNat (pc' + 4) (by simp [Std.ExtDHashMap.get?_insert, hx])
