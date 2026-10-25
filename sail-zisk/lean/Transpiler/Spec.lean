@@ -17,7 +17,7 @@
     `convert`, which picks one per instruction.
 
   So far: RV64I but for ebreak and the CSRs; Zifencei; M; and Zba's single-instruction
-  forms (sh1add, sh2add, sh3add, slli.uw); Zbs. An instruction it
+  forms (sh1add, sh2add, sh3add, slli.uw); Zbs; Zbb's register ops. An instruction it
   does not describe is `none`.
 
   Internal addresses (the odd ROM addresses a translation of more than one
@@ -102,11 +102,15 @@ inductive ShAdd | sh1 | sh2 | sh3
 inductive ZbsOp | bclr | bext | binv | bset
   deriving BEq, Repr
 
+/-- Zbb's register ops (andn, orn and xnor are in Zbkb too). -/
+inductive ZbbOp | andn | orn | xnor | max | maxu | min | minu | rol | ror
+  deriving BEq, Repr
+
 /-- An instruction the spec describes, as `RiscvDecoder::decode_32` names it. -/
 inductive Inst
   | r (op : ROp) | i (op : IOp) | shift (op : SOp) | branch (op : BOp)
   | load (op : LOp) | store (op : SzOp) | lui | auipc | jal | jalr | m (op : MOp) | ecall | fence
-  | shadd (op : ShAdd) | slliuw | zbs (op : ZbsOp) | zbsi (op : ZbsOp)
+  | shadd (op : ShAdd) | slliuw | zbs (op : ZbsOp) | zbsi (op : ZbsOp) | zbb (op : ZbbOp)
   deriving BEq, Repr
 
 /-- What `decode_32` decodes a word to, among the instructions described.
@@ -156,6 +160,9 @@ def decode (w : BitVec 32) : Option Inst :=
     | 2, 16 => some (.shadd .sh1) | 4, 16 => some (.shadd .sh2) | 6, 16 => some (.shadd .sh3)
     | 1, 36 => some (.zbs .bclr) | 5, 36 => some (.zbs .bext) | 1, 52 => some (.zbs .binv)
     | 1, 20 => some (.zbs .bset)
+    | 7, 32 => some (.zbb .andn) | 6, 32 => some (.zbb .orn) | 4, 32 => some (.zbb .xnor)
+    | 6, 5 => some (.zbb .max) | 7, 5 => some (.zbb .maxu) | 4, 5 => some (.zbb .min) | 5, 5 => some (.zbb .minu)
+    | 1, 48 => some (.zbb .rol) | 5, 48 => some (.zbb .ror)
     | _, _ => none
   | 55 => some .lui
   | 59 => match f3, f7 with
@@ -301,6 +308,11 @@ def ShAdd.zop : ShAdd → zisk_op
 def ZbsOp.zop : ZbsOp → zisk_op
   | .bclr => .ZOP_BCLR () | .bext => .ZOP_BEXT () | .binv => .ZOP_BINV () | .bset => .ZOP_BSET ()
 
+/-- The op the transpiler emits for each Zbb register op. -/
+def ZbbOp.zop : ZbbOp → zisk_op
+  | .andn => .ZOP_ANDN () | .orn => .ZOP_ORN () | .xnor => .ZOP_XNOR () | .max => .ZOP_MAX ()
+  | .maxu => .ZOP_MAXU () | .min => .ZOP_MIN () | .minu => .ZOP_MINU () | .rol => .ZOP_ROL () | .ror => .ZOP_ROR ()
+
 /-- The op the transpiler emits for each M instruction (riscv2zisk_context.rs). -/
 def MOp.zop : MOp → zisk_op
   | .mul => .ZOP_MUL () | .mulh => .ZOP_MULH () | .mulhsu => .ZOP_MULSUH () | .mulhu => .ZOP_MULUH ()
@@ -367,5 +379,6 @@ def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : B
   | some .slliuw => one (immediateOp w (.ZOP_SLL_U_W ()) (shamt w))
   | some (.zbs op) => one (registerOp w op.zop)
   | some (.zbsi op) => one (immediateOp w op.zop (shamt w))
+  | some (.zbb op) => one (registerOp w op.zop)
 
 end Transpiler

@@ -79,3 +79,6 @@ import Equiv.ZbaSim
 import Equiv.RiscvZbs
 import Equiv.RiscvDecodeZbs
 import Equiv.ZbsSim
+import Equiv.RiscvZbb
+import Equiv.RiscvDecodeZbb
+import Equiv.ZbbSim
