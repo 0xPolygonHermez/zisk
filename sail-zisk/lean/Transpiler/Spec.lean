@@ -17,7 +17,7 @@
     `convert`, which picks one per instruction.
 
   So far: RV64I but for ebreak and the CSRs; Zifencei; M; and Zba's single-instruction
-  forms (sh1add, sh2add, sh3add, slli.uw). An instruction it
+  forms (sh1add, sh2add, sh3add, slli.uw); Zbs. An instruction it
   does not describe is `none`.
 
   Internal addresses (the odd ROM addresses a translation of more than one
@@ -98,11 +98,15 @@ inductive MOp | mul | mulh | mulhsu | mulhu | div | divu | rem | remu | mulw | d
 inductive ShAdd | sh1 | sh2 | sh3
   deriving BEq, Repr
 
+/-- Zbs's single-bit ops: clear, extract, invert, set. -/
+inductive ZbsOp | bclr | bext | binv | bset
+  deriving BEq, Repr
+
 /-- An instruction the spec describes, as `RiscvDecoder::decode_32` names it. -/
 inductive Inst
   | r (op : ROp) | i (op : IOp) | shift (op : SOp) | branch (op : BOp)
   | load (op : LOp) | store (op : SzOp) | lui | auipc | jal | jalr | m (op : MOp) | ecall | fence
-  | shadd (op : ShAdd) | slliuw
+  | shadd (op : ShAdd) | slliuw | zbs (op : ZbsOp) | zbsi (op : ZbsOp)
   deriving BEq, Repr
 
 /-- What `decode_32` decodes a word to, among the instructions described.
@@ -119,12 +123,14 @@ def decode (w : BitVec 32) : Option Inst :=
   | 19 => match f3 with
     | 0 => some (.i .addi)
     | 1 =>
-      -- sext.b, sext.h, clz, ctz and cpop come first in the Rust; none has funct6 0.
-      if f6 == 0 then some (.shift .slli) else none
+      -- sext.b, sext.h, clz, ctz and cpop come first in the Rust; all have funct6 24.
+      if f6 == 0 then some (.shift .slli) else if f6 == 10 then some (.zbsi .bset)
+      else if f6 == 18 then some (.zbsi .bclr) else if f6 == 26 then some (.zbsi .binv) else none
     | 2 => some (.i .slti) | 3 => some (.i .sltiu) | 4 => some (.i .xori)
     | 5 =>
-      -- rev8, brev8 and orc.b come first; none has funct6 0 or 16.
-      if f6 == 0 then some (.shift .srli) else if f6 == 16 then some (.shift .srai) else none
+      -- rev8, brev8 and orc.b come first; none has funct6 0, 16 or 18.
+      if f6 == 0 then some (.shift .srli) else if f6 == 16 then some (.shift .srai)
+      else if f6 == 18 then some (.zbsi .bext) else none
     | 6 => some (.i .ori) | 7 => some (.i .andi) | _ => none
   -- fence (fence.tso among them) and fence.i, whatever their fields: a nop
   | 15 => if f3 == 0 || f3 == 1 then some .fence else none
@@ -148,6 +154,8 @@ def decode (w : BitVec 32) : Option Inst :=
     | 0, 1 => some (.m .mul) | 1, 1 => some (.m .mulh) | 2, 1 => some (.m .mulhsu) | 3, 1 => some (.m .mulhu)
     | 4, 1 => some (.m .div) | 5, 1 => some (.m .divu) | 6, 1 => some (.m .rem) | 7, 1 => some (.m .remu)
     | 2, 16 => some (.shadd .sh1) | 4, 16 => some (.shadd .sh2) | 6, 16 => some (.shadd .sh3)
+    | 1, 36 => some (.zbs .bclr) | 5, 36 => some (.zbs .bext) | 1, 52 => some (.zbs .binv)
+    | 1, 20 => some (.zbs .bset)
     | _, _ => none
   | 55 => some .lui
   | 59 => match f3, f7 with
@@ -289,6 +297,10 @@ def ROp.zop : ROp → zisk_op
 def ShAdd.zop : ShAdd → zisk_op
   | .sh1 => .ZOP_SH1ADD () | .sh2 => .ZOP_SH2ADD () | .sh3 => .ZOP_SH3ADD ()
 
+/-- The op the transpiler emits for each Zbs instruction, register or immediate. -/
+def ZbsOp.zop : ZbsOp → zisk_op
+  | .bclr => .ZOP_BCLR () | .bext => .ZOP_BEXT () | .binv => .ZOP_BINV () | .bset => .ZOP_BSET ()
+
 /-- The op the transpiler emits for each M instruction (riscv2zisk_context.rs). -/
 def MOp.zop : MOp → zisk_op
   | .mul => .ZOP_MUL () | .mulh => .ZOP_MULH () | .mulhsu => .ZOP_MULSUH () | .mulhu => .ZOP_MULUH ()
@@ -353,5 +365,7 @@ def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : B
   | some .fence => one nop
   | some (.shadd op) => one (registerOp w op.zop)
   | some .slliuw => one (immediateOp w (.ZOP_SLL_U_W ()) (shamt w))
+  | some (.zbs op) => one (registerOp w op.zop)
+  | some (.zbsi op) => one (immediateOp w op.zop (shamt w))
 
 end Transpiler
