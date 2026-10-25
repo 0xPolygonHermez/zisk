@@ -147,8 +147,9 @@ operation — sail-zisk's of the same name (`model/zisk_insts_*.sail`), with its
 the sequence. A sequence's later instructions are still in the program on
 their own: reached by a jump, they do what RISC-V says, which, writing `x0`,
 is nothing. A sequence of the wrong shape — a two-instruction form whose
-second instruction is not the `add`/`addi` the table gives — fails
-transpilation: it is not a program ZisK runs. Any other access to these
+second instruction is not the `add`/`addi` the table gives — becomes a
+halt, as a reserved encoding does: the run fails if it gets there (§ 4); it
+does not stop the whole program from transpiling. Any other access to these
 numbers — with `rd` ≠ `x0` where the table has none, say — is a cell access
 (§ 6), and `csrs ID, x0` does nothing.
 

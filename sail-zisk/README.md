@@ -185,10 +185,6 @@ transpilation.
   whole ZisK ROM of a program from the spec, internal addresses included,
   for the top theorem (each step's ZisK instruction already follows from the
   spec: `lean/Equiv/FromSpec.lean`).
-- **The CSR call patterns:** the transpiler asserts that a precompile or DMA
-  CSR access is followed by its operand instruction, and panics otherwise,
-  rejecting the whole program even if the access never runs. Like the
-  decoder (`make decoder-diff`), it should halt there instead.
 - **The decode lemmas' checking time:** `lean/Equiv/RiscvDecode*.lean`
   take about an hour and a half of the two hours `make equiv` takes from
   scratch, most of it stepping through sail-riscv's decoder one clause at a

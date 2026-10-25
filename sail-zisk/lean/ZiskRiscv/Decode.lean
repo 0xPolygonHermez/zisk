@@ -13,8 +13,8 @@
   It follows the transpiler's dispatch exactly
   (transpilers/riscv/src/riscv2zisk_context.rs: `csrrs`, `csrrsi`, `csrrwi`
   and the `transpile_*_pattern` functions), in its default build. What the
-  transpiler refuses — a sequence of the wrong shape — is `malformed`: not a
-  program ZisK runs. CSR accesses outside these forms are not ZisK calls; by
+  transpiler refuses — a sequence of the wrong shape — is `malformed`: the
+  transpiler makes it a halt, so a run fails if it gets there. CSR accesses outside these forms are not ZisK calls; by
   precondition C a program in the contract makes none but reading `marchid`,
   and they are left to sail-riscv.
 
@@ -97,7 +97,7 @@ inductive Decoded where
   /-- An access to a ZisK CSR number that ZisK makes nothing of: `csrs ID,
       x0`. sail-riscv, which has no such CSR, would trap. -/
   | nop
-  /-- A sequence the transpiler refuses: not a program ZisK runs. -/
+  /-- A sequence the transpiler refuses: a halt, the run's failure. -/
   | malformed (why : String)
   /-- Plain RISC-V, sail-riscv's to run. -/
   | riscv
