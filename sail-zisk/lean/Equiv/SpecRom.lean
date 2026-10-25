@@ -97,6 +97,9 @@ theorem StepOkT.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : Bi
   | .zbs _, hi => { hi with tr := retr hs hc hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }
   | .zbsi _, hi => { hi with tr := retr hs hc hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }
   | .zbb _, hi => { hi with tr := retr hs hc hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }
+  | .zbbw _, hi => { hi with tr := retr hs hc hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }
+  | .rori _, hi => { hi with tr := retr hs hc hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }
+  | .roriw _, hi => { hi with tr := retr hs hc hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }
 
 theorem OneOkT.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {rs : List PMA_Region} {s : RVState} (hs : SpecRom zrom C s.mem)

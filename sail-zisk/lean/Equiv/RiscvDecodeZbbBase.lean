@@ -29,4 +29,7 @@ def zbbF3 : brop_zbb → BitVec 3
   | .ANDN => 7 | .ORN => 6 | .XNOR => 4 | .MAX => 6 | .MAXU => 7 | .MIN => 4 | .MINU => 5
   | .ROL => 1 | .ROR => 5
 
+def zbbWF3 : bropw_zbb → BitVec 3
+  | .ROLW => 1 | .RORW => 5
+
 end Equiv.Riscv

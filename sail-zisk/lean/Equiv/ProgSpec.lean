@@ -16,6 +16,7 @@ import Equiv.FenceSim
 import Equiv.ZbaSim
 import Equiv.ZbsSim
 import Equiv.ZbbSim
+import Equiv.ZbbRotSim
 import ZiskRiscv.Machine
 import Equiv.RamOnly
 
@@ -113,6 +114,9 @@ inductive InstrT where
   | zbs (i : ZbsInstr)
   | zbsi (i : ZbsiInstr)
   | zbb (i : ZbbInstr)
+  | zbbw (i : ZbbWInstr)
+  | rori (i : RoriInstr)
+  | roriw (i : RoriwInstr)
 
 /-- The word after pc, as the transpiler reads it to translate the one at
     pc (riscv2zisk_context.rs: the next instruction, for the auipc-jalr
@@ -154,6 +158,9 @@ def StepOkT (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   | .zbs i => ZbsAt s rs pc zrom i (nextWord s pc)
   | .zbsi i => ZbsiAt s rs pc zrom i (nextWord s pc)
   | .zbb i => ZbbAt s rs pc zrom i (nextWord s pc)
+  | .zbbw i => ZbbWAt s rs pc zrom i (nextWord s pc)
+  | .rori i => RoriAt s rs pc zrom i (nextWord s pc)
+  | .roriw i => RoriwAt s rs pc zrom i (nextWord s pc)
 
 theorem getX_some {s : RVState} {z : Equiv.Zisk.ZState} {rs : List PMA_Region} (hrel : Rel s z rs)
     {r : Nat} (hr : r < 32) : ∃ v, getX s r = some v := by
@@ -230,6 +237,15 @@ theorem step_relT (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
   | .zbb i, hi =>
     obtain ⟨s', z', h1, h2, h3, -, hm⟩ := zbbstep_rel s z rs hrel pc hpc zrom i _ hi n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
+  | .zbbw i, hi =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := zbbwstep_rel s z rs hrel pc hpc zrom i _ hi n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
+  | .rori i, hi =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := roristep_rel s z rs hrel pc hpc zrom i _ hi n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
+  | .roriw i, hi =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := roriwstep_rel s z rs hrel pc hpc zrom i _ hi n
     exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
 
 /-- What one step of sail-riscv needs: an instruction, run in one ZisK step,

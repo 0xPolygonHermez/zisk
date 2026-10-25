@@ -17,7 +17,7 @@
     `convert`, which picks one per instruction.
 
   So far: RV64I but for ebreak and the CSRs; Zifencei; M; and Zba's single-instruction
-  forms (sh1add, sh2add, sh3add, slli.uw); Zbs; Zbb's register ops. An instruction it
+  forms (sh1add, sh2add, sh3add, slli.uw); Zbs; Zbb's register ops and rotations. An instruction it
   does not describe is `none`.
 
   Internal addresses (the odd ROM addresses a translation of more than one
@@ -106,11 +106,16 @@ inductive ZbsOp | bclr | bext | binv | bset
 inductive ZbbOp | andn | orn | xnor | max | maxu | min | minu | rol | ror
   deriving BEq, Repr
 
+/-- Zbb's word rotations. -/
+inductive ZbbWOp | rolw | rorw
+  deriving BEq, Repr
+
 /-- An instruction the spec describes, as `RiscvDecoder::decode_32` names it. -/
 inductive Inst
   | r (op : ROp) | i (op : IOp) | shift (op : SOp) | branch (op : BOp)
   | load (op : LOp) | store (op : SzOp) | lui | auipc | jal | jalr | m (op : MOp) | ecall | fence
   | shadd (op : ShAdd) | slliuw | zbs (op : ZbsOp) | zbsi (op : ZbsOp) | zbb (op : ZbbOp)
+  | zbbw (op : ZbbWOp) | rori | roriw
   deriving BEq, Repr
 
 /-- What `decode_32` decodes a word to, among the instructions described.
@@ -132,9 +137,9 @@ def decode (w : BitVec 32) : Option Inst :=
       else if f6 == 18 then some (.zbsi .bclr) else if f6 == 26 then some (.zbsi .binv) else none
     | 2 => some (.i .slti) | 3 => some (.i .sltiu) | 4 => some (.i .xori)
     | 5 =>
-      -- rev8, brev8 and orc.b come first; none has funct6 0, 16 or 18.
+      -- rev8, brev8 and orc.b come first; none has funct6 0, 16, 18 or 24.
       if f6 == 0 then some (.shift .srli) else if f6 == 16 then some (.shift .srai)
-      else if f6 == 18 then some (.zbsi .bext) else none
+      else if f6 == 18 then some (.zbsi .bext) else if f6 == 24 then some .rori else none
     | 6 => some (.i .ori) | 7 => some (.i .andi) | _ => none
   -- fence (fence.tso among them) and fence.i, whatever their fields: a nop
   | 15 => if f3 == 0 || f3 == 1 then some .fence else none
@@ -146,7 +151,9 @@ def decode (w : BitVec 32) : Option Inst :=
       if (w.extractLsb 31 20).toNat ∈ [0b011000000000, 0b011000000001, 0b011000000010] then none
       else if f6 == 2 then some .slliuw
       else if f7 == 0 then some (.shift .slliw) else none
-    | 5 => if f7 == 0 then some (.shift .srliw) else if f7 == 32 then some (.shift .sraiw) else none
+    | 5 =>
+      if f7 == 0 then some (.shift .srliw) else if f7 == 32 then some (.shift .sraiw)
+      else if f7 == 48 then some .roriw else none
     | _ => none
   | 35 => match f3 with
     | 0 => some (.store .sb) | 1 => some (.store .sh) | 2 => some (.store .sw) | 3 => some (.store .sd)
@@ -167,7 +174,7 @@ def decode (w : BitVec 32) : Option Inst :=
   | 55 => some .lui
   | 59 => match f3, f7 with
     | 0, 0 => some (.r .addw) | 0, 32 => some (.r .subw) | 1, 0 => some (.r .sllw)
-    | 5, 0 => some (.r .srlw) | 5, 32 => some (.r .sraw)
+    | 5, 0 => some (.r .srlw) | 5, 32 => some (.r .sraw) | 1, 48 => some (.zbbw .rolw) | 5, 48 => some (.zbbw .rorw)
     | 0, 1 => some (.m .mulw) | 4, 1 => some (.m .divw) | 5, 1 => some (.m .divuw) | 6, 1 => some (.m .remw)
     | 7, 1 => some (.m .remuw) | _, _ => none
   | 99 => match f3 with
@@ -313,6 +320,9 @@ def ZbbOp.zop : ZbbOp → zisk_op
   | .andn => .ZOP_ANDN () | .orn => .ZOP_ORN () | .xnor => .ZOP_XNOR () | .max => .ZOP_MAX ()
   | .maxu => .ZOP_MAXU () | .min => .ZOP_MIN () | .minu => .ZOP_MINU () | .rol => .ZOP_ROL () | .ror => .ZOP_ROR ()
 
+def ZbbWOp.zop : ZbbWOp → zisk_op
+  | .rolw => .ZOP_ROL_W () | .rorw => .ZOP_ROR_W ()
+
 /-- The op the transpiler emits for each M instruction (riscv2zisk_context.rs). -/
 def MOp.zop : MOp → zisk_op
   | .mul => .ZOP_MUL () | .mulh => .ZOP_MULH () | .mulhsu => .ZOP_MULSUH () | .mulhu => .ZOP_MULUH ()
@@ -380,5 +390,8 @@ def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : B
   | some (.zbs op) => one (registerOp w op.zop)
   | some (.zbsi op) => one (immediateOp w op.zop (shamt w))
   | some (.zbb op) => one (registerOp w op.zop)
+  | some (.zbbw op) => one (registerOp w op.zop)
+  | some .rori => one (immediateOp w (.ZOP_ROR ()) (shamt w))
+  | some .roriw => one (immediateOp w (.ZOP_ROR_W ()) (shamt w))
 
 end Transpiler

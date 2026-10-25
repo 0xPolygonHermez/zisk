@@ -119,6 +119,12 @@ theorem notSys_zbsi (i : ZbsiInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
   simp only [ZbsiInstr.encode]; bv_decide
 theorem notSys_zbb (i : ZbbInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
   simp only [ZbbInstr.encode]; bv_decide
+theorem notSys_zbbw (i : ZbbWInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+  simp only [ZbbWInstr.encode]; bv_decide
+theorem notSys_rori (i : RoriInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+  simp only [RoriInstr.encode]; bv_decide
+theorem notSys_roriw (i : RoriwInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+  simp only [RoriwInstr.encode]; bv_decide
 theorem notSys_m (i : MInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
   cases h : i.op <;> simp only [MInstr.encode, h, Transpiler.MOp.opc] <;> bv_decide
 
@@ -150,6 +156,9 @@ theorem StepOkT.word {s : RVState} {rs : List PMA_Region} {pc : BitVec 64}
   | .zbs i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zbs i⟩
   | .zbsi i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zbsi i⟩
   | .zbb i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zbb i⟩
+  | .zbbw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zbbw i⟩
+  | .rori i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_rori i⟩
+  | .roriw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_roriw i⟩
 
 theorem OneOkT.word {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {s : RVState}
     (h : OneOkT rs zrom s) : ∃ pc, s.regs.get? Register.PC = some pc ∧ WordOk s.mem rs pc := by
