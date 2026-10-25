@@ -94,7 +94,7 @@ theorem ldstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   obtain ⟨⟨r, hm, hrb, hal⟩, hzr, hzn, hzi, hbytes⟩ := hok
   refine alu_step_rel s z rs hr xs hx agree pc' hpc hzpc _ _ _ _ hw
     (.LOAD (i.imm, .Regidx i.rs1, .Regidx i.rd, false, 8)) ?_ i.rd.toNat ed ld v ?_ zrom hzm ?_ n
-  · intro t htp ⟨w, hw'⟩ hmt
+  · intro t htp ⟨w, hw'⟩ hmt _
     have := decode_ld t _ hop hf3 hrd5 htp w hw'
     rw [himm, hr1x, hrdx] at this; exact this
   · intro t he htm hmr hsec hwf

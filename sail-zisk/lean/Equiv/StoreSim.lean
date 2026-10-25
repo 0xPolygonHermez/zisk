@@ -91,7 +91,7 @@ theorem sdstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   obtain ⟨⟨r, hm, hwr, hal⟩, hzw, hzn⟩ := hok
   obtain ⟨s', hrun, hmem, hwf, hpc'', hxs', ho⟩ :=
     try_step_store s rs hr pc' hpc _ _ _ _ hw (.STORE (i.immHi ++ i.immLo, .Regidx i.rs2, .Regidx i.rs1, 8))
-      (by intro t htp ⟨w, hw'⟩ hmt
+      (by intro t htp ⟨w, hw'⟩ hmt _
           have := decode_sd t _ hop hf3 htp w hw'
           rw [hhi, hlo, hr2x, hr1x] at this; exact this)
       (Equiv.memWrite (n := 8) s.mem (v1 + (i.immHi ++ i.immLo).signExtend 64).toNat v2)

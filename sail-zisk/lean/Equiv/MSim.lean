@@ -200,7 +200,7 @@ theorem mstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
   have v2 := getX_regv agree l2
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw (i.op.inst i.rd i.rs1 i.rs2) ?_
     i.rd.toNat i.rd.isLt (i.op.val (regv xs i.rs1.toNat) (regv xs i.rs2.toNat)) (pc' + 4) ?_ zrom ?_ n
-  · intro t htp ⟨w, hw'⟩ hmt
+  · intro t htp ⟨w, hw'⟩ hmt _
     have := i.op.decode t _ hop hf3 hf7 htp w hw' hmt
     rw [hrdx, hr1x, hr2x] at this; exact this
   · intro t he _ _ _ _ hnext _

@@ -186,6 +186,9 @@ structure StepReady (s : RVState) (rs : List PMA_Region) : Prop where
   /-- M enabled: misa's M bit set (ZisK's profile has M, and a program in the
       contract writes no misa). -/
   misaM : ∃ v, s.regs.get? misa = some v ∧ _get_Misa_M v = 1#1
+  /-- Zba, Zbb, Zbs enabled: misa's B bit set (ZisK's profile has them, and a
+      program in the contract writes no misa). -/
+  misaB : ∃ v, s.regs.get? misa = some v ∧ _get_Misa_B v = 1#1
 
 /-- An instruction word at pc that sail-riscv fetches as such: aligned, in
     executable memory, not compressed. -/
@@ -214,6 +217,7 @@ theorem try_step_alu (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
     (hdec : ∀ t : RVState, t.regs.get? cur_privilege = some .Machine →
       (∃ v, t.regs.get? mseccfg = some v) →
       (∃ v, t.regs.get? misa = some v ∧ _get_Misa_M v = 1#1) →
+      (∃ v, t.regs.get? misa = some v ∧ _get_Misa_B v = 1#1) →
       (interpretSailEffects (ext_decode (b3 ++ b2 ++ (b1 ++ b0)))).run t = .ok ins t)
     (rd : Nat) (hrd : rd ≠ 0) (val : BitVec 64)
     (hexec : ∀ t : RVState, (∀ k, k < 32 → getX t k = getX s k) → t.mem = s.mem → MemReady t rs →
@@ -224,7 +228,7 @@ theorem try_step_alu (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
       (∀ k, k < 32 → getX s' k = getX (setX s rd val) k) ∧
       (∀ r, isXReg r = false → r ≠ PC → r ≠ nextPC → r ≠ minstret → r ≠ minstret_increment →
         s'.regs.get? r = s.regs.get? r) := by
-  obtain ⟨h, hmip, hmie, hhs, help, hs, -, ⟨mv, hmv, hmM⟩⟩ := hr
+  obtain ⟨h, hmip, hmie, hhs, help, hs, -, ⟨mv, hmv, hmM⟩, ⟨bv, hbv, hbB⟩⟩ := hr
   obtain ⟨hal, ⟨r1, hm1, hx1⟩, ⟨r2, hm2, hx2⟩, h0, h1, h2, h3, hc⟩ := hw
   have hp := hs.priv
   simp only [try_step, run_hart_active, should_inc_minstret, counter_priv_filter_bit, dispatchInterrupt,
@@ -246,11 +250,12 @@ theorem try_step_alu (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
   · exact h3
   dsimp only [ext_fetch_hook]
   repeat rv_step h
-  rw [hdec _ ?hp1 ?hsec1 ?hm1]
+  rw [hdec _ ?hp1 ?hsec1 ?hm1 ?hb1]
   rotate_left
   · simp only [Std.ExtDHashMap.get?_insert]; simpa using hp
   · exact ⟨regVal h mseccfg, by simp only [Std.ExtDHashMap.get?_insert]; simpa using h.get? mseccfg⟩
   · exact ⟨mv, by simp only [Std.ExtDHashMap.get?_insert]; simpa using hmv, hmM⟩
+  · exact ⟨bv, by simp only [Std.ExtDHashMap.get?_insert]; simpa using hbv, hbB⟩
   repeat rv_step h
   simp only [no_lp, Bool.false_and, Bool.false_eq_true, if_false]
   repeat rv_step h
@@ -312,7 +317,7 @@ theorem try_step_rtype (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs
   refine try_step_alu s rs hr pc hpc b0 b1 b2 b3 hw
     (.RTYPE (.Regidx ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 24 20), .Regidx ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 19 15),
       .Regidx ((b3 ++ b2 ++ (b1 ++ b0)).extractLsb 11 7), op)) ?_ _ hk _ ?_ n
-  · intro t htp ⟨v, hv⟩ _
+  · intro t htp ⟨v, hv⟩ _ _
     exact decode_rtype t _ op hop hf3 hf7 hrd htp v hv
   · intro t he _ _ _ _
     rw [execute_rtype_eq]

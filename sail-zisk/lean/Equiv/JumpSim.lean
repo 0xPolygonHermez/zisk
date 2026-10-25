@@ -55,6 +55,7 @@ theorem jump_step_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
     (hdec : ∀ t : RVState, t.regs.get? Register.cur_privilege = some .Machine →
       (∃ v, t.regs.get? Register.mseccfg = some v) →
       (∃ v, t.regs.get? Register.misa = some v ∧ _get_Misa_M v = 1#1) →
+      (∃ v, t.regs.get? Register.misa = some v ∧ _get_Misa_B v = 1#1) →
       (interpretSailEffects (ext_decode (b3 ++ b2 ++ (b1 ++ b0)))).run t = .ok ins t)
     (rd : Nat) (ld : rd < 32) (v tgt : BitVec 64)
     (hexec : ∀ t : RVState, (∀ k, k < 32 → getX t k = getX s k) → t.mem = s.mem → MemReady t rs →
@@ -137,7 +138,7 @@ theorem ustep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
   obtain ⟨mi, hmi⟩ := hr.mem.misa
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw (.UTYPE (i.imm, .Regidx i.rd, i.op))
     ?_ i.rd.toNat ld (utypeVal i.op pc' i.imm) (pc' + 4) ?_ zrom ?_ n
-  · intro t htp ⟨w, hw'⟩ hmt
+  · intro t htp ⟨w, hw'⟩ hmt _
     have := decode_utype t _ i.op hop htp w hw'
     rw [himm, hrdx] at this; exact this
   · intro t _ _ _ _ _ hnext hother
@@ -199,7 +200,7 @@ theorem jstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
   obtain ⟨mi, hmi⟩ := hr.mem.misa
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw (.JAL (i.imm, .Regidx i.rd))
     ?_ i.rd.toNat ld (pc' + 4) (pc' + i.imm.signExtend 64) ?_ zrom ?_ n
-  · intro t htp ⟨w, hw'⟩ hmt
+  · intro t htp ⟨w, hw'⟩ hmt _
     have := decode_jal t _ hop htp w hw'
     rw [h20, h19, h11, h10, hrdx] at this; exact this
   · intro t _ _ _ _ _ hnext hother
@@ -276,7 +277,7 @@ theorem jrstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   obtain ⟨sv, hsv, -⟩ := hr.pmm
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw (.JALR (i.imm, .Regidx i.rs1, .Regidx i.rd))
     ?_ i.rd.toNat ld (pc' + 4) (jalrTarget v1 i.imm) ?_ zrom ?_ n
-  · intro t htp ⟨w, hw'⟩ hmt
+  · intro t htp ⟨w, hw'⟩ hmt _
     have := decode_jalr t _ hop hf3 htp w hw'
     rw [himm, hr1x, hrdx] at this; exact this
   · intro t he _ hmr hsec _ hnext hother

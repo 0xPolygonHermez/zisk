@@ -16,7 +16,8 @@
     (`registerOp`, `immediateOp`, `copyb`, `loadOp`, `storeOp`, ...), and
     `convert`, which picks one per instruction.
 
-  So far: RV64I but for ebreak and the CSRs; Zifencei; and M. An instruction it
+  So far: RV64I but for ebreak and the CSRs; Zifencei; M; and Zba's single-instruction
+  forms (sh1add, sh2add, sh3add, slli.uw). An instruction it
   does not describe is `none`.
 
   Internal addresses (the odd ROM addresses a translation of more than one
@@ -93,10 +94,15 @@ inductive SzOp | sb | sh | sw | sd
 inductive MOp | mul | mulh | mulhsu | mulhu | div | divu | rem | remu | mulw | divw | divuw | remw | remuw
   deriving BEq, Repr
 
+/-- Zba's shift-and-adds: rs1 shifted by 1, 2 or 3, plus rs2. -/
+inductive ShAdd | sh1 | sh2 | sh3
+  deriving BEq, Repr
+
 /-- An instruction the spec describes, as `RiscvDecoder::decode_32` names it. -/
 inductive Inst
   | r (op : ROp) | i (op : IOp) | shift (op : SOp) | branch (op : BOp)
   | load (op : LOp) | store (op : SzOp) | lui | auipc | jal | jalr | m (op : MOp) | ecall | fence
+  | shadd (op : ShAdd) | slliuw
   deriving BEq, Repr
 
 /-- What `decode_32` decodes a word to, among the instructions described.
@@ -126,9 +132,9 @@ def decode (w : BitVec 32) : Option Inst :=
   | 27 => match f3 with
     | 0 => some (.i .addiw)
     | 1 =>
-      -- clzw, ctzw, cpopw (funct7 48) and slli.uw (funct6 2) come first.
+      -- clzw, ctzw, cpopw (funct7 48) come first, then slli.uw (funct6 2).
       if (w.extractLsb 31 20).toNat ∈ [0b011000000000, 0b011000000001, 0b011000000010] then none
-      else if f6 == 2 then none
+      else if f6 == 2 then some .slliuw
       else if f7 == 0 then some (.shift .slliw) else none
     | 5 => if f7 == 0 then some (.shift .srliw) else if f7 == 32 then some (.shift .sraiw) else none
     | _ => none
@@ -141,6 +147,7 @@ def decode (w : BitVec 32) : Option Inst :=
     | 6, 0 => some (.r .or) | 7, 0 => some (.r .and)
     | 0, 1 => some (.m .mul) | 1, 1 => some (.m .mulh) | 2, 1 => some (.m .mulhsu) | 3, 1 => some (.m .mulhu)
     | 4, 1 => some (.m .div) | 5, 1 => some (.m .divu) | 6, 1 => some (.m .rem) | 7, 1 => some (.m .remu)
+    | 2, 16 => some (.shadd .sh1) | 4, 16 => some (.shadd .sh2) | 6, 16 => some (.shadd .sh3)
     | _, _ => none
   | 55 => some .lui
   | 59 => match f3, f7 with
@@ -278,6 +285,10 @@ def ROp.zop : ROp → zisk_op
   | .or => .ZOP_OR () | .and => .ZOP_AND () | .addw => .ZOP_ADD_W () | .subw => .ZOP_SUB_W ()
   | .sllw => .ZOP_SLL_W () | .srlw => .ZOP_SRL_W () | .sraw => .ZOP_SRA_W ()
 
+/-- The op the transpiler emits for each Zba shift-and-add (riscv2zisk_context.rs). -/
+def ShAdd.zop : ShAdd → zisk_op
+  | .sh1 => .ZOP_SH1ADD () | .sh2 => .ZOP_SH2ADD () | .sh3 => .ZOP_SH3ADD ()
+
 /-- The op the transpiler emits for each M instruction (riscv2zisk_context.rs). -/
 def MOp.zop : MOp → zisk_op
   | .mul => .ZOP_MUL () | .mulh => .ZOP_MULH () | .mulhsu => .ZOP_MULSUH () | .mulhu => .ZOP_MULUH ()
@@ -340,5 +351,7 @@ def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : B
   | some (.m op) => one (registerOp w op.zop)
   | some .ecall => one ecall
   | some .fence => one nop
+  | some (.shadd op) => one (registerOp w op.zop)
+  | some .slliuw => one (immediateOp w (.ZOP_SLL_U_W ()) (shamt w))
 
 end Transpiler

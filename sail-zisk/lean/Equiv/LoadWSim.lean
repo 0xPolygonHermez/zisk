@@ -169,7 +169,7 @@ theorem lwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   refine alu_step_rel s z rs hr xs hx agree pc' hpc hzpc _ _ _ _ hw
     (.LOAD (i.imm, .Regidx i.rs1, .Regidx i.rd, i.k.u, (i.k.w : Int))) ?_ i.rd.toNat ed ld
     (extend_value i.k.u v) ?_ zrom hzm ?_ n
-  · intro t htp ⟨w, hw'⟩ hmt
+  · intro t htp ⟨w, hw'⟩ hmt _
     have := decode_load t _ hop hrd5 hvalid htp w hw'
     rw [himm, hr1x, hrdx, hu, hwd] at this; exact this
   · intro t he htm hmr hsec hwf

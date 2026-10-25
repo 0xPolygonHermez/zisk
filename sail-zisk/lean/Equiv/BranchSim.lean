@@ -128,7 +128,7 @@ theorem brstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   obtain ⟨mi, hmi⟩ := hr.mem.misa
   obtain ⟨s', hrun, hmem, hwf, hpc'', hxs', ho⟩ :=
     try_step_gen s rs hr pc' hpc _ _ _ _ hw (.BTYPE (i.imm, .Regidx i.rs2, .Regidx i.rs1, i.op))
-      (by intro t htp ⟨w, hw'⟩ hmt
+      (by intro t htp ⟨w, hw'⟩ hmt _
           have := decode_btype t _ i.op hop hf3 htp w hw'
           rw [h12, h11, h10, h4, hr2x, hr1x] at this; exact this)
       0 0 (i.target pc' v1 v2)

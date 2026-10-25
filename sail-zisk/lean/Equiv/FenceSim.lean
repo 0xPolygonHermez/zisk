@@ -123,14 +123,14 @@ theorem fstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
         @Eq (BitVec 32) (byte i.encode 3 ++ byte i.encode 2 ++ (byte i.encode 1 ++ byte i.encode 0)) 0x8330000F#32
     · refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw (.FENCE_TSO ()) ?_ 0 (by omega) 0 (pc' + 4)
         ?_ zrom hz n
-      · intro t htp ⟨w, hw'⟩ _; rw [htso]; exact decode_fence_tso t htp w hw'
+      · intro t htp ⟨w, hw'⟩ _ _; rw [htso]; exact decode_fence_tso t htp w hw'
       · intro t _ _ _ _ _ hnext _; rw [execute_fence_tso_run, hx0 t hnext]
     · refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw
         (.FENCE ((byte i.encode 3 ++ byte i.encode 2 ++ (byte i.encode 1 ++ byte i.encode 0)).extractLsb 31 28, (byte i.encode 3 ++ byte i.encode 2 ++ (byte i.encode 1 ++ byte i.encode 0)).extractLsb 27 24,
           (byte i.encode 3 ++ byte i.encode 2 ++ (byte i.encode 1 ++ byte i.encode 0)).extractLsb 23 20, .Regidx ((byte i.encode 3 ++ byte i.encode 2 ++ (byte i.encode 1 ++ byte i.encode 0)).extractLsb 19 15),
           .Regidx ((byte i.encode 3 ++ byte i.encode 2 ++ (byte i.encode 1 ++ byte i.encode 0)).extractLsb 11 7)))
         ?_ 0 (by omega) 0 (pc' + 4) ?_ zrom hz n
-      · intro t htp ⟨w, hw'⟩ _; exact decode_fence t _ hop hf0 htso htp w hw'
+      · intro t htp ⟨w, hw'⟩ _ _; exact decode_fence t _ hop hf0 htso htp w hw'
       · intro t _ _ hmr _ _ hnext _; rw [execute_fence_run t hmr.priv, hx0 t hnext]
   · -- fence.i
     have hf1 : (byte i.encode 3 ++ byte i.encode 2 ++ (byte i.encode 1 ++ byte i.encode 0)).extractLsb 14 12 = 1#3 := by
@@ -139,7 +139,7 @@ theorem fstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
       (.FENCEI ((byte i.encode 3 ++ byte i.encode 2 ++ (byte i.encode 1 ++ byte i.encode 0)).extractLsb 31 20, .Regidx ((byte i.encode 3 ++ byte i.encode 2 ++ (byte i.encode 1 ++ byte i.encode 0)).extractLsb 19 15),
         .Regidx ((byte i.encode 3 ++ byte i.encode 2 ++ (byte i.encode 1 ++ byte i.encode 0)).extractLsb 11 7)))
       ?_ 0 (by omega) 0 (pc' + 4) ?_ zrom hz n
-    · intro t htp ⟨w, hw'⟩ _; exact decode_fencei t _ hop hf1 htp w hw'
+    · intro t htp ⟨w, hw'⟩ _ _; exact decode_fencei t _ hop hf1 htp w hw'
     · intro t _ _ _ _ _ hnext _; rw [execute_fencei_run, hx0 t hnext]
 
 end Equiv.Sim

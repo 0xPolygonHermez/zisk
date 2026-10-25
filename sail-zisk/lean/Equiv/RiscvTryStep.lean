@@ -18,7 +18,7 @@ theorem run_hart_active_any (n : Nat) : run_hart_active n = run_hart_active 0 :=
 set_option maxHeartbeats 4000000 in
 theorem try_step_any (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs) (n : Nat) (b : Bool) :
     (interpretSailEffects (try_step n b)).run s = (interpretSailEffects (try_step 0 false)).run s := by
-  obtain ⟨h, hmip, -, hhs, -, hs, -, -⟩ := hr
+  obtain ⟨h, hmip, -, hhs, -, hs, -, -, -⟩ := hr
   have hp := hs.priv
   simp only [try_step, run_hart_active_any n, should_inc_minstret, counter_priv_filter_bit]
   -- each side up to its hart's state, active: then the two are the same
