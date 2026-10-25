@@ -107,6 +107,8 @@ theorem notSys_rw (i : RwInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by simp
 theorem notSys_iw (i : IwInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by simp only [IwInstr.encode]; bv_decide
 theorem notSys_siw (i : SiwInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
   simp only [SiwInstr.encode]; bv_decide
+theorem notSys_fence (i : FenceInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+  simp only [FenceInstr.encode]; bv_decide
 theorem notSys_m (i : MInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
   cases h : i.op <;> simp only [MInstr.encode, h, Transpiler.MOp.opc] <;> bv_decide
 
@@ -132,6 +134,7 @@ theorem StepOkT.word {s : RVState} {rs : List PMA_Region} {pc : BitVec 64}
   | .iw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_iw i⟩
   | .siw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_siw i⟩
   | .m i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_m i⟩
+  | .fence i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_fence i⟩
 
 theorem OneOkT.word {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {s : RVState}
     (h : OneOkT rs zrom s) : ∃ pc, s.regs.get? Register.PC = some pc ∧ WordOk s.mem rs pc := by

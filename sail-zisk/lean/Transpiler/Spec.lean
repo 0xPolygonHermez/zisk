@@ -16,7 +16,7 @@
     (`registerOp`, `immediateOp`, `copyb`, `loadOp`, `storeOp`, ...), and
     `convert`, which picks one per instruction.
 
-  So far: RV64I but for fence, ebreak and the CSRs; and M. An instruction it
+  So far: RV64I but for ebreak and the CSRs; Zifencei; and M. An instruction it
   does not describe is `none`.
 
   Internal addresses (the odd ROM addresses a translation of more than one
@@ -96,7 +96,7 @@ inductive MOp | mul | mulh | mulhsu | mulhu | div | divu | rem | remu | mulw | d
 /-- An instruction the spec describes, as `RiscvDecoder::decode_32` names it. -/
 inductive Inst
   | r (op : ROp) | i (op : IOp) | shift (op : SOp) | branch (op : BOp)
-  | load (op : LOp) | store (op : SzOp) | lui | auipc | jal | jalr | m (op : MOp) | ecall
+  | load (op : LOp) | store (op : SzOp) | lui | auipc | jal | jalr | m (op : MOp) | ecall | fence
   deriving BEq, Repr
 
 /-- What `decode_32` decodes a word to, among the instructions described.
@@ -120,6 +120,8 @@ def decode (w : BitVec 32) : Option Inst :=
       -- rev8, brev8 and orc.b come first; none has funct6 0 or 16.
       if f6 == 0 then some (.shift .srli) else if f6 == 16 then some (.shift .srai) else none
     | 6 => some (.i .ori) | 7 => some (.i .andi) | _ => none
+  -- fence (fence.tso among them) and fence.i, whatever their fields: a nop
+  | 15 => if f3 == 0 || f3 == 1 then some .fence else none
   | 23 => some .auipc
   | 27 => match f3 with
     | 0 => some (.i .addiw)
@@ -337,5 +339,6 @@ def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : B
   | some .jalr => some (jalr w pc ia)
   | some (.m op) => one (registerOp w op.zop)
   | some .ecall => one ecall
+  | some .fence => one nop
 
 end Transpiler

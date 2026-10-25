@@ -71,3 +71,5 @@ import Equiv.Sparse
 import Equiv.Regions
 import Equiv.RegionFacts
 import Equiv.Final
+import Equiv.RiscvDecodeFence
+import Equiv.FenceSim
