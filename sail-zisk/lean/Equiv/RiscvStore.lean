@@ -1,5 +1,5 @@
 /-
-  sail-riscv's stores, in ZisK's profile: `sd rs2, imm(rs1)` at an aligned
+  sail-riscv's stores, in ZisK's profile: `sd rs2, imm(rs1)` at an aligned (or in-granule)
   address in a writable region, in machine mode with no pointer masking,
   writes rs2's 8 bytes there — through sail-riscv's whole store path.
 -/
@@ -37,12 +37,12 @@ theorem write_ram_ea_run (s : RVState) (acc : MemoryAccessType mem_payload) (a :
     interpretSailEffects, FreeM.liftM, interpretInstructionEffect]
 
 set_option maxHeartbeats 4000000 in
-/-- The PMA check and announcement of an aligned write inside a region that
+/-- The PMA check and announcement of a write, aligned or in-granule, inside a region that
     permits it: nothing changes. -/
 theorem mem_write_ea_run (s : RVState) (rs : List PMA_Region) (hr : s.regs.get? pma_regions = some rs)
     (hh : s.regs.get? htif_tohost_base = some none)
     (a : BitVec 64) (r : PMA_Region) (hm : matching_pma_region rs (.Physaddr a) 8 = some r)
-    (hperm : r.attributes.writable = true) (hal : Int.tmod (a.toNat : Int) 8 = 0) :
+    (hperm : r.attributes.writable = true) (hal : AlignOk r (.Store .Data) a 8) :
     (interpretSailEffects (mem_write_ea (.Physaddr a) 8 .Machine (.Store .Data) .PBMT_PMA false false false)).run s
       = .ok (.Ok ()) s := by
   have hacc : PlainAccess (.Store .Data) := Or.inr (Or.inr rfl)
@@ -56,11 +56,11 @@ theorem mem_write_ea_run (s : RVState) (rs : List PMA_Region) (hr : s.regs.get? 
   erw [h0, hea]
 
 set_option maxHeartbeats 4000000 in
-/-- An aligned write inside a region that permits it: the bytes, little-endian. -/
+/-- A write, aligned or in-granule, inside a region that permits it: the bytes, little-endian. -/
 theorem checked_mem_write_run (s : RVState) (rs : List PMA_Region) (hr : s.regs.get? pma_regions = some rs)
     (hh : s.regs.get? htif_tohost_base = some none)
     (a : BitVec 64) (r : PMA_Region) (hm : matching_pma_region rs (.Physaddr a) 8 = some r)
-    (hperm : r.attributes.writable = true) (hal : Int.tmod (a.toNat : Int) 8 = 0) (v : BitVec 64) :
+    (hperm : r.attributes.writable = true) (hal : AlignOk r (.Store .Data) a 8) (v : BitVec 64) :
     (interpretSailEffects (checked_mem_write (.Physaddr a) 8 v (.Store .Data) .PBMT_PMA .Machine () false false false)).run s
       = .ok (.Ok true) { s with mem := Equiv.memWrite (n := 8) s.mem a.toNat v } := by
   have hacc : PlainAccess (.Store .Data) := Or.inr (Or.inr rfl)
@@ -80,7 +80,7 @@ theorem checked_mem_write_run (s : RVState) (rs : List PMA_Region) (hr : s.regs.
 theorem mem_write_value_run (s : RVState) (rs : List PMA_Region) (hr : s.regs.get? pma_regions = some rs)
     (hh : s.regs.get? htif_tohost_base = some none)
     (a : BitVec 64) (r : PMA_Region) (hm : matching_pma_region rs (.Physaddr a) 8 = some r)
-    (hperm : r.attributes.writable = true) (hal : Int.tmod (a.toNat : Int) 8 = 0) (v : BitVec 64) :
+    (hperm : r.attributes.writable = true) (hal : AlignOk r (.Store .Data) a 8) (v : BitVec 64) :
     (interpretSailEffects (mem_write_value (.Physaddr a) 8 v .Machine (.Store .Data) .PBMT_PMA false false false)).run s
       = .ok (.Ok true) { s with mem := Equiv.memWrite (n := 8) s.mem a.toNat v } := by
   have h := checked_mem_write_run s rs hr hh a r hm hperm hal v
@@ -91,14 +91,14 @@ theorem execute_store_eq (imm : BitVec 12) (a b : regidx) :
   simp [execute]
 
 set_option maxHeartbeats 4000000 in
-/-- `sd rs2, imm(rs1)`, at an 8-aligned address in a writable region, in
+/-- `sd rs2, imm(rs1)`, at an address the PMA check passes unsplit (`AlignOk`) in a writable region, in
     machine mode with no pointer masking: rs2's 8 bytes go there. -/
 theorem execute_sd (t : RVState) (_h : WF t) (rs : List PMA_Region) (hs : MemReady t rs)
     (sec : RegisterType mseccfg) (hsec : t.regs.get? mseccfg = some sec) (hpm : _get_Seccfg_PMM sec = 0#2)
     (rs1 rs2 : RegBits) (imm : BitVec 12) (v1 v2 : BitVec 64)
     (h1 : getX t rs1.toNat = some v1) (h2 : getX t rs2.toNat = some v2)
     (r : PMA_Region) (hm : matching_pma_region rs (.Physaddr (v1 + sign_extend (m := 64) imm)) 8 = some r)
-    (hwr : r.attributes.writable = true) (hal : (v1 + sign_extend (m := 64) imm).toNat % 8 = 0) :
+    (hwr : r.attributes.writable = true) (hal : AlignOk r (.Store .Data) (v1 + sign_extend (m := 64) imm) 8) :
     (interpretSailEffects (execute_STORE imm (.Regidx rs2) (.Regidx rs1) 8)).run t
       = .ok RETIRE_SUCCESS
           { t with mem := Equiv.memWrite (n := 8) t.mem (v1 + sign_extend (m := 64) imm).toNat v2 } := by
@@ -108,11 +108,7 @@ theorem execute_sd (t : RVState) (_h : WF t) (rs : List PMA_Region) (hs : MemRea
   have r2 := rX_run t rs2.toNat rs2.lt v2 h2
   have hacc : PlainAccess (.Store .Data) := Or.inr (Or.inr rfl)
   have ht := translateAddr_run t (v1 + sign_extend (m := 64) imm) _ hacc mi hmi hp se hse me hme
-  have htm : Int.tmod ((v1 + sign_extend (m := 64) imm).toNat : Int) 8 = 0 := by
-    rw [show (8 : Int) = ((8 : Nat) : Int) from rfl, tmod_nat]; omega
-  have hea := mem_write_ea_run t rs hr hh _ r hm hwr htm
-  have hal' : is_aligned_vaddr (.Virtaddr (v1 + sign_extend (m := 64) imm)) 8 = true := by
-    simp only [is_aligned_vaddr, BitVec.toNatInt, Int.ofNat_eq_natCast, tmod_nat, hal]; rfl
+  have hea := mem_write_ea_run t rs hr hh _ r hm hwr hal
   simp only [execute_STORE, vmem_write, vmem_write_explicit, default_access_info, get_pmlen,
     get_transformed_data_addr, ext_data_get_addr, transform_effective_address, vmem_write_addr,
     rX_bits, LeanZiskRV.assert, Sail.ArchSem.PreSail.assert, is_pmm_applicable, pm_transform_PA,
@@ -123,11 +119,11 @@ theorem execute_sd (t : RVState) (_h : WF t) (rs : List PMA_Region) (hs : MemRea
     | (rw [effectivePrivilege_run _ _ _ _ hmprv]; try dsimp only)
     | (rw [r1]; try dsimp only)
     | (rw [r2]; try dsimp only)
-    | (simp only [pmm_mode_backwards, pm_id, hal', bits_of_virtaddr]; try dsimp only)
-    | (rw [split_aligned8_run _ _ hal]; try dsimp only)
+    | (simp only [pmm_mode_backwards, pm_id, plat_st, bits_of_virtaddr, ite_self]; try dsimp only)
+    | (rw [split8_run _ _ _ _ hal]; try dsimp only)
     | (rw [ht]; try dsimp only)
     | (erw [hea]; try dsimp only)
-    | (erw [mem_write_value_run t rs hr hh _ r hm hwr htm]; try dsimp only))
+    | (erw [mem_write_value_run t rs hr hh _ r hm hwr hal]; try dsimp only))
   congr 3
   change BitVec.setWidth 64 (Sail.BitVec.extractLsb (BitVec.setWidth 64 (Sail.BitVec.extractLsb v2 63 0)) 63 0) = v2
   apply BitVec.eq_of_getLsbD_eq; intro i hi

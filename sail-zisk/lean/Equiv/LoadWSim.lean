@@ -100,12 +100,12 @@ structure LwAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   rs1 : i.rs1 ≠ 0
   rom : zrom pc = Equiv.Zisk.loadInst i.k.op i.rd.toNat i.rs1.toNat (i.imm.signExtend 64) i.k.w
 
-/-- What a load of w bytes needs when it runs, at address a: aligned, in a
+/-- What a load of w bytes needs when it runs, at address a: in a
     readable region on both sides, off ZisK's register file, and the bytes
     there. -/
 structure LwOk (s : RVState) (rs : List PMA_Region) (a : BitVec 64) (w : Nat) (v : BitVec (8 * w)) : Prop where
-  al : a.toNat % w = 0
-  region : ∃ r, matching_pma_region rs (.Physaddr a) w = some r ∧ r.attributes.readable = true
+  region : ∃ r, matching_pma_region rs (.Physaddr a) w = some r ∧ r.attributes.readable = true ∧
+    AlignOk r (.Load .Data) a w
   zread : _root_.Zisk.Functions.readable a w = true
   zregs : _root_.Zisk.Functions.hits_registers a w = false
   bytes : Equiv.memRead s.mem w a.toNat = some v
@@ -120,7 +120,7 @@ theorem LKind.exec (k : LKind) (t : RVState) (hwf : WF t) (rs : List PMA_Region)
     (hpm : _get_Seccfg_PMM sec = 0#2)
     (rs1 rd : RegBits) (imm : BitVec 12) (v1 : BitVec 64) (h1 : getX t rs1.toNat = some v1)
     (r : PMA_Region) (hm : matching_pma_region rs (.Physaddr (v1 + sign_extend (m := 64) imm)) k.w = some r)
-    (hrd : r.attributes.readable = true) (hal : (v1 + sign_extend (m := 64) imm).toNat % k.w = 0)
+    (hrd : r.attributes.readable = true) (hal : AlignOk r (.Load .Data) (v1 + sign_extend (m := 64) imm) k.w)
     (v : BitVec (8 * k.w))
     (hv : (Sail.ArchSem.readBytes k.w (v1 + sign_extend (m := 64) imm).toNat :
       Sail.ArchSem.ArchSemSeqM exception _).run t = .ok v t) :
@@ -165,7 +165,7 @@ theorem lwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
     rw [hrdx]; exact hi.rd
   have hvalid := i.k.valid
   rw [← hu, ← hwd] at hvalid
-  obtain ⟨hal, ⟨r, hm, hrb⟩, hzr, hzn, hbytes⟩ := hok
+  obtain ⟨⟨r, hm, hrb, hal⟩, hzr, hzn, hbytes⟩ := hok
   refine alu_step_rel s z rs hr xs hx agree pc' hpc hzpc _ _ _ _ hw
     (.LOAD (i.imm, .Regidx i.rs1, .Regidx i.rd, i.k.u, (i.k.w : Int))) ?_ i.rd.toNat ed ld
     (extend_value i.k.u v) ?_ zrom hzm ?_ n

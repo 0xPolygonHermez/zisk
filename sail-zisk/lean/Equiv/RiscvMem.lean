@@ -95,21 +95,47 @@ def permits (a : PMA) : MemoryAccessType mem_payload → Bool
   | .Store .Data => a.writable
   | _ => false
 
-/-- An aligned access inside a region that permits it passes the PMA check,
-    unsplit. -/
+/-- An access the PMA check passes unsplit: aligned, or a load or store
+    within the region's misaligned-atomicity granule, of 2^4 bytes as in
+    ZisK's profile. -/
+def AlignOk (r : PMA_Region) (acc : MemoryAccessType mem_payload) (a : BitVec 64) (w : Nat) : Prop :=
+  Int.tmod (a.toNat : Int) w = 0 ∨
+    (acc ≠ .InstructionFetch () ∧ r.attributes.misaligned_atomicity_granule_size_exp = 4 ∧ w ≤ 8 ∧
+      allowed_misaligned a w 4 = true)
+
+theorem extract_full (a : BitVec 64) :
+    Sail.BitVec.extractLsb a ((Functions.xlen : Int) - 1).toNat 0 = a := by
+  simp only [Sail.BitVec.extractLsb, Functions.xlen]
+  apply BitVec.eq_of_getLsbD_eq; intro i hi; simp
+  intro _; omega
+
+/-- An access inside a region that permits it, aligned or within its
+    granule, passes the PMA check, unsplit. -/
 theorem pmaCheck_run (s : RVState) (rs : List PMA_Region) (hr : s.regs.get? pma_regions = some rs)
     (a : BitVec 64) (w : Nat) (acc : MemoryAccessType mem_payload) (hacc : PlainAccess acc)
     (r : PMA_Region) (hm : matching_pma_region rs (.Physaddr a) w = some r)
-    (hperm : permits r.attributes acc = true) (hal : Int.tmod (a.toNat : Int) w = 0) :
+    (hperm : permits r.attributes acc = true) (hal : AlignOk r acc a w) :
     (interpretSailEffects (pmaCheck (.Physaddr a) w acc .PBMT_PMA false)).run s
       = .ok (.Ok { splittable := .CannotSplit, granule_size_exp := 0 }) s := by
   obtain ⟨base, size, attrs, dt⟩ := r
-  rcases hacc with rfl | rfl | rfl <;>
-  · simp only [permits] at hperm
-    simp (config := { decide := true }) [pmaCheck, hm, override_PMA, mag_pma_check, is_aligned_paddr,
-      BitVec.toNatInt, hal, hperm, me_run_lift_bind, me_run_pure, readReg_run _ _ _ hr,
-      LeanZiskRV.assert, Sail.ArchSem.PreSail.assert, is_mag_applicable_access, bind_assoc]
-    all_goals rfl
+  rcases hal with hal | ⟨hf, hg, hw8, hall⟩
+  · rcases hacc with rfl | rfl | rfl <;>
+    · simp only [permits] at hperm
+      simp (config := { decide := true }) [pmaCheck, hm, override_PMA, mag_pma_check, is_aligned_paddr,
+        BitVec.toNatInt, hal, hperm, me_run_lift_bind, me_run_pure, readReg_run _ _ _ hr,
+        LeanZiskRV.assert, Sail.ArchSem.PreSail.assert, is_mag_applicable_access, bind_assoc]
+      all_goals rfl
+  · have hw8' : (w ≤b 8) = true := by simp; omega
+    rcases hacc with rfl | rfl | rfl
+    · exact absurd rfl hf
+    all_goals
+      simp only [permits] at hperm
+      simp only at hg
+      simp (config := { decide := true }) [pmaCheck, hm, override_PMA, mag_pma_check, within_pma_mag,
+        mag_of_pma, hg, hall, hperm, hw8, hw8', Functions.xlen_bytes, me_run_lift_bind, me_run_pure,
+        readReg_run _ _ _ hr, LeanZiskRV.assert, Sail.ArchSem.PreSail.assert, is_mag_applicable_access,
+        bind_assoc, is_vector_access, extract_full]
+      all_goals rfl
 
 /-- A plain read of RAM: the interpreter's bytes, little-endian. -/
 theorem read_ram_run (s : RVState) (acc : MemoryAccessType mem_payload) (a : BitVec 64) (w : Nat)
@@ -140,7 +166,7 @@ theorem checked_mem_read_run (s : RVState) (rs : List PMA_Region) (hr : s.regs.g
     (hh : s.regs.get? htif_tohost_base = some none)
     (a : BitVec 64) (w : Nat) (hw : 0 < w) (acc : MemoryAccessType mem_payload) (hacc : PlainAccess acc)
     (r : PMA_Region) (hm : matching_pma_region rs (.Physaddr a) w = some r)
-    (hperm : permits r.attributes acc = true) (hal : Int.tmod (a.toNat : Int) w = 0)
+    (hperm : permits r.attributes acc = true) (hal : AlignOk r acc a w)
     (v : BitVec (8 * w)) (hv : (Sail.ArchSem.readBytes w a.toNat : Sail.ArchSem.ArchSemSeqM exception _).run s = .ok v s) :
     (interpretSailEffects (checked_mem_read acc .PBMT_PMA .Machine (.Physaddr a) w false false false false)).run s
       = .ok (.Ok (from_bytes_le (n := w) (bitvec_to_vecbytes v), default_meta)) s := by
@@ -160,7 +186,7 @@ theorem mem_read_run (s : RVState) (rs : List PMA_Region) (hr : s.regs.get? pma_
     (hh : s.regs.get? htif_tohost_base = some none)
     (a : BitVec 64) (w : Nat) (hw : 0 < w) (acc : MemoryAccessType mem_payload) (hacc : PlainAccess acc)
     (r : PMA_Region) (hm : matching_pma_region rs (.Physaddr a) w = some r)
-    (hperm : permits r.attributes acc = true) (hal : Int.tmod (a.toNat : Int) w = 0)
+    (hperm : permits r.attributes acc = true) (hal : AlignOk r acc a w)
     (v : BitVec (8 * w)) (hv : (Sail.ArchSem.readBytes w a.toNat : Sail.ArchSem.ArchSemSeqM exception _).run s = .ok v s) :
     (interpretSailEffects (mem_read acc .PBMT_PMA .Machine (.Physaddr a) w false false false)).run s
       = .ok (.Ok (from_bytes_le (n := w) (bitvec_to_vecbytes v))) s := by
@@ -190,7 +216,7 @@ theorem fetch_bytes_run (s : RVState) (rs : List PMA_Region) (hs : MemReady s rs
   obtain ⟨hp, ⟨ms, hms, hmprv⟩, ⟨mi, hmi⟩, ⟨se, hse⟩, ⟨me, hme⟩, hh, hr⟩ := hs
   have hacc : PlainAccess (.InstructionFetch ()) := Or.inl rfl
   have ht := translateAddr_run s pc _ hacc mi hmi hp se hse me hme
-  have hrd := mem_read_run s rs hr hh pc w hw _ hacc r hm (by simpa [permits] using hx) hal v hv
+  have hrd := mem_read_run s rs hr hh pc w hw _ hacc r hm (by simpa [permits] using hx) (Or.inl hal) v hv
   have he := effectivePrivilege_run s (.InstructionFetch ()) ms .Machine hmprv
   simp [fetch_bytes, ext_fetch_check_pc, me_run_lift_bind, me_run_pure, bind_assoc,
     readReg_run _ _ _ hms, readReg_run _ _ _ hp, he, ht, hrd]

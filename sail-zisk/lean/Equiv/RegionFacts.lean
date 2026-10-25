@@ -52,4 +52,44 @@ theorem noCodeRam_of_exec {C : BitVec 64 → Prop} (h : ∀ pc, C pc → ExecAt 
   · omega
   · rw [e4]; omega
 
+/-- Every ZisK region has a 16-byte misaligned-atomicity granule. -/
+theorem region_gran {a : BitVec 64} {w : Nat} {r : PMA_Region}
+    (hm : matching_pma_region ziskRegions (.Physaddr a) w = some r) :
+    r.attributes.misaligned_atomicity_granule_size_exp = 4 := by
+  simp only [matching_pma_region, matching_pma_region_bits_range, ziskRegions] at hm
+  split at hm
+  · cases hm; rfl
+  split at hm
+  · cases hm; rfl
+  split at hm
+  · cases hm; rfl
+  · cases hm
+
+theorem allowed_of_mod (a : BitVec 64) (w : Nat) (hw : w = 1 ∨ w = 2 ∨ w = 4 ∨ w = 8)
+    (h : a.toNat % 16 + w ≤ 16) : allowed_misaligned a w 4 = true := by
+  have hb : (a &&& 15#64).toNat = a.toNat % 16 := by
+    rw [BitVec.toNat_and]; exact Nat.and_two_pow_sub_one_eq_mod a.toNat 4
+  simp only [allowed_misaligned, access_within, Sail.BitVec.length, zero_extend, Sail.BitVec.zeroExtend, ones,
+    sail_ones, BitVec.addInt]
+  rcases hw with rfl | rfl | rfl | rfl
+  · have hle : a &&& 15#64 ≤ 15#64 := by rw [BitVec.le_def, hb]; simp; omega
+    simp
+    first | decide | (refine ⟨by decide, ?_⟩; revert hle; bv_decide) | (revert hle; bv_decide)
+  · have hle : a &&& 15#64 ≤ 14#64 := by rw [BitVec.le_def, hb]; simp; omega
+    simp
+    first | decide | (refine ⟨by decide, ?_⟩; revert hle; bv_decide) | (revert hle; bv_decide)
+  · have hle : a &&& 15#64 ≤ 12#64 := by rw [BitVec.le_def, hb]; simp; omega
+    simp
+    first | decide | (refine ⟨by decide, ?_⟩; revert hle; bv_decide) | (revert hle; bv_decide)
+  · have hle : a &&& 15#64 ≤ 8#64 := by rw [BitVec.le_def, hb]; simp; omega
+    simp
+    first | decide | (refine ⟨by decide, ?_⟩; revert hle; bv_decide) | (revert hle; bv_decide)
+
+/-- In ZisK's regions, a load or store of at most 8 bytes within its 16-byte
+    granule — aligned or not — passes the PMA check unsplit. -/
+theorem alignOk_gran {a : BitVec 64} {w : Nat} {r : PMA_Region} {acc : MemoryAccessType mem_payload}
+    (hm : matching_pma_region ziskRegions (.Physaddr a) w = some r) (hacc : acc ≠ .InstructionFetch ())
+    (hw : w = 1 ∨ w = 2 ∨ w = 4 ∨ w = 8) (h : a.toNat % 16 + w ≤ 16) : AlignOk r acc a w :=
+  .inr ⟨hacc, region_gran hm, by omega, allowed_of_mod a w hw h⟩
+
 end Equiv.Sim

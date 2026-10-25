@@ -57,8 +57,8 @@ structure SdAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
 /-- What the store needs when it runs, at address a: aligned, in a writable
     region on both sides, off ZisK's register file. -/
 structure SdOk (rs : List PMA_Region) (a : BitVec 64) : Prop where
-  al : a.toNat % 8 = 0
-  region : ∃ r, matching_pma_region rs (.Physaddr a) 8 = some r ∧ r.attributes.writable = true
+  region : ∃ r, matching_pma_region rs (.Physaddr a) 8 = some r ∧ r.attributes.writable = true ∧
+    AlignOk r (.Store .Data) a 8
   zwrite : _root_.Zisk.Functions.writable a 8 = true
   zregs : _root_.Zisk.Functions.hits_registers a 8 = false
 
@@ -88,7 +88,7 @@ theorem sdstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   have a2 := agree i.rs2.toNat (by omega) l2
   have hxv1 : xs[i.rs1.toNat]! = v1 := by rw [hv1] at a1; exact (Option.some.inj a1).symm
   have hxv2 : xs[i.rs2.toNat]! = v2 := by rw [hv2] at a2; exact (Option.some.inj a2).symm
-  obtain ⟨hal, ⟨r, hm, hwr⟩, hzw, hzn⟩ := hok
+  obtain ⟨⟨r, hm, hwr, hal⟩, hzw, hzn⟩ := hok
   obtain ⟨s', hrun, hmem, hwf, hpc'', hxs', ho⟩ :=
     try_step_store s rs hr pc' hpc _ _ _ _ hw (.STORE (i.immHi ++ i.immLo, .Regidx i.rs2, .Regidx i.rs1, 8))
       (by intro t htp ⟨w, hw'⟩ hmt

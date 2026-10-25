@@ -4,8 +4,9 @@
   the same map of bytes (`Rel.mem`), so both read the same 8 bytes.
 
   What a load needs at the moment it runs depends on the registers, so it
-  is a hypothesis of the step, not part of the code at pc: the address
-  aligned and in a readable region (sail-riscv's PMA check), off the
+  is a hypothesis of the step, not part of the code at pc: the address in
+  a readable region, aligned or within its 16-byte granule (sail-riscv's
+  PMA check, which leaves such an access unsplit), off the
   register file and not the free input's (sail-zisk's read_mem), and the
   bytes there.
 -/
@@ -50,12 +51,12 @@ structure LdAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   rs1 : i.rs1 ≠ 0
   rom : zrom pc = Equiv.Zisk.loadInst (.ZOP_COPYB ()) i.rd.toNat i.rs1.toNat (i.imm.signExtend 64) 8
 
-/-- What the load needs when it runs, at address a: aligned, in a readable
-    region on both sides, off ZisK's register file and free input, and the
+/-- What the load needs when it runs, at address a: in a readable region on
+    both sides, aligned or within the region's granule (`AlignOk`), off ZisK's register file and free input, and the
     8 bytes there. -/
 structure LdOk (s : RVState) (rs : List PMA_Region) (a : BitVec 64) (v : BitVec 64) : Prop where
-  al : a.toNat % 8 = 0
-  region : ∃ r, matching_pma_region rs (.Physaddr a) 8 = some r ∧ r.attributes.readable = true
+  region : ∃ r, matching_pma_region rs (.Physaddr a) 8 = some r ∧ r.attributes.readable = true ∧
+    AlignOk r (.Load .Data) a 8
   zread : _root_.Zisk.Functions.readable a 8 = true
   zregs : _root_.Zisk.Functions.hits_registers a 8 = false
   zin : a ≠ _root_.Zisk.Functions.INPUT_ADDR
@@ -90,7 +91,7 @@ theorem ldstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   have hxv : xs[i.rs1.toNat]! = v1 := by rw [hv1] at a1; exact (Option.some.inj a1).symm
   have hrd5 : (byte i.encode 3 ++ byte i.encode 2 ++ (byte i.encode 1 ++ byte i.encode 0)).extractLsb 11 7 ≠ 0#5 := by
     rw [hrdx]; exact hi.rd
-  obtain ⟨hal, ⟨r, hm, hrb⟩, hzr, hzn, hzi, hbytes⟩ := hok
+  obtain ⟨⟨r, hm, hrb, hal⟩, hzr, hzn, hzi, hbytes⟩ := hok
   refine alu_step_rel s z rs hr xs hx agree pc' hpc hzpc _ _ _ _ hw
     (.LOAD (i.imm, .Regidx i.rs1, .Regidx i.rd, false, 8)) ?_ i.rd.toNat ed ld v ?_ zrom hzm ?_ n
   · intro t htp ⟨w, hw'⟩ hmt

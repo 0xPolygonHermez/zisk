@@ -1,5 +1,5 @@
 /-
-  sail-riscv's loads, in ZisK's profile: `ld rd, imm(rs1)` at an aligned
+  sail-riscv's loads, in ZisK's profile: `ld rd, imm(rs1)` at an aligned (or in-granule)
   address in a readable region, in machine mode with no pointer masking,
   reads the 8 bytes there into rd — through sail-riscv's whole load path
   (pointer masking, translation, the PMA check, the page split, the read).
@@ -30,18 +30,47 @@ theorem split_aligned8_run (s : RVState) (a : BitVec 64) (hal : a.toNat % 8 = 0)
       Functions.pagesize_bits, sail_ones, BitVec.zero_eq]
     bv_decide
 
+/-- An access within a 16-byte granule (sail-riscv's `allowed_misaligned`)
+    does not cross a page either. -/
+theorem split_gran_run (s : RVState) (a : BitVec 64) (w : Nat) (hw : w = 1 ∨ w = 2 ∨ w = 4 ∨ w = 8)
+    (h : allowed_misaligned a w 4 = true) :
+    (interpretSailEffects (split_on_page_boundary a w)).run s = .ok ((w : Int), 0) s := by
+  simp only [allowed_misaligned, access_within, Sail.BitVec.length, zero_extend, Sail.BitVec.zeroExtend, ones,
+    sail_ones, BitVec.addInt] at h
+  rcases hw with rfl | rfl | rfl | rfl <;>
+  · simp at h
+    try obtain ⟨-, h⟩ := h
+    simp [split_on_page_boundary, Sail.BitVec.length]
+    rw [if_pos]
+    · rfl
+    · simp only [Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange', ones, zeros, BitVec.subInt,
+        BitVec.addInt, Functions.pagesize_bits, sail_ones, BitVec.zero_eq] at h ⊢
+      revert h; bv_decide
+
+/-- The page split of an 8-byte access the PMA check passes unsplit. -/
+theorem split8_run (s : RVState) (r : PMA_Region) (acc : MemoryAccessType mem_payload) (a : BitVec 64)
+    (hal : AlignOk r acc a 8) :
+    (interpretSailEffects (split_on_page_boundary a 8)).run s = .ok (8, 0) s := by
+  rcases hal with h | ⟨-, -, -, h⟩
+  · exact split_aligned8_run s a (by rw [tmod_nat] at h; omega)
+  · exact split_gran_run s a 8 (by omega) h
+
+/-- No platform-wide exception for a misaligned plain load or store. -/
+theorem plat_ld : plat_misaligned_exception (.Load .Data) false = none := rfl
+theorem plat_st : plat_misaligned_exception (.Store .Data) false = none := rfl
+
 /-- vmem_read_addr's access width when it does not split: the width. -/
 theorem width8 : (if (SATPMode.Bare != SATPMode.Bare && ((0 >b 0) && !false)) = true then (8 : Int)
     else ((8 : Nat) : Int)).toNat = 8 := rfl
 
 set_option maxHeartbeats 4000000 in
-/-- `ld rd, imm(rs1)`, at an 8-aligned address in a readable region, in
+/-- `ld rd, imm(rs1)`, at an address the PMA check passes unsplit (`AlignOk`) in a readable region, in
     machine mode with no pointer masking: rd gets the 8 bytes there. -/
 theorem execute_ld (t : RVState) (_h : WF t) (rs : List PMA_Region) (hs : MemReady t rs)
     (sec : RegisterType mseccfg) (hsec : t.regs.get? mseccfg = some sec) (hpm : _get_Seccfg_PMM sec = 0#2)
     (rs1 rd : RegBits) (imm : BitVec 12) (v1 : BitVec 64) (h1 : getX t rs1.toNat = some v1)
     (r : PMA_Region) (hm : matching_pma_region rs (.Physaddr (v1 + sign_extend (m := 64) imm)) 8 = some r)
-    (hrd : r.attributes.readable = true) (hal : (v1 + sign_extend (m := 64) imm).toNat % 8 = 0)
+    (hrd : r.attributes.readable = true) (hal : AlignOk r (.Load .Data) (v1 + sign_extend (m := 64) imm) 8)
     (v : BitVec 64)
     (hv : (Sail.ArchSem.readBytes 8 (v1 + sign_extend (m := 64) imm).toNat :
       Sail.ArchSem.ArchSemSeqM exception _).run t = .ok v t) :
@@ -52,10 +81,7 @@ theorem execute_ld (t : RVState) (_h : WF t) (rs : List PMA_Region) (hs : MemRea
   have r1 := rX_run t rs1.toNat rs1.lt v1 h1
   have hacc : PlainAccess (.Load .Data) := Or.inr (Or.inl rfl)
   have ht := translateAddr_run t (v1 + sign_extend (m := 64) imm) _ hacc mi hmi hp se hse me hme
-  have hrd' := mem_read_run t rs hr hh _ 8 (by omega) _ hacc r hm (by simpa [permits] using hrd)
-    (by rw [tmod_nat]; omega) v hv
-  have hal' : is_aligned_vaddr (.Virtaddr (v1 + sign_extend (m := 64) imm)) 8 = true := by
-    simp only [is_aligned_vaddr, BitVec.toNatInt, Int.ofNat_eq_natCast, tmod_nat, hal]; rfl
+  have hrd' := mem_read_run t rs hr hh _ 8 (by omega) _ hacc r hm (by simpa [permits] using hrd) hal v hv
   have hw := wX_run t rd.toNat rd.lt v
   simp only [execute_LOAD, vmem_read, vmem_read_explicit, default_access_info, get_pmlen,
     get_transformed_data_addr, ext_data_get_addr, transform_effective_address, vmem_read_addr,
@@ -66,8 +92,8 @@ theorem execute_ld (t : RVState) (_h : WF t) (rs : List PMA_Region) (hs : MemRea
     | rv_step _h
     | (rw [effectivePrivilege_run _ _ _ _ hmprv]; try dsimp only)
     | (rw [r1]; try dsimp only)
-    | (simp only [pmm_mode_backwards, pm_id, hal', bits_of_virtaddr]; try dsimp only)
-    | (rw [split_aligned8_run _ _ hal]; try dsimp only)
+    | (simp only [pmm_mode_backwards, pm_id, plat_ld, bits_of_virtaddr, ite_self]; try dsimp only)
+    | (rw [split8_run _ _ _ _ hal]; try dsimp only)
     | (rw [ht]; try dsimp only)
     | (rw [hrd']; try dsimp only)
     | (erw [hrd']; try dsimp only))

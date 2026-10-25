@@ -527,7 +527,7 @@ theorem swtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
     have := getX_regv agree l1; rw [hv1] at this; exact (Option.some.inj this).symm
   have hr2 : regv xs i.rs2.toNat = v2 := by
     have := getX_regv agree l2; rw [hv2] at this; exact (Option.some.inj this).symm
-  obtain ⟨hal, ⟨r, hm, hwr⟩, hzw, hzn⟩ := hok
+  obtain ⟨⟨r, hm, hwr, hal⟩, hzw, hzn⟩ := hok
   obtain ⟨s', hrun, hmem, hwf, hpc'', hxs', ho⟩ :=
     try_step_store s rs hr pc' hpc _ _ _ _ hw
       (.STORE (i.immHi ++ i.immLo, .Regidx i.rs2, .Regidx i.rs1, (i.k.w : Int)))
@@ -589,7 +589,7 @@ theorem sdtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
     have := getX_regv agree l1; rw [hv1] at this; exact (Option.some.inj this).symm
   have hr2 : regv xs i.rs2.toNat = v2 := by
     have := getX_regv agree l2; rw [hv2] at this; exact (Option.some.inj this).symm
-  obtain ⟨hal, ⟨r, hm, hwr⟩, hzw, hzn⟩ := hok
+  obtain ⟨⟨r, hm, hwr, hal⟩, hzw, hzn⟩ := hok
   obtain ⟨s', hrun, hmem, hwf, hpc'', hxs', ho⟩ :=
     try_step_store s rs hr pc' hpc _ _ _ _ hw (.STORE (i.immHi ++ i.immLo, .Regidx i.rs2, .Regidx i.rs1, 8))
       (by intro t htp ⟨w, hw'⟩ hmt
@@ -661,7 +661,7 @@ theorem lwtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
     have := getX_regv agree l1; rw [hv1] at this; exact (Option.some.inj this).symm
   have hvalid := i.k.valid
   rw [← hu, ← hwd] at hvalid
-  obtain ⟨hal, ⟨r, hm, hrb⟩, hzr, hzn, hbytes⟩ := hok
+  obtain ⟨⟨r, hm, hrb, hal⟩, hzr, hzn, hbytes⟩ := hok
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw
     (.LOAD (i.imm, .Regidx i.rs1, .Regidx i.rd, i.k.u, (i.k.w : Int))) ?_ i.rd.toNat i.rd.isLt
     (extend_value i.k.u v) (pc' + 4) ?_ zrom ?_ n
@@ -727,7 +727,7 @@ theorem ldtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
   have l1 : i.rs1.toNat < 32 := i.rs1.isLt
   have hr1 : regv xs i.rs1.toNat = v1 := by
     have := getX_regv agree l1; rw [hv1] at this; exact (Option.some.inj this).symm
-  obtain ⟨hal, ⟨r, hm, hrb⟩, hzr, hzn, hzi, hbytes⟩ := hok
+  obtain ⟨⟨r, hm, hrb, hal⟩, hzr, hzn, hzi, hbytes⟩ := hok
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw
     (.LOAD (i.imm, .Regidx i.rs1, .Regidx i.rd, false, 8)) ?_ i.rd.toNat i.rd.isLt v (pc' + 4) ?_ zrom ?_ n
   · intro t htp ⟨w, hw'⟩ hmt

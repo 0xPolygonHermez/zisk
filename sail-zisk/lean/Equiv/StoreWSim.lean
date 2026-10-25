@@ -74,11 +74,11 @@ structure SwAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   rs2 : i.rs2 ≠ 0
   rom : zrom pc = Equiv.Zisk.storeInst i.rs1.toNat i.rs2.toNat ((i.immHi ++ i.immLo).signExtend 64) i.k.w
 
-/-- What a store of w bytes needs when it runs, at address a: aligned, in a
+/-- What a store of w bytes needs when it runs, at address a: in a
     writable region on both sides, off ZisK's register file. -/
 structure SwOk (rs : List PMA_Region) (a : BitVec 64) (w : Nat) : Prop where
-  al : a.toNat % w = 0
-  region : ∃ r, matching_pma_region rs (.Physaddr a) w = some r ∧ r.attributes.writable = true
+  region : ∃ r, matching_pma_region rs (.Physaddr a) w = some r ∧ r.attributes.writable = true ∧
+    AlignOk r (.Store .Data) a w
   zwrite : _root_.Zisk.Functions.writable a w = true
   zregs : _root_.Zisk.Functions.hits_registers a w = false
 
@@ -93,7 +93,7 @@ theorem SKind.exec (k : SKind) (t : RVState) (hwf : WF t) (rs : List PMA_Region)
     (rs1 rs2 : RegBits) (imm : BitVec 12) (v1 v2 : BitVec 64)
     (h1 : getX t rs1.toNat = some v1) (h2 : getX t rs2.toNat = some v2)
     (r : PMA_Region) (hm : matching_pma_region rs (.Physaddr (v1 + sign_extend (m := 64) imm)) k.w = some r)
-    (hwr : r.attributes.writable = true) (hal : (v1 + sign_extend (m := 64) imm).toNat % k.w = 0) :
+    (hwr : r.attributes.writable = true) (hal : AlignOk r (.Store .Data) (v1 + sign_extend (m := 64) imm) k.w) :
     (interpretSailEffects (execute_STORE imm (.Regidx rs2) (.Regidx rs1) k.w)).run t
       = .ok RETIRE_SUCCESS
           { t with mem := (Equiv.memWrite (n := k.w) t.mem (v1 + sign_extend (m := 64) imm).toNat
@@ -130,7 +130,7 @@ theorem swstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   have a2 := agree i.rs2.toNat (by omega) l2
   have hxv1 : xs[i.rs1.toNat]! = v1 := by rw [hv1] at a1; exact (Option.some.inj a1).symm
   have hxv2 : xs[i.rs2.toNat]! = v2 := by rw [hv2] at a2; exact (Option.some.inj a2).symm
-  obtain ⟨hal, ⟨r, hm, hwr⟩, hzw, hzn⟩ := hok
+  obtain ⟨⟨r, hm, hwr, hal⟩, hzw, hzn⟩ := hok
   obtain ⟨s', hrun, hmem, hwf, hpc'', hxs', ho⟩ :=
     try_step_store s rs hr pc' hpc _ _ _ _ hw
       (.STORE (i.immHi ++ i.immLo, .Regidx i.rs2, .Regidx i.rs1, (i.k.w : Int)))

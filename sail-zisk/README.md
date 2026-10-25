@@ -262,12 +262,11 @@ transpilation.
   walks (the last word of a section read with no next word, where the
   machine would read whatever memory follows: it matters only if that is a
   jalr after an auipc). Still to do: the run's conditions that are not
-  the program's — an access aligned and in its region, a jump's target
-  aligned — shown to fail alike on both sides when they do not hold (in
-  ZisK's profile sail-riscv allows misaligned loads and stores, as
-  sail-zisk does, so the alignment ones can go by proof, though the
-  granule rule reads the region's attributes and an access across a 16-byte
-  granule takes sail-riscv's split path); and the run's other ends (a
+  the program's — an access in its region, a jump's target aligned — shown
+  to fail alike on both sides when they do not hold; a load or store across
+  a 16-byte granule (sail-riscv's split path: one within its granule,
+  aligned or not, is covered, `AlignOk`, `alignOk_gran` for ZisK's regions);
+  and the run's other ends (a
   trap, a ZisK call, the instructions not yet covered).
 - **zkvmcalls** (CSRs 0x850–0x8BF, the ZisK library's routines): outside the
   contract for now ([`doc/riscv_contract.md`](doc/riscv_contract.md) § 9), a
