@@ -6,7 +6,7 @@
 -/
 import Equiv.ZbaSim
 import Equiv.RiscvZbs
-import Equiv.RiscvDecodeZbsI
+import Equiv.RiscvDecodeZbs
 
 set_option linter.unusedSimpArgs false
 

@@ -78,5 +78,4 @@ import Equiv.RiscvDecodeZba
 import Equiv.ZbaSim
 import Equiv.RiscvZbs
 import Equiv.RiscvDecodeZbs
-import Equiv.RiscvDecodeZbsI
 import Equiv.ZbsSim

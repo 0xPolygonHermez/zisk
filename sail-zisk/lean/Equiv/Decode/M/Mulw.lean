@@ -1,0 +1,24 @@
+/- sail-riscv's decoder: `decode_mulw`, on its own so that it checks in parallel (RiscvDecodeM.lean). -/
+import Equiv.RiscvDecodeMBase
+
+set_option maxRecDepth 1000000
+namespace Equiv.Riscv
+open LeanZiskRV LeanZiskRV.Functions Sail Sail.ArchSem
+open Register
+
+set_option maxHeartbeats 0 in
+theorem decode_mulw (s : RVState) (w : BitVec 32)
+    (hop : w.extractLsb 6 0 = 0x3B#7) (hf3 : w.extractLsb 14 12 = 0#3) (hf7 : w.extractLsb 31 25 = 1#7)
+    (hp : s.regs.get? cur_privilege = some .Machine)
+    (sec : RegisterType mseccfg) (hsec : s.regs.get? mseccfg = some sec)
+    (hm : ∃ v, s.regs.get? misa = some v ∧ _get_Misa_M v = 1#1) :
+    (interpretSailEffects (ext_decode w)).run s
+      = .ok (.MULW (.Regidx (w.extractLsb 24 20), .Regidx (w.extractLsb 19 15), .Regidx (w.extractLsb 11 7))) s := by
+  unfold ext_decode
+  delta encdec_backwards
+  rw [interp_bind, run_bind']
+  dsimp only
+  repeat peel
+  m_tail
+
+end Equiv.Riscv

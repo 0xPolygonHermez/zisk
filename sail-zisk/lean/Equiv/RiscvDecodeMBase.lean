@@ -3,7 +3,7 @@
   Equiv/RiscvDecodeMul.lean): M enabled, which each clause checks (misa's M
   bit, set in ZisK's profile), and the closing step of each lemma.
 -/
-import Equiv.RiscvDecode
+import Equiv.RiscvDecodeBase
 import Equiv.RiscvM
 
 set_option maxRecDepth 1000000
