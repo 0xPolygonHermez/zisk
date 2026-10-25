@@ -1855,11 +1855,9 @@ impl<'a> Riscv2ZiskContext<'a> {
         // Special DMA patterns that can have rd != 0
         match i.csr as u16 {
             SYSCALL_DMA_MEMCPY_ID | SYSCALL_DMA_MEMCMP_ID | SYSCALL_JUMP_DEST_ID => {
-                assert!(!next_instructions.is_empty());
                 return self.transpile_dma_memcpy_memcmp_pattern(i, next_instructions);
             }
             SYSCALL_DMA_MEMSET_ID => {
-                assert!(!next_instructions.is_empty());
                 return self.transpile_dma_memset_pattern(i, next_instructions);
             }
             // add256 returns its carry-out in rd, so it is recognised whatever rd is:
@@ -1929,11 +1927,9 @@ impl<'a> Riscv2ZiskContext<'a> {
         } else if i.rd == 0 {
             match i.csr as u16 {
                 SYSCALL_DMA_INPUTCPY_ID => {
-                    assert!(!next_instructions.is_empty());
                     self.transpile_dma_inputcpy_pattern(i, next_instructions);
                 }
                 SYSCALL_PROFILE_ID => {
-                    assert!(!next_instructions.is_empty());
                     self.transpile_profile_pattern(i, next_instructions);
                 }
                 // Precompiles called with two direct operands (see transpile_precompiled_ab_pattern)
@@ -1981,8 +1977,10 @@ impl<'a> Riscv2ZiskContext<'a> {
                     zib.verbose(precompiled);
                     // NOTE: if precompiles don't use extended static parameter (jmp_offset1), must be set to 0
                     // to match with that precompiles proves
-                    assert!(!next_instructions.is_empty());
-                    let jmp_offset = next_instructions[0].rom_address as i64 - rom_address as i64;
+                    // On to the next instruction: pc + 4 at a section's last word.
+                    let jmp_offset = next_instructions
+                        .first()
+                        .map_or(4, |n| n.rom_address as i64 - rom_address as i64);
                     // jmp_offset1 is used for extended static parameter, which is not used in this case
                     zib.j(0, jmp_offset);
 
@@ -2000,8 +1998,10 @@ impl<'a> Riscv2ZiskContext<'a> {
                         "csrrs 0x{0:X}, rs1={1} => copyb[fcall_param(r{1},{2})]",
                         i.csr, i.rs1, words
                     ));
-                    assert!(!next_instructions.is_empty());
-                    let jmp_offset = next_instructions[0].rom_address as i64 - rom_address as i64;
+                    // On to the next instruction: pc + 4 at a section's last word.
+                    let jmp_offset = next_instructions
+                        .first()
+                        .map_or(4, |n| n.rom_address as i64 - rom_address as i64);
                     zib.j(jmp_offset, jmp_offset);
                     zib.build(self.rom);
                 }
@@ -2016,8 +2016,10 @@ impl<'a> Riscv2ZiskContext<'a> {
                         "{} r{}, 0x{:x}, r{} # rs!=rd=0",
                         i.inst_name, i.rd, i.csr, i.rs1
                     ));
-                    assert!(!next_instructions.is_empty());
-                    let jmp_offset = next_instructions[0].rom_address as i64 - rom_address as i64;
+                    // On to the next instruction: pc + 4 at a section's last word.
+                    let jmp_offset = next_instructions
+                        .first()
+                        .map_or(4, |n| n.rom_address as i64 - rom_address as i64);
                     zib.j(jmp_offset, jmp_offset);
                     zib.build(self.rom);
                 }
@@ -2041,8 +2043,9 @@ impl<'a> Riscv2ZiskContext<'a> {
                 ));
             }
             zib.store("reg", i.rd as i64, false, false);
-            assert!(!next_instructions.is_empty());
-            let jmp_offset = next_instructions[0].rom_address as i64 - rom_address as i64;
+            // On to the next instruction: pc + 4 at a section's last word.
+            let jmp_offset =
+                next_instructions.first().map_or(4, |n| n.rom_address as i64 - rom_address as i64);
             zib.j(jmp_offset, jmp_offset);
             zib.build(self.rom);
         } else {
@@ -2088,8 +2091,9 @@ impl<'a> Riscv2ZiskContext<'a> {
         if i.rd != 0 {
             zib.store("reg", i.rd as i64, false, false);
         }
-        assert!(!next_instructions.is_empty());
-        let jmp_offset = next_instructions[0].rom_address as i64 - i.rom_address as i64;
+        // On to the next instruction: pc + 4 at a section's last word.
+        let jmp_offset =
+            next_instructions.first().map_or(4, |n| n.rom_address as i64 - i.rom_address as i64);
         // jmp_offset1 is used for extended static parameter, which is not used in this case
         zib.j(0, jmp_offset);
         zib.build(self.rom);
@@ -2599,7 +2603,10 @@ impl<'a> Riscv2ZiskContext<'a> {
                 let rd = next_instructions[0].rd;
                 let fill_byte = next_instructions[1].imm; // fill_byte
                 let next_pc = next_instructions[2].rom_address;
-                assert!((0..=0xFF).contains(&fill_byte));
+                if !(0..=0xFF).contains(&fill_byte) {
+                    // Not a byte: a sequence the pattern refuses, an illegal instruction.
+                    return self.halt_with_error(i, 4);
+                }
                 self.create_extended_precompiles_op(
                     i,
                     "dma_xmemset",
@@ -2611,14 +2618,10 @@ impl<'a> Riscv2ZiskContext<'a> {
                     next_pc,
                 );
             } else {
-                let next_0 =
-                    next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
-                let next_1 =
-                    next_instructions.get(1).map(|inst| inst.inst_name.as_str()).unwrap_or("");
-                panic!(
-                        "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as xmemset with two \
-                        consecutive addi (next[0]:{} next[1]:{})",
-                        i.csr, i.rom_address, next_0, next_1);
+                // Not xmemset with two consecutive addi: an illegal instruction, as
+                // the decoder makes one (a panic would reject the whole program, even
+                // when the sequence never runs).
+                self.halt_with_error(i, 4);
             }
         } else if i.imme == 0 {
             if next_instructions.len() > 1 && next_instructions[0].inst_name == RiscvInstName::Addi
@@ -2635,7 +2638,9 @@ impl<'a> Riscv2ZiskContext<'a> {
                 let fill_byte = next_instructions[0].imm; // byte (fill_byte)
                 let next_pc = next_instructions[1].rom_address;
 
-                assert!((0..=0xFF).contains(&fill_byte));
+                if !(0..=0xFF).contains(&fill_byte) {
+                    return self.halt_with_error(i, 4);
+                }
                 self.create_extended_precompiles_op(
                     i,
                     "dma_xmemset",
@@ -2647,14 +2652,12 @@ impl<'a> Riscv2ZiskContext<'a> {
                     next_pc,
                 );
             } else {
-                let next_0 =
-                    next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
-                panic!(
-                        "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as xmemset with a \
-                        consecutive addi (next[0]:{})",
-                i.csr, i.rom_address, next_0
-            );
+                // Not xmemset with a consecutive addi: an illegal instruction.
+                self.halt_with_error(i, 4);
             }
+        } else {
+            // csrsi on the memset port with an immediate other than 0 or 2.
+            self.halt_with_error(i, 4);
         }
     }
 
@@ -2713,11 +2716,10 @@ impl<'a> Riscv2ZiskContext<'a> {
                 // size in a register and emits Add. Serving both sources would mean a second opcode
                 // or a flag in the AIR to pick between them, for a case that does not occur — the
                 // length of a bytecode is not known at compile time.
-                assert!(
-                    i.csr != SYSCALL_JUMP_DEST_ID as u32,
-                    "jump_dest with an immediate size at pc 0x{:08x}: the guest must pass it in a register",
-                    i.rom_address
-                );
+                if i.csr == SYSCALL_JUMP_DEST_ID as u32 {
+                    // jump_dest with an immediate size: the guest must pass it in a register.
+                    return self.halt_with_error(i, 4);
+                }
                 let op = if i.csr == SYSCALL_DMA_MEMCPY_ID as u32 {
                     "dma_xmemcpy"
                 } else {
@@ -2753,12 +2755,8 @@ impl<'a> Riscv2ZiskContext<'a> {
                 }
             }
         }
-        let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
-        panic!(
-            "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as memcpy/memcmp with a \
-                        consecutive add/addi (next[0]:{})",
-            i.csr, i.rom_address, next_0
-        );
+        // Not memcpy/memcmp with a consecutive add/addi: an illegal instruction.
+        self.halt_with_error(i, 4);
     }
 
     /// Precompiles that take two operands directly in registers (no parameter struct in memory):
@@ -2788,12 +2786,8 @@ impl<'a> Riscv2ZiskContext<'a> {
             self.create_extended_precompiles_op(i, op, p1, p2 as u64, 0, 0, false, next_pc);
             return;
         }
-        let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
-        panic!(
-            "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as {op} with a \
-                        consecutive add x0, reg, x0 (next[0]:{})",
-            i.csr, i.rom_address, next_0
-        );
+        // Not the precompile with a consecutive add x0, reg, x0: an illegal instruction.
+        self.halt_with_error(i, 4);
     }
 
     /// Like `transpile_precompiled_ab_pattern` with a static argument on top: the guest emits
@@ -2822,12 +2816,8 @@ impl<'a> Riscv2ZiskContext<'a> {
             self.create_extended_precompiles_op(i, op, p1, p2 as u64, 0, imm, false, next_pc);
             return;
         }
-        let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
-        panic!(
-            "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as {op} with a \
-                        consecutive addi x0, reg, imm (next[0]:{})",
-            i.csr, i.rom_address, next_0
-        );
+        // Not the precompile with a consecutive addi x0, reg, imm: an illegal instruction.
+        self.halt_with_error(i, 4);
     }
 
     fn transpile_dma_inputcpy_pattern(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
@@ -2876,18 +2866,18 @@ impl<'a> Riscv2ZiskContext<'a> {
                 return;
             }
         }
-        let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
-        panic!(
-            "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as inputcpy with a \
-                        consecutive add/addi (next[0]:{})",
-            i.csr, i.rom_address, next_0
-        );
+        // Not inputcpy with a consecutive add/addi: an illegal instruction.
+        self.halt_with_error(i, 4);
     }
     fn transpile_profile_pattern(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
-        assert!(next_instructions.len() > 1);
-        assert!(next_instructions[0].inst_name == RiscvInstName::Addi);
-        assert!(next_instructions[0].rd == 0);
-        assert!(next_instructions[0].rs1 == 0);
+        if !(next_instructions.len() > 1
+            && next_instructions[0].inst_name == RiscvInstName::Addi
+            && next_instructions[0].rd == 0
+            && next_instructions[0].rs1 == 0)
+        {
+            // Not profile with a consecutive addi x0, x0, imm: an illegal instruction.
+            return self.halt_with_error(i, 4);
+        }
         let next_pc = next_instructions[1].rom_address;
 
         // profile transpilation pattern:
@@ -3278,5 +3268,41 @@ mod tests {
             }
             assert_eq!((zi.jmp_offset1, zi.jmp_offset2), (0, 4), "rd={rd} rs1={rs1}");
         }
+    }
+}
+
+#[cfg(test)]
+mod csr_pattern_tests {
+    use super::*;
+
+    /// The ZisK instruction the transpiler emits at the first word of `words`.
+    fn first_op(words: &[u32]) -> (&'static str, bool) {
+        let code: Vec<u16> = words.iter().flat_map(|w| [*w as u16, (*w >> 16) as u16]).collect();
+        let insts = riscv_interpreter(0x8000_0000, &code);
+        let mut rom = ZiskRom::default();
+        Riscv2ZiskContext::new(&mut rom).convert(&insts[0], &insts[1..]);
+        let i = &rom.insts[&0x8000_0000].i;
+        (i.op_str, i.end)
+    }
+
+    /// A CSR pattern of the wrong shape is an illegal instruction, a halt there,
+    /// not a panic that rejects the whole program.
+    #[test]
+    fn malformed_patterns_halt() {
+        // csrs 0x813, a0 (memcpy) followed by xor, not add/addi
+        assert_eq!(first_op(&[0x8135_2073, 0x0000_4033, 0x0000_0013]), ("halt", true));
+        // csrsi 0x816, 2 (xmemset) with a fill byte of 300
+        assert_eq!(first_op(&[0x8161_6073, 0x0105_0013, 0x12c5_0013, 0x0000_0013]), ("halt", true));
+        // csrs 0x81A, a0 (profile) followed by addi a0, x0, 1, not addi x0, x0, imm
+        assert_eq!(first_op(&[0x81a5_2073, 0x0010_0513, 0x0000_0013]), ("halt", true));
+    }
+
+    /// A well-formed pattern is not a halt.
+    #[test]
+    fn wellformed_pattern_does_not_halt() {
+        // csrs 0x813, a0 (memcpy) followed by add x0, a1, a2
+        let (op, end) = first_op(&[0x8135_2073, 0x00c5_8033, 0x0000_0013]);
+        assert_ne!(op, "halt");
+        assert!(!end);
     }
 }
