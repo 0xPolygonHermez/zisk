@@ -33,6 +33,7 @@
 //! | `coordinator_last_setup_seconds` | Gauge | `hash_id` | The last successful setup of each program |
 //! | `coordinator_worker_registrations_total` | Counter | `reconnect` | Worker registrations |
 //! | `coordinator_worker_disconnects_total` | Counter | — | Worker disconnections |
+//! | `coordinator_worker_heartbeat_gap_seconds` | Histogram | — | Between two messages of a worker that refresh its heartbeat |
 //! | `coordinator_worker_recoveries_total` | Counter | `result` | Workers back from a cancelled or failed job (`done`) or given up on (`expired`) |
 //! | `coordinator_worker_recovery_seconds` | Histogram | — | From parking a worker to its recovery |
 //! | `coordinator_last_worker_recovery_seconds` | Gauge | — | The last recovery |
@@ -112,6 +113,10 @@ pub fn install_prometheus() -> Result<()> {
     // Workers of one proof finish a phase within a fraction of it of each other.
     const SPREAD_BUCKETS: &[f64] =
         &[0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0];
+    // A worker heartbeats every 10 s (30 s without telemetry): a longer gap is a stall, and the
+    // heartbeat check disconnects the worker at its threshold (90 s by default).
+    const HEARTBEAT_GAP_BUCKETS: &[f64] =
+        &[1.0, 2.0, 5.0, 10.5, 11.0, 12.0, 15.0, 20.0, 30.5, 45.0, 60.0, 90.0, 120.0, 300.0];
 
     let handle = PrometheusBuilder::new()
         .set_buckets_for_metric(
@@ -137,6 +142,10 @@ pub fn install_prometheus() -> Result<()> {
         .set_buckets_for_metric(
             Matcher::Full("coordinator_proof_worker_spread_seconds".to_owned()),
             SPREAD_BUCKETS,
+        )?
+        .set_buckets_for_metric(
+            Matcher::Full("coordinator_worker_heartbeat_gap_seconds".to_owned()),
+            HEARTBEAT_GAP_BUCKETS,
         )?
         .install_recorder()?;
     PROMETHEUS_HANDLE.set(handle).ok(); // ignore if already set (e.g. in tests)
@@ -280,6 +289,11 @@ fn register_descriptions() {
         "coordinator_worker_recoveries_total",
         "Workers parked after a cancelled or failed job that recovered (done) or were given up \
          on (expired)"
+    );
+    metrics::describe_histogram!(
+        "coordinator_worker_heartbeat_gap_seconds",
+        "Between two messages of a worker that refresh its heartbeat, in seconds: what the \
+         heartbeat check compares with its threshold"
     );
     metrics::describe_histogram!(
         "coordinator_worker_recovery_seconds",
