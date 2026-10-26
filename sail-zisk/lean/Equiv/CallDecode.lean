@@ -319,6 +319,37 @@ theorem decode_any3 {pc : BitVec 64} {w : BitVec 32} {next next2 : Option (BitVe
       cases kind (fields w) <;> first | exact id | exact fun h => decodeCsrrsi_n1' h h3 n1
 
 /-- A call the spec decodes, from the word at pc and the two after it: the
+    spec describes the word, its translation the call's instructions. -/
+theorem convert_call3 {pc : BitVec 64} {w : BitVec 32} {next next2 : Option (BitVec 32)} {c : Call}
+    (h : decode (Transpiler.fetch3 pc w next next2) pc.toNat = .call c) (ia : BitVec 64) :
+    Transpiler.convert pc w next ia next2 = some (Transpiler.callInsts c pc ia) := by
+  obtain ⟨w', hw', hk⟩ := decode_call_kind h
+  have : w' = w := by simp [Transpiler.fetch3] at hw'; exact hw'.symm
+  subst this
+  have hd := spec_decode_csr w' hk
+  simp only [Transpiler.convert, hd]
+  have h2 : c.len ≠ 3 → decode (Transpiler.fetch2 pc w' next) pc.toNat = .call c := fun h3 =>
+    decode_any3 h _ (by simp [Transpiler.fetch2]) (fun _ => by simp [Transpiler.fetch2])
+      (fun e => absurd e h3)
+  cases next2 with
+  | none =>
+    rw [fetch3_none] at h
+    simp only [Transpiler.csr3, Transpiler.csr, h]
+  | some n2 =>
+    simp only [Transpiler.csr3]
+    split
+    · simp only [h]
+    · next hg =>
+      have h3 : c.len ≠ 3 := by
+        intro e
+        obtain ⟨w2, hw2, k1, k2, k3, k4⟩ := decode_len3 h e
+        simp [Transpiler.fetch3] at hw2; subst hw2
+        apply hg
+        simp only [k1, k2, k3, Bool.and_eq_true, beq_iff_eq, and_true]
+        exact ⟨rfl, by simpa [Transpiler.fetch3] using k4⟩
+      simp only [Transpiler.csr, h2 h3]
+
+/-- A call the spec decodes, from the word at pc and the two after it: the
     ZisK program holds its translation. -/
 theorem transpiled_call3 {zrom : BitVec 64 → Zisk.zisk_inst} {pc : BitVec 64} {w : BitVec 32}
     {next next2 : Option (BitVec 32)} (ht : Equiv.Sim.Transpiled zrom pc w next next2) {c : Call}

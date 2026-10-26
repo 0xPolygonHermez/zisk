@@ -392,6 +392,98 @@ theorem go_sparse_call {C : BitVec 64 → Prop} {T T' : ZiskRiscv.State model} (
         exact (Grows.insert _ a 0).trans hg'
       · exact .inr ⟨msg, by rw [ZiskRiscv.step.go, e1]; simp only [hreg, if_true]; exact hmsg⟩
 
+/-- A ZisK call on sparse memory, where on full memory it fails: the same
+    failure, or a read of a byte in the regions the sparse memory lacks. -/
+theorem call_sparse_fail {S T : ZiskRiscv.State model} (h : SparseOf S T) (c : ZiskRiscv.Call)
+    {err : ZiskRiscv.StepError} (hc : ZiskRiscv.call T c = .error err) :
+    (∃ a, ZiskRiscv.call S c = .error (.missing a) ∧ ZiskRiscv.inRegions a = true ∧ S.rv.mem.get? a = none) ∨
+    ZiskRiscv.call S c = .error err := by
+  have harg : ∀ x, S.argValue x = T.argValue x := by
+    intro x; cases x <;> simp only [ZiskRiscv.State.argValue, getX_eq h, h.fcall]
+  have hcm : ∀ k, (callMem T c).get? k = ((callMem S c).get? k).or (zeroFill k) := by
+    cases hc : c.count with
+    | none => simp only [callMem, hc]; exact h.ext.mem
+    | some r => simp only [callMem, hc, getX_eq h r]; exact mext_writeDword h.ext.mem _ _
+  have hFR : Equiv.Zisk.FR (ZiskRiscv.ziskState (callMem S c) S.fcall) (ZiskRiscv.ziskState (callMem T c) T.fcall) := by
+    refine ⟨fun k v hk => ?_, fun r _ => by rw [h.fcall]; rfl⟩
+    have hk' : (callMem S c).get? k = some v := hk
+    show (callMem T c).get? k = some v
+    rw [hcm k, hk']; rfl
+  cases hS : (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
+      (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run
+      (ZiskRiscv.ziskState (callMem S c) S.fcall) with
+  | ok r σ' =>
+    obtain ⟨τ', hτ, -⟩ := (Equiv.Zisk.Frame.exec_mem _ _ _ _).1 _ _ hFR r σ' hS
+    rw [harg c.a, harg c.b] at hτ
+    rw [call_run T c _ _ _ (Equiv.Zisk.runOp_ok hτ)] at hc; cases hc
+  | error e σ' =>
+    rcases (Equiv.Zisk.Frame.exec_mem _ _ _ _).2 _ _ hFR e σ' hS with ⟨k, rfl, hk1, hk2⟩ | ⟨τ', hτ⟩
+    · have hk1' : (callMem S c).get? k = none := hk1
+      have hk2' : (callMem T c).get? k ≠ none := hk2
+      rw [hcm k, hk1'] at hk2'
+      refine .inl ⟨k, call_err S c _ (Equiv.Zisk.runOp_err hS), ?_, ?_⟩
+      · simp only [Option.none_or, zeroFill] at hk2'; split at hk2' <;> simp_all
+      · cases hm : S.rv.mem.get? k with
+        | none => rfl
+        | some v =>
+          have := callMem_grows S c k (by rw [hm]; rfl)
+          rw [hk1'] at this; cases this
+    · rw [harg c.a, harg c.b] at hτ
+      rw [call_err T c _ (Equiv.Zisk.runOp_err hτ)] at hc
+      injection hc with hc; subst hc
+      exact .inr (call_err S c _ (Equiv.Zisk.runOp_err hS))
+
+/-- The machine's step on sparse memory, where on full memory it is a ZisK
+    call that fails, not by a missing byte: a failure, or the machine's
+    error. -/
+theorem go_sparse_fail {C : BitVec 64 → Prop} {T : ZiskRiscv.State model} (hx : model.getPC T.rv ≠ model.exitAddr)
+    (hcc : C (model.getPC T.rv)) (c : ZiskRiscv.Call)
+    (hC4 : c.len ≠ 1 → C (model.getPC T.rv + 4) ∧ (model.getPC T.rv + 4).toNat = (model.getPC T.rv).toNat + 4)
+    (hC8 : c.len = 3 → C (model.getPC T.rv + 8) ∧ (model.getPC T.rv + 8).toNat = (model.getPC T.rv).toNat + 8)
+    (hd : ∀ fetch : Nat → Option (BitVec 32),
+      fetch (model.getPC T.rv).toNat = ZiskRiscv.readWord (model.mem T.rv) (model.getPC T.rv).toNat →
+      (c.len ≠ 1 → fetch ((model.getPC T.rv).toNat + 4) =
+        ZiskRiscv.readWord (model.mem T.rv) ((model.getPC T.rv).toNat + 4)) →
+      (c.len = 3 → fetch ((model.getPC T.rv).toNat + 8) =
+        ZiskRiscv.readWord (model.mem T.rv) ((model.getPC T.rv).toNat + 8)) →
+      ZiskRiscv.decode fetch (model.getPC T.rv).toNat = .call c)
+    {err : ZiskRiscv.StepError} (hc : ZiskRiscv.call T c = .error err) (hne : ∀ a, err ≠ .missing a) :
+    ∀ (f : Nat) (S : ZiskRiscv.State model), SparseOf S T → CodeIn C S →
+      (∃ S' m, ZiskRiscv.step.go f S = .ok (S', .failure m)) ∨ ∃ msg, ZiskRiscv.step.go f S = .error msg
+  | 0, S, _, _ => .inr ⟨_, rfl⟩
+  | f + 1, S, h, hcd => by
+    have hg := getPC_eq h
+    have hx' : model.getPC S.rv ≠ model.exitAddr := by rw [hg]; exact hx
+    have hw : ∀ p, C p → ZiskRiscv.readWord S.rv.mem p.toNat = ZiskRiscv.readWord T.rv.mem p.toNat := by
+      intro p hp
+      obtain ⟨ws, hws⟩ := hcd p hp
+      rw [hws, readWord_ext h.ext hws]
+    have hdS : ZiskRiscv.decode (ZiskRiscv.readWord (model.mem S.rv)) (model.getPC S.rv).toNat = .call c := by
+      rw [hg]
+      refine hd _ (hw _ hcc) (fun hl => ?_) fun hl => ?_
+      · obtain ⟨h4, e4⟩ := hC4 hl
+        have := hw _ h4; rw [e4] at this; exact this
+      · obtain ⟨h8, e8⟩ := hC8 hl
+        have := hw _ h8; rw [e8] at this; exact this
+    rcases call_sparse_fail h c hc with ⟨a, ha, hreg, hm⟩ | hS
+    · have e1 : ZiskRiscv.tryStep S = .error (.missing a) := by
+        simp only [ZiskRiscv.tryStep, hdS]
+        simp [hx', bind, Except.bind, ha, pure, Except.pure]
+      have hf := h.fill hreg hm
+      have hcd' : CodeIn C { S with rv := model.setMem S.rv ((model.mem S.rv).insert a 0) } :=
+        hcd.grow (Grows.insert _ a 0)
+      rcases go_sparse_fail hx hcc c hC4 hC8 hd hc hne f _ hf hcd' with ⟨S', m, hs⟩ | ⟨msg, hmsg⟩
+      · exact .inl ⟨S', m, by rw [ZiskRiscv.step.go, e1]; simp only [hreg, if_true]; exact hs⟩
+      · exact .inr ⟨msg, by rw [ZiskRiscv.step.go, e1]; simp only [hreg, if_true]; exact hmsg⟩
+    · have e1 : ZiskRiscv.tryStep S = .error err := by
+        simp only [ZiskRiscv.tryStep, hdS]
+        simp [hx', bind, Except.bind, hS, pure, Except.pure]
+      rw [ZiskRiscv.step.go, e1]
+      cases err with
+      | missing a => exact absurd rfl (hne a)
+      | assertion m => exact .inl ⟨S, m, rfl⟩
+      | other m => exact .inr ⟨m, rfl⟩
+
 /-- A run of the machine's steps, on sparse memory holding the code: to a
     state sparse of the full run's, or the machine's error. -/
 theorem runs_sparse {C : BitVec 64 → Prop} {k : Nat} {T Tk : ZiskRiscv.State model} (h : MRunR C k T Tk) :
@@ -481,7 +573,7 @@ theorem exit_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : Bi
       (c ≠ 0 → z'.regs.get? .Zerror = some true ∧ z'.regs.get? .Zerror_code = some c) := by
   refine ⟨?_, (exit_end zrom entry hb rs hx ht C hnx hni m0 hfull hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun
     hin pc hpc hpx hpcc hw h17 c h10).2⟩
-  obtain ⟨-, -, -, -, -, -, hm⟩ :=
+  obtain ⟨-, -, -, -, -, -, -, hm⟩ :=
     covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
   generalize sIter 0 k ⟨s0, fc⟩ = T at *
   have hmr := hm (PcOk.of_exec ht hpc hpx)
@@ -526,7 +618,7 @@ theorem return_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : 
     ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some false ∧ Equiv.normIn z'.mem = Equiv.normIn ((sIter 0 k ⟨s0, fc⟩).rv).mem := by
   refine ⟨?_, (return_end zrom entry hb rs hx ht C hnx hni m0 hfull hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k
     hrun hin hpc).2⟩
-  obtain ⟨-, -, -, -, -, -, hm⟩ :=
+  obtain ⟨-, -, -, -, -, -, -, hm⟩ :=
     covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
   generalize sIter 0 k ⟨s0, fc⟩ = T at *
   have hmr := hm ⟨_, hpc, by decide⟩
@@ -536,6 +628,69 @@ theorem return_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : 
     simp only [ZiskRiscv.run]
     rw [show k + 1 + fuel = k + (fuel + 1) by omega, hgo, ZiskRiscv.run.go]
     simp [he, bind, Except.bind, pure, Except.pure]
+  · exact .inr ⟨msg, fun fuel => by
+      simp only [ZiskRiscv.run]; rw [show k + 1 + fuel = k + (fuel + 1) by omega]; exact hmsg _ 0⟩
+
+open Equiv.Top in
+/-- `fail_end` on sparse memory, as `exit_end_sparse`: the machine's run
+    ends in failure, or in its own error. -/
+theorem fail_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
+    (rs : List PMA_Region) (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC)
+    (C : BitVec 64 → Prop) (hnx : NoCodeRam C) (hni : NoCodeIn C)
+    (m0 : Mem) (hspec : SpecRom zrom C m0) (s0 : RVState) (hs0 : Start s0 rs entry m0)
+    (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
+    (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
+    (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
+    (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
+    (pc : BitVec 64) (hpc : (sIter 0 k ⟨s0, fc⟩).rv.regs.get? Register.PC = some pc) (hpx : ExecAt rs pc) (hpcc : C pc)
+    (w : BitVec 32) (hrw : ZiskRiscv.readWord (sIter 0 k ⟨s0, fc⟩).rv.mem pc.toNat = some w)
+    (h4 : (pc + 4).toNat = pc.toNat + 4) (h8 : (pc + 8).toNat = pc.toNat + 8) (c : ZiskRiscv.Call)
+    (hd : ZiskRiscv.decode (Transpiler.fetch3 pc w (nextWord (sIter 0 k ⟨s0, fc⟩).rv pc)
+      (nextWord2 (sIter 0 k ⟨s0, fc⟩).rv pc)) pc.toNat = .call c)
+    (hC4 : c.len ≠ 1 → C (pc + 4)) (hC8 : c.len = 3 → C (pc + 8))
+    (hfail : CallFail (sIter 0 k ⟨s0, fc⟩) c)
+    (s0' : RVState) (hsp : Ext zeroFill s0' s0) (hcode : ∀ pc, C pc → ∃ w, ZiskRiscv.readWord s0'.mem pc.toNat = some w) :
+    ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
+      ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
+    ∃ n z1 e z', ZRun zrom n z0 z1 ∧ (zstep zrom).run z1 = .error e z' := by
+  refine ⟨?_, (fail_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun
+    hin pc hpc hpx hpcc w hrw h4 h8 c hd hfail).2⟩
+  obtain ⟨z1, -, -, hrel, hfr, hspr, -, hm⟩ :=
+    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
+  generalize sIter 0 k ⟨s0, fc⟩ = T at *
+  have hmr := hm (PcOk.of_exec ht hpc hpx)
+  have htr := hspr pc w hpcc hrw ⟨0, _, convert_call3 hd 0⟩
+  obtain ⟨-, -, err, hc, hne⟩ := callfail_m T z1 rs hrel hfr hx pc hpc zrom w hpx hrw htr h4 h8 c hd hfail
+  have hg : model.getPC T.rv = pc := by simp [model, hpc]
+  have hxT : model.getPC T.rv ≠ model.exitAddr := by
+    rw [hg]; intro e; have e' : pc = EXIT_ADDR := e; exact hx (e' ▸ hpx)
+  have hdT : ∀ fetch : Nat → Option (BitVec 32),
+      fetch (model.getPC T.rv).toNat = ZiskRiscv.readWord (model.mem T.rv) (model.getPC T.rv).toNat →
+      (c.len ≠ 1 → fetch ((model.getPC T.rv).toNat + 4) =
+        ZiskRiscv.readWord (model.mem T.rv) ((model.getPC T.rv).toNat + 4)) →
+      (c.len = 3 → fetch ((model.getPC T.rv).toNat + 8) =
+        ZiskRiscv.readWord (model.mem T.rv) ((model.getPC T.rv).toNat + 8)) →
+      ZiskRiscv.decode fetch (model.getPC T.rv).toNat = .call c := by
+    intro fetch f0 f4 f8
+    rw [hg] at f0 f4 f8 ⊢
+    refine decode_any3 hd fetch (by rw [f0]; exact hrw) (fun hl => ?_) fun hl => ?_
+    · rw [f4 hl, nextWord, h4]; rfl
+    · rw [f8 hl, nextWord2, h8]; rfl
+  rcases runs_sparse hmr ⟨s0', fc⟩ ⟨hsp, rfl⟩ hcode with ⟨Sk, hsk, hgk, hgo⟩ | ⟨msg, hmsg⟩
+  · have hcdk : CodeIn C Sk := CodeIn.grow (S := ⟨s0', fc⟩) hcode hgk
+    rcases go_sparse_fail hxT (by rw [hg]; exact hpcc) c (fun hl => by rw [hg]; exact ⟨hC4 hl, h4⟩)
+        (fun hl => by rw [hg]; exact ⟨hC8 hl, h8⟩) hdT hc hne 4096 Sk hsk hcdk with ⟨S', m, hs⟩ | ⟨msg, hs⟩
+    · refine .inl ⟨S', m, fun fuel => ?_⟩
+      have hs' : ZiskRiscv.step Sk = .ok (S', .failure m) := hs
+      simp only [ZiskRiscv.run]
+      rw [show k + 1 + fuel = k + (fuel + 1) by omega, hgo, ZiskRiscv.run.go]
+      simp [hs', bind, Except.bind, pure, Except.pure]
+    · refine .inr ⟨msg, fun fuel => ?_⟩
+      have hs' : ZiskRiscv.step Sk = .error msg := hs
+      simp only [ZiskRiscv.run]
+      rw [show k + 1 + fuel = k + (fuel + 1) by omega, hgo, ZiskRiscv.run.go]
+      simp [hs', bind, Except.bind]
   · exact .inr ⟨msg, fun fuel => by
       simp only [ZiskRiscv.run]; rw [show k + 1 + fuel = k + (fuel + 1) by omega]; exact hmsg _ 0⟩
 

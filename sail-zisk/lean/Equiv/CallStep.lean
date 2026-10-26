@@ -266,6 +266,49 @@ theorem callstep1 (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState) (rs : List
   exact ⟨S', z', h1, h2, h3, h4, by rw [← hcm]; exact h5, by rw [← hcm]; exact h6⟩
 
 set_option maxHeartbeats 16000000 in
+/-- A call's count stored to EXTRA_PARAMS_ADDR: ZisK's first step on the
+    spec's translation of a call with a count, on to ia, its memory the
+    call's (`callMem`) but for the input's first 8 bytes. -/
+theorem count_store (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
+    (hf : Equiv.Zisk.FcallRel S.fcall z) (c : ZiskRiscv.Call) (rc : Nat) (hcn : c.count = some rc) (lr : rc < 32)
+    (xs : Vector (BitVec 64) 40) (hx : z.regs.get? _root_.Zisk.Register.Xs = some xs) (agree : RegsAgree S.rv xs)
+    (pc : BitVec 64) (hzpc : z.regs.get? _root_.Zisk.Register.PC = some pc) (st : BitVec 64)
+    (hst : z.regs.get? _root_.Zisk.Register.Step = some st)
+    (hze : z.regs.get? _root_.Zisk.Register.Zerror = some false)
+    (hzm : Equiv.normIn z.mem = Equiv.normIn S.rv.mem) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (ia : BitVec 64)
+    (h1 : zrom pc = Transpiler.mk (.A_IMM, 0) (Transpiler.srcB rc) (.ZOP_COPYB ())
+      (.ST_MEM, Transpiler.EXTRA_PARAMS_ADDR, false) (ia - pc) (ia - pc)) :
+    ∃ z1, (zstep zrom).run z = .ok false z1 ∧ z1.regs.get? _root_.Zisk.Register.Xs = some xs ∧
+      z1.regs.get? _root_.Zisk.Register.PC = some ia ∧
+      z1.regs.get? _root_.Zisk.Register.Step = some (BitVec.addInt st 1) ∧
+      z1.regs.get? _root_.Zisk.Register.Zerror = some false ∧ Equiv.Zisk.FcallRel S.fcall z1 ∧
+      callMem S c = Equiv.memWrite (n := 8) S.rv.mem Transpiler.EXTRA_PARAMS_ADDR.toNat (Equiv.Zisk.regv xs rc) ∧
+      Equiv.normIn z1.mem = Equiv.normIn (callMem S c) := by
+  have hz1 := Equiv.Zisk.execute_store_mem z (Transpiler.srcB rc) Transpiler.EXTRA_PARAMS_ADDR (ia - pc) xs pc st
+    hx hzpc hst _ (Equiv.Zisk.srcB_BSrc xs rc lr) (by decide) (by decide)
+  rw [← h1, ← zstep_run zrom z pc hzpc] at hz1
+  generalize hz1s : ({ z with regs := _, mem := _ } : Equiv.Zisk.ZState) = z1 at hz1
+  have eia : pc + (ia - pc) = ia := by rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
+  have hgx : model.getX S.rv rc = Equiv.Zisk.regv xs rc := by simp [model, getX_regv agree lr]
+  have hcm : callMem S c = Equiv.memWrite (n := 8) S.rv.mem Transpiler.EXTRA_PARAMS_ADDR.toNat
+      (Equiv.Zisk.regv xs rc) := by
+    simp only [callMem, hcn, hgx, writeDword_eq]; rfl
+  refine ⟨z1, hz1, ?_, ?_, ?_, ?_, ?_, hcm, ?_⟩
+  · subst hz1s; simp [Std.ExtDHashMap.get?_insert, hx]
+  · subst hz1s; simp [Std.ExtDHashMap.get?_insert, eia]
+  · subst hz1s; simp [Std.ExtDHashMap.get?_insert]
+  · subst hz1s; simp [Std.ExtDHashMap.get?_insert, hze]
+  · intro q hq; subst hz1s
+    have hne : ∀ q', Equiv.Zisk.fregs q' = false → (q' == q) = false := fun q' h => by
+      cases e : (q' == q)
+      · rfl
+      · simp at e; subst e; rw [hq] at h; cases h
+    simp only [Std.ExtDHashMap.get?_insert, hne .PC rfl, hne .Step rfl, hne .Zflag rfl, hne .Zc rfl,
+      Bool.false_eq_true, dite_false]
+    exact hf q hq
+  · subst hz1s; rw [hcm]; exact Equiv.normIn_memWrite hzm _ _
+
+set_option maxHeartbeats 16000000 in
 /-- A ZisK call with a count: the machine's call, and ZisK's two steps on
     the spec's translation (the count's store to EXTRA_PARAMS_ADDR, the
     operation at ia), keep the states related. -/
@@ -286,33 +329,8 @@ theorem callstep2 (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState) (rs : List
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
   obtain ⟨lr, hce⟩ := hw.count rc hcn
-  -- ZisK: the count's store
-  have hz1 := Equiv.Zisk.execute_store_mem z (Transpiler.srcB rc) Transpiler.EXTRA_PARAMS_ADDR (ia - pc') xs pc' st
-    hx hzpc hst _ (Equiv.Zisk.srcB_BSrc xs rc lr) (by decide) (by decide)
-  rw [← h1, ← zstep_run zrom z pc' hzpc] at hz1
-  generalize hz1s : ({ z with regs := _, mem := _ } : Equiv.Zisk.ZState) = z1 at hz1
-  have eia : pc' + (ia - pc') = ia := by rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
-  have hx1 : z1.regs.get? _root_.Zisk.Register.Xs = some xs := by subst hz1s; simp [Std.ExtDHashMap.get?_insert, hx]
-  have hpc1 : z1.regs.get? _root_.Zisk.Register.PC = some ia := by subst hz1s; simp [Std.ExtDHashMap.get?_insert, eia]
-  have hst1 : z1.regs.get? _root_.Zisk.Register.Step = some (BitVec.addInt st 1) := by
-    subst hz1s; simp [Std.ExtDHashMap.get?_insert]
-  have hze1 : z1.regs.get? _root_.Zisk.Register.Zerror = some false := by
-    subst hz1s; simp [Std.ExtDHashMap.get?_insert, hze]
-  have hf1 : Equiv.Zisk.FcallRel S.fcall z1 := by
-    intro q hq; subst hz1s
-    have hne : ∀ q', Equiv.Zisk.fregs q' = false → (q' == q) = false := fun q' h => by
-      cases e : (q' == q)
-      · rfl
-      · simp at e; subst e; rw [hq] at h; cases h
-    simp only [Std.ExtDHashMap.get?_insert, hne .PC rfl, hne .Step rfl, hne .Zflag rfl, hne .Zc rfl,
-      Bool.false_eq_true, dite_false]
-    exact hf q hq
-  have hgx : model.getX S.rv rc = Equiv.Zisk.regv xs rc := by simp [model, getX_regv agree lr]
-  have hcm : callMem S c = Equiv.memWrite (n := 8) S.rv.mem Transpiler.EXTRA_PARAMS_ADDR.toNat
-      (Equiv.Zisk.regv xs rc) := by
-    simp only [callMem, hcn, hgx, writeDword_eq]; rfl
-  have hzm1 : Equiv.normIn z1.mem = Equiv.normIn (callMem S c) := by
-    subst hz1s; rw [hcm]; exact Equiv.normIn_memWrite hzm _ _
+  obtain ⟨z1, hz1, hx1, hpc1, hst1, hze1, hf1, hcm, hzm1⟩ :=
+    count_store S z rs hf c rc hcn lr xs hx agree pc' hzpc st hst hze hzm zrom ia h1
   have hj1 : (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then (0 : BitVec 64) else 0) =
       (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0) := by rw [hce]
   have hj2 : ia + (pc' + BitVec.ofNat 64 (4 * c.len) - ia) = pc' + BitVec.ofNat 64 (4 * c.len) := by
@@ -325,6 +343,51 @@ theorem callstep2 (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState) (rs : List
   have := ha; unfold Equiv.OffRam at this
   have e : Transpiler.EXTRA_PARAMS_ADDR.toNat = 0xA0400F00 := rfl
   rw [e]; omega
+
+/-- A call's failure: its operation fails on the memory it starts from,
+    without the input's first 8 bytes, and not by reading a byte that is
+    not there. -/
+def CallFail (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) : Prop :=
+  ∃ e σ', (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
+    (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run
+    (ZiskRiscv.ziskState (Equiv.normIn (callMem S c)) S.fcall) = .error e σ' ∧ ∀ k, e ≠ .OutOfMemoryRange k
+
+set_option maxHeartbeats 16000000 in
+/-- A ZisK call whose operation fails: the machine's call fails, and ZisK's
+    step on the spec's instruction for it at p, the same way. -/
+theorem zcall_fail (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) (hw : CallWF c)
+    (xs : Vector (BitVec 64) 40) (agree : RegsAgree S.rv xs)
+    (z : Equiv.Zisk.ZState) (hx : z.regs.get? _root_.Zisk.Register.Xs = some xs) (p : BitVec 64)
+    (hzpc : z.regs.get? _root_.Zisk.Register.PC = some p)
+    (hzm : Equiv.normIn z.mem = Equiv.normIn (callMem S c)) (hf : Equiv.Zisk.FcallRel S.fcall z)
+    (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (j1 j2 : BitVec 64)
+    (hrom : zrom p = Transpiler.mk (Transpiler.argA c.a) (Transpiler.argB c.b) c.op (Transpiler.storeReg c.rd) j1 j2)
+    (hj1 : (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then j1 else 0) =
+      (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0))
+    (hfail : CallFail S c) :
+    ∃ e z', ZiskRiscv.call S c = .error (.ofSail e) ∧ (zstep zrom).run z = .error e z' ∧
+      ∀ k, e ≠ .OutOfMemoryRange k := by
+  obtain ⟨e, σ', href, hne⟩ := hfail
+  have hm : ∃ τ, (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
+      (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run
+      (ZiskRiscv.ziskState (callMem S c) S.fcall) = .error e τ := by
+    rcases (Equiv.Zisk.Frame.exec_mem _ _ _ _).2 _ _ (Equiv.Zisk.FR.ref_machine _ _) e σ' href with
+      ⟨k, rfl, -, -⟩ | h
+    · exact absurd rfl (hne k)
+    · exact h
+  have hz : ∃ τ, (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
+      (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run z = .error e τ := by
+    rcases (Equiv.Zisk.Frame.exec_mem _ _ _ _).2 _ _ (Equiv.Zisk.FR.ref_zisk hzm hf) e σ' href with
+      ⟨k, rfl, -, -⟩ | h
+    · exact absurd rfl (hne k)
+    · exact h
+  obtain ⟨τ, hτ⟩ := hm
+  obtain ⟨τz, hτz⟩ := hz
+  refine ⟨e, τz, call_err S c _ (Equiv.Zisk.runOp_err hτ), ?_, hne⟩
+  rw [zstep_run zrom z p hzpc, hrom]
+  exact Equiv.Zisk.execute_zcall_err z _ _ c.op c.rd j1 j2 _ _
+    (Equiv.Zisk.source_a_run z _ _ _ _ _ _ xs hx _ (argA_src agree S.fcall c.a hw.a hw.afree))
+    (argB_src S.rv z agree hx S.fcall hf c.b hw.b _ _ _ _ _ _) e τz (by rw [hj1]; exact hτz)
 
 /-- A ZisK step on an instruction whose operation does not write the fcall
     registers leaves them, and so the fcall relation, as they are. -/

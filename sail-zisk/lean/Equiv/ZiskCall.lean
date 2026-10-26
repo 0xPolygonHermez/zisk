@@ -53,6 +53,20 @@ theorem execute_zcall (s : ZState) (ra : a_src × BitVec 64) (rb : b_src × BitV
         rw [readReg_run'] <;> simp [Std.ExtDHashMap.get?_insert, hpc]
 
 set_option maxHeartbeats 4000000 in
+/-- A ZisK call whose operation fails: the instruction fails the same way. -/
+theorem execute_zcall_err (s : ZState) (ra : a_src × BitVec 64) (rb : b_src × BitVec 64) (op : zisk_op)
+    (rd : Nat) (j1 j2 : BitVec 64) (va vb : BitVec 64)
+    (hsa : (source_a (Transpiler.mk ra rb op (Transpiler.storeReg rd) j1 j2)).run s = .ok va s)
+    (hsb : (source_b (Transpiler.mk ra rb op (Transpiler.storeReg rd) j1 j2) va).run s = .ok vb s)
+    (e : Sail.Error exception) (s1 : ZState)
+    (hrun : (zisk_exec_mem op va vb (if zisk_op_is_precompiled op then j1 else 0)).run s = .error e s1) :
+    (zisk_execute (Transpiler.mk ra rb op (Transpiler.storeReg rd) j1 j2)).run s = .error e s1 := by
+  simp only [zisk_execute, run_bind', hsa, hsb]
+  have hz : (zeros : BitVec 64) = 0 := rfl
+  simp only [Transpiler.mk, hz]
+  rw [hrun]
+
+set_option maxHeartbeats 4000000 in
 /-- The a source of a call instruction: an immediate, or a register 1..39. -/
 theorem source_a_run (s : ZState) (ra : a_src × BitVec 64) (rb : b_src × BitVec 64) (op : zisk_op)
     (st : c_store × BitVec 64 × Bool) (j1 j2 : BitVec 64) (xs : Vector (BitVec 64) 40)

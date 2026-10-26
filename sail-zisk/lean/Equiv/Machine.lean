@@ -297,4 +297,21 @@ theorem run_of {k : Nat} {S T T' : ZiskRiscv.State model} {st : ZiskRiscv.Status
   rw [Nat.zero_add] at this
   exact this
 
+theorem run_go_err {k : Nat} {S T : ZiskRiscv.State model} {msg : String} (h : MRun k S T)
+    (he : ZiskRiscv.step T = .error msg) (fuel n : Nat) :
+    ZiskRiscv.run.go (k + 1 + fuel) n S = .error msg := by
+  induction h generalizing n with
+  | done =>
+    rw [show 0 + 1 + fuel = fuel + 1 by omega]
+    simp [ZiskRiscv.run.go, he, bind, Except.bind]
+  | @step m _ _ _ h1 _ ih =>
+    rw [show m + 1 + 1 + fuel = (m + 1 + fuel) + 1 by omega]
+    simp only [ZiskRiscv.run.go, h1, bind, Except.bind]
+    exact ih he (n + 1)
+
+/-- A run: steps that leave it going, then one that is the machine's error. -/
+theorem run_err_of {k : Nat} {S T : ZiskRiscv.State model} {msg : String} (h : MRun k S T)
+    (he : ZiskRiscv.step T = .error msg) (fuel : Nat) : ZiskRiscv.run (k + 1 + fuel) S = .error msg :=
+  run_go_err h he fuel 0
+
 end Equiv.Machine
