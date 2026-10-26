@@ -1834,7 +1834,9 @@ impl Coordinator {
         }
     }
 
-    /// Checks for computing workers with stale heartbeats and fails their jobs.
+    /// Fails the job of every computing worker with a stale heartbeat, then
+    /// disconnects every worker with a stale heartbeat, so a frozen `Ready`
+    /// worker is not given the next job.
     pub async fn check_stale_heartbeats(&self) {
         let threshold = chrono::Duration::seconds(
             (self.config.coordinator.heartbeat_interval_seconds
@@ -1854,6 +1856,11 @@ impl Coordinator {
             if let Err(e) = self.fail_job(job_id, &reason).await {
                 error!("Failed to abort job {} due to stale heartbeat: {}", job_id, e);
             }
+        }
+
+        // Failing the job parked its stale workers, so they are disconnected here too.
+        for worker_id in self.disconnect_stale_workers(threshold).await {
+            warn!("[Monitor] Worker {} missed heartbeats; disconnected", worker_id);
         }
     }
 
@@ -2291,6 +2298,38 @@ mod tests {
 
         let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
         assert_eq!(entry.read().await.state, JobState::Failed);
+        // The stale worker is dropped; the other stays parked for its recovery.
+        assert_eq!(
+            coordinator.workers_pool.worker_state(w0).await,
+            Some(WorkerState::Disconnected)
+        );
+        let w1 = &_workers[1].0;
+        assert_eq!(coordinator.workers_pool.worker_state(w1).await, Some(WorkerState::SettingUp));
+    }
+
+    /// A `Ready` worker that stopped heartbeating leaves the available capacity
+    /// before it can be given a job.
+    #[tokio::test]
+    async fn test_check_stale_heartbeats_disconnects_ready_worker() {
+        let coordinator = Coordinator::new(test_config_with(|c| {
+            c.coordinator.heartbeat_interval_seconds = 30;
+            c.coordinator.heartbeat_max_missed = 3;
+        }));
+        let (w0, _) = register_test_worker(&coordinator.workers_pool, "w0").await;
+        coordinator.workers_pool.mark_worker_with_state(&w0, WorkerState::Ready).await.unwrap();
+        coordinator
+            .workers_pool
+            .set_last_heartbeat(&w0, Utc::now() - chrono::Duration::seconds(100))
+            .await
+            .unwrap();
+
+        coordinator.check_stale_heartbeats().await;
+
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0).await,
+            Some(WorkerState::Disconnected)
+        );
+        assert_eq!(coordinator.workers_pool.capacity_snapshot().await.available, 0);
     }
 
     #[tokio::test]
