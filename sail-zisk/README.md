@@ -404,6 +404,82 @@ Nothing below is assumed already built.
 
 ### The run
 
+The steps below, top to bottom, and what each reads and writes: rounded
+nodes are commands, slanted ones files; a dotted edge is an input a command
+uses when it is there. A file an earlier step makes appears again where a
+later one reads it.
+
+```mermaid
+flowchart TB
+  classDef cmd fill:#dbeafe,stroke:#1d4ed8,color:#1e3a8a
+  classDef file fill:#fef3c7,stroke:#b45309,color:#78350f
+
+  subgraph S0 ["0. Clone"]
+    direction LR
+    c0(["git clone, git checkout feature/sail"]):::cmd --> f0[/"zisk/sail-zisk"/]:::file
+  end
+
+  subgraph S1 ["1. Typecheck the model"]
+    direction LR
+    i1[/"model/*.sail"/]:::file --> c1(["make check"]):::cmd
+  end
+
+  subgraph S2 ["2. The opcodes against Rust"]
+    direction LR
+    i2[/"model/*.sail, zisk_ops.rs"/]:::file --> c2(["make ops"]):::cmd
+  end
+
+  subgraph S3 ["3. Every operation against ZisK's"]
+    direction LR
+    i3[/"model/*.sail, zisk_ops.rs"/]:::file --> c3(["make optest"]):::cmd --> o3[/"build/optest/: vectors.txt, op_checks.sail, result.txt"/]:::file
+  end
+
+  subgraph S4 ["4. The model against ziskemu"]
+    direction LR
+    i4[/"model/*.sail, test/programs, ../ziskasm, an ELF and its input"/]:::file --> c4(["make difftest-all"]):::cmd
+    c4 --> o4a[/"build/c/zisk_emu"/]:::file
+    c4 --> o4b[/"build/difftest/NAME/: mem.args, sail.trace"/]:::file
+  end
+
+  subgraph S5 ["5. The architectural tests"]
+    direction LR
+    i5a[/"build/riscv/zisk_rv64.json (step 7)"/]:::file --> c5a(["make riscv-sim"]):::cmd --> o5a[/"sail_riscv_sim"/]:::file
+    i5b[/"riscv-arch-test, a RISC-V GCC, build/c/zisk_emu"/]:::file --> c5b(["make compliance"]):::cmd --> o5b[/"build/compliance/: results.txt, SUITE/*.elf"/]:::file
+    o5a -.-> c5b
+    i5c[/"zisk_riscv_run (step 9)"/]:::file -.-> c5b
+  end
+
+  subgraph S6 ["6. The model's Lean"]
+    direction LR
+    i6[/"model/*.sail"/]:::file --> c6a(["make lean"]):::cmd --> o6a[/"build/lean/Zisk"/]:::file --> c6b(["make lean-build"]):::cmd --> o6b[/"build/lean/Zisk, elaborated"/]:::file
+  end
+
+  subgraph S7 ["7. sail-riscv's Lean"]
+    direction LR
+    i7[/"sail-riscv, at the pinned commit"/]:::file --> c7a(["make riscv"]):::cmd
+    c7a --> o7a[/"build/riscv/zisk_rv64.json"/]:::file
+    c7a --> o7b[/"lean/Equiv/Regions.lean"/]:::file
+    c7a --> o7c[/"build/riscv-lean/Lean_ZiskRV"/]:::file --> c7b(["make riscv-lean"]):::cmd --> o7d[/"Lean_ZiskRV, elaborated"/]:::file
+  end
+
+  subgraph S8 ["8. Both models, and the proofs"]
+    direction LR
+    i8[/"both models elaborated, lean/: Equiv, ZiskRiscv, Transpiler"/]:::file --> c8(["make equiv"]):::cmd --> o8[/"lean/.lake: the proofs, checked"/]:::file
+  end
+
+  subgraph S9 ["9. ZisK's RISC-V machine"]
+    direction LR
+    i9a[/"sail-riscv, build/riscv/zisk_rv64.json"/]:::file --> c9a(["make riscv-run"]):::cmd
+    c9a --> o9a[/"build/riscv-lean/Lean_ZiskRV_executable, lean/ZiskRiscvRun/Registers.lean"/]:::file
+    c9a --> o9b[/"lean/.lake/build/bin/zisk_riscv_run"/]:::file
+    o9b --> c9b(["make zisk-riscv"]):::cmd
+    i9b[/"build/difftest/NAME/ (step 4)"/]:::file --> c9b
+    c9b --> o9c[/"build/difftest/NAME/riscv.end"/]:::file
+  end
+
+  S0 --> S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> S8 --> S9
+```
+
 **0. Clone, and check out this branch.** The model lives on `feature/sail`
 until it merges.
 
