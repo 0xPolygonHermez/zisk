@@ -186,7 +186,7 @@ theorem zisk_amo_any (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (z : Equiv.Zis
       (∃ st, z'.regs.get? _root_.Zisk.Register.Step = some st ∧
         z'.regs.get? _root_.Zisk.Register.Zerror = some false) ∧
       z'.mem = Equiv.memWrite (n := aW i.d) z.mem (regv xs i.rs1.toNat + 0).toNat
-        ((amoStored i.op i.d L (regv xs i.rs2.toNat)).setWidth (8 * aW i.d)) := by
+        ((amoStored i.op i.d L (regv xs i.rs2.toNat)).setWidth (8 * aW i.d)) ∧ FKeep z z' := by
   intro L
   obtain ⟨hrd, hr1, hr2⟩ := i.regs
   have ld : i.rd.toNat < 32 := i.rd.isLt
@@ -198,28 +198,30 @@ theorem zisk_amo_any (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (z : Equiv.Zis
     cases hop : i.op <;> simp only [hop, amoStored] at hrom ⊢
     · simp only [List.mem_cons, List.mem_singleton, forall_eq_or_imp, forall_eq, List.not_mem_nil, or_false] at hrom
       obtain ⟨q1, q2⟩ := hrom
-      obtain ⟨z', hz, hxs, hp, hs, hmem⟩ := zisk_amo_swap zrom z _ (aLoad_pure i.d) (aW i.d) _ _ _ ld l1 l2
-        hdir.1 hdir.2 xs pc st ia hx hpc hst hze v hrb hwr hnr hin hm q1 q2
-      exact ⟨z', 2, hz, hxs, hp, hs, hmem⟩
+      obtain ⟨z', hz, hxs, hp, hs, hmem, hk⟩ := zisk_amo_swap zrom z _ (aLoad_pure i.d) (aLoad_keep i.d) (aW i.d)
+        _ _ _ ld l1 l2 hdir.1 hdir.2 xs pc st ia hx hpc hst hze v hrb hwr hnr hin hm q1 q2
+      exact ⟨z', 2, hz, hxs, hp, hs, hmem, hk⟩
     all_goals
       simp only [List.mem_cons, List.mem_singleton, forall_eq_or_imp, forall_eq, List.not_mem_nil, or_false] at hrom
       obtain ⟨q1, q2, q3⟩ := hrom
-      obtain ⟨z', hz, hxs, hp, hs, hmem⟩ := zisk_amo_op zrom z _ _ (aLoad_pure i.d) (hop ▸ i.op.pure i.d) (aW i.d)
+      obtain ⟨z', hz, hxs, hp, hs, hmem, hk⟩ := zisk_amo_op zrom z _ _ (aLoad_pure i.d) (hop ▸ i.op.pure i.d)
+        (aLoad_keep i.d) (hop ▸ amoZop_keep i.d i.op) (aW i.d)
         _ _ _ ld l1 l2 hdir.1 hdir.2 xs pc st ia hx hpc hst hze v hrb hwr hnr hin hm q1 (hop ▸ q2) q3
-      exact ⟨z', 3, hz, ⟨_, hxs, fun _ _ => rfl⟩, hp, hs, hmem⟩
+      exact ⟨z', 3, hz, ⟨_, hxs, fun _ _ => rfl⟩, hp, hs, hmem, hk⟩
   · simp only [if_neg hdir] at hrom
     cases hop : i.op <;> simp only [hop, amoStored] at hrom ⊢
     · simp only [List.mem_cons, List.mem_singleton, forall_eq_or_imp, forall_eq, List.not_mem_nil, or_false] at hrom
       obtain ⟨q1, q2, q3⟩ := hrom
-      obtain ⟨z', hz, hxs, hp, hs, hmem⟩ := zisk_amo_swap32 zrom z _ (aLoad_pure i.d) (aW i.d) _ _ _ ld l1 l2
-        xs pc st ia hx hpc hst hze v hrb hwr hnr hin hm q1 q2 q3
-      exact ⟨z', 3, hz, hxs, hp, hs, hmem⟩
+      obtain ⟨z', hz, hxs, hp, hs, hmem, hk⟩ := zisk_amo_swap32 zrom z _ (aLoad_pure i.d) (aLoad_keep i.d) (aW i.d)
+        _ _ _ ld l1 l2 xs pc st ia hx hpc hst hze v hrb hwr hnr hin hm q1 q2 q3
+      exact ⟨z', 3, hz, hxs, hp, hs, hmem, hk⟩
     all_goals
       simp only [List.mem_cons, List.mem_singleton, forall_eq_or_imp, forall_eq, List.not_mem_nil, or_false] at hrom
       obtain ⟨q1, q2, q3, q4⟩ := hrom
-      obtain ⟨z', hz, hxs, hp, hs, hmem⟩ := zisk_amo_op32 zrom z _ _ (aLoad_pure i.d) (hop ▸ i.op.pure i.d) (aW i.d)
+      obtain ⟨z', hz, hxs, hp, hs, hmem, hk⟩ := zisk_amo_op32 zrom z _ _ (aLoad_pure i.d) (hop ▸ i.op.pure i.d)
+        (aLoad_keep i.d) (hop ▸ amoZop_keep i.d i.op) (aW i.d)
         _ _ _ ld l1 l2 xs pc st ia hx hpc hst hze v hrb hwr hnr hin hm q1 (hop ▸ q2) q3 q4
-      exact ⟨z', 4, hz, hxs, hp, hs, hmem⟩
+      exact ⟨z', 4, hz, hxs, hp, hs, hmem, hk⟩
 
 /-! ## The step -/
 
@@ -263,7 +265,7 @@ theorem amostep_rel_d (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
     (hi : WordsAt s rs pc zrom (AmoInstr.mk op true aq rl rd rs1 rs2).encode next) (v1 : BitVec 64) (hv1 : getX s (AmoInstr.mk op true aq rl rd rs1 rs2).rs1.toNat = some v1)
     (hok : AmoOk s rs (AmoInstr.mk op true aq rl rd rs1 rs2) v1) (n : Nat) :
     ∃ s' z' k, (interpretSailEffects (try_step n false)).run s = .ok false s' ∧ ZRun zrom k z z' ∧
-      Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) ∧ RamOnly s.mem s'.mem := by
+      Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) ∧ RamOnly s.mem s'.mem ∧ FKeep z z' := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -304,11 +306,11 @@ theorem amostep_rel_d (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
       rfl) n
   -- ZisK's steps
   obtain ⟨ia, hrom⟩ := (AmoInstr.mk op true aq rl rd rs1 rs2).rom_of_spec hi.tr
-  obtain ⟨z', k, hz, ⟨xs', hx', hxs''⟩, hzpc', hst', hzm'⟩ := zisk_amo_any zrom z (AmoInstr.mk op true aq rl rd rs1 rs2) xs pc' st ia hx hzpc hst hze
+  obtain ⟨z', k, hz, ⟨xs', hx', hxs''⟩, hzpc', hst', hzm', hk⟩ := zisk_amo_any zrom z (AmoInstr.mk op true aq rl rd rs1 rs2) xs pc' st ia hx hzpc hst hze
     v (by rw [hxv]; simpa [aW] using hzr) (by rw [hxv]; simpa [aW] using hzw) (by rw [hxv]; simpa [aW] using hzn)
     (by rw [hxv]; simpa [aW] using hzi) (by rw [hxv, show v1 + 0 = v1 from by bv_decide, Equiv.memRead_normIn hzm hok.inOff]; simpa using hbytes) hrom
   refine ⟨s', z', k, hrun, hz, ⟨hr.keep hwf ho, ⟨xs', hx', ?_⟩, ⟨_, hpc'', hzpc'⟩, hst', ?_⟩, hpc'',
-    hmem ▸ memWrite_ramOnly _ _ _ hzw⟩
+    hmem ▸ memWrite_ramOnly _ _ _ hzw, hk⟩
   · intro k hk1 hk2
     rw [hxs' k hk2]
     have a := regs_after0 s xs (AmoInstr.mk op true aq rl rd rs1 rs2).rd.toNat v ld agree k hk1 hk2
@@ -331,7 +333,7 @@ theorem amostep_rel_w (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
     (hi : WordsAt s rs pc zrom (AmoInstr.mk op false aq rl rd rs1 rs2).encode next) (v1 : BitVec 64) (hv1 : getX s (AmoInstr.mk op false aq rl rd rs1 rs2).rs1.toNat = some v1)
     (hok : AmoOk s rs (AmoInstr.mk op false aq rl rd rs1 rs2) v1) (n : Nat) :
     ∃ s' z' k, (interpretSailEffects (try_step n false)).run s = .ok false s' ∧ ZRun zrom k z z' ∧
-      Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) ∧ RamOnly s.mem s'.mem := by
+      Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) ∧ RamOnly s.mem s'.mem ∧ FKeep z z' := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -372,11 +374,11 @@ theorem amostep_rel_w (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
       rfl) n
   -- ZisK's steps
   obtain ⟨ia, hrom⟩ := (AmoInstr.mk op false aq rl rd rs1 rs2).rom_of_spec hi.tr
-  obtain ⟨z', k, hz, ⟨xs', hx', hxs''⟩, hzpc', hst', hzm'⟩ := zisk_amo_any zrom z (AmoInstr.mk op false aq rl rd rs1 rs2) xs pc' st ia hx hzpc hst hze
+  obtain ⟨z', k, hz, ⟨xs', hx', hxs''⟩, hzpc', hst', hzm', hk⟩ := zisk_amo_any zrom z (AmoInstr.mk op false aq rl rd rs1 rs2) xs pc' st ia hx hzpc hst hze
     v (by rw [hxv]; simpa [aW] using hzr) (by rw [hxv]; simpa [aW] using hzw) (by rw [hxv]; simpa [aW] using hzn)
     (by rw [hxv]; simpa [aW] using hzi) (by rw [hxv, show v1 + 0 = v1 from by bv_decide, Equiv.memRead_normIn hzm hok.inOff]; simpa using hbytes) hrom
   refine ⟨s', z', k, hrun, hz, ⟨hr.keep hwf ho, ⟨xs', hx', ?_⟩, ⟨_, hpc'', hzpc'⟩, hst', ?_⟩, hpc'',
-    hmem ▸ memWrite_ramOnly _ _ _ hzw⟩
+    hmem ▸ memWrite_ramOnly _ _ _ hzw, hk⟩
   · intro k hk1 hk2
     rw [hxs' k hk2]
     have a := regs_after0 s xs (AmoInstr.mk op false aq rl rd rs1 rs2).rd.toNat (v.signExtend 64) ld agree k hk1 hk2
@@ -397,7 +399,7 @@ theorem amostep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
     (hi : WordsAt s rs pc zrom i.encode next) (v1 : BitVec 64) (hv1 : getX s i.rs1.toNat = some v1)
     (hok : AmoOk s rs i v1) (n : Nat) :
     ∃ s' z' k, (interpretSailEffects (try_step n false)).run s = .ok false s' ∧ ZRun zrom k z z' ∧
-      Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) ∧ RamOnly s.mem s'.mem := by
+      Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) ∧ RamOnly s.mem s'.mem ∧ FKeep z z' := by
   obtain ⟨op, d, aq, rl, rd, rs1, rs2⟩ := i
   cases d
   · exact amostep_rel_w s z rs hrel pc hpc zrom op aq rl rd rs1 rs2 next hi v1 hv1 hok n

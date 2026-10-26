@@ -7,6 +7,7 @@
   transpile time.
 -/
 import Equiv.Prog
+import Equiv.ZStepKeep
 
 namespace Equiv.Sim
 
@@ -114,7 +115,7 @@ theorem fused_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     ∃ s2 z', RVRun n 2 s s2 ∧ ZRun zrom 1 z z' ∧ Rel s2 z' rs ∧
       s2.regs.get? Register.PC = some (i.T pc) ∧
       StepReady (rvNext n s) rs ∧ (rvNext n s).regs.get? Register.PC = some (pc + 4) ∧
-      (rvNext n s).mem = s.mem ∧ s2.mem = s.mem := by
+      (rvNext n s).mem = s.mem ∧ s2.mem = s.mem ∧ FKeep z z' := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -143,7 +144,7 @@ theorem fused_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
       ⟨_, hpc2, ?_⟩,
       ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, ?_⟩, hpc2,
     by rw [rvNext_of hrun1]; exact hr1, by rw [rvNext_of hrun1]; exact hpc1, by rw [rvNext_of hrun1]; exact hmem1,
-    hmem2.trans hmem1⟩
+    hmem2.trans hmem1, zstep_fkeep hzpc (by rw [hi.rom]; rfl) hzrun⟩
   · intro k hk1 hk2
     have e8 : pc' + 4 + 4 = pc' + 8 := by rw [BitVec.add_assoc]; rfl
     rw [hxs2 k hk2]
@@ -208,7 +209,7 @@ theorem jo_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hre
     (v1 : BitVec 64) (hv1 : getX s i.rs1.toNat = some v1)
     (tal : (jalrTarget v1 i.imm)[0] = false ∧ (jalrTarget v1 i.imm)[1] = false) (n : Nat) :
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧ ZRun zrom 2 z z' ∧
-      Rel s' z' rs ∧ s'.regs.get? Register.PC = some (jalrTarget v1 i.imm) ∧ s'.mem = s.mem := by
+      Rel s' z' rs ∧ s'.regs.get? Register.PC = some (jalrTarget v1 i.imm) ∧ s'.mem = s.mem ∧ FKeep z z' := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -233,9 +234,11 @@ theorem jo_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hre
     (by simp [Std.ExtDHashMap.get?_insert, hx]) (by simp [eia])
     (by simp [Std.ExtDHashMap.get?_insert]) (by simp [Std.ExtDHashMap.get?_insert])
   rw [← hi.rom2, ← zstep_run zrom _ ia (by simp [eia])] at hz2
+  have hk := FKeep.trans (zstep_fkeep hzpc (by rw [hi.rom1]; rfl) hz1)
+    (zstep_fkeep (pc := ia) (by simp [eia]) (by rw [hi.rom2]; rfl) hz2)
   refine ⟨s', _, hrun, .step hz1 (.step hz2 (.done _)), ⟨hr', ⟨Equiv.Zisk.xsUpd xs i.rd.toNat (pc' + 4), ?_, ?_⟩,
     ⟨_, hpc'', ?_⟩, ⟨BitVec.addInt (BitVec.addInt st 1) 1, by simp [Std.ExtDHashMap.get?_insert],
-      by simp [Std.ExtDHashMap.get?_insert, hze]⟩, ?_⟩, hpc'', hmem⟩
+      by simp [Std.ExtDHashMap.get?_insert, hze]⟩, ?_⟩, hpc'', hmem, hk⟩
   · have e4 : ia + (pc' + 4 - ia) = pc' + 4 := by rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
     simp only [Std.ExtDHashMap.get?_insert, beq_iff_eq, reduceCtorEq, dite_false, e4]
     · exact linkRegs_xs _ xs i.rd.toNat (pc' + 4) (by simp [Std.ExtDHashMap.get?_insert, hx])
@@ -264,7 +267,7 @@ theorem one_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (h
   · obtain ⟨o, ho⟩ := ho
     obtain ⟨s', z', h1, h2, h3⟩ := step_rel2 s z rs hrel pc hpc zrom o ho n
     exact ⟨s', z', 1, h1, .step h2 (.done _), h3⟩
-  · obtain ⟨s', z', h1, h2, h3, -⟩ := jo_rel s z rs hrel pc hpc zrom i ia hi v1 hv1 ⟨t0, t1⟩ n
+  · obtain ⟨s', z', h1, h2, h3, -, -, -⟩ := jo_rel s z rs hrel pc hpc zrom i ia hi v1 hv1 ⟨t0, t1⟩ n
     exact ⟨s', z', 2, h1, h2, h3⟩
 
 /-- For the next k steps of sail-riscv, from the state it reaches: each one

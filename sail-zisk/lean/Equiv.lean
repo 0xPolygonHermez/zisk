@@ -122,3 +122,6 @@ import Equiv.ZiskCall
 import Equiv.CallSim
 import Equiv.CallStep
 import Equiv.CallDecode
+import Equiv.ZKeep
+import Equiv.ZKeepAll
+import Equiv.ZStepKeep

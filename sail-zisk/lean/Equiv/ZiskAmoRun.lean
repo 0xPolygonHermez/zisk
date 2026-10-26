@@ -30,7 +30,8 @@ theorem regv_xsUpd_ne (xs : Vector (BitVec 64) 40) (rd : Nat) (v : BitVec 64) (h
 set_option maxHeartbeats 8000000 in
 /-- An AMO but the swap, rd neither rs1 nor rs2: three steps. -/
 theorem zisk_amo_op (zrom : BitVec 64 → zisk_inst) (z : Equiv.Zisk.ZState) (lop op : zisk_op)
-    (hl : Equiv.Zisk.PureOp lop) (ho : Equiv.Zisk.PureOp op) (w : Nat) (rd rs1 rs2 : Nat)
+    (hl : Equiv.Zisk.PureOp lop) (ho : Equiv.Zisk.PureOp op) (fl : Equiv.Zisk.writesF lop = false)
+    (fo : Equiv.Zisk.writesF op = false) (w : Nat) (rd rs1 rs2 : Nat)
     (ld : rd < 32) (l1 : rs1 < 32) (l2 : rs2 < 32) (n1 : rd ≠ rs1) (n2 : rd ≠ rs2)
     (xs : Vector (BitVec 64) 40) (pc st ia : BitVec 64)
     (hx : z.regs.get? Register.Xs = some xs) (hpc : z.regs.get? Register.PC = some pc)
@@ -49,7 +50,8 @@ theorem zisk_amo_op (zrom : BitVec 64 → zisk_inst) (z : Equiv.Zisk.ZState) (lo
     ∃ z', ZRun zrom 3 z z' ∧ z'.regs.get? Register.Xs = some (Equiv.Zisk.xsUpd xs rd L) ∧
       z'.regs.get? Register.PC = some (pc + 4) ∧
       (∃ st, z'.regs.get? Register.Step = some st ∧ z'.regs.get? Register.Zerror = some false) ∧
-      z'.mem = Equiv.memWrite (n := w) z.mem (regv xs rs1 + 0).toNat (c.setWidth (8 * w)) := by
+      z'.mem = Equiv.memWrite (n := w) z.mem (regv xs rs1 + 0).toNat (c.setWidth (8 * w)) ∧
+      FKeep z z' := by
   intro L c
   have eia : pc + (ia - pc) = ia := by rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
   have e4 : ia + 2 + (pc + 4 - (ia + 2)) = pc + 4 := by rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
@@ -90,7 +92,10 @@ theorem zisk_amo_op (zrom : BitVec 64 → zisk_inst) (z : Equiv.Zisk.ZState) (lo
     (Equiv.Zisk.srcA_ASrc _ _ l1) hc2 (by rw [u1]; exact hwr) (by rw [u1]; exact hnr)
   rw [← r3, ← zstep_run zrom z2 (ia + 2) hpc2, u1] at hz3
   refine ⟨_, .step hz1 (.step hz2 (.step hz3 (.done _))), ?_, ?_,
-    ⟨BitVec.addInt (BitVec.addInt (BitVec.addInt st 1) 1) 1, ?_, ?_⟩, ?_⟩
+    ⟨BitVec.addInt (BitVec.addInt (BitVec.addInt st 1) 1) 1, ?_, ?_⟩, ?_, ?_⟩
+  rotate_right
+  · exact FKeep.trans (zstep_fkeep hpc (by rw [r1]; exact fl) hz1)
+      (FKeep.trans (zstep_fkeep hpc1 (by rw [r2]; exact fo) hz2) (zstep_fkeep hpc2 (by rw [r3]; rfl) hz3))
   · simp [Std.ExtDHashMap.get?_insert, hx2]
   · simp [Std.ExtDHashMap.get?_insert]; rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
   · simp [Std.ExtDHashMap.get?_insert]
@@ -101,7 +106,8 @@ theorem zisk_amo_op (zrom : BitVec 64 → zisk_inst) (z : Equiv.Zisk.ZState) (lo
 set_option maxHeartbeats 8000000 in
 /-- An AMO but the swap, rd rs1 or rs2: four steps, through register 32. -/
 theorem zisk_amo_op32 (zrom : BitVec 64 → zisk_inst) (z : Equiv.Zisk.ZState) (lop op : zisk_op)
-    (hl : Equiv.Zisk.PureOp lop) (ho : Equiv.Zisk.PureOp op) (w : Nat) (rd rs1 rs2 : Nat)
+    (hl : Equiv.Zisk.PureOp lop) (ho : Equiv.Zisk.PureOp op) (fl : Equiv.Zisk.writesF lop = false)
+    (fo : Equiv.Zisk.writesF op = false) (w : Nat) (rd rs1 rs2 : Nat)
     (ld : rd < 32) (l1 : rs1 < 32) (l2 : rs2 < 32)
     (xs : Vector (BitVec 64) 40) (pc st ia : BitVec 64)
     (hx : z.regs.get? Register.Xs = some xs) (hpc : z.regs.get? Register.PC = some pc)
@@ -123,7 +129,8 @@ theorem zisk_amo_op32 (zrom : BitVec 64 → zisk_inst) (z : Equiv.Zisk.ZState) (
       (∃ xs', z'.regs.get? Register.Xs = some xs' ∧ ∀ k, k < 32 → regv xs' k = regv (Equiv.Zisk.xsUpd xs rd L) k) ∧
       z'.regs.get? Register.PC = some (pc + 4) ∧
       (∃ st, z'.regs.get? Register.Step = some st ∧ z'.regs.get? Register.Zerror = some false) ∧
-      z'.mem = Equiv.memWrite (n := w) z.mem (regv xs rs1 + 0).toNat (c.setWidth (8 * w)) := by
+      z'.mem = Equiv.memWrite (n := w) z.mem (regv xs rs1 + 0).toNat (c.setWidth (8 * w)) ∧
+      FKeep z z' := by
   intro L c
   have eia : pc + (ia - pc) = ia := by rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
   have hz1 := Equiv.Zisk.execute_load_mkj z _ lop hl 32 (by omega) (ia - pc) 0 w xs pc st hx hpc hst _
@@ -181,7 +188,11 @@ theorem zisk_amo_op32 (zrom : BitVec 64 → zisk_inst) (z : Equiv.Zisk.ZState) (
   dsimp only at hz4
   refine ⟨_, .step hz1 (.step hz2 (.step hz3 (.step hz4 (.done _)))),
     ⟨Equiv.Zisk.xsUpd (Equiv.Zisk.xsUpd xs 32 L) rd (zisk_exec (.ZOP_COPYB ()) 0 L).1, ?_, fun k hk => ?_⟩, ?_,
-    ⟨BitVec.addInt (BitVec.addInt (BitVec.addInt (BitVec.addInt st 1) 1) 1) 1, ?_, ?_⟩, ?_⟩
+    ⟨BitVec.addInt (BitVec.addInt (BitVec.addInt (BitVec.addInt st 1) 1) 1) 1, ?_, ?_⟩, ?_, ?_⟩
+  rotate_right
+  · exact FKeep.trans (zstep_fkeep hpc (by rw [r1]; exact fl) hz1)
+      (FKeep.trans (zstep_fkeep hpc1 (by rw [r2]; exact fo) hz2)
+        (FKeep.trans (zstep_fkeep hpc2 (by rw [r3]; rfl) hz3) (zstep_fkeep hpc3 (by rw [r4]; rfl) hz4)))
   · simp only [Std.ExtDHashMap.get?_insert, beq_iff_eq, reduceCtorEq, dite_false]
     exact linkRegs_xs _ _ _ _ hx3
   · have ex : Equiv.Zisk.xsUpd xs 32 L = vectorUpdate xs 32 L := by simp [Equiv.Zisk.xsUpd]
@@ -194,7 +205,7 @@ theorem zisk_amo_op32 (zrom : BitVec 64 → zisk_inst) (z : Equiv.Zisk.ZState) (
 set_option maxHeartbeats 8000000 in
 /-- A swap, rd neither rs1 nor rs2: two steps. -/
 theorem zisk_amo_swap (zrom : BitVec 64 → zisk_inst) (z : Equiv.Zisk.ZState) (lop : zisk_op)
-    (hl : Equiv.Zisk.PureOp lop) (w : Nat) (rd rs1 rs2 : Nat)
+    (hl : Equiv.Zisk.PureOp lop) (fl : Equiv.Zisk.writesF lop = false) (w : Nat) (rd rs1 rs2 : Nat)
     (ld : rd < 32) (l1 : rs1 < 32) (l2 : rs2 < 32) (n1 : rd ≠ rs1) (n2 : rd ≠ rs2)
     (xs : Vector (BitVec 64) 40) (pc st ia : BitVec 64)
     (hx : z.regs.get? Register.Xs = some xs) (hpc : z.regs.get? Register.PC = some pc)
@@ -212,7 +223,8 @@ theorem zisk_amo_swap (zrom : BitVec 64 → zisk_inst) (z : Equiv.Zisk.ZState) (
       (∃ xs', z'.regs.get? Register.Xs = some xs' ∧ ∀ k, k < 32 → regv xs' k = regv (Equiv.Zisk.xsUpd xs rd L) k) ∧
       z'.regs.get? Register.PC = some (pc + 4) ∧
       (∃ st, z'.regs.get? Register.Step = some st ∧ z'.regs.get? Register.Zerror = some false) ∧
-      z'.mem = Equiv.memWrite (n := w) z.mem (regv xs rs1 + 0).toNat ((regv xs rs2).setWidth (8 * w)) := by
+      z'.mem = Equiv.memWrite (n := w) z.mem (regv xs rs1 + 0).toNat ((regv xs rs2).setWidth (8 * w)) ∧
+      FKeep z z' := by
   intro L
   have eia : pc + (ia - pc) = ia := by rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
   have hz1 := Equiv.Zisk.execute_load_mkj z _ lop hl rd (by omega) (ia - pc) 0 w xs pc st hx hpc hst _
@@ -235,7 +247,9 @@ theorem zisk_amo_swap (zrom : BitVec 64 → zisk_inst) (z : Equiv.Zisk.ZState) (
     (Equiv.Zisk.srcA_ASrc _ _ l1) (Equiv.Zisk.srcB_BSrc _ _ l2) (by rw [u1]; exact hwr) (by rw [u1]; exact hnr)
   rw [← r2, ← zstep_run zrom z1 ia hpc1, u1, u2] at hz2
   refine ⟨_, .step hz1 (.step hz2 (.done _)), ⟨_, ?_, fun k _ => rfl⟩, ?_,
-    ⟨BitVec.addInt (BitVec.addInt st 1) 1, ?_, ?_⟩, ?_⟩
+    ⟨BitVec.addInt (BitVec.addInt st 1) 1, ?_, ?_⟩, ?_, ?_⟩
+  rotate_right
+  · exact FKeep.trans (zstep_fkeep hpc (by rw [r1]; exact fl) hz1) (zstep_fkeep hpc1 (by rw [r2]; rfl) hz2)
   · simp [Std.ExtDHashMap.get?_insert, hx1]
   · simp [Std.ExtDHashMap.get?_insert]; rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
   · simp [Std.ExtDHashMap.get?_insert]
@@ -246,7 +260,7 @@ theorem zisk_amo_swap (zrom : BitVec 64 → zisk_inst) (z : Equiv.Zisk.ZState) (
 set_option maxHeartbeats 8000000 in
 /-- A swap, rd rs1 or rs2: three steps, through register 32. -/
 theorem zisk_amo_swap32 (zrom : BitVec 64 → zisk_inst) (z : Equiv.Zisk.ZState) (lop : zisk_op)
-    (hl : Equiv.Zisk.PureOp lop) (w : Nat) (rd rs1 rs2 : Nat)
+    (hl : Equiv.Zisk.PureOp lop) (fl : Equiv.Zisk.writesF lop = false) (w : Nat) (rd rs1 rs2 : Nat)
     (ld : rd < 32) (l1 : rs1 < 32) (l2 : rs2 < 32)
     (xs : Vector (BitVec 64) 40) (pc st ia : BitVec 64)
     (hx : z.regs.get? Register.Xs = some xs) (hpc : z.regs.get? Register.PC = some pc)
@@ -266,7 +280,8 @@ theorem zisk_amo_swap32 (zrom : BitVec 64 → zisk_inst) (z : Equiv.Zisk.ZState)
       (∃ xs', z'.regs.get? Register.Xs = some xs' ∧ ∀ k, k < 32 → regv xs' k = regv (Equiv.Zisk.xsUpd xs rd L) k) ∧
       z'.regs.get? Register.PC = some (pc + 4) ∧
       (∃ st, z'.regs.get? Register.Step = some st ∧ z'.regs.get? Register.Zerror = some false) ∧
-      z'.mem = Equiv.memWrite (n := w) z.mem (regv xs rs1 + 0).toNat ((regv xs rs2).setWidth (8 * w)) := by
+      z'.mem = Equiv.memWrite (n := w) z.mem (regv xs rs1 + 0).toNat ((regv xs rs2).setWidth (8 * w)) ∧
+      FKeep z z' := by
   intro L
   have eia : pc + (ia - pc) = ia := by rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
   have hz1 := Equiv.Zisk.execute_load_mkj z _ lop hl 32 (by omega) (ia - pc) 0 w xs pc st hx hpc hst _
@@ -307,7 +322,10 @@ theorem zisk_amo_swap32 (zrom : BitVec 64 → zisk_inst) (z : Equiv.Zisk.ZState)
   dsimp only at hz3
   refine ⟨_, .step hz1 (.step hz2 (.step hz3 (.done _))),
     ⟨Equiv.Zisk.xsUpd (Equiv.Zisk.xsUpd xs 32 L) rd (zisk_exec (.ZOP_COPYB ()) 0 L).1, ?_, fun k hk => ?_⟩, ?_,
-    ⟨BitVec.addInt (BitVec.addInt (BitVec.addInt st 1) 1) 1, ?_, ?_⟩, ?_⟩
+    ⟨BitVec.addInt (BitVec.addInt (BitVec.addInt st 1) 1) 1, ?_, ?_⟩, ?_, ?_⟩
+  rotate_right
+  · exact FKeep.trans (zstep_fkeep hpc (by rw [r1]; exact fl) hz1)
+      (FKeep.trans (zstep_fkeep hpc1 (by rw [r2]; rfl) hz2) (zstep_fkeep hpc2 (by rw [r3]; rfl) hz3))
   · simp only [Std.ExtDHashMap.get?_insert, beq_iff_eq, reduceCtorEq, dite_false]
     exact linkRegs_xs _ _ _ _ hx2
   · have ex : Equiv.Zisk.xsUpd xs 32 L = vectorUpdate xs 32 L := by simp [Equiv.Zisk.xsUpd]

@@ -146,7 +146,7 @@ theorem prog_rom (zr zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA_
   | 0, S, z, n, hrel, _, _, _ =>
     ⟨z, 0, .done z, hrel, RamOnly.refl _, Grows.refl _, fun _ => .done _⟩
   | 1, S, z, n, hrel, ho, hin, hs => by
-    obtain ⟨s1, z1, k1, hm, hzrun, hrel1, hm1⟩ :=
+    obtain ⟨s1, z1, k1, hm, hzrun, hrel1, hm1, -⟩ :=
       one_stepT S.rv z rs hrel zrom (OneOkT.retarget hs (fun _ h => hin.head h) ho) n
     obtain ⟨pc, hpc, hex⟩ := OneOkT.exec ho
     have e : rvIter n 1 S.rv = s1 := by simp only [rvIter, hm.next]
@@ -154,7 +154,7 @@ theorem prog_rom (zr zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA_
     exact ⟨z1, k1, hzrun, hrel1, hm1, hm.grows,
       fun hp => hm.toRun hrel.ready hpc hex (hin.head hpc) hx hp (.done _)⟩
   | k + 2, S, z, n, hrel, .inl ⟨ho, hrest⟩, hin, hs => by
-    obtain ⟨s1, z1, k1, hm, hzrun, hrel1, hm1⟩ :=
+    obtain ⟨s1, z1, k1, hm, hzrun, hrel1, hm1, -⟩ :=
       one_stepT S.rv z rs hrel zrom (OneOkT.retarget hs (fun _ h => hin.head h) ho) n
     obtain ⟨pc, hpc, hex⟩ := OneOkT.exec ho
     have hin1 := hin.tail
@@ -168,7 +168,7 @@ theorem prog_rom (zr zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA_
       fun hp => hm.toRun hrel.ready hpc hex (hin.head hpc) hx (PcOk.of_exec ht hp1 hx1) (hmr2 hp)⟩
   | k + 2, S, z, n, hrel, .inr ⟨⟨pc, i, hpc, hi⟩, hrest⟩, hin, hs => by
     have hi' := FtAt.retarget hs (hin.head hpc) hi
-    obtain ⟨s2, z1, hrun, hzrun, hrel1, -, hr1, hpc1, hmem1, hmem2⟩ :=
+    obtain ⟨s2, z1, hrun, hzrun, hrel1, -, hr1, hpc1, hmem1, hmem2, -⟩ :=
       fused_rel S.rv z rs hrel pc hpc zrom i hi'.toFAt n
     obtain ⟨t1, h1, -, m1, m2, e1, e2⟩ := fused_mnext hpc hi hrun hpc1 hmem1
     have hc1 : C (pc + 4) := by

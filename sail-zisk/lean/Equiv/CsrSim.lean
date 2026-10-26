@@ -90,7 +90,7 @@ theorem marchidstep_m (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : MarchidInstr) (hrd : i.rd ≠ 0) (next : Option (BitVec 32))
     (hi : WordsAt s rs pc zrom i.encode next)
     (hcell : Equiv.memRead s.mem 8 MARCHID_CELL.toNat = some ARCH_ID) (n : Nat) :
-    ∃ s' z', MStep rs n s s' ∧ ZRun zrom 1 z z' ∧ Rel s' z' rs ∧ RamOnly s.mem s'.mem := by
+    ∃ s' z', MStep rs n s s' ∧ ZRun zrom 1 z z' ∧ Rel s' z' rs ∧ RamOnly s.mem s'.mem ∧ FKeep z z' := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -116,8 +116,10 @@ theorem marchidstep_m (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
   have hex := Equiv.Zisk.execute_bmem z MARCHID_CELL i.rd.toNat (by omega) 4 xs pc' st hx hzpc hst ARCH_ID
     (by decide) (by decide) (by decide)
     (by rw [Equiv.memRead_normIn hzm (by right; decide)]; exact hcell)
+  have hzr := hex
+  rw [← hrom, ← zstep_run zrom z pc' hzpc] at hzr
   refine ⟨s', _, .plain pc' _ hpc (readWord_of' hi.h0 hi.h1 hi.h2 hi.h3) (i.plain hrd) hrun,
-    .step (by rw [zstep_run zrom z pc' hzpc, hrom]; exact hex) (.done _), ?_, RamOnly.of_eq hmem⟩
+    .step hzr (.done _), ?_, RamOnly.of_eq hmem, zstep_fkeep hzpc (by rw [hrom]; rfl) hzr⟩
   refine ⟨hr.keep hwf ho, ⟨Equiv.Zisk.xsUpd xs i.rd.toNat ARCH_ID, ?_, fun k hk1 hk2 => ?_⟩,
     ⟨_, hpc'', by simp⟩,
     ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, ?_⟩

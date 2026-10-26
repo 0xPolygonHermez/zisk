@@ -193,7 +193,7 @@ theorem zisk_uw (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (z : Equiv.Zisk.ZSt
         regv (Equiv.Zisk.xsUpd xs i.rd.toNat (zbauwVal i.sh (regv xs i.rs1.toNat) (regv xs i.rs2.toNat))) k) ∧
       z'.regs.get? _root_.Zisk.Register.PC = some (pc + 4) ∧
       (∃ st, z'.regs.get? _root_.Zisk.Register.Step = some st ∧
-        z'.regs.get? _root_.Zisk.Register.Zerror = some false) ∧ z'.mem = z.mem := by
+        z'.regs.get? _root_.Zisk.Register.Zerror = some false) ∧ z'.mem = z.mem ∧ FKeep z z' := by
   have l1 : i.rs1.toNat < 32 := i.rs1.isLt
   have l2 : i.rs2.toNat < 32 := i.rs2.isLt
   have ld : i.rd.toNat < 32 := i.rd.isLt
@@ -231,13 +231,14 @@ theorem zisk_uw (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (z : Equiv.Zisk.ZSt
     dsimp only at hz2
     rw [hv] at hz2
     refine ⟨_, .step hz1 (.step hz2 (.done _)), ⟨Equiv.Zisk.xsUpd (vectorUpdate xs 32 t) i.rd.toNat _, ?_,
-      fun k hk => regv_xsUpd32 xs t _ _ ld hk⟩, ?_, ⟨BitVec.addInt (BitVec.addInt st 1) 1, ?_, ?_⟩, ?_⟩
+      fun k hk => regv_xsUpd32 xs t _ _ ld hk⟩, ?_, ⟨BitVec.addInt (BitVec.addInt st 1) 1, ?_, ?_⟩, ?_, ?_⟩
     · simp only [Std.ExtDHashMap.get?_insert, beq_iff_eq, reduceCtorEq, dite_false]
       exact linkRegs_xs _ _ _ _ hx1
     · simp [Std.ExtDHashMap.get?_insert]; rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
     · simp [Std.ExtDHashMap.get?_insert]
     · simp [Std.ExtDHashMap.get?_insert, hze1]
     · exact hm1
+    · exact FKeep.trans (zstep_fkeep hpc (by rw [r1]; rfl) hz1) (zstep_fkeep (pc := ia) hpc1 (by rw [r2]; rfl) hz2)
   · have hz2 := Equiv.Zisk.execute_mkj z1 (Transpiler.srcA 32) (Transpiler.srcB i.rs2.toNat) o.zop
       o.pure i.rd.toNat (by omega) (pc + 4 - ia) (pc + 4 - ia)
       (vectorUpdate xs 32 t) ia (BitVec.addInt st 1) hx1 hpc1 hst1 _ _
@@ -249,13 +250,15 @@ theorem zisk_uw (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (z : Equiv.Zisk.ZSt
     dsimp only at hz2
     rw [hv] at hz2
     refine ⟨_, .step hz1 (.step hz2 (.done _)), ⟨Equiv.Zisk.xsUpd (vectorUpdate xs 32 t) i.rd.toNat _, ?_,
-      fun k hk => regv_xsUpd32 xs t _ _ ld hk⟩, ?_, ⟨BitVec.addInt (BitVec.addInt st 1) 1, ?_, ?_⟩, ?_⟩
+      fun k hk => regv_xsUpd32 xs t _ _ ld hk⟩, ?_, ⟨BitVec.addInt (BitVec.addInt st 1) 1, ?_, ?_⟩, ?_, ?_⟩
     · simp only [Std.ExtDHashMap.get?_insert, beq_iff_eq, reduceCtorEq, dite_false]
       exact linkRegs_xs _ _ _ _ hx1
     · simp [Std.ExtDHashMap.get?_insert]; rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
     · simp [Std.ExtDHashMap.get?_insert]
     · simp [Std.ExtDHashMap.get?_insert, hze1]
     · exact hm1
+    · exact FKeep.trans (zstep_fkeep hpc (by rw [r1]; rfl) hz1)
+        (zstep_fkeep (pc := ia) hpc1 (by rw [r2]; exact zop_keep.2.1 o) hz2)
 
 theorem execute_zba_rtypeuw_eq (a b c : regidx) (sh : BitVec 2) :
     execute (.ZBA_RTYPEUW (a, b, c, sh)) = execute_ZBA_RTYPEUW a b c sh := by simp [execute]
@@ -268,7 +271,7 @@ theorem uwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : UwInstr) (next : Option (BitVec 32))
     (hi : UwAt s rs pc zrom i next) (n : Nat) :
     ∃ s' z', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧ ZRun zrom 2 z z' ∧
-      Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) ∧ s'.mem = s.mem := by
+      Rel s' z' rs ∧ s'.regs.get? Register.PC = some (pc + 4) ∧ s'.mem = s.mem ∧ FKeep z z' := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -293,9 +296,9 @@ theorem uwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
         (getX_of_agree he l2 v2), insert_same t _ _ hnext]
       rfl) n
   obtain ⟨ia, r1, r2⟩ := i.rom_of_spec hi.tr
-  obtain ⟨z', hz, ⟨xs', hx', hxs''⟩, hzpc', hst', hzm'⟩ := zisk_uw zrom z i xs pc' st ia hx hzpc hst hze r1 r2
+  obtain ⟨z', hz, ⟨xs', hx', hxs''⟩, hzpc', hst', hzm', hk⟩ := zisk_uw zrom z i xs pc' st ia hx hzpc hst hze r1 r2
   refine ⟨s', z', hrun, hz, ⟨hr.keep hwf ho, ⟨xs', hx', ?_⟩, ⟨_, hpc'', hzpc'⟩, hst',
-    Equiv.normIn_congr hzm hzm' hmem⟩, hpc'', hmem⟩
+    Equiv.normIn_congr hzm hzm' hmem⟩, hpc'', hmem, hk⟩
   intro k hk1 hk2
   rw [hxs' k hk2]
   have a := regs_after0 s xs i.rd.toNat (zbauwVal i.sh (regv xs i.rs1.toNat) (regv xs i.rs2.toNat)) ld agree k hk1 hk2

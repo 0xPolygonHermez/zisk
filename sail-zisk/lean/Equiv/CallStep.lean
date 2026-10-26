@@ -4,6 +4,7 @@
   to related states (`Equiv/CallSim.lean` for the operation).
 -/
 import Equiv.CallSim
+import Equiv.ZKeepAll
 import Equiv.Machine
 
 set_option linter.unusedSimpArgs false
@@ -312,5 +313,15 @@ theorem callstep2 (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState) (rs : List
   have := ha; unfold Equiv.OffRam at this
   have e : Transpiler.EXTRA_PARAMS_ADDR.toNat = 0xA0400F00 := rfl
   rw [e]; omega
+
+/-- A ZisK step on an instruction whose operation does not write the fcall
+    registers leaves them, and so the fcall relation, as they are. -/
+theorem zstep_keep (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (z z' : Equiv.Zisk.ZState) (pc : BitVec 64)
+    (hpc : z.regs.get? _root_.Zisk.Register.PC = some pc) (h : Equiv.Zisk.writesF (zrom pc).op = false) {b : Bool}
+    (hr : (zstep zrom).run z = .ok b z') {f : ZiskRiscv.Fcall} (hf : Equiv.Zisk.FcallRel f z) :
+    Equiv.Zisk.FcallRel f z' := by
+  rw [zstep_run zrom z pc hpc] at hr
+  intro r hr'
+  rw [Equiv.Zisk.Keep.execute _ h z b z' hr r hr']; exact hf r hr'
 
 end Equiv.Machine

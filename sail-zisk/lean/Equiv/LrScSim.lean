@@ -293,7 +293,11 @@ theorem lrstep_m (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (h
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : LrInstr) (next : Option (BitVec 32))
     (hi : WordsAt s rs pc zrom i.encode next) (v1 : BitVec 64) (hv1 : getX s i.rs1.toNat = some v1)
     (hok : LrOk s rs i pc v1) (n : Nat) :
-    ∃ s' z', MStep rs n s s' ∧ ZRun zrom 1 z z' ∧ Rel s' z' rs ∧ RamOnly s.mem s'.mem := by
+    ∃ s' z', MStep rs n s s' ∧ ZRun zrom 1 z z' ∧ Rel s' z' rs ∧ RamOnly s.mem s'.mem ∧ FKeep z z' := by
+  obtain ⟨pc0, hpc0, hzpc0⟩ := hrel.pc
+  have hzpc : z.regs.get? _root_.Zisk.Register.PC = some pc := by
+    rw [hpc] at hpc0; cases hpc0; exact hzpc0
+  have hrom := i.spec hi.tr
   have hw0 : ZiskRiscv.readWord s.mem pc.toNat = some i.encode := readWord_of' hi.h0 hi.h1 hi.h2 hi.h3
   have hd : ∀ fetch : Nat → Option (BitVec 32), fetch pc.toNat = some i.encode →
       ZiskRiscv.decode fetch pc.toNat = .subst i.sub 0 := fun _ hf => i.decode_m hf
@@ -304,9 +308,10 @@ theorem lrstep_m (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (h
       (zstep zrom).run z = .ok false z' →
       Rel { s1' with mem := ZiskRiscv.writeWord s1'.mem pc.toNat (LrInstr.mk d aq rl rd rs1).encode } z' rs →
       s1'.mem = ZiskRiscv.writeWord s.mem pc.toNat (LrInstr.mk d aq rl rd rs1).sub →
-      ∃ s' z', MStep rs n s s' ∧ ZRun zrom 1 z z' ∧ Rel s' z' rs ∧ RamOnly s.mem s'.mem := by
+      ∃ s' z', MStep rs n s s' ∧ ZRun zrom 1 z z' ∧ Rel s' z' rs ∧ RamOnly s.mem s'.mem ∧ FKeep z z' := by
     intro s1' z' hrun hz hr hmem
-    refine ⟨_, z', .subst pc _ _ 0 s1' hpc hw0 hd hready hrun (by simp [mPost, setX]), .step hz (.done _), hr, ?_⟩
+    refine ⟨_, z', .subst pc _ _ 0 s1' hpc hw0 hd hready hrun (by simp [mPost, setX]), .step hz (.done _), hr, ?_,
+      zstep_fkeep hzpc (by rw [hrom]; exact aLoad_keep d) hz⟩
     apply RamOnly.of_eq
     show ZiskRiscv.writeWord s1'.mem pc.toNat _ = s.mem
     rw [hmem, writeWord_twice, writeWord_same _ _ _ hw0]
@@ -472,7 +477,7 @@ theorem zisk_sc (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (z : Equiv.Zisk.ZSt
       (∃ st, z'.regs.get? _root_.Zisk.Register.Step = some st ∧
         z'.regs.get? _root_.Zisk.Register.Zerror = some false) ∧
       z'.mem = Equiv.memWrite (n := aW i.d) z.mem (regv xs i.rs1.toNat + 0).toNat
-        ((regv xs i.rs2.toNat).setWidth (8 * aW i.d)) := by
+        ((regv xs i.rs2.toNat).setWidth (8 * aW i.d)) ∧ FKeep z z' := by
   obtain ⟨hrd, hr1, hr2⟩ := i.regs
   have ld : i.rd.toNat < 32 := i.rd.isLt
   have l1 : i.rs1.toNat < 32 := i.rs1.isLt
@@ -483,7 +488,8 @@ theorem zisk_sc (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (z : Equiv.Zisk.ZSt
     have hz := Equiv.Zisk.execute_store_mkj z (Transpiler.srcA i.rs1.toNat) (Transpiler.srcB i.rs2.toNat) 0 (aW i.d) 4
       xs pc st hx hpc hst _ _ (Equiv.Zisk.srcA_ASrc xs _ l1) (Equiv.Zisk.srcB_BSrc xs _ l2) hwr hnr
     rw [← hrom, ← zstep_run zrom z pc hpc] at hz
-    refine ⟨_, 1, .step hz (.done _), ?_, ?_, ⟨BitVec.addInt st 1, ?_, ?_⟩, rfl⟩
+    refine ⟨_, 1, .step hz (.done _), ?_, ?_, ⟨BitVec.addInt st 1, ?_, ?_⟩, rfl,
+      zstep_fkeep hpc (by rw [hrom]; rfl) hz⟩
     · simp [Std.ExtDHashMap.get?_insert, hx, h0, Equiv.Zisk.xsUpd]
     · simp [Std.ExtDHashMap.get?_insert]
     · simp [Std.ExtDHashMap.get?_insert]
@@ -511,7 +517,8 @@ theorem zisk_sc (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (z : Equiv.Zisk.ZSt
       (if i.d then 8 else 4)
     rw [← q2, ← zstep_run zrom z1 ia hpc1] at hz2
     simp only [ite_self, Equiv.Zisk.copyb_val] at hz2
-    refine ⟨_, 2, .step hz1 (.step hz2 (.done _)), ?_, ?_, ⟨BitVec.addInt (BitVec.addInt st 1) 1, ?_, ?_⟩, hm1⟩
+    refine ⟨_, 2, .step hz1 (.step hz2 (.done _)), ?_, ?_, ⟨BitVec.addInt (BitVec.addInt st 1) 1, ?_, ?_⟩, hm1,
+      FKeep.trans (zstep_fkeep hpc (by rw [q1]; rfl) hz1) (zstep_fkeep hpc1 (by rw [q2]; rfl) hz2)⟩
     · simp only [Std.ExtDHashMap.get?_insert, beq_iff_eq, reduceCtorEq, dite_false]
       exact linkRegs_xs _ _ _ _ hx1
     · simp [Std.ExtDHashMap.get?_insert]; rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
@@ -542,7 +549,7 @@ theorem scstep_m (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (h
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : ScInstr) (next : Option (BitVec 32))
     (hi : WordsAt s rs pc zrom i.encode next) (v1 v2 : BitVec 64) (hv1 : getX s i.rs1.toNat = some v1)
     (hv2 : getX s i.rs2.toNat = some v2) (hok : ScOk rs i pc v1) (n : Nat) :
-    ∃ s' z' k, MStep rs n s s' ∧ ZRun zrom k z z' ∧ Rel s' z' rs ∧ RamOnly s.mem s'.mem := by
+    ∃ s' z' k, MStep rs n s s' ∧ ZRun zrom k z z' ∧ Rel s' z' rs ∧ RamOnly s.mem s'.mem ∧ FKeep z z' := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -564,7 +571,7 @@ theorem scstep_m (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (h
     sc_riscv s rs hr pc' hpc hi.al hi.x1 hi.x2 i v1 v2 hv1 hv2 hst' n
   -- ZisK
   obtain ⟨ia, hrom⟩ := i.rom_of_spec hi.tr
-  obtain ⟨z', k, hz, hx', hzpc', hst'', hzm'⟩ := zisk_sc zrom z i xs pc' st ia hx hzpc hst hze
+  obtain ⟨z', k, hz, hx', hzpc', hst'', hzm', hk⟩ := zisk_sc zrom z i xs pc' st ia hx hzpc hst hze
     (by rw [hr1]; simpa using hzw) (by rw [hr1]; simpa using hzn) hrom
   have hmw : ZiskRiscv.writeWord s1.mem pc'.toNat i.encode =
       Equiv.memWrite (n := aW i.d) s.mem v1.toNat (v2.setWidth (8 * aW i.d)) := by
@@ -573,7 +580,7 @@ theorem scstep_m (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (h
       Equiv.memWrite (n := aW i.d) s.mem v1.toNat (v2.setWidth (8 * aW i.d)) := by
     rw [← hmw]; simp only [mPost, setX]; split <;> rfl
   refine ⟨_, z', k, .subst pc' _ _ _ s1 hpc hw0 hd (hr.with_mem _) hrun rfl, hz, ?_,
-    by rw [hs2]; exact memWrite_ramOnly _ _ _ hzw⟩
+    by rw [hs2]; exact memWrite_ramOnly _ _ _ hzw, hk⟩
   have hready1 : StepReady s1 rs := (hr.with_mem _).keep hwf ho
   refine ⟨?_, ⟨_, hx', ?_⟩, ⟨pc' + 4, ?_, hzpc'⟩, hst'', ?_⟩
   · refine (hready1.with_mem (ZiskRiscv.writeWord s1.mem pc'.toNat i.encode)).keep
