@@ -101,14 +101,17 @@ theorem StepOkT.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : Bi
 theorem OneOkT.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {rs : List PMA_Region} {s : RVState} (hs : SpecRom zrom C s.mem)
     (hc : ∀ pc, s.regs.get? Register.PC = some pc → C pc) (h : OneOkT rs zr s) : OneOkT rs zrom s := by
-  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, rest⟩ | ⟨i, hi⟩ | ⟨i, hi, rest⟩ | ⟨i, hi, rest⟩ | ⟨i, hi, rest⟩⟩ := h
+  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, rest⟩ | ⟨i, hi⟩ | ⟨i, hi, rest⟩ | (⟨i, hi, rest⟩ | ⟨i, hi, rest⟩) |
+    ⟨i, hi, rest⟩⟩ := h
   · exact ⟨pc, hpc, .inl ⟨o, StepOkT.retarget hs (hc pc hpc) o ho⟩⟩
   · exact ⟨pc, hpc, .inr (.inl ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩)⟩
   · exact ⟨pc, hpc, .inr (.inr (.inl ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }⟩))⟩
   · exact ⟨pc, hpc, .inr (.inr (.inr (.inl
       ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩)))⟩
-  · exact ⟨pc, hpc, .inr (.inr (.inr (.inr (.inl
-      ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩))))⟩
+  · exact ⟨pc, hpc, .inr (.inr (.inr (.inr (.inl (.inl
+      ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩)))))⟩
+  · exact ⟨pc, hpc, .inr (.inr (.inr (.inr (.inl (.inr
+      ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩)))))⟩
   · exact ⟨pc, hpc, .inr (.inr (.inr (.inr (.inr
       ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩))))⟩
 

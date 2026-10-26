@@ -192,6 +192,9 @@ structure StepReady (s : RVState) (rs : List PMA_Region) : Prop where
   /-- A's AMOs enabled (Zaamo): misa's A bit set (ZisK's profile has A, and a
       program in the contract writes no misa). -/
   misaA : ∃ v, s.regs.get? misa = some v ∧ _get_Misa_A v = 1#1
+  /-- marchid ZisK's architecture ID, as ZisK's profile configures it (no
+      program can write it: it is read-only). -/
+  march : s.regs.get? marchid = some 0x0FFFEEEE#64
 
 /-- An instruction word at pc that sail-riscv fetches as such: aligned, in
     executable memory, not compressed. -/

@@ -97,7 +97,7 @@ theorem mstep (S : ZiskRiscv.State model) (rs : List PMA_Region) (hr : StepReady
   have hg : model.getPC S.rv = pc := by simp [model, hpc]
   refine step_riscv S s' ?_ ?_ (model_step hr hrun) ?_
   · rw [hg]; intro h; have h' : pc = EXIT_ADDR := h; exact hx (h' ▸ hex)
-  · rw [hg]; exact decode_riscv he hop
+  · rw [hg]; exact hop _ _ he
   · simp [model, hp, hpt]
 
 /-! ## Runs of plain RISC-V steps -/
@@ -108,14 +108,14 @@ theorem mstep (S : ZiskRiscv.State model) (rs : List PMA_Region) (hr : StepReady
 structure RStep (S : ZiskRiscv.State model) (t : model.State) : Prop where
   pcx : model.getPC S.rv ≠ model.exitAddr
   word : ∃ e : BitVec 32, ZiskRiscv.readWord (model.mem S.rv) (model.getPC S.rv).toNat = some e ∧
-    NotMach e
+    Plain e
   step : model.step S.rv = .ok t
   trap : model.trapped t = false
 
 theorem RStep.mstep {S : ZiskRiscv.State model} {t : model.State} (h : RStep S t) :
     ZiskRiscv.step S = .ok ({ S with rv := t }, .running) := by
   obtain ⟨e, he, hop⟩ := h.word
-  exact step_riscv S t h.pcx (decode_riscv he hop) h.step h.trap
+  exact step_riscv S t h.pcx (hop _ _ he) h.step h.trap
 
 /-- A machine step on lr or sc, at a code address (`C`): not at the exit
     address, the model's step on the plain word w' put at pc, not trapped;

@@ -47,6 +47,13 @@ theorem decode_riscv {fetch : Nat → Option (BitVec 32)} {a : Nat} {w : BitVec 
     split <;> simp_all <;> split <;> simp_all <;> split <;> simp_all
   cases k <;> simp_all
 
+/-- A word the machine leaves to the model wherever it reads it: any fetch
+    giving it at an address decodes there to `.riscv`. -/
+def Plain (e : BitVec 32) : Prop :=
+  ∀ (fetch : Nat → Option (BitVec 32)) (a : Nat), fetch a = some e → ZiskRiscv.decode fetch a = .riscv
+
+theorem NotMach.plain {e : BitVec 32} (h : NotMach e) : Plain e := fun _ _ hf => decode_riscv hf h
+
 end Equiv.Machine
 
 namespace Equiv.Sim
@@ -74,8 +81,8 @@ noncomputable def rvIter : Nat → Nat → RVState → RVState
 
 theorem mNext_plain {n : Nat} {s : RVState} {pc : BitVec 64} {e : BitVec 32}
     (hpc : s.regs.get? Register.PC = some pc) (hw : ZiskRiscv.readWord s.mem pc.toNat = some e)
-    (hop : Equiv.Machine.NotMach e) : mNext n s = rvNext n s := by
-  simp only [mNext, hpc, Option.getD_some, Equiv.Machine.decode_riscv hw hop]
+    (hop : Equiv.Machine.Plain e) : mNext n s = rvNext n s := by
+  simp only [mNext, hpc, Option.getD_some, hop _ _ hw]
 
 theorem mNext_subst {n : Nat} {s : RVState} {pc : BitVec 64} {w w' : BitVec 32} {zr : Nat}
     (hpc : s.regs.get? Register.PC = some pc) (hw : ZiskRiscv.readWord s.mem pc.toNat = some w)
@@ -88,7 +95,7 @@ theorem mNext_subst {n : Nat} {s : RVState} {pc : BitVec 64} {w w' : BitVec 32} 
     plain word w', from a state ready for it, then `mPost`. -/
 inductive MStep (rs : List PMA_Region) (n : Nat) (s s' : RVState) : Prop
   | plain (pc : BitVec 64) (e : BitVec 32) :
-      s.regs.get? Register.PC = some pc → ZiskRiscv.readWord s.mem pc.toNat = some e → Equiv.Machine.NotMach e →
+      s.regs.get? Register.PC = some pc → ZiskRiscv.readWord s.mem pc.toNat = some e → Equiv.Machine.Plain e →
       (interpretSailEffects (try_step n false)).run s = .ok false s' → MStep rs n s s'
   | subst (pc : BitVec 64) (w w' : BitVec 32) (zr : Nat) (s1 : RVState) :
       s.regs.get? Register.PC = some pc → ZiskRiscv.readWord s.mem pc.toNat = some w →

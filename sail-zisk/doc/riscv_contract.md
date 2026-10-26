@@ -143,13 +143,15 @@ The cells are ZisK's, not RISC-V's: sail-riscv, unchanged, gives `mstatus`,
 not have. So the contract leaves them out:
 
 > **Precondition C.** The program accesses no CSR but in the forms of
-> §§ 7–8, and by reading `marchid`.
+> §§ 7–8, and by reading `marchid`; and it stores nothing to `marchid`'s
+> cell.
 
 `marchid` is the one the runtime needs: `ziskos` reads it to tell ZisK from
 QEMU, which decides where it writes the public outputs and how it exits
 (`ziskos/entrypoint/src/lib.rs`). sail-riscv's `marchid` is a configuration
 parameter, which ZisK's profile sets to ZisK's ID, `0x0FFF_EEEE`: so both
-read the same.
+read the same, as long as the cell, which a store reaches (§ 2), still
+holds the ID.
 
 ## 7. Precompiles: CSRs 0x800–0x821
 
@@ -238,7 +240,7 @@ share a 4 KB page with the parameter area; to sail-riscv they are RAM.
 
 A program is in the contract when it is in the instruction set of § 1 and
 meets **E** (no `ecall` but exit), **C** (no CSR access but the ZisK calls
-of §§ 7–8 and reading `marchid`), **Z** (no zkvmcall) and **L** (no `lr`
+of §§ 7–8 and reading `marchid`, no store to `marchid`'s cell), **Z** (no zkvmcall) and **L** (no `lr`
 reading its own instruction word). Everything else
 it may do — touch memory outside § 2, write a read-only CSR, misuse a
 precompile — has a defined outcome above: a failure, which ZisK does not

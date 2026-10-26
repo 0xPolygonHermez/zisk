@@ -23,6 +23,7 @@ import Equiv.ZbbCountSim
 import Equiv.UwSim
 import Equiv.AmoSim
 import Equiv.LrScSim
+import Equiv.CsrSim
 import ZiskRiscv.Machine
 import Equiv.RamOnly
 
@@ -293,40 +294,40 @@ theorem notSys_m (i : MInstr) : NotMach i.encode := by
 /-- What the machine needs of the instruction at pc to leave it to
     sail-riscv: executable there, a word it leaves to the model. -/
 def WordOk (m : Equiv.Mem) (rs : List PMA_Region) (pc : BitVec 64) : Prop :=
-  ExecAt rs pc ∧ ∃ e : BitVec 32, ZiskRiscv.readWord m pc.toNat = some e ∧ NotMach e
+  ExecAt rs pc ∧ ∃ e : BitVec 32, ZiskRiscv.readWord m pc.toNat = some e ∧ Plain e
 
 theorem StepOkT.word {s : RVState} {rs : List PMA_Region} {pc : BitVec 64}
     {zrom : BitVec 64 → _root_.Zisk.zisk_inst} : ∀ o, StepOkT s rs pc zrom o → WordOk s.mem rs pc
-  | .r i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_r i⟩
-  | .i i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_i i⟩
-  | .sh i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_sh i⟩
-  | .u i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_u i⟩
-  | .ld i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_ld i⟩
-  | .lw i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_lw i⟩
-  | .sd i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_sd i⟩
-  | .sw i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_sw i⟩
-  | .br i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_br i⟩
-  | .j i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_j i⟩
-  | .jr i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_jr i⟩
-  | .rw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_rw i⟩
-  | .iw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_iw i⟩
-  | .siw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_siw i⟩
-  | .m i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_m i⟩
-  | .fence i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_fence i⟩
-  | .zba i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zba i⟩
-  | .slliuw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_slliuw i⟩
-  | .zbs i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zbs i⟩
-  | .zbsi i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zbsi i⟩
-  | .zbb i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zbb i⟩
-  | .zbbw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zbbw i⟩
-  | .rori i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_rori i⟩
-  | .roriw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_roriw i⟩
-  | .pack i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_pack i⟩
-  | .packw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_packw i⟩
-  | .sext i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_sext i⟩
-  | .zexth i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zexth i⟩
-  | .byte i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_byte i⟩
-  | .count i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_count i⟩
+  | .r i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_r i).plain⟩
+  | .i i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_i i).plain⟩
+  | .sh i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_sh i).plain⟩
+  | .u i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_u i).plain⟩
+  | .ld i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_ld i).plain⟩
+  | .lw i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_lw i).plain⟩
+  | .sd i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_sd i).plain⟩
+  | .sw i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_sw i).plain⟩
+  | .br i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_br i).plain⟩
+  | .j i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_j i).plain⟩
+  | .jr i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_jr i).plain⟩
+  | .rw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_rw i).plain⟩
+  | .iw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_iw i).plain⟩
+  | .siw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_siw i).plain⟩
+  | .m i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_m i).plain⟩
+  | .fence i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_fence i).plain⟩
+  | .zba i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_zba i).plain⟩
+  | .slliuw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_slliuw i).plain⟩
+  | .zbs i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_zbs i).plain⟩
+  | .zbsi i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_zbsi i).plain⟩
+  | .zbb i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_zbb i).plain⟩
+  | .zbbw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_zbbw i).plain⟩
+  | .rori i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_rori i).plain⟩
+  | .roriw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_roriw i).plain⟩
+  | .pack i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_pack i).plain⟩
+  | .packw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_packw i).plain⟩
+  | .sext i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_sext i).plain⟩
+  | .zexth i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_zexth i).plain⟩
+  | .byte i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_byte i).plain⟩
+  | .count i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_count i).plain⟩
 
 end Equiv.Machine
 
@@ -451,7 +452,8 @@ def LrScOk (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (
 
 /-- What one step of the machine needs: an instruction, run in one ZisK
     step, or a jalr with an odd offset or a Zba .uw form, in two, or an AMO,
-    in two to four; or an lr or an sc. -/
+    in two to four; or an lr or an sc; or reading marchid, its cell holding
+    the ID. -/
 def OneOkT (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (s : RVState) : Prop :=
   ∃ pc, s.regs.get? Register.PC = some pc ∧
     ((∃ o, StepOkT s rs pc zrom o) ∨
@@ -459,33 +461,37 @@ def OneOkT (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (
         (jalrTarget v1 i.imm)[0] = false ∧ (jalrTarget v1 i.imm)[1] = false) ∨
      (∃ i, UwAt s rs pc zrom i (nextWord s pc)) ∨
      (∃ i, WordsAt s rs pc zrom i.encode (nextWord s pc) ∧ ∃ v1, getX s i.rs1.toNat = some v1 ∧ AmoOk s rs i v1) ∨
-     LrScOk rs zrom s pc)
+     LrScOk rs zrom s pc ∨
+     (∃ i : MarchidInstr, WordsAt s rs pc zrom i.encode (nextWord s pc) ∧ i.rd ≠ 0 ∧
+        Equiv.memRead s.mem 8 MARCHID_CELL.toNat = some ARCH_ID))
 
 theorem one_stepT (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hrel : Rel s z rs)
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (h : OneOkT rs zrom s) (n : Nat) :
     ∃ s' z' k', MStep rs n s s' ∧ ZRun zrom k' z z' ∧ Rel s' z' rs ∧ RamOnly s.mem s'.mem := by
   obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, hodd, v1, hv1, t0, t1⟩ | ⟨i, hi⟩ | ⟨i, hi, v1, hv1, hok⟩ |
-    ⟨i, hi, v1, hv1, hok⟩ | ⟨i, hi, v1, v2, hv1, hv2, hok⟩⟩ := h
+    (⟨i, hi, v1, hv1, hok⟩ | ⟨i, hi, v1, v2, hv1, hv2, hok⟩) | ⟨i, hi, hrd, hcell⟩⟩ := h
   · obtain ⟨s', z', h1, h2, h3, h4⟩ := step_relT s z rs hrel pc hpc zrom o ho n
     obtain ⟨-, e, he, hop⟩ := StepOkT.word o ho
     exact ⟨s', z', 1, .plain pc e hpc he hop h1, .step h2 (.done _), h3, h4⟩
   · obtain ⟨ia, hjo⟩ := hi.toJoAt hodd
     obtain ⟨s', z', h1, h2, h3, -, hm⟩ := jo_rel s z rs hrel pc hpc zrom i ia hjo v1 hv1 ⟨t0, t1⟩ n
-    exact ⟨s', z', 2, .plain pc _ hpc (readWord_of hi.h0 hi.h1 hi.h2 hi.h3) (notSys_jr i) h1, h2, h3,
+    exact ⟨s', z', 2, .plain pc _ hpc (readWord_of hi.h0 hi.h1 hi.h2 hi.h3) (notSys_jr i).plain h1, h2, h3,
       RamOnly.of_eq hm⟩
   · obtain ⟨s', z', h1, h2, h3, -, hm⟩ := uwstep_rel s z rs hrel pc hpc zrom i _ hi n
-    exact ⟨s', z', 2, .plain pc _ hpc (readWord_of hi.h0 hi.h1 hi.h2 hi.h3) (notSys_uw i) h1, h2, h3,
+    exact ⟨s', z', 2, .plain pc _ hpc (readWord_of hi.h0 hi.h1 hi.h2 hi.h3) (notSys_uw i).plain h1, h2, h3,
       RamOnly.of_eq hm⟩
   · obtain ⟨s', z', k, h1, h2, h3, -, hm⟩ := amostep_rel s z rs hrel pc hpc zrom i _ hi v1 hv1 hok n
-    exact ⟨s', z', k, .plain pc _ hpc (readWord_of hi.h0 hi.h1 hi.h2 hi.h3) (notSys_amo i) h1, h2, h3, hm⟩
+    exact ⟨s', z', k, .plain pc _ hpc (readWord_of hi.h0 hi.h1 hi.h2 hi.h3) (notSys_amo i).plain h1, h2, h3, hm⟩
   · obtain ⟨s', z', h1, h2, h3, h4⟩ := lrstep_m s z rs hrel pc hpc zrom i _ hi v1 hv1 hok n
     exact ⟨s', z', 1, h1, h2, h3, h4⟩
   · exact scstep_m s z rs hrel pc hpc zrom i _ hi v1 v2 hv1 hv2 hok n
+  · obtain ⟨s', z', h1, h2, h3, h4⟩ := marchidstep_m s z rs hrel pc hpc zrom i hrd _ hi hcell n
+    exact ⟨s', z', 1, h1, h2, h3, h4⟩
 
 /-- A state the runs go on from is at an executable pc. -/
 theorem OneOkT.exec {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {s : RVState}
     (h : OneOkT rs zrom s) : ∃ pc, s.regs.get? Register.PC = some pc ∧ ExecAt rs pc := by
-  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, -⟩ | ⟨i, hi⟩ | ⟨i, hi, -⟩ | ⟨i, hi, -⟩ | ⟨i, hi, -⟩⟩ := h
+  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, -⟩ | ⟨i, hi⟩ | ⟨i, hi, -⟩ | (⟨i, hi, -⟩ | ⟨i, hi, -⟩) | ⟨i, hi, -⟩⟩ := h
   · exact ⟨pc, hpc, (StepOkT.word o ho).1⟩
   all_goals exact ⟨pc, hpc, hi.x1⟩
 
@@ -521,10 +527,10 @@ theorem fused_mnext {s s2 : RVState} {rs : List PMA_Region} {pc : BitVec 64}
       | step h2 r2 => cases r2 with
         | done => exact ⟨_, h1, h2⟩
   rw [rvNext_of h1] at hpc1 hmem1
-  have m1 : MStep rs n s t1 := .plain pc _ hpc (readWord_of hi.h0 hi.h1 hi.h2 hi.h3) (notSys_u _) h1
+  have m1 : MStep rs n s t1 := .plain pc _ hpc (readWord_of hi.h0 hi.h1 hi.h2 hi.h3) (notSys_u _).plain h1
   have m2 : MStep rs (n + 1) t1 s2 := .plain (pc + 4) _ hpc1
     (readWord_of (by rw [hmem1]; exact hi.g0) (by rw [hmem1]; exact hi.g1) (by rw [hmem1]; exact hi.g2)
-      (by rw [hmem1]; exact hi.g3)) (notSys_jr _) h2
+      (by rw [hmem1]; exact hi.g3)) (notSys_jr _).plain h2
   exact ⟨t1, h1, h2, m1, m2, m1.next, m2.next⟩
 
 /-- The simulation over whole runs, the ZisK program the spec's translation

@@ -109,3 +109,9 @@ import Equiv.AmoSim
 import Equiv.WordMem
 import Equiv.MNext
 import Equiv.LrScSim
+import Equiv.RiscvDecodeCsrBase
+import Equiv.Decode.Csr.Csrrs
+import Equiv.RiscvDecodeCsr
+import Equiv.RiscvCsr
+import Equiv.ZiskCsr
+import Equiv.CsrSim

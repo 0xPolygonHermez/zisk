@@ -22,7 +22,7 @@ theorem _root_.Equiv.Riscv.StepReady.with_mem {s : RVState} {rs : List PMA_Regio
     StepReady { s with mem := m } rs :=
   ⟨⟨hr.wf.all⟩, hr.mip, hr.mie, hr.hart, hr.elp,
     ⟨hr.mem.priv, hr.mem.mstatus, hr.mem.misa, hr.mem.senvcfg, hr.mem.menvcfg, hr.mem.htif, hr.mem.pma⟩,
-    hr.pmm, hr.misaM, hr.misaB, hr.misaA⟩
+    hr.pmm, hr.misaM, hr.misaB, hr.misaA, hr.march⟩
 
 /-- The relation with both memories replaced by the same one. -/
 theorem Rel.with_mem {s : RVState} {z : Equiv.Zisk.ZState} {rs : List PMA_Region} (h : Rel s z rs) (m : Mem) :

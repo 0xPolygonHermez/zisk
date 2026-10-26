@@ -42,7 +42,7 @@ theorem try_step_genA (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
       (∀ k, k < 32 → getX s' k = getX (setX s rd val) k) ∧
       (∀ r, isXReg r = false → r ≠ PC → r ≠ nextPC → r ≠ minstret → r ≠ minstret_increment →
         s'.regs.get? r = s.regs.get? r) := by
-  obtain ⟨h, hmip, hmie, hhs, help, hs, -, ⟨mv, hmv, hmM⟩, ⟨bv, hbv, hbB⟩, ⟨av, hav, haA⟩⟩ := hr
+  obtain ⟨h, hmip, hmie, hhs, help, hs, -, ⟨mv, hmv, hmM⟩, ⟨bv, hbv, hbB⟩, ⟨av, hav, haA⟩, -⟩ := hr
   obtain ⟨hal, ⟨r1, hm1, hx1⟩, ⟨r2, hm2, hx2⟩, h0, h1, h2, h3, hc⟩ := hw
   have hp := hs.priv
   simp only [try_step, run_hart_active, should_inc_minstret, counter_priv_filter_bit, dispatchInterrupt,
@@ -140,7 +140,7 @@ theorem try_step_amo (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
       (∀ k, k < 32 → getX s' k = getX (setX s rd val) k) ∧
       (∀ r, isXReg r = false → r ≠ PC → r ≠ nextPC → r ≠ minstret → r ≠ minstret_increment →
         s'.regs.get? r = s.regs.get? r) := by
-  obtain ⟨h, hmip, hmie, hhs, help, hs, -, ⟨mv, hmv, hmM⟩, ⟨bv, hbv, hbB⟩, ⟨av, hav, haA⟩⟩ := hr
+  obtain ⟨h, hmip, hmie, hhs, help, hs, -, ⟨mv, hmv, hmM⟩, ⟨bv, hbv, hbB⟩, ⟨av, hav, haA⟩, -⟩ := hr
   obtain ⟨hal, ⟨r1, hm1, hx1⟩, ⟨r2, hm2, hx2⟩, h0, h1, h2, h3, hc⟩ := hw
   have hp := hs.priv
   simp only [try_step, run_hart_active, should_inc_minstret, counter_priv_filter_bit, dispatchInterrupt,
