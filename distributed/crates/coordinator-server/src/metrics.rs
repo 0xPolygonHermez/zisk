@@ -113,10 +113,13 @@ pub fn install_prometheus() -> Result<()> {
     // Workers of one proof finish a phase within a fraction of it of each other.
     const SPREAD_BUCKETS: &[f64] =
         &[0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0];
-    // A worker heartbeats every 10 s (30 s without telemetry): a longer gap is a stall, and the
-    // heartbeat check disconnects the worker at its threshold (90 s by default).
-    const HEARTBEAT_GAP_BUCKETS: &[f64] =
-        &[1.0, 2.0, 5.0, 10.5, 11.0, 12.0, 15.0, 20.0, 30.5, 45.0, 60.0, 90.0, 120.0, 300.0];
+    // A worker heartbeats every 5 s (an older one every 10 s, or 30 s without telemetry): a longer
+    // gap is a stall, and the heartbeat check disconnects the worker at its threshold (90 s by
+    // default).
+    const HEARTBEAT_GAP_BUCKETS: &[f64] = &[
+        1.0, 2.0, 5.0, 5.5, 6.0, 7.5, 10.0, 10.5, 12.5, 15.0, 20.0, 25.0, 30.0, 45.0, 60.0, 90.0,
+        120.0, 300.0,
+    ];
 
     let handle = PrometheusBuilder::new()
         .set_buckets_for_metric(
