@@ -26,6 +26,7 @@ def describe : Decoded → String
   | .call c => s!"call len={c.len} rd={c.rd} count={c.count} {repr c.a} {repr c.b} ext={c.ext.toNat}"
   | .ecall => "ecall" | .nop => "nop" | .riscv => "riscv"
   | .malformed _ => "malformed"
+  | .subst w r => s!"subst {w.toNat} rd={r}"
 
 -- keccak on a0: one instruction
 #guard describe (decode (prog [csrrs 0 0x800 10]) 0) == "call len=1 rd=0 count=none ZiskRiscv.Arg.imm 0x0000000000000000#64 ZiskRiscv.Arg.reg 10 ext=0"
@@ -45,6 +46,16 @@ def describe : Decoded → String
 #guard describe (decode (prog [csrrs 0 0x800 0]) 0) == "nop"
 #guard describe (decode (prog [ecall]) 0) == "ecall"
 #guard describe (decode (prog [csrrs 10 0xF12 0]) 0) == "riscv"
+-- lr.w a0, (a1): lw a0, 0(a1) in its place
+#guard describe (decode (prog [BitVec.ofNat 32 (2 <<< 27 ||| 11 <<< 15 ||| 2 <<< 12 ||| 10 <<< 7 ||| 0x2F)]) 0)
+  == s!"subst {11 <<< 15 ||| 2 <<< 12 ||| 10 <<< 7 ||| 0x03} rd=0"
+-- sc.d a0, a2, (a1): sd a2, 0(a1), then a0 = 0
+#guard describe (decode (prog [BitVec.ofNat 32 (3 <<< 27 ||| 12 <<< 20 ||| 11 <<< 15 ||| 3 <<< 12 ||| 10 <<< 7 ||| 0x2F)]) 0)
+  == s!"subst {12 <<< 20 ||| 11 <<< 15 ||| 3 <<< 12 ||| 0x23} rd=10"
+-- lr.w with rs2 not x0 is reserved, and amoadd.w is RISC-V's
+#guard describe (decode (prog [BitVec.ofNat 32 (2 <<< 27 ||| 1 <<< 20 ||| 11 <<< 15 ||| 2 <<< 12 ||| 10 <<< 7 ||| 0x2F)]) 0)
+  == "riscv"
+#guard describe (decode (prog [BitVec.ofNat 32 (12 <<< 20 ||| 11 <<< 15 ||| 2 <<< 12 ||| 10 <<< 7 ||| 0x2F)]) 0) == "riscv"
 
 -- The bridge runs sail-zisk's keccak on the bytes given: keccak-f of the
 -- all-zero state, whose first word is 0xF1258F7940E1DDE7.

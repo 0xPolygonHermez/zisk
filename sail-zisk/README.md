@@ -176,11 +176,11 @@ transpilation.
   function, kept in step with the Rust (`transpilers/riscv`) by a CI check;
   the equivalence proofs then take T(P) from it instead of as a hypothesis.
   Started: `lean/Transpiler/Spec.lean` describes RV64I but for `ebreak`
-  and the CSRs, x0 forms included, Zifencei, M, Zba, Zbs, Zbb and Zbkb,
+  and the CSRs, x0 forms included, Zifencei, M, A, Zba, Zbs, Zbb and Zbkb,
   and
   `lean/Transpiler/Bios.lean` the BIOS around them; `make transpiler-check`
   finds both equal to the Rust on every instruction they describe in the 129
-  compliance tests (1 279 593 instructions, the BIOS's included) and the
+  compliance tests (1 281 987 instructions, the BIOS's included) and the
   fibonacci guest (11 409). Still to do: the rest of the instruction set;
   wiring `make transpiler-check` and `make decoder-diff` into CI; and the
   whole ZisK ROM of a program from the spec, internal addresses included,
@@ -208,7 +208,10 @@ transpilation.
 - **The transpiler in the proof, long term (option D), not now:** rewrite
   the transpiler in Lean and ship it, so that the transpiler that runs is the
   one proved.
-- **The remaining instruction forms:** A and the
+- **The remaining instruction forms:** A (in the spec, checked by
+  `make transpiler-check`, but not yet in `prog_spec`: the AMOs, three or
+  four ZisK instructions each, and `lr`/`sc`, which the contract makes a
+  plain load and an unconditional store, run so by the machine) and the
   CSRs (`jalr`
   with rs1 = x0, a jump to an absolute address, is in `prog_spec` now, the
   transpiler's immediate 0 for x0 as its b operand). (`ecall` is in the

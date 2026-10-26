@@ -1,7 +1,8 @@
 /-
   ZisK's RISC-V as a machine (doc/riscv_contract.md): sail-riscv's step, but
-  at a ZisK call — the CSR sequences of §§ 7–8 — sail-zisk's operation, and
-  the end of § 4.
+  at a ZisK call — the CSR sequences of §§ 7–8 — sail-zisk's operation, at
+  `lr` and `sc` the plain load or store in their place (§ 1), and the end of
+  § 4.
 
   The machine is generic in the RISC-V model, `RiscvModel`: what it needs of
   sail-riscv is its state, its step, and access to the registers, the pc and
@@ -107,6 +108,9 @@ def readWord (m : Mem) (addr : Nat) : Option (BitVec 32) := do
 def writeDword (m : Mem) (addr : Nat) (v : BitVec 64) : Mem :=
   (List.range 8).foldl (fun m i => m.insert (addr + i) (v.extractLsb' (8 * i) 8)) m
 
+def writeWord (m : Mem) (addr : Nat) (v : BitVec 32) : Mem :=
+  (List.range 4).foldl (fun m i => m.insert (addr + i) (v.extractLsb' (8 * i) 8)) m
+
 def readDword (m : Mem) (addr : Nat) : BitVec 64 :=
   (List.range 8).foldr (fun i acc => acc ||| ((m.getD (addr + i) 0).zeroExtend 64 <<< (8 * i))) 0
 
@@ -188,6 +192,16 @@ def tryStep (s : State M) : Except StepError (State M × Status) := do
   | .riscv =>
     let rv ← M.step s.rv
     if M.trapped rv then return ({ s with rv }, .failure "a trap: a fault or an illegal instruction")
+    return ({ s with rv }, .running)
+  | .subst w' zeroRd =>
+    -- lr and sc (§ 1): the model runs the plain load or store w' at pc in
+    -- their place; the word at pc is put back after (the code is read-only:
+    -- no step writes it)
+    let some w := readWord (M.mem s.rv) pc.toNat | return (s, .failure "no word at pc")
+    let rv ← M.step (M.setMem s.rv (writeWord (M.mem s.rv) pc.toNat w'))
+    let rv := M.setMem rv (writeWord (M.mem rv) pc.toNat w)
+    if M.trapped rv then return ({ s with rv }, .failure "a trap: a fault or an illegal instruction")
+    let rv := if zeroRd != 0 then M.setX rv zeroRd 0 else rv
     return ({ s with rv }, .running)
 
 /-- One step of ZisK's RISC-V. Memory inside ZisK's regions that nobody

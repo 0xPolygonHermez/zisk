@@ -7,8 +7,9 @@
   an `add`/`addi` that carries more operands. `decode` finds such a sequence
   at an address and says which sail-zisk operation it is, with which
   operands, and how many instructions it takes; or that the instruction is
-  the `ecall` the contract treats apart (§ 5); or that it is plain RISC-V,
-  left to sail-riscv.
+  the `ecall` the contract treats apart (§ 5); or that it is `lr` or `sc`,
+  which the contract gives its own meaning (§ 1: a plain load, an
+  unconditional store); or that it is plain RISC-V, left to sail-riscv.
 
   It follows the transpiler's dispatch exactly
   (transpilers/riscv/src/riscv2zisk_context.rs: `csrrs`, `csrrsi`, `csrrwi`
@@ -52,7 +53,7 @@ def fields (w : BitVec 32) : Fields where
 /-- The instructions the contract tells apart. -/
 inductive Kind where
   | csrrw | csrrs | csrrc | csrrwi | csrrsi | csrrci
-  | add | addi | ecall | other
+  | add | addi | ecall | lr | sc | other
 deriving Repr, BEq, DecidableEq
 
 def kind (f : Fields) : Kind :=
@@ -62,6 +63,9 @@ def kind (f : Fields) : Kind :=
   | 0x73, 0 => if f.csr == 0 && f.rs1 == 0 && f.rd == 0 then .ecall else .other
   | 0x33, 0 => if f.funct7 == 0 then .add else .other
   | 0x13, 0 => .addi
+  -- lr (funct5 2, its rs2 field 0: any other is reserved) and sc (funct5 3), .w or .d
+  | 0x2F, 2 | 0x2F, 3 =>
+    if f.funct7 >>> 2 == 2 && f.rs2 == 0 then .lr else if f.funct7 >>> 2 == 3 then .sc else .other
   | _, _ => .other
 
 /-- An operand of a call: a register's value, a constant, or the free input
@@ -99,6 +103,10 @@ inductive Decoded where
   | nop
   /-- A sequence the transpiler refuses: a halt, the run's failure. -/
   | malformed (why : String)
+  /-- `lr` or `sc` (§ 1): sail-riscv runs the plain load or store `w` in its
+      place (`lw`/`ld rd, 0(rs1)`, `sw`/`sd rs2, 0(rs1)`); then, for `sc`,
+      rd (when not x0) gets 0. -/
+  | subst (w : BitVec 32) (zeroRd : Nat)
   /-- Plain RISC-V, sail-riscv's to run. -/
   | riscv
 
@@ -253,6 +261,8 @@ def decode (fetch : Nat → Option (BitVec 32)) (pc : Nat) : Decoded :=
     | .csrrs  => decodeCsrrs f n0
     | .csrrsi => decodeCsrrsi f n0 n1
     | .csrrwi => decodeCsrrwi f
+    | .lr => .subst (0#12 ++ w.extractLsb' 15 5 ++ w.extractLsb' 12 3 ++ w.extractLsb' 7 5 ++ 0x03#7) 0
+    | .sc => .subst (0#7 ++ w.extractLsb' 20 5 ++ w.extractLsb' 15 5 ++ w.extractLsb' 12 3 ++ 0#5 ++ 0x23#7) f.rd
     | _ => .riscv
 
 end ZiskRiscv

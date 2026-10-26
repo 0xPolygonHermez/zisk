@@ -44,7 +44,7 @@ theorem readWord_ext {s t : RVState} (h : Ext zeroFill s t) {a : Nat} {e : BitVe
     memory too: the same word, or none, which the machine leaves to
     sail-riscv as well. -/
 theorem decode_sparse {S T : ZiskRiscv.State model} (h : SparseOf S T) {e : BitVec 32}
-    (he : ZiskRiscv.readWord (model.mem T.rv) (model.getPC T.rv).toNat = some e) (hop : e.extractLsb' 0 7 ≠ 0x73#7) :
+    (he : ZiskRiscv.readWord (model.mem T.rv) (model.getPC T.rv).toNat = some e) (hop : NotMach e) :
     ZiskRiscv.decode (ZiskRiscv.readWord (model.mem S.rv)) (model.getPC S.rv).toNat = .riscv := by
   rw [getPC_eq h]
   cases hs : ZiskRiscv.readWord (model.mem S.rv) (model.getPC T.rv).toNat with

@@ -56,17 +56,34 @@ theorem readWord_of {m : Equiv.Mem} {a : Nat} {e : BitVec 32}
   simp only [ZiskRiscv.readWord, h0, h1, h2, h3, Option.pure_def, Option.bind_eq_bind, Option.bind_some]
   rw [bytes_word]
 
-/-- An instruction outside SYSTEM's opcode is the model's to run. -/
+/-- A word the machine leaves to the model: outside SYSTEM's opcode, and
+    neither `lr` nor `sc` (opcode AMO, funct5 2 or 3), which the machine runs
+    its own way. -/
+def NotMach (w : BitVec 32) : Prop :=
+  w.extractLsb' 0 7 ≠ 0x73#7 ∧
+    ¬ (w.extractLsb' 0 7 = 0x2F#7 ∧ (w.extractLsb' 27 5 = 2#5 ∨ w.extractLsb' 27 5 = 3#5))
+
+/-- An instruction the machine leaves to the model is the model's to run. -/
 theorem decode_riscv {fetch : Nat → Option (BitVec 32)} {a : Nat} {w : BitVec 32} (hf : fetch a = some w)
-    (hop : w.extractLsb' 0 7 ≠ 0x73#7) : ZiskRiscv.decode fetch a = .riscv := by
+    (hop : NotMach w) : ZiskRiscv.decode fetch a = .riscv := by
+  obtain ⟨hop, hls⟩ := hop
   have : (ZiskRiscv.fields w).opcode ≠ 0x73 := by
     intro e; apply hop; apply BitVec.eq_of_toNat_eq; simpa [ZiskRiscv.fields] using e
+  have hls' : ¬ ((ZiskRiscv.fields w).opcode = 0x2F ∧
+      ((ZiskRiscv.fields w).funct7 >>> 2 = 2 ∨ (ZiskRiscv.fields w).funct7 >>> 2 = 3)) := by
+    rintro ⟨e1, e2⟩; apply hls
+    refine ⟨BitVec.eq_of_toNat_eq (by simpa [ZiskRiscv.fields] using e1), ?_⟩
+    have : (ZiskRiscv.fields w).funct7 >>> 2 = (w.extractLsb' 27 5).toNat := by
+      simp only [ZiskRiscv.fields, BitVec.extractLsb'_toNat, Nat.shiftRight_eq_div_pow]; omega
+    rcases e2 with e2 | e2
+    · exact .inl (BitVec.eq_of_toNat_eq (by rw [← this, e2]; rfl))
+    · exact .inr (BitVec.eq_of_toNat_eq (by rw [← this, e2]; rfl))
   simp only [ZiskRiscv.decode, hf]
   generalize hk : ZiskRiscv.kind (ZiskRiscv.fields w) = k
-  have : k ≠ .ecall ∧ k ≠ .csrrs ∧ k ≠ .csrrsi ∧ k ≠ .csrrwi := by
+  have : k ≠ .ecall ∧ k ≠ .csrrs ∧ k ≠ .csrrsi ∧ k ≠ .csrrwi ∧ k ≠ .lr ∧ k ≠ .sc := by
     subst hk
     simp only [ZiskRiscv.kind]
-    split <;> simp_all <;> split <;> simp
+    split <;> simp_all <;> split <;> simp_all <;> split <;> simp_all
   cases k <;> simp_all
 
 /-! ## The machine's step on plain RISC-V -/
@@ -91,61 +108,92 @@ theorem model_step {s s' : RVState} {rs : List PMA_Region} (hr : StepReady s rs)
 
 /-! ## The instructions of the simulation are plain RISC-V -/
 
-theorem notSys_r (i : RInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by simp only [RInstr.encode]; bv_decide
-theorem notSys_i (i : IInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by simp only [IInstr.encode]; bv_decide
-theorem notSys_sh (i : SInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by simp only [SInstr.encode]; bv_decide
-theorem notSys_u (i : UInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_r (i : RInstr) : NotMach i.encode := by
+  unfold NotMach; simp only [RInstr.encode]; bv_decide
+theorem notSys_i (i : IInstr) : NotMach i.encode := by
+  unfold NotMach; simp only [IInstr.encode]; bv_decide
+theorem notSys_sh (i : SInstr) : NotMach i.encode := by
+  unfold NotMach; simp only [SInstr.encode]; bv_decide
+theorem notSys_u (i : UInstr) : NotMach i.encode := by
+  unfold NotMach
   cases h : i.op <;> simp only [UInstr.encode, h, uopEnc] <;> bv_decide
-theorem notSys_ld (i : LdInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by simp only [LdInstr.encode]; bv_decide
-theorem notSys_lw (i : LwInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by simp only [LwInstr.encode]; bv_decide
-theorem notSys_sd (i : SdInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by simp only [SdInstr.encode]; bv_decide
-theorem notSys_sw (i : SwInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by simp only [SwInstr.encode]; bv_decide
-theorem notSys_br (i : BInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by simp only [BInstr.encode]; bv_decide
-theorem notSys_j (i : JInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by simp only [JInstr.encode]; bv_decide
-theorem notSys_jr (i : JrInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by simp only [JrInstr.encode]; bv_decide
-theorem notSys_rw (i : RwInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by simp only [RwInstr.encode]; bv_decide
-theorem notSys_iw (i : IwInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by simp only [IwInstr.encode]; bv_decide
-theorem notSys_siw (i : SiwInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_ld (i : LdInstr) : NotMach i.encode := by
+  unfold NotMach; simp only [LdInstr.encode]; bv_decide
+theorem notSys_lw (i : LwInstr) : NotMach i.encode := by
+  unfold NotMach; simp only [LwInstr.encode]; bv_decide
+theorem notSys_sd (i : SdInstr) : NotMach i.encode := by
+  unfold NotMach; simp only [SdInstr.encode]; bv_decide
+theorem notSys_sw (i : SwInstr) : NotMach i.encode := by
+  unfold NotMach; simp only [SwInstr.encode]; bv_decide
+theorem notSys_br (i : BInstr) : NotMach i.encode := by
+  unfold NotMach; simp only [BInstr.encode]; bv_decide
+theorem notSys_j (i : JInstr) : NotMach i.encode := by
+  unfold NotMach; simp only [JInstr.encode]; bv_decide
+theorem notSys_jr (i : JrInstr) : NotMach i.encode := by
+  unfold NotMach; simp only [JrInstr.encode]; bv_decide
+theorem notSys_rw (i : RwInstr) : NotMach i.encode := by
+  unfold NotMach; simp only [RwInstr.encode]; bv_decide
+theorem notSys_iw (i : IwInstr) : NotMach i.encode := by
+  unfold NotMach; simp only [IwInstr.encode]; bv_decide
+theorem notSys_siw (i : SiwInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [SiwInstr.encode]; bv_decide
-theorem notSys_fence (i : FenceInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_fence (i : FenceInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [FenceInstr.encode]; bv_decide
-theorem notSys_zba (i : ZbaInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_zba (i : ZbaInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [ZbaInstr.encode]; bv_decide
-theorem notSys_slliuw (i : SlliuwInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_slliuw (i : SlliuwInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [SlliuwInstr.encode]; bv_decide
-theorem notSys_zbs (i : ZbsInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_zbs (i : ZbsInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [ZbsInstr.encode]; bv_decide
-theorem notSys_zbsi (i : ZbsiInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_zbsi (i : ZbsiInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [ZbsiInstr.encode]; bv_decide
-theorem notSys_zbb (i : ZbbInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_zbb (i : ZbbInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [ZbbInstr.encode]; bv_decide
-theorem notSys_zbbw (i : ZbbWInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_zbbw (i : ZbbWInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [ZbbWInstr.encode]; bv_decide
-theorem notSys_rori (i : RoriInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_rori (i : RoriInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [RoriInstr.encode]; bv_decide
-theorem notSys_roriw (i : RoriwInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_roriw (i : RoriwInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [RoriwInstr.encode]; bv_decide
-theorem notSys_pack (i : PackInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_pack (i : PackInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [PackInstr.encode]; bv_decide
-theorem notSys_packw (i : PackwInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_packw (i : PackwInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [PackwInstr.encode]; bv_decide
-theorem notSys_sext (i : SextInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_sext (i : SextInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [SextInstr.encode]; bv_decide
-theorem notSys_zexth (i : ZexthInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_zexth (i : ZexthInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [ZexthInstr.encode]; bv_decide
-theorem notSys_byte (i : ByteInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_byte (i : ByteInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [ByteInstr.encode]; bv_decide
-theorem notSys_uw (i : UwInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_uw (i : UwInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [UwInstr.encode]; bv_decide
-theorem notSys_count (i : CountInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_count (i : CountInstr) : NotMach i.encode := by
+  unfold NotMach
   simp only [CountInstr.encode]; cases i.op <;> simp only [Transpiler.CountOp.opc] <;> bv_decide
-theorem notSys_m (i : MInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+theorem notSys_m (i : MInstr) : NotMach i.encode := by
+  unfold NotMach
   cases h : i.op <;> simp only [MInstr.encode, h, Transpiler.MOp.opc] <;> bv_decide
 
 /-- What the machine needs of the instruction at pc to leave it to
-    sail-riscv: executable there, a word not of SYSTEM's opcode. -/
+    sail-riscv: executable there, a word it leaves to the model. -/
 def WordOk (m : Equiv.Mem) (rs : List PMA_Region) (pc : BitVec 64) : Prop :=
-  ExecAt rs pc ∧ ∃ e : BitVec 32, ZiskRiscv.readWord m pc.toNat = some e ∧ e.extractLsb' 0 7 ≠ 0x73#7
+  ExecAt rs pc ∧ ∃ e : BitVec 32, ZiskRiscv.readWord m pc.toNat = some e ∧ NotMach e
 
 theorem StepOkT.word {s : RVState} {rs : List PMA_Region} {pc : BitVec 64}
     {zrom : BitVec 64 → _root_.Zisk.zisk_inst} : ∀ o, StepOkT s rs pc zrom o → WordOk s.mem rs pc
@@ -240,7 +288,7 @@ theorem mstep (S : ZiskRiscv.State model) (rs : List PMA_Region) (hr : StepReady
 structure RStep (S : ZiskRiscv.State model) (t : model.State) : Prop where
   pcx : model.getPC S.rv ≠ model.exitAddr
   word : ∃ e : BitVec 32, ZiskRiscv.readWord (model.mem S.rv) (model.getPC S.rv).toNat = some e ∧
-    e.extractLsb' 0 7 ≠ 0x73#7
+    NotMach e
   step : model.step S.rv = .ok t
   trap : model.trapped t = false
 

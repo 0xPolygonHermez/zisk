@@ -16,8 +16,8 @@
     (`registerOp`, `immediateOp`, `copyb`, `loadOp`, `storeOp`, ...), and
     `convert`, which picks one per instruction.
 
-  So far: RV64I but for ebreak and the CSRs; Zifencei; M; Zba; Zbs; Zbb;
-  and Zbkb. An instruction it does not describe is `none`.
+  So far: RV64I but for ebreak and the CSRs; Zifencei; M; A; Zba; Zbs;
+  Zbb; and Zbkb. An instruction it does not describe is `none`.
 
   Internal addresses (the odd ROM addresses a translation of more than one
   ZisK instruction continues at) come, in the Rust, from a counter global to
@@ -121,6 +121,10 @@ inductive SextOp | sextb | sexth
 inductive ByteOp | rev8 | orcb | brev8
   deriving BEq, Repr
 
+/-- A's read-modify-write ops (amoswap, amoadd, ...). -/
+inductive AmoOp | swap | add | xor | and | or | min | max | minu | maxu
+  deriving BEq, Repr
+
 /-- Zbb's counts on rs1, and their word forms. -/
 inductive CountOp | clz | ctz | cpop | clzw | ctzw | cpopw
   deriving BEq, Repr
@@ -132,6 +136,7 @@ inductive Inst
   | shadd (op : ShAdd) | slliuw | zbs (op : ZbsOp) | zbsi (op : ZbsOp) | zbb (op : ZbbOp)
   | zbbw (op : ZbbWOp) | rori | roriw | pack (op : PackOp) | packw | sext (op : SextOp) | zexth
   | byte (op : ByteOp) | count (op : CountOp) | adduw | shadduw (op : ShAdd)
+  | amo (op : AmoOp) (d : Bool) | lr (d : Bool) | sc (d : Bool)
   deriving BEq, Repr
 
 /-- What `decode_32` decodes a word to, among the instructions described.
@@ -200,6 +205,18 @@ def decode (w : BitVec 32) : Option Inst :=
     | 1, 48 => some (.zbb .rol) | 5, 48 => some (.zbb .ror)
     | 4, 4 => some (.pack .pack) | 7, 4 => some (.pack .packh)
     | _, _ => none
+  -- A: funct3 2 (.w) or 3 (.d), funct5 the op; lr's rs2 field must be 0
+  | 47 =>
+    if f3 == 2 || f3 == 3 then
+      let d := f3 == 3
+      match (w.extractLsb 31 27).toNat with
+      | 2 => if rs2 w = 0 then some (.lr d) else none
+      | 3 => some (.sc d)
+      | 1 => some (.amo .swap d) | 0 => some (.amo .add d) | 4 => some (.amo .xor d)
+      | 12 => some (.amo .and d) | 8 => some (.amo .or d) | 16 => some (.amo .min d)
+      | 20 => some (.amo .max d) | 24 => some (.amo .minu d) | 28 => some (.amo .maxu d)
+      | _ => none
+    else none
   | 55 => some .lui
   | 59 => match f3, f7 with
     | 0, 0 => some (.r .addw) | 0, 32 => some (.r .subw) | 1, 0 => some (.r .sllw)
@@ -398,6 +415,50 @@ def uw (w : BitVec 32) (op : Option ShAdd) (pc ia : BitVec 64) : List (BitVec 64
     | none => mk (srcA (rs2 w)) (srcB 32) (.ZOP_ADD ()) (storeReg (rd w)) (pc + 4 - ia) (pc + 4 - ia)
     | some o => mk (srcA 32) (srcB (rs2 w)) o.zop (storeReg (rd w)) (pc + 4 - ia) (pc + 4 - ia))]
 
+/-- The op an AMO applies to the loaded value (as a, last c) and rs2 (b). -/
+def AmoOp.zop (d : Bool) : AmoOp → zisk_op
+  | .swap => .ZOP_COPYB () | .add => if d then .ZOP_ADD () else .ZOP_ADD_W () | .xor => .ZOP_XOR ()
+  | .and => .ZOP_AND () | .or => .ZOP_OR () | .min => if d then .ZOP_MIN () else .ZOP_MIN_W ()
+  | .max => if d then .ZOP_MAX () else .ZOP_MAX_W () | .minu => if d then .ZOP_MINU () else .ZOP_MINU_W ()
+  | .maxu => if d then .ZOP_MAXU () else .ZOP_MAXU_W ()
+
+/-- The load an A instruction starts with: copyb (.d) or signextend_w (.w). -/
+def aLoad (d : Bool) : zisk_op := if d then .ZOP_COPYB () else .ZOP_SIGNEXTEND_W ()
+
+/-- The access width of an A instruction: 8 (.d) or 4 (.w). -/
+def aWidth (d : Bool) : Int := if d then 8 else 4
+
+/-- `create_atomic_op` and `create_atomic_swap`: the load, at r[rs1], to rd
+    (or, when rd is rs1 or rs2, to ZisK's register 32), on to ia; for all
+    but the swap, the op of last c and r[rs2], on to ia + 2; the store of
+    last c (the swap: r[rs2]) at r[rs1]; when rd is rs1 or rs2, last, the
+    copy of r[32] to rd. On to pc + 4. -/
+def amo (w : BitVec 32) (op : AmoOp) (d : Bool) (pc ia : BitVec 64) : List (BitVec 64 × zisk_inst) :=
+  let direct := rd w ≠ rs1 w ∧ rd w ≠ rs2 w
+  let dst := if direct then rd w else 32
+  let load (j : BitVec 64) := mk (srcA (rs1 w)) (.B_IND, 0) (aLoad d) (storeReg dst) (j - pc) (j - pc) (w := aWidth d)
+  let store (a j : BitVec 64) (b : b_src × BitVec 64) :=
+    (a, mk (srcA (rs1 w)) b (.ZOP_COPYB ()) (.ST_IND, 0, false) (j - a) (j - a) (w := aWidth d))
+  let copy (a : BitVec 64) := (a, mk (.A_IMM, 0) (srcB 32) (.ZOP_COPYB ()) (storeReg (rd w)) (pc + 4 - a) (pc + 4 - a))
+  match op with
+  | .swap =>
+    if direct then [(pc, load ia), store ia (pc + 4) (srcB (rs2 w))]
+    else [(pc, load ia), store ia (ia + 2) (srcB (rs2 w)), copy (ia + 2)]
+  | _ =>
+    let mid := (ia, mk (.A_C, 0) (srcB (rs2 w)) (op.zop d) (.ST_NONE, 0, false) 2 2)
+    if direct then [(pc, load ia), mid, store (ia + 2) (pc + 4) (.B_C, 0)]
+    else [(pc, load ia), mid, store (ia + 2) (ia + 4) (.B_C, 0), copy (ia + 4)]
+
+/-- `sc_w`, `sc_d`: the store of r[rs2] at r[rs1], always; then 0 to rd,
+    when rd is not x0. -/
+def sc (w : BitVec 32) (d : Bool) (pc ia : BitVec 64) : List (BitVec 64 × zisk_inst) :=
+  if rd w = 0 then
+    [(pc, mk (srcA (rs1 w)) (srcB (rs2 w)) (.ZOP_COPYB ()) (.ST_IND, 0, false) 4 4 (w := aWidth d))]
+  else
+    [(pc, mk (srcA (rs1 w)) (srcB (rs2 w)) (.ZOP_COPYB ()) (.ST_IND, 0, false) (ia - pc) (ia - pc) (w := aWidth d)),
+     (ia, mk (.A_IMM, 0) (.B_IMM, 0) (.ZOP_COPYB ()) (storeReg (rd w)) (pc + 4 - ia) (pc + 4 - ia)
+       (w := if d then 8 else 4))]
+
 /-- `convert`: the ZisK instructions for the instruction w at pc, followed
     by the word `next` (none at the end of the code, or before a 16-bit
     parcel), with the internal addresses from ia on. -/
@@ -465,5 +526,8 @@ def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : B
   | some (.count op) => one (singleOp w op.zop)
   | some .adduw => some (uw w none pc ia)
   | some (.shadduw op) => some (uw w (some op) pc ia)
+  | some (.amo op d) => some (amo w op d pc ia)
+  | some (.lr d) => one (mk (srcA (rs1 w)) (.B_IND, 0) (aLoad d) (storeReg (rd w)) 4 4 (w := aWidth d))
+  | some (.sc d) => some (sc w d pc ia)
 
 end Transpiler

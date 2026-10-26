@@ -27,6 +27,16 @@ Zicond, the privileged instructions (`mret`, `wfi`, `sfence.vma`).
   outside the contract: ZisK runs code from a read-only ROM.
 - `ebreak`, an instruction outside the set, and a reserved encoding end the
   run in failure (§ 4).
+- `lr.w` and `lr.d` are plain loads (sign-extended for `.w`), and `sc.w` and
+  `sc.d` always succeed: the store, then 0 to rd. ZisK keeps no reservation:
+  it is one hart, with no interrupts, so the failures RISC-V requires of an
+  `sc` (another hart's store, a reservation lost to preemption) cannot
+  happen, and a spurious failure is only permitted. Where this departs from
+  RISC-V is an `sc` with no `lr` before it, or to another address or width
+  than its `lr`'s: it succeeds here, and must fail on hardware; compiled
+  code pairs them. (sail-riscv's Lean leaves its reservations as axioms, so
+  this document, not sail-riscv, gives `lr` and `sc` their meaning.) The
+  AMOs are RISC-V's.
 - The transpiler decodes as RISC-V does, in this profile: a word RISC-V
   rejects becomes a halt, never another instruction, and a word of an
   extension outside the set fails only if it runs, as on RISC-V; it does not
@@ -201,7 +211,8 @@ definition, and is left for later.
 
 `lean/ZiskRiscv` states this contract in Lean, as a machine: sail-riscv's
 step, in ZisK's profile, except at a sequence of §§ 7–8, which runs
-sail-zisk's own operation on the RISC-V memory, and at the end of § 4. It
+sail-zisk's own operation on the RISC-V memory, at the end of § 4, and at
+`lr` and `sc`, which run as § 1 says. It
 is generic in the RISC-V model: on sail-riscv's Lean, it is the RISC-V side
 of the theorem; on its executable Lean (`lean/ZiskRiscvRun`,
 `make riscv-run`), it runs programs, and ends every compliance test and the
