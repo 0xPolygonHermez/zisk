@@ -100,6 +100,55 @@ theorem mstep (S : ZiskRiscv.State model) (rs : List PMA_Region) (hr : StepReady
   · rw [hg]; exact hop _ _ he
   · simp [model, hp, hpt]
 
+/-- The machine's step where the model's step traps: the run's failure. -/
+theorem step_trapped {M : ZiskRiscv.RiscvModel} (S : ZiskRiscv.State M) (rv' : M.State)
+    (hx : M.getPC S.rv ≠ M.exitAddr)
+    (hd : ZiskRiscv.decode (ZiskRiscv.readWord (M.mem S.rv)) (M.getPC S.rv).toNat = .riscv)
+    (hs : M.step S.rv = .ok rv') (ht : M.trapped rv' = true) :
+    ∃ m, ZiskRiscv.step S = .ok ({ S with rv := rv' }, .failure m) := by
+  have e : ZiskRiscv.tryStep S = .ok ({ S with rv := rv' }, .failure "a trap: a fault or an illegal instruction") := by
+    simp only [ZiskRiscv.tryStep, hd, hs]
+    simp [hx, bind, Except.bind, ht, pure, Except.pure]
+  exact ⟨_, by rw [ZiskRiscv.step, ZiskRiscv.step.go, e]⟩
+
+/-- A step of sail-riscv the simulation takes that ends at the trap vector:
+    the machine's step, the run's failure. -/
+theorem mstep_trap (S : ZiskRiscv.State model) (rs : List PMA_Region) (hr : StepReady S.rv rs) (pc : BitVec 64)
+    (hpc : S.rv.regs.get? Register.PC = some pc) (hw : WordOk S.rv.mem rs pc) (hx : ¬ ExecAt rs EXIT_ADDR)
+    {n : Nat} {s' : RVState} (hrun : (interpretSailEffects (try_step n false)).run S.rv = .ok false s')
+    (ht : s'.regs.get? Register.PC = some TRAP_VEC) :
+    ∃ m, ZiskRiscv.step S = .ok ({ S with rv := s' }, .failure m) := by
+  obtain ⟨hex, e, he, hop⟩ := hw
+  have hg : model.getPC S.rv = pc := by simp [model, hpc]
+  refine step_trapped S s' ?_ ?_ (model_step hr hrun) ?_
+  · rw [hg]; intro h; have h' : pc = EXIT_ADDR := h; exact hx (h' ▸ hex)
+  · rw [hg]; exact hop _ _ he
+  · simp [model, ht]
+
+/-- A machine step left to sail-riscv that traps, from S to its model
+    state t: not at the exit address, a plain word at pc, the model's step
+    taken, trapped. -/
+structure TStep (S : ZiskRiscv.State model) (t : model.State) : Prop where
+  pcx : model.getPC S.rv ≠ model.exitAddr
+  word : ∃ e : BitVec 32, ZiskRiscv.readWord (model.mem S.rv) (model.getPC S.rv).toNat = some e ∧
+    Plain e
+  step : model.step S.rv = .ok t
+  trap : model.trapped t = true
+
+theorem TStep.mstep {S : ZiskRiscv.State model} {t : model.State} (h : TStep S t) :
+    ∃ m, ZiskRiscv.step S = .ok ({ S with rv := t }, .failure m) := by
+  obtain ⟨e, he, hop⟩ := h.word
+  exact step_trapped S t h.pcx (hop _ _ he) h.step h.trap
+
+theorem mstep_trapT (S : ZiskRiscv.State model) (rs : List PMA_Region) (hr : StepReady S.rv rs) (pc : BitVec 64)
+    (hpc : S.rv.regs.get? Register.PC = some pc) (hw : WordOk S.rv.mem rs pc) (hx : ¬ ExecAt rs EXIT_ADDR)
+    {n : Nat} {s' : RVState} (hrun : (interpretSailEffects (try_step n false)).run S.rv = .ok false s')
+    (ht : s'.regs.get? Register.PC = some TRAP_VEC) : TStep S s' := by
+  obtain ⟨hex, e, he, hop⟩ := hw
+  have hg : model.getPC S.rv = pc := by simp [model, hpc]
+  refine ⟨?_, ⟨e, by rw [hg]; exact he, hop⟩, model_step hr hrun, by simp [model, ht]⟩
+  rw [hg]; intro h; have h' : pc = EXIT_ADDR := h; exact hx (h' ▸ hex)
+
 /-! ## Runs of plain RISC-V steps -/
 
 /-- A machine step left to sail-riscv, from S to its model state t: not at

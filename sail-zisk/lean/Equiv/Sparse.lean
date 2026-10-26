@@ -130,6 +130,33 @@ theorem go_sparse {T : ZiskRiscv.State model} {t : model.State} (hT : RStep T t)
         exact (Grows.insert _ a 0).trans hg
       · exact .inr ⟨msg, by rw [ZiskRiscv.step.go, e1]; simp only [hreg, if_true]; exact hmsg⟩
 
+/-- The machine's step on sparse memory, where on full memory it is a step
+    left to sail-riscv that traps: the run's failure, or the machine's
+    error (fuel out). -/
+theorem go_sparse_trap {T : ZiskRiscv.State model} {t : model.State} (hT : TStep T t) :
+    ∀ (f : Nat) (S : ZiskRiscv.State model), SparseOf S T →
+      (∃ S' m, ZiskRiscv.step.go f S = .ok (S', .failure m)) ∨ ∃ msg, ZiskRiscv.step.go f S = .error msg
+  | 0, S, _ => .inr ⟨_, rfl⟩
+  | f + 1, S, h => by
+    have hx : model.getPC S.rv ≠ model.exitAddr := by rw [getPC_eq h]; exact hT.pcx
+    obtain ⟨e, he, hop⟩ := hT.word
+    have hd := decode_sparse h he hop
+    rcases model_step_sparse h.ext hT.step with ⟨s', hs', hx'⟩ | ⟨a, ha, hreg, hm⟩
+    · have htr : model.trapped s' = true := by
+        have := hT.trap; simp only [model] at this ⊢; rw [← hx'.regs]; exact this
+      have e1 : ZiskRiscv.tryStep S =
+          .ok ({ S with rv := s' }, .failure "a trap: a fault or an illegal instruction") := by
+        simp only [ZiskRiscv.tryStep, hd, hs']
+        simp [hx, bind, Except.bind, htr, pure, Except.pure]
+      exact .inl ⟨_, _, by rw [ZiskRiscv.step.go, e1]⟩
+    · have e1 : ZiskRiscv.tryStep S = .error (.missing a) := by
+        simp only [ZiskRiscv.tryStep, hd, ha]
+        simp [hx, bind, Except.bind, pure, Except.pure]
+      have hf := h.fill hreg hm
+      rcases go_sparse_trap hT f _ hf with ⟨S', m, hS'⟩ | ⟨msg, hmsg⟩
+      · exact .inl ⟨S', m, by rw [ZiskRiscv.step.go, e1]; simp only [hreg, if_true]; exact hS'⟩
+      · exact .inr ⟨msg, by rw [ZiskRiscv.step.go, e1]; simp only [hreg, if_true]; exact hmsg⟩
+
 theorem readWord_grows {m m' : Mem} (g : Grows m m') {a : Nat} {w : BitVec 32}
     (h : ZiskRiscv.readWord m a = some w) : ∃ w', ZiskRiscv.readWord m' a = some w' := by
   simp only [ZiskRiscv.readWord] at h ⊢
@@ -682,6 +709,46 @@ theorem fail_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : Bi
   · have hcdk : CodeIn C Sk := CodeIn.grow (S := ⟨s0', fc⟩) hcode hgk
     rcases go_sparse_fail hxT (by rw [hg]; exact hpcc) c (fun hl => by rw [hg]; exact ⟨hC4 hl, h4⟩)
         (fun hl => by rw [hg]; exact ⟨hC8 hl, h8⟩) hdT hc hne 4096 Sk hsk hcdk with ⟨S', m, hs⟩ | ⟨msg, hs⟩
+    · refine .inl ⟨S', m, fun fuel => ?_⟩
+      have hs' : ZiskRiscv.step Sk = .ok (S', .failure m) := hs
+      simp only [ZiskRiscv.run]
+      rw [show k + 1 + fuel = k + (fuel + 1) by omega, hgo, ZiskRiscv.run.go]
+      simp [hs', bind, Except.bind, pure, Except.pure]
+    · refine .inr ⟨msg, fun fuel => ?_⟩
+      have hs' : ZiskRiscv.step Sk = .error msg := hs
+      simp only [ZiskRiscv.run]
+      rw [show k + 1 + fuel = k + (fuel + 1) by omega, hgo, ZiskRiscv.run.go]
+      simp [hs', bind, Except.bind]
+  · exact .inr ⟨msg, fun fuel => by
+      simp only [ZiskRiscv.run]; rw [show k + 1 + fuel = k + (fuel + 1) by omega]; exact hmsg _ 0⟩
+
+open Equiv.Top in
+/-- `fault_end` on sparse memory, as `exit_end_sparse`: the machine's run
+    ends in failure, or stops with its own error. -/
+theorem fault_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
+    (rs : List PMA_Region) (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC)
+    (C : BitVec 64 → Prop) (hnx : NoCodeRam C) (hni : NoCodeIn C)
+    (m0 : Mem) (hspec : SpecRom zrom C m0) (s0 : RVState) (hs0 : Start s0 rs entry m0)
+    (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
+    (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
+    (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
+    (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
+    (hfa : FaultAt rs zrom (sIter 0 k ⟨s0, fc⟩).rv)
+    (s0' : RVState) (hsp : Ext zeroFill s0' s0) (hcode : ∀ pc, C pc → ∃ w, ZiskRiscv.readWord s0'.mem pc.toNat = some w) :
+    ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
+      ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
+    ∃ n z1 e z', ZRun zrom n z0 z1 ∧ (zstep zrom).run z1 = .error e z' := by
+  refine ⟨?_, (fault_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun
+    hin hfa).2⟩
+  obtain ⟨z1, -, -, hrel, -, -, -, hm⟩ :=
+    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
+  generalize sIter 0 k ⟨s0, fc⟩ = T at *
+  obtain ⟨pc, hpc, hw, ⟨s', hrun', hpc'⟩, -⟩ := fault_step T.rv z1 rs hrel zrom hfa 0
+  have hmr := hm (PcOk.of_exec ht hpc hw.1)
+  have hT := mstep_trapT T rs hrel.ready pc hpc hw hx hrun' hpc'
+  rcases runs_sparse hmr ⟨s0', fc⟩ ⟨hsp, rfl⟩ hcode with ⟨Sk, hsk, -, hgo⟩ | ⟨msg, hmsg⟩
+  · rcases go_sparse_trap hT 4096 Sk hsk with ⟨S', m, hs⟩ | ⟨msg, hs⟩
     · refine .inl ⟨S', m, fun fuel => ?_⟩
       have hs' : ZiskRiscv.step Sk = .ok (S', .failure m) := hs
       simp only [ZiskRiscv.run]

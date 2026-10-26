@@ -99,4 +99,63 @@ theorem zisk_fail (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 6
     (noCodeIn_of_exec hcx) m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin pc hpc (hcx pc hpcc)
     hpcc w hrw h4 h8 c hd hC4 hC8 hfail s0' hsp hcode
 
+/-- A load or a store at pc, any registers, at an address no PMA region
+    of ZisK's permits: sail-riscv's side alone, ZisK's memory map then
+    refusing it too (`readable_match`, `writable_match`). -/
+def FaultAtR (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (s : RVState) : Prop :=
+  ∃ pc, s.regs.get? Register.PC = some pc ∧
+    ((∃ i : LdInstr, LdtAt s ziskRegions pc zrom i (nextWord s pc) ∧ ∃ v1, getX s i.rs1.toNat = some v1 ∧
+        AccFault ziskRegions (.Load .Data) (v1 + i.imm.signExtend 64) 8) ∨
+     (∃ i : LwInstr, LwtAt s ziskRegions pc zrom i (nextWord s pc) ∧ ∃ v1, getX s i.rs1.toNat = some v1 ∧
+        AccFault ziskRegions (.Load .Data) (v1 + i.imm.signExtend 64) i.k.w) ∨
+     (∃ i : SdInstr, SdtAt s ziskRegions pc zrom i (nextWord s pc) ∧ ∃ v1, getX s i.rs1.toNat = some v1 ∧
+        AccFault ziskRegions (.Store .Data) (v1 + (i.immHi ++ i.immLo).signExtend 64) 8) ∨
+     (∃ i : SwInstr, SwtAt s ziskRegions pc zrom i (nextWord s pc) ∧ ∃ v1, getX s i.rs1.toNat = some v1 ∧
+        AccFault ziskRegions (.Store .Data) (v1 + (i.immHi ++ i.immLo).signExtend 64) i.k.w))
+
+theorem readable_of_fault {a : BitVec 64} {w : Nat} (hw : w = 1 ∨ w = 2 ∨ w = 4 ∨ w = 8)
+    (h : AccFault ziskRegions (.Load .Data) a w) : _root_.Zisk.Functions.readable a w = false := by
+  cases hr : _root_.Zisk.Functions.readable a w
+  · rfl
+  · obtain ⟨r, hm, hrd⟩ := readable_match a w hw hr
+    rcases h with h | ⟨r', hm', hp⟩
+    · rw [hm] at h; cases h
+    · rw [hm] at hm'; cases hm'; simp [permits, hrd] at hp
+
+theorem writable_of_fault {a : BitVec 64} {w : Nat} (hw : w = 1 ∨ w = 2 ∨ w = 4 ∨ w = 8)
+    (h : AccFault ziskRegions (.Store .Data) a w) : _root_.Zisk.Functions.writable a w = false := by
+  cases hr : _root_.Zisk.Functions.writable a w
+  · rfl
+  · obtain ⟨r, hm, hwr⟩ := writable_match a w hw hr
+    rcases h with h | ⟨r', hm', hp⟩
+    · rw [hm] at h; cases h
+    · rw [hm] at hm'; cases hm'; simp [permits, hwr] at hp
+
+theorem FaultAtR.faultAt {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {s : RVState} (h : FaultAtR zrom s) :
+    FaultAt ziskRegions zrom s := by
+  obtain ⟨pc, hpc, ⟨i, hi, v1, hv1, hf⟩ | ⟨i, hi, v1, hv1, hf⟩ | ⟨i, hi, v1, hv1, hf⟩ | ⟨i, hi, v1, hv1, hf⟩⟩ := h
+  · exact ⟨pc, hpc, .inl ⟨i, hi, v1, hv1, hf, readable_of_fault (by decide) hf⟩⟩
+  · exact ⟨pc, hpc, .inr (.inl ⟨i, hi, v1, hv1, hf, readable_of_fault i.k.w_cases hf⟩)⟩
+  · exact ⟨pc, hpc, .inr (.inr (.inl ⟨i, hi, v1, hv1, hf, writable_of_fault (by decide) hf⟩))⟩
+  · exact ⟨pc, hpc, .inr (.inr (.inr ⟨i, hi, v1, hv1, hf, writable_of_fault i.k.w_cases hf⟩))⟩
+
+/-- A load or a store at an address none of ZisK's regions permits: the
+    machine's run ends in failure, or in its own error; sail-zisk's reaches
+    a step that fails. -/
+theorem zisk_fault (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
+    (C : BitVec 64 → Prop) (hcx : ∀ pc, C pc → ExecAt ziskRegions pc)
+    (m0 : Mem) (hspec : SpecRom zrom C m0) (s0 : RVState) (hs0 : Start s0 ziskRegions entry m0)
+    (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
+    (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
+    (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
+    (hrun : RunOkM ziskRegions zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
+    (hfa : FaultAtR zrom (sIter 0 k ⟨s0, fc⟩).rv)
+    (s0' : RVState) (hsp : Ext zeroFill s0' s0) (hcode : ∀ pc, C pc → ∃ w, ZiskRiscv.readWord s0'.mem pc.toNat = some w) :
+    ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
+      ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
+    ∃ n z1 e z', ZRun zrom n z0 z1 ∧ (zstep zrom).run z1 = .error e z' :=
+  fault_end_sparse zrom entry hb ziskRegions exit_not_exec trap_not_exec C (noCodeRam_of_exec hcx)
+    (noCodeIn_of_exec hcx) m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin hfa.faultAt s0' hsp hcode
+
 end Equiv.Final

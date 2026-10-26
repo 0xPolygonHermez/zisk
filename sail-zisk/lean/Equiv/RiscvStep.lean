@@ -195,6 +195,9 @@ structure StepReady (s : RVState) (rs : List PMA_Region) : Prop where
   /-- marchid ZisK's architecture ID, as ZisK's profile configures it (no
       program can write it: it is read-only). -/
   march : s.regs.get? marchid = some 0x0FFFEEEE#64
+  /-- mtvec at 4, direct mode, as the machine's model sets it: a trap lands
+      outside ZisK's memory (no program in the contract writes it). -/
+  mtvec : s.regs.get? mtvec = some 0x4#64
 
 /-- An instruction word at pc that sail-riscv fetches as such: aligned, in
     executable memory, not compressed. -/

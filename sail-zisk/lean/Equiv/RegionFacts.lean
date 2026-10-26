@@ -94,4 +94,84 @@ theorem alignOk_gran {a : BitVec 64} {w : Nat} {r : PMA_Region} {acc : MemoryAcc
     (hw : w = 1 ∨ w = 2 ∨ w = 4 ∨ w = 8) (h : a.toNat % 16 + w ≤ 16) : AlignOk r acc a w :=
   .inr ⟨hacc, region_gran hm, by omega, allowed_of_mod a w hw h⟩
 
+theorem slice_w (w : Nat) : get_slice_int 64 (w : Int) 0 = BitVec.ofNat 64 w := by
+  apply BitVec.eq_of_toNat_eq
+  simp [get_slice_int]
+
+/-- An access ZisK's memory map reads is in a PMA region (all readable). -/
+theorem readable_match (a : BitVec 64) (w : Nat) (hw : w = 1 ∨ w = 2 ∨ w = 4 ∨ w = 8)
+    (h : _root_.Zisk.Functions.readable a w = true) :
+    ∃ r, matching_pma_region ziskRegions (.Physaddr a) w = some r ∧ r.attributes.readable = true := by
+  have ha := a.isLt
+  simp only [_root_.Zisk.Functions.readable, _root_.Zisk.Functions.mem_region_of, BitVec.toNatInt] at h
+  simp only [matching_pma_region, matching_pma_region_bits_range, ziskRegions, range_subset, zopz0zIzJ_u,
+    zero_extend, bits_of_physaddr, Sail.BitVec.zeroExtend, to_bits, slice_w, BitVec.toNatInt]
+  split
+  · exact ⟨_, rfl, rfl⟩
+  split
+  · exact ⟨_, rfl, rfl⟩
+  split
+  · exact ⟨_, rfl, rfl⟩
+  exfalso
+  rename_i h1 h2 h3
+  simp [BitVec.toNat_sub, BitVec.toNat_add] at h1 h2 h3
+  revert h
+  split
+  · intro h; cases h
+  · intro _
+    rename_i hne _
+    revert hne
+    split
+    · intro _; rcases hw with rfl | rfl | rfl | rfl <;> simp at * <;> omega
+    split
+    · intro _; rcases hw with rfl | rfl | rfl | rfl <;> simp at * <;> omega
+    split
+    · intro _; rcases hw with rfl | rfl | rfl | rfl <;> simp at * <;> omega
+    · intro hne; exact absurd rfl hne
+
+/-- ZisK's writable memory: its RAM. -/
+theorem writable_ram (a : BitVec 64) (w : Nat) (h : _root_.Zisk.Functions.writable a w = true) :
+    2684354560 ≤ a.toNat ∧ a.toNat + w ≤ 3221225472 := by
+  simp only [_root_.Zisk.Functions.writable, _root_.Zisk.Functions.mem_region_of, BitVec.toNatInt] at h
+  revert h
+  split
+  · next heq =>
+    intro _
+    revert heq
+    split
+    · intro hc; cases hc
+    split
+    · intro hc; cases hc
+    split
+    · intro _
+      simp_all
+      omega
+    · intro hc; cases hc
+  · intro h; cases h
+
+/-- An access ZisK's memory map writes, in its RAM, is in a writable PMA region. -/
+theorem writable_match (a : BitVec 64) (w : Nat) (hw : w = 1 ∨ w = 2 ∨ w = 4 ∨ w = 8)
+    (h : _root_.Zisk.Functions.writable a w = true) :
+    ∃ r, matching_pma_region ziskRegions (.Physaddr a) w = some r ∧ r.attributes.writable = true := by
+  have ha := a.isLt
+  have hram := writable_ram a w h
+  simp only [matching_pma_region, matching_pma_region_bits_range, ziskRegions, range_subset, zopz0zIzJ_u,
+    zero_extend, bits_of_physaddr, Sail.BitVec.zeroExtend, to_bits, slice_w, BitVec.toNatInt]
+  split
+  · rename_i r1
+    exfalso
+    simp [BitVec.toNat_sub, BitVec.toNat_add] at r1
+    rcases hw with rfl | rfl | rfl | rfl <;> simp at * <;> omega
+  split
+  · rename_i r2
+    exfalso
+    simp [BitVec.toNat_sub, BitVec.toNat_add] at r2
+    rcases hw with rfl | rfl | rfl | rfl <;> simp at * <;> omega
+  split
+  · exact ⟨_, rfl, rfl⟩
+  · rename_i r3
+    exfalso
+    simp [BitVec.toNat_sub, BitVec.toNat_add] at r3
+    rcases hw with rfl | rfl | rfl | rfl <;> simp at * <;> omega
+
 end Equiv.Sim

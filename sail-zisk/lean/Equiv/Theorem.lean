@@ -17,6 +17,7 @@ import Equiv.Full
 import Equiv.Machine
 import Equiv.SpecRom
 import Equiv.RunM
+import Equiv.FaultSim
 
 namespace Equiv.Top
 
@@ -171,5 +172,63 @@ theorem fail_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64
   rcases hstep with ⟨m, hs⟩ | ⟨msg, hs⟩
   · exact .inl ⟨m, fun fuel => run_of hmr.toMRun hs (by simp) fuel⟩
   · exact .inr ⟨msg, fun fuel => run_err_of hmr.toMRun hs fuel⟩
+
+/-! ## An access neither side may make -/
+
+/-- A load or a store at pc, any registers, at an address no PMA region
+    permits and that ZisK's memory map refuses too. -/
+def FaultAt (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (s : RVState) : Prop :=
+  ∃ pc, s.regs.get? Register.PC = some pc ∧
+    ((∃ i : LdInstr, LdtAt s rs pc zrom i (nextWord s pc) ∧ ∃ v1, getX s i.rs1.toNat = some v1 ∧
+        AccFault rs (.Load .Data) (v1 + i.imm.signExtend 64) 8 ∧
+        _root_.Zisk.Functions.readable (v1 + i.imm.signExtend 64) 8 = false) ∨
+     (∃ i : LwInstr, LwtAt s rs pc zrom i (nextWord s pc) ∧ ∃ v1, getX s i.rs1.toNat = some v1 ∧
+        AccFault rs (.Load .Data) (v1 + i.imm.signExtend 64) i.k.w ∧
+        _root_.Zisk.Functions.readable (v1 + i.imm.signExtend 64) i.k.w = false) ∨
+     (∃ i : SdInstr, SdtAt s rs pc zrom i (nextWord s pc) ∧ ∃ v1, getX s i.rs1.toNat = some v1 ∧
+        AccFault rs (.Store .Data) (v1 + (i.immHi ++ i.immLo).signExtend 64) 8 ∧
+        _root_.Zisk.Functions.writable (v1 + (i.immHi ++ i.immLo).signExtend 64) 8 = false) ∨
+     (∃ i : SwInstr, SwtAt s rs pc zrom i (nextWord s pc) ∧ ∃ v1, getX s i.rs1.toNat = some v1 ∧
+        AccFault rs (.Store .Data) (v1 + (i.immHi ++ i.immLo).signExtend 64) i.k.w ∧
+        _root_.Zisk.Functions.writable (v1 + (i.immHi ++ i.immLo).signExtend 64) i.k.w = false))
+
+/-- The faulting access, one step of each: sail-riscv's to the trap vector,
+    a plain word at an executable pc; sail-zisk's failing. -/
+theorem fault_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hrel : Rel s z rs)
+    (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (h : FaultAt rs zrom s) (n : Nat) :
+    ∃ pc, s.regs.get? Register.PC = some pc ∧ WordOk s.mem rs pc ∧
+      (∃ s', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
+        s'.regs.get? Register.PC = some TRAP_VEC) ∧ ∃ e z', (zstep zrom).run z = .error e z' := by
+  obtain ⟨pc, hpc, ⟨i, hi, v1, hv1, hf, hz⟩ | ⟨i, hi, v1, hv1, hf, hz⟩ | ⟨i, hi, v1, hv1, hf, hz⟩ |
+    ⟨i, hi, v1, hv1, hf, hz⟩⟩ := h
+  · obtain ⟨h1, h2⟩ := ldt_fault s z rs hrel pc hpc zrom i _ hi v1 hv1 hf hz n
+    exact ⟨pc, hpc, ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_ld i).plain⟩, h1, h2⟩
+  · obtain ⟨h1, h2⟩ := lwt_fault s z rs hrel pc hpc zrom i _ hi v1 hv1 hf hz n
+    exact ⟨pc, hpc, ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_lw i).plain⟩, h1, h2⟩
+  · obtain ⟨h1, h2⟩ := sdt_fault s z rs hrel pc hpc zrom i _ hi v1 hv1 hf hz n
+    exact ⟨pc, hpc, ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_sd i).plain⟩, h1, h2⟩
+  · obtain ⟨h1, h2⟩ := swt_fault s z rs hrel pc hpc zrom i _ hi v1 hv1 hf hz n
+    exact ⟨pc, hpc, ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_sw i).plain⟩, h1, h2⟩
+
+/-- A load or a store neither side may make (`FaultAt`): the machine's run
+    ends in failure (sail-riscv's access fault, its trap); sail-zisk's
+    reaches a step that fails. -/
+theorem fault_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
+    (rs : List PMA_Region) (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC) (C : BitVec 64 → Prop) (hnx : NoCodeRam C) (hni : NoCodeIn C)
+    (m0 : Mem) (hspec : SpecRom zrom C m0) (s0 : RVState) (hs0 : Start s0 rs entry m0)
+    (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
+    (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
+    (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat) (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
+    (hfa : FaultAt rs zrom (sIter 0 k ⟨s0, fc⟩).rv) :
+    (∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0, fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∧
+    ∃ n z1 e z', ZRun zrom n z0 z1 ∧ (zstep zrom).run z1 = .error e z' := by
+  obtain ⟨z1, n1, hz1, hrel, -, -, -, hm⟩ :=
+    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
+  generalize sIter 0 k ⟨s0, fc⟩ = T at *
+  obtain ⟨pc, hpc, hw, ⟨s', hrun', hpc'⟩, e, z', hze'⟩ := fault_step T.rv z1 rs hrel zrom hfa 0
+  have hmr := hm (PcOk.of_exec ht hpc hw.1)
+  obtain ⟨m, hs⟩ := mstep_trap T rs hrel.ready pc hpc hw hx hrun' hpc'
+  exact ⟨⟨_, m, fun fuel => run_of hmr.toMRun hs (by simp) fuel⟩, n1, z1, e, z', hz1, hze'⟩
 
 end Equiv.Top
