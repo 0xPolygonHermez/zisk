@@ -83,3 +83,6 @@ import Equiv.RiscvZbb
 import Equiv.RiscvDecodeZbb
 import Equiv.ZbbSim
 import Equiv.ZbbRotSim
+import Equiv.RiscvZbkb
+import Equiv.RiscvDecodeZbkb
+import Equiv.ZbkbSim

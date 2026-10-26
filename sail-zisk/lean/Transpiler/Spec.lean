@@ -16,9 +16,10 @@
     (`registerOp`, `immediateOp`, `copyb`, `loadOp`, `storeOp`, ...), and
     `convert`, which picks one per instruction.
 
-  So far: RV64I but for ebreak and the CSRs; Zifencei; M; and Zba's single-instruction
-  forms (sh1add, sh2add, sh3add, slli.uw); Zbs; Zbb's register ops and rotations. An instruction it
-  does not describe is `none`.
+  So far: RV64I but for ebreak and the CSRs; Zifencei; M; Zba's single-instruction
+  forms (sh1add, sh2add, sh3add, slli.uw); Zbs; Zbb's register ops, rotations
+  and extensions; and Zbkb's packs. An instruction it does not describe is
+  `none`.
 
   Internal addresses (the odd ROM addresses a translation of more than one
   ZisK instruction continues at) come, in the Rust, from a counter global to
@@ -110,12 +111,20 @@ inductive ZbbOp | andn | orn | xnor | max | maxu | min | minu | rol | ror
 inductive ZbbWOp | rolw | rorw
   deriving BEq, Repr
 
+/-- Zbkb's packs of two registers. -/
+inductive PackOp | pack | packh
+  deriving BEq, Repr
+
+/-- Zbb's sign extensions of rs1. -/
+inductive SextOp | sextb | sexth
+  deriving BEq, Repr
+
 /-- An instruction the spec describes, as `RiscvDecoder::decode_32` names it. -/
 inductive Inst
   | r (op : ROp) | i (op : IOp) | shift (op : SOp) | branch (op : BOp)
   | load (op : LOp) | store (op : SzOp) | lui | auipc | jal | jalr | m (op : MOp) | ecall | fence
   | shadd (op : ShAdd) | slliuw | zbs (op : ZbsOp) | zbsi (op : ZbsOp) | zbb (op : ZbbOp)
-  | zbbw (op : ZbbWOp) | rori | roriw
+  | zbbw (op : ZbbWOp) | rori | roriw | pack (op : PackOp) | packw | sext (op : SextOp) | zexth
   deriving BEq, Repr
 
 /-- What `decode_32` decodes a word to, among the instructions described.
@@ -132,9 +141,12 @@ def decode (w : BitVec 32) : Option Inst :=
   | 19 => match f3 with
     | 0 => some (.i .addi)
     | 1 =>
-      -- sext.b, sext.h, clz, ctz and cpop come first in the Rust; all have funct6 24.
+      -- sext.b, sext.h, clz, ctz and cpop come first in the Rust; all have funct6 24,
+      -- so here, after the rest.
       if f6 == 0 then some (.shift .slli) else if f6 == 10 then some (.zbsi .bset)
-      else if f6 == 18 then some (.zbsi .bclr) else if f6 == 26 then some (.zbsi .binv) else none
+      else if f6 == 18 then some (.zbsi .bclr) else if f6 == 26 then some (.zbsi .binv)
+      else if (w.extractLsb 31 20).toNat == 0x604 then some (.sext .sextb)
+      else if (w.extractLsb 31 20).toNat == 0x605 then some (.sext .sexth) else none
     | 2 => some (.i .slti) | 3 => some (.i .sltiu) | 4 => some (.i .xori)
     | 5 =>
       -- rev8, brev8 and orc.b come first; none has funct6 0, 16, 18 or 24.
@@ -170,11 +182,14 @@ def decode (w : BitVec 32) : Option Inst :=
     | 7, 32 => some (.zbb .andn) | 6, 32 => some (.zbb .orn) | 4, 32 => some (.zbb .xnor)
     | 6, 5 => some (.zbb .max) | 7, 5 => some (.zbb .maxu) | 4, 5 => some (.zbb .min) | 5, 5 => some (.zbb .minu)
     | 1, 48 => some (.zbb .rol) | 5, 48 => some (.zbb .ror)
+    | 4, 4 => some (.pack .pack) | 7, 4 => some (.pack .packh)
     | _, _ => none
   | 55 => some .lui
   | 59 => match f3, f7 with
     | 0, 0 => some (.r .addw) | 0, 32 => some (.r .subw) | 1, 0 => some (.r .sllw)
     | 5, 0 => some (.r .srlw) | 5, 32 => some (.r .sraw) | 1, 48 => some (.zbbw .rolw) | 5, 48 => some (.zbbw .rorw)
+    -- zext.h is packw with rs2 x0, and comes first in the Rust
+    | 4, 4 => if (rs2 w) = 0 then some .zexth else some .packw
     | 0, 1 => some (.m .mulw) | 4, 1 => some (.m .divw) | 5, 1 => some (.m .divuw) | 6, 1 => some (.m .remw)
     | 7, 1 => some (.m .remuw) | _, _ => none
   | 99 => match f3 with
@@ -236,6 +251,14 @@ def immediateOpOrCopyb (op : zisk_op) : zisk_inst :=
 /-- `copyb`: r[rs1] or r[rs2] (rs = 1 or 2) -> r[rd]. -/
 def copyb (rs : Nat) : zisk_inst :=
   mk (.A_IMM, 0) (srcB (if rs = 1 then rs1 w else rs2 w)) (.ZOP_COPYB ()) (storeReg (rd w)) 4 4
+
+/-- `create_single_source_register_op` (rs = 1): op(0, r[rs1]) -> r[rd]. -/
+def singleOp (op : zisk_op) : zisk_inst :=
+  mk (.A_IMM, 0) (srcB (rs1 w)) op (storeReg (rd w)) 4 4
+
+/-- `zero_extend_h`: and(r[rs1], 0xffff) -> r[rd]. -/
+def zextH : zisk_inst :=
+  mk (srcA (rs1 w)) (.B_IMM, 0xFFFF) (.ZOP_AND ()) (storeReg (rd w)) 4 4
 
 /-- `nop`: flag(0, 0), on to pc + 4. -/
 def nop : zisk_inst := mk (.A_IMM, 0) (.B_IMM, 0) (.ZOP_FLAG ()) (j1 := 4) (j2 := 4)
@@ -323,6 +346,12 @@ def ZbbOp.zop : ZbbOp → zisk_op
 def ZbbWOp.zop : ZbbWOp → zisk_op
   | .rolw => .ZOP_ROL_W () | .rorw => .ZOP_ROR_W ()
 
+def PackOp.zop : PackOp → zisk_op
+  | .pack => .ZOP_PACK () | .packh => .ZOP_PACK_H ()
+
+def SextOp.zop : SextOp → zisk_op
+  | .sextb => .ZOP_SIGNEXTEND_B () | .sexth => .ZOP_SIGNEXTEND_H ()
+
 /-- The op the transpiler emits for each M instruction (riscv2zisk_context.rs). -/
 def MOp.zop : MOp → zisk_op
   | .mul => .ZOP_MUL () | .mulh => .ZOP_MULH () | .mulhsu => .ZOP_MULSUH () | .mulhu => .ZOP_MULUH ()
@@ -393,5 +422,9 @@ def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : B
   | some (.zbbw op) => one (registerOp w op.zop)
   | some .rori => one (immediateOp w (.ZOP_ROR ()) (shamt w))
   | some .roriw => one (immediateOp w (.ZOP_ROR_W ()) (shamt w))
+  | some (.pack op) => one (registerOp w op.zop)
+  | some .packw => one (registerOp w (.ZOP_PACK_W ()))
+  | some (.sext op) => one (singleOp w op.zop)
+  | some .zexth => one (zextH w)
 
 end Transpiler
