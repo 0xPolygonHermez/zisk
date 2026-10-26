@@ -81,7 +81,7 @@ theorem exit_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64
     (∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0, fc⟩ : ZiskRiscv.State model) =
         .ok (⟨rvIter 0 k s0, fc⟩, .exit c, k)) ∧
     ∃ z', ZEnds zrom z0 z' ∧
-      (c = 0 → z'.regs.get? .Zerror = some false ∧ z'.mem = (rvIter 0 k s0).mem) ∧
+      (c = 0 → z'.regs.get? .Zerror = some false ∧ Equiv.normIn z'.mem = Equiv.normIn (rvIter 0 k s0).mem) ∧
       (c ≠ 0 → z'.regs.get? .Zerror = some true ∧ z'.regs.get? .Zerror_code = some c) := by
   obtain ⟨z1, n1, hz1, hrel, hsp, hg, hm⟩ :=
     covered_run zrom entry hb rs hx ht C hnx m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc zr k hrun hin
@@ -120,7 +120,7 @@ theorem return_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 
     (hpc : (rvIter 0 k s0).regs.get? Register.PC = some Transpiler.OUTPUT_BLOCK) :
     (∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0, fc⟩ : ZiskRiscv.State model) =
         .ok (⟨rvIter 0 k s0, fc⟩, .exit 0, k)) ∧
-    ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some false ∧ z'.mem = (rvIter 0 k s0).mem := by
+    ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some false ∧ Equiv.normIn z'.mem = Equiv.normIn (rvIter 0 k s0).mem := by
   obtain ⟨z1, n1, hz1, hrel, hsp, hg, hm⟩ :=
     covered_run zrom entry hb rs hx ht C hnx m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc zr k hrun hin
   have hmr := hm ⟨_, hpc, by decide⟩

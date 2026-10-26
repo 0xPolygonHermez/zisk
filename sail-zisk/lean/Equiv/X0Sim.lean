@@ -466,8 +466,8 @@ theorem btstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   · simp only [Std.ExtDHashMap.get?_insert, beq_self_eq_true, dite_true, cast_eq, Option.some.injEq]
     rw [hr1, hr2, BInstr.target, ← zbop_flag, BInstr.zjumps]
     cases zbopNeg i.op <;> cases (_root_.Zisk.Functions.zisk_exec (zbopOp i.op) v1 v2).2 <;> simp
-  · show (z.mem) = s'.mem
-    rw [hmem, hzm]
+  · show Equiv.normIn z.mem = Equiv.normIn s'.mem
+    rw [hmem]; exact hzm
 
 /-! ## Stores, x0 operands among them (`sd zero, off(sp)`) -/
 
@@ -551,7 +551,7 @@ theorem swtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
     ?_⟩, hpc'', hmem⟩
   · simp [Std.ExtDHashMap.get?_insert, hx]
   · intro k hk1 hk2; rw [hxs' k hk2]; exact agree k hk1 hk2
-  · simp only [hmem, hzm]
+  · rw [hmem]; exact Equiv.normIn_memWrite hzm _ _
 
 structure SdtAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : SdInstr) (next : Option (BitVec 32)) : Prop where
@@ -612,8 +612,7 @@ theorem sdtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
     ?_⟩, hpc'', hmem⟩
   · simp [Std.ExtDHashMap.get?_insert, hx]
   · intro k hk1 hk2; rw [hxs' k hk2]; exact agree k hk1 hk2
-  · simp only [hmem, hzm]
-    congr 1
+  · rw [hmem]; simp only [Nat.reduceMul, BitVec.setWidth_eq]; exact Equiv.normIn_memWrite hzm _ _
 
 /-! ## Narrow loads, any registers -/
 
@@ -661,7 +660,7 @@ theorem lwtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
     have := getX_regv agree l1; rw [hv1] at this; exact (Option.some.inj this).symm
   have hvalid := i.k.valid
   rw [← hu, ← hwd] at hvalid
-  obtain ⟨⟨r, hm, hrb, hal⟩, hzr, hzn, hbytes⟩ := hok
+  obtain ⟨⟨r, hm, hrb, hal⟩, hzr, hzn, hoff, hbytes⟩ := hok
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw
     (.LOAD (i.imm, .Regidx i.rs1, .Regidx i.rd, i.k.u, (i.k.w : Int))) ?_ i.rd.toNat i.rd.isLt
     (extend_value i.k.u v) (pc' + 4) ?_ zrom ?_ n
@@ -678,7 +677,7 @@ theorem lwtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
     have ha := Equiv.Zisk.srcA_ASrc xs _ l1
     rw [hr1] at ha
     have hex := Equiv.Zisk.execute_load_mk z _ i.k.op i.k.pure i.rd.toNat i.rd.isLt _ i.k.w xs pc' st hx hzpc hst
-      v1 ha v hzr hzn (i.k.w_ne8 _) (by rw [hzm]; exact hbytes)
+      v1 ha v hzr hzn (i.k.w_ne8 _) (by rw [Equiv.memRead_normIn hzm hoff]; exact hbytes)
     refine ⟨_, hex, ?_, by simp, ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, rfl⟩
     simp only [Std.ExtDHashMap.get?_insert]
     simp [linkRegs_xs _ xs _ _ hx, i.k.val]
@@ -727,7 +726,7 @@ theorem ldtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
   have l1 : i.rs1.toNat < 32 := i.rs1.isLt
   have hr1 : regv xs i.rs1.toNat = v1 := by
     have := getX_regv agree l1; rw [hv1] at this; exact (Option.some.inj this).symm
-  obtain ⟨⟨r, hm, hrb, hal⟩, hzr, hzn, hzi, hbytes⟩ := hok
+  obtain ⟨⟨r, hm, hrb, hal⟩, hzr, hzn, hzi, hoff, hbytes⟩ := hok
   refine jump_step_rel s z rs hr xs agree hzm pc' hpc _ _ _ _ hw
     (.LOAD (i.imm, .Regidx i.rs1, .Regidx i.rd, false, 8)) ?_ i.rd.toNat i.rd.isLt v (pc' + 4) ?_ zrom ?_ n
   · intro t htp ⟨w, hw'⟩ hmt _
@@ -743,7 +742,7 @@ theorem ldtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
     have ha := Equiv.Zisk.srcA_ASrc xs _ l1
     rw [hr1] at ha
     have hex := Equiv.Zisk.execute_load_mk z _ (.ZOP_COPYB ()) Equiv.Zisk.copyb_pure i.rd.toNat i.rd.isLt _ 8
-      xs pc' st hx hzpc hst v1 ha v hzr hzn (by simp [hzi]) (by rw [hzm]; exact hbytes)
+      xs pc' st hx hzpc hst v1 ha v hzr hzn (by simp [hzi]) (by rw [Equiv.memRead_normIn hzm hoff]; exact hbytes)
     refine ⟨_, hex, ?_, by simp, ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, rfl⟩
     simp only [Std.ExtDHashMap.get?_insert]
     simp [linkRegs_xs _ xs _ _ hx, Equiv.Zisk.copyb_val]

@@ -72,7 +72,12 @@ output region at `OUTPUT_ADDR = 0xA041_0000`.
 
 The 8 bytes at `INPUT_ADDR = 0x1000_0000` are not memory: an 8-byte load
 there returns the free input (§ 8). The input follows, from `INPUT_ADDR + 8`;
-past its end, the region reads as 0.
+past its end, the region reads as 0. What else reads those bytes — a
+narrower load, a load across them, a precompile's operand — the contract
+leaves undefined:
+
+> **Precondition I.** The program reads the 8 bytes at `INPUT_ADDR` only by
+> an 8-byte load of `INPUT_ADDR`.
 
 ## 3. The start
 
@@ -240,8 +245,9 @@ share a 4 KB page with the parameter area; to sail-riscv they are RAM.
 
 A program is in the contract when it is in the instruction set of § 1 and
 meets **E** (no `ecall` but exit), **C** (no CSR access but the ZisK calls
-of §§ 7–8 and reading `marchid`, no store to `marchid`'s cell), **Z** (no zkvmcall) and **L** (no `lr`
-reading its own instruction word). Everything else
+of §§ 7–8 and reading `marchid`, no store to `marchid`'s cell), **I** (the
+free input's 8 bytes read only as the free input), **Z** (no zkvmcall) and
+**L** (no `lr` reading its own instruction word). Everything else
 it may do — touch memory outside § 2, write a read-only CSR, misuse a
 precompile — has a defined outcome above: a failure, which ZisK does not
 prove, and which the theorem must show both sides agree on.

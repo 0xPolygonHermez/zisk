@@ -155,7 +155,7 @@ theorem brstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   · simp only [Std.ExtDHashMap.get?_insert, beq_self_eq_true, dite_true, cast_eq, Option.some.injEq]
     rw [hxv1', hxv2', BInstr.target, ← zbop_flag, BInstr.zjumps]
     cases zbopNeg i.op <;> cases (_root_.Zisk.Functions.zisk_exec (zbopOp i.op) v1 v2).2 <;> simp
-  · show (z.mem) = s'.mem
-    rw [hmem, hzm]
+  · show Equiv.normIn z.mem = Equiv.normIn s'.mem
+    rw [hmem]; exact hzm
 
 end Equiv.Sim

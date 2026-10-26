@@ -114,7 +114,8 @@ theorem marchidstep_m (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
   -- ZisK: the copy of the cell
   have hrom := i.spec hrd hi.tr
   have hex := Equiv.Zisk.execute_bmem z MARCHID_CELL i.rd.toNat (by omega) 4 xs pc' st hx hzpc hst ARCH_ID
-    (by decide) (by decide) (by decide) (by rw [hzm]; exact hcell)
+    (by decide) (by decide) (by decide)
+    (by rw [Equiv.memRead_normIn hzm (by right; decide)]; exact hcell)
   refine ⟨s', _, .plain pc' _ hpc (readWord_of' hi.h0 hi.h1 hi.h2 hi.h3) (i.plain hrd) hrun,
     .step (by rw [zstep_run zrom z pc' hzpc, hrom]; exact hex) (.done _), ?_, RamOnly.of_eq hmem⟩
   refine ⟨hr.keep hwf ho, ⟨Equiv.Zisk.xsUpd xs i.rd.toNat ARCH_ID, ?_, fun k hk1 hk2 => ?_⟩,
@@ -124,6 +125,6 @@ theorem marchidstep_m (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
     simp [linkRegs_xs _ xs _ _ hx]
   · rw [hxs' k hk2]
     exact regs_after0 s xs i.rd.toNat ARCH_ID ld agree k hk1 hk2
-  · simp only [hmem, hzm]
+  · rw [hmem]; exact hzm
 
 end Equiv.Sim

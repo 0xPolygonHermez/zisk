@@ -131,8 +131,8 @@ theorem lrdstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
   have ld : rd.toNat < 32 := rd.isLt
   have hr1 : regv xs rs1.toNat = v1 := by
     have := getX_regv agree l1; rw [hv1] at this; exact (Option.some.inj this).symm
-  obtain ⟨⟨v, ⟨r, hm, hrb, hal⟩, hzr, hzn, hbytes⟩, hzi, hoff⟩ := hok
-  simp only [if_true] at hm hal hzr hzn hbytes hzi hoff
+  obtain ⟨⟨v, ⟨r, hm, hrb, hal⟩, hzr, hzn, hin, hbytes⟩, hzi, hoff⟩ := hok
+  simp only [if_true] at hm hal hzr hzn hin hbytes hzi hoff
   have hbytes1 : Equiv.memRead (ZiskRiscv.writeWord s.mem pc'.toNat (LrInstr.mk true aq rl rd rs1).sub) 8 v1.toNat = some v := by
     rw [memRead_writeWord _ _ _ _ _ (by omega)]; exact hbytes
   have e0 : v1 + sign_extend (m := 64) (0 : BitVec 12) = v1 := by simp [sign_extend, Sail.BitVec.signExtend]
@@ -160,7 +160,7 @@ theorem lrdstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
   rw [hr1] at ha
   have hex := Equiv.Zisk.execute_load_mk z _ (.ZOP_COPYB ()) Equiv.Zisk.copyb_pure rd.toNat ld 0 8
     xs pc' st hx hzpc hst v1 ha v (by simpa using hzr) (by simpa using hzn) (by simpa using hzi)
-    (by rw [hzm]; simpa using hbytes)
+    (by rw [show v1 + 0 = v1 from by bv_decide, Equiv.memRead_normIn hzm hin]; exact hbytes)
   have hmw : ZiskRiscv.writeWord s1'.mem pc'.toNat (LrInstr.mk true aq rl rd rs1).encode = s.mem := by
     rw [hmem, writeWord_twice, writeWord_same _ _ _ hw0]
   refine ⟨s1', _, hrun, by rw [zstep_run zrom z pc' hzpc, hrom]; exact hex, ?_, hpc'', hmem⟩
@@ -208,8 +208,8 @@ theorem lrwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
   have ld : rd.toNat < 32 := rd.isLt
   have hr1 : regv xs rs1.toNat = v1 := by
     have := getX_regv agree l1; rw [hv1] at this; exact (Option.some.inj this).symm
-  obtain ⟨⟨v, ⟨r, hm, hrb, hal⟩, hzr, hzn, hbytes⟩, hzi, hoff⟩ := hok
-  simp only [if_false, Bool.false_eq_true] at hm hal hzr hzn hbytes hzi hoff
+  obtain ⟨⟨v, ⟨r, hm, hrb, hal⟩, hzr, hzn, hin, hbytes⟩, hzi, hoff⟩ := hok
+  simp only [if_false, Bool.false_eq_true] at hm hal hzr hzn hin hbytes hzi hoff
   have hbytes1 : Equiv.memRead (ZiskRiscv.writeWord s.mem pc'.toNat (LrInstr.mk false aq rl rd rs1).sub) 4 v1.toNat = some v := by
     rw [memRead_writeWord _ _ _ _ _ (by omega)]; exact hbytes
   have e0 : v1 + sign_extend (m := 64) (0 : BitVec 12) = v1 := by simp [sign_extend, Sail.BitVec.signExtend]
@@ -236,7 +236,7 @@ theorem lrwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
   rw [hr1] at ha
   have hex := Equiv.Zisk.execute_load_mk z _ LKind.lw.op LKind.lw.pure rd.toNat ld 0 4
     xs pc' st hx hzpc hst v1 ha v (by simpa using hzr) (by simpa using hzn) (by simpa using hzi)
-    (by rw [hzm]; simpa using hbytes)
+    (by rw [show v1 + 0 = v1 from by bv_decide, Equiv.memRead_normIn hzm hin]; exact hbytes)
   have hmw : ZiskRiscv.writeWord s1'.mem pc'.toNat (LrInstr.mk false aq rl rd rs1).encode = s.mem := by
     rw [hmem, writeWord_twice, writeWord_same _ _ _ hw0]
   refine ⟨s1', _, hrun, by rw [zstep_run zrom z pc' hzpc, hrom]; exact hex, ?_, hpc'', hmem⟩
@@ -587,6 +587,7 @@ theorem scstep_m (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (h
     exact regs_after0 _ xs i.rd.toNat 0 ld a1
   · simp only [mPost]
     rw [setX_get_other _ _ _ _ rfl]; exact hpc1
-  · rw [hs2, hzm', hzm, hr1, hr2, show v1 + 0 = v1 from by bv_decide]
+  · rw [hs2, hzm', hr1, hr2, show v1 + 0 = v1 from by bv_decide]
+    exact Equiv.normIn_memWrite hzm _ _
 
 end Equiv.Sim

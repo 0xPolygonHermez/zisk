@@ -369,16 +369,49 @@ theorem ecall_exit_fail (zrom : BitVec 64 → zisk_inst) (entry : BitVec 64) (hb
 
 /-! ## From the relation -/
 
+/-- The output words are off the input's first 8 bytes: two memories equal
+    without them have the same. -/
+theorem OutBytes.of_normIn {m m' : Equiv.Mem} (h : Equiv.normIn m' = Equiv.normIn m) (ho : OutBytes m) :
+    OutBytes m' := fun j hj => by
+  obtain ⟨v, hv⟩ := ho j hj
+  have : (Transpiler.OUTPUT_ADDR + BitVec.ofNat 64 (8 * j)).toNat = 0xA041_0000 + 8 * j := by
+    simp [Transpiler.OUTPUT_ADDR, BitVec.toNat_add]; omega
+  have hoff : (Transpiler.OUTPUT_ADDR + BitVec.ofNat 64 (8 * j)).toNat + 8 ≤ Equiv.IN_LO ∨
+      Equiv.IN_LO + 8 ≤ (Transpiler.OUTPUT_ADDR + BitVec.ofNat 64 (8 * j)).toNat := by
+    right; rw [this]; simp only [Equiv.IN_LO]; omega
+  exact ⟨v, by rw [Equiv.memRead_normIn h hoff]; exact hv⟩
+
+/-- So are the input words the BIOS reads. -/
+theorem InBytes.of_normIn {m m' : Equiv.Mem} (h : Equiv.normIn m' = Equiv.normIn m) (hi : InBytes m) :
+    InBytes m' := fun k hk => by
+  obtain ⟨v, hv⟩ := hi k hk
+  have hoff : (inAddr k).toNat + 8 ≤ Equiv.IN_LO ∨ Equiv.IN_LO + 8 ≤ (inAddr k).toNat := by
+    right
+    have hk1 : (BitVec.ofNat 64 (k + 1)).toNat = k + 1 := by rw [BitVec.toNat_ofNat]; omega
+    simp only [inAddr]
+    generalize BitVec.ofNat 64 (k + 1) = K at hk1
+    have b1 : 1#64 ≤ K := by rw [BitVec.le_def]; simp; omega
+    have b2 : K ≤ 15#64 := by rw [BitVec.le_def]; simp; omega
+    have : 0x10000008#64 ≤ Transpiler.INPUT_ADDR + K * Transpiler.INPUT_ANCHOR_STEP := by
+      simp only [Transpiler.INPUT_ADDR, Transpiler.INPUT_ANCHOR_STEP]; bv_decide
+    rw [BitVec.le_def] at this
+    have e : (0x10000008#64).toNat = Equiv.IN_LO + 8 := rfl
+    omega
+  exact ⟨v, by rw [Equiv.memRead_normIn h hoff]; exact hv⟩
+
+
 /-- The return to the initial ra, related: the run on sail-zisk ends in
     success, its memory sail-riscv's. -/
 theorem rel_return_end (zrom : BitVec 64 → zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
     (s : Equiv.Riscv.RVState) (z : Equiv.Zisk.ZState) (rs : List LeanZiskRV.PMA_Region) (hrel : Rel s z rs)
     (hpc : s.regs.get? LeanZiskRV.Register.PC = some Transpiler.OUTPUT_BLOCK)
     (ho : OutBytes s.mem) (hi : InBytes s.mem) :
-    ∃ z', ZEnds zrom z z' ∧ z'.regs.get? .Zerror = some false ∧ z'.mem = s.mem := by
+    ∃ z', ZEnds zrom z z' ∧ z'.regs.get? .Zerror = some false ∧ Equiv.normIn z'.mem = Equiv.normIn s.mem := by
   obtain ⟨-, ⟨xs, hx, -⟩, ⟨pc, hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   rw [hpc] at hpc'; cases hpc'
-  exact output_end zrom entry hb s.mem ho hi z xs hzpc hx ⟨st, hst⟩ hze hzm
+  obtain ⟨z', h1, h2, h3⟩ := output_end zrom entry hb z.mem (ho.of_normIn hzm) (hi.of_normIn hzm) z xs hzpc hx
+    ⟨st, hst⟩ hze rfl
+  exact ⟨z', h1, h2, by rw [h3]; exact hzm⟩
 
 /-- The exit system call with code 0, related: success, sail-riscv's memory. -/
 theorem rel_exit_ok (zrom : BitVec 64 → zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
@@ -386,14 +419,15 @@ theorem rel_exit_ok (zrom : BitVec 64 → zisk_inst) (entry : BitVec 64) (hb : B
     (pc : BitVec 64) (hpc : s.regs.get? LeanZiskRV.Register.PC = some pc) (hi : zrom pc = Transpiler.ecall)
     (h17 : Equiv.Riscv.getX s 17 = some 93) (h10 : Equiv.Riscv.getX s 10 = some 0)
     (ho : OutBytes s.mem) (hin : InBytes s.mem) :
-    ∃ z', ZEnds zrom z z' ∧ z'.regs.get? .Zerror = some false ∧ z'.mem = s.mem := by
+    ∃ z', ZEnds zrom z z' ∧ z'.regs.get? .Zerror = some false ∧ Equiv.normIn z'.mem = Equiv.normIn s.mem := by
   obtain ⟨-, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   rw [hpc] at hpc'; cases hpc'
   have a17 := agree 17 (by omega) (by omega)
   have a10 := agree 10 (by omega) (by omega)
   rw [h17] at a17; rw [h10] at a10
-  exact ecall_exit_ok zrom entry hb s.mem ho hin z pc hzpc hi xs hx (Option.some.inj a17).symm
-    (Option.some.inj a10).symm ⟨st, hst⟩ hze hzm
+  obtain ⟨z', h1, h2, h3⟩ := ecall_exit_ok zrom entry hb z.mem (ho.of_normIn hzm) (hin.of_normIn hzm) z pc hzpc
+    hi xs hx (Option.some.inj a17).symm (Option.some.inj a10).symm ⟨st, hst⟩ hze rfl
+  exact ⟨z', h1, h2, by rw [h3]; exact hzm⟩
 
 /-- The exit system call with code c ≠ 0, related: the run on sail-zisk
     ends in error, with code c. -/

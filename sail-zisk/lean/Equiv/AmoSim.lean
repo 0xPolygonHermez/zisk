@@ -233,6 +233,8 @@ structure AmoOk (s : RVState) (rs : List PMA_Region) (i : AmoInstr) (a : BitVec 
   zwrite : _root_.Zisk.Functions.writable a (aW i.d) = true
   zregs : _root_.Zisk.Functions.hits_registers a (aW i.d) = false
   zin : (a == _root_.Zisk.Functions.INPUT_ADDR && aW i.d == 8) = false
+  /-- Off the input's first 8 bytes, which are not memory. -/
+  inOff : Equiv.InOff a (aW i.d)
   bytes : ∃ v, Equiv.memRead s.mem (aW i.d) a.toNat = some v
 
 /-- Writing a register the value it has, and memory: the memory alone. -/
@@ -304,7 +306,7 @@ theorem amostep_rel_d (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
   obtain ⟨ia, hrom⟩ := (AmoInstr.mk op true aq rl rd rs1 rs2).rom_of_spec hi.tr
   obtain ⟨z', k, hz, ⟨xs', hx', hxs''⟩, hzpc', hst', hzm'⟩ := zisk_amo_any zrom z (AmoInstr.mk op true aq rl rd rs1 rs2) xs pc' st ia hx hzpc hst hze
     v (by rw [hxv]; simpa [aW] using hzr) (by rw [hxv]; simpa [aW] using hzw) (by rw [hxv]; simpa [aW] using hzn)
-    (by rw [hxv]; simpa [aW] using hzi) (by rw [hxv, hzm]; simpa using hbytes) hrom
+    (by rw [hxv]; simpa [aW] using hzi) (by rw [hxv, show v1 + 0 = v1 from by bv_decide, Equiv.memRead_normIn hzm hok.inOff]; simpa using hbytes) hrom
   refine ⟨s', z', k, hrun, hz, ⟨hr.keep hwf ho, ⟨xs', hx', ?_⟩, ⟨_, hpc'', hzpc'⟩, hst', ?_⟩, hpc'',
     hmem ▸ memWrite_ramOnly _ _ _ hzw⟩
   · intro k hk1 hk2
@@ -313,12 +315,12 @@ theorem amostep_rel_d (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
     have e := hxs'' k hk2
     simp only [regv, show k ≠ 0 by omega, if_false, getElem!_int, hxv] at e
     rw [e]; erw [load_val_d]; exact a
-  · rw [hzm', hmem, hzm]
+  · rw [hzm', hmem]
     simp only [hxv, BitVec.add_zero]
     erw [load_val_d, amoStored_d]
     have sw : ∀ y : BitVec 64, y.setWidth (8 * aW true) = y := fun y => by simp [aW]
     rw [sw, show v1 + 0 = v1 from by bv_decide]
-    rfl
+    exact Equiv.normIn_memWrite hzm _ _
 
 set_option maxHeartbeats 16000000 in
 /-- One sail-riscv step and ZisK's steps on an AMO.w keep the states related. -/
@@ -372,7 +374,7 @@ theorem amostep_rel_w (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
   obtain ⟨ia, hrom⟩ := (AmoInstr.mk op false aq rl rd rs1 rs2).rom_of_spec hi.tr
   obtain ⟨z', k, hz, ⟨xs', hx', hxs''⟩, hzpc', hst', hzm'⟩ := zisk_amo_any zrom z (AmoInstr.mk op false aq rl rd rs1 rs2) xs pc' st ia hx hzpc hst hze
     v (by rw [hxv]; simpa [aW] using hzr) (by rw [hxv]; simpa [aW] using hzw) (by rw [hxv]; simpa [aW] using hzn)
-    (by rw [hxv]; simpa [aW] using hzi) (by rw [hxv, hzm]; simpa using hbytes) hrom
+    (by rw [hxv]; simpa [aW] using hzi) (by rw [hxv, show v1 + 0 = v1 from by bv_decide, Equiv.memRead_normIn hzm hok.inOff]; simpa using hbytes) hrom
   refine ⟨s', z', k, hrun, hz, ⟨hr.keep hwf ho, ⟨xs', hx', ?_⟩, ⟨_, hpc'', hzpc'⟩, hst', ?_⟩, hpc'',
     hmem ▸ memWrite_ramOnly _ _ _ hzw⟩
   · intro k hk1 hk2
@@ -381,11 +383,11 @@ theorem amostep_rel_w (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
     have e := hxs'' k hk2
     simp only [regv, show k ≠ 0 by omega, if_false, getElem!_int, hxv] at e
     rw [e]; erw [load_val_w]; exact a
-  · rw [hzm', hmem, hzm]
+  · rw [hzm', hmem]
     simp only [hxv, BitVec.add_zero]
     erw [load_val_w, amoStored_w]
     rw [show v1 + 0 = v1 from by bv_decide]
-    rfl
+    exact Equiv.normIn_memWrite hzm _ _
 
 /-- One sail-riscv step on an AMO, and ZisK's steps on its translation,
     keep the states related, when the access is good (`AmoOk`). -/

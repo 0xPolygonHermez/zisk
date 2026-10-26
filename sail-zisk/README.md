@@ -214,8 +214,10 @@ transpilation.
   the transpiler in Lean and ship it, so that the transpiler that runs is the
   one proved.
 - **The remaining instruction forms:** the ZisK calls of §§ 7–8 (in the
-  spec; their proofs need the relation to carry the machine's fcall state
-  and to leave INPUT_ADDR's 8 bytes, the free input's mirror, aside) (`jalr`
+  spec; their proofs need the relation to carry the machine's fcall state;
+  it already leaves INPUT_ADDR's 8 bytes, the free input's mirror, aside:
+  the two memories are compared without them, `lean/Equiv/MemNorm.lean`,
+  and a load the simulation covers misses them, precondition I) (`jalr`
   with rs1 = x0, a jump to an absolute address, is in `prog_spec` now, the
   transpiler's immediate 0 for x0 as its b operand). (`ecall` is in the
   spec; it ends the run, which the link below covers. The other
@@ -251,8 +253,8 @@ transpilation.
   good) up to the
   exit system call or the return to the initial ra, the machine's run ends
   in `exit c` and sail-zisk's, BIOS included, in success with the same
-  memory — so the same output — when c is 0, in error with code c
-  otherwise. On memory as the machine is given it, sparse
+  memory but for the free input's 8 bytes at INPUT_ADDR — so the same
+  output — when c is 0, in error with code c otherwise. On memory as the machine is given it, sparse
   (`lean/Equiv/Sparse.lean`: `exit_end_sparse`, `return_end_sparse`), the
   machine's run ends the same way with the same output, or stops with its
   own error (a step past its 4096 retries): Sail's interpreter is monotone

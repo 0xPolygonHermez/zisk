@@ -41,7 +41,7 @@ theorem alu_step_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region
     (hexec : ∀ t : RVState, (∀ k, k < 32 → getX t k = getX s k) → t.mem = s.mem → MemReady t rs →
       t.regs.get? Register.mseccfg = s.regs.get? Register.mseccfg → WF t →
       (interpretSailEffects (execute ins)).run t = .ok RETIRE_SUCCESS (setX t rd val))
-    (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (hzm : z.mem = s.mem)
+    (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (hzm : Equiv.normIn z.mem = Equiv.normIn s.mem)
     (hz : ∃ z', (zstep zrom).run z = .ok false z' ∧
       z'.regs.get? _root_.Zisk.Register.Xs = some (vectorUpdate xs rd val) ∧
       z'.regs.get? _root_.Zisk.Register.PC = some (pc + 4) ∧
@@ -54,7 +54,7 @@ theorem alu_step_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region
     try_step_alu s rs hr pc hpc b0 b1 b2 b3 hw ins hdec rd hrd val hexec n
   obtain ⟨z', hzrun, hx', hzpc', hst', hzmem⟩ := hz
   refine ⟨s', z', hrun, hzrun,
-    ⟨hr.keep hwf ho, ⟨_, hx', ?_⟩, ⟨_, hpc', hzpc'⟩, hst', hzmem.trans (hzm.trans hmem.symm)⟩, hpc', hmem⟩
+    ⟨hr.keep hwf ho, ⟨_, hx', ?_⟩, ⟨_, hpc', hzpc'⟩, hst', Equiv.normIn_congr hzm hzmem hmem⟩, hpc', hmem⟩
   intro k hk1 hk2
   rw [hxs' k hk2]
   exact regs_after s xs rd val hrd ld agree k hk1 hk2

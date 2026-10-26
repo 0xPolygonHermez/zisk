@@ -295,7 +295,7 @@ theorem uwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   obtain ⟨ia, r1, r2⟩ := i.rom_of_spec hi.tr
   obtain ⟨z', hz, ⟨xs', hx', hxs''⟩, hzpc', hst', hzm'⟩ := zisk_uw zrom z i xs pc' st ia hx hzpc hst hze r1 r2
   refine ⟨s', z', hrun, hz, ⟨hr.keep hwf ho, ⟨xs', hx', ?_⟩, ⟨_, hpc'', hzpc'⟩, hst',
-    hzm'.trans (hzm.trans hmem.symm)⟩, hpc'', hmem⟩
+    Equiv.normIn_congr hzm hzm' hmem⟩, hpc'', hmem⟩
   intro k hk1 hk2
   rw [hxs' k hk2]
   have a := regs_after0 s xs i.rd.toNat (zbauwVal i.sh (regv xs i.rs1.toNat) (regv xs i.rs2.toNat)) ld agree k hk1 hk2

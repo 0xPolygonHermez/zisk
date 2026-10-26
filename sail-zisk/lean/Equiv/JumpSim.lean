@@ -49,7 +49,7 @@ theorem execute_jalr_eq (imm : BitVec 12) (rs1 rd : regidx) :
     sail-riscv, a ZisK step that writes v to rd and goes to tgt, the same on
     both sides. -/
 theorem jump_step_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hr : StepReady s rs)
-    (xs : Vector (BitVec 64) 40) (agree : RegsAgree s xs) (hzm : z.mem = s.mem)
+    (xs : Vector (BitVec 64) 40) (agree : RegsAgree s xs) (hzm : Equiv.normIn z.mem = Equiv.normIn s.mem)
     (pc : BitVec 64) (hpc : s.regs.get? Register.PC = some pc)
     (b0 b1 b2 b3 : BitVec 8) (hw : WordAt s rs pc b0 b1 b2 b3) (ins : instruction)
     (hdec : ∀ t : RVState, t.regs.get? Register.cur_privilege = some .Machine →
@@ -77,7 +77,7 @@ theorem jump_step_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
   obtain ⟨s', hrun, hmem, hwf, hpc', hxs', ho⟩ := try_step_gen s rs hr pc hpc b0 b1 b2 b3 hw ins hdec rd v tgt hexec n
   obtain ⟨z', hzrun, hx', hzpc', hst', hzmem⟩ := hz
   refine ⟨s', z', hrun, hzrun,
-    ⟨hr.keep hwf ho, ⟨_, hx', ?_⟩, ⟨_, hpc', hzpc'⟩, hst', hzmem.trans (hzm.trans hmem.symm)⟩, hpc', hmem⟩
+    ⟨hr.keep hwf ho, ⟨_, hx', ?_⟩, ⟨_, hpc', hzpc'⟩, hst', Equiv.normIn_congr hzm hzmem hmem⟩, hpc', hmem⟩
   intro k hk1 hk2
   rw [hxs' k hk2]
   exact regs_after0 s xs rd v ld agree k hk1 hk2

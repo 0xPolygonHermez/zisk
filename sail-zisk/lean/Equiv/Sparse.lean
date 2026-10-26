@@ -330,7 +330,7 @@ theorem exit_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : Bi
         ZiskRiscv.output Sk = ZiskRiscv.output (⟨rvIter 0 k s0, fc⟩ : ZiskRiscv.State model)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ z', ZEnds zrom z0 z' ∧
-      (c = 0 → z'.regs.get? .Zerror = some false ∧ z'.mem = (rvIter 0 k s0).mem) ∧
+      (c = 0 → z'.regs.get? .Zerror = some false ∧ Equiv.normIn z'.mem = Equiv.normIn (rvIter 0 k s0).mem) ∧
       (c ≠ 0 → z'.regs.get? .Zerror = some true ∧ z'.regs.get? .Zerror_code = some c) := by
   refine ⟨?_, (exit_end zrom entry hb rs hx ht C hnx m0 hfull hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc zr k hrun
     hin pc hpc hpx hpcc hw h17 c h10).2⟩
@@ -375,7 +375,7 @@ theorem return_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : 
         (∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .exit 0, k)) ∧
         ZiskRiscv.output Sk = ZiskRiscv.output (⟨rvIter 0 k s0, fc⟩ : ZiskRiscv.State model)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
-    ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some false ∧ z'.mem = (rvIter 0 k s0).mem := by
+    ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some false ∧ Equiv.normIn z'.mem = Equiv.normIn (rvIter 0 k s0).mem := by
   refine ⟨?_, (return_end zrom entry hb rs hx ht C hnx m0 hfull hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc zr k
     hrun hin hpc).2⟩
   obtain ⟨-, -, -, -, -, -, hm⟩ :=

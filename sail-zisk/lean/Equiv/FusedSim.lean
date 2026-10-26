@@ -164,8 +164,8 @@ theorem fused_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
   · simp only [Std.ExtDHashMap.get?_insert, beq_self_eq_true, dite_true, cast_eq, Option.some.injEq]
     show pc' + (i.T pc' - pc') = i.T pc'
     generalize i.T pc' = y; bv_decide
-  · show z.mem = s2.mem
-    rw [hmem2, hmem1, hzm]
+  · show Equiv.normIn z.mem = Equiv.normIn s2.mem
+    rw [hmem2, hmem1]; exact hzm
 
 theorem RVRun.append {n a b : Nat} {s t u : RVState} (h1 : RVRun n a s t) (h2 : RVRun (n + a) b t u) :
     RVRun n (a + b) s u := by
@@ -244,8 +244,8 @@ theorem jo_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hre
     rw [hxv]
     simp only [Equiv.Zisk.JALR_MASK, jalrTarget, Sail.BitVec.update, Sail.BitVec.updateSubrange']
     bv_decide
-  · show z.mem = s'.mem
-    rw [hmem, hzm]
+  · show Equiv.normIn z.mem = Equiv.normIn s'.mem
+    rw [hmem]; exact hzm
 
 /-- One step of sail-riscv, from s at its pc: an instruction proved, or a
     jalr in the transpiler's two-instruction form; ZisK takes one step or

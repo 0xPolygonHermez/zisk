@@ -108,6 +108,8 @@ structure LwOk (s : RVState) (rs : List PMA_Region) (a : BitVec 64) (w : Nat) (v
     AlignOk r (.Load .Data) a w
   zread : _root_.Zisk.Functions.readable a w = true
   zregs : _root_.Zisk.Functions.hits_registers a w = false
+  /-- Off the input's first 8 bytes, which are not memory. -/
+  inOff : Equiv.InOff a w
   bytes : Equiv.memRead s.mem w a.toNat = some v
 
 theorem execute_load_w (imm : BitVec 12) (a b : regidx) (u : Bool) (w : Int) :
@@ -165,7 +167,7 @@ theorem lwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
     rw [hrdx]; exact hi.rd
   have hvalid := i.k.valid
   rw [← hu, ← hwd] at hvalid
-  obtain ⟨⟨r, hm, hrb, hal⟩, hzr, hzn, hbytes⟩ := hok
+  obtain ⟨⟨r, hm, hrb, hal⟩, hzr, hzn, hoff, hbytes⟩ := hok
   refine alu_step_rel s z rs hr xs hx agree pc' hpc hzpc _ _ _ _ hw
     (.LOAD (i.imm, .Regidx i.rs1, .Regidx i.rd, i.k.u, (i.k.w : Int))) ?_ i.rd.toNat ed ld
     (extend_value i.k.u v) ?_ zrom hzm ?_ n
@@ -182,7 +184,7 @@ theorem lwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
     have hxv' : xs[(i.rs1.toNat : Int)]! = v1 := by rw [getElem!_int]; exact hxv
     have hex := Equiv.Zisk.execute_load z i.k.op i.k.pure i.rd.toNat i.rs1.toNat _ i.k.w (by omega) (by omega)
       xs pc' st hx hzpc hst v (by rw [hxv']; exact hzr) (by rw [hxv']; exact hzn) (i.k.w_ne8 _)
-      (by rw [hxv', hzm]; exact hbytes)
+      (by rw [hxv', Equiv.memRead_normIn hzm hoff]; exact hbytes)
     simp only [hxv', i.k.val] at hex
     refine ⟨_, hex, by simp [Std.ExtDHashMap.get?_insert], by simp,
       ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, rfl⟩

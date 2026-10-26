@@ -153,6 +153,6 @@ theorem swstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
     ?_⟩, hpc'', hmem⟩
   · simp [Std.ExtDHashMap.get?_insert, hx]
   · intro k hk1 hk2; rw [hxs' k hk2]; exact agree k hk1 hk2
-  · simp only [hmem, hxv1', hxv2', hzm]
+  · rw [hmem]; simp only [hxv1', hxv2']; exact Equiv.normIn_memWrite hzm _ _
 
 end Equiv.Sim

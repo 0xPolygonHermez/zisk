@@ -13,6 +13,7 @@
   states, both at the block's end.
 -/
 import Equiv.StepSim
+import Equiv.MemNorm
 
 namespace Equiv.Sim
 
@@ -52,8 +53,9 @@ structure Rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) : Pro
       it, until the BIOS halts on an exit code (only a halt sets it). -/
   step : ∃ st, z.regs.get? _root_.Zisk.Register.Step = some st ∧
     z.regs.get? _root_.Zisk.Register.Zerror = some false
-  /-- The same memory: both models keep it as a map of bytes. -/
-  mem : z.mem = s.mem
+  /-- The same memory, but for the 8 bytes at INPUT_ADDR, which are not
+      memory (contract § 2): both models keep it as a map of bytes. -/
+  mem : Equiv.normIn z.mem = Equiv.normIn s.mem
 
 /-- An R-type instruction, by its fields. -/
 structure RInstr where
@@ -125,7 +127,7 @@ theorem rstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
   simp only [hrdx, hr1x, hr2x] at this
   obtain ⟨s', z', xs', hrun, hzrun, hx', hag, hpc'', hzpc', hst', hze', hready, hmem, hzmem⟩ := this
   refine ⟨s', z', hrun, ?_,
-    ⟨hready, ⟨xs', hx', hag⟩, ⟨_, hpc'', hzpc'⟩, ⟨_, hst', hze'.trans hze⟩, hzmem.trans (hzm.trans hmem.symm)⟩,
+    ⟨hready, ⟨xs', hx', hag⟩, ⟨_, hpc'', hzpc'⟩, ⟨_, hst', hze'.trans hze⟩, Equiv.normIn_congr hzm hzmem hmem⟩,
     hpc'', hmem⟩
   rw [zstep_run zrom z pc' hzpc, hi.rom]; exact hzrun
 

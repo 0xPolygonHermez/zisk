@@ -115,3 +115,4 @@ import Equiv.RiscvDecodeCsr
 import Equiv.RiscvCsr
 import Equiv.ZiskCsr
 import Equiv.CsrSim
+import Equiv.MemNorm
