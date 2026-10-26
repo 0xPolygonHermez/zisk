@@ -16,8 +16,10 @@
 #   INSTALL_SETUP                Install the provingKey into $HOME/.zisk, plus the
 #                                provingKeySnark when the build produced one.
 #   INCLUDE_SNARK                After the proving key, also build the snark setup
-#                                (provingKeySnark/). Needs state-machines/publics.json
-#                                and the powers-of-tau file (PTAU_PATH).
+#                                (provingKeySnark/): PLONK for a Poseidon1 key, pilfflonk
+#                                for a blake3 one (FINAL_SNARK overrides). Needs
+#                                state-machines/publics.json and the powers-of-tau
+#                                file (PTAU_PATH).
 #   DYLIB_INPUT_FILES            After the build, copy the inputs needed to compile
 #                                the macOS dylib files into build/dylib_input.
 #   RECURSIVE_JOBS / SETUP_JOBS  Setup pipeline concurrency.
@@ -110,7 +112,6 @@ main() {
     rm -f "$setup_log"
 
     if [[ "${INCLUDE_SNARK}" == "1" ]]; then
-        # The HASH_MODE/blake3 conflict was already rejected above, before the STARK setup ran.
         step "Building snark setup..."
         build_flags=(--build-dir build --snark)
         ensure "${SCRIPT_DIR}/setup_build.sh" "${build_flags[@]}" || return 1

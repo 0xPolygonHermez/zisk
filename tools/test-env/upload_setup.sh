@@ -5,21 +5,19 @@
 # the setup hash via `setup_build.sh --print-hash`, and skips the upload when the
 # bucket already holds that hash. The hash is published as the <name>.hash sidecar.
 #
-# Artifacts (<VER> = SETUP_VERSION, <SFX> = SETUP_NAME_SUFFIX, empty by default):
+# Artifacts (<VER> = SETUP_VERSION, <SFX> = hash mode suffix: none for blake3, the
+# default mode, "-poseidon1" for a Poseidon1 key; read off the built key):
 #   provingKey/                            -> zisk-provingkey-<VER><SFX>.tar.gz       (+ .md5)
 #   provingKey/.../vadcop_final{,_compressed}.verkey.bin
 #                                          -> zisk-verifykey-<VER><SFX>.tar.gz        (+ .md5)
 #   circom/            (if present)        -> zisk-circuits-<VER><SFX>.tar.gz         (+ .md5)
-#   provingKeySnark/   (if present)        -> zisk-provingkey-<plonk|pilfflonk>-<VER><SFX>.tar.gz (+ .md5)
+#   provingKeySnark/   (if present)        -> zisk-provingkey-<fflonk|plonk>-<VER><SFX>.tar.gz (+ .md5)
 #
 # Every tarball present is uploaded. circom/ comes out of the recursive setup;
 # provingKeySnark/ only when INCLUDE_SNARK=1.
 #
 # Env vars:
 #   SETUP_VERSION       version tag <VER> in the tarball names.
-#   SETUP_NAME_SUFFIX   suffix after <VER> in every artifact name, .hash sidecar
-#                       included, so a setup built with a non-default hash mode
-#                       publishes next to the default one (e.g. "-blake3").
 #   FORCE_UPLOAD        upload even if the bucket .hash already matches (no gate).
 #   SETUP_ADD_DYLIBS    merge macOS *.dylib into build/provingKey before packing
 #                       (from SETUP_DYLIB_DIR, else the macOS tarball in ${OUTPUT_DIR}/macos).
@@ -103,6 +101,15 @@ proving_key_hash_mode() {
     printf '%s' "${mode}"
 }
 
+# Suffix after <VER> in every artifact name, .hash sidecar included, so a setup of a
+# non-default hash mode publishes next to the default one. None for blake3 (the
+# default); any other mode is lowercased, e.g. Poseidon1 -> "-poseidon1".
+setup_name_suffix() {
+    local mode
+    mode="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+    [[ "${mode}" == "blake3" ]] || printf -- '-%s' "${mode}"
+}
+
 pack_dir() {
     local src="$1" tarball="$2"
     shift 2
@@ -130,7 +137,7 @@ main() {
 
     info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
-    load_env ZISK_REPO_DIR SETUP_VERSION SETUP_NAME_SUFFIX SETUP_ADD_DYLIBS FORCE_UPLOAD \
+    load_env ZISK_REPO_DIR SETUP_VERSION SETUP_ADD_DYLIBS FORCE_UPLOAD \
         SETUP_DYLIB_DIR SETUP_PRUNE_LOCAL || return 1
 
     ZISK_REPO="$(get_zisk_repo_dir)"
@@ -153,14 +160,15 @@ main() {
 
     # HASH_FILE follows PROVINGKEY_FILE, so the gate below reads the sidecar of
     # this exact variant.
-    SETUP_NAME_SUFFIX="${SETUP_NAME_SUFFIX:-}"
+    SETUP_NAME_SUFFIX="$(setup_name_suffix "${SETUP_MODE}")"
     PROVINGKEY_FILE="zisk-provingkey-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
     VERIFYKEY_FILE="zisk-verifykey-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
     CIRCUITS_FILE="zisk-circuits-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
-    # Named by the final SNARK it holds: `final/provingKey/` is a pilfflonk key, `final/final.zkey`
-    # PLONK's. ziskup and the release workflow read the plonk name; the pilfflonk one is new.
+    # Named by the final SNARK it holds: `final/provingKey/` is a pilfflonk key, published as
+    # the fflonk setup (zisk-provingkey-fflonk-<VER>, the blake3 one), `final/final.zkey` PLONK's
+    # (zisk-provingkey-plonk-<VER>-poseidon1). ziskup and the release workflow read these names.
     SNARK_PROTOCOL=plonk
-    [[ -d build/provingKeySnark/final/provingKey ]] && SNARK_PROTOCOL=pilfflonk
+    [[ -d build/provingKeySnark/final/provingKey ]] && SNARK_PROTOCOL=fflonk
     SNARK_FILE="zisk-provingkey-${SNARK_PROTOCOL}-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
     HASH_FILE="${PROVINGKEY_FILE%.tar.gz}.hash"
     info "Publishing as ${PROVINGKEY_FILE} (gate: ${HASH_FILE})"

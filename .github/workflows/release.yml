@@ -57,7 +57,7 @@ jobs:
           [ -n "$V" ] || { echo "could not read setup_version from setup/Cargo.toml"; exit 1; }
           echo "setup_version=$V" >> "$GITHUB_OUTPUT"
           missing=""
-          for f in provingkey-$V verifykey-$V provingkey-$V-blake3 verifykey-$V-blake3 provingkey-pilfflonk-$V provingkey-pilfflonk-$V-blake3; do
+          for f in provingkey-$V verifykey-$V provingkey-fflonk-$V provingkey-$V-poseidon1 verifykey-$V-poseidon1 provingkey-plonk-$V-poseidon1; do
             for g in "zisk-$f.tar.gz" "zisk-$f.tar.gz.md5"; do
               curl -sfI "https://storage.googleapis.com/zisk-setup/$g" > /dev/null || missing="$missing $g"
             done
