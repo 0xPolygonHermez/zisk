@@ -452,10 +452,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // and acking one twice is harmless.
         self.deferred.retain(|work| matches!(work, DeferredWork::Setup(_)));
 
-        let telemetry = &self.worker_config.telemetry;
-        let heartbeat_seconds =
-            if telemetry.enabled { telemetry.interval_seconds.clamp(1, 30) } else { 30 };
-        let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(heartbeat_seconds));
+        let mut heartbeat_interval = tokio::time::interval(Self::HEARTBEAT_INTERVAL);
 
         // Main non-blocking event loop
         loop {
@@ -1450,6 +1447,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ),
         }
     }
+
+    /// How often the worker sends its heartbeat, with the latest telemetry sample when it reports
+    /// telemetry. The coordinator drops a worker it has not heard from within its heartbeat
+    /// threshold, so this stays well below it, whatever the telemetry interval.
+    const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 
     /// Healthy reset is sub-second; this only fires when the prover is stuck.
     const RECOVERY_TIMEOUT: Duration = Duration::from_secs(300);
