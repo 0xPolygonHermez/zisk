@@ -287,12 +287,11 @@ transpilation.
   a 16-byte granule (sail-riscv's split path: one within its granule,
   aligned or not, is covered, `AlignOk`, `alignOk_gran` for ZisK's regions);
   and the run's other ends (a
-  trap, a ZisK call that fails by reading a byte outside ZisK's regions,
-  the instructions not yet covered). A ZisK call that fails otherwise
+  trap, the instructions not yet covered). A ZisK call that fails is one
   (`CallFail`: its operation fails on the memory without the input's
-  first 8 bytes — an assertion, say) is one: the machine's run ends in
-  failure, or in its own error, and sail-zisk's reaches a step that fails
-  (`fail_end`, `fail_end_sparse`, `zisk_fail`).
+  first 8 bytes — an assertion, say, or a read outside ZisK's regions):
+  the machine's run ends in failure, or in its own error, and sail-zisk's
+  reaches a step that fails (`fail_end`, `fail_end_sparse`, `zisk_fail`).
 - **zkvmcalls** (CSRs 0x850–0x8BF, the ZisK library's routines): outside the
   contract for now ([`doc/riscv_contract.md`](doc/riscv_contract.md) § 9), a
   later, separate effort.

@@ -434,8 +434,8 @@ theorem call_sparse_fail {S T : ZiskRiscv.State model} (h : SparseOf S T) (c : Z
       exact .inr (call_err S c _ (Equiv.Zisk.runOp_err hS))
 
 /-- The machine's step on sparse memory, where on full memory it is a ZisK
-    call that fails, not by a missing byte: a failure, or the machine's
-    error. -/
+    call that fails, by a missing byte only outside ZisK's regions: a
+    failure, or the machine's error. -/
 theorem go_sparse_fail {C : BitVec 64 → Prop} {T : ZiskRiscv.State model} (hx : model.getPC T.rv ≠ model.exitAddr)
     (hcc : C (model.getPC T.rv)) (c : ZiskRiscv.Call)
     (hC4 : c.len ≠ 1 → C (model.getPC T.rv + 4) ∧ (model.getPC T.rv + 4).toNat = (model.getPC T.rv).toNat + 4)
@@ -447,7 +447,8 @@ theorem go_sparse_fail {C : BitVec 64 → Prop} {T : ZiskRiscv.State model} (hx 
       (c.len = 3 → fetch ((model.getPC T.rv).toNat + 8) =
         ZiskRiscv.readWord (model.mem T.rv) ((model.getPC T.rv).toNat + 8)) →
       ZiskRiscv.decode fetch (model.getPC T.rv).toNat = .call c)
-    {err : ZiskRiscv.StepError} (hc : ZiskRiscv.call T c = .error err) (hne : ∀ a, err ≠ .missing a) :
+    {err : ZiskRiscv.StepError} (hc : ZiskRiscv.call T c = .error err)
+    (hne : ∀ a, err = .missing a → ZiskRiscv.inRegions a = false) :
     ∀ (f : Nat) (S : ZiskRiscv.State model), SparseOf S T → CodeIn C S →
       (∃ S' m, ZiskRiscv.step.go f S = .ok (S', .failure m)) ∨ ∃ msg, ZiskRiscv.step.go f S = .error msg
   | 0, S, _, _ => .inr ⟨_, rfl⟩
@@ -480,7 +481,7 @@ theorem go_sparse_fail {C : BitVec 64 → Prop} {T : ZiskRiscv.State model} (hx 
         simp [hx', bind, Except.bind, hS, pure, Except.pure]
       rw [ZiskRiscv.step.go, e1]
       cases err with
-      | missing a => exact absurd rfl (hne a)
+      | missing a => simp only [hne a rfl, Bool.false_eq_true, if_false]; exact .inl ⟨S, _, rfl⟩
       | assertion m => exact .inl ⟨S, m, rfl⟩
       | other m => exact .inr ⟨m, rfl⟩
 

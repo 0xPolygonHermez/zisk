@@ -55,23 +55,28 @@ theorem callstep_m (C : BitVec 64 → Prop) (S : ZiskRiscv.State model) (z : Equ
     obtain ⟨S', z', h1, h2, h3, h4', h5, h6⟩ := callstep2 S z rs hrel hf c hw rc hcn pc hpc zrom ia hz.1 hz.2 hok
     exact ⟨S', z', 2, hcs S' h1, h2, h3, h4', h5, h6⟩
 
-theorem ofSail_ne {e : Sail.Error _root_.Zisk.exception} (hne : ∀ k, e ≠ .OutOfMemoryRange k) (a : Nat) :
-    ZiskRiscv.StepError.ofSail e ≠ .missing a := by
-  cases e <;> simp only [ZiskRiscv.StepError.ofSail] <;> first | exact absurd rfl (hne _) | exact fun h => nomatch h
+theorem ofSail_ne {e : Sail.Error _root_.Zisk.exception}
+    (hne : ∀ k, e = .OutOfMemoryRange k → ZiskRiscv.inRegions k = false) (a : Nat) :
+    ZiskRiscv.StepError.ofSail e = .missing a → ZiskRiscv.inRegions a = false := by
+  cases e <;> simp only [ZiskRiscv.StepError.ofSail] <;> intro h <;> first
+    | (injection h with h; subst h; exact hne _ rfl)
+    | exact nomatch h
 
 /-- The machine's step on a failing call: the run's failure, or the
     machine's own error, as the operation's error says. -/
 theorem step_call_err (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) (hx : model.getPC S.rv ≠ model.exitAddr)
     (hd : ZiskRiscv.decode (ZiskRiscv.readWord (model.mem S.rv)) (model.getPC S.rv).toNat = .call c)
     (e : Sail.Error _root_.Zisk.exception) (hc : ZiskRiscv.call S c = .error (.ofSail e))
-    (hne : ∀ k, e ≠ .OutOfMemoryRange k) :
+    (hne : ∀ k, e = .OutOfMemoryRange k → ZiskRiscv.inRegions k = false) :
     (∃ m, ZiskRiscv.step S = .ok (S, .failure m)) ∨ ∃ msg, ZiskRiscv.step S = .error msg := by
   have e1 : ZiskRiscv.tryStep S = .error (.ofSail e) := by
     simp only [ZiskRiscv.tryStep, hd]
     simp [hx, bind, Except.bind, hc, pure, Except.pure]
   rw [ZiskRiscv.step, ZiskRiscv.step.go, e1]
   cases e <;> simp only [ZiskRiscv.StepError.ofSail] <;>
-    first | exact absurd rfl (hne _) | exact .inl ⟨_, rfl⟩ | exact .inr ⟨_, rfl⟩
+    first
+      | (simp only [hne _ rfl, Bool.false_eq_true, if_false]; exact .inl ⟨_, rfl⟩)
+      | exact .inl ⟨_, rfl⟩ | exact .inr ⟨_, rfl⟩
 
 set_option maxHeartbeats 4000000 in
 /-- A ZisK call at pc whose operation fails: the machine's step on it ends
@@ -88,7 +93,7 @@ theorem callfail_m (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState)
     (hfail : CallFail S c) :
     ((∃ m, ZiskRiscv.step S = .ok (S, .failure m)) ∨ ∃ msg, ZiskRiscv.step S = .error msg) ∧
       (∃ k' z1 e z', ZRun zrom k' z z1 ∧ (zstep zrom).run z1 = .error e z') ∧
-      ∃ err, ZiskRiscv.call S c = .error err ∧ ∀ a, err ≠ .missing a := by
+      ∃ err, ZiskRiscv.call S c = .error err ∧ ∀ a, err = .missing a → ZiskRiscv.inRegions a = false := by
   have hw := decode_call_wf hd
   have hg : model.getPC S.rv = pc := by simp [model, hpc]
   have hdm : ZiskRiscv.decode (ZiskRiscv.readWord (model.mem S.rv)) (model.getPC S.rv).toNat = .call c := by

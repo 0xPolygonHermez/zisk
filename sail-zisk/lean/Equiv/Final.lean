@@ -71,8 +71,8 @@ theorem zisk_return (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec
   return_end_sparse zrom entry hb ziskRegions exit_not_exec trap_not_exec C (noCodeRam_of_exec hcx) (noCodeIn_of_exec hcx) m0 hfull
     hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin hpc s0' hsp hcode
 
-/-- A ZisK call whose operation fails, not by reading a byte that is not
-    there: the machine's run ends in failure or in its own error, and
+/-- A ZisK call whose operation fails (by reading a byte that is not there
+    only outside ZisK's regions): the machine's run ends in failure or in its own error, and
     sail-zisk's reaches a step that fails. -/
 theorem zisk_fail (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
     (C : BitVec 64 → Prop) (hcx : ∀ pc, C pc → ExecAt ziskRegions pc)

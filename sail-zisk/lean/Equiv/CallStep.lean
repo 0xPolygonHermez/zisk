@@ -345,12 +345,13 @@ theorem callstep2 (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState) (rs : List
   rw [e]; omega
 
 /-- A call's failure: its operation fails on the memory it starts from,
-    without the input's first 8 bytes, and not by reading a byte that is
-    not there. -/
+    without the input's first 8 bytes; by reading a byte that is not there
+    only outside ZisK's regions and off those 8 bytes. -/
 def CallFail (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) : Prop :=
   ∃ e σ', (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
     (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run
-    (ZiskRiscv.ziskState (Equiv.normIn (callMem S c)) S.fcall) = .error e σ' ∧ ∀ k, e ≠ .OutOfMemoryRange k
+    (ZiskRiscv.ziskState (Equiv.normIn (callMem S c)) S.fcall) = .error e σ' ∧
+    ∀ k, e = .OutOfMemoryRange k → ¬ (Equiv.IN_LO ≤ k ∧ k < Equiv.IN_LO + 8) ∧ ZiskRiscv.inRegions k = false
 
 set_option maxHeartbeats 16000000 in
 /-- A ZisK call whose operation fails: the machine's call fails, and ZisK's
@@ -366,24 +367,31 @@ theorem zcall_fail (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) (hw : CallWF
       (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0))
     (hfail : CallFail S c) :
     ∃ e z', ZiskRiscv.call S c = .error (.ofSail e) ∧ (zstep zrom).run z = .error e z' ∧
-      ∀ k, e ≠ .OutOfMemoryRange k := by
+      ∀ k, e = .OutOfMemoryRange k → ZiskRiscv.inRegions k = false := by
   obtain ⟨e, σ', href, hne⟩ := hfail
   have hm : ∃ τ, (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
       (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run
       (ZiskRiscv.ziskState (callMem S c) S.fcall) = .error e τ := by
     rcases (Equiv.Zisk.Frame.exec_mem _ _ _ _).2 _ _ (Equiv.Zisk.FR.ref_machine _ _) e σ' href with
-      ⟨k, rfl, -, -⟩ | h
-    · exact absurd rfl (hne k)
+      ⟨k, rfl, hk1, hk2⟩ | h
+    · have hin := (hne k rfl).1
+      have hk1' : (Equiv.normIn (callMem S c)).get? k = none := hk1
+      rw [Equiv.normIn_get, if_neg hin] at hk1'
+      exact absurd hk1' hk2
     · exact h
   have hz : ∃ τ, (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
       (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run z = .error e τ := by
     rcases (Equiv.Zisk.Frame.exec_mem _ _ _ _).2 _ _ (Equiv.Zisk.FR.ref_zisk hzm hf) e σ' href with
-      ⟨k, rfl, -, -⟩ | h
-    · exact absurd rfl (hne k)
+      ⟨k, rfl, hk1, hk2⟩ | h
+    · have hin := (hne k rfl).1
+      have hk1' : (Equiv.normIn (callMem S c)).get? k = none := hk1
+      rw [Equiv.normIn_get, if_neg hin] at hk1'
+      rw [(Equiv.normIn_eq_iff _ _).1 hzm k hin] at hk2
+      exact absurd hk1' hk2
     · exact h
   obtain ⟨τ, hτ⟩ := hm
   obtain ⟨τz, hτz⟩ := hz
-  refine ⟨e, τz, call_err S c _ (Equiv.Zisk.runOp_err hτ), ?_, hne⟩
+  refine ⟨e, τz, call_err S c _ (Equiv.Zisk.runOp_err hτ), ?_, fun k hk => (hne k hk).2⟩
   rw [zstep_run zrom z p hzpc, hrom]
   exact Equiv.Zisk.execute_zcall_err z _ _ c.op c.rd j1 j2 _ _
     (Equiv.Zisk.source_a_run z _ _ _ _ _ _ xs hx _ (argA_src agree S.fcall c.a hw.a hw.afree))
