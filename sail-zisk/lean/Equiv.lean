@@ -101,3 +101,8 @@ import Equiv.ZbbCountSim
 import Equiv.UwSim
 import Equiv.RiscvAmoMem
 import Equiv.RiscvAmo
+import Equiv.ZiskAmo
+import Equiv.ZiskAmoRun
+import Equiv.RiscvDecodeAmoBase
+import Equiv.RiscvDecodeAmo
+import Equiv.AmoSim

@@ -189,6 +189,9 @@ structure StepReady (s : RVState) (rs : List PMA_Region) : Prop where
   /-- Zba, Zbb, Zbs enabled: misa's B bit set (ZisK's profile has them, and a
       program in the contract writes no misa). -/
   misaB : ∃ v, s.regs.get? misa = some v ∧ _get_Misa_B v = 1#1
+  /-- A's AMOs enabled (Zaamo): misa's A bit set (ZisK's profile has A, and a
+      program in the contract writes no misa). -/
+  misaA : ∃ v, s.regs.get? misa = some v ∧ _get_Misa_A v = 1#1
 
 /-- An instruction word at pc that sail-riscv fetches as such: aligned, in
     executable memory, not compressed. -/
@@ -228,7 +231,7 @@ theorem try_step_alu (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
       (∀ k, k < 32 → getX s' k = getX (setX s rd val) k) ∧
       (∀ r, isXReg r = false → r ≠ PC → r ≠ nextPC → r ≠ minstret → r ≠ minstret_increment →
         s'.regs.get? r = s.regs.get? r) := by
-  obtain ⟨h, hmip, hmie, hhs, help, hs, -, ⟨mv, hmv, hmM⟩, ⟨bv, hbv, hbB⟩⟩ := hr
+  obtain ⟨h, hmip, hmie, hhs, help, hs, -, ⟨mv, hmv, hmM⟩, ⟨bv, hbv, hbB⟩, -⟩ := hr
   obtain ⟨hal, ⟨r1, hm1, hx1⟩, ⟨r2, hm2, hx2⟩, h0, h1, h2, h3, hc⟩ := hw
   have hp := hs.priv
   simp only [try_step, run_hart_active, should_inc_minstret, counter_priv_filter_bit, dispatchInterrupt,

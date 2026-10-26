@@ -26,7 +26,7 @@ theorem _root_.Equiv.Riscv.StepReady.keep {s s' : RVState} {rs : List PMA_Region
       r ≠ Register.minstret_increment → s'.regs.get? r = s.regs.get? r) : StepReady s' rs := by
   have e : ∀ r, isXReg r = false → r ≠ Register.PC → r ≠ Register.nextPC → r ≠ Register.minstret →
       r ≠ Register.minstret_increment → s'.regs.get? r = s.regs.get? r := ho
-  refine ⟨hwf, ?_, ?_, ?_, ?_, hr.mem.congr ?_, ?_, ?_, ?_⟩
+  refine ⟨hwf, ?_, ?_, ?_, ?_, hr.mem.congr ?_, ?_, ?_, ?_, ?_⟩
   · rw [e _ (by decide) (by decide) (by decide) (by decide) (by decide)]; exact hr.mip
   · rw [e _ (by decide) (by decide) (by decide) (by decide) (by decide)]; exact hr.mie
   · rw [e _ (by decide) (by decide) (by decide) (by decide) (by decide)]; exact hr.hart
@@ -40,6 +40,8 @@ theorem _root_.Equiv.Riscv.StepReady.keep {s s' : RVState} {rs : List PMA_Region
   · obtain ⟨v, hv, hz⟩ := hr.misaM
     exact ⟨v, by rw [e _ (by decide) (by decide) (by decide) (by decide) (by decide)]; exact hv, hz⟩
   · obtain ⟨v, hv, hz⟩ := hr.misaB
+    exact ⟨v, by rw [e _ (by decide) (by decide) (by decide) (by decide) (by decide)]; exact hv, hz⟩
+  · obtain ⟨v, hv, hz⟩ := hr.misaA
     exact ⟨v, by rw [e _ (by decide) (by decide) (by decide) (by decide) (by decide)]; exact hv, hz⟩
 
 set_option maxHeartbeats 4000000 in

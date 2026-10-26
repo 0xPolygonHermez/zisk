@@ -180,6 +180,10 @@ theorem notSys_zexth (i : ZexthInstr) : NotMach i.encode := by
 theorem notSys_byte (i : ByteInstr) : NotMach i.encode := by
   unfold NotMach
   simp only [ByteInstr.encode]; bv_decide
+theorem notSys_amo (i : AmoInstr) : NotMach i.encode := by
+  unfold NotMach; simp only [AmoInstr.encode]
+  generalize hf : i.f3 = f
+  cases i.op <;> simp only [Transpiler.AmoOp.f5] <;> bv_decide
 theorem notSys_uw (i : UwInstr) : NotMach i.encode := by
   unfold NotMach
   simp only [UwInstr.encode]; bv_decide
@@ -230,10 +234,11 @@ theorem StepOkT.word {s : RVState} {rs : List PMA_Region} {pc : BitVec 64}
 
 theorem OneOkT.word {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {s : RVState}
     (h : OneOkT rs zrom s) : ∃ pc, s.regs.get? Register.PC = some pc ∧ WordOk s.mem rs pc := by
-  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, -⟩ | ⟨i, hi⟩⟩ := h
+  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, -⟩ | ⟨i, hi⟩ | ⟨i, hi, -⟩⟩ := h
   · exact ⟨pc, hpc, StepOkT.word o ho⟩
   · exact ⟨pc, hpc, hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_jr i⟩
   · exact ⟨pc, hpc, hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_uw i⟩
+  · exact ⟨pc, hpc, hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_amo i⟩
 
 /-- A state the runs go on from is at an executable pc. -/
 theorem RunOkT.exec {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {s : RVState} {n : Nat} :
