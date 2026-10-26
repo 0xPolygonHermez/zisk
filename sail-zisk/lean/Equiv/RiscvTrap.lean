@@ -164,6 +164,85 @@ theorem try_step_trap_fn (s : RVState) (rs : List PMA_Region) (hr : StepReady s 
   repeat (first | rv_step hw2 | (simp only [WF.get? hw2]; try dsimp only))
   exact ⟨_, rfl, by simp [Std.ExtDHashMap.get?_insert]⟩
 
+set_option maxHeartbeats 4000000 in
+/-- One step of sail-riscv on an instruction its execution finds illegal
+    (`Illegal_Instruction`), in machine mode, mtvec at 4: the step ends at
+    the trap vector. -/
+theorem try_step_illegal (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
+    (hmt : s.regs.get? mtvec = some 0x4#64)
+    (pc : BitVec 64) (hpc : s.regs.get? PC = some pc)
+    (b0 b1 b2 b3 : BitVec 8) (hw : WordAt s rs pc b0 b1 b2 b3) (ins : instruction)
+    (hdec : ∀ t : RVState, t.regs.get? cur_privilege = some .Machine →
+      (∃ v, t.regs.get? mseccfg = some v) →
+      (∃ v, t.regs.get? misa = some v ∧ _get_Misa_M v = 1#1) →
+      (∃ v, t.regs.get? misa = some v ∧ _get_Misa_B v = 1#1) →
+      (interpretSailEffects (ext_decode (b3 ++ b2 ++ (b1 ++ b0)))).run t = .ok ins t)
+    (hexec : ∀ t : RVState, (∀ k, k < 32 → getX t k = getX s k) → t.mem = s.mem → MemReady t rs →
+      t.regs.get? mseccfg = s.regs.get? mseccfg → WF t →
+      (interpretSailEffects (execute ins)).run t = .ok (.Illegal_Instruction ()) t) (n : Nat) :
+    ∃ s', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧ s'.regs.get? PC = some 0x4#64 := by
+  obtain ⟨h, hmip, hmie, hhs, help, hs, -, ⟨mv, hmv, hmM⟩, ⟨bv, hbv, hbB⟩, -⟩ := hr
+  obtain ⟨hal, ⟨r1, hm1, hx1⟩, ⟨r2, hm2, hx2⟩, h0, h1, h2, h3, hc⟩ := hw
+  have hp := hs.priv
+  simp only [try_step, run_hart_active, should_inc_minstret, counter_priv_filter_bit, dispatchInterrupt,
+    getPendingSet, read_mip, is_landing_pad_expected, hart_is_active, hart_is_waiting, tick_pc,
+    get_config_rvfi, get_config_print_instr, currentlyEnabled, hartSupports, external_interrupts_pending,
+    supervisor_software_interrupt_pending, plat_have_sig, handle_exception]
+  rw [interp_bind, run_bind', update_mip_run s h hmip]; dsimp only
+  repeat rv_step h
+  rw [fetch_word _ rs ?hs1 pc ?hpc1 hal r1 r2 hm1 hm2 hx1 hx2 b0 b1 b2 b3 ?h0 ?h1 ?h2 ?h3 hc]
+  rotate_left
+  · exact hs.congr (by
+      intro r hr
+      simp only [memRegs, List.mem_cons, List.not_mem_nil, or_false] at hr
+      rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> simp [Std.ExtDHashMap.get?_insert])
+  · simp only [Std.ExtDHashMap.get?_insert]; simpa using hpc
+  · exact h0
+  · exact h1
+  · exact h2
+  · exact h3
+  dsimp only [ext_fetch_hook]
+  repeat rv_step h
+  rw [hdec _ ?hp1 ?hsec1 ?hm1 ?hb1]
+  rotate_left
+  · simp only [Std.ExtDHashMap.get?_insert]; simpa using hp
+  · exact ⟨regVal h mseccfg, by simp only [Std.ExtDHashMap.get?_insert]; simpa using h.get? mseccfg⟩
+  · exact ⟨mv, by simp only [Std.ExtDHashMap.get?_insert]; simpa using hmv, hmM⟩
+  · exact ⟨bv, by simp only [Std.ExtDHashMap.get?_insert]; simpa using hbv, hbB⟩
+  repeat rv_step h
+  simp only [no_lp, Bool.false_and, Bool.false_eq_true, if_false]
+  repeat rv_step h
+  rw [hexec _ ?gx ?gm ?gr ?gs ?gw]
+  rotate_left
+  · intro k _
+    simp (disch := decide) only [getX, Std.ExtDHashMap.get?_insert, beq_xreg_false, Bool.false_eq_true,
+      dite_false]
+  · rfl
+  · exact hs.congr (by
+      intro r hr
+      simp only [memRegs, List.mem_cons, List.not_mem_nil, or_false] at hr
+      rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> simp [Std.ExtDHashMap.get?_insert])
+  · simp [Std.ExtDHashMap.get?_insert]
+  · exact ⟨isSome_insert _ _ _ (isSome_insert _ _ _ h.all)⟩
+  repeat rv_step h
+  rw [(exception_handler_eq _ ?hw ?hp2 ?hmt2 _ _).1]
+  rotate_left
+  · exact ⟨by (repeat apply isSome_insert); exact h.all⟩
+  · simp [Std.ExtDHashMap.get?_insert, hp]
+  · simp [Std.ExtDHashMap.get?_insert, hmt]
+  generalize hE : excState _ _ _ = E
+  have hw2 : WF E := by
+    rw [← hE]
+    exact (exception_handler_eq _ ⟨by (repeat apply isSome_insert); exact h.all⟩
+      (by simp [Std.ExtDHashMap.get?_insert, hp]) (by simp [Std.ExtDHashMap.get?_insert, hmt]) _ _).2.1
+  have hhs2 : E.regs.get? hart_state = some (.HART_ACTIVE ()) := by
+    rw [← hE, (exception_handler_eq _ ⟨by (repeat apply isSome_insert); exact h.all⟩
+      (by simp [Std.ExtDHashMap.get?_insert, hp]) (by simp [Std.ExtDHashMap.get?_insert, hmt]) _ _).2.2]
+    simp [Std.ExtDHashMap.get?_insert, hhs]
+  simp only [set_next_pc]
+  repeat (first | rv_step hw2 | (simp only [WF.get? hw2]; try dsimp only))
+  exact ⟨_, rfl, by simp [Std.ExtDHashMap.get?_insert]⟩
+
 /-- `try_step_trap_fn`, the trap's context and pc given by the execution. -/
 theorem try_step_trap (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
     (pc : BitVec 64) (hpc : s.regs.get? PC = some pc)

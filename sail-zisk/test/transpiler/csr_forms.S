@@ -127,6 +127,14 @@ rvtest_entry_point:
     addi a3, a2, 300
     csrsi 0x816, 1
     ebreak
+    unimp
+    csrrw a0, cycle, a1
+    csrrs x0, instret, a2
+    csrrsi a3, time, 3
+    csrrci x0, cycle, 1
+    csrrwi x0, 0xC03, 0
+    csrrs a0, cycle, x0
+    csrrsi a0, cycle, 0
     csrsi 0x816, 2
     addi a3, a0, 32
     addi x0, x0, 300

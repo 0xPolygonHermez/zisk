@@ -158,9 +158,9 @@ theorem zisk_fault (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 
   fault_end_sparse zrom entry hb ziskRegions exit_not_exec trap_not_exec C (noCodeRam_of_exec hcx)
     (noCodeIn_of_exec hcx) m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin hfa.faultAt s0' hsp hcode
 
-/-- `ebreak`: the machine's run ends in failure, or in its own error;
-    sail-zisk's ends in error. -/
-theorem zisk_ebreak (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
+/-- `ebreak` or `unimp`: the machine's run ends in failure, or in its own
+    error; sail-zisk's ends in error. -/
+theorem zisk_halt (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
     (C : BitVec 64 → Prop) (hcx : ∀ pc, C pc → ExecAt ziskRegions pc)
     (m0 : Mem) (hspec : SpecRom zrom C m0) (s0 : RVState) (hs0 : Start s0 ziskRegions entry m0)
     (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
@@ -168,12 +168,12 @@ theorem zisk_ebreak (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
     (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
     (hrun : RunOkM ziskRegions zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
-    (heb : EbreakAt ziskRegions zrom (sIter 0 k ⟨s0, fc⟩).rv)
+    (hha : HaltAt ziskRegions zrom (sIter 0 k ⟨s0, fc⟩).rv)
     (s0' : RVState) (hsp : Ext zeroFill s0' s0) (hcode : ∀ pc, C pc → ∃ w, ZiskRiscv.readWord s0'.mem pc.toNat = some w) :
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some true :=
-  ebreak_end_sparse zrom entry hb ziskRegions exit_not_exec trap_not_exec C (noCodeRam_of_exec hcx)
-    (noCodeIn_of_exec hcx) m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin heb s0' hsp hcode
+  halt_end_sparse zrom entry hb ziskRegions exit_not_exec trap_not_exec C (noCodeRam_of_exec hcx)
+    (noCodeIn_of_exec hcx) m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin hha s0' hsp hcode
 
 end Equiv.Final

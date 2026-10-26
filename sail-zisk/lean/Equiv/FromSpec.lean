@@ -36,7 +36,8 @@ theorem csr_guard_none {w : BitVec 32} {pc : BitVec 64} {next : Option (BitVec 3
   have hk' : ZiskRiscv.kind (ZiskRiscv.fields w) = .csrrsi := by
     revert hk; cases ZiskRiscv.kind (ZiskRiscv.fields w) <;> decide
   by_cases hrd : (ZiskRiscv.fields w).rd = 0 <;>
-    simp [Transpiler.csr, ZiskRiscv.decode, Transpiler.fetch2, hk', ZiskRiscv.decodeCsrrsi, hr, hc, hrd] <;> rfl
+    simp [Transpiler.csr, ZiskRiscv.decode, Transpiler.fetch2, hk', ZiskRiscv.decodeCsrrsi, hr, hc, hrd,
+      Transpiler.writesReadOnly] <;> rfl
 
 /-- A word the spec describes followed by `next` alone is described the
     same with any word after that. -/

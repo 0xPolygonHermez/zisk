@@ -81,7 +81,7 @@ theorem MarchidInstr.spec (i : MarchidInstr) (hrd : i.rd ≠ 0) {zrom : BitVec 6
   refine h.one fun ia => ?_
   simp only [Transpiler.convert, Transpiler.decode, ho, hf3, hne, hne', Transpiler.csr3, Transpiler.csr, hd, i.kind, h3, h4, h5]
   simp [hr, MARCHID_CELL]
-  rfl
+  first | rfl | (intro h; exact absurd h (by decide))
 
 set_option maxHeartbeats 16000000 in
 /-- `csrr rd, marchid`, rd not x0, marchid's cell holding the ID: one step

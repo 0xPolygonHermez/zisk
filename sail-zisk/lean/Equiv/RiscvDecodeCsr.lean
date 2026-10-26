@@ -5,3 +5,4 @@
 import Equiv.RiscvDecodeCsrBase
 import Equiv.Decode.Csr.Csrrs
 import Equiv.Decode.Sys.Ebreak
+import Equiv.Decode.Sys.Unimp

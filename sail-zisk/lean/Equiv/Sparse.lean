@@ -763,8 +763,8 @@ theorem fault_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : B
       simp only [ZiskRiscv.run]; rw [show k + 1 + fuel = k + (fuel + 1) by omega]; exact hmsg _ 0⟩
 
 open Equiv.Top in
-/-- `ebreak_end` on sparse memory, as `exit_end_sparse`. -/
-theorem ebreak_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
+/-- `halt_end` on sparse memory, as `exit_end_sparse`. -/
+theorem halt_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
     (rs : List PMA_Region) (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC)
     (C : BitVec 64 → Prop) (hnx : NoCodeRam C) (hni : NoCodeIn C)
     (m0 : Mem) (hspec : SpecRom zrom C m0) (s0 : RVState) (hs0 : Start s0 rs entry m0)
@@ -773,19 +773,19 @@ theorem ebreak_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : 
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
     (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
     (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
-    (heb : EbreakAt rs zrom (sIter 0 k ⟨s0, fc⟩).rv)
+    (hha : HaltAt rs zrom (sIter 0 k ⟨s0, fc⟩).rv)
     (s0' : RVState) (hsp : Ext zeroFill s0' s0) (hcode : ∀ pc, C pc → ∃ w, ZiskRiscv.readWord s0'.mem pc.toNat = some w) :
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some true := by
-  refine ⟨?_, (ebreak_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun
-    hin heb).2⟩
+  refine ⟨?_, (halt_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun
+    hin hha).2⟩
   obtain ⟨z1, -, -, hrel, -, -, -, hm⟩ :=
     covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
   generalize sIter 0 k ⟨s0, fc⟩ = T at *
-  obtain ⟨pc, hpc, hi⟩ := heb
-  obtain ⟨⟨s', hrun', hpc'⟩, -⟩ := ebreak_step T.rv z1 rs hrel pc hpc zrom _ hi 0
-  have hw : WordOk T.rv.mem rs pc := ⟨hi.x1, EBREAK, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, ebreak_plain⟩
+  obtain ⟨pc, e, hpc, he, hi⟩ := hha
+  obtain ⟨⟨s', hrun', hpc'⟩, -⟩ := halt_step T.rv z1 rs hrel pc hpc zrom _ e he hi 0
+  have hw : WordOk T.rv.mem rs pc := ⟨hi.x1, e, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, he.plain⟩
   have hmr := hm (PcOk.of_exec ht hpc hi.x1)
   have hT := mstep_trapT T rs hrel.ready pc hpc hw hx hrun' hpc'
   rcases runs_sparse hmr ⟨s0', fc⟩ ⟨hsp, rfl⟩ hcode with ⟨Sk, hsk, -, hgo⟩ | ⟨msg, hmsg⟩

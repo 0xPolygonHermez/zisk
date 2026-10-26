@@ -508,10 +508,23 @@ def callInsts (c : ZiskRiscv.Call) (pc ia : BitVec 64) : List (BitVec 64 × zisk
 def fetch2 (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) : Nat → Option (BitVec 32) :=
   fun a => if a = pc.toNat then some w else if a = pc.toNat + 4 then next else none
 
+/-- A CSR instruction that writes a read-only CSR, its number's bits 11:10
+    set (`writes_read_only_csr`): csrrw and csrrwi always write; csrrs and
+    csrrc when rs1 is not x0; csrrsi and csrrci when their immediate (rs1's
+    field) is not 0. -/
+def writesReadOnly (f : ZiskRiscv.Fields) : Bool :=
+  let writes := match ZiskRiscv.kind f with
+    | .csrrw | .csrrwi => true
+    | .csrrs | .csrrc | .csrrsi | .csrrci => f.rs1 != 0
+    | _ => false
+  writes && f.csr / 1024 % 4 == 3
+
 /-- A CSR instruction, in the contract's forms: what the machine's decoder
     (ZiskRiscv/Decode.lean, the transpiler's dispatch) makes of it — a ZisK
     call, `csrs ID, x0` (a nop), a sequence the transpiler refuses (a halt)
-    — and reading `marchid` (a copy of its cell). Other CSR accesses, and
+    — reading `marchid` (a copy of its cell), and a write to a read-only
+    CSR (`writesReadOnly`: a halt, the run's failure, as `unimp`'s
+    `csrrw x0, cycle, x0`). Other CSR accesses, and
     the memset sequence of three words, which the next word does not
     settle (`csr3` describes it), are not described; nor are zkvmcalls
     (precondition Z). -/
@@ -527,6 +540,7 @@ def csr (w : BitVec 32) (pc : BitVec 64) (next : Option (BitVec 32)) (ia : BitVe
   | .riscv =>
     if ZiskRiscv.kind f == .csrrs && f.csr == 0xF12 && f.rs1 == 0 && f.rd != 0 then
       some [(pc, mk (.A_IMM, 0) (.B_MEM, CSR_ADDR + 0xF12 * 8) (.ZOP_COPYB ()) (storeReg f.rd) 4 4)]
+    else if writesReadOnly f then some [(pc, halt)]
     else none
   | _ => none
 
