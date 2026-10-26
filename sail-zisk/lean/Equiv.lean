@@ -116,3 +116,5 @@ import Equiv.RiscvCsr
 import Equiv.ZiskCsr
 import Equiv.CsrSim
 import Equiv.MemNorm
+import Equiv.ZFrame
+import Equiv.ZFrameAll
