@@ -180,6 +180,14 @@ main() {
     err "--with-snark requires --system (use 'ziskup setup_snark' for user-mode SNARK key)"
     exit 1
   fi
+  if $WITH_SNARK; then
+    case "$(tolower "${ZISKUP_PLATFORM:-$(uname -s)}")" in
+      darwin | mac*)
+        err "--with-snark is not supported on macOS"
+        exit 1
+        ;;
+    esac
+  fi
   if [[ -n "$PREFIX" ]]; then
     ZISK_DIR="$PREFIX"
   else
@@ -645,7 +653,7 @@ OPTIONS:
                    a ZisK service is still installed unless --force is given.
 
 COMMANDS:
-    setup_snark     Install SNARK proving key (provingKeySnark)
+    setup_snark     Install SNARK proving key (provingKeySnark). Not supported on macOS.
 EOF
 }
 
@@ -1138,7 +1146,10 @@ setup_snark_command() {
 
   case "${PLATFORM}" in
     linux) ;;
-    darwin | mac*) ;;
+    darwin | mac*)
+      err "setup_snark is not supported on macOS"
+      exit 1
+      ;;
     *)
       err "unsupported platform ${PLATFORM}"
       exit 1
