@@ -99,3 +99,5 @@ import Equiv.RiscvZbbCount
 import Equiv.RiscvDecodeZbbCount
 import Equiv.ZbbCountSim
 import Equiv.UwSim
+import Equiv.RiscvAmoMem
+import Equiv.RiscvAmo
