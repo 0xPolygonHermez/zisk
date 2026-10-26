@@ -126,6 +126,7 @@ rvtest_entry_point:
     csrs 0x816, a0
     addi a3, a2, 300
     csrsi 0x816, 1
+    ebreak
     csrsi 0x816, 2
     addi a3, a0, 32
     addi x0, x0, 300

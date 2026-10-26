@@ -16,7 +16,7 @@
     (`registerOp`, `immediateOp`, `copyb`, `loadOp`, `storeOp`, ...), and
     `convert`, which picks one per instruction.
 
-  So far: RV64I but for ebreak and the CSRs; Zifencei; M; A; Zba; Zbs;
+  So far: RV64I but for the CSRs; Zifencei; M; A; Zba; Zbs;
   Zbb; and Zbkb. An instruction it does not describe is `none`.
 
   Internal addresses (the odd ROM addresses a translation of more than one
@@ -137,7 +137,7 @@ inductive Inst
   | shadd (op : ShAdd) | slliuw | zbs (op : ZbsOp) | zbsi (op : ZbsOp) | zbb (op : ZbbOp)
   | zbbw (op : ZbbWOp) | rori | roriw | pack (op : PackOp) | packw | sext (op : SextOp) | zexth
   | byte (op : ByteOp) | count (op : CountOp) | adduw | shadduw (op : ShAdd)
-  | amo (op : AmoOp) (d : Bool) | lr (d : Bool) | sc (d : Bool) | csr
+  | amo (op : AmoOp) (d : Bool) | lr (d : Bool) | sc (d : Bool) | csr | ebreak
   deriving BEq, Repr
 
 /-- What `decode_32` decodes a word to, among the instructions described.
@@ -232,8 +232,9 @@ def decode (w : BitVec 32) : Option Inst :=
     | 0 => some (.branch .beq) | 1 => some (.branch .bne) | 4 => some (.branch .blt)
     | 5 => some (.branch .bge) | 6 => some (.branch .bltu) | 7 => some (.branch .bgeu) | _ => none
   | 103 => if f3 == 0 then some .jalr else none
-  -- ecall is the one word 0x00000073 (riscv_interpreter.rs): rd and rs1 0 too
-  | 115 => if w == 0x00000073#32 then some .ecall else if f3 == 0 then none else some .csr
+  -- ecall and ebreak are the one words 0x00000073 and 0x00100073 (riscv_interpreter.rs)
+  | 115 => if w == 0x00000073#32 then some .ecall else if w == 0x00100073#32 then some .ebreak
+      else if f3 == 0 then none else some .csr
   | 111 => some .jal
   | _ => none
 
@@ -602,6 +603,8 @@ def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : B
   | some .jalr => some (jalr w pc ia)
   | some (.m op) => one (registerOp w op.zop)
   | some .ecall => one ecall
+  -- a breakpoint: the run fails there (halt_with_error)
+  | some .ebreak => one halt
   | some .fence => one nop
   | some (.shadd op) => one (registerOp w op.zop)
   | some .slliuw => one (immediateOp w (.ZOP_SLL_U_W ()) (shamt w))

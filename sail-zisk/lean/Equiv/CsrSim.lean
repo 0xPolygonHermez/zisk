@@ -72,12 +72,14 @@ theorem MarchidInstr.spec (i : MarchidInstr) (hrd : i.rd ≠ 0) {zrom : BitVec 6
   have hf3 : Transpiler.funct3 i.encode = 2#3 := by simp only [Transpiler.funct3, MarchidInstr.encode]; bv_decide
   have hne : (i.encode == 0x00000073#32) = false := by
     simp only [MarchidInstr.encode, beq_eq_false_iff_ne]; intro e; apply hrd; bv_decide
+  have hne' : (i.encode == 0x00100073#32) = false := by
+    simp only [MarchidInstr.encode, beq_eq_false_iff_ne]; intro e; apply hrd; bv_decide
   have hd : ∀ next, ZiskRiscv.decode (Transpiler.fetch2 pc i.encode next) pc.toNat = .riscv := by
     intro next
     have := i.plain hrd (Transpiler.fetch2 pc i.encode next) pc.toNat (by simp [Transpiler.fetch2])
     exact this
   refine h.one fun ia => ?_
-  simp only [Transpiler.convert, Transpiler.decode, ho, hf3, hne, Transpiler.csr3, Transpiler.csr, hd, i.kind, h3, h4, h5]
+  simp only [Transpiler.convert, Transpiler.decode, ho, hf3, hne, hne', Transpiler.csr3, Transpiler.csr, hd, i.kind, h3, h4, h5]
   simp [hr, MARCHID_CELL]
   rfl
 

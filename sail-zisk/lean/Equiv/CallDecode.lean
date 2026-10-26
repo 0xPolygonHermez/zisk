@@ -176,7 +176,10 @@ theorem spec_decode_csr (w : BitVec 32)
   have hne : (w == 0x00000073#32) = false := by
     rcases h3 with h3 | h3 | h3 <;>
     · simp only [beq_eq_false_iff_ne]; intro e; subst e; simp [fields] at h3
-  simp only [Transpiler.decode, e1, e3, h1, hne]
+  have hne' : (w == 0x00100073#32) = false := by
+    rcases h3 with h3 | h3 | h3 <;>
+    · simp only [beq_eq_false_iff_ne]; intro e; subst e; simp [fields] at h3
+  simp only [Transpiler.decode, e1, e3, h1, hne, hne']
   rcases h3 with h3 | h3 | h3 <;> simp [h3]
 
 /-- The length of a call the pairs make: two words. -/
