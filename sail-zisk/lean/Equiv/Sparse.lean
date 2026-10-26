@@ -361,7 +361,7 @@ theorem go_sparse_call {C : BitVec 64 → Prop} {T T' : ZiskRiscv.State model} (
         Grows S.rv.mem S'.rv.mem) ∨ ∃ msg, ZiskRiscv.step.go f S = .error msg
   | 0, S, _, _ => .inr ⟨_, rfl⟩
   | f + 1, S, h, hcd => by
-    obtain ⟨hx, hcc, c, hcall, hC4, hd⟩ := hT
+    obtain ⟨hx, hcc, c, hcall, hC4, hC8, hd⟩ := hT
     have hg := getPC_eq h
     have hx' : model.getPC S.rv ≠ model.exitAddr := by rw [hg]; exact hx
     have hw : ∀ p, C p → ZiskRiscv.readWord S.rv.mem p.toNat = ZiskRiscv.readWord T.rv.mem p.toNat := by
@@ -370,9 +370,11 @@ theorem go_sparse_call {C : BitVec 64 → Prop} {T T' : ZiskRiscv.State model} (
       rw [hws, readWord_ext h.ext hws]
     have hdS : ZiskRiscv.decode (ZiskRiscv.readWord (model.mem S.rv)) (model.getPC S.rv).toNat = .call c := by
       rw [hg]
-      refine hd _ (hw _ hcc) fun hl => ?_
-      obtain ⟨h4, e4⟩ := hC4 hl
-      have := hw _ h4; rw [e4] at this; exact this
+      refine hd _ (hw _ hcc) (fun hl => ?_) fun hl => ?_
+      · obtain ⟨h4, e4⟩ := hC4 hl
+        have := hw _ h4; rw [e4] at this; exact this
+      · obtain ⟨h8, e8⟩ := hC8 hl
+        have := hw _ h8; rw [e8] at this; exact this
     rcases call_sparse h c hcall with ⟨S', hS', hsp, hgr⟩ | ⟨a, ha, hreg, hm⟩
     · refine .inl ⟨S', ?_, hsp, hgr⟩
       have e1 : ZiskRiscv.tryStep S = .ok (S', .running) := by
@@ -385,7 +387,7 @@ theorem go_sparse_call {C : BitVec 64 → Prop} {T T' : ZiskRiscv.State model} (
       have hf := h.fill hreg hm
       have hcd' : CodeIn C { S with rv := model.setMem S.rv ((model.mem S.rv).insert a 0) } :=
         hcd.grow (Grows.insert _ a 0)
-      rcases go_sparse_call ⟨hx, hcc, c, hcall, hC4, hd⟩ f _ hf hcd' with ⟨S', hS', hsp, hg'⟩ | ⟨msg, hmsg⟩
+      rcases go_sparse_call ⟨hx, hcc, c, hcall, hC4, hC8, hd⟩ f _ hf hcd' with ⟨S', hS', hsp, hg'⟩ | ⟨msg, hmsg⟩
       · refine .inl ⟨S', by rw [ZiskRiscv.step.go, e1]; simp only [hreg, if_true]; exact hS', hsp, ?_⟩
         exact (Grows.insert _ a 0).trans hg'
       · exact .inr ⟨msg, by rw [ZiskRiscv.step.go, e1]; simp only [hreg, if_true]; exact hmsg⟩

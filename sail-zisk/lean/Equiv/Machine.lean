@@ -162,22 +162,25 @@ theorem step_call {M : ZiskRiscv.RiscvModel} (S : ZiskRiscv.State M) (c : ZiskRi
 
 /-- A machine step on a ZisK call, at a code address (`C`): not at the exit
     address, the call's run; the call the decoder's on any words that agree
-    with memory at pc and, for a call of more than one word, at pc + 4, a
-    code address too. -/
+    with memory at pc, at pc + 4 for a call of more than one word, and at
+    pc + 8 for one of three, code addresses too. -/
 def CStep (C : BitVec 64 → Prop) (S S' : ZiskRiscv.State model) : Prop :=
   model.getPC S.rv ≠ model.exitAddr ∧ C (model.getPC S.rv) ∧
   ∃ c : ZiskRiscv.Call, ZiskRiscv.call S c = .ok S' ∧
     (c.len ≠ 1 → C (model.getPC S.rv + 4) ∧ (model.getPC S.rv + 4).toNat = (model.getPC S.rv).toNat + 4) ∧
+    (c.len = 3 → C (model.getPC S.rv + 8) ∧ (model.getPC S.rv + 8).toNat = (model.getPC S.rv).toNat + 8) ∧
     ∀ fetch : Nat → Option (BitVec 32),
       fetch (model.getPC S.rv).toNat = ZiskRiscv.readWord (model.mem S.rv) (model.getPC S.rv).toNat →
       (c.len ≠ 1 → fetch ((model.getPC S.rv).toNat + 4) =
         ZiskRiscv.readWord (model.mem S.rv) ((model.getPC S.rv).toNat + 4)) →
+      (c.len = 3 → fetch ((model.getPC S.rv).toNat + 8) =
+        ZiskRiscv.readWord (model.mem S.rv) ((model.getPC S.rv).toNat + 8)) →
       ZiskRiscv.decode fetch (model.getPC S.rv).toNat = .call c
 
 theorem CStep.mstep {C : BitVec 64 → Prop} {S S' : ZiskRiscv.State model} (h : CStep C S S') :
     ZiskRiscv.step S = .ok (S', .running) := by
-  obtain ⟨hx, -, c, hc, -, hd⟩ := h
-  exact step_call S c S' hx (hd _ rfl fun _ => rfl) hc
+  obtain ⟨hx, -, c, hc, -, -, hd⟩ := h
+  exact step_call S c S' hx (hd _ rfl (fun _ => rfl) fun _ => rfl) hc
 
 /-- `n` machine steps, each left to sail-riscv or, on lr and sc at a code
     address, run by substitution, or a ZisK call at a code address. -/

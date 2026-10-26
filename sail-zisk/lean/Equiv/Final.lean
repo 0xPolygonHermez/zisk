@@ -16,14 +16,16 @@ open Equiv.Riscv Equiv.Sim Equiv.Machine Equiv.Top Equiv.Sparse
 open LeanZiskRV LeanZiskRV.Functions Sail Sail.ArchSem
 
 /-- Code at executable addresses, in the ROM, is off the input's first 8
-    bytes, and so is the word after. -/
+    bytes, and so are the two words after. -/
 theorem noCodeIn_of_exec {C : BitVec 64 → Prop} (h : ∀ pc, C pc → ExecAt ziskRegions pc) : NoCodeIn C := by
   intro pc hc
   have ⟨e1, e2⟩ := exec_rom (h pc hc)
   have e4 : (pc + 4).toNat = pc.toNat + 4 := by rw [BitVec.toNat_add]; simp; omega
-  refine ⟨fun i hi => ?_, fun i hi => ?_⟩ <;> simp only [Equiv.IN_LO]
+  have e8 : (pc + 8).toNat = pc.toNat + 8 := by rw [BitVec.toNat_add]; simp; omega
+  refine ⟨fun i hi => ?_, fun i hi => ?_, fun i hi => ?_⟩ <;> simp only [Equiv.IN_LO]
   · omega
   · rw [e4]; omega
+  · rw [e8]; omega
 
 /-- The exit system call with code c. -/
 theorem zisk_exit (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)

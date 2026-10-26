@@ -179,46 +179,6 @@ theorem spec_decode_csr (w : BitVec 32)
   simp only [Transpiler.decode, e1, e3, h1, hne]
   rcases h3 with h3 | h3 | h3 <;> simp [h3]
 
-/-- `csrrsi`'s call does not depend on the second word after it, when it is
-    one without it. -/
-theorem decodeCsrrsi_n1 {f : Fields} {n0 : Option Fields} {c : Call} (h : decodeCsrrsi f n0 none = .call c)
-    (n1 : Option Fields) : decodeCsrrsi f n0 n1 = .call c := by
-  simp only [decodeCsrrsi] at h ⊢
-  split at h
-  · next hc =>
-    rw [if_pos hc]
-    split at h <;> split <;> simp_all
-  · cases h
-
-/-- A call decoded from the word at pc and the one after it is the
-    machine's, on memory holding them. -/
-theorem decode_of_fetch2 {m : Equiv.Mem} {pc : BitVec 64} {w : BitVec 32} {next : Option (BitVec 32)}
-    (hw : readWord m pc.toNat = some w) (hn : readWord m (pc.toNat + 4) = next) {c : Call}
-    (h : decode (Transpiler.fetch2 pc w next) pc.toNat = .call c) : decode (readWord m) pc.toNat = .call c := by
-  have f0 : Transpiler.fetch2 pc w next pc.toNat = some w := by simp [Transpiler.fetch2]
-  have f4 : Transpiler.fetch2 pc w next (pc.toNat + 4) = next := by simp [Transpiler.fetch2]
-  have f8 : Transpiler.fetch2 pc w next (pc.toNat + 8) = none := by simp [Transpiler.fetch2]
-  simp only [decode, f0, f4, f8] at h
-  simp only [decode, hw, hn]
-  generalize (readWord m (pc.toNat + 8)).map fields = n1
-  revert h
-  cases kind (fields w) <;> first | exact id | exact fun h => decodeCsrrsi_n1 h n1
-
-/-- A call the spec decodes: the ZisK program holds its translation. -/
-theorem transpiled_call {zrom : BitVec 64 → Zisk.zisk_inst} {pc : BitVec 64} {w : BitVec 32}
-    {next : Option (BitVec 32)} (ht : Equiv.Sim.Transpiled zrom pc w next) {c : Call}
-    (h : decode (Transpiler.fetch2 pc w next) pc.toNat = .call c) :
-    ∃ ia, ∀ p ∈ Transpiler.callInsts c pc ia, zrom p.1 = p.2 := by
-  obtain ⟨ia, l, hl, hz⟩ := ht
-  obtain ⟨w', hw', hk⟩ := decode_call_kind h
-  have : w' = w := by simp [Transpiler.fetch2] at hw'; exact hw'.symm
-  subst this
-  have hd := spec_decode_csr w' hk
-  simp only [Transpiler.convert, hd, Transpiler.csr, h] at hl
-  cases hl
-  exact ⟨ia, hz⟩
-
-
 /-- The length of a call the pairs make: two words. -/
 theorem dmaPair_len {csr rd src : Nat} {n0 : Fields} {c : Call} (h : dmaPair csr rd src n0 = .call c) : c.len = 2 := by
   simp only [dmaPair] at h
@@ -265,16 +225,82 @@ theorem decodeCsrrsi_len {f : Fields} {n0 n1 : Option Fields} {c : Call} (h : de
     · cases h
   · cases h
 
-/-- A call decoded from the word at pc and the one after it is the
-    decoder's on any words that agree with them: at pc, and, for a call of
-    more than one word, at pc + 4. -/
-theorem decode_any {pc : BitVec 64} {w : BitVec 32} {next : Option (BitVec 32)} {c : Call}
-    (h : decode (Transpiler.fetch2 pc w next) pc.toNat = .call c) (fetch : Nat → Option (BitVec 32))
-    (h0 : fetch pc.toNat = some w) (h4 : c.len ≠ 1 → fetch (pc.toNat + 4) = next) :
+/-- `csrrs`'s calls are of one or two words. -/
+theorem decodeCsrrs_len3 {f : Fields} {n0 : Option Fields} {c : Call} (h : decodeCsrrs f n0 = .call c) :
+    c.len ≠ 3 := by
+  by_cases h2 : c.len = 2
+  · rw [h2]; decide
+  · have h1 := decodeCsrrs_len1 h h2 none
+    simp only [decodeCsrrs] at h1
+    split at h1 <;> (try split at h1) <;> (try split at h1) <;> (try split at h1) <;> (try split at h1) <;>
+      (try split at h1) <;> first
+      | (cases h1; done)
+      | (injection h1 with h1; subst h1; simp)
+      | (exact absurd (memsetPair_len h1) h2)
+      | skip
+
+/-- `csrrsi`'s call of three words: the memset port, the immediate 2, a
+    word after it. -/
+theorem decodeCsrrsi_len3 {f : Fields} {n0 n1 : Option Fields} {c : Call} (h : decodeCsrrsi f n0 n1 = .call c)
+    (hl : c.len = 3) : f.csr = 0x816 ∧ f.rs1 = 2 ∧ n0.isSome := by
+  simp only [decodeCsrrsi] at h
+  split at h
+  · next hc =>
+    simp only [Bool.and_eq_true, beq_iff_eq] at hc
+    split at h
+    · exact ⟨hc.2, by assumption, rfl⟩
+    · rw [memsetPair_len h] at hl; cases hl
+    · cases h
+  · cases h
+
+/-- `csrrsi`'s call of fewer than three words does not depend on the second
+    word after it. -/
+theorem decodeCsrrsi_n1' {f : Fields} {n0 n1 : Option Fields} {c : Call} (h : decodeCsrrsi f n0 n1 = .call c)
+    (hl : c.len ≠ 3) (n1' : Option Fields) : decodeCsrrsi f n0 n1' = .call c := by
+  simp only [decodeCsrrsi] at h ⊢
+  split at h
+  · next hc =>
+    rw [if_pos hc]
+    split at h <;> (try split at h) <;> (try split) <;> first | (simp only [Decoded.call.injEq] at h; subst h; simp at hl; done) | simp_all
+  · cases h
+
+/-- A call of three words: the memset sequence's first word at pc, the next
+    word there. -/
+theorem decode_len3 {fetch : Nat → Option (BitVec 32)} {a : Nat} {c : Call} (h : decode fetch a = .call c)
+    (hl : c.len = 3) : ∃ w, fetch a = some w ∧ kind (fields w) = .csrrsi ∧ (fields w).csr = 0x816 ∧
+      (fields w).rs1 = 2 ∧ (fetch (a + 4)).isSome := by
+  simp only [decode] at h
+  split at h
+  · cases h
+  · next w hw =>
+    refine ⟨w, hw, ?_⟩
+    revert h
+    generalize hk : kind (fields w) = k
+    cases k <;> intro h <;> first
+      | (cases h; done)
+      | exact absurd hl (decodeCsrrs_len3 h)
+      | (obtain ⟨h1, h2, h3⟩ := decodeCsrrsi_len3 h hl
+         refine ⟨rfl, h1, h2, ?_⟩
+         cases e : fetch (a + 4) <;> simp_all)
+      | (simp only [decodeCsrrwi] at h; split at h
+         · injection h with h; subst h; cases hl
+         · cases h)
+
+theorem fetch3_none (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) :
+    Transpiler.fetch3 pc w next none = Transpiler.fetch2 pc w next := by
+  funext a; simp only [Transpiler.fetch3, Transpiler.fetch2]; split <;> (try rfl); split <;> (try rfl); split <;> rfl
+
+/-- A call decoded from the word at pc and the two after it is the
+    decoder's on any words that agree with them: at pc; at pc + 4, for a
+    call of more than one word; at pc + 8, for one of three. -/
+theorem decode_any3 {pc : BitVec 64} {w : BitVec 32} {next next2 : Option (BitVec 32)} {c : Call}
+    (h : decode (Transpiler.fetch3 pc w next next2) pc.toNat = .call c) (fetch : Nat → Option (BitVec 32))
+    (h0 : fetch pc.toNat = some w) (h4 : c.len ≠ 1 → fetch (pc.toNat + 4) = next)
+    (h8 : c.len = 3 → fetch (pc.toNat + 8) = next2) :
     decode fetch pc.toNat = .call c := by
-  have f0 : Transpiler.fetch2 pc w next pc.toNat = some w := by simp [Transpiler.fetch2]
-  have f4 : Transpiler.fetch2 pc w next (pc.toNat + 4) = next := by simp [Transpiler.fetch2]
-  have f8 : Transpiler.fetch2 pc w next (pc.toNat + 8) = none := by simp [Transpiler.fetch2]
+  have f0 : Transpiler.fetch3 pc w next next2 pc.toNat = some w := by simp [Transpiler.fetch3]
+  have f4 : Transpiler.fetch3 pc w next next2 (pc.toNat + 4) = next := by simp [Transpiler.fetch3]
+  have f8 : Transpiler.fetch3 pc w next next2 (pc.toNat + 8) = next2 := by simp [Transpiler.fetch3]
   simp only [decode, f0, f4, f8] at h
   simp only [decode, h0]
   by_cases hl : c.len = 1
@@ -286,8 +312,46 @@ theorem decode_any {pc : BitVec 64} {w : BitVec 32} {next : Option (BitVec 32)} 
       | exact fun h => decodeCsrrs_len1 h (by rw [hl]; decide) n0'
       | exact fun h => absurd hl (decodeCsrrsi_len h)
   · rw [h4 hl]
-    generalize (fetch (pc.toNat + 8)).map fields = n1
-    revert h
-    cases kind (fields w) <;> first | exact id | exact fun h => decodeCsrrsi_n1 h n1
+    by_cases h3 : c.len = 3
+    · rw [h8 h3]; exact h
+    · generalize (fetch (pc.toNat + 8)).map fields = n1
+      revert h
+      cases kind (fields w) <;> first | exact id | exact fun h => decodeCsrrsi_n1' h h3 n1
+
+/-- A call the spec decodes, from the word at pc and the two after it: the
+    ZisK program holds its translation. -/
+theorem transpiled_call3 {zrom : BitVec 64 → Zisk.zisk_inst} {pc : BitVec 64} {w : BitVec 32}
+    {next next2 : Option (BitVec 32)} (ht : Equiv.Sim.Transpiled zrom pc w next next2) {c : Call}
+    (h : decode (Transpiler.fetch3 pc w next next2) pc.toNat = .call c) :
+    ∃ ia, ∀ p ∈ Transpiler.callInsts c pc ia, zrom p.1 = p.2 := by
+  obtain ⟨ia, l, hl, hz⟩ := ht
+  obtain ⟨w', hw', hk⟩ := decode_call_kind h
+  have : w' = w := by simp [Transpiler.fetch3] at hw'; exact hw'.symm
+  subst this
+  have hd := spec_decode_csr w' hk
+  simp only [Transpiler.convert, hd] at hl
+  -- the call as the two-word decoder has it, when the call is not memset's three words
+  have h2 : c.len ≠ 3 → decode (Transpiler.fetch2 pc w' next) pc.toNat = .call c := fun h3 =>
+    decode_any3 h _ (by simp [Transpiler.fetch2]) (fun _ => by simp [Transpiler.fetch2])
+      (fun e => absurd e h3)
+  cases next2 with
+  | none =>
+    rw [fetch3_none] at h
+    simp only [Transpiler.csr3, Transpiler.csr, h] at hl
+    cases hl; exact ⟨ia, hz⟩
+  | some n2 =>
+    simp only [Transpiler.csr3] at hl
+    split at hl
+    · simp only [h] at hl; cases hl; exact ⟨ia, hz⟩
+    · next hg =>
+      have h3 : c.len ≠ 3 := by
+        intro e
+        obtain ⟨w2, hw2, k1, k2, k3, k4⟩ := decode_len3 h e
+        simp [Transpiler.fetch3] at hw2; subst hw2
+        apply hg
+        simp only [k1, k2, k3, Bool.and_eq_true, beq_iff_eq, and_true]
+        exact ⟨rfl, by simpa [Transpiler.fetch3] using k4⟩
+      simp only [Transpiler.csr, h2 h3] at hl
+      cases hl; exact ⟨ia, hz⟩
 
 end Equiv.Machine

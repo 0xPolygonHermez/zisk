@@ -18,15 +18,17 @@ open LeanZiskRV LeanZiskRV.Functions Sail Sail.ArchSem
 
 /-- The ZisK program holds the spec's translation of every word of m at a
     code address (`C`: the addresses the transpiler translates) the spec
-    describes, the next word as the transpiler reads it. -/
+    describes, the next two words as the transpiler reads them. -/
 def SpecRom (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (C : BitVec 64 → Prop) (m : Mem) : Prop :=
   ∀ pc w, C pc → ZiskRiscv.readWord m pc.toNat = some w →
-    (∃ ia l, Transpiler.convert pc w (ZiskRiscv.readWord m (pc + 4).toNat) ia = some l) →
-    Transpiled zrom pc w (ZiskRiscv.readWord m (pc + 4).toNat)
+    (∃ ia l, Transpiler.convert pc w (ZiskRiscv.readWord m (pc + 4).toNat) ia
+      (ZiskRiscv.readWord m (pc + 8).toNat) = some l) →
+    Transpiled zrom pc w (ZiskRiscv.readWord m (pc + 4).toNat) (ZiskRiscv.readWord m (pc + 8).toNat)
 
-/-- No code in the RAM: a code word, and the word after it, off it. -/
+/-- No code in the RAM: a code word, and the two words after it, off it. -/
 def NoCodeRam (C : BitVec 64 → Prop) : Prop :=
-  ∀ pc, C pc → (∀ i, i < 4 → OffRam (pc.toNat + i)) ∧ (∀ i, i < 4 → OffRam ((pc + 4).toNat + i))
+  ∀ pc, C pc → (∀ i, i < 4 → OffRam (pc.toNat + i)) ∧ (∀ i, i < 4 → OffRam ((pc + 4).toNat + i)) ∧
+    (∀ i, i < 4 → OffRam ((pc + 8).toNat + i))
 
 /-- The run's first k steps start at code addresses. -/
 def RunIn (C : BitVec 64 → Prop) (k : Nat) (s : RVState) (n : Nat) : Prop :=
@@ -47,12 +49,14 @@ theorem readWord_congr {m m' : Mem} {a : Nat} (h : ∀ i, i < 4 → m'.get? (a +
 theorem SpecRom.keep {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop} {m m' : Mem}
     (h : SpecRom zrom C m) (hr : RamOnly m m') (hx : NoCodeRam C) : SpecRom zrom C m' := by
   intro pc w he hw hc
-  obtain ⟨o1, o2⟩ := hx pc he
+  obtain ⟨o1, o2, o3⟩ := hx pc he
   have e1 : ZiskRiscv.readWord m' pc.toNat = ZiskRiscv.readWord m pc.toNat :=
     readWord_congr fun i hi => hr _ (o1 i hi)
   have e2 : ZiskRiscv.readWord m' (pc + 4).toNat = ZiskRiscv.readWord m (pc + 4).toNat :=
     readWord_congr fun i hi => hr _ (o2 i hi)
-  rw [e1] at hw; rw [e2] at hc ⊢
+  have e3 : ZiskRiscv.readWord m' (pc + 8).toNat = ZiskRiscv.readWord m (pc + 8).toNat :=
+    readWord_congr fun i hi => hr _ (o3 i hi)
+  rw [e1] at hw; rw [e2, e3] at hc ⊢
   exact h pc w he hw hc
 
 /-- A translation the spec makes, with any ZisK program, is in this one. -/
@@ -62,7 +66,9 @@ theorem retr {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → 
     (h2 : s.mem.get? (pc.toNat + 2) = some (byte e 2)) (h3 : s.mem.get? (pc.toNat + 3) = some (byte e 3))
     (tr : Transpiled zr pc e (nextWord s pc)) : Transpiled zrom pc e (nextWord s pc) := by
   obtain ⟨ia, l, hl, -⟩ := tr
-  exact hs pc e x1 (Equiv.Machine.readWord_of h0 h1 h2 h3) ⟨ia, l, hl⟩
+  have he : ∃ ia l, Transpiler.convert pc e (nextWord s pc) ia = some l := ⟨ia, l, hl⟩
+  exact (hs pc e x1 (Equiv.Machine.readWord_of h0 h1 h2 h3)
+    ⟨ia, l, (convert_next2 he ia _).trans hl⟩).drop2 he
 
 theorem StepOkT.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {rs : List PMA_Region} {s : RVState} {pc : BitVec 64} (hs : SpecRom zrom C s.mem) (hc : C pc) :

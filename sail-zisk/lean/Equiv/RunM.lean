@@ -47,9 +47,9 @@ theorem MStep.snext_eq {rs : List PMA_Region} {n : Nat} {S : ZiskRiscv.State mod
 
 theorem _root_.Equiv.Machine.CStep.snext_eq {C : BitVec 64 → Prop} {S S' : ZiskRiscv.State model}
     (h : CStep C S S') (n : Nat) : sNext n S = S' := by
-  obtain ⟨-, -, c, hc, -, hd⟩ := h
+  obtain ⟨-, -, c, hc, -, -, hd⟩ := h
   have hd' : ZiskRiscv.decode (ZiskRiscv.readWord S.rv.mem) ((S.rv.regs.get? Register.PC).getD 0).toNat =
-      .call c := hd _ rfl fun _ => rfl
+      .call c := hd _ rfl (fun _ => rfl) fun _ => rfl
   simp only [sNext, hd', hc]
 
 /-! ## Memory off the RAM -/
@@ -65,35 +65,40 @@ theorem RamOnlyX.trans {m1 m2 m3 : Mem} (h1 : RamOnlyX m1 m2) (h2 : RamOnlyX m2 
 
 theorem RamOnlyX.of {m m' : Mem} (h : RamOnly m m') : RamOnlyX m m' := fun a ha _ => h a ha
 
-/-- No code in the input's first 8 bytes: a code word, and the word after it, off them. -/
+/-- No code in the input's first 8 bytes: a code word, and the two words
+    after it, off them. -/
 def NoCodeIn (C : BitVec 64 → Prop) : Prop :=
   ∀ pc, C pc → (∀ i, i < 4 → ¬ (Equiv.IN_LO ≤ pc.toNat + i ∧ pc.toNat + i < Equiv.IN_LO + 8)) ∧
-    (∀ i, i < 4 → ¬ (Equiv.IN_LO ≤ (pc + 4).toNat + i ∧ (pc + 4).toNat + i < Equiv.IN_LO + 8))
+    (∀ i, i < 4 → ¬ (Equiv.IN_LO ≤ (pc + 4).toNat + i ∧ (pc + 4).toNat + i < Equiv.IN_LO + 8)) ∧
+    (∀ i, i < 4 → ¬ (Equiv.IN_LO ≤ (pc + 8).toNat + i ∧ (pc + 8).toNat + i < Equiv.IN_LO + 8))
 
 theorem SpecRom.keepX {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop} {m m' : Mem}
     (h : SpecRom zrom C m) (hr : RamOnlyX m m') (hx : NoCodeRam C) (hi : NoCodeIn C) : SpecRom zrom C m' := by
   intro pc w he hw hc
-  obtain ⟨o1, o2⟩ := hx pc he
-  obtain ⟨i1, i2⟩ := hi pc he
+  obtain ⟨o1, o2, o3⟩ := hx pc he
+  obtain ⟨i1, i2, i3⟩ := hi pc he
   have e1 : ZiskRiscv.readWord m' pc.toNat = ZiskRiscv.readWord m pc.toNat :=
     readWord_congr fun i hi => hr _ (o1 i hi) (i1 i hi)
   have e2 : ZiskRiscv.readWord m' (pc + 4).toNat = ZiskRiscv.readWord m (pc + 4).toNat :=
     readWord_congr fun i hi => hr _ (o2 i hi) (i2 i hi)
-  rw [e1] at hw; rw [e2] at hc ⊢
+  have e3 : ZiskRiscv.readWord m' (pc + 8).toNat = ZiskRiscv.readWord m (pc + 8).toNat :=
+    readWord_congr fun i hi => hr _ (o3 i hi) (i3 i hi)
+  rw [e1] at hw; rw [e2, e3] at hc ⊢
   exact h pc w he hw hc
 
 /-! ## The run's coverage -/
 
-/-- A ZisK call at pc: the word there, and the word after it, what the spec
-    decodes as a call, its translation in the ZisK program; the call's
-    condition (`CallOk`); pc + 4 a code address too for a call of more than
-    one word. -/
+/-- A ZisK call at pc, an executable address: the word there, and the two
+    after it, what the spec decodes as a call, its translation in the ZisK
+    program; the call's condition (`CallOk`); pc + 4 a code address too for
+    a call of more than one word, pc + 8 for one of three. -/
 def CallAt (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (C : BitVec 64 → Prop)
     (S : ZiskRiscv.State model) : Prop :=
-  ∃ pc w c, S.rv.regs.get? Register.PC = some pc ∧ WordsAt S.rv rs pc zrom w (nextWord S.rv pc) ∧
-    (pc + 4).toNat = pc.toNat + 4 ∧
-    ZiskRiscv.decode (Transpiler.fetch2 pc w (nextWord S.rv pc)) pc.toNat = .call c ∧
-    (c.len ≠ 1 → C (pc + 4)) ∧ CallOk S c
+  ∃ pc w c, S.rv.regs.get? Register.PC = some pc ∧ ExecAt rs pc ∧ ZiskRiscv.readWord S.rv.mem pc.toNat = some w ∧
+    Transpiled zrom pc w (nextWord S.rv pc) (nextWord2 S.rv pc) ∧
+    (pc + 4).toNat = pc.toNat + 4 ∧ (pc + 8).toNat = pc.toNat + 8 ∧
+    ZiskRiscv.decode (Transpiler.fetch3 pc w (nextWord S.rv pc) (nextWord2 S.rv pc)) pc.toNat = .call c ∧
+    (c.len ≠ 1 → C (pc + 4)) ∧ (c.len = 3 → C (pc + 8)) ∧ CallOk S c
 
 /-- What one step of the machine needs: as `OneOkT`, or a ZisK call. -/
 def OneOkM (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (C : BitVec 64 → Prop)
@@ -125,9 +130,9 @@ theorem RunInM.tail {C : BitVec 64 → Prop} {k : Nat} {S : ZiskRiscv.State mode
 theorem OneOkM.exec {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {S : ZiskRiscv.State model} (h : OneOkM rs zrom C S) :
     ∃ pc, S.rv.regs.get? Register.PC = some pc ∧ ExecAt rs pc := by
-  rcases h with h | ⟨pc, w, c, hpc, hi, -⟩
+  rcases h with h | ⟨pc, w, c, hpc, hx, -⟩
   · exact OneOkT.exec h
-  · exact ⟨pc, hpc, hi.x1⟩
+  · exact ⟨pc, hpc, hx⟩
 
 theorem RunOkM.exec {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {S : ZiskRiscv.State model} {n : Nat} :
@@ -139,9 +144,9 @@ theorem RunOkM.exec {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zis
 theorem OneOkM.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {rs : List PMA_Region} {S : ZiskRiscv.State model} (hs : SpecRom zrom C S.rv.mem)
     (hc : ∀ pc, S.rv.regs.get? Register.PC = some pc → C pc) (h : OneOkM rs zr C S) : OneOkM rs zrom C S := by
-  rcases h with h | ⟨pc, w, c, hpc, hi, rest⟩
+  rcases h with h | ⟨pc, w, c, hpc, hx, hrw, ⟨ia, l, hl, -⟩, rest⟩
   · exact .inl (OneOkT.retarget hs hc h)
-  · exact .inr ⟨pc, w, c, hpc, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩
+  · exact .inr ⟨pc, w, c, hpc, hx, hrw, hs pc w (hc pc hpc) hrw ⟨ia, l, hl⟩, rest⟩
 
 /-! ## The simulation -/
 
@@ -154,14 +159,14 @@ theorem one_stepM (C : BitVec 64 → Prop) (S : ZiskRiscv.State model) (z : Equi
     ∃ z' k', ZRun zrom k' z z' ∧ Rel (sNext n S).rv z' rs ∧ Equiv.Zisk.FcallRel (sNext n S).fcall z' ∧
       RamOnlyX S.rv.mem (sNext n S).rv.mem ∧ Grows S.rv.mem (sNext n S).rv.mem ∧
       ∀ m S'', PcOk (sNext n S).rv → MRunR C m (sNext n S) S'' → MRunR C (m + 1) S S'' := by
-  rcases h with ho | ⟨pc, w, c, hpc, hi, h4, hd, hC4, hok⟩
+  rcases h with ho | ⟨pc, w, c, hpc, hex, hrw, htr, h4, h8, hd, hC4, hC8, hok⟩
   · obtain ⟨s', z', k', hm, hzr, hrel', hro, hk⟩ := one_stepT S.rv z rs hrel zrom ho n
     obtain ⟨pc, hpc, hex⟩ := OneOkT.exec ho
     rw [hm.snext_eq]
     exact ⟨z', k', hzr, hrel', fun r hr => (hk r hr).trans (hf r hr), (RamOnlyX.of hro), hm.grows,
       fun m S'' hp hrest => hm.toRun hrel.ready hpc hex (hC pc hpc) hx hp hrest⟩
   · obtain ⟨S', z', k', hcs, hzr, hrel', hf', hmem, hg⟩ :=
-      callstep_m C S z rs hrel hf hx pc hpc zrom w hi h4 c hd (hC pc hpc) hC4 hok
+      callstep_m C S z rs hrel hf hx pc hpc zrom w hex hrw htr h4 h8 c hd (hC pc hpc) hC4 hC8 hok
     rw [hcs.snext_eq n]
     exact ⟨z', k', hzr, hrel', hf', hmem, hg, fun m S'' _ hrest => .call hcs hrest⟩
 

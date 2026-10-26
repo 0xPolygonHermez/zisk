@@ -179,13 +179,13 @@ transpilation.
   and CSR accesses outside the contract, x0 forms included, Zifencei, M, A,
   Zba, Zbs, Zbb and Zbkb, and the contract's CSR forms (§§ 6–8: the ZisK
   calls, from what the machine's decoder makes of them, the sequences the
-  transpiler refuses, `csrs ID, x0`, reading `marchid`; not yet the memset
-  sequence of three words, which the next word does not settle), and
+  transpiler refuses, `csrs ID, x0`, reading `marchid`; the memset
+  sequence of three words given the two words after its first, `csr3`), and
   `lean/Transpiler/Bios.lean` the BIOS around them; `make transpiler-check`
   finds both equal to the Rust on every instruction they describe in the 129
   compliance tests and `test/transpiler/csr_forms.S`, every CSR form of the
   contract and the refused sequences, assembled when `RISCV_GCC` is there
-  (1 282 136 instructions, the BIOS's included), and the
+  (1 282 143 instructions, the BIOS's included), and the
   fibonacci guest (11 409). Still to do: the rest of the instruction set;
   wiring `make transpiler-check` and `make decoder-diff` into CI; and the
   whole ZisK ROM of a program from the spec, internal addresses included,
@@ -213,9 +213,9 @@ transpilation.
 - **The transpiler in the proof, long term (option D), not now:** rewrite
   the transpiler in Lean and ship it, so that the transpiler that runs is the
   one proved.
-- **The remaining instruction forms:** the memset sequence of three words
-  (not in the spec yet; every other ZisK call of §§ 7–8 is in the theorem,
-  given its condition, `CallOk`) (`jalr`
+- **The remaining instruction forms:** none but the zkvmcalls (below):
+  every ZisK call of §§ 7–8, the memset sequence of three words included,
+  is in the theorem, given its condition, `CallOk` (`jalr`
   with rs1 = x0, a jump to an absolute address, is in `prog_spec` now, the
   transpiler's immediate 0 for x0 as its b operand). (`ecall` is in the
   spec; it ends the run, which the link below covers. The other
@@ -278,9 +278,10 @@ transpilation.
   sail-riscv's Lean leaves undefined (softfloat, reservations, platform
   hooks), which the proofs never look into. `make transpiler-check` checks
   `SpecRom` of the Rust's ROM on its programs, for the code addresses it
-  walks (the last word of a section read with no next word, where the
-  machine would read whatever memory follows: it matters only if that is a
-  jalr after an auipc). Still to do: the run's conditions that are not
+  walks (the last words of a section read with no next word or no second
+  one, where the machine would read whatever memory follows: it matters
+  only if that is a jalr after an auipc, or a memset sequence's last
+  words). Still to do: the run's conditions that are not
   the program's — an access in its region, a jump's target aligned — shown
   to fail alike on both sides when they do not hold; a load or store across
   a 16-byte granule (sail-riscv's split path: one within its granule,

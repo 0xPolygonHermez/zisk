@@ -43,14 +43,16 @@ theorem exit_not_exec : ¬ ExecAt ziskRegions EXIT_ADDR := by
 theorem trap_not_exec : ¬ ExecAt ziskRegions TRAP_VEC := by
   intro h; have := exec_rom h; simp [TRAP_VEC] at this
 
-/-- Code at executable addresses is off the RAM, and so is the word after. -/
+/-- Code at executable addresses is off the RAM, and so are the two words after. -/
 theorem noCodeRam_of_exec {C : BitVec 64 → Prop} (h : ∀ pc, C pc → ExecAt ziskRegions pc) : NoCodeRam C := by
   intro pc hc
   have ⟨e1, e2⟩ := exec_rom (h pc hc)
   have e4 : (pc + 4).toNat = pc.toNat + 4 := by rw [BitVec.toNat_add]; simp; omega
-  refine ⟨fun i hi => ?_, fun i hi => ?_⟩ <;> unfold OffRam
+  have e8 : (pc + 8).toNat = pc.toNat + 8 := by rw [BitVec.toNat_add]; simp; omega
+  refine ⟨fun i hi => ?_, fun i hi => ?_, fun i hi => ?_⟩ <;> unfold OffRam
   · omega
   · rw [e4]; omega
+  · rw [e8]; omega
 
 /-- Every ZisK region has a 16-byte misaligned-atomicity granule. -/
 theorem region_gran {a : BitVec 64} {w : Nat} {r : PMA_Region}

@@ -19,14 +19,53 @@ open Equiv.Riscv
 open LeanZiskRV LeanZiskRV.Functions Sail Sail.ArchSem
 
 /-- The ZisK program holds the transpiler's translation of the word w at pc,
-    followed by `next`, with some internal addresses. -/
+    followed by `next` (and, when given, `next2`), with some internal
+    addresses. -/
 def Transpiled (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (pc : BitVec 64) (w : BitVec 32)
-    (next : Option (BitVec 32)) : Prop :=
-  ∃ ia l, Transpiler.convert pc w next ia = some l ∧ ∀ p ∈ l, zrom p.1 = p.2
+    (next : Option (BitVec 32)) (next2 : Option (BitVec 32) := none) : Prop :=
+  ∃ ia l, Transpiler.convert pc w next ia next2 = some l ∧ ∀ p ∈ l, zrom p.1 = p.2
+
+/-- The memset sequence's first word, the next word there: `csr` leaves it
+    undescribed. -/
+theorem csr_guard_none {w : BitVec 32} {pc : BitVec 64} {next : Option (BitVec 32)} {ia : BitVec 64}
+    (hg : (ZiskRiscv.kind (ZiskRiscv.fields w) == .csrrsi && (ZiskRiscv.fields w).csr == 0x816 &&
+      (ZiskRiscv.fields w).rs1 == 2 && next.isSome) = true) : Transpiler.csr w pc next ia = none := by
+  simp only [Bool.and_eq_true, beq_iff_eq] at hg
+  obtain ⟨⟨⟨hk, hc⟩, hr⟩, hn⟩ := hg
+  obtain ⟨n, rfl⟩ := Option.isSome_iff_exists.1 hn
+  have hk' : ZiskRiscv.kind (ZiskRiscv.fields w) = .csrrsi := by
+    revert hk; cases ZiskRiscv.kind (ZiskRiscv.fields w) <;> decide
+  by_cases hrd : (ZiskRiscv.fields w).rd = 0 <;>
+    simp [Transpiler.csr, ZiskRiscv.decode, Transpiler.fetch2, hk', ZiskRiscv.decodeCsrrsi, hr, hc, hrd] <;> rfl
+
+/-- A word the spec describes followed by `next` alone is described the
+    same with any word after that. -/
+theorem convert_next2 {pc : BitVec 64} {w : BitVec 32} {next : Option (BitVec 32)}
+    (he : ∃ ia l, Transpiler.convert pc w next ia = some l) (ia : BitVec 64) (n2 : Option (BitVec 32)) :
+    Transpiler.convert pc w next ia n2 = Transpiler.convert pc w next ia := by
+  obtain ⟨ia0, l0, h0⟩ := he
+  cases hd : Transpiler.decode w with
+  | none => simp [Transpiler.convert, hd]
+  | some i =>
+    cases i <;> try (simp only [Transpiler.convert, hd]; done)
+    simp only [Transpiler.convert, hd] at h0 ⊢
+    cases n2 with
+    | none => rfl
+    | some n2 =>
+      simp only [Transpiler.csr3]
+      split
+      · next hg => simp only [Transpiler.csr3, csr_guard_none hg] at h0; cases h0
+      · rfl
+
+theorem Transpiled.drop2 {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {pc : BitVec 64} {w : BitVec 32}
+    {next n2 : Option (BitVec 32)} (h : Transpiled zrom pc w next n2)
+    (he : ∃ ia l, Transpiler.convert pc w next ia = some l) : Transpiled zrom pc w next := by
+  obtain ⟨ia, l, hl, hz⟩ := h
+  exact ⟨ia, l, by rw [← convert_next2 he ia n2]; exact hl, hz⟩
 
 theorem Transpiled.one {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {pc : BitVec 64} {w : BitVec 32}
-    {next : Option (BitVec 32)} (h : Transpiled zrom pc w next) {i : _root_.Zisk.zisk_inst}
-    (hc : ∀ ia, Transpiler.convert pc w next ia = some [(pc, i)]) : zrom pc = i := by
+    {next next2 : Option (BitVec 32)} (h : Transpiled zrom pc w next next2) {i : _root_.Zisk.zisk_inst}
+    (hc : ∀ ia, Transpiler.convert pc w next ia next2 = some [(pc, i)]) : zrom pc = i := by
   obtain ⟨ia, l, hl, hz⟩ := h
   rw [hc ia] at hl; cases hl
   exact hz _ (List.mem_singleton_self _)

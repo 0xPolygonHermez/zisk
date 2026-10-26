@@ -512,7 +512,8 @@ def fetch2 (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) : Nat �
     call, `csrs ID, x0` (a nop), a sequence the transpiler refuses (a halt)
     — and reading `marchid` (a copy of its cell). Other CSR accesses, and
     the memset sequence of three words, which the next word does not
-    settle, are not described; nor are zkvmcalls (precondition Z). -/
+    settle (`csr3` describes it), are not described; nor are zkvmcalls
+    (precondition Z). -/
 def csr (w : BitVec 32) (pc : BitVec 64) (next : Option (BitVec 32)) (ia : BitVec 64) : Option (List (BitVec 64 × zisk_inst)) :=
   let f := ZiskRiscv.fields w
   match ZiskRiscv.decode (fetch2 pc w next) pc.toNat with
@@ -528,11 +529,34 @@ def csr (w : BitVec 32) (pc : BitVec 64) (next : Option (BitVec 32)) (ia : BitVe
     else none
   | _ => none
 
+/-- The words the machine's decoder reads: w at pc, the two words after it. -/
+def fetch3 (pc : BitVec 64) (w : BitVec 32) (next next2 : Option (BitVec 32)) : Nat → Option (BitVec 32) :=
+  fun a => if a = pc.toNat then some w else if a = pc.toNat + 4 then next
+    else if a = pc.toNat + 8 then next2 else none
+
+/-- A CSR instruction, given the word after the next one too: `csr`, but
+    for the memset sequence of three words (`csrsi 0x816, 2` and two
+    `addi`), which the two words after it settle — a call, or a sequence
+    the transpiler refuses. -/
+def csr3 (w : BitVec 32) (pc : BitVec 64) (next next2 : Option (BitVec 32)) (ia : BitVec 64) :
+    Option (List (BitVec 64 × zisk_inst)) :=
+  match next2 with
+  | none => csr w pc next ia
+  | some n2 =>
+    let f := ZiskRiscv.fields w
+    if ZiskRiscv.kind f == .csrrsi && f.csr == 0x816 && f.rs1 == 2 && next.isSome then
+      match ZiskRiscv.decode (fetch3 pc w next (some n2)) pc.toNat with
+      | .call c => some (callInsts c pc ia)
+      | .malformed _ => some [(pc, halt)]
+      | _ => none
+    else csr w pc next ia
+
 /-- `convert`: the ZisK instructions for the instruction w at pc, followed
     by the word `next` (none at the end of the code, or before a 16-bit
-    parcel), with the internal addresses from ia on. -/
-def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : BitVec 64) :
-    Option (List (BitVec 64 × zisk_inst)) :=
+    parcel), with the internal addresses from ia on; `next2`, the word
+    after that, if known, settles the memset sequence of three words. -/
+def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : BitVec 64)
+    (next2 : Option (BitVec 32) := none) : Option (List (BitVec 64 × zisk_inst)) :=
   let one (i : zisk_inst) := some [(pc, i)]
   match decode w with
   | none => none
@@ -598,6 +622,6 @@ def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : B
   | some (.amo op d) => some (amo w op d pc ia)
   | some (.lr d) => one (mk (srcA (rs1 w)) (.B_IND, 0) (aLoad d) (storeReg (rd w)) 4 4 (w := aWidth d))
   | some (.sc d) => some (sc w d pc ia)
-  | some .csr => csr w pc next ia
+  | some .csr => csr3 w pc next next2 ia
 
 end Transpiler

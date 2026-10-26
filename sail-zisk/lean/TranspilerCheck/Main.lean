@@ -103,11 +103,16 @@ def check (name : String) (l : Listing) : IO Tally := do
           some (BitVec.ofNat 32 (data[o + 4]!.toNat + 256 * data[o + 5]!.toNat +
             65536 * data[o + 6]!.toNat + 16777216 * data[o + 7]!.toNat))
         else none
+      let next2 : Option (BitVec 32) :=
+        if o + 12 ≤ data.size then
+          some (BitVec.ofNat 32 (data[o + 8]!.toNat + 256 * data[o + 9]!.toNat +
+            65536 * data[o + 10]!.toNat + 16777216 * data[o + 11]!.toNat))
+        else none
       -- The internal address the Rust's translation continues at, if any.
       let ia : BitVec 64 := match l.rom.get? pc with
         | some (some i) => BitVec.ofNat 64 pc + i.jmp_off1
         | _ => BitVec.ofNat 64 (pc + 1)
-      match convert (BitVec.ofNat 64 pc) w next ia with
+      match convert (BitVec.ofNat 64 pc) w next ia next2 with
       | none => t := { t with undescribed := t.undescribed + 1 }
       | some insts =>
         t := { t with described := t.described + 1 }
