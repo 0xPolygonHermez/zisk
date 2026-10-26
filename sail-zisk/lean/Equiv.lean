@@ -118,3 +118,6 @@ import Equiv.CsrSim
 import Equiv.MemNorm
 import Equiv.ZFrame
 import Equiv.ZFrameAll
+import Equiv.ZiskCall
+import Equiv.CallSim
+import Equiv.CallStep

@@ -36,6 +36,11 @@ structure FR (σ τ : ZState) : Prop where
 structure Kept (σ σ' τ τ' : ZState) : Prop where
   grows : ∀ k v, σ.mem.get? k = some v → ∃ v', σ'.mem.get? k = some v'
   same : ∀ k, σ.mem.get? k = none → σ'.mem.get? k = none → τ'.mem.get? k = τ.mem.get? k
+  /-- A register σ has, σ' has (no run removes one). -/
+  rgrow : ∀ r, σ.regs.get? r ≠ none → σ'.regs.get? r ≠ none
+  /-- τ changed only in the RAM (sail-zisk writes memory only through
+      `write_mem`, which asserts the RAM). -/
+  ram : Equiv.RamOnly τ.mem τ'.mem
 
 /-- A program that depends on memory and the fcall registers alone, and
     writes no other register: a run that succeeds on σ succeeds on τ the
@@ -49,7 +54,8 @@ def Frame {α : Type} (P : SailM α) : Prop :=
     (∃ k, e = .OutOfMemoryRange k ∧ σ.mem.get? k = none ∧ τ.mem.get? k ≠ none) ∨
     ∃ τ', P.run τ = .error e τ')
 
-theorem Kept.refl (σ τ : ZState) : Kept σ σ τ τ := ⟨fun _ v h => ⟨v, h⟩, fun _ _ _ => rfl⟩
+theorem Kept.refl (σ τ : ZState) : Kept σ σ τ τ :=
+  ⟨fun _ v h => ⟨v, h⟩, fun _ _ _ => rfl, fun _ h => h, Equiv.RamOnly.refl _⟩
 
 theorem Kept.none {σ σ' τ τ' : ZState} (h : Kept σ σ' τ τ') {k : Nat} (hk : σ'.mem.get? k = none) :
     σ.mem.get? k = none := by
@@ -58,7 +64,7 @@ theorem Kept.none {σ σ' τ τ' : ZState} (h : Kept σ σ' τ τ') {k : Nat} (h
   | some v => obtain ⟨_, h''⟩ := h.grows k v h'; rw [hk] at h''; cases h''
 
 theorem Kept.trans {σ σ1 σ2 τ τ1 τ2 : ZState} (h1 : Kept σ σ1 τ τ1) (h2 : Kept σ1 σ2 τ1 τ2) : Kept σ σ2 τ τ2 := by
-  refine ⟨fun k v h => ?_, fun k hk hk2 => ?_⟩
+  refine ⟨fun k v h => ?_, fun k hk hk2 => ?_, fun r h => h2.rgrow r (h1.rgrow r h), h1.ram.trans h2.ram⟩
   · obtain ⟨v1, h1'⟩ := h1.grows k v h; exact h2.grows k v1 h1'
   · have e1 := h2.none hk2
     rw [h2.same k e1 hk2, h1.same k hk e1]
@@ -131,7 +137,8 @@ theorem Frame.writeReg (r : Register) (v : RegisterType r) (hr : fregs r = true)
   refine ⟨fun σ τ h a σ' hrun => ?_, fun σ τ h e σ' hrun => by rw [writeReg_run] at hrun; cases hrun⟩
   rw [writeReg_run] at hrun ⊢
   cases hrun
-  refine ⟨_, rfl, ⟨h.mem, fun r' hr' => ?_⟩, fun r' hr' => ?_, ⟨fun _ v h => ⟨v, h⟩, fun _ _ _ => rfl⟩⟩
+  refine ⟨_, rfl, ⟨h.mem, fun r' hr' => ?_⟩, fun r' hr' => ?_, ⟨fun _ v h => ⟨v, h⟩, fun _ _ _ => rfl,
+    fun r' _ => ?_, fun _ _ => rfl⟩⟩
   · simp only [Std.ExtDHashMap.get?_insert]
     split
     · rfl
@@ -140,6 +147,10 @@ theorem Frame.writeReg (r : Register) (v : RegisterType r) (hr : fregs r = true)
     split
     · next e => simp only [beq_iff_eq] at e; subst e; rw [hr] at hr'; cases hr'
     · rfl
+  · simp only [Std.ExtDHashMap.get?_insert]
+    split
+    · simp
+    · assumption
 
 theorem readByte_run' (s : ZState) (k : Nat) :
     (Sail.ConcurrencyInterfaceV1.PreSail.readByte k : SailM (BitVec 8)).run s = match s.mem.get? k with
@@ -165,33 +176,6 @@ theorem Frame.readByte (k : Nat) : Frame (Sail.ConcurrencyInterfaceV1.PreSail.re
       | none => exact .inr ⟨τ, rfl⟩
       | some v => exact .inl ⟨k, rfl, hv, by rw [ht]; simp⟩
 
-theorem writeByte_run (s : ZState) (k : Nat) (v : BitVec 8) :
-    (Sail.ConcurrencyInterfaceV1.PreSail.writeByte k v : SailM PUnit).run s = .ok () { s with mem := s.mem.insert k v } :=
-  rfl
-
-theorem get?_insert' (m : Mem) (k k' : Nat) (v : BitVec 8) :
-    (m.insert k v).get? k' = if k = k' then some v else m.get? k' := by
-  simp only [Std.ExtHashMap.get?_eq_getElem?, Std.ExtHashMap.getElem?_insert, beq_iff_eq]
-
-theorem Frame.writeByte (k : Nat) (v : BitVec 8) :
-    Frame (Sail.ConcurrencyInterfaceV1.PreSail.writeByte k v : SailM PUnit) := by
-  refine ⟨fun σ τ h a σ' hrun => ?_, fun σ τ h e σ' hrun => by rw [writeByte_run] at hrun; cases hrun⟩
-  rw [writeByte_run] at hrun ⊢
-  cases hrun
-  refine ⟨_, rfl, ⟨fun k' v' hk => ?_, h.regs⟩, fun _ _ => rfl, ⟨fun k' v' hk => ?_, fun k' _ hk => ?_⟩⟩
-  · simp only [get?_insert'] at hk ⊢
-    split
-    · next e => rw [if_pos e] at hk; exact hk
-    · next e => rw [if_neg e] at hk; exact h.mem k' v' hk
-  · simp only [get?_insert']
-    split
-    · exact ⟨v, rfl⟩
-    · exact ⟨v', hk⟩
-  · simp only [get?_insert'] at hk ⊢
-    split
-    · next e => rw [if_pos e] at hk; cases hk
-    · rfl
-
 theorem Frame.readBytes : ∀ (size addr : Nat),
     Frame (Sail.ConcurrencyInterfaceV1.PreSail.readBytes size addr : SailM ((BitVec (8 * size)) × Option Bool))
   | 0, _ => by simp only [Sail.ConcurrencyInterfaceV1.PreSail.readBytes]; exact Frame.pure _
@@ -201,17 +185,6 @@ theorem Frame.readBytes : ∀ (size addr : Nat),
   | n + 2, a => by
     simp only [Sail.ConcurrencyInterfaceV1.PreSail.readBytes]
     exact Frame.bind (Frame.readByte a) (fun _ => Frame.bind (Frame.readBytes (n + 1) (a + 1)) (fun _ => Frame.pure _))
-
-theorem Frame.forM_list {α : Type} (l : List α) (f : α → SailM PUnit) (hf : ∀ a, Frame (f a)) :
-    Frame (List.forM l f) := by
-  induction l with
-  | nil => exact Frame.pure _
-  | cons a l ih => exact Frame.bind (hf a) (fun _ => ih)
-
-theorem Frame.writeBytes {n : Nat} (addr : Nat) (v : BitVec (8 * n)) :
-    Frame (Sail.ConcurrencyInterfaceV1.PreSail.writeBytes addr v : SailM Bool) := by
-  simp only [Sail.ConcurrencyInterfaceV1.PreSail.writeBytes]
-  exact Frame.bind (Frame.forM_list _ _ (fun _ => Frame.writeByte _ _)) (fun _ => Frame.pure _)
 
 theorem Frame.loop {β : Type} (range : IntRange) (f : (i : Int) → i ∈ range → β → SailM (ForInStep β))
     (hf : ∀ i h b, Frame (f i h b)) : ∀ b i hs, Frame (IntRange.forIn'.loop range f b i hs) := by
@@ -236,21 +209,101 @@ theorem Frame.read_mem (addr : BitVec 64) (n : Nat) : Frame (Functions.read_mem 
   · simp only [Sail.ConcurrencyInterfaceV1.PreSail.read_ram]
     exact Frame.bind (Frame.readBytes _ _) (fun _ => Frame.pure _)
 
+/-- A write the run computes: the n bytes of v at a. -/
+theorem foldl_insert_in (l : List (Nat × BitVec 8)) (k : Nat) (hk : ∃ p ∈ l, p.1 = k) :
+    ∀ m1 m2 : Mem, (l.foldl (fun m p => m.insert p.1 p.2) m1).get? k =
+      (l.foldl (fun m p => m.insert p.1 p.2) m2).get? k := by
+  induction l with
+  | nil => obtain ⟨_, hp, _⟩ := hk; cases hp
+  | cons p l ih =>
+    intro m1 m2
+    simp only [List.foldl_cons]
+    by_cases hr : ∃ q ∈ l, q.1 = k
+    · exact ih hr _ _
+    · obtain ⟨q, hq, rfl⟩ := hk
+      have hpk : p.1 = q.1 := by
+        rcases List.mem_cons.1 hq with rfl | hq'
+        · rfl
+        · exact absurd ⟨q, hq', rfl⟩ hr
+      have off : ∀ x ∈ l, x.1 ≠ q.1 := fun x hx e => hr ⟨x, hx, e⟩
+      rw [Equiv.foldl_insert_off l _ off, Equiv.foldl_insert_off l _ off]
+      simp only [Std.ExtHashMap.get?_eq_getElem?, Std.ExtHashMap.getElem?_insert, hpk, beq_self_eq_true, if_true]
+
+theorem foldl_insert_some (l : List (Nat × BitVec 8)) (k : Nat) (hk : ∃ p ∈ l, p.1 = k) :
+    ∀ m : Mem, ∃ v, (l.foldl (fun m p => m.insert p.1 p.2) m).get? k = some v := by
+  induction l with
+  | nil => obtain ⟨_, hp, _⟩ := hk; cases hp
+  | cons p l ih =>
+    intro m
+    simp only [List.foldl_cons]
+    by_cases hr : ∃ q ∈ l, q.1 = k
+    · exact ih hr _
+    · obtain ⟨q, hq, rfl⟩ := hk
+      have hpk : p.1 = q.1 := by
+        rcases List.mem_cons.1 hq with rfl | hq'
+        · rfl
+        · exact absurd ⟨q, hq', rfl⟩ hr
+      have off : ∀ x ∈ l, x.1 ≠ q.1 := fun x hx e => hr ⟨x, hx, e⟩
+      rw [Equiv.foldl_insert_off l _ off]
+      exact ⟨p.2, by simp only [Std.ExtHashMap.get?_eq_getElem?, Std.ExtHashMap.getElem?_insert, hpk,
+        beq_self_eq_true, if_true]⟩
+
+theorem write_ram_run (s : ZState) (addr : BitVec 64) (n : Nat) (v : BitVec (8 * n)) :
+    (Sail.ConcurrencyInterfaceV1.PreSail.write_ram 64 n 0 addr v : SailM Unit).run s =
+      .ok () { s with mem := Equiv.memWrite s.mem addr.toNat v } := by
+  simp only [Sail.ConcurrencyInterfaceV1.PreSail.write_ram, run_bind', Equiv.zisk_writeBytes, run_pure']
+
+/-- A write to the RAM: the n bytes of v at addr. -/
+theorem Frame.write_ram_w (addr : BitVec 64) (n : Nat) (v : BitVec (8 * n)) (hw : Functions.writable addr n = true) :
+    Frame (Sail.ConcurrencyInterfaceV1.PreSail.write_ram 64 n 0 addr v : SailM Unit) := by
+  have inr : ∀ k, (∃ p ∈ Equiv.byteList addr.toNat v, p.1 = k) ∨ (k < addr.toNat ∨ addr.toNat + n ≤ k) := by
+    intro k
+    by_cases hk : addr.toNat ≤ k ∧ k < addr.toNat + n
+    · left
+      refine ⟨(k, v.extractLsb' (8 * (k - addr.toNat)) 8), ?_, rfl⟩
+      simp only [Equiv.byteList, List.mem_ofFn]
+      exact ⟨⟨k - addr.toNat, by omega⟩, by simp; omega⟩
+    · right; omega
+  refine ⟨fun σ τ h a σ' hr => ?_, fun σ τ h e σ' hr => by rw [write_ram_run] at hr; cases hr⟩
+  rw [write_ram_run] at hr ⊢
+  cases hr
+  refine ⟨_, rfl, ⟨fun k v' hk => ?_, h.regs⟩, fun _ _ => rfl, ⟨fun k v' hk => ?_, fun k h1 h2 => ?_,
+    fun _ h => h, Equiv.memWrite_ramOnly _ _ _ hw⟩⟩
+  · show (Equiv.memWrite τ.mem addr.toNat v).get? k = some v'
+    have hk' : (Equiv.memWrite σ.mem addr.toNat v).get? k = some v' := hk
+    rcases inr k with hin | hoff
+    · rw [← hk']; exact foldl_insert_in _ k hin _ _
+    · rw [Equiv.memWrite_get_off _ _ _ _ hoff] at hk' ⊢; exact h.mem k v' hk'
+  · show ∃ v'', (Equiv.memWrite σ.mem addr.toNat v).get? k = some v''
+    rcases inr k with hin | hoff
+    · exact foldl_insert_some _ k hin _
+    · exact ⟨v', by rw [Equiv.memWrite_get_off _ _ _ _ hoff]; exact hk⟩
+  · show (Equiv.memWrite τ.mem addr.toNat v).get? k = τ.mem.get? k
+    have h2' : (Equiv.memWrite σ.mem addr.toNat v).get? k = none := h2
+    rcases inr k with hin | hoff
+    · obtain ⟨w, e⟩ := foldl_insert_some _ k hin σ.mem
+      have e2 : (Equiv.memWrite σ.mem addr.toNat v).get? k = some w := e
+      rw [e2] at h2'; cases h2'
+    · exact Equiv.memWrite_get_off _ _ _ _ hoff
+
+theorem Frame.bind_throw {α β : Type} (e : Sail.Error exception) (f : α → SailM β) :
+    Frame ((MonadExcept.throw e : SailM α) >>= f) := by
+  refine ⟨fun σ τ h b σ' hr => (by cases hr), fun σ τ h e' σ' hr => ?_⟩
+  cases hr
+  exact .inr ⟨τ, rfl⟩
+
 theorem Frame.write_mem (addr : BitVec 64) (n : Nat) (v : BitVec (8 * n)) : Frame (Functions.write_mem addr n v) := by
   unfold Functions.write_mem
-  refine Frame.bind (Frame.assert _ _) (fun _ => Frame.bind (Frame.assert _ _) (fun _ => ?_))
-  simp only [Sail.ConcurrencyInterfaceV1.PreSail.write_ram]
-  exact Frame.bind (Frame.writeBytes _ _) (fun _ => Frame.pure _)
+  by_cases hw : Functions.writable addr n = true
+  · exact Frame.bind (Frame.assert _ _) (fun _ => Frame.bind (Frame.assert _ _) (fun _ => Frame.write_ram_w _ _ _ hw))
+  · have : Functions.writable addr n = false := by simpa using hw
+    simp only [Zisk.assert, Sail.ConcurrencyInterfaceV1.PreSail.assert, this, Bool.false_eq_true, if_false]
+    exact Frame.bind_throw _ _
 
 theorem Frame.read_ram (as ds : Nat) (h addr : BitVec as) :
     Frame (Sail.ConcurrencyInterfaceV1.PreSail.read_ram as ds h addr : SailM (BitVec (8 * ds))) := by
   simp only [Sail.ConcurrencyInterfaceV1.PreSail.read_ram]
   exact Frame.bind (Frame.readBytes _ _) (fun _ => Frame.pure _)
-
-theorem Frame.write_ram (as ds : Nat) (h addr : BitVec as) (v : BitVec (8 * ds)) :
-    Frame (Sail.ConcurrencyInterfaceV1.PreSail.write_ram as ds h addr v : SailM Unit) := by
-  simp only [Sail.ConcurrencyInterfaceV1.PreSail.write_ram]
-  exact Frame.bind (Frame.writeBytes _ _) (fun _ => Frame.pure _)
 
 /-- An undefined value: the choice source is trivial, so both choose the same. -/
 theorem Frame.choose (p : Sail.Primitive) :
@@ -259,7 +312,8 @@ theorem Frame.choose (p : Sail.Primitive) :
   · simp only [Sail.ConcurrencyInterfaceV1.PreSail.choose, EStateM.run, modifyGet, MonadStateOf.modifyGet,
       EStateM.modifyGet] at hrun ⊢
     cases hrun
-    exact ⟨_, rfl, ⟨h.mem, h.regs⟩, fun _ _ => rfl, ⟨fun _ v h => ⟨v, h⟩, fun _ _ _ => rfl⟩⟩
+    exact ⟨_, rfl, ⟨h.mem, h.regs⟩, fun _ _ => rfl, ⟨fun _ v h => ⟨v, h⟩, fun _ _ _ => rfl, fun _ h => h,
+      fun _ _ => rfl⟩⟩
   · simp only [Sail.ConcurrencyInterfaceV1.PreSail.choose, EStateM.run, modifyGet, MonadStateOf.modifyGet,
       EStateM.modifyGet] at hrun
     cases hrun
@@ -303,11 +357,8 @@ macro_rules
       | exact Frame.read_mem _ _
       | exact Frame.write_mem _ _ _
       | exact Frame.read_ram _ _ _ _
-      | exact Frame.write_ram _ _ _ _ _
       | exact Frame.readBytes _ _
-      | exact Frame.writeBytes _ _
       | exact Frame.readByte _
-      | exact Frame.writeByte _ _
       | exact Frame.choose _
       | (refine Frame.readReg _ ?_; rfl)
       | (refine Frame.writeReg _ _ ?_; rfl)
