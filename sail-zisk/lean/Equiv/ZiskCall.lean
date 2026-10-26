@@ -52,6 +52,74 @@ theorem execute_zcall (s : ZState) (ra : a_src × BitVec 64) (rb : b_src × BitV
       cases flag <;> simp only [if_true, if_false, Bool.false_eq_true, run_map'] <;>
         rw [readReg_run'] <;> simp [Std.ExtDHashMap.get?_insert, hpc]
 
+set_option maxHeartbeats 4000000 in
+/-- The a source of a call instruction: an immediate, or a register 1..39. -/
+theorem source_a_run (s : ZState) (ra : a_src × BitVec 64) (rb : b_src × BitVec 64) (op : zisk_op)
+    (st : c_store × BitVec 64 × Bool) (j1 j2 : BitVec 64) (xs : Vector (BitVec 64) 40)
+    (hx : s.regs.get? Xs = some xs) (va : BitVec 64) (ha : ASrc ra xs va) :
+    (source_a (Transpiler.mk ra rb op st j1 j2)).run s = .ok va s := by
+  rcases ha with rfl | ⟨r1, h1a, h1b, rfl, hv1⟩
+  · rfl
+  · have e1 : r1 ≠ 0 ∧ (r1 : Int) < 40 := ⟨by omega, by omega⟩
+    simp (disch := omega) [source_a, Transpiler.mk, rX, reg_index, Zisk.assert,
+      Sail.ConcurrencyInterfaceV1.PreSail.assert, *]
+    rw [readReg_run s Xs xs hx]
+    simp only [run_pure', EStateM.Result.ok.injEq, and_true]
+    rw [← hv1, getElem!_pos xs ((r1 : Nat) : Int) (by simp; omega)]
+
+set_option maxHeartbeats 4000000 in
+/-- The b source of a call instruction: an immediate, or a register 1..39. -/
+theorem source_b_run (s : ZState) (ra : a_src × BitVec 64) (rb : b_src × BitVec 64) (op : zisk_op)
+    (st : c_store × BitVec 64 × Bool) (j1 j2 : BitVec 64) (xs : Vector (BitVec 64) 40)
+    (hx : s.regs.get? Xs = some xs) (va vb : BitVec 64) (hb : BSrc rb xs vb) :
+    (source_b (Transpiler.mk ra rb op st j1 j2) va).run s = .ok vb s := by
+  rcases hb with rfl | ⟨r2, h2a, h2b, rfl, hv2⟩
+  · rfl
+  · have e2 : r2 ≠ 0 ∧ (r2 : Int) < 40 := ⟨by omega, by omega⟩
+    simp (disch := omega) [source_b, Transpiler.mk, rX, reg_index, Zisk.assert,
+      Sail.ConcurrencyInterfaceV1.PreSail.assert, *]
+    rw [readReg_run s Xs xs hx]
+    simp only [run_pure', EStateM.Result.ok.injEq, and_true]
+    rw [← hv2, getElem!_pos xs ((r2 : Nat) : Int) (by simp; omega)]
+
+/-- The b source of `fcall_get`: the free input, an 8-byte read of INPUT_ADDR. -/
+theorem source_b_free (s : ZState) (ra : a_src × BitVec 64) (op : zisk_op)
+    (st : c_store × BitVec 64 × Bool) (j1 j2 : BitVec 64) (va v : BitVec 64)
+    (hfi : s.regs.get? FreeInput = some v) :
+    (source_b (Transpiler.mk ra (.B_MEM, 0x1000_0000) op st j1 j2) va).run s = .ok v s := by
+  have h1 : readable (268435456#64) 8 = true := by decide
+  have h2 : hits_registers (268435456#64) 8 = false := by decide
+  have h3 : (268435456#64 : BitVec 64) = INPUT_ADDR := rfl
+  simp [source_b, Transpiler.mk, read_mem, Zisk.assert, Sail.ConcurrencyInterfaceV1.PreSail.assert, h1, h2, h3]
+  exact readReg_run s FreeInput v hfi
+
+set_option maxHeartbeats 4000000 in
+/-- A copy of the b operand to the 8 bytes at a fixed address (a count's
+    store to EXTRA_PARAMS_ADDR); on to pc + j. -/
+theorem execute_store_mem (s : ZState) (rb : b_src × BitVec 64) (addr j : BitVec 64)
+    (xs : Vector (BitVec 64) 40) (pc st : BitVec 64)
+    (hx : s.regs.get? Xs = some xs) (hpc : s.regs.get? PC = some pc) (hst : s.regs.get? Step = some st)
+    (vb : BitVec 64) (hb : BSrc rb xs vb)
+    (hwr : writable addr 8 = true) (hnr : hits_registers addr 8 = false) :
+    (zisk_execute (Transpiler.mk (.A_IMM, 0) rb (.ZOP_COPYB ()) (.ST_MEM, addr, false) j j)).run s = .ok false
+      { s with
+        regs := (((s.regs.insert Zc vb).insert Zflag false).insert Step (BitVec.addInt st 1)).insert PC (pc + j)
+        mem := Equiv.memWrite (n := 8) s.mem addr.toNat vb } := by
+  have hm' := copyb_pure.mem
+  have hp := copyb_pure.notPre
+  rcases hb with rfl | ⟨r2, h2a, h2b, rfl, hv2⟩ <;>
+  · (try subst hv2)
+    (try have e2 : r2 ≠ 0 ∧ (r2 : Int) < 40 := ⟨by omega, by omega⟩)
+    simp (disch := omega) [zisk_execute, Transpiler.mk, source_a, source_b, rX, store_c, value_to_store,
+      next_pc, hm', hp, copyb_val, Zisk.assert, Sail.ConcurrencyInterfaceV1.PreSail.assert, writeReg_run,
+      reg_index, *]
+    repeat (first
+      | (rw [readReg_run s Xs xs hx]; try dsimp only)
+      | (rw [write_mem_run s _ 8 _ (by simpa (disch := omega) using hwr) (by simpa (disch := omega) using hnr)];
+          try dsimp only)
+      | (rw [readReg_run']; (try simp only [Std.ExtDHashMap.get?_insert]); simp [hst, hpc, hx, *]))
+    all_goals simp (disch := omega) [BitVec.toNat_add, *]
+
 /-- Every result a run of P succeeds with satisfies Q. -/
 def Post {α : Type} (P : SailM α) (Q : α → Prop) : Prop := ∀ σ a σ', P.run σ = .ok a σ' → Q a
 
