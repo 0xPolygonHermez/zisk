@@ -17,8 +17,7 @@
     `convert`, which picks one per instruction.
 
   So far: RV64I but for ebreak and the CSRs; Zifencei; M; Zba's single-instruction
-  forms (sh1add, sh2add, sh3add, slli.uw); Zbs; Zbb's register ops, rotations,
-  extensions and byte ops (rev8, orc.b); and Zbkb's packs and brev8. An
+  forms (sh1add, sh2add, sh3add, slli.uw); Zbs; Zbb; and Zbkb. An
   instruction it does not describe is `none`.
 
   Internal addresses (the odd ROM addresses a translation of more than one
@@ -123,13 +122,17 @@ inductive SextOp | sextb | sexth
 inductive ByteOp | rev8 | orcb | brev8
   deriving BEq, Repr
 
+/-- Zbb's counts on rs1, and their word forms. -/
+inductive CountOp | clz | ctz | cpop | clzw | ctzw | cpopw
+  deriving BEq, Repr
+
 /-- An instruction the spec describes, as `RiscvDecoder::decode_32` names it. -/
 inductive Inst
   | r (op : ROp) | i (op : IOp) | shift (op : SOp) | branch (op : BOp)
   | load (op : LOp) | store (op : SzOp) | lui | auipc | jal | jalr | m (op : MOp) | ecall | fence
   | shadd (op : ShAdd) | slliuw | zbs (op : ZbsOp) | zbsi (op : ZbsOp) | zbb (op : ZbbOp)
   | zbbw (op : ZbbWOp) | rori | roriw | pack (op : PackOp) | packw | sext (op : SextOp) | zexth
-  | byte (op : ByteOp)
+  | byte (op : ByteOp) | count (op : CountOp)
   deriving BEq, Repr
 
 /-- What `decode_32` decodes a word to, among the instructions described.
@@ -151,7 +154,10 @@ def decode (w : BitVec 32) : Option Inst :=
       if f6 == 0 then some (.shift .slli) else if f6 == 10 then some (.zbsi .bset)
       else if f6 == 18 then some (.zbsi .bclr) else if f6 == 26 then some (.zbsi .binv)
       else if (w.extractLsb 31 20).toNat == 0x604 then some (.sext .sextb)
-      else if (w.extractLsb 31 20).toNat == 0x605 then some (.sext .sexth) else none
+      else if (w.extractLsb 31 20).toNat == 0x605 then some (.sext .sexth)
+      else if (w.extractLsb 31 20).toNat == 0x600 then some (.count .clz)
+      else if (w.extractLsb 31 20).toNat == 0x601 then some (.count .ctz)
+      else if (w.extractLsb 31 20).toNat == 0x602 then some (.count .cpop) else none
     | 2 => some (.i .slti) | 3 => some (.i .sltiu) | 4 => some (.i .xori)
     | 5 =>
       -- rev8, brev8 and orc.b come first in the Rust; none has funct6 0, 16, 18 or 24,
@@ -169,7 +175,9 @@ def decode (w : BitVec 32) : Option Inst :=
     | 0 => some (.i .addiw)
     | 1 =>
       -- clzw, ctzw, cpopw (funct7 48) come first, then slli.uw (funct6 2).
-      if (w.extractLsb 31 20).toNat ∈ [0b011000000000, 0b011000000001, 0b011000000010] then none
+      if (w.extractLsb 31 20).toNat == 0x600 then some (.count .clzw)
+      else if (w.extractLsb 31 20).toNat == 0x601 then some (.count .ctzw)
+      else if (w.extractLsb 31 20).toNat == 0x602 then some (.count .cpopw)
       else if f6 == 2 then some .slliuw
       else if f7 == 0 then some (.shift .slliw) else none
     | 5 =>
@@ -364,6 +372,10 @@ def SextOp.zop : SextOp → zisk_op
 def ByteOp.zop : ByteOp → zisk_op
   | .rev8 => .ZOP_REV8 () | .orcb => .ZOP_ORC_B () | .brev8 => .ZOP_BREV8 ()
 
+def CountOp.zop : CountOp → zisk_op
+  | .clz => .ZOP_CLZ () | .ctz => .ZOP_CTZ () | .cpop => .ZOP_CPOP ()
+  | .clzw => .ZOP_CLZ_W () | .ctzw => .ZOP_CTZ_W () | .cpopw => .ZOP_CPOP_W ()
+
 /-- The op the transpiler emits for each M instruction (riscv2zisk_context.rs). -/
 def MOp.zop : MOp → zisk_op
   | .mul => .ZOP_MUL () | .mulh => .ZOP_MULH () | .mulhsu => .ZOP_MULSUH () | .mulhu => .ZOP_MULUH ()
@@ -439,5 +451,6 @@ def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : B
   | some (.sext op) => one (singleOp w op.zop)
   | some .zexth => one (zextH w)
   | some (.byte op) => one (singleOp w op.zop)
+  | some (.count op) => one (singleOp w op.zop)
 
 end Transpiler

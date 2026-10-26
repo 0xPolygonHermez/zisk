@@ -158,17 +158,13 @@ theorem SlliuwInstr.zisk_of_spec (i : SlliuwInstr) {zrom : BitVec 64 → _root_.
   have ho : Transpiler.opcode i.encode = 0x1B#7 := by simp only [Transpiler.opcode, SlliuwInstr.encode]; bv_decide
   have hf3 : Transpiler.funct3 i.encode = 1#3 := by simp only [Transpiler.funct3, SlliuwInstr.encode]; bv_decide
   have hf6 : Transpiler.funct6 i.encode = 2#6 := by simp only [Transpiler.funct6, SlliuwInstr.encode]; bv_decide
-  have h12 : (i.encode.extractLsb 31 20).toNat ∉ [0b011000000000, 0b011000000001, 0b011000000010] := by
-    have e : i.encode.extractLsb 31 20 ≠ 0x600#12 ∧ i.encode.extractLsb 31 20 ≠ 0x601#12 ∧
-        i.encode.extractLsb 31 20 ≠ 0x602#12 := by
-      simp only [SlliuwInstr.encode]; refine ⟨?_, ?_, ?_⟩ <;> bv_decide
-    obtain ⟨e0, e1, e2⟩ := e
-    intro hm
-    simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
-    rcases hm with hm | hm | hm
-    · exact e0 (BitVec.eq_of_toNat_eq (by simpa using hm))
-    · exact e1 (BitVec.eq_of_toNat_eq (by simpa using hm))
-    · exact e2 (BitVec.eq_of_toNat_eq (by simpa using hm))
+  have h12 : i.encode.extractLsb 31 20 ≠ 0x600#12 ∧ i.encode.extractLsb 31 20 ≠ 0x601#12 ∧
+      i.encode.extractLsb 31 20 ≠ 0x602#12 := by
+    simp only [SlliuwInstr.encode]; refine ⟨?_, ?_, ?_⟩ <;> bv_decide
+  obtain ⟨e0, e1, e2⟩ := h12
+  have n0 : (i.encode.extractLsb 31 20).toNat ≠ 0x600 := fun e => e0 (BitVec.eq_of_toNat_eq (by simpa using e))
+  have n1 : (i.encode.extractLsb 31 20).toNat ≠ 0x601 := fun e => e1 (BitVec.eq_of_toNat_eq (by simpa using e))
+  have n2 : (i.encode.extractLsb 31 20).toNat ≠ 0x602 := fun e => e2 (BitVec.eq_of_toNat_eq (by simpa using e))
   have hrd : Transpiler.rd i.encode = i.rd.toNat := by
     simp only [Transpiler.rd, SlliuwInstr.encode]; congr 1; bv_decide
   have hr1 : Transpiler.rs1 i.encode = i.rs1.toNat := by
@@ -176,8 +172,8 @@ theorem SlliuwInstr.zisk_of_spec (i : SlliuwInstr) {zrom : BitVec 64 → _root_.
   have hsh : Transpiler.shamt i.encode = i.sh.setWidth 64 := by
     simp only [Transpiler.shamt, SlliuwInstr.encode]; congr 1; bv_decide
   refine h.one fun ia => ?_
-  simp at h12
-  simp [Transpiler.convert, Transpiler.decode, ho, hf3, hf6, h12, hrd, hr1, hsh, Transpiler.immediateOp]
+  simp at n0 n1 n2
+  simp [Transpiler.convert, Transpiler.decode, ho, hf3, hf6, n0, n1, n2, hrd, hr1, hsh, Transpiler.immediateOp]
 
 structure SlliuwAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : SlliuwInstr) (next : Option (BitVec 32)) : Prop where

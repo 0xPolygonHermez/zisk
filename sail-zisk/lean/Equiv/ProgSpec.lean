@@ -19,6 +19,7 @@ import Equiv.ZbbSim
 import Equiv.ZbbRotSim
 import Equiv.ZbkbSim
 import Equiv.ZbbByteSim
+import Equiv.ZbbCountSim
 import ZiskRiscv.Machine
 import Equiv.RamOnly
 
@@ -124,6 +125,7 @@ inductive InstrT where
   | sext (i : SextInstr)
   | zexth (i : ZexthInstr)
   | byte (i : ByteInstr)
+  | count (i : CountInstr)
 
 /-- The word after pc, as the transpiler reads it to translate the one at
     pc (riscv2zisk_context.rs: the next instruction, for the auipc-jalr
@@ -173,6 +175,7 @@ def StepOkT (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   | .sext i => WordsAt s rs pc zrom i.encode (nextWord s pc)
   | .zexth i => WordsAt s rs pc zrom i.encode (nextWord s pc)
   | .byte i => WordsAt s rs pc zrom i.encode (nextWord s pc)
+  | .count i => WordsAt s rs pc zrom i.encode (nextWord s pc)
 
 theorem getX_some {s : RVState} {z : Equiv.Zisk.ZState} {rs : List PMA_Region} (hrel : Rel s z rs)
     {r : Nat} (hr : r < 32) : ∃ v, getX s r = some v := by
@@ -273,6 +276,9 @@ theorem step_relT (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
   | .byte i, hi =>
     obtain ⟨s', z', h1, h2, h3, -, hm⟩ := bytestep_rel s z rs hrel pc hpc zrom i _ hi n
+    exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
+  | .count i, hi =>
+    obtain ⟨s', z', h1, h2, h3, -, hm⟩ := countstep_rel s z rs hrel pc hpc zrom i _ hi n
     exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
 
 /-- What one step of sail-riscv needs: an instruction, run in one ZisK step,

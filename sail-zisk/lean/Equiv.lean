@@ -90,3 +90,11 @@ import Equiv.Loops
 import Equiv.RiscvZbbByte
 import Equiv.RiscvDecodeZbbByte
 import Equiv.ZbbByteSim
+import Equiv.Count
+import Equiv.Count.Clz64
+import Equiv.Count.Ctz64
+import Equiv.Count.Clz32
+import Equiv.Count.Ctz32
+import Equiv.RiscvZbbCount
+import Equiv.RiscvDecodeZbbCount
+import Equiv.ZbbCountSim

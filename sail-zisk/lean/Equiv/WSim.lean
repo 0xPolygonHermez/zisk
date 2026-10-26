@@ -183,10 +183,11 @@ theorem SiwInstr.zisk_of_spec (i : SiwInstr) {zrom : BitVec 64 → _root_.Zisk.z
   case SLLIW =>
     obtain ⟨h20, h26⟩ := f7_zero i.encode hf7
     simp at h20 h26
-    have n : ¬ (i.encode.toNat >>> 20 % 4096 = 1536 ∨ i.encode.toNat >>> 20 % 4096 = 1537 ∨
-        i.encode.toNat >>> 20 % 4096 = 1538) := by omega
+    have n0 : ¬ i.encode.toNat >>> 20 % 4096 = 1536 := by omega
+    have n1 : ¬ i.encode.toNat >>> 20 % 4096 = 1537 := by omega
+    have n2 : ¬ i.encode.toNat >>> 20 % 4096 = 1538 := by omega
     simp [Transpiler.convert, Transpiler.decode, hop, hf3, hf7, shiftwF3, shiftwF7, hr1, hrd, hsh,
-      Transpiler.funct6, h26, n, Transpiler.immediateOp, Transpiler.SOp.zop, ziskOpSW]
+      Transpiler.funct6, h26, n0, n1, n2, Transpiler.immediateOp, Transpiler.SOp.zop, ziskOpSW]
   all_goals
     simp [Transpiler.convert, Transpiler.decode, hop, hf3, hf7, shiftwF3, shiftwF7, hr1, hrd, hsh,
       Transpiler.immediateOp, Transpiler.SOp.zop, ziskOpSW]
