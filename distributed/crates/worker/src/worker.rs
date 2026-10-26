@@ -179,6 +179,15 @@ pub enum ComputationResult {
         /// The fully-formed ack message to forward to the coordinator.
         ack: zisk_cluster_api::WorkerMessage,
     },
+    /// Wrap result. As for [`Self::RecurserAck`], the blocking handler builds the
+    /// `ExecuteTaskResponse` itself and the event loop forwards it, so the wrap runs off
+    /// the message loop.
+    WrapResponse {
+        /// The job this response belongs to.
+        job_id: JobId,
+        /// The fully-formed response to forward to the coordinator.
+        response: zisk_cluster_api::WorkerMessage,
+    },
     /// Guest-program setup finished off the message loop. The event loop does the
     /// `&mut self` registration (map inserts) and forwards the `SetupProgramAck`,
     /// so the heavy `setup_internal`/ELF write runs without blocking heartbeats.
