@@ -352,6 +352,12 @@ fn pool_detail(worker_id: &WorkerId, (total, cc, acc): (usize, u32, u32)) -> Str
     format!("{worker_id} · {total} worker(s) · {cc} CU total, {acc} CU available")
 }
 
+/// A worker's message refreshed its heartbeat, `gap` after the previous refresh.
+pub(crate) fn record_worker_heartbeat_gap(gap: chrono::Duration) {
+    let seconds = gap.num_milliseconds() as f64 / 1000.0;
+    metrics::histogram!("coordinator_worker_heartbeat_gap_seconds").record(seconds);
+}
+
 /// A worker parked after a cancelled or failed job reported it is ready again, `seconds` after
 /// it was parked.
 pub(crate) fn record_worker_recovered(worker_id: &WorkerId, seconds: f64) {

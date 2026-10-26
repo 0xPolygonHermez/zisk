@@ -773,14 +773,17 @@ impl WorkersPool {
         }
     }
 
-    /// Updates the last heartbeat timestamp for a worker.
+    /// Updates the last heartbeat timestamp for a worker, and records the gap since the previous
+    /// one: what the heartbeat check compares with its threshold.
     ///
     /// # Parameters
     ///
     /// - `worker_id`: Unique identifier for the worker.
     pub async fn update_last_heartbeat(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
         if let Some(worker) = self.workers.write().await.get_mut(worker_id) {
+            let gap = Utc::now().signed_duration_since(worker.last_heartbeat);
             worker.update_last_heartbeat();
+            crate::metrics::record_worker_heartbeat_gap(gap);
             Ok(())
         } else {
             let msg = format!("Worker {worker_id} not found for heartbeat update");
