@@ -515,17 +515,18 @@ def fetch2 (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) : Nat �
     settle, are not described; nor are zkvmcalls (precondition Z). -/
 def csr (w : BitVec 32) (pc : BitVec 64) (next : Option (BitVec 32)) (ia : BitVec 64) : Option (List (BitVec 64 × zisk_inst)) :=
   let f := ZiskRiscv.fields w
-  if 0x850 ≤ f.csr ∧ f.csr ≤ 0x8BF ∨ 0x8E0 ≤ f.csr ∧ f.csr ≤ 0x8E7 then none
-  else if ZiskRiscv.kind f == .csrrsi && f.csr == 0x816 && f.rs1 == 2 then none
-  else match ZiskRiscv.decode (fetch2 pc w next) pc.toNat with
-    | .call c => some (callInsts c pc ia)
-    | .nop => some [(pc, mk (.A_IMM, 0) (.B_IMM, 0) (.ZOP_COPYB ()) (j1 := 4) (j2 := 4))]
-    | .malformed _ => some [(pc, halt)]
-    | .riscv =>
-      if ZiskRiscv.kind f == .csrrs && f.csr == 0xF12 && f.rs1 == 0 && f.rd != 0 then
-        some [(pc, mk (.A_IMM, 0) (.B_MEM, CSR_ADDR + 0xF12 * 8) (.ZOP_COPYB ()) (storeReg f.rd) 4 4)]
-      else none
-    | _ => none
+  match ZiskRiscv.decode (fetch2 pc w next) pc.toNat with
+  | .call c => some (callInsts c pc ia)
+  | .nop =>
+    if 0x850 ≤ f.csr ∧ f.csr ≤ 0x8BF ∨ 0x8E0 ≤ f.csr ∧ f.csr ≤ 0x8E7 then none
+    else some [(pc, mk (.A_IMM, 0) (.B_IMM, 0) (.ZOP_COPYB ()) (j1 := 4) (j2 := 4))]
+  | .malformed _ =>
+    if ZiskRiscv.kind f == .csrrsi && f.csr == 0x816 && f.rs1 == 2 then none else some [(pc, halt)]
+  | .riscv =>
+    if ZiskRiscv.kind f == .csrrs && f.csr == 0xF12 && f.rs1 == 0 && f.rd != 0 then
+      some [(pc, mk (.A_IMM, 0) (.B_MEM, CSR_ADDR + 0xF12 * 8) (.ZOP_COPYB ()) (storeReg f.rd) 4 4)]
+    else none
+  | _ => none
 
 /-- `convert`: the ZisK instructions for the instruction w at pc, followed
     by the word `next` (none at the end of the code, or before a 16-bit

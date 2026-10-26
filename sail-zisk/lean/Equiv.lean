@@ -121,3 +121,4 @@ import Equiv.ZFrameAll
 import Equiv.ZiskCall
 import Equiv.CallSim
 import Equiv.CallStep
+import Equiv.CallDecode
