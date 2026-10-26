@@ -133,6 +133,8 @@ theorem notSys_sext (i : SextInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
   simp only [SextInstr.encode]; bv_decide
 theorem notSys_zexth (i : ZexthInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
   simp only [ZexthInstr.encode]; bv_decide
+theorem notSys_byte (i : ByteInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+  simp only [ByteInstr.encode]; bv_decide
 theorem notSys_m (i : MInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
   cases h : i.op <;> simp only [MInstr.encode, h, Transpiler.MOp.opc] <;> bv_decide
 
@@ -171,6 +173,7 @@ theorem StepOkT.word {s : RVState} {rs : List PMA_Region} {pc : BitVec 64}
   | .packw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_packw i⟩
   | .sext i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_sext i⟩
   | .zexth i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zexth i⟩
+  | .byte i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_byte i⟩
 
 theorem OneOkT.word {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {s : RVState}
     (h : OneOkT rs zrom s) : ∃ pc, s.regs.get? Register.PC = some pc ∧ WordOk s.mem rs pc := by

@@ -86,3 +86,7 @@ import Equiv.ZbbRotSim
 import Equiv.RiscvZbkb
 import Equiv.RiscvDecodeZbkb
 import Equiv.ZbkbSim
+import Equiv.Loops
+import Equiv.RiscvZbbByte
+import Equiv.RiscvDecodeZbbByte
+import Equiv.ZbbByteSim

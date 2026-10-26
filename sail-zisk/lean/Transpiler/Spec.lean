@@ -17,9 +17,9 @@
     `convert`, which picks one per instruction.
 
   So far: RV64I but for ebreak and the CSRs; Zifencei; M; Zba's single-instruction
-  forms (sh1add, sh2add, sh3add, slli.uw); Zbs; Zbb's register ops, rotations
-  and extensions; and Zbkb's packs. An instruction it does not describe is
-  `none`.
+  forms (sh1add, sh2add, sh3add, slli.uw); Zbs; Zbb's register ops, rotations,
+  extensions and byte ops (rev8, orc.b); and Zbkb's packs and brev8. An
+  instruction it does not describe is `none`.
 
   Internal addresses (the odd ROM addresses a translation of more than one
   ZisK instruction continues at) come, in the Rust, from a counter global to
@@ -119,12 +119,17 @@ inductive PackOp | pack | packh
 inductive SextOp | sextb | sexth
   deriving BEq, Repr
 
+/-- The byte ops on rs1: Zbb's rev8 and orc.b, Zbkb's brev8. -/
+inductive ByteOp | rev8 | orcb | brev8
+  deriving BEq, Repr
+
 /-- An instruction the spec describes, as `RiscvDecoder::decode_32` names it. -/
 inductive Inst
   | r (op : ROp) | i (op : IOp) | shift (op : SOp) | branch (op : BOp)
   | load (op : LOp) | store (op : SzOp) | lui | auipc | jal | jalr | m (op : MOp) | ecall | fence
   | shadd (op : ShAdd) | slliuw | zbs (op : ZbsOp) | zbsi (op : ZbsOp) | zbb (op : ZbbOp)
   | zbbw (op : ZbbWOp) | rori | roriw | pack (op : PackOp) | packw | sext (op : SextOp) | zexth
+  | byte (op : ByteOp)
   deriving BEq, Repr
 
 /-- What `decode_32` decodes a word to, among the instructions described.
@@ -149,9 +154,13 @@ def decode (w : BitVec 32) : Option Inst :=
       else if (w.extractLsb 31 20).toNat == 0x605 then some (.sext .sexth) else none
     | 2 => some (.i .slti) | 3 => some (.i .sltiu) | 4 => some (.i .xori)
     | 5 =>
-      -- rev8, brev8 and orc.b come first; none has funct6 0, 16, 18 or 24.
+      -- rev8, brev8 and orc.b come first in the Rust; none has funct6 0, 16, 18 or 24,
+      -- so here, after the rest.
       if f6 == 0 then some (.shift .srli) else if f6 == 16 then some (.shift .srai)
-      else if f6 == 18 then some (.zbsi .bext) else if f6 == 24 then some .rori else none
+      else if f6 == 18 then some (.zbsi .bext) else if f6 == 24 then some .rori
+      else if (w.extractLsb 31 20).toNat == 0x6B8 then some (.byte .rev8)
+      else if (w.extractLsb 31 20).toNat == 0x687 then some (.byte .brev8)
+      else if (w.extractLsb 31 20).toNat == 0x287 then some (.byte .orcb) else none
     | 6 => some (.i .ori) | 7 => some (.i .andi) | _ => none
   -- fence (fence.tso among them) and fence.i, whatever their fields: a nop
   | 15 => if f3 == 0 || f3 == 1 then some .fence else none
@@ -352,6 +361,9 @@ def PackOp.zop : PackOp → zisk_op
 def SextOp.zop : SextOp → zisk_op
   | .sextb => .ZOP_SIGNEXTEND_B () | .sexth => .ZOP_SIGNEXTEND_H ()
 
+def ByteOp.zop : ByteOp → zisk_op
+  | .rev8 => .ZOP_REV8 () | .orcb => .ZOP_ORC_B () | .brev8 => .ZOP_BREV8 ()
+
 /-- The op the transpiler emits for each M instruction (riscv2zisk_context.rs). -/
 def MOp.zop : MOp → zisk_op
   | .mul => .ZOP_MUL () | .mulh => .ZOP_MULH () | .mulhsu => .ZOP_MULSUH () | .mulhu => .ZOP_MULUH ()
@@ -426,5 +438,6 @@ def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : B
   | some .packw => one (registerOp w (.ZOP_PACK_W ()))
   | some (.sext op) => one (singleOp w op.zop)
   | some .zexth => one (zextH w)
+  | some (.byte op) => one (singleOp w op.zop)
 
 end Transpiler

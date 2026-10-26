@@ -104,6 +104,7 @@ theorem StepOkT.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : Bi
   | .packw _, hi => { hi with tr := retr hs hc hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }
   | .sext _, hi => { hi with tr := retr hs hc hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }
   | .zexth _, hi => { hi with tr := retr hs hc hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }
+  | .byte _, hi => { hi with tr := retr hs hc hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }
 
 theorem OneOkT.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {rs : List PMA_Region} {s : RVState} (hs : SpecRom zrom C s.mem)
