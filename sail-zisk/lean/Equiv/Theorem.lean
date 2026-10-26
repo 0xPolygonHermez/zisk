@@ -4,7 +4,8 @@
   every executable word the spec describes, the spec's translation of it
   (`SpecRom`, a hypothesis on the program, with no code in the RAM); and a
   run the simulation covers (`RunOkT`, stated with any ZisK program: of the
-  RISC-V side, every step an instruction proved, with its accesses good).
+  RISC-V side, every step an instruction proved, with its accesses good;
+  the run is the machine's, `rvIter`, lr and sc run its own way).
   Then ZisK's RISC-V machine and sail-zisk running the program with the
   BIOS end the same way: the exit system call with code c, success with
   the same memory — so the same output — when c is 0, the error with code
@@ -51,18 +52,16 @@ theorem covered_run (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec
     (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
     (fc : ZiskRiscv.Fcall) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat) (hrun : RunOkT rs zr k s0 0) (hin : RunIn C k s0 0) :
-    ∃ z' n, RVRun 0 k s0 (rvIter 0 k s0) ∧ ZRun zrom n z0 z' ∧ Rel (rvIter 0 k s0) z' rs ∧
-      SpecRom zrom C (rvIter 0 k s0).mem ∧
-      (PcOk (rvIter 0 k s0) → MRunR k ⟨s0, fc⟩ ⟨rvIter 0 k s0, fc⟩) := by
+    ∃ z' n, ZRun zrom n z0 z' ∧ Rel (rvIter 0 k s0) z' rs ∧
+      SpecRom zrom C (rvIter 0 k s0).mem ∧ Grows s0.mem (rvIter 0 k s0).mem ∧
+      (PcOk (rvIter 0 k s0) → MRunR C k ⟨s0, fc⟩ ⟨rvIter 0 k s0, fc⟩) := by
   obtain ⟨st, hst⟩ := hzst
   obtain ⟨z1, r1, hrel1⟩ := start_rel zrom entry hb m0 z0 st hzx hzpc hst hze hzm s0 rs hs0
   have hs : SpecRom zrom C s0.mem := by
     rw [hs0.mem]
     exact hspec.keep ((memWrite_ramOnly _ _ _ arch_writable.1).trans (memWrite_ramOnly _ _ _ mtvec_writable.1)) hnx
-  obtain ⟨s', z', k', hrv, hzr, hrel, hro, hm⟩ := prog_rom zr zrom rs C hx ht hnx k ⟨s0, fc⟩ z1 0 hrel1 hrun hin hs
-  have e := RVRun.iter hrv
-  subst e
-  exact ⟨z', 6 + k', hrv, ZRun.append r1 hzr, hrel, hs.keep hro hnx, hm⟩
+  obtain ⟨z', k', hzr, hrel, hro, hg, hm⟩ := prog_rom zr zrom rs C hx ht hnx k ⟨s0, fc⟩ z1 0 hrel1 hrun hin hs
+  exact ⟨z', 6 + k', ZRun.append r1 hzr, hrel, hs.keep hro hnx, hg, hm⟩
 
 /-! ## The ends -/
 
@@ -84,7 +83,7 @@ theorem exit_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64
     ∃ z', ZEnds zrom z0 z' ∧
       (c = 0 → z'.regs.get? .Zerror = some false ∧ z'.mem = (rvIter 0 k s0).mem) ∧
       (c ≠ 0 → z'.regs.get? .Zerror = some true ∧ z'.regs.get? .Zerror_code = some c) := by
-  obtain ⟨z1, n1, hrv, hz1, hrel, hsp, hm⟩ :=
+  obtain ⟨z1, n1, hz1, hrel, hsp, hg, hm⟩ :=
     covered_run zrom entry hb rs hx ht C hnx m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc zr k hrun hin
   have hmr := hm (PcOk.of_exec ht hpc hpx)
   have hrom : zrom pc = Transpiler.ecall :=
@@ -92,7 +91,7 @@ theorem exit_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64
   have hfull' : Full (rvIter 0 k s0).mem := by
     have := startMem_full hfull
     rw [← hs0.mem] at this
-    exact this.grow (RVRun.grows hrv)
+    exact this.grow hg
   refine ⟨fun fuel => ?_, ?_⟩
   · have hg : model.getPC (rvIter 0 k s0) = pc := by simp [model, hpc]
     have he := step_exit (⟨rvIter 0 k s0, fc⟩ : ZiskRiscv.State model)
@@ -122,13 +121,13 @@ theorem return_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 
     (∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0, fc⟩ : ZiskRiscv.State model) =
         .ok (⟨rvIter 0 k s0, fc⟩, .exit 0, k)) ∧
     ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some false ∧ z'.mem = (rvIter 0 k s0).mem := by
-  obtain ⟨z1, n1, hrv, hz1, hrel, hsp, hm⟩ :=
+  obtain ⟨z1, n1, hz1, hrel, hsp, hg, hm⟩ :=
     covered_run zrom entry hb rs hx ht C hnx m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc zr k hrun hin
   have hmr := hm ⟨_, hpc, by decide⟩
   have hfull' : Full (rvIter 0 k s0).mem := by
     have := startMem_full hfull
     rw [← hs0.mem] at this
-    exact this.grow (RVRun.grows hrv)
+    exact this.grow hg
   refine ⟨fun fuel => ?_, ?_⟩
   · have he := step_return (⟨rvIter 0 k s0, fc⟩ : ZiskRiscv.State model) (by simp [model, hpc]; rfl)
     exact run_of hmr.toMRun he (by simp) fuel

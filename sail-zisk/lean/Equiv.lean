@@ -106,3 +106,6 @@ import Equiv.ZiskAmoRun
 import Equiv.RiscvDecodeAmoBase
 import Equiv.RiscvDecodeAmo
 import Equiv.AmoSim
+import Equiv.WordMem
+import Equiv.MNext
+import Equiv.LrScSim

@@ -9,6 +9,7 @@
 -/
 import Equiv.ProgSpec
 import Equiv.Machine
+import Equiv.MemGrow
 
 namespace Equiv.Sim
 
@@ -27,16 +28,6 @@ def SpecRom (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (C : BitVec 64 → Prop
 def NoCodeRam (C : BitVec 64 → Prop) : Prop :=
   ∀ pc, C pc → (∀ i, i < 4 → OffRam (pc.toNat + i)) ∧ (∀ i, i < 4 → OffRam ((pc + 4).toNat + i))
 
-/-- The state k steps of sail-riscv's main loop reach from s, from step n. -/
-noncomputable def rvIter : Nat → Nat → RVState → RVState
-  | _, 0, s => s
-  | n, k + 1, s => rvIter (n + 1) k (rvNext n s)
-
-theorem RVRun.iter {n k : Nat} {s s' : RVState} (h : RVRun n k s s') : s' = rvIter n k s := by
-  induction h with
-  | done => rfl
-  | step h1 _ ih => rw [ih, rvIter, rvNext_of h1]
-
 /-- The run's first k steps start at code addresses. -/
 def RunIn (C : BitVec 64 → Prop) (k : Nat) (s : RVState) (n : Nat) : Prop :=
   ∀ i, i < k → ∀ pc, (rvIter n i s).regs.get? Register.PC = some pc → C pc
@@ -45,7 +36,7 @@ theorem RunIn.head {C : BitVec 64 → Prop} {k : Nat} {s : RVState} {n : Nat} (h
     {pc : BitVec 64} (hpc : s.regs.get? Register.PC = some pc) : C pc := h 0 (by omega) pc hpc
 
 theorem RunIn.tail {C : BitVec 64 → Prop} {k : Nat} {s : RVState} {n : Nat} (h : RunIn C (k + 1) s n) :
-    RunIn C k (rvNext n s) (n + 1) := fun i hi pc hpc => h (i + 1) (by omega) pc hpc
+    RunIn C k (mNext n s) (n + 1) := fun i hi pc hpc => h (i + 1) (by omega) pc hpc
 
 theorem readWord_congr {m m' : Mem} {a : Nat} (h : ∀ i, i < 4 → m'.get? (a + i) = m.get? (a + i)) :
     ZiskRiscv.readWord m' a = ZiskRiscv.readWord m a := by
@@ -110,11 +101,16 @@ theorem StepOkT.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : Bi
 theorem OneOkT.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {rs : List PMA_Region} {s : RVState} (hs : SpecRom zrom C s.mem)
     (hc : ∀ pc, s.regs.get? Register.PC = some pc → C pc) (h : OneOkT rs zr s) : OneOkT rs zrom s := by
-  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, rest⟩ | ⟨i, hi⟩ | ⟨i, hi, rest⟩⟩ := h
+  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, rest⟩ | ⟨i, hi⟩ | ⟨i, hi, rest⟩ | ⟨i, hi, rest⟩ | ⟨i, hi, rest⟩⟩ := h
   · exact ⟨pc, hpc, .inl ⟨o, StepOkT.retarget hs (hc pc hpc) o ho⟩⟩
   · exact ⟨pc, hpc, .inr (.inl ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩)⟩
   · exact ⟨pc, hpc, .inr (.inr (.inl ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }⟩))⟩
-  · exact ⟨pc, hpc, .inr (.inr (.inr ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩))⟩
+  · exact ⟨pc, hpc, .inr (.inr (.inr (.inl
+      ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩)))⟩
+  · exact ⟨pc, hpc, .inr (.inr (.inr (.inr (.inl
+      ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩))))⟩
+  · exact ⟨pc, hpc, .inr (.inr (.inr (.inr (.inr
+      ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩))))⟩
 
 /-- The fused pair: its translation, with the jalr as the next word. -/
 theorem FtAt.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
@@ -128,67 +124,67 @@ theorem FtAt.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVe
 
 open Equiv.Machine in
 set_option maxHeartbeats 1000000 in
-/-- `prog_machine` with the ZisK program given by `SpecRom` alone: the run's
-    coverage stated with any ZisK program `zr` (what it says of the RISC-V
-    side), the simulation runs with `zrom`, the program the spec makes. The
-    run changes only the RAM. -/
+/-- The simulation over whole runs, with the ZisK program given by
+    `SpecRom` alone: the run's coverage stated with any ZisK program `zr`
+    (what it says of the RISC-V side), the simulation runs with `zrom`, the
+    program the spec makes. From related states, k steps of the machine and
+    some number of ZisK steps end related; the run changes only the RAM, and
+    memory only grows. Its steps are steps of ZisK's RISC-V machine, each
+    leaving the run going — given that neither the exit address nor the
+    trap vector is executable, and that the last step does not land on the
+    trap vector. -/
 theorem prog_rom (zr zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA_Region) (C : BitVec 64 → Prop)
     (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC) (hnx : NoCodeRam C) :
     ∀ (k : Nat) (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState) (n : Nat),
       Rel S.rv z rs → RunOkT rs zr k S.rv n → RunIn C k S.rv n → SpecRom zrom C S.rv.mem →
-      ∃ s' z' k', RVRun n k S.rv s' ∧ ZRun zrom k' z z' ∧ Rel s' z' rs ∧ RamOnly S.rv.mem s'.mem ∧
-        (PcOk s' → MRunR k S { S with rv := s' })
+      ∃ z' k', ZRun zrom k' z z' ∧ Rel (rvIter n k S.rv) z' rs ∧ RamOnly S.rv.mem (rvIter n k S.rv).mem ∧
+        Grows S.rv.mem (rvIter n k S.rv).mem ∧
+        (PcOk (rvIter n k S.rv) → MRunR C k S { S with rv := rvIter n k S.rv })
   | 0, S, z, n, hrel, _, _, _ =>
-    ⟨S.rv, z, 0, .done n _, .done z, hrel, RamOnly.refl _, fun _ => .done _⟩
+    ⟨z, 0, .done z, hrel, RamOnly.refl _, Grows.refl _, fun _ => .done _⟩
   | 1, S, z, n, hrel, ho, hin, hs => by
-    obtain ⟨s1, z1, k1, hrun, hzrun, hrel1, hm1⟩ :=
+    obtain ⟨s1, z1, k1, hm, hzrun, hrel1, hm1⟩ :=
       one_stepT S.rv z rs hrel zrom (OneOkT.retarget hs (fun _ h => hin.head h) ho) n
-    obtain ⟨pc, hpc, hw⟩ := OneOkT.word ho
-    exact ⟨s1, z1, k1, .step hrun (.done _ _), hzrun, hrel1, hm1,
-      fun hp => .step (mstepR S rs hrel.ready pc hpc hw hx hrun hp) (.done _)⟩
+    obtain ⟨pc, hpc, hex⟩ := OneOkT.exec ho
+    have e : rvIter n 1 S.rv = s1 := by simp only [rvIter, hm.next]
+    rw [e]
+    exact ⟨z1, k1, hzrun, hrel1, hm1, hm.grows,
+      fun hp => hm.toRun hrel.ready hpc hex (hin.head hpc) hx hp (.done _)⟩
   | k + 2, S, z, n, hrel, .inl ⟨ho, hrest⟩, hin, hs => by
-    obtain ⟨s1, z1, k1, hrun, hzrun, hrel1, hm1⟩ :=
+    obtain ⟨s1, z1, k1, hm, hzrun, hrel1, hm1⟩ :=
       one_stepT S.rv z rs hrel zrom (OneOkT.retarget hs (fun _ h => hin.head h) ho) n
-    obtain ⟨pc, hpc, hw⟩ := OneOkT.word ho
+    obtain ⟨pc, hpc, hex⟩ := OneOkT.exec ho
     have hin1 := hin.tail
-    rw [rvNext_of hrun] at hrest hin1
+    rw [hm.next] at hrest hin1
     obtain ⟨p1, hp1, hx1⟩ := RunOkT.exec hrest
-    have hmr1 := mstepR S rs hrel.ready pc hpc hw hx hrun (PcOk.of_exec ht hp1 hx1)
-    obtain ⟨s2, z2, k2, hrun2, hzrun2, hrel2, hm2, hmr2⟩ :=
+    obtain ⟨z2, k2, hzrun2, hrel2, hm2, hg2, hmr2⟩ :=
       prog_rom zr zrom rs C hx ht hnx (k + 1) { S with rv := s1 } z1 (n + 1) hrel1 hrest hin1 (hs.keep hm1 hnx)
-    exact ⟨s2, z2, k1 + k2, .step hrun hrun2, ZRun.append hzrun hzrun2, hrel2, hm1.trans hm2,
-      fun hp => .step hmr1 (hmr2 hp)⟩
+    have e : rvIter n (k + 2) S.rv = rvIter (n + 1) (k + 1) s1 := by rw [rvIter, hm.next]
+    rw [e]
+    exact ⟨z2, k1 + k2, ZRun.append hzrun hzrun2, hrel2, hm1.trans hm2, hm.grows.trans hg2,
+      fun hp => hm.toRun hrel.ready hpc hex (hin.head hpc) hx (PcOk.of_exec ht hp1 hx1) (hmr2 hp)⟩
   | k + 2, S, z, n, hrel, .inr ⟨⟨pc, i, hpc, hi⟩, hrest⟩, hin, hs => by
     have hi' := FtAt.retarget hs (hin.head hpc) hi
-    have hin2 := hin.tail.tail
     obtain ⟨s2, z1, hrun, hzrun, hrel1, -, hr1, hpc1, hmem1, hmem2⟩ :=
       fused_rel S.rv z rs hrel pc hpc zrom i hi'.toFAt n
-    obtain ⟨t1, h1, h2⟩ : ∃ t1, (interpretSailEffects (try_step n false)).run S.rv = .ok false t1 ∧
-        (interpretSailEffects (try_step (n + 1) false)).run t1 = .ok false s2 := by
-      have hrun' := hrun
-      cases hrun' with
-      | step h1 r => cases r with
-        | step h2 r2 => cases r2 with
-          | done => exact ⟨_, h1, h2⟩
-    have e1 : rvNext n S.rv = t1 := rvNext_of h1
-    rw [e1] at hr1 hpc1 hmem1
-    rw [e1, rvNext_of h2] at hrest hin2
+    obtain ⟨t1, h1, -, m1, m2, e1, e2⟩ := fused_mnext hpc hi hrun hpc1 hmem1
+    have hc1 : C (pc + 4) := by
+      have := hin.tail.head (pc := pc + 4); rw [e1, ← rvNext_of h1] at this; exact this hpc1
+    have hin2 := hin.tail.tail
+    rw [rvNext_of h1] at hr1 hpc1
+    rw [e1, e2] at hrest hin2
     have hm : RamOnly S.rv.mem s2.mem := RamOnly.of_eq hmem2
-    obtain ⟨s3, z3, k3, hrun3, hzrun3, hrel3, hm3, hmr3⟩ :=
+    obtain ⟨z3, k3, hzrun3, hrel3, hm3, hg3, hmr3⟩ :=
       prog_rom zr zrom rs C hx ht hnx k { S with rv := s2 } z1 (n + 2) hrel1 hrest hin2 (hs.keep hm hnx)
-    have hw1 : WordOk S.rv.mem rs pc := ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_u _⟩
-    have hw2 : WordOk t1.mem rs (pc + 4) :=
-      ⟨hi.x3, _, readWord_of (by rw [hmem1]; exact hi.g0) (by rw [hmem1]; exact hi.g1)
-        (by rw [hmem1]; exact hi.g2) (by rw [hmem1]; exact hi.g3), notSys_jr _⟩
-    refine ⟨s3, z3, 1 + k3, by simpa [Nat.add_comm] using RVRun.append hrun hrun3,
-      ZRun.append hzrun hzrun3, hrel3, hm.trans hm3, fun hp => ?_⟩
+    have e : rvIter n (k + 2) S.rv = rvIter (n + 2) k s2 := by rw [rvIter, rvIter, e1, e2]
+    rw [e]
+    refine ⟨z3, 1 + k3, ZRun.append hzrun hzrun3, hrel3, hm.trans hm3, (m1.grows.trans m2.grows).trans hg3,
+      fun hp => ?_⟩
     have hp2 : PcOk s2 := by
       cases k with
-      | zero => cases hrun3; exact hp
+      | zero => exact hp
       | succ k => obtain ⟨p, hp', hx'⟩ := RunOkT.exec hrest; exact PcOk.of_exec ht hp' hx'
-    have m1 := mstepR S rs hrel.ready pc hpc hw1 hx h1 (PcOk.of_exec ht hpc1 hi.x3)
-    have m2 := mstepR { S with rv := t1 } rs hr1 (pc + 4) hpc1 hw2 hx h2 hp2
-    rw [show k + 2 = 0 + 1 + 1 + k by omega]
-    exact MRunR.append (.step m1 (.step m2 (.done _))) (hmr3 hp)
+    exact m1.toRun hrel.ready hpc hi.x1 (hin.head hpc) hx (PcOk.of_exec ht hpc1 hi.x3)
+      (m2.toRun (S := { S with rv := t1 }) hr1 hpc1 hi.x3 hc1 hx hp2 (hmr3 hp))
 
 end Equiv.Sim

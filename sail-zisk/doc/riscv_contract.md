@@ -35,8 +35,11 @@ Zicond, the privileged instructions (`mret`, `wfi`, `sfence.vma`).
   RISC-V is an `sc` with no `lr` before it, or to another address or width
   than its `lr`'s: it succeeds here, and must fail on hardware; compiled
   code pairs them. (sail-riscv's Lean leaves its reservations as axioms, so
-  this document, not sail-riscv, gives `lr` and `sc` their meaning.) The
-  AMOs are RISC-V's.
+  this document, not sail-riscv, gives `lr` and `sc` their meaning.) An
+  `lr` whose bytes include its own instruction word is outside the contract
+  (precondition **L**): the machine runs the plain load in the `lr`'s place
+  (§ "As a machine"), and would read that load's word there. The AMOs are
+  RISC-V's.
 - The transpiler decodes as RISC-V does, in this profile: a word RISC-V
   rejects becomes a halt, never another instruction, and a word of an
   extension outside the set fails only if it runs, as on RISC-V; it does not
@@ -235,7 +238,8 @@ share a 4 KB page with the parameter area; to sail-riscv they are RAM.
 
 A program is in the contract when it is in the instruction set of § 1 and
 meets **E** (no `ecall` but exit), **C** (no CSR access but the ZisK calls
-of §§ 7–8 and reading `marchid`) and **Z** (no zkvmcall). Everything else
+of §§ 7–8 and reading `marchid`), **Z** (no zkvmcall) and **L** (no `lr`
+reading its own instruction word). Everything else
 it may do — touch memory outside § 2, write a read-only CSR, misuse a
 precompile — has a defined outcome above: a failure, which ZisK does not
 prove, and which the theorem must show both sides agree on.

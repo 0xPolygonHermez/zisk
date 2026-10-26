@@ -42,50 +42,6 @@ noncomputable def model : ZiskRiscv.RiscvModel where
   trapped s := (s.regs.get? Register.PC).getD 0 == TRAP_VEC
   exitAddr := EXIT_ADDR
 
-/-! ## The machine's decode on plain RISC-V -/
-
-theorem bytes_word (e : BitVec 32) :
-    @Eq (BitVec 32) (Equiv.Sim.byte e 3 ++ Equiv.Sim.byte e 2 ++ Equiv.Sim.byte e 1 ++ Equiv.Sim.byte e 0) e := by
-  simp only [Equiv.Sim.byte]; bv_decide
-
-/-- The word at a, from its four bytes in memory. -/
-theorem readWord_of {m : Equiv.Mem} {a : Nat} {e : BitVec 32}
-    (h0 : m.get? a = some (Equiv.Sim.byte e 0)) (h1 : m.get? (a + 1) = some (Equiv.Sim.byte e 1))
-    (h2 : m.get? (a + 2) = some (Equiv.Sim.byte e 2)) (h3 : m.get? (a + 3) = some (Equiv.Sim.byte e 3)) :
-    ZiskRiscv.readWord m a = some e := by
-  simp only [ZiskRiscv.readWord, h0, h1, h2, h3, Option.pure_def, Option.bind_eq_bind, Option.bind_some]
-  rw [bytes_word]
-
-/-- A word the machine leaves to the model: outside SYSTEM's opcode, and
-    neither `lr` nor `sc` (opcode AMO, funct5 2 or 3), which the machine runs
-    its own way. -/
-def NotMach (w : BitVec 32) : Prop :=
-  w.extractLsb' 0 7 ≠ 0x73#7 ∧
-    ¬ (w.extractLsb' 0 7 = 0x2F#7 ∧ (w.extractLsb' 27 5 = 2#5 ∨ w.extractLsb' 27 5 = 3#5))
-
-/-- An instruction the machine leaves to the model is the model's to run. -/
-theorem decode_riscv {fetch : Nat → Option (BitVec 32)} {a : Nat} {w : BitVec 32} (hf : fetch a = some w)
-    (hop : NotMach w) : ZiskRiscv.decode fetch a = .riscv := by
-  obtain ⟨hop, hls⟩ := hop
-  have : (ZiskRiscv.fields w).opcode ≠ 0x73 := by
-    intro e; apply hop; apply BitVec.eq_of_toNat_eq; simpa [ZiskRiscv.fields] using e
-  have hls' : ¬ ((ZiskRiscv.fields w).opcode = 0x2F ∧
-      ((ZiskRiscv.fields w).funct7 >>> 2 = 2 ∨ (ZiskRiscv.fields w).funct7 >>> 2 = 3)) := by
-    rintro ⟨e1, e2⟩; apply hls
-    refine ⟨BitVec.eq_of_toNat_eq (by simpa [ZiskRiscv.fields] using e1), ?_⟩
-    have : (ZiskRiscv.fields w).funct7 >>> 2 = (w.extractLsb' 27 5).toNat := by
-      simp only [ZiskRiscv.fields, BitVec.extractLsb'_toNat, Nat.shiftRight_eq_div_pow]; omega
-    rcases e2 with e2 | e2
-    · exact .inl (BitVec.eq_of_toNat_eq (by rw [← this, e2]; rfl))
-    · exact .inr (BitVec.eq_of_toNat_eq (by rw [← this, e2]; rfl))
-  simp only [ZiskRiscv.decode, hf]
-  generalize hk : ZiskRiscv.kind (ZiskRiscv.fields w) = k
-  have : k ≠ .ecall ∧ k ≠ .csrrs ∧ k ≠ .csrrsi ∧ k ≠ .csrrwi ∧ k ≠ .lr ∧ k ≠ .sc := by
-    subst hk
-    simp only [ZiskRiscv.kind]
-    split <;> simp_all <;> split <;> simp_all <;> split <;> simp_all
-  cases k <;> simp_all
-
 /-! ## The machine's step on plain RISC-V -/
 
 /-- The machine's step where the model runs the instruction: not at the exit
@@ -105,147 +61,6 @@ theorem model_step {s s' : RVState} {rs : List PMA_Region} (hr : StepReady s rs)
     (h : (interpretSailEffects (try_step n false)).run s = .ok false s') : model.step s = .ok s' := by
   have e := (try_step_any s rs hr 0 true).trans ((try_step_any s rs hr n false).symm.trans h)
   simp [model, runM, e]; rfl
-
-/-! ## The instructions of the simulation are plain RISC-V -/
-
-theorem notSys_r (i : RInstr) : NotMach i.encode := by
-  unfold NotMach; simp only [RInstr.encode]; bv_decide
-theorem notSys_i (i : IInstr) : NotMach i.encode := by
-  unfold NotMach; simp only [IInstr.encode]; bv_decide
-theorem notSys_sh (i : SInstr) : NotMach i.encode := by
-  unfold NotMach; simp only [SInstr.encode]; bv_decide
-theorem notSys_u (i : UInstr) : NotMach i.encode := by
-  unfold NotMach
-  cases h : i.op <;> simp only [UInstr.encode, h, uopEnc] <;> bv_decide
-theorem notSys_ld (i : LdInstr) : NotMach i.encode := by
-  unfold NotMach; simp only [LdInstr.encode]; bv_decide
-theorem notSys_lw (i : LwInstr) : NotMach i.encode := by
-  unfold NotMach; simp only [LwInstr.encode]; bv_decide
-theorem notSys_sd (i : SdInstr) : NotMach i.encode := by
-  unfold NotMach; simp only [SdInstr.encode]; bv_decide
-theorem notSys_sw (i : SwInstr) : NotMach i.encode := by
-  unfold NotMach; simp only [SwInstr.encode]; bv_decide
-theorem notSys_br (i : BInstr) : NotMach i.encode := by
-  unfold NotMach; simp only [BInstr.encode]; bv_decide
-theorem notSys_j (i : JInstr) : NotMach i.encode := by
-  unfold NotMach; simp only [JInstr.encode]; bv_decide
-theorem notSys_jr (i : JrInstr) : NotMach i.encode := by
-  unfold NotMach; simp only [JrInstr.encode]; bv_decide
-theorem notSys_rw (i : RwInstr) : NotMach i.encode := by
-  unfold NotMach; simp only [RwInstr.encode]; bv_decide
-theorem notSys_iw (i : IwInstr) : NotMach i.encode := by
-  unfold NotMach; simp only [IwInstr.encode]; bv_decide
-theorem notSys_siw (i : SiwInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [SiwInstr.encode]; bv_decide
-theorem notSys_fence (i : FenceInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [FenceInstr.encode]; bv_decide
-theorem notSys_zba (i : ZbaInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [ZbaInstr.encode]; bv_decide
-theorem notSys_slliuw (i : SlliuwInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [SlliuwInstr.encode]; bv_decide
-theorem notSys_zbs (i : ZbsInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [ZbsInstr.encode]; bv_decide
-theorem notSys_zbsi (i : ZbsiInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [ZbsiInstr.encode]; bv_decide
-theorem notSys_zbb (i : ZbbInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [ZbbInstr.encode]; bv_decide
-theorem notSys_zbbw (i : ZbbWInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [ZbbWInstr.encode]; bv_decide
-theorem notSys_rori (i : RoriInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [RoriInstr.encode]; bv_decide
-theorem notSys_roriw (i : RoriwInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [RoriwInstr.encode]; bv_decide
-theorem notSys_pack (i : PackInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [PackInstr.encode]; bv_decide
-theorem notSys_packw (i : PackwInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [PackwInstr.encode]; bv_decide
-theorem notSys_sext (i : SextInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [SextInstr.encode]; bv_decide
-theorem notSys_zexth (i : ZexthInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [ZexthInstr.encode]; bv_decide
-theorem notSys_byte (i : ByteInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [ByteInstr.encode]; bv_decide
-theorem notSys_amo (i : AmoInstr) : NotMach i.encode := by
-  unfold NotMach; simp only [AmoInstr.encode]
-  generalize hf : i.f3 = f
-  cases i.op <;> simp only [Transpiler.AmoOp.f5] <;> bv_decide
-theorem notSys_uw (i : UwInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [UwInstr.encode]; bv_decide
-theorem notSys_count (i : CountInstr) : NotMach i.encode := by
-  unfold NotMach
-  simp only [CountInstr.encode]; cases i.op <;> simp only [Transpiler.CountOp.opc] <;> bv_decide
-theorem notSys_m (i : MInstr) : NotMach i.encode := by
-  unfold NotMach
-  cases h : i.op <;> simp only [MInstr.encode, h, Transpiler.MOp.opc] <;> bv_decide
-
-/-- What the machine needs of the instruction at pc to leave it to
-    sail-riscv: executable there, a word it leaves to the model. -/
-def WordOk (m : Equiv.Mem) (rs : List PMA_Region) (pc : BitVec 64) : Prop :=
-  ExecAt rs pc ∧ ∃ e : BitVec 32, ZiskRiscv.readWord m pc.toNat = some e ∧ NotMach e
-
-theorem StepOkT.word {s : RVState} {rs : List PMA_Region} {pc : BitVec 64}
-    {zrom : BitVec 64 → _root_.Zisk.zisk_inst} : ∀ o, StepOkT s rs pc zrom o → WordOk s.mem rs pc
-  | .r i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_r i⟩
-  | .i i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_i i⟩
-  | .sh i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_sh i⟩
-  | .u i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_u i⟩
-  | .ld i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_ld i⟩
-  | .lw i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_lw i⟩
-  | .sd i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_sd i⟩
-  | .sw i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_sw i⟩
-  | .br i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_br i⟩
-  | .j i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_j i⟩
-  | .jr i, ⟨hi, _⟩ => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_jr i⟩
-  | .rw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_rw i⟩
-  | .iw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_iw i⟩
-  | .siw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_siw i⟩
-  | .m i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_m i⟩
-  | .fence i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_fence i⟩
-  | .zba i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zba i⟩
-  | .slliuw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_slliuw i⟩
-  | .zbs i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zbs i⟩
-  | .zbsi i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zbsi i⟩
-  | .zbb i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zbb i⟩
-  | .zbbw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zbbw i⟩
-  | .rori i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_rori i⟩
-  | .roriw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_roriw i⟩
-  | .pack i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_pack i⟩
-  | .packw i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_packw i⟩
-  | .sext i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_sext i⟩
-  | .zexth i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_zexth i⟩
-  | .byte i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_byte i⟩
-  | .count i, hi => ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_count i⟩
-
-theorem OneOkT.word {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {s : RVState}
-    (h : OneOkT rs zrom s) : ∃ pc, s.regs.get? Register.PC = some pc ∧ WordOk s.mem rs pc := by
-  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, -⟩ | ⟨i, hi⟩ | ⟨i, hi, -⟩⟩ := h
-  · exact ⟨pc, hpc, StepOkT.word o ho⟩
-  · exact ⟨pc, hpc, hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_jr i⟩
-  · exact ⟨pc, hpc, hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_uw i⟩
-  · exact ⟨pc, hpc, hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_amo i⟩
-
-/-- A state the runs go on from is at an executable pc. -/
-theorem RunOkT.exec {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {s : RVState} {n : Nat} :
-    ∀ {k}, RunOkT rs zrom (k + 1) s n → ∃ pc, s.regs.get? Register.PC = some pc ∧ ExecAt rs pc
-  | 0, h => by obtain ⟨pc, hpc, hw, -⟩ := OneOkT.word h; exact ⟨pc, hpc, hw⟩
-  | _ + 1, .inl ⟨h, _⟩ => by obtain ⟨pc, hpc, hw, -⟩ := OneOkT.word h; exact ⟨pc, hpc, hw⟩
-  | _ + 1, .inr ⟨⟨pc, _, hpc, hi⟩, _⟩ => ⟨pc, hpc, hi.x1⟩
 
 /-! ## The machine's runs -/
 
@@ -302,24 +117,63 @@ theorem RStep.mstep {S : ZiskRiscv.State model} {t : model.State} (h : RStep S t
   obtain ⟨e, he, hop⟩ := h.word
   exact step_riscv S t h.pcx (decode_riscv he hop) h.step h.trap
 
-/-- `n` machine steps, each left to sail-riscv. -/
-inductive MRunR : Nat → ZiskRiscv.State model → ZiskRiscv.State model → Prop
-  | done (S : ZiskRiscv.State model) : MRunR 0 S S
-  | step {n : Nat} {S S'' : ZiskRiscv.State model} {t : model.State} :
-      RStep S t → MRunR n { S with rv := t } S'' → MRunR (n + 1) S S''
+/-- A machine step on lr or sc, at a code address (`C`): not at the exit
+    address, the model's step on the plain word w' put at pc, not trapped;
+    then the word w put back, and register zr (sc's rd) 0 (`mPost`). -/
+def SStep (C : BitVec 64 → Prop) (S : ZiskRiscv.State model) (t : model.State) : Prop :=
+  model.getPC S.rv ≠ model.exitAddr ∧ C (model.getPC S.rv) ∧
+  ∃ w w' zr t1, ZiskRiscv.readWord (model.mem S.rv) (model.getPC S.rv).toNat = some w ∧
+    (∀ fetch : Nat → Option (BitVec 32), fetch (model.getPC S.rv).toNat = some w →
+      ZiskRiscv.decode fetch (model.getPC S.rv).toNat = .subst w' zr) ∧
+    model.step (model.setMem S.rv (ZiskRiscv.writeWord (model.mem S.rv) (model.getPC S.rv).toNat w')) = .ok t1 ∧
+    model.trapped t1 = false ∧ t = mPost t1 (model.getPC S.rv).toNat w zr
 
-theorem MRunR.toMRun {n : Nat} {S S' : ZiskRiscv.State model} (h : MRunR n S S') : MRun n S S' := by
+/-- The machine's post-step, as `mPost`: x0 is no register to zero. -/
+theorem post_eq (t1 : RVState) (p : Nat) (w : BitVec 32) (zr : Nat) :
+    (if zr != 0 then model.setX (model.setMem t1 (ZiskRiscv.writeWord (model.mem t1) p w)) zr 0
+      else model.setMem t1 (ZiskRiscv.writeWord (model.mem t1) p w)) = mPost t1 p w zr := by
+  simp only [model, mPost]
+  by_cases h : zr = 0
+  · subst h; simp [setX]
+  · simp [h]
+
+theorem SStep.mstep {C : BitVec 64 → Prop} {S : ZiskRiscv.State model} {t : model.State} (h : SStep C S t) :
+    ZiskRiscv.step S = .ok ({ S with rv := t }, .running) := by
+  obtain ⟨hx, -, w, w', zr, t1, hw, hd, hs, ht, rfl⟩ := h
+  have e : ZiskRiscv.tryStep S = .ok ({ S with rv := mPost t1 (model.getPC S.rv).toNat w zr }, .running) := by
+    have htr : model.trapped (model.setMem t1 (ZiskRiscv.writeWord (model.mem t1) (model.getPC S.rv).toNat w)) =
+        false := ht
+    simp only [ZiskRiscv.tryStep, hd _ hw, hw, hs]
+    simp [hx, bind, Except.bind, htr, pure, Except.pure]
+    rw [← post_eq]; by_cases h : zr = 0 <;> simp [h]
+  rw [ZiskRiscv.step, ZiskRiscv.step.go, e]
+
+/-- `n` machine steps, each left to sail-riscv or, on lr and sc at a code
+    address, run by substitution. -/
+inductive MRunR (C : BitVec 64 → Prop) : Nat → ZiskRiscv.State model → ZiskRiscv.State model → Prop
+  | done (S : ZiskRiscv.State model) : MRunR C 0 S S
+  | step {n : Nat} {S S'' : ZiskRiscv.State model} {t : model.State} :
+      RStep S t → MRunR C n { S with rv := t } S'' → MRunR C (n + 1) S S''
+  | subst {n : Nat} {S S'' : ZiskRiscv.State model} {t : model.State} :
+      SStep C S t → MRunR C n { S with rv := t } S'' → MRunR C (n + 1) S S''
+
+theorem MRunR.toMRun {C : BitVec 64 → Prop} {n : Nat} {S S' : ZiskRiscv.State model} (h : MRunR C n S S') :
+    MRun n S S' := by
   induction h with
   | done => exact .done _
   | step h1 _ ih => exact .step h1.mstep ih
+  | subst h1 _ ih => exact .step h1.mstep ih
 
-theorem MRunR.append {a b : Nat} {S T U : ZiskRiscv.State model} (h1 : MRunR a S T) (h2 : MRunR b T U) :
-    MRunR (a + b) S U := by
+theorem MRunR.append {C : BitVec 64 → Prop} {a b : Nat} {S T U : ZiskRiscv.State model} (h1 : MRunR C a S T)
+    (h2 : MRunR C b T U) : MRunR C (a + b) S U := by
   induction h1 with
   | done => simpa using h2
   | @step m _ _ _ h r ih =>
     rw [show m + 1 + b = (m + b) + 1 by omega]
     exact .step h (ih h2)
+  | @subst m _ _ _ h r ih =>
+    rw [show m + 1 + b = (m + b) + 1 by omega]
+    exact .subst h (ih h2)
 
 /-- `mstep`, recording the step. -/
 theorem mstepR (S : ZiskRiscv.State model) (rs : List PMA_Region) (hr : StepReady S.rv rs) (pc : BitVec 64)
@@ -334,65 +188,32 @@ theorem mstepR (S : ZiskRiscv.State model) (rs : List PMA_Region) (hr : StepRead
   · rw [hg]; exact he
   · simp [model, hp, hpt]
 
-/-! ## Whole runs on the machine -/
-
-set_option maxHeartbeats 1000000 in
-/-- The simulation over whole runs (`prog_spec`), on the machine: from
-    related states, the steps `RunOkT` covers are also steps of ZisK's RISC-V
-    machine, each leaving the run going — given that neither the exit
-    address nor the trap vector is executable, and that the last step does
-    not land on the trap vector. -/
-theorem prog_machine (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA_Region)
-    (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC) :
-    ∀ (k : Nat) (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState) (n : Nat),
-      Rel S.rv z rs → RunOkT rs zrom k S.rv n →
-      ∃ s' z' k', RVRun n k S.rv s' ∧ ZRun zrom k' z z' ∧ Rel s' z' rs ∧
-        (PcOk s' → MRun k S { S with rv := s' })
-  | 0, S, z, n, hrel, _ => ⟨S.rv, z, 0, .done n _, .done z, hrel, fun _ => .done _⟩
-  | 1, S, z, n, hrel, ho => by
-    obtain ⟨s1, z1, k1, hrun, hzrun, hrel1, -⟩ := one_stepT S.rv z rs hrel zrom ho n
-    obtain ⟨pc, hpc, hw⟩ := OneOkT.word ho
-    exact ⟨s1, z1, k1, .step hrun (.done _ _), hzrun, hrel1,
-      fun hp => .step (mstep S rs hrel.ready pc hpc hw hx hrun hp) (.done _)⟩
-  | k + 2, S, z, n, hrel, .inl ⟨ho, hrest⟩ => by
-    obtain ⟨s1, z1, k1, hrun, hzrun, hrel1, -⟩ := one_stepT S.rv z rs hrel zrom ho n
-    obtain ⟨pc, hpc, hw⟩ := OneOkT.word ho
-    rw [rvNext_of hrun] at hrest
-    obtain ⟨p1, hp1, hx1⟩ := RunOkT.exec hrest
-    have hm1 := mstep S rs hrel.ready pc hpc hw hx hrun (PcOk.of_exec ht hp1 hx1)
-    obtain ⟨s2, z2, k2, hrun2, hzrun2, hrel2, hm2⟩ :=
-      prog_machine zrom rs hx ht (k + 1) { S with rv := s1 } z1 (n + 1) hrel1 hrest
-    exact ⟨s2, z2, k1 + k2, .step hrun hrun2, ZRun.append hzrun hzrun2, hrel2,
-      fun hp => .step hm1 (hm2 hp)⟩
-  | k + 2, S, z, n, hrel, .inr ⟨⟨pc, i, hpc, hi⟩, hrest⟩ => by
-    obtain ⟨s2, z1, hrun, hzrun, hrel1, -, hr1, hpc1, hmem1, -⟩ :=
-      fused_rel S.rv z rs hrel pc hpc zrom i hi.toFAt n
-    obtain ⟨t1, h1, h2⟩ : ∃ t1, (interpretSailEffects (try_step n false)).run S.rv = .ok false t1 ∧
-        (interpretSailEffects (try_step (n + 1) false)).run t1 = .ok false s2 := by
-      have hrun' := hrun
-      cases hrun' with
-      | step h1 r => cases r with
-        | step h2 r2 => cases r2 with
-          | done => exact ⟨_, h1, h2⟩
-    have e1 : rvNext n S.rv = t1 := rvNext_of h1
-    rw [e1] at hr1 hpc1 hmem1
-    rw [e1, rvNext_of h2] at hrest
-    obtain ⟨s3, z3, k3, hrun3, hzrun3, hrel3, hm3⟩ :=
-      prog_machine zrom rs hx ht k { S with rv := s2 } z1 (n + 2) hrel1 hrest
-    have hw1 : WordOk S.rv.mem rs pc := ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_u _⟩
-    have hw2 : WordOk t1.mem rs (pc + 4) :=
-      ⟨hi.x3, _, readWord_of (by rw [hmem1]; exact hi.g0) (by rw [hmem1]; exact hi.g1)
-        (by rw [hmem1]; exact hi.g2) (by rw [hmem1]; exact hi.g3), notSys_jr _⟩
-    refine ⟨s3, z3, 1 + k3, by simpa [Nat.add_comm] using RVRun.append hrun hrun3,
-      ZRun.append hzrun hzrun3, hrel3, fun hp => ?_⟩
-    have hp2 : PcOk s2 := by
-      cases k with
-      | zero => cases hrun3; exact hp
-      | succ k => obtain ⟨p, hp', hx'⟩ := RunOkT.exec hrest; exact PcOk.of_exec ht hp' hx'
-    have m1 := mstep S rs hrel.ready pc hpc hw1 hx h1 (PcOk.of_exec ht hpc1 hi.x3)
-    have m2 := mstep { S with rv := t1 } rs hr1 (pc + 4) hpc1 hw2 hx h2 hp2
-    rw [show k + 2 = 0 + 1 + 1 + k by omega]
-    exact MRun.append (.step m1 (.step m2 (.done _))) (hm3 hp)
+/-- A step of the machine the simulation takes (`MStep`), at an executable
+    code address, the exit address not executable and the step not
+    trapped, recorded: left to sail-riscv, or run by substitution. -/
+theorem _root_.Equiv.Sim.MStep.toRun {C : BitVec 64 → Prop} {rs : List PMA_Region} {n m : Nat} {S S'' : ZiskRiscv.State model}
+    {s' : RVState} (h : MStep rs n S.rv s') (hr : StepReady S.rv rs) {pc : BitVec 64}
+    (hpc : S.rv.regs.get? Register.PC = some pc) (hex : ExecAt rs pc) (hc : C pc) (hx : ¬ ExecAt rs EXIT_ADDR)
+    (ht : PcOk s') (hrest : MRunR C m { S with rv := s' } S'') : MRunR C (m + 1) S S'' := by
+  have hg : model.getPC S.rv = pc := by simp [model, hpc]
+  cases h with
+  | plain pc' e hpc' hw hop hrun =>
+    rw [hpc] at hpc'; cases hpc'
+    exact .step (mstepR S rs hr pc hpc ⟨hex, e, hw, hop⟩ hx hrun ht) hrest
+  | subst pc' w w' zr s1 hpc' hw hd hr1 hrun he =>
+    rw [hpc] at hpc'; cases hpc'
+    subst he
+    obtain ⟨p, hp, hpt⟩ := ht
+    have hp1 : s1.regs.get? Register.PC = some p := by
+      rw [← hp]; simp only [mPost]; rw [setX_get_other _ _ _ _ rfl]
+    refine .subst ⟨?_, ?_, w, w', zr, s1, ?_, ?_, ?_, ?_, ?_⟩ hrest
+    · rw [hg]; intro h; have h' : pc = EXIT_ADDR := h; exact hx (h' ▸ hex)
+    · rw [hg]; exact hc
+    · rw [hg]; exact hw
+    · rw [hg]; exact hd
+    · rw [hg]; exact model_step hr1 hrun
+    · simp [model, hp1, hpt]
+    · rw [hg]
 
 /-! ## The machine's end -/
 
