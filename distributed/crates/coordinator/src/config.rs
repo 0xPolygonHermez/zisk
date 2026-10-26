@@ -63,8 +63,8 @@ pub struct ServiceConfig {
 ///
 /// Workers send periodic heartbeats. A worker is considered dead when
 /// `heartbeat_interval_seconds × heartbeat_max_missed` seconds elapse with no
-/// heartbeat while the worker is in `Computing` state. Dead workers cause their
-/// job to be aborted.
+/// heartbeat, whatever its state. A dead worker's job is aborted, and the worker
+/// is disconnected and its stream closed, so it reconnects if it was only stalled.
 ///
 /// ## Stale worker cleanup
 ///
@@ -97,7 +97,7 @@ pub struct CoordinatorConfig {
     pub distributed_aggregation: bool,
     /// Expected interval between worker heartbeats. Default: 30s.
     pub heartbeat_interval_seconds: u64,
-    /// Number of missed heartbeats before a computing worker is considered dead.
+    /// Number of missed heartbeats before a worker is considered dead.
     /// Dead threshold = `heartbeat_interval_seconds × heartbeat_max_missed`. Default: 3.
     pub heartbeat_max_missed: u32,
     /// How often the background monitor sweeps for timeouts and stale heartbeats. Default: 10s.
