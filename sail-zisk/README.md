@@ -176,11 +176,16 @@ transpilation.
   function, kept in step with the Rust (`transpilers/riscv`) by a CI check;
   the equivalence proofs then take T(P) from it instead of as a hypothesis.
   Started: `lean/Transpiler/Spec.lean` describes RV64I but for `ebreak`
-  and the CSRs, x0 forms included, Zifencei, M, A, Zba, Zbs, Zbb and Zbkb,
-  and
+  and CSR accesses outside the contract, x0 forms included, Zifencei, M, A,
+  Zba, Zbs, Zbb and Zbkb, and the contract's CSR forms (§§ 6–8: the ZisK
+  calls, from what the machine's decoder makes of them, the sequences the
+  transpiler refuses, `csrs ID, x0`, reading `marchid`; not yet the memset
+  sequence of three words, which the next word does not settle), and
   `lean/Transpiler/Bios.lean` the BIOS around them; `make transpiler-check`
   finds both equal to the Rust on every instruction they describe in the 129
-  compliance tests (1 281 987 instructions, the BIOS's included) and the
+  compliance tests and `test/transpiler/csr_forms.S`, every CSR form of the
+  contract and the refused sequences, assembled when `RISCV_GCC` is there
+  (1 282 136 instructions, the BIOS's included), and the
   fibonacci guest (11 409). Still to do: the rest of the instruction set;
   wiring `make transpiler-check` and `make decoder-diff` into CI; and the
   whole ZisK ROM of a program from the spec, internal addresses included,
@@ -228,9 +233,9 @@ transpilation.
   RISC-V model; its step, `try_step 0 true`, the one the step lemmas are
   about once the hart is active (`lean/Equiv/RiscvTryStep.lean`); every
   instruction the simulation covers left by the machine to sail-riscv
-  (not SYSTEM's opcode); whole runs (`prog_machine`: the runs of
-  `prog_spec` are runs of the machine, given the exit address and the trap
-  vector are not executable); and the machine's end on a return to the
+  (not SYSTEM's opcode); whole runs (`prog_rom`, `lean/Equiv/SpecRom.lean`: the
+  runs the simulation covers are runs of the machine, given the exit
+  address and the trap vector are not executable); and the machine's end on a return to the
   initial ra or the exit system call. Assembled
   (`lean/Equiv/Theorem.lean`: `exit_end`, `return_end`): for a program
   started as the contract says, on memory as ZisK starts it (every byte of

@@ -197,8 +197,15 @@ compliance:
 ## and what the spec gives, compared instruction by instruction, field by
 ## field (lean/TranspilerCheck). By default the ELFs `make compliance` built,
 ## for SUITES; an ELF the transpiler rejects (Zbc's) is skipped, and said so.
-TRANSPILER_ELFS ?= $(foreach s,$(SUITES),$(wildcard build/compliance/$(s)/*.elf))
-transpiler-check:
+## With them, the hand-written programs of test/transpiler (the CSR forms of
+## the contract's §§ 6–8, which the suites lack), when RISCV_GCC is there.
+TRANSPILER_TESTS := $(if $(shell command -v $(RISCV_GCC) 2>/dev/null),$(patsubst test/transpiler/%.S,build/transpiler/%.elf,$(wildcard test/transpiler/*.S)))
+TRANSPILER_ELFS ?= $(foreach s,$(SUITES),$(wildcard build/compliance/$(s)/*.elf)) $(TRANSPILER_TESTS)
+build/transpiler/%.elf: test/transpiler/%.S test/compliance/env/link.ld
+	@mkdir -p $(dir $@)
+	$(RISCV_GCC) -march=rv64ima_zicsr -mabi=lp64 -nostdlib -T test/compliance/env/link.ld -o $@ $< 2>/dev/null \
+	  || $(RISCV_GCC) -march=rv64ima -mabi=lp64 -nostdlib -T test/compliance/env/link.ld -o $@ $<
+transpiler-check: $(TRANSPILER_TESTS)
 	cargo build --release -q -p zisk-sail-difftest
 	cd lean && $(LAKE) build transpiler_check
 	@rm -rf build/transpiler-check && mkdir -p build/transpiler-check

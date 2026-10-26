@@ -30,6 +30,7 @@
   output on programs it accepts.
 -/
 import Zisk
+import ZiskRiscv.Decode
 
 namespace Transpiler
 
@@ -136,7 +137,7 @@ inductive Inst
   | shadd (op : ShAdd) | slliuw | zbs (op : ZbsOp) | zbsi (op : ZbsOp) | zbb (op : ZbbOp)
   | zbbw (op : ZbbWOp) | rori | roriw | pack (op : PackOp) | packw | sext (op : SextOp) | zexth
   | byte (op : ByteOp) | count (op : CountOp) | adduw | shadduw (op : ShAdd)
-  | amo (op : AmoOp) (d : Bool) | lr (d : Bool) | sc (d : Bool)
+  | amo (op : AmoOp) (d : Bool) | lr (d : Bool) | sc (d : Bool) | csr
   deriving BEq, Repr
 
 /-- What `decode_32` decodes a word to, among the instructions described.
@@ -232,7 +233,7 @@ def decode (w : BitVec 32) : Option Inst :=
     | 5 => some (.branch .bge) | 6 => some (.branch .bltu) | 7 => some (.branch .bgeu) | _ => none
   | 103 => if f3 == 0 then some .jalr else none
   -- ecall is the one word 0x00000073 (riscv_interpreter.rs): rd and rs1 0 too
-  | 115 => if w == 0x00000073#32 then some .ecall else none
+  | 115 => if w == 0x00000073#32 then some .ecall else if f3 == 0 then none else some .csr
   | 111 => some .jal
   | _ => none
 
@@ -459,6 +460,73 @@ def sc (w : BitVec 32) (d : Bool) (pc ia : BitVec 64) : List (BitVec 64 × zisk_
      (ia, mk (.A_IMM, 0) (.B_IMM, 0) (.ZOP_COPYB ()) (storeReg (rd w)) (pc + 4 - ia) (pc + 4 - ia)
        (w := if d then 8 else 4))]
 
+
+/-! ## The CSRs (contract §§ 6–8) -/
+
+/-- The CSR cells (`CSR_ADDR`): CSR k's at CSR_ADDR + 8k. -/
+def CSR_ADDR : BitVec 64 := 0xA0408000
+
+/-- Where a call with a count operand puts it (`EXTRA_PARAMS_ADDR`). -/
+def EXTRA_PARAMS_ADDR : BitVec 64 := 0xA0400F00
+
+/-- `halt_with_error`: the halt, ending the run in error. -/
+def halt : zisk_inst := { mk (.A_IMM, 0) (.B_IMM, 0) (.ZOP_HALT ()) (j1 := 4) (j2 := 4) with is_end := true }
+
+/-- A call's operand as an a source. -/
+def argA : ZiskRiscv.Arg → a_src × BitVec 64
+  | .reg r => srcA r
+  | .imm v => (.A_IMM, v)
+  | .freeInput => (.A_MEM, 0x1000_0000)
+
+/-- A call's operand as a b source; the free input is the 8 bytes at INPUT_ADDR. -/
+def argB : ZiskRiscv.Arg → b_src × BitVec 64
+  | .reg r => srcB r
+  | .imm v => (.B_IMM, v)
+  | .freeInput => (.B_MEM, 0x1000_0000)
+
+/-- The ops whose jmp_off1 is the next instruction's offset, not an
+    extended argument. -/
+def fcallOp : zisk_op → Bool
+  | .ZOP_FCALL_PARAM () | .ZOP_FCALL_GET () | .ZOP_FCALL () => true
+  | _ => false
+
+/-- A ZisK call as the transpiler emits it (`create_extended_precompiles_op`
+    and its kin): the op on a and b, c to rd, the extended argument in
+    jmp_off1, on past the sequence; with a count, the count first stored at
+    EXTRA_PARAMS_ADDR, the op at ia (`create_precompiles_triple_param_op`). -/
+def callInsts (c : ZiskRiscv.Call) (pc ia : BitVec 64) : List (BitVec 64 × zisk_inst) :=
+  let next := BitVec.ofNat 64 (4 * c.len)
+  match c.count with
+  | none =>
+    [(pc, mk (argA c.a) (argB c.b) c.op (storeReg c.rd) (if fcallOp c.op then next else c.ext) next)]
+  | some r =>
+    [(pc, mk (.A_IMM, 0) (srcB r) (.ZOP_COPYB ()) (.ST_MEM, EXTRA_PARAMS_ADDR, false) (ia - pc) (ia - pc)),
+     (ia, mk (argA c.a) (argB c.b) c.op (storeReg c.rd) 0 (pc + next - ia))]
+
+/-- The words the machine's decoder reads: w at pc, the next word after it. -/
+def fetch2 (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) : Nat → Option (BitVec 32) :=
+  fun a => if a = pc.toNat then some w else if a = pc.toNat + 4 then next else none
+
+/-- A CSR instruction, in the contract's forms: what the machine's decoder
+    (ZiskRiscv/Decode.lean, the transpiler's dispatch) makes of it — a ZisK
+    call, `csrs ID, x0` (a nop), a sequence the transpiler refuses (a halt)
+    — and reading `marchid` (a copy of its cell). Other CSR accesses, and
+    the memset sequence of three words, which the next word does not
+    settle, are not described; nor are zkvmcalls (precondition Z). -/
+def csr (w : BitVec 32) (pc : BitVec 64) (next : Option (BitVec 32)) (ia : BitVec 64) : Option (List (BitVec 64 × zisk_inst)) :=
+  let f := ZiskRiscv.fields w
+  if 0x850 ≤ f.csr ∧ f.csr ≤ 0x8BF ∨ 0x8E0 ≤ f.csr ∧ f.csr ≤ 0x8E7 then none
+  else if ZiskRiscv.kind f == .csrrsi && f.csr == 0x816 && f.rs1 == 2 then none
+  else match ZiskRiscv.decode (fetch2 pc w next) pc.toNat with
+    | .call c => some (callInsts c pc ia)
+    | .nop => some [(pc, mk (.A_IMM, 0) (.B_IMM, 0) (.ZOP_COPYB ()) (j1 := 4) (j2 := 4))]
+    | .malformed _ => some [(pc, halt)]
+    | .riscv =>
+      if ZiskRiscv.kind f == .csrrs && f.csr == 0xF12 && f.rs1 == 0 && f.rd != 0 then
+        some [(pc, mk (.A_IMM, 0) (.B_MEM, CSR_ADDR + 0xF12 * 8) (.ZOP_COPYB ()) (storeReg f.rd) 4 4)]
+      else none
+    | _ => none
+
 /-- `convert`: the ZisK instructions for the instruction w at pc, followed
     by the word `next` (none at the end of the code, or before a 16-bit
     parcel), with the internal addresses from ia on. -/
@@ -529,5 +597,6 @@ def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : B
   | some (.amo op d) => some (amo w op d pc ia)
   | some (.lr d) => one (mk (srcA (rs1 w)) (.B_IND, 0) (aLoad d) (storeReg (rd w)) 4 4 (w := aWidth d))
   | some (.sc d) => some (sc w d pc ia)
+  | some .csr => csr w pc next ia
 
 end Transpiler
