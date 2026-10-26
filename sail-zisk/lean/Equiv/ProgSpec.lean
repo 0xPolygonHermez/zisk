@@ -20,6 +20,7 @@ import Equiv.ZbbRotSim
 import Equiv.ZbkbSim
 import Equiv.ZbbByteSim
 import Equiv.ZbbCountSim
+import Equiv.UwSim
 import ZiskRiscv.Machine
 import Equiv.RamOnly
 
@@ -282,22 +283,25 @@ theorem step_relT (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     exact ⟨s', z', h1, h2, h3, RamOnly.of_eq hm⟩
 
 /-- What one step of sail-riscv needs: an instruction, run in one ZisK step,
-    or a jalr with an odd offset, in two. -/
+    or a jalr with an odd offset or a Zba .uw form, in two. -/
 def OneOkT (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (s : RVState) : Prop :=
   ∃ pc, s.regs.get? Register.PC = some pc ∧
     ((∃ o, StepOkT s rs pc zrom o) ∨
      (∃ i, JrtAt s rs pc zrom i (nextWord s pc) ∧ i.imm[0] = true ∧ ∃ v1, getX s i.rs1.toNat = some v1 ∧
-        (jalrTarget v1 i.imm)[0] = false ∧ (jalrTarget v1 i.imm)[1] = false))
+        (jalrTarget v1 i.imm)[0] = false ∧ (jalrTarget v1 i.imm)[1] = false) ∨
+     (∃ i, UwAt s rs pc zrom i (nextWord s pc)))
 
 theorem one_stepT (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hrel : Rel s z rs)
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (h : OneOkT rs zrom s) (n : Nat) :
     ∃ s' z' k', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧ ZRun zrom k' z z' ∧
       Rel s' z' rs ∧ RamOnly s.mem s'.mem := by
-  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, hodd, v1, hv1, t0, t1⟩⟩ := h
+  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, hodd, v1, hv1, t0, t1⟩ | ⟨i, hi⟩⟩ := h
   · obtain ⟨s', z', h1, h2, h3, h4⟩ := step_relT s z rs hrel pc hpc zrom o ho n
     exact ⟨s', z', 1, h1, .step h2 (.done _), h3, h4⟩
   · obtain ⟨ia, hjo⟩ := hi.toJoAt hodd
     obtain ⟨s', z', h1, h2, h3, -, hm⟩ := jo_rel s z rs hrel pc hpc zrom i ia hjo v1 hv1 ⟨t0, t1⟩ n
+    exact ⟨s', z', 2, h1, h2, h3, RamOnly.of_eq hm⟩
+  · obtain ⟨s', z', h1, h2, h3, -, hm⟩ := uwstep_rel s z rs hrel pc hpc zrom i _ hi n
     exact ⟨s', z', 2, h1, h2, h3, RamOnly.of_eq hm⟩
 
 /-- For the next k steps of sail-riscv, from the state it reaches: each one

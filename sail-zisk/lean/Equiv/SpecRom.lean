@@ -110,9 +110,10 @@ theorem StepOkT.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : Bi
 theorem OneOkT.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {rs : List PMA_Region} {s : RVState} (hs : SpecRom zrom C s.mem)
     (hc : ∀ pc, s.regs.get? Register.PC = some pc → C pc) (h : OneOkT rs zr s) : OneOkT rs zrom s := by
-  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, rest⟩⟩ := h
+  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, rest⟩ | ⟨i, hi⟩⟩ := h
   · exact ⟨pc, hpc, .inl ⟨o, StepOkT.retarget hs (hc pc hpc) o ho⟩⟩
-  · exact ⟨pc, hpc, .inr ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩⟩
+  · exact ⟨pc, hpc, .inr (.inl ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩)⟩
+  · exact ⟨pc, hpc, .inr (.inr ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }⟩)⟩
 
 /-- The fused pair: its translation, with the jalr as the next word. -/
 theorem FtAt.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}

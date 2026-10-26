@@ -135,6 +135,8 @@ theorem notSys_zexth (i : ZexthInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := b
   simp only [ZexthInstr.encode]; bv_decide
 theorem notSys_byte (i : ByteInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
   simp only [ByteInstr.encode]; bv_decide
+theorem notSys_uw (i : UwInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
+  simp only [UwInstr.encode]; bv_decide
 theorem notSys_count (i : CountInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
   simp only [CountInstr.encode]; cases i.op <;> simp only [Transpiler.CountOp.opc] <;> bv_decide
 theorem notSys_m (i : MInstr) : i.encode.extractLsb' 0 7 ≠ 0x73#7 := by
@@ -180,9 +182,10 @@ theorem StepOkT.word {s : RVState} {rs : List PMA_Region} {pc : BitVec 64}
 
 theorem OneOkT.word {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {s : RVState}
     (h : OneOkT rs zrom s) : ∃ pc, s.regs.get? Register.PC = some pc ∧ WordOk s.mem rs pc := by
-  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, -⟩⟩ := h
+  obtain ⟨pc, hpc, ⟨o, ho⟩ | ⟨i, hi, -⟩ | ⟨i, hi⟩⟩ := h
   · exact ⟨pc, hpc, StepOkT.word o ho⟩
   · exact ⟨pc, hpc, hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_jr i⟩
+  · exact ⟨pc, hpc, hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, notSys_uw i⟩
 
 /-- A state the runs go on from is at an executable pc. -/
 theorem RunOkT.exec {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {s : RVState} {n : Nat} :

@@ -16,9 +16,8 @@
     (`registerOp`, `immediateOp`, `copyb`, `loadOp`, `storeOp`, ...), and
     `convert`, which picks one per instruction.
 
-  So far: RV64I but for ebreak and the CSRs; Zifencei; M; Zba's single-instruction
-  forms (sh1add, sh2add, sh3add, slli.uw); Zbs; Zbb; and Zbkb. An
-  instruction it does not describe is `none`.
+  So far: RV64I but for ebreak and the CSRs; Zifencei; M; Zba; Zbs; Zbb;
+  and Zbkb. An instruction it does not describe is `none`.
 
   Internal addresses (the odd ROM addresses a translation of more than one
   ZisK instruction continues at) come, in the Rust, from a counter global to
@@ -132,7 +131,7 @@ inductive Inst
   | load (op : LOp) | store (op : SzOp) | lui | auipc | jal | jalr | m (op : MOp) | ecall | fence
   | shadd (op : ShAdd) | slliuw | zbs (op : ZbsOp) | zbsi (op : ZbsOp) | zbb (op : ZbbOp)
   | zbbw (op : ZbbWOp) | rori | roriw | pack (op : PackOp) | packw | sext (op : SextOp) | zexth
-  | byte (op : ByteOp) | count (op : CountOp)
+  | byte (op : ByteOp) | count (op : CountOp) | adduw | shadduw (op : ShAdd)
   deriving BEq, Repr
 
 /-- What `decode_32` decodes a word to, among the instructions described.
@@ -205,6 +204,8 @@ def decode (w : BitVec 32) : Option Inst :=
   | 59 => match f3, f7 with
     | 0, 0 => some (.r .addw) | 0, 32 => some (.r .subw) | 1, 0 => some (.r .sllw)
     | 5, 0 => some (.r .srlw) | 5, 32 => some (.r .sraw) | 1, 48 => some (.zbbw .rolw) | 5, 48 => some (.zbbw .rorw)
+    | 0, 4 => some .adduw
+    | 2, 16 => some (.shadduw .sh1) | 4, 16 => some (.shadduw .sh2) | 6, 16 => some (.shadduw .sh3)
     -- zext.h is packw with rs2 x0, and comes first in the Rust
     | 4, 4 => if (rs2 w) = 0 then some .zexth else some .packw
     | 0, 1 => some (.m .mulw) | 4, 1 => some (.m .divw) | 5, 1 => some (.m .divuw) | 6, 1 => some (.m .remw)
@@ -387,6 +388,16 @@ def SOp.zop : SOp → zisk_op
   | .slli => .ZOP_SLL () | .srli => .ZOP_SRL () | .srai => .ZOP_SRA ()
   | .slliw => .ZOP_SLL_W () | .srliw => .ZOP_SRL_W () | .sraiw => .ZOP_SRA_W ()
 
+/-- `add_u_w` and `sh_add_u_w_native`: rs1's low word, and(r[rs1],
+    0xffffffff), to ZisK's register 32, on to the internal address ia; there
+    add(r[rs2], r[32]) (add.uw) or sh<n>add(r[32], r[rs2]) -> r[rd], on to
+    pc + 4. -/
+def uw (w : BitVec 32) (op : Option ShAdd) (pc ia : BitVec 64) : List (BitVec 64 × zisk_inst) :=
+  [(pc, mk (srcA (rs1 w)) (.B_IMM, 0xFFFFFFFF) (.ZOP_AND ()) (storeReg 32) (ia - pc) (ia - pc)),
+   (ia, match op with
+    | none => mk (srcA (rs2 w)) (srcB 32) (.ZOP_ADD ()) (storeReg (rd w)) (pc + 4 - ia) (pc + 4 - ia)
+    | some o => mk (srcA 32) (srcB (rs2 w)) o.zop (storeReg (rd w)) (pc + 4 - ia) (pc + 4 - ia))]
+
 /-- `convert`: the ZisK instructions for the instruction w at pc, followed
     by the word `next` (none at the end of the code, or before a 16-bit
     parcel), with the internal addresses from ia on. -/
@@ -452,5 +463,7 @@ def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : B
   | some .zexth => one (zextH w)
   | some (.byte op) => one (singleOp w op.zop)
   | some (.count op) => one (singleOp w op.zop)
+  | some .adduw => some (uw w none pc ia)
+  | some (.shadduw op) => some (uw w (some op) pc ia)
 
 end Transpiler

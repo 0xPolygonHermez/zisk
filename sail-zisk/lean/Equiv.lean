@@ -98,3 +98,4 @@ import Equiv.Count.Ctz32
 import Equiv.RiscvZbbCount
 import Equiv.RiscvDecodeZbbCount
 import Equiv.ZbbCountSim
+import Equiv.UwSim

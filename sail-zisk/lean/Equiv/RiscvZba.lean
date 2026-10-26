@@ -1,8 +1,9 @@
 /-
   sail-riscv's Zba, the single-instruction forms, any registers: sh1add,
   sh2add, sh3add (ZBA_RTYPE: rs1 shifted by 1, 2 or 3, plus rs2) and
-  slli.uw (SLLIUW: rs1's low word, zero-extended, shifted): rd gets what
-  each computes.
+  slli.uw (SLLIUW: rs1's low word, zero-extended, shifted); and add.uw,
+  sh1add.uw, sh2add.uw, sh3add.uw (ZBA_RTYPEUW: rs1's low word,
+  zero-extended, shifted by 0 to 3, plus rs2): rd gets what each computes.
 -/
 import Equiv.RiscvM
 
@@ -39,6 +40,21 @@ theorem execute_slliuw (sh : BitVec 6) :
   have r1 := rX_run s rs1.toNat rs1.lt v1 h1
   simp only [rX_bits, wX_bits, toNatInt_toNat, interp_bind, interp_pure, run_bind', run_pure']
   rw [r1]; dsimp only
+  rw [wX_run s rd.toNat rd.lt]; rfl
+
+def zbauwVal (sh : BitVec 2) (a b : BitVec 64) : BitVec 64 :=
+  shift_bits_left (zero_extend (m := 64) (Sail.BitVec.extractLsb a 31 0)) sh + b
+
+include h1 h2 in
+theorem execute_zba_rtypeuw (sh : BitVec 2) :
+    (interpretSailEffects (execute_ZBA_RTYPEUW (.Regidx rs2) (.Regidx rs1) (.Regidx rd) sh)).run s
+      = .ok RETIRE_SUCCESS (setX s rd.toNat (zbauwVal sh v1 v2)) := by
+  simp only [execute_ZBA_RTYPEUW]
+  have r1 := rX_run s rs1.toNat rs1.lt v1 h1
+  have r2 := rX_run s rs2.toNat rs2.lt v2 h2
+  simp only [rX_bits, wX_bits, toNatInt_toNat, interp_bind, interp_pure, run_bind', run_pure']
+  rw [r1]; dsimp only
+  rw [r2]; dsimp only
   rw [wX_run s rd.toNat rd.lt]; rfl
 
 end Equiv.Riscv

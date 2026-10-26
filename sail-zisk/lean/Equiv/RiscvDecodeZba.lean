@@ -6,3 +6,5 @@ import Equiv.RiscvDecodeFence
 import Equiv.RiscvDecodeZbaBase
 import Equiv.Decode.Zba.Zba
 import Equiv.Decode.Zba.Slliuw
+import Equiv.Decode.Zba.AddUw
+import Equiv.Decode.Zba.ShaddUw

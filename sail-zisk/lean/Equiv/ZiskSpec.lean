@@ -18,34 +18,36 @@ open _root_.Zisk _root_.Zisk.Functions Sail Sail.ConcurrencyInterfaceV1
 open Register
 
 
-/-- The a source `ra` reads v: an immediate v, or a register 1..31 holding v. -/
+/-- The a source `ra` reads v: an immediate v, or a register 1..39 holding
+    v (x1..x31, or one of ZisK's own above them). -/
 def ASrc (ra : a_src × BitVec 64) (xs : Vector (BitVec 64) 40) (v : BitVec 64) : Prop :=
-  ra = (.A_IMM, v) ∨ ∃ r, 1 ≤ r ∧ r < 32 ∧ ra = (.A_REG, BitVec.ofNat 64 r) ∧ xs[(r : Int)]! = v
+  ra = (.A_IMM, v) ∨ ∃ r, 1 ≤ r ∧ r < 40 ∧ ra = (.A_REG, BitVec.ofNat 64 r) ∧ xs[(r : Int)]! = v
 
 /-- The b source `rb` reads v. -/
 def BSrc (rb : b_src × BitVec 64) (xs : Vector (BitVec 64) 40) (v : BitVec 64) : Prop :=
-  rb = (.B_IMM, v) ∨ ∃ r, 1 ≤ r ∧ r < 32 ∧ rb = (.B_REG, BitVec.ofNat 64 r) ∧ xs[(r : Int)]! = v
+  rb = (.B_IMM, v) ∨ ∃ r, 1 ≤ r ∧ r < 40 ∧ rb = (.B_REG, BitVec.ofNat 64 r) ∧ xs[(r : Int)]! = v
 
 theorem srcA_ASrc (xs : Vector (BitVec 64) 40) (r : Nat) (h : r < 32) :
     ASrc (Transpiler.srcA r) xs (regv xs r) := by
   unfold Transpiler.srcA regv
   by_cases h0 : r = 0
   · left; simp [h0]
-  · right; exact ⟨r, by omega, h, by simp [h0], by simp [h0]⟩
+  · right; exact ⟨r, by omega, by omega, by simp [h0], by simp [h0]⟩
 
 theorem srcB_BSrc (xs : Vector (BitVec 64) 40) (r : Nat) (h : r < 32) :
     BSrc (Transpiler.srcB r) xs (regv xs r) := by
   unfold Transpiler.srcB regv
   by_cases h0 : r = 0
   · left; simp [h0]
-  · right; exact ⟨r, by omega, h, by simp [h0], by simp [h0]⟩
+  · right; exact ⟨r, by omega, by omega, by simp [h0], by simp [h0]⟩
 
 set_option maxHeartbeats 4000000 in
 /-- Any pure op on register-or-immediate operands, its result to rd (none
-    for x0), on to pc + j1 if its flag is set, else pc + j2. The indirect
-    width `w`, which these operands never read, is any. -/
+    for x0; rd any of the 40, x1..x31 or ZisK's own), on to pc + j1 if its
+    flag is set, else pc + j2. The indirect width `w`, which these operands
+    never read, is any. -/
 theorem execute_mkj (s : ZState) (ra : a_src × BitVec 64) (rb : b_src × BitVec 64) (op : zisk_op)
-    (hop : PureOp op) (rd : Nat) (hd : rd < 32) (j1 j2 : BitVec 64)
+    (hop : PureOp op) (rd : Nat) (hd : rd < 40) (j1 j2 : BitVec 64)
     (xs : Vector (BitVec 64) 40) (pc st : BitVec 64)
     (hx : s.regs.get? Xs = some xs) (hpc : s.regs.get? PC = some pc) (hst : s.regs.get? Step = some st)
     (va vb : BitVec 64) (ha : ASrc ra xs va) (hb : BSrc rb xs vb) (w : Int := 8) :
@@ -85,7 +87,7 @@ theorem execute_mk (s : ZState) (ra : a_src × BitVec 64) (rb : b_src × BitVec 
       { s with regs := ((((linkRegs s.regs xs rd r.1).insert Zc r.1).insert Zflag r.2).insert
           Step (BitVec.addInt st 1)).insert PC (pc + 4) } := by
   intro r
-  have := execute_mkj s ra rb op hop rd hd 4 4 xs pc st hx hpc hst va vb ha hb
+  have := execute_mkj s ra rb op hop rd (by omega) 4 4 xs pc st hx hpc hst va vb ha hb
   simp only [ite_self] at this
   exact this
 
