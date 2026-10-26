@@ -3102,6 +3102,40 @@ mod tests {
         );
     }
 
+    /// A worker the sweep unregistered comes back on a new stream; when the drop
+    /// guard of its old stream fires, the new connection must survive. Reusing
+    /// the old connection's generation would fail the worker's next job and
+    /// leave it `Disconnected` while the new stream keeps heartbeating.
+    #[tokio::test]
+    async fn test_old_stream_guard_spares_worker_back_after_sweep() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |c| {
+                c.coordinator.stuck_recovery_threshold_seconds = 1;
+            })
+            .await;
+        let w0_id = workers[0].0.clone();
+        let old_generation = coordinator.workers_pool.connection_generation(&w0_id).await.unwrap();
+
+        coordinator.fail_job(&job_id, "intentional").await.unwrap();
+        {
+            let mut pending = coordinator.pending_recovery.write().await;
+            let entry = pending.get_mut(&w0_id).expect("worker in pending_recovery");
+            *entry = Utc::now() - chrono::Duration::seconds(60);
+        }
+        coordinator.cleanup_stuck_recovery_workers().await;
+        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, None);
+
+        let (sender, _msgs) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(w0_id.clone(), 1u32, Box::new(sender), WorkerState::Ready)
+            .await
+            .unwrap();
+
+        coordinator.disconnect_worker_if_generation(&w0_id, old_generation).await.unwrap();
+        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
+    }
+
     /// Fresh entries in `pending_recovery` (within the threshold) survive the
     /// sweep — only the timed-out ones are evicted.
     #[tokio::test]

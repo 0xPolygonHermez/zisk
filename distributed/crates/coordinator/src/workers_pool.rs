@@ -6,6 +6,7 @@
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 use zisk_cluster_common::{
@@ -46,7 +47,7 @@ pub struct WorkerInfo {
     pub connected_at: DateTime<Utc>,
     /// Timestamp of the most recent heartbeat.
     pub last_heartbeat: DateTime<Utc>,
-    /// Increments each time the worker reconnects (to detect stale connections).
+    /// Unique to each connection for the pool's lifetime (to detect stale connections).
     pub connection_generation: u64,
     /// Channel used to push messages to this worker.
     pub msg_sender: Box<dyn MessageSender + Send + Sync>,
@@ -96,6 +97,10 @@ impl Display for WorkerInfo {
 pub struct WorkersPool {
     /// Map of worker_id to WorkerInfo
     workers: RwLock<HashMap<WorkerId, WorkerInfo>>,
+    /// Next connection generation. Pool-wide rather than per entry: a worker
+    /// that is unregistered and registers again must not get the generation of
+    /// its old connection, whose drop guard may still fire.
+    next_generation: AtomicU64,
 }
 
 impl Default for WorkersPool {
@@ -107,7 +112,7 @@ impl Default for WorkersPool {
 impl WorkersPool {
     /// Creates a new empty workers pool.
     pub fn new() -> Self {
-        Self { workers: RwLock::new(HashMap::new()) }
+        Self { workers: RwLock::new(HashMap::new()), next_generation: AtomicU64::new(0) }
     }
 
     /// Returns the worker's state and connection generation if present.
@@ -320,6 +325,7 @@ impl WorkersPool {
             initial_state.clone(),
         );
         let mut workers = self.workers.write().await;
+        let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
 
         let is_new_worker = if let Some(worker) = workers.get_mut(&worker_id) {
             // Allow re-register from Disconnected/Idle/Ready freely. Allow
@@ -349,12 +355,15 @@ impl WorkersPool {
             worker.state = initial_state;
             worker.compute_capacity = connection.compute_capacity;
             worker.msg_sender = connection.msg_sender;
-            worker.connection_generation += 1;
+            worker.connection_generation = generation;
             worker.update_last_heartbeat();
 
             false
         } else {
-            workers.insert(worker_id.clone(), connection);
+            workers.insert(
+                worker_id.clone(),
+                WorkerInfo { connection_generation: generation, ..connection },
+            );
 
             true
         };
@@ -1259,6 +1268,23 @@ mod tests {
         // Stale guard with gen 0 should be a no-op
         pool.disconnect_worker_if_generation(&w1, 0).await.unwrap();
         assert_eq!(pool.worker_state(&w1).await, Some(WorkerState::Idle));
+    }
+
+    #[tokio::test]
+    async fn test_disconnect_if_generation_stale_after_unregister() {
+        let pool = WorkersPool::new();
+        let (w1, _) = register_test_worker(&pool, "w1").await;
+        let old = pool.connection_generation(&w1).await.unwrap();
+
+        // Removed (stuck-recovery sweep), then registered again as a new entry
+        pool.unregister_worker(&w1).await.unwrap();
+        let (sender, _) = MockMessageSender::new();
+        pool.register_worker(w1.clone(), 1u32, Box::new(sender), WorkerState::Ready).await.unwrap();
+        assert_ne!(pool.connection_generation(&w1).await, Some(old));
+
+        // The old connection's guard must not disconnect the new one
+        pool.disconnect_worker_if_generation(&w1, old).await.unwrap();
+        assert_eq!(pool.worker_state(&w1).await, Some(WorkerState::Ready));
     }
 
     #[tokio::test]
