@@ -148,14 +148,47 @@ theorem SStep.mstep {C : BitVec 64 → Prop} {S : ZiskRiscv.State model} {t : mo
     rw [← post_eq]; by_cases h : zr = 0 <;> simp [h]
   rw [ZiskRiscv.step, ZiskRiscv.step.go, e]
 
+/-- The machine's step on a ZisK call: not at the exit address, the call
+    decoded at pc, its run. -/
+theorem step_call {M : ZiskRiscv.RiscvModel} (S : ZiskRiscv.State M) (c : ZiskRiscv.Call) (S' : ZiskRiscv.State M)
+    (hx : M.getPC S.rv ≠ M.exitAddr)
+    (hd : ZiskRiscv.decode (ZiskRiscv.readWord (M.mem S.rv)) (M.getPC S.rv).toNat = .call c)
+    (hc : ZiskRiscv.call S c = .ok S') :
+    ZiskRiscv.step S = .ok (S', .running) := by
+  have e : ZiskRiscv.tryStep S = .ok (S', .running) := by
+    simp only [ZiskRiscv.tryStep, hd]
+    simp [hx, bind, Except.bind, hc, pure, Except.pure]
+  rw [ZiskRiscv.step, ZiskRiscv.step.go, e]
+
+/-- A machine step on a ZisK call, at a code address (`C`): not at the exit
+    address, the call's run; the call the decoder's on any words that agree
+    with memory at pc and, for a call of more than one word, at pc + 4, a
+    code address too. -/
+def CStep (C : BitVec 64 → Prop) (S S' : ZiskRiscv.State model) : Prop :=
+  model.getPC S.rv ≠ model.exitAddr ∧ C (model.getPC S.rv) ∧
+  ∃ c : ZiskRiscv.Call, ZiskRiscv.call S c = .ok S' ∧
+    (c.len ≠ 1 → C (model.getPC S.rv + 4) ∧ (model.getPC S.rv + 4).toNat = (model.getPC S.rv).toNat + 4) ∧
+    ∀ fetch : Nat → Option (BitVec 32),
+      fetch (model.getPC S.rv).toNat = ZiskRiscv.readWord (model.mem S.rv) (model.getPC S.rv).toNat →
+      (c.len ≠ 1 → fetch ((model.getPC S.rv).toNat + 4) =
+        ZiskRiscv.readWord (model.mem S.rv) ((model.getPC S.rv).toNat + 4)) →
+      ZiskRiscv.decode fetch (model.getPC S.rv).toNat = .call c
+
+theorem CStep.mstep {C : BitVec 64 → Prop} {S S' : ZiskRiscv.State model} (h : CStep C S S') :
+    ZiskRiscv.step S = .ok (S', .running) := by
+  obtain ⟨hx, -, c, hc, -, hd⟩ := h
+  exact step_call S c S' hx (hd _ rfl fun _ => rfl) hc
+
 /-- `n` machine steps, each left to sail-riscv or, on lr and sc at a code
-    address, run by substitution. -/
+    address, run by substitution, or a ZisK call at a code address. -/
 inductive MRunR (C : BitVec 64 → Prop) : Nat → ZiskRiscv.State model → ZiskRiscv.State model → Prop
   | done (S : ZiskRiscv.State model) : MRunR C 0 S S
   | step {n : Nat} {S S'' : ZiskRiscv.State model} {t : model.State} :
       RStep S t → MRunR C n { S with rv := t } S'' → MRunR C (n + 1) S S''
   | subst {n : Nat} {S S'' : ZiskRiscv.State model} {t : model.State} :
       SStep C S t → MRunR C n { S with rv := t } S'' → MRunR C (n + 1) S S''
+  | call {n : Nat} {S S' S'' : ZiskRiscv.State model} :
+      CStep C S S' → MRunR C n S' S'' → MRunR C (n + 1) S S''
 
 theorem MRunR.toMRun {C : BitVec 64 → Prop} {n : Nat} {S S' : ZiskRiscv.State model} (h : MRunR C n S S') :
     MRun n S S' := by
@@ -163,6 +196,7 @@ theorem MRunR.toMRun {C : BitVec 64 → Prop} {n : Nat} {S S' : ZiskRiscv.State 
   | done => exact .done _
   | step h1 _ ih => exact .step h1.mstep ih
   | subst h1 _ ih => exact .step h1.mstep ih
+  | call h1 _ ih => exact .step h1.mstep ih
 
 theorem MRunR.append {C : BitVec 64 → Prop} {a b : Nat} {S T U : ZiskRiscv.State model} (h1 : MRunR C a S T)
     (h2 : MRunR C b T U) : MRunR C (a + b) S U := by
@@ -174,6 +208,9 @@ theorem MRunR.append {C : BitVec 64 → Prop} {a b : Nat} {S T U : ZiskRiscv.Sta
   | @subst m _ _ _ h r ih =>
     rw [show m + 1 + b = (m + b) + 1 by omega]
     exact .subst h (ih h2)
+  | @call m _ _ _ h r ih =>
+    rw [show m + 1 + b = (m + b) + 1 by omega]
+    exact .call h (ih h2)
 
 /-- `mstep`, recording the step. -/
 theorem mstepR (S : ZiskRiscv.State model) (rs : List PMA_Region) (hr : StepReady S.rv rs) (pc : BitVec 64)

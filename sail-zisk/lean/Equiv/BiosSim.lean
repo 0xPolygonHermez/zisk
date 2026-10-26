@@ -7,6 +7,7 @@
 import Equiv.ZiskBios
 import Equiv.Block
 import Equiv.Sim
+import Equiv.ZStepKeep
 
 set_option linter.unusedSimpArgs false
 
@@ -51,6 +52,11 @@ theorem zstep_facts {zrom : BitVec 64 → zisk_inst} {z : Equiv.Zisk.ZState} {pc
   refine ⟨_, by rw [zstep_run zrom z pc hpc, hi]; exact he, ?_, ?_, ⟨st', ?_⟩, ?_, ?_, rfl⟩ <;>
     simp [Std.ExtDHashMap.get?_insert]
 
+theorem fkeep_at {zrom : BitVec 64 → zisk_inst} {z z' : Equiv.Zisk.ZState} {pc : BitVec 64}
+    (hpc : z.regs.get? .PC = some pc) {inst : zisk_inst} (hi : zrom pc = inst)
+    (hw : Equiv.Zisk.writesF inst.op = false) {b : Bool} (hr : (zstep zrom).run z = .ok b z') : FKeep z z' :=
+  zstep_fkeep hpc (hi ▸ hw) hr
+
 set_option maxHeartbeats 8000000 in
 /-- The BIOS's start: six ZisK steps from ROM_ENTRY reach the program's
     entry, with a0, a1, ra and the two CSR cells set. -/
@@ -60,7 +66,7 @@ theorem bios_start (zrom : BitVec 64 → zisk_inst) (entry : BitVec 64) (hb : Bi
     (hst : z.regs.get? .Step = some st) (hze : z.regs.get? .Zerror = some false) :
     ∃ z', ZRun zrom 6 z z' ∧ z'.regs.get? .PC = some entry ∧ z'.regs.get? .Xs = some (startXs xs) ∧
       (∃ st', z'.regs.get? .Step = some st') ∧ z'.regs.get? .Zerror = some false ∧
-      z'.mem = startMem z.mem := by
+      z'.mem = startMem z.mem ∧ FKeep z z' := by
   -- 0x1000: jump over the end instruction
   have e0 := Equiv.Zisk.execute_mkj z (.A_IMM, 0) (.B_IMM, 0) (.ZOP_COPYB ()) Equiv.Zisk.copyb_pure 0 (by omega)
     8 8 xs _ st hx hpc hst 0 0 (Or.inl rfl) (Or.inl rfl)
@@ -118,8 +124,22 @@ theorem bios_start (zrom : BitVec 64 → zisk_inst) (entry : BitVec 64) (hb : Bi
       (.ST_REG, 1, true) 0 4 (setPc := true)) (by simp [bios])) (by simpa using e5)
   have q6 : z6.regs.get? .Zerror = some false := by
     rw [f6]; simp [Std.ExtDHashMap.get?_insert, q5]
+  have k1 := fkeep_at hpc (hb.get (a := 0x1000) (i := Transpiler.copyImm 0 (.ST_NONE, 0, false) 8 8)
+    (by simp [bios])) rfl r1
+  have k2 := fkeep_at p1 (hb.get (a := 0x1000 + 8) (i := Transpiler.copyImm Transpiler.ARCH_ID_ZISK
+    (.ST_MEM, Transpiler.ARCH_ID_CSR_ADDR, false) 4 4) (by simp [bios])) rfl r2
+  have k3 := fkeep_at p2 (hb.get (a := 0x1000 + 8 + 4) (i := Transpiler.copyImm 0x107C
+    (.ST_MEM, Transpiler.MTVEC_ADDR, false) 4 4) (by simp [bios])) rfl r3
+  have k4 := fkeep_at p3 (hb.get (a := 0x1000 + 8 + 4 + 4) (i := Transpiler.mk (.A_IMM, 0)
+    (.B_IMM, Transpiler.INPUT_ADDR) (.ZOP_COPYB ()) (Transpiler.storeReg 10) 0 4)
+    (by simp [bios, Transpiler.storeReg, Transpiler.copyImm])) rfl r4
+  have k5 := fkeep_at p4 (hb.get (a := 0x1000 + 8 + 4 + 4 + 4) (i := Transpiler.mk (.A_IMM, 0)
+    (.B_IMM, Transpiler.OUTPUT_ADDR) (.ZOP_COPYB ()) (Transpiler.storeReg 11) 0 4)
+    (by simp [bios, Transpiler.storeReg, Transpiler.copyImm])) rfl r5
+  have k6 := fkeep_at p5 (hb.get (a := 0x1000 + 8 + 4 + 4 + 4 + 4) (i := Transpiler.mk (.A_IMM, 0)
+    (.B_IMM, entry) (.ZOP_COPYB ()) (.ST_REG, 1, true) 0 4 (setPc := true)) (by simp [bios])) rfl r6
   refine ⟨z6, .step r1 (.step r2 (.step r3 (.step r4 (.step r5 (.step r6 (.done _)))))), by simpa using p6,
-    ?_, ⟨s6, t6⟩, q6, ?_⟩
+    ?_, ⟨s6, t6⟩, q6, ?_, ((((k1.trans k2).trans k3).trans k4).trans k5).trans k6⟩
   · rw [x6]; simp [Std.ExtDHashMap.get?_insert, startXs, Transpiler.ROM_ENTRY, Transpiler.OUTPUT_BLOCK]
   · rw [m6, m5, m4, m3, m2, m1]; rfl
 
@@ -155,9 +175,9 @@ theorem start_rel (zrom : BitVec 64 → zisk_inst) (entry : BitVec 64) (hb : Bio
     (hx : z.regs.get? .Xs = some (Vector.replicate 40 0)) (hpc : z.regs.get? .PC = some Transpiler.ROM_ENTRY)
     (hst : z.regs.get? .Step = some st) (hze : z.regs.get? .Zerror = some false) (hzm : z.mem = m0)
     (s : Equiv.Riscv.RVState) (rs : List LeanZiskRV.PMA_Region) (hs : Start s rs entry m0) :
-    ∃ z', ZRun zrom 6 z z' ∧ Rel s z' rs := by
-  obtain ⟨z', hrun, hp, hx', ⟨st', hst'⟩, hze', hm⟩ := bios_start zrom entry hb z _ st hx hpc hst hze
-  refine ⟨z', hrun, hs.ready, ⟨_, hx', ?_⟩, ⟨entry, hs.pc, hp⟩, ⟨st', hst', hze'⟩, by rw [hm, hzm, hs.mem]⟩
+    ∃ z', ZRun zrom 6 z z' ∧ Rel s z' rs ∧ FKeep z z' := by
+  obtain ⟨z', hrun, hp, hx', ⟨st', hst'⟩, hze', hm, hk⟩ := bios_start zrom entry hb z _ st hx hpc hst hze
+  refine ⟨z', hrun, ⟨hs.ready, ⟨_, hx', ?_⟩, ⟨entry, hs.pc, hp⟩, ⟨st', hst', hze'⟩, by rw [hm, hzm, hs.mem]⟩, hk⟩
   intro k h1 h2
   rw [startXs_get k h2]
   by_cases e1 : k = 1

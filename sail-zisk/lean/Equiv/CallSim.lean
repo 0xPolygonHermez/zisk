@@ -9,6 +9,7 @@
 -/
 import Equiv.ZiskCall
 import ZiskRiscv.Machine
+import Equiv.MemGrow
 
 set_option linter.unusedSimpArgs false
 
@@ -82,14 +83,14 @@ theorem runOp_sim (op : zisk_op) (a b ext : BitVec 64) (m : Mem) (f : ZiskRiscv.
       (zisk_exec_mem op a b (if zisk_op_is_precompiled op then ext else 0)).run z = .ok r z1 ∧
       Equiv.normIn z1.mem = Equiv.normIn m' ∧ FcallRel f' z1 ∧
       (∀ reg, fregs reg = false → z1.regs.get? reg = z.regs.get? reg) ∧
-      Equiv.RamOnly m m' ∧ Equiv.RamOnly z.mem z1.mem := by
+      Equiv.RamOnly m m' ∧ Equiv.RamOnly z.mem z1.mem ∧ Equiv.Grows m m' := by
   obtain ⟨τ1, ht1, hfr1, -, hk1⟩ :=
     (Frame.exec_mem op a b _).1 _ _ (FR.ref_machine m f) r σ' href
   obtain ⟨z1, hz1, hfr2, hr2, hk2⟩ :=
     (Frame.exec_mem op a b _).1 _ _ (FR.ref_zisk hzm hf) r σ' href
   have hsome : ∀ reg, fregs reg = true → σ'.regs.get? reg ≠ none := fun reg hr =>
     hk1.rgrow reg (by rw [ziskState_fregs _ _ reg hr]; cases reg <;> simp [fregs] at hr <;> simp [fval])
-  refine ⟨τ1.mem, fcallOf τ1, z1, ?_, hz1, ?_, fun reg hr => ?_, hr2, hk1.ram, hk2.ram⟩
+  refine ⟨τ1.mem, fcallOf τ1, z1, ?_, hz1, ?_, fun reg hr => ?_, hr2, hk1.ram, hk2.ram, fun k hk => ?_⟩
   · simp only [ZiskRiscv.runOp, run_bind', ht1]
     cases r <;> simp [opResult, fcallOf] <;> first | rfl | exact ⟨rfl, rfl, rfl, rfl, rfl⟩
   · rw [Equiv.normIn_eq_iff]
@@ -103,5 +104,32 @@ theorem runOp_sim (op : zisk_op) (a b ext : BitVec 64) (m : Mem) (f : ZiskRiscv.
       rw [this]; exact (Equiv.normIn_eq_iff _ _).1 hzm k hk
   · have e := FcallRel.of_some (fun reg h => by rw [← hfr1.regs reg h]; exact hsome reg h) reg hr
     rw [← hfr2.regs reg hr, hfr1.regs reg hr]; exact e
+  · -- a byte of m stays: where the reference run has one, τ1 has it too; else it is as in m
+    cases hs : σ'.mem.get? k with
+    | some v => rw [hfr1.mem k v hs]; rfl
+    | none =>
+      have h0 := hk1.none hs
+      rw [hk1.same k h0 hs]; exact hk
+
+/-- The machine's `runOp`, from the operation's run on its ZisK state. -/
+theorem runOp_ok {op : zisk_op} {a b ext : BitVec 64} {m : Mem} {f : ZiskRiscv.Fcall}
+    {r : Option ((BitVec 64) × Bool)} {σ' : ZState}
+    (h : (zisk_exec_mem op a b (if zisk_op_is_precompiled op then ext else 0)).run (ZiskRiscv.ziskState m f) =
+      .ok r σ') :
+    ZiskRiscv.runOp op a b ext m f = .ok ((opResult op a b r).1, σ'.mem, fcallOf σ') := by
+  simp only [ZiskRiscv.runOp, run_bind', h]
+  cases r <;> simp [opResult, fcallOf] <;> first | rfl | exact ⟨rfl, rfl, rfl, rfl, rfl⟩
+
+theorem runOp_err {op : zisk_op} {a b ext : BitVec 64} {m : Mem} {f : ZiskRiscv.Fcall}
+    {e : Sail.Error exception} {σ' : ZState}
+    (h : (zisk_exec_mem op a b (if zisk_op_is_precompiled op then ext else 0)).run (ZiskRiscv.ziskState m f) =
+      .error e σ') :
+    ZiskRiscv.runOp op a b ext m f = .error (.ofSail e) := by
+  simp only [ZiskRiscv.runOp, run_bind', h]
+
+/-- Two ZisK states with the same fcall registers give the same fcall state. -/
+theorem fcallOf_eq {σ τ : ZState} (h : ∀ r, fregs r = true → σ.regs.get? r = τ.regs.get? r) :
+    fcallOf σ = fcallOf τ := by
+  simp only [fcallOf, h .FreeInput rfl, h .FcallNext rfl, h .FcallBase rfl, h .FcallSize rfl, h .FcallGot rfl]
 
 end Equiv.Zisk

@@ -219,4 +219,75 @@ theorem transpiled_call {zrom : BitVec 64 → Zisk.zisk_inst} {pc : BitVec 64} {
   exact ⟨ia, hz⟩
 
 
+/-- The length of a call the pairs make: two words. -/
+theorem dmaPair_len {csr rd src : Nat} {n0 : Fields} {c : Call} (h : dmaPair csr rd src n0 = .call c) : c.len = 2 := by
+  simp only [dmaPair] at h
+  split at h <;> (try split at h) <;> first | (injection h with h; subst h; rfl) | cases h
+
+theorem memsetPair_len {dst : Nat} {n0 : Option Fields} {c : Call} (h : memsetPair dst n0 = .call c) : c.len = 2 := by
+  simp only [memsetPair] at h
+  split at h <;> (try split at h) <;> first | (injection h with h; subst h; rfl) | cases h
+
+/-- `csrrs`'s call of one word does not depend on the word after it. -/
+theorem decodeCsrrs_len1 {f : Fields} {n0 : Option Fields} {c : Call} (h : decodeCsrrs f n0 = .call c)
+    (hl : c.len ≠ 2) (n0' : Option Fields) : decodeCsrrs f n0' = .call c := by
+  simp only [decodeCsrrs] at h ⊢
+  split at h <;> first
+    | exact h
+    | (cases n0 with
+        | none => cases h
+        | some n => exact absurd (dmaPair_len (n0 := n) h) hl)
+    | exact absurd (memsetPair_len h) hl
+    | skip
+  by_cases c1 : (f.rd != 0) = true
+  · simp only [c1, if_true] at h ⊢; exact h
+  simp only [c1, if_false, Bool.false_eq_true] at h ⊢
+  by_cases c2 : (f.rs1 == 0) = true
+  · simp only [c2, if_true] at h ⊢; exact h
+  simp only [c2, if_false, Bool.false_eq_true] at h ⊢
+  split at h <;> first
+    | exact h
+    | (cases n0 <;> simp only [id] at h <;> (try split at h) <;> (try split at h) <;>
+        first | (injection h with h; subst h; exact absurd rfl hl) | (cases h; done))
+    | skip
+  all_goals (split at h <;> first | exact h | (cases n0 <;> simp only [id] at h <;> (try split at h) <;> (try split at h) <;> first | (injection h with h; subst h; exact absurd rfl hl) | (cases h; done)))
+
+/-- `csrrsi`'s calls are of more than one word. -/
+theorem decodeCsrrsi_len {f : Fields} {n0 n1 : Option Fields} {c : Call} (h : decodeCsrrsi f n0 n1 = .call c) :
+    c.len ≠ 1 := by
+  simp only [decodeCsrrsi] at h
+  split at h
+  · split at h
+    · split at h
+      · injection h with h; subst h; dsimp only; decide
+      · cases h
+    · rw [memsetPair_len h]; decide
+    · cases h
+  · cases h
+
+/-- A call decoded from the word at pc and the one after it is the
+    decoder's on any words that agree with them: at pc, and, for a call of
+    more than one word, at pc + 4. -/
+theorem decode_any {pc : BitVec 64} {w : BitVec 32} {next : Option (BitVec 32)} {c : Call}
+    (h : decode (Transpiler.fetch2 pc w next) pc.toNat = .call c) (fetch : Nat → Option (BitVec 32))
+    (h0 : fetch pc.toNat = some w) (h4 : c.len ≠ 1 → fetch (pc.toNat + 4) = next) :
+    decode fetch pc.toNat = .call c := by
+  have f0 : Transpiler.fetch2 pc w next pc.toNat = some w := by simp [Transpiler.fetch2]
+  have f4 : Transpiler.fetch2 pc w next (pc.toNat + 4) = next := by simp [Transpiler.fetch2]
+  have f8 : Transpiler.fetch2 pc w next (pc.toNat + 8) = none := by simp [Transpiler.fetch2]
+  simp only [decode, f0, f4, f8] at h
+  simp only [decode, h0]
+  by_cases hl : c.len = 1
+  · generalize (fetch (pc.toNat + 4)).map fields = n0'
+    generalize (fetch (pc.toNat + 8)).map fields = n1'
+    revert h
+    cases kind (fields w) <;> first
+      | exact id
+      | exact fun h => decodeCsrrs_len1 h (by rw [hl]; decide) n0'
+      | exact fun h => absurd hl (decodeCsrrsi_len h)
+  · rw [h4 hl]
+    generalize (fetch (pc.toNat + 8)).map fields = n1
+    revert h
+    cases kind (fields w) <;> first | exact id | exact fun h => decodeCsrrsi_n1 h n1
+
 end Equiv.Machine

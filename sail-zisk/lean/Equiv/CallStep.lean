@@ -14,18 +14,6 @@ namespace Equiv.Machine
 open Equiv.Riscv Equiv.Sim
 open LeanZiskRV LeanZiskRV.Functions Sail Sail.ArchSem
 
-/-- The machine's step on a ZisK call: not at the exit address, the call
-    decoded at pc, its run. -/
-theorem step_call {M : ZiskRiscv.RiscvModel} (S : ZiskRiscv.State M) (c : ZiskRiscv.Call) (S' : ZiskRiscv.State M)
-    (hx : M.getPC S.rv ≠ M.exitAddr)
-    (hd : ZiskRiscv.decode (ZiskRiscv.readWord (M.mem S.rv)) (M.getPC S.rv).toNat = .call c)
-    (hc : ZiskRiscv.call S c = .ok S') :
-    ZiskRiscv.step S = .ok (S', .running) := by
-  have e : ZiskRiscv.tryStep S = .ok (S', .running) := by
-    simp only [ZiskRiscv.tryStep, hd]
-    simp [hx, bind, Except.bind, hc, pure, Except.pure]
-  rw [ZiskRiscv.step, ZiskRiscv.step.go, e]
-
 /-- The memory a call's operation starts from: its count first stored at
     EXTRA_PARAMS_ADDR, if it has one. -/
 noncomputable def callMem (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) : Equiv.Mem :=
@@ -47,6 +35,14 @@ theorem call_run (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) (cval : BitVec
   simp only [bind, Except.bind]
   cases hc : c.count <;> simp only [callMem, hc] at hrun <;> simp only [hc, hrun] <;> rfl
 
+/-- The machine's call, its operation failing. -/
+theorem call_err (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) (e : ZiskRiscv.StepError)
+    (hrun : ZiskRiscv.runOp c.op (S.argValue c.a) (S.argValue c.b) c.ext (callMem S c) S.fcall = .error e) :
+    ZiskRiscv.call S c = .error e := by
+  unfold ZiskRiscv.call
+  simp only [bind, Except.bind]
+  cases hc : c.count <;> simp only [callMem, hc] at hrun <;> simp only [hc, hrun] <;> rfl
+
 /-- The machine's 8-byte write is the interpreters' (`memWrite`). -/
 theorem writeDword_eq (m : Equiv.Mem) (a : Nat) (v : BitVec 64) :
     ZiskRiscv.writeDword m a v = Equiv.memWrite (n := 8) m a v := by
@@ -58,6 +54,15 @@ theorem normIn_writeDword_input (m : Equiv.Mem) (v : BitVec 64) :
   rw [Equiv.normIn_eq_iff, writeDword_eq]
   intro k hk
   exact Equiv.memWrite_get_off _ _ _ _ (by simp only [ZiskRiscv.INPUT_ADDR, Equiv.IN_LO] at hk ⊢; omega)
+
+theorem foldl_insert_grows' (l : List (Nat × BitVec 8)) :
+    ∀ m : Equiv.Mem, Equiv.Grows m (l.foldl (fun m p => m.insert p.1 p.2) m) := by
+  induction l with
+  | nil => intro m; exact Equiv.Grows.refl _
+  | cons p l ih => intro m; exact (Equiv.Grows.insert m p.1 p.2).trans (ih _)
+
+theorem memWrite_grows' {n : Nat} (m : Equiv.Mem) (a : Nat) (v : BitVec (8 * n)) :
+    Equiv.Grows m (Equiv.memWrite m a v) := foldl_insert_grows' _ m
 
 /-- A call as the machine's decoder makes it: registers x0..x31, a not the
     free input, an operation that does not halt and leaves its flag clear,
@@ -156,9 +161,10 @@ theorem zcall_step (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) (hw : CallWF
     (hok : CallOk S c) :
     ∃ S' z', ZiskRiscv.call S c = .ok S' ∧ (zstep zrom).run z = .ok false z' ∧ Rel S'.rv z' rs ∧
       Equiv.Zisk.FcallRel S'.fcall z' ∧
-      (∀ a, Equiv.OffRam a → ¬ (Equiv.IN_LO ≤ a ∧ a < Equiv.IN_LO + 8) → S'.rv.mem.get? a = (callMem S c).get? a) := by
+      (∀ a, Equiv.OffRam a → ¬ (Equiv.IN_LO ≤ a ∧ a < Equiv.IN_LO + 8) → S'.rv.mem.get? a = (callMem S c).get? a) ∧
+      Equiv.Grows (callMem S c) S'.rv.mem := by
   obtain ⟨r, σ', href⟩ := hok
-  obtain ⟨m', f', z1, hrunOp, hz1, hnorm, hfr, hregs, hram1, hram2⟩ :=
+  obtain ⟨m', f', z1, hrunOp, hz1, hnorm, hfr, hregs, hram1, hram2, hgrow⟩ :=
     Equiv.Zisk.runOp_sim c.op (S.argValue c.a) (S.argValue c.b) c.ext (callMem S c) S.fcall z hzm hf r σ' href
   -- the machine
   have hcall := call_run S c _ m' f' hrunOp
@@ -182,7 +188,7 @@ theorem zcall_step (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) (hw : CallWF
     (argB_src S.rv z agree hx S.fcall hf c.b hw.b _ _ _ _ _ _) hw.halt r z1 (by rw [hj1]; exact hz1)
     cv false hcf hx1 hpc1 hst1
   simp only [Bool.false_eq_true, if_false] at hex
-  refine ⟨_, _, hcall, by rw [zstep_run zrom z p hzpc, hrom]; exact hex, ?_, ?_, ?_⟩
+  refine ⟨_, _, hcall, by rw [zstep_run zrom z p hzpc, hrom]; exact hex, ?_, ?_, ?_, ?_⟩
   · have hlk : ∀ q, q ≠ _root_.Zisk.Register.Xs →
         (Equiv.Zisk.linkRegs z1.regs xs c.rd cv).get? q = z1.regs.get? q := by
       intro q hq; unfold Equiv.Zisk.linkRegs; split
@@ -225,6 +231,9 @@ theorem zcall_step (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) (hw : CallWF
     dsimp only
     rw [callPost_mem, writeDword_eq, Equiv.memWrite_get_off _ _ _ _ (by simp only [ZiskRiscv.INPUT_ADDR, Equiv.IN_LO] at hin ⊢; omega)]
     exact hram1 a ha
+  · dsimp only
+    rw [callPost_mem, writeDword_eq]
+    exact hgrow.trans (memWrite_grows' _ _ _)
 
 
 set_option maxHeartbeats 16000000 in
@@ -240,7 +249,8 @@ theorem callstep1 (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState) (rs : List
     (hok : CallOk S c) :
     ∃ S' z', ZiskRiscv.call S c = .ok S' ∧ (zstep zrom).run z = .ok false z' ∧ Rel S'.rv z' rs ∧
       Equiv.Zisk.FcallRel S'.fcall z' ∧
-      (∀ a, Equiv.OffRam a → ¬ (Equiv.IN_LO ≤ a ∧ a < Equiv.IN_LO + 8) → S'.rv.mem.get? a = S.rv.mem.get? a) := by
+      (∀ a, Equiv.OffRam a → ¬ (Equiv.IN_LO ≤ a ∧ a < Equiv.IN_LO + 8) → S'.rv.mem.get? a = S.rv.mem.get? a) ∧
+      Equiv.Grows S.rv.mem S'.rv.mem := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -251,9 +261,9 @@ theorem callstep1 (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState) (rs : List
     cases hp : _root_.Zisk.Functions.zisk_op_is_precompiled c.op
     · rfl
     · simp [hw.pre hp]
-  obtain ⟨S', z', h1, h2, h3, h4, h5⟩ := zcall_step S c hw rs hr xs agree pc' hpc z hx pc' hzpc st hst hze
+  obtain ⟨S', z', h1, h2, h3, h4, h5, h6⟩ := zcall_step S c hw rs hr xs agree pc' hpc z hx pc' hzpc st hst hze
     (by rw [hcm]; exact hzm) hf zrom _ _ hrom hj1 rfl hok
-  exact ⟨S', z', h1, h2, h3, h4, by rw [← hcm]; exact h5⟩
+  exact ⟨S', z', h1, h2, h3, h4, by rw [← hcm]; exact h5, by rw [← hcm]; exact h6⟩
 
 set_option maxHeartbeats 16000000 in
 /-- A ZisK call with a count: the machine's call, and ZisK's two steps on
@@ -270,7 +280,8 @@ theorem callstep2 (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState) (rs : List
     (hok : CallOk S c) :
     ∃ S' z', ZiskRiscv.call S c = .ok S' ∧ ZRun zrom 2 z z' ∧ Rel S'.rv z' rs ∧
       Equiv.Zisk.FcallRel S'.fcall z' ∧
-      (∀ a, Equiv.OffRam a → ¬ (Equiv.IN_LO ≤ a ∧ a < Equiv.IN_LO + 8) → S'.rv.mem.get? a = S.rv.mem.get? a) := by
+      (∀ a, Equiv.OffRam a → ¬ (Equiv.IN_LO ≤ a ∧ a < Equiv.IN_LO + 8) → S'.rv.mem.get? a = S.rv.mem.get? a) ∧
+      Equiv.Grows S.rv.mem S'.rv.mem := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -306,9 +317,10 @@ theorem callstep2 (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState) (rs : List
       (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0) := by rw [hce]
   have hj2 : ia + (pc' + BitVec.ofNat 64 (4 * c.len) - ia) = pc' + BitVec.ofNat 64 (4 * c.len) := by
     rw [BitVec.add_comm]; exact BitVec.sub_add_cancel _ _
-  obtain ⟨S', z', hc, hz2, hrel', hf', hmem⟩ := zcall_step S c hw rs hr xs agree pc' hpc z1 hx1 ia hpc1 _ hst1 hze1
+  obtain ⟨S', z', hc, hz2, hrel', hf', hmem, hgr⟩ := zcall_step S c hw rs hr xs agree pc' hpc z1 hx1 ia hpc1 _ hst1 hze1
     hzm1 hf1 zrom _ _ h2 hj1 hj2 hok
-  refine ⟨S', z', hc, .step hz1 (.step hz2 (.done _)), hrel', hf', fun a ha hin => ?_⟩
+  refine ⟨S', z', hc, .step hz1 (.step hz2 (.done _)), hrel', hf', fun a ha hin => ?_,
+    by rw [hcm] at hgr; exact (memWrite_grows' _ _ _).trans hgr⟩
   rw [hmem a ha hin, hcm, Equiv.memWrite_get_off]
   have := ha; unfold Equiv.OffRam at this
   have e : Transpiler.EXTRA_PARAMS_ADDR.toNat = 0xA0400F00 := rfl
