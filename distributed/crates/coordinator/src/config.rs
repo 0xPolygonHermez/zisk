@@ -65,6 +65,15 @@ pub struct ServiceConfig {
 /// `heartbeat_interval_seconds × heartbeat_max_missed` seconds elapse with no
 /// heartbeat, whatever its state. A dead worker's job is aborted, and the worker
 /// is disconnected and its stream closed, so it reconnects if it was only stalled.
+/// The monitor checks every `job_monitor_interval_seconds`, so a hung worker is
+/// dropped within the threshold plus one interval: 35 s by default.
+///
+/// A worker heartbeats every 5 s, and under a full proving load no gap between two
+/// of its heartbeats has been seen past 5.5 s. Keep the threshold at least 3× the
+/// longest gap, so a busy worker is never taken for a hung one: the default 30 s
+/// leaves more than 5×. Older workers heartbeat every 10 s, or every 30 s without
+/// telemetry: upgrade them with the coordinator, or keep a threshold of 90 s
+/// (30 s × 3) while they run.
 ///
 /// ## Stale worker cleanup
 ///
@@ -95,12 +104,12 @@ pub struct CoordinatorConfig {
     pub phase3_timeout_seconds: u64,
     /// Spread the phase-3 fold tree across the job's workers; false keeps it on one. Default true.
     pub distributed_aggregation: bool,
-    /// Expected interval between worker heartbeats. Default: 30s.
+    /// Expected interval between worker heartbeats: the workers'. Default: 5s.
     pub heartbeat_interval_seconds: u64,
     /// Number of missed heartbeats before a worker is considered dead.
-    /// Dead threshold = `heartbeat_interval_seconds × heartbeat_max_missed`. Default: 3.
+    /// Dead threshold = `heartbeat_interval_seconds × heartbeat_max_missed`. Default: 6.
     pub heartbeat_max_missed: u32,
-    /// How often the background monitor sweeps for timeouts and stale heartbeats. Default: 10s.
+    /// How often the background monitor sweeps for timeouts and stale heartbeats. Default: 5s.
     pub job_monitor_interval_seconds: u64,
     /// Seconds a worker can remain in `Disconnected` state before being removed from
     /// the pool entirely. Default: 300s.
@@ -168,9 +177,9 @@ impl Config {
             .set_default("coordinator.phase2_timeout_seconds", 600)?
             .set_default("coordinator.phase3_timeout_seconds", 100)?
             .set_default("coordinator.distributed_aggregation", true)?
-            .set_default("coordinator.heartbeat_interval_seconds", 30)?
-            .set_default("coordinator.heartbeat_max_missed", 3)?
-            .set_default("coordinator.job_monitor_interval_seconds", 10)?
+            .set_default("coordinator.heartbeat_interval_seconds", 5)?
+            .set_default("coordinator.heartbeat_max_missed", 6)?
+            .set_default("coordinator.job_monitor_interval_seconds", 5)?
             .set_default("coordinator.stale_disconnected_threshold_seconds", 300)?
             .set_default("coordinator.stuck_recovery_threshold_seconds", 600)?
             .set_default("coordinator.job_ttl_seconds", 3600)?

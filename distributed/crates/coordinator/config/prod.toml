@@ -18,6 +18,13 @@ max_total_workers = 5000        # Maximum total registered workers
 phase1_timeout_seconds = 600    # 10 minutes for phase 1
 phase2_timeout_seconds = 1200   # 20 minutes for phase 2
 reconnect_grace_period_ms = 500 # Grace period before failing a disconnected computing worker's job
+# A worker heartbeats every 5 s and is dropped once it has missed heartbeat_max_missed
+# of them: 30 s. Keep that at least 3x the longest gap between a worker's heartbeats under
+# load (about 5.5 s), so a busy worker is never taken for a hung one. Older workers
+# heartbeat every 10 s, or 30 s without telemetry: keep 30 x 3 while they run.
+heartbeat_interval_seconds = 5
+heartbeat_max_missed = 6
+job_monitor_interval_seconds = 5  # a hung worker is dropped within the threshold plus this
 # Accept random seeds provided by clients (replays/CI); keep off for untrusted clients
 allow_client_random_seed = false
 # Accept caller-defined key/value metadata on job requests
