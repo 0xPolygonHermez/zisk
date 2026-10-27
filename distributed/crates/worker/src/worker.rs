@@ -188,6 +188,15 @@ pub enum ComputationResult {
         /// The fully-formed response to forward to the coordinator.
         response: zisk_cluster_api::WorkerMessage,
     },
+    /// A prove job's final proof, wrapped into a SNARK off the message loop. The blocking
+    /// handler builds the job's final `ExecuteTaskResponse`; the event loop forwards it and
+    /// ends the job, if the job is still the worker's.
+    WrappedFinalProof {
+        /// The job this response belongs to.
+        job_id: JobId,
+        /// The fully-formed response to forward to the coordinator.
+        response: zisk_cluster_api::WorkerMessage,
+    },
     /// Guest-program setup finished off the message loop. The event loop does the
     /// `&mut self` registration (map inserts) and forwards the `SetupProgramAck`,
     /// so the heavy `setup_internal`/ELF write runs without blocking heartbeats.

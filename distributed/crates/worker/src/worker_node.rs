@@ -702,6 +702,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     success,
                     result,
                     message_sender,
+                    loop_tx,
                     AggOutcome {
                         executed_steps,
                         proof_type,
@@ -720,6 +721,21 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 }
                 self.worker.set_current_job(None);
                 self.worker.set_state(WorkerState::Ready);
+                Ok(())
+            }
+            ComputationResult::WrappedFinalProof { job_id, response } => {
+                message_sender.send(response)?;
+                // A cancellation stops waiting for the wrap after a while, and the worker may
+                // have taken another job since: only this job ends here.
+                let own = match self.worker.current_job() {
+                    Some(job) => job.lock().await.job_id == job_id,
+                    None => false,
+                };
+                if own {
+                    info!("Aggregation task completed for {}", job_id);
+                    self.worker.set_current_job(None);
+                    self.worker.set_state(WorkerState::Ready);
+                }
                 Ok(())
             }
             ComputationResult::SetupProgramComplete {
@@ -1166,6 +1182,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         success: bool,
         result: Result<Option<Vec<AggProofs>>>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+        loop_tx: &LoopEventSender,
         outcome: AggOutcome,
     ) -> Result<()> {
         let AggOutcome { executed_steps, proof_type, instances, is_final, drain } = outcome;
@@ -1223,38 +1240,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         let hash =
                             self.worker.hash().context("Failed to get proving-key hash family")?;
                         match Proof::new_from_vadcop_proof(&flat_proof, minimal, verkey, hash) {
-                            Ok(zisk_proof) => {
-                                // On wrap failure, emit nothing: returning the
-                                // unwrapped Vadcop proof would answer a SNARK request
-                                // with a different proof kind.
-                                let final_proof: Option<Proof> = if is_snark {
-                                    match self
-                                        .worker
-                                        .prover_arc()
-                                        .wrap_proof(&zisk_proof, ProofKind::Snark)
-                                        .run()
-                                    {
-                                        Ok(wrapped) => Some(wrapped.get_proof().clone()),
-                                        Err(e) => {
-                                            fail_aggregation(
-                                                &mut success,
-                                                &mut error_message,
-                                                format!(
-                                                    "Failed to wrap SNARK proof for \
-                                                     {job_id}: {e}"
-                                                ),
-                                            );
-                                            None
-                                        }
-                                    }
-                                } else {
-                                    Some(zisk_proof)
-                                };
-                                match final_proof {
-                                    Some(p) => p.to_bincode().unwrap_or_default(),
-                                    None => vec![],
-                                }
+                            // The SNARK wrap takes seconds to minutes: it runs off the loop
+                            // and sends the job's final response itself.
+                            Ok(zisk_proof) if is_snark => {
+                                let wrap = FinalWrap { job_id, executed_steps, instances };
+                                self.wrap_final_proof(wrap, zisk_proof, loop_tx);
+                                return Ok(());
                             }
+                            Ok(zisk_proof) => zisk_proof.to_bincode().unwrap_or_default(),
                             Err(e) => fail_aggregation(
                                 &mut success,
                                 &mut error_message,
@@ -1291,18 +1284,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             }
         };
 
-        let message = WorkerMessage {
-            payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
-                worker_id: self.worker_config.worker.worker_id.as_string(),
-                job_id: job_id.as_string(),
-                task_type: TaskType::Aggregate as i32,
-                success,
-                result_data,
-                error_message,
-                worker_in_recovery: false,
-            })),
-        };
-
+        let worker_id = self.worker_config.worker.worker_id.as_string();
+        let message = aggregate_response(worker_id, &job_id, success, result_data, error_message);
         message_sender.send(message)?;
 
         // TODO! move this logic to the client
@@ -1313,6 +1296,47 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
 
         Ok(())
+    }
+
+    /// Wraps a prove job's final proof into a SNARK off the message loop, so heartbeats keep
+    /// flowing while it runs and a `JobCancelled` is taken at once: the job stays the
+    /// worker's current one, and the wrap its computation. The job's final response comes
+    /// back as a `WrappedFinalProof`. On a failed wrap the response carries no proof: the
+    /// unwrapped Vadcop proof would answer a PLONK request with a different proof kind.
+    fn wrap_final_proof(&mut self, wrap: FinalWrap, proof: Proof, loop_tx: &LoopEventSender) {
+        let prover = self.worker.prover_arc();
+        let worker_id = self.worker_config.worker.worker_id.as_string();
+        let tx = loop_tx.clone();
+        let handle = tokio::task::spawn_blocking(move || {
+            let FinalWrap { job_id, executed_steps, instances } = wrap;
+            let mut success = true;
+            let mut error_message = String::new();
+            let wrapped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                prover.wrap_proof(&proof, ProofKind::Snark).run()
+            }));
+            let proof_data = match wrapped {
+                Ok(Ok(wrapped)) => wrapped.get_proof().to_bincode().unwrap_or_default(),
+                Ok(Err(e)) => fail_aggregation(
+                    &mut success,
+                    &mut error_message,
+                    format!("Failed to wrap SNARK proof for {job_id}: {e}"),
+                ),
+                Err(_) => fail_aggregation(
+                    &mut success,
+                    &mut error_message,
+                    format!("SNARK wrap for {job_id} panicked"),
+                ),
+            };
+            let result_data =
+                Some(ResultData::FinalProof(FinalProof { proof_data, executed_steps, instances }));
+            let response =
+                aggregate_response(worker_id, &job_id, success, result_data, error_message);
+            let result = ComputationResult::WrappedFinalProof { job_id, response };
+            if tx.send_computation(result).is_err() {
+                warn!("[Wrap] Failed to deliver the final proof: event loop channel closed");
+            }
+        });
+        self.worker.set_current_computation(handle);
     }
 
     /// `true` when this failure should drive recovery for `job_id`. Returns
@@ -2790,6 +2814,34 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         });
         self.worker.set_current_computation(handle);
         Ok(())
+    }
+}
+
+/// What a prove job's final proof needs to be reported once it is wrapped.
+struct FinalWrap {
+    job_id: JobId,
+    executed_steps: u64,
+    instances: u64,
+}
+
+/// The response to an aggregation task.
+fn aggregate_response(
+    worker_id: String,
+    job_id: &JobId,
+    success: bool,
+    result_data: Option<ResultData>,
+    error_message: String,
+) -> WorkerMessage {
+    WorkerMessage {
+        payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+            worker_id,
+            job_id: job_id.as_string(),
+            task_type: TaskType::Aggregate as i32,
+            success,
+            result_data,
+            error_message,
+            worker_in_recovery: false,
+        })),
     }
 }
 
