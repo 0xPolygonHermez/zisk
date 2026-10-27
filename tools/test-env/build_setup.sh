@@ -16,8 +16,8 @@
 #   INSTALL_SETUP                Install the provingKey into $HOME/.zisk, plus the
 #                                provingKeySnark when the build produced one.
 #   INCLUDE_SNARK                After the proving key, also build the snark setup
-#                                (provingKeySnark/): PLONK for a Poseidon1 key, pilfflonk
-#                                for a blake3 one (FINAL_SNARK overrides). Needs
+#                                (provingKeySnark/), pilfflonk for both hash modes
+#                                (FINAL_SNARK overrides). Needs
 #                                state-machines/publics.json and the powers-of-tau
 #                                file (PTAU_PATH).
 #   DYLIB_INPUT_FILES            After the build, copy the inputs needed to compile

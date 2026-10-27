@@ -458,17 +458,12 @@ case "$MODE" in
     PUBLICS_INFO="state-machines/publics.json"
     [ -f "$PUBLICS_INFO" ] || { echo "missing $PUBLICS_INFO — final.circom needs publics layout (nPublics, chunks, hasProgramVK)" >&2; exit 1; }
 
-    # Final SNARK per hash family, as the published setups: a blake3 key wraps with pilfflonk
-    # (the only one setup-snark takes for it, published as the fflonk setup), a poseidon key
-    # with PLONK. FINAL_SNARK overrides it (fflonk or pilfflonk, for a poseidon key only).
-    # Passed explicitly so this script does not follow a change of setup-snark's own default.
+    # pilfflonk is the final SNARK for every key, as setup-snark's own default; FINAL_SNARK=plonk
+    # (or fflonk) overrides it, for a poseidon key only: a blake3 key wraps with pilfflonk alone,
+    # and setup-snark refuses the others. Passed explicitly so this script does not follow a
+    # change of that default.
+    FINAL_SNARK="${FINAL_SNARK:-pilfflonk}"
     SNARK_MODE="$(proving_key_hash_mode "$BUILD_DIR/provingKey")" || exit 1
-    if [ -z "${FINAL_SNARK:-}" ]; then
-      case "$SNARK_MODE" in
-        blake3) FINAL_SNARK=pilfflonk ;;
-        *)      FINAL_SNARK=plonk ;;
-      esac
-    fi
     echo "wrapping a $SNARK_MODE proving key with $FINAL_SNARK"
 
     PTAU_PATH="${PTAU_PATH:-../powersOfTau28_hez_final_24.ptau}"
