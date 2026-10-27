@@ -146,6 +146,25 @@ async fn recover_after_task(task: JoinHandle<()>, loop_tx: LoopEventSender, work
     }
 }
 
+/// Wait for a recovery still under way, if any, before the worker connects again (G10).
+///
+/// A worker that connects with no job registers afresh, and the coordinator takes a fresh
+/// registration for a worker with nothing in flight: it drops the worker's pending recovery and
+/// gives it the next job once it is set up, while the recovery still drains the cancelled job.
+/// Connecting once the recovery has ended keeps the next job off a busy prover; meanwhile the
+/// worker is not connected, and a job goes to another worker or is refused as retryable. Every
+/// recovery ends: a cancelled job's within its timeout, past which it ends the worker, and a
+/// cancelled wrap's when the wrap does.
+async fn finish_recovery(recovery: &mut Option<JoinHandle<()>>) {
+    let Some(recovery) = recovery.as_mut().filter(|recovery| !recovery.is_finished()) else {
+        return;
+    };
+    info!("[Recovery] Connecting again once the recovery under way ends");
+    if let Err(e) = recovery.await {
+        warn!("[Recovery] recovery task join error: {e}");
+    }
+}
+
 /// The exit status of a worker that ends itself because it cannot recover
 /// in-process: `EX_TEMPFAIL`, since a restart is what recovers it.
 pub(crate) const WEDGED_EXIT_CODE: i32 = 75;
@@ -391,6 +410,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         loop {
             match self.worker.state() {
                 WorkerState::Disconnected => {
+                    finish_recovery(&mut self.recovery).await;
                     if let Err(e) = self.connect_and_run(&loop_tx, &mut loop_rx).await {
                         error!("Connection failed: {}", e);
                         tokio::time::sleep(Duration::from_secs(
@@ -3078,6 +3098,33 @@ mod recovery_tests {
 
     /// A cancelled task cannot be stopped: the worker reports its recovery once the task
     /// ends, after the task's own result.
+    /// A worker reconnecting while it recovers waits for the recovery first, and does not wait
+    /// when there is none or it has ended.
+    #[tokio::test]
+    async fn a_worker_connects_again_once_its_recovery_ends() {
+        let ended = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut recovery = Some(tokio::spawn({
+            let ended = Arc::clone(&ended);
+            async move {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                ended.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        }));
+        finish_recovery(&mut recovery).await;
+        assert!(
+            ended.load(std::sync::atomic::Ordering::SeqCst),
+            "the recovery ends before the worker connects"
+        );
+
+        // Ended already, or none: the worker connects at once.
+        tokio::time::timeout(Duration::from_secs(1), finish_recovery(&mut recovery))
+            .await
+            .expect("an ended recovery is not waited for");
+        tokio::time::timeout(Duration::from_secs(1), finish_recovery(&mut None))
+            .await
+            .expect("no recovery is not waited for");
+    }
+
     #[tokio::test]
     async fn a_cancelled_task_is_recovered_once_it_ends() {
         let (raw_tx, mut loop_rx) = mpsc::unbounded_channel::<LoopEvent>();
