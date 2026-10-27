@@ -574,7 +574,8 @@ def convert (pc : BitVec 64) (w : BitVec 32) (next : Option (BitVec 32)) (ia : B
     (next2 : Option (BitVec 32) := none) : Option (List (BitVec 64 × zisk_inst)) :=
   let one (i : zisk_inst) := some [(pc, i)]
   match decode w with
-  | none => none
+  -- a word RISC-V rejects, in this profile: the run fails there (halt_with_error)
+  | none => one halt
   | some (.r op) =>
     match op with
     | .add => if rs1 w = 0 then one (copyb w 2) else if rs2 w = 0 then one (copyb w 1)

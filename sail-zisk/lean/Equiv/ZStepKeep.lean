@@ -59,6 +59,8 @@ theorem convert_keep {pc : BitVec 64} {w : BitVec 32} {next : Option (BitVec 32)
   unfold Transpiler.convert at h
   rcases e : Transpiler.decode w with _ | i
   · rw [e] at h; cases h
+    intro p hp; simp only [List.mem_cons, List.not_mem_nil, or_false] at hp
+    subst hp; rfl
   · rw [e] at h hd
     cases i
     all_goals (try (simp at hd; done))
@@ -89,7 +91,7 @@ theorem convert_head {pc : BitVec 64} {w : BitVec 32} {next : Option (BitVec 32)
     (hd : Transpiler.decode w ≠ some .csr) : ∃ i, (pc, i) ∈ l := by
   unfold Transpiler.convert at h
   rcases e : Transpiler.decode w with _ | i
-  · rw [e] at h; cases h
+  · rw [e] at h; cases h; exact ⟨_, List.mem_cons_self⟩
   · rw [e] at h hd
     cases i
     all_goals (try (simp at hd; done))
