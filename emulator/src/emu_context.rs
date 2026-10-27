@@ -64,6 +64,9 @@ impl EmuContext {
             return ctx;
         }
 
+        // write_log text is read from memory, so it is printed only here
+        ctx.inst_ctx.write_log = options.write_log;
+
         let free_input = 0u64;
         ctx.inst_ctx.mem.add_read_section(INPUT_ADDR, &free_input.to_le_bytes());
         ctx.inst_ctx.mem.add_read_section(INPUT_ADDR + 8, &input);

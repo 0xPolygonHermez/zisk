@@ -130,6 +130,11 @@ mod exports {
         => ziskos::zisklib::zkvm_io::read_input);
     wrap_export!(fn write_output(output: *const u8, size: usize)
         => ziskos::zisklib::zkvm_io::write_output);
+    // No heap reset: the library routine allocates nothing on ziskos's heap
+    #[no_mangle]
+    pub unsafe extern "C" fn write_log(utf8_bytes: *const u8, utf8_len: usize) {
+        ziskos::zisklib::zkvm_io::write_log(utf8_bytes, utf8_len)
+    }
 
     // --- Host randomness (zkvm_random.rs) ------------------------------------
     // No heap reset: the library routine allocates nothing on ziskos's heap

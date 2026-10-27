@@ -62,6 +62,9 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
             zkvmcall_ids.extend(zkvmcall_ids_in(section.addr, &section.data)?);
         }
     }
+    // A zkvmcall with no library routine (write_log) is emitted by the transpiler
+    // itself (see add_zisk_code), so it does not need the library
+    zkvmcall_ids.retain(|id| !zisk_definitions::zkvmcall_by_id(*id).unwrap().target.is_empty());
     // zkvmcall ID → library-entry map, filled in below once the library is assembled.
     let mut zkvmcalls: HashMap<u16, u64> = HashMap::new();
     // zkvmcall ID → routine body, for every used inline zkvmcall.
@@ -386,11 +389,12 @@ mod zkvmcall_tests {
         }
     }
 
-    /// Every zkvmcall target exists in the assembled ZisK library.
+    /// Every zkvmcall target exists in the assembled ZisK library (but for the ones the
+    /// transpiler emits itself, which have none).
     #[test]
     fn zkvmcall_targets_exist_in_library() {
         let library = ziskasm::assemble_zisk_library().unwrap();
-        for call in ZKVMCALLS {
+        for call in ZKVMCALLS.iter().filter(|c| !c.target.is_empty()) {
             assert!(
                 library.symbols.contains_key(call.target),
                 "{} targets missing library routine {}",

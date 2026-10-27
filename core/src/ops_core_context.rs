@@ -9,6 +9,17 @@ pub fn opc_flag(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_flag(ctx.a, ctx.b);
 }
 
+/// A write_log call site: a `flag` (all the prover sees) whose a and b are the pointer and length
+/// of UTF-8 diagnostic text, which it prints to stdout when the run asks for it
+pub fn opc_write_log(ctx: &mut InstContext) {
+    if ctx.write_log {
+        let text: Vec<u8> =
+            (ctx.a..ctx.a + ctx.b).map(|addr| ctx.mem.read(addr, 1) as u8).collect();
+        print!("{}", String::from_utf8_lossy(&text));
+    }
+    opc_flag(ctx);
+}
+
 /// InstContext-based wrapper over op_copyb()
 #[inline(always)]
 pub fn opc_copyb(ctx: &mut InstContext) {
