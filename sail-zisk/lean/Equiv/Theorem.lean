@@ -234,11 +234,11 @@ theorem fault_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 6
 
 /-! ## A word the transpiler halts on -/
 
-/-- `ebreak` or `unimp` at pc. -/
+/-- `ebreak`, or a write to a read-only CSR (`unimp` among them), at pc. -/
 def HaltAt (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (s : RVState) : Prop :=
   ∃ pc e, s.regs.get? Register.PC = some pc ∧ HaltWord e ∧ WordsAt s rs pc zrom e (nextWord s pc)
 
-/-- `ebreak` or `unimp`: the machine's run ends in failure (sail-riscv
+/-- `ebreak`, or a write to a read-only CSR: the machine's run ends in failure (sail-riscv
     traps, on the breakpoint or the illegal instruction); sail-zisk's ends
     in error, on the halt. -/
 theorem halt_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)

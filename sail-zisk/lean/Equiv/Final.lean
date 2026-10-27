@@ -158,7 +158,7 @@ theorem zisk_fault (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 
   fault_end_sparse zrom entry hb ziskRegions exit_not_exec trap_not_exec C (noCodeRam_of_exec hcx)
     (noCodeIn_of_exec hcx) m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin hfa.faultAt s0' hsp hcode
 
-/-- `ebreak` or `unimp`: the machine's run ends in failure, or in its own
+/-- `ebreak`, or a write to a read-only CSR: the machine's run ends in failure, or in its own
     error; sail-zisk's ends in error. -/
 theorem zisk_halt (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
     (C : BitVec 64 → Prop) (hcx : ∀ pc, C pc → ExecAt ziskRegions pc)

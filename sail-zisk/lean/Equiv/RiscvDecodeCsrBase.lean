@@ -1,6 +1,7 @@
 /-
-  sail-riscv's decoder on the CSR instructions: `csrrs`, as `csrr rd,
-  marchid` reads it (contract § 6).
+  sail-riscv's decoder on the CSR instructions: all six, `csrrs` as `csrr
+  rd, marchid` reads it (contract § 6), each as a write to a read-only CSR
+  traps.
 -/
 import Equiv.RiscvDecodeImmBase
 
