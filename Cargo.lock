@@ -8163,6 +8163,7 @@ dependencies = [
 name = "zisk-sdk"
 version = "1.4.0-alpha"
 dependencies = [
+ "anyhow",
  "bincode",
  "proofman",
  "proofman-common",
@@ -8173,6 +8174,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+ "tonic",
  "tracing",
  "uuid",
  "zisk-build",

@@ -36,6 +36,18 @@ pub enum CoordinatorError {
     #[error("Workers are connected but setup has not been done; call setup() first")]
     WorkersNotSetup,
 
+    /// The set-up workers hold less capacity than the job's minimum, and none is busy,
+    /// recovering or waiting for setup: a retry fails the same way until the cluster grows.
+    #[error(
+        "The cluster has {available} ready compute units and the job needs at least {minimum}"
+    )]
+    ClusterTooSmall {
+        /// Compute units of the set-up workers.
+        available: u32,
+        /// The job's minimum compute units.
+        minimum: u32,
+    },
+
     /// The program is not set up on the workers (never, or not since the coordinator started).
     #[error("Program {0} is not set up on the workers; call setup() first")]
     ProgramNotSetup(String),
@@ -89,6 +101,9 @@ impl From<CoordinatorError> for Status {
                 Code::FailedPrecondition,
                 "Workers connected but setup not done; call setup() first",
             ),
+            CoordinatorError::ClusterTooSmall { .. } => {
+                Status::new(Code::FailedPrecondition, err.to_string())
+            }
             CoordinatorError::ProgramNotSetup(ref hash_id) => Status::new(
                 Code::FailedPrecondition,
                 format!("Program {hash_id} is not set up on the workers; call setup() first"),

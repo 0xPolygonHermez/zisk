@@ -1,44 +1,23 @@
 //! API error types with stable API error codes and gRPC status mapping.
 //!
 //! Every [`ApiError`] variant maps to a stable numeric code matching the
-//! API reference in `book/developer/coordinator_api.md`. Clients that embed the
-//! `ApiError` proto in status details can inspect these codes programmatically;
-//! all other clients see the human-readable status message.
+//! API reference in `book/developer/coordinator_api.md`. Its status carries the
+//! code and name in the response metadata (see [`zisk_coordinator_api::errors`]),
+//! so clients act on the code; people read the status message.
 //!
 //! Internal errors are logged at ERROR with a trace_id before the generic
 //! "internal server error" message is returned — no server internals leak to
 //! clients.
 
+use tonic::metadata::{MetadataMap, MetadataValue};
 use tonic::{Code, Status};
 use uuid::Uuid;
+use zisk_coordinator_api::errors::{CODE_KEY, NAME_KEY};
 
 use crate::backend::DomainProofKind;
 
 /// Stable numeric error codes (matches `book/developer/coordinator_api.md`).
-pub mod codes {
-    /// The requested job does not exist.
-    pub const JOB_NOT_FOUND: u32 = 1001;
-    /// The requested program is not registered.
-    pub const PROGRAM_NOT_FOUND: u32 = 1002;
-    /// The program is registered but its setup is not complete.
-    pub const PROGRAM_NOT_SETUP: u32 = 1003;
-    /// The operation is invalid for the job's current state.
-    pub const INVALID_JOB_STATE: u32 = 1004;
-    /// The requested proof-kind conversion is not allowed.
-    pub const INVALID_PROOF_CONVERSION: u32 = 1005;
-    /// The request provided a random seed and the coordinator does not accept client random seeds.
-    pub const CLIENT_RANDOM_SEED_NOT_ALLOWED: u32 = 1006;
-    /// The request carried job metadata and the coordinator does not accept it.
-    pub const JOB_METADATA_NOT_ALLOWED: u32 = 1007;
-    /// The request asks for a final SNARK the workers cannot prove.
-    pub const SNARK_UNAVAILABLE: u32 = 1008;
-    /// The pushed input is larger than the guest's input region holds.
-    pub const INPUT_TOO_LARGE: u32 = 1009;
-    /// No cluster is available to service the request.
-    pub const CLUSTER_UNAVAILABLE: u32 = 2001;
-    /// An unexpected internal error.
-    pub const INTERNAL: u32 = 3001;
-}
+pub use zisk_coordinator_api::errors::codes;
 
 /// An API-level error, each variant carrying a stable [`code`](ApiError::code).
 #[derive(Debug, thiserror::Error)]
@@ -91,11 +70,24 @@ pub enum ApiError {
         limit: u64,
     },
 
-    /// No cluster is available to service the request.
+    /// The cluster cannot take the job now (busy, setting up, or no ready workers); a retry can
+    /// succeed.
     #[error("Cluster unavailable: {reason}")]
     ClusterUnavailable {
         /// Why the cluster is unavailable.
         reason: &'static str,
+    },
+
+    /// The cluster has less capacity than the job's minimum, and no worker that is busy,
+    /// recovering or waiting for setup would make up the difference: a retry fails the same way.
+    #[error(
+        "Cluster too small: {available} ready compute units, the job needs at least {minimum}"
+    )]
+    ClusterTooSmall {
+        /// Compute units of the cluster's set-up workers.
+        available: u32,
+        /// The job's minimum compute units.
+        minimum: u32,
     },
 
     /// An unexpected internal error (detail is logged, not returned to clients).
@@ -117,6 +109,7 @@ impl ApiError {
             Self::SnarkUnavailable(_) => codes::SNARK_UNAVAILABLE,
             Self::InputTooLarge { .. } => codes::INPUT_TOO_LARGE,
             Self::ClusterUnavailable { .. } => codes::CLUSTER_UNAVAILABLE,
+            Self::ClusterTooSmall { .. } => codes::CLUSTER_TOO_SMALL,
             Self::Internal(_) => codes::INTERNAL,
         }
     }
@@ -134,6 +127,7 @@ impl ApiError {
             Self::SnarkUnavailable(_) => "SNARK_UNAVAILABLE",
             Self::InputTooLarge { .. } => "INPUT_TOO_LARGE",
             Self::ClusterUnavailable { .. } => "CLUSTER_UNAVAILABLE",
+            Self::ClusterTooSmall { .. } => "CLUSTER_TOO_SMALL",
             Self::Internal(_) => "INTERNAL",
         }
     }
@@ -149,16 +143,26 @@ impl ApiError {
             Self::ClientRandomSeedNotAllowed | Self::JobMetadataNotAllowed => {
                 Code::PermissionDenied
             }
-            Self::SnarkUnavailable(_) => Code::FailedPrecondition,
+            Self::SnarkUnavailable(_) | Self::ClusterTooSmall { .. } => Code::FailedPrecondition,
             Self::ClusterUnavailable { .. } => Code::Unavailable,
             Self::Internal(_) => Code::Internal,
         }
+    }
+
+    /// The response metadata naming this error, so a client reads its code instead of the
+    /// message.
+    fn metadata(&self) -> MetadataMap {
+        let mut metadata = MetadataMap::new();
+        metadata.insert(CODE_KEY, MetadataValue::from(self.code()));
+        metadata.insert(NAME_KEY, MetadataValue::from_static(self.name()));
+        metadata
     }
 }
 
 impl From<ApiError> for Status {
     fn from(err: ApiError) -> Self {
         let code = err.tonic_code();
+        let metadata = err.metadata();
 
         // For internal errors, log the real cause server-side and return a
         // generic message — never expose internal detail to callers.
@@ -169,10 +173,10 @@ impl From<ApiError> for Status {
                 detail,
                 "internal coordinator error"
             );
-            return Status::new(code, "An internal error occurred");
+            return Status::with_metadata(code, "An internal error occurred", metadata);
         }
 
-        Status::new(code, err.to_string())
+        Status::with_metadata(code, err.to_string(), metadata)
     }
 }
 
@@ -202,7 +206,28 @@ mod tests {
         assert_eq!(ApiError::SnarkUnavailable("x".into()).code(), 1008);
         assert_eq!(ApiError::InputTooLarge { limit: 16 }.code(), 1009);
         assert_eq!(ApiError::ClusterUnavailable { reason: "test" }.code(), 2001);
+        assert_eq!(ApiError::ClusterTooSmall { available: 4, minimum: 8 }.code(), 2002);
         assert_eq!(ApiError::Internal("x".into()).code(), 3001);
+    }
+
+    #[test]
+    fn status_carries_the_error_code_and_name_in_its_metadata() {
+        let status = Status::from(ApiError::ClusterUnavailable { reason: "test" });
+        assert_eq!(status.metadata().get(CODE_KEY).unwrap(), "2001");
+        assert_eq!(status.metadata().get(NAME_KEY).unwrap(), "CLUSTER_UNAVAILABLE");
+
+        // The generic message of an internal error still names it.
+        let status = Status::from(ApiError::Internal("secret detail".into()));
+        assert_eq!(status.metadata().get(CODE_KEY).unwrap(), "3001");
+        assert_eq!(status.metadata().get(NAME_KEY).unwrap(), "INTERNAL");
+    }
+
+    #[test]
+    fn cluster_too_small_maps_to_failed_precondition_with_its_capacity() {
+        let status = Status::from(ApiError::ClusterTooSmall { available: 4, minimum: 8 });
+        assert_eq!(status.code(), Code::FailedPrecondition);
+        assert!(status.message().contains("4 ready compute units"), "{}", status.message());
+        assert!(status.message().contains("at least 8"), "{}", status.message());
     }
 
     #[test]

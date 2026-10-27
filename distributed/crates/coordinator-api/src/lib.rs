@@ -11,5 +11,7 @@
 
 /// Domain types and proto ↔ domain conversions.
 pub mod dto;
+/// Error codes and the response metadata that carries them.
+pub mod errors;
 /// gRPC transport: generated proto types and client/server stubs.
 pub mod grpc;

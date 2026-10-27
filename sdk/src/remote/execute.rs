@@ -52,7 +52,7 @@ impl RemoteClient {
         } else {
             self.gw.submit_job_with_metadata(job_kind, metadata)
         }
-        .map_err(SdkError::backend)?;
+        .map_err(SdkError::coordinator)?;
 
         // gRPC streams need an InputSender injected after job submission, and data over the
         // inline limit is pushed through one, in the background.

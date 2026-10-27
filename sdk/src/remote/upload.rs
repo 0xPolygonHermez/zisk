@@ -11,7 +11,7 @@ impl RemoteClient {
         let expected_hash_id = &program.program_id.hash_id;
 
         let computed_hash_id =
-            self.gw.register_program(program.elf().to_vec()).map_err(SdkError::backend)?;
+            self.gw.register_program(program.elf().to_vec()).map_err(SdkError::coordinator)?;
 
         if computed_hash_id != *expected_hash_id {
             return Err(SdkError::UnexpectedResponse(format!(

@@ -43,6 +43,8 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 zisk-test-artifacts = { workspace = true }
+anyhow = { workspace = true }
+tonic = { workspace = true }
 
 [features]
 default = []

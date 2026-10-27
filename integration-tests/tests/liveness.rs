@@ -31,7 +31,9 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use tokio::sync::Notify;
-use zisk_sdk::{ExecutorKind, JobEvent, ProverClient, RemoteClient, ZiskStdin, ZiskStream};
+use zisk_sdk::{
+    ExecutorKind, JobEvent, ProverClient, RemoteClient, SdkError, ZiskStdin, ZiskStream,
+};
 use zisk_test_artifacts::{ELF_LIVENESS, ELF_PANIC_MODES};
 
 /// SDK progress percent emitted when the worker enters the prove phase.
@@ -105,10 +107,9 @@ async fn liveness_smoke() -> Result<()> {
     Ok(())
 }
 
-/// Detect the coordinator's "workers are setting up; retry shortly" response.
+/// Detect a refusal the coordinator expects to clear, such as workers still setting up.
 fn is_cluster_setting_up(e: &anyhow::Error) -> bool {
-    let s = format!("{e:#}");
-    s.contains("workers are setting up") || s.contains("Cluster unavailable")
+    e.downcast_ref::<SdkError>().is_some_and(SdkError::is_retryable)
 }
 
 /// Wait for the worker(s) to clear `SettingUp` after a cancel/failure, then

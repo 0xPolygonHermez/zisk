@@ -16,7 +16,7 @@ use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues, RandomSeed};
 use zisk_coordinator_api::dto::{
     DomainInputChunk, DomainInputKind, DomainJobKindResponse, TerminalStatus,
 };
-use zisk_coordinator_client::{CoordinatorClient, Job};
+use zisk_coordinator_client::{CoordinatorClient, Job, RetryPolicy};
 
 use crate::input_stream::{ZiskStream, GRPC_PUSH_URI};
 use zisk_prover_backend::GuestProgram;
@@ -55,6 +55,7 @@ pub struct RemoteClientBuilder<Out = RemoteClient> {
     connect_timeout: Duration,
     request_timeout: Duration,
     snark: Option<SnarkProtocol>,
+    retry: Option<RetryPolicy>,
     _out: std::marker::PhantomData<fn() -> Out>,
 }
 
@@ -65,8 +66,18 @@ impl<Out> RemoteClientBuilder<Out> {
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             request_timeout: DEFAULT_REQUEST_TIMEOUT,
             snark: None,
+            retry: None,
             _out: std::marker::PhantomData,
         }
+    }
+
+    /// Submit a job again under `policy` while the coordinator refuses it as busy, setting up or
+    /// without ready workers ([`SdkError::is_retryable`](crate::SdkError::is_retryable)). Unset,
+    /// a job is submitted once and such a refusal is returned at once.
+    #[must_use]
+    pub fn retry_busy(mut self, policy: RetryPolicy) -> Self {
+        self.retry = Some(policy);
+        self
     }
 
     /// Ask for final SNARK proofs of `protocol`, wrapped with [`ProofKind::Plonk`]. The workers'
@@ -113,8 +124,12 @@ impl<Out: From<RemoteClient>> RemoteClientBuilder<Out> {
     /// connection path stays in one place.
     fn connect(self) -> Result<RemoteClient> {
         crate::client::ensure_single_instance();
-        let gw = CoordinatorClient::connect(self.url, self.connect_timeout, self.request_timeout)
-            .map_err(SdkError::backend)?;
+        let mut gw =
+            CoordinatorClient::connect(self.url, self.connect_timeout, self.request_timeout)
+                .map_err(SdkError::backend)?;
+        if let Some(policy) = self.retry {
+            gw = gw.with_retry(policy);
+        }
         Ok(RemoteClient { gw, snark: self.snark, legacy_ext: false })
     }
 

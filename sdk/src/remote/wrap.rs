@@ -47,7 +47,7 @@ impl RemoteClient {
         });
 
         let remote_job =
-            self.gw.submit_job_with_metadata(job_kind, metadata).map_err(SdkError::backend)?;
+            self.gw.submit_job_with_metadata(job_kind, metadata).map_err(SdkError::coordinator)?;
 
         let mut handle = JobHandle::new_remote(remote_job, subs, timeout, None, None);
         self.check_snark(&mut handle, proof_kind);

@@ -36,7 +36,7 @@ impl RemoteClient {
         let returned = self
             .gw
             .register_aggregation_program(agg.recurser_id.clone(), spec)
-            .map_err(SdkError::backend)?;
+            .map_err(SdkError::coordinator)?;
 
         if returned != agg.recurser_id {
             return Err(SdkError::Recurser(format!(
@@ -57,7 +57,7 @@ impl RemoteClient {
             DomainJobKind::SetupAggregationProgram(DomainSetupAggregationProgramRequest {
                 recurser_id: agg.recurser_id.clone(),
             });
-        let remote_job = self.gw.submit_job(job_kind).map_err(SdkError::backend)?;
+        let remote_job = self.gw.submit_job(job_kind).map_err(SdkError::coordinator)?;
         Ok(JobHandle::new_remote(remote_job, subs, timeout, None, None))
     }
 
@@ -94,7 +94,7 @@ impl RemoteClient {
             root_c_recurser_agg,
         });
         let remote_job =
-            self.gw.submit_job_with_metadata(job_kind, metadata).map_err(SdkError::backend)?;
+            self.gw.submit_job_with_metadata(job_kind, metadata).map_err(SdkError::coordinator)?;
         Ok(JobHandle::new_remote(remote_job, subs, timeout, None, None))
     }
 }
