@@ -1548,14 +1548,15 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     CUDA_CHECK(cudaMallocHost(&h_meta_scalars_, (size_t)max_active_ * 4 * 4));
     CUDA_CHECK(cudaMallocHost(&h_chunk_counters_per_chunk_,
         (size_t)MAX_CHUNKS * sizeof(ChunkCounters)));
-    // Pinned destinations for the compacted paged-offsets output. Each
-    // instance contributes ceil(addr_range_slots / MEM_OFFSETS_PAGE_SIZE)
-    // entries to h_page_starts_buf_ / h_page_single_buf_, and at most
-    // addr_range_slots entries to h_pages_dense_buf_ (worst case: every
-    // page present). Seeded at 1 GiB; grown on demand in process_worker_().
-    const size_t initial_offsets_bytes = 1ull << 30;
-    h_page_meta_buf_size_   = initial_offsets_bytes / MEM_OFFSETS_PAGE_SIZE + 4096;
-    h_pages_dense_buf_size_ = initial_offsets_bytes;
+    // Pinned destinations for the compacted paged-offsets output, seeded at the worst case so
+    // they never grow mid-block (re-pinning stalls every CUDA call). An instance of n addresses
+    // takes ceil(n / PAGE) entries of page_starts / page_single and, every page present, as many
+    // FULL pages of pages_dense (the last one padded). The active ranges cover at most
+    // N_ADDR + max_active addresses (one shared boundary each), so the worst case is
+    // max_total_pages = N_ADDR / PAGE + max_active pages: ~1.3 MiB per meta array and
+    // 1.31 GiB (1.41 GB) + 4 KiB * max_active of pages_dense.
+    h_page_meta_buf_size_   = max_total_pages * sizeof(uint32_t);
+    h_pages_dense_buf_size_ = max_total_pages * MEM_OFFSETS_PAGE_SIZE * sizeof(uint32_t);
     CUDA_CHECK(cudaMallocHost(&h_page_starts_buf_,  h_page_meta_buf_size_));
     CUDA_CHECK(cudaMallocHost(&h_page_single_buf_,   h_page_meta_buf_size_));
     CUDA_CHECK(cudaMallocHost(&h_pages_dense_buf_,  h_pages_dense_buf_size_));
@@ -2341,22 +2342,16 @@ bool CountAndPlan::process_worker_() {
     CUDA_CHECK(cudaMemcpyAsync(h_active_last_.data(),  d_active_last_,  num_active_ * 4, cudaMemcpyDeviceToHost, meta_stream_));
     CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
 
-    std::vector<uint32_t> h_offset_starts(num_active_);
-    uint32_t total_addrs = 0;
+    size_t needed_pages = 0;
     for (uint32_t i = 0; i < num_active_; i++) {
-        h_offset_starts[i] = total_addrs;
-        total_addrs += h_active_last_[i] - h_active_first_[i] + 1;
+        const uint32_t num_addrs = h_active_last_[i] - h_active_first_[i] + 1;
+        needed_pages += (num_addrs + MEM_OFFSETS_PAGE_SIZE - 1) / MEM_OFFSETS_PAGE_SIZE;
     }
 
-    // Sizing tracker for the paged buffers below (in bytes, equivalent to the
-    // dense addr_offsets footprint — one u32 per addr).
-    size_t needed_offsets_bytes = (size_t)total_addrs * sizeof(uint32_t);
-    // Paged-output buffers grow on demand:
-    //   page-meta arrays: bounded by ceil(total_addrs / MEM_OFFSETS_PAGE_SIZE) + 1 entry
-    //                     per instance (small).
-    //   pages_dense:      bounded by total_addrs (every page present).
-    size_t needed_page_meta_bytes =
-        ((size_t)total_addrs / MEM_OFFSETS_PAGE_SIZE + num_active_ + 1) * sizeof(uint32_t);
+    // Paged-output buffers grow on demand (setup seeds the worst case, so this is a guard): one
+    // page-meta entry per page, and one full pages_dense page per page (every page present).
+    size_t needed_page_meta_bytes = needed_pages * sizeof(uint32_t);
+    size_t needed_offsets_bytes   = needed_pages * MEM_OFFSETS_PAGE_SIZE * sizeof(uint32_t);
     if (needed_page_meta_bytes > h_page_meta_buf_size_) {
         if (h_page_starts_buf_) CUDA_CHECK(cudaFreeHost(h_page_starts_buf_));
         if (h_page_single_buf_)  CUDA_CHECK(cudaFreeHost(h_page_single_buf_));

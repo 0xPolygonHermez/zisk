@@ -1200,7 +1200,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#d657bd261e945228788c0c91ff34c36beafaf2f2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#feadcb05cd23811f7bc9082d0fa18d5527628a4a"
 dependencies = [
  "blake3 1.8.7",
  "cfg-if",
@@ -1212,7 +1212,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#d657bd261e945228788c0c91ff34c36beafaf2f2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#feadcb05cd23811f7bc9082d0fa18d5527628a4a"
 dependencies = [
  "num-traits",
  "proofman-fields",
@@ -1342,9 +1342,9 @@ dependencies = [
 
 [[package]]
 name = "ruint"
-version = "1.20.1"
+version = "1.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2973657b5127d510e230f5c63d2d106af9c8f79393d8b9f4647323e8196bdde5"
+checksum = "a0de3fa9b4dac39cc2bd65679bacf9f531899d933605e2963b40c2129cdb55f2"
 dependencies = [
  "ruint-macro",
 ]
@@ -1546,9 +1546,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.16.3"
+version = "1.16.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b3dc8af474f516a851ff4bd12db780f948b9250ad37211e4eec0bccea54e01b"
+checksum = "d0d5d4b1981b8bbbb7aed204cae5726d683d5d6ac7e74ec54122ea28f315e7c8"
 
 [[package]]
 name = "socket2"
