@@ -4005,7 +4005,7 @@ dependencies = [
 [[package]]
 name = "pil-info"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "indexmap 2.14.2",
  "num-bigint",
@@ -4019,7 +4019,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4030,7 +4030,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -4045,7 +4045,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "anyhow",
  "clap",
@@ -4074,7 +4074,7 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "colored",
  "proofman-common",
@@ -4093,7 +4093,7 @@ dependencies = [
 [[package]]
 name = "pilfflonk-setup"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -4112,7 +4112,7 @@ dependencies = [
 [[package]]
 name = "pilfflonk-wrap-witness"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "cc",
  "proofman-common",
@@ -4329,7 +4329,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "bincode",
  "blake3",
@@ -4364,7 +4364,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "borsh",
  "colored",
@@ -4395,7 +4395,7 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "proofman-fields",
 ]
@@ -4403,7 +4403,7 @@ dependencies = [
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -4418,7 +4418,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -4430,7 +4430,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -4442,7 +4442,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4452,7 +4452,7 @@ dependencies = [
 [[package]]
 name = "proofman-pilfflonk"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "libloading",
  "num-bigint",
@@ -4468,7 +4468,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
@@ -4477,12 +4477,12 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 
 [[package]]
 name = "proofman-util"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4491,7 +4491,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "bincode",
  "num-traits",
@@ -4504,7 +4504,7 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#be0bc5b145fad4ff6241d1eb9592b92357badb72"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#10d1f7116b0240ca138a594e933ba2686e50a9cd"
 dependencies = [
  "libloading",
  "proofman-common",
