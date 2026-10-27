@@ -152,20 +152,20 @@ mod tests {
     #[test]
     fn a_final_snark_is_declared_to_proofman() {
         let opts = EmbeddedOpts::default().into_backend_opts(false, true);
-        assert!(opts.build_proofman_options().final_snark);
+        assert!(opts.build_proofman_options().final_snark.is_some());
         assert!(!opts.preload_plonk());
     }
 
     #[test]
     fn a_preloaded_snark_key_is_a_final_snark() {
         let opts = EmbeddedOpts::default().preload_snark().into_backend_opts(false, true);
-        assert!(opts.build_proofman_options().final_snark);
+        assert!(opts.build_proofman_options().final_snark.is_some());
         assert!(opts.preload_plonk());
     }
 
     #[test]
     fn a_stark_prover_runs_no_final_snark() {
         let opts = EmbeddedOpts::default().into_backend_opts(false, false);
-        assert!(!opts.build_proofman_options().final_snark);
+        assert!(opts.build_proofman_options().final_snark.is_none());
     }
 }
