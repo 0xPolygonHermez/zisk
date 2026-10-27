@@ -539,16 +539,14 @@ private:
 
     uint32_t*      h_n_emits_all_              = nullptr;
     uint32_t*      h_pot_device_               = nullptr;   // per chunk: the device's potential count
-    // Pinned destinations for the compacted paged-offsets output.
-    //   - h_page_starts_buf_ / h_page_single_buf_ are sized in pages
-    //     (1 entry per page); cumulative across the active instances.
-    //   - h_pages_dense_buf_ is sized in slots (MEM_OFFSETS_PAGE_SIZE per
-    //     present page); bounded above by total_addrs (every page present).
+    // Pinned destinations for the compacted paged-offsets output, max_total_pages_ pages each:
+    //   - h_page_starts_buf_ / h_page_single_buf_: one entry per page, cumulative across the
+    //     active instances (as are d_page_starts_ / d_page_single_).
+    //   - h_pages_dense_buf_: MEM_OFFSETS_PAGE_SIZE slots per page (every page present).
+    size_t         max_total_pages_            = 0;
     uint32_t*      h_page_starts_buf_          = nullptr;
     uint32_t*      h_page_single_buf_           = nullptr;
-    size_t         h_page_meta_buf_size_       = 0;       // bytes (covers both)
     uint32_t*      h_pages_dense_buf_          = nullptr;
-    size_t         h_pages_dense_buf_size_     = 0;
     uint32_t*      h_result_nops_              = nullptr;
     uint32_t*      h_meta_scalars_             = nullptr;
     ChunkCounters* h_chunk_counters_per_chunk_ = nullptr;  // pinned, MAX_CHUNKS slots

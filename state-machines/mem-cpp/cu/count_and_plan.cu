@@ -1554,12 +1554,20 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     // FULL pages of pages_dense (the last one padded). The active ranges cover at most
     // N_ADDR + max_active addresses (one shared boundary each), so the worst case is
     // max_total_pages = N_ADDR / PAGE + max_active pages: ~1.3 MiB per meta array and
-    // 1.31 GiB (1.41 GB) + 4 KiB * max_active of pages_dense.
-    h_page_meta_buf_size_   = max_total_pages * sizeof(uint32_t);
-    h_pages_dense_buf_size_ = max_total_pages * MEM_OFFSETS_PAGE_SIZE * sizeof(uint32_t);
-    CUDA_CHECK(cudaMallocHost(&h_page_starts_buf_,  h_page_meta_buf_size_));
-    CUDA_CHECK(cudaMallocHost(&h_page_single_buf_,   h_page_meta_buf_size_));
-    CUDA_CHECK(cudaMallocHost(&h_pages_dense_buf_,  h_pages_dense_buf_size_));
+    // 1.31 GiB (1.41 GB) + 4 KiB * max_active of pages_dense. A host that cannot pin that much
+    // gets the CPU plan instead of an exit.
+    max_total_pages_ = max_total_pages;
+    const size_t page_meta_bytes   = max_total_pages * sizeof(uint32_t);
+    const size_t pages_dense_bytes = page_meta_bytes * MEM_OFFSETS_PAGE_SIZE;
+    cudaError_t pin_err = cudaMallocHost(&h_page_starts_buf_, page_meta_bytes);
+    if (pin_err == cudaSuccess) pin_err = cudaMallocHost(&h_page_single_buf_, page_meta_bytes);
+    if (pin_err == cudaSuccess) pin_err = cudaMallocHost(&h_pages_dense_buf_, pages_dense_bytes);
+    if (pin_err != cudaSuccess) {
+        cudaGetLastError();
+        fprintf(stderr, "CountAndPlan::setup ERROR: cannot pin %zu bytes for the offset pages: %s\n",
+                2 * page_meta_bytes + pages_dense_bytes, cudaGetErrorString(pin_err));
+        return false;
+    }
     CUDA_CHECK(cudaMallocHost(&h_present_counters_, (size_t)max_active_ * sizeof(uint32_t)));
     for (int s = 0; s < N_STREAMS; s++) {
         CUDA_CHECK(cudaMallocHost(&h_n_emits_[s], sizeof(uint32_t)));
@@ -2348,21 +2356,13 @@ bool CountAndPlan::process_worker_() {
         needed_pages += (num_addrs + MEM_OFFSETS_PAGE_SIZE - 1) / MEM_OFFSETS_PAGE_SIZE;
     }
 
-    // Paged-output buffers grow on demand (setup seeds the worst case, so this is a guard): one
-    // page-meta entry per page, and one full pages_dense page per page (every page present).
-    size_t needed_page_meta_bytes = needed_pages * sizeof(uint32_t);
-    size_t needed_offsets_bytes   = needed_pages * MEM_OFFSETS_PAGE_SIZE * sizeof(uint32_t);
-    if (needed_page_meta_bytes > h_page_meta_buf_size_) {
-        if (h_page_starts_buf_) CUDA_CHECK(cudaFreeHost(h_page_starts_buf_));
-        if (h_page_single_buf_)  CUDA_CHECK(cudaFreeHost(h_page_single_buf_));
-        h_page_meta_buf_size_ = needed_page_meta_bytes + (needed_page_meta_bytes / 4);
-        CUDA_CHECK(cudaMallocHost(&h_page_starts_buf_, h_page_meta_buf_size_));
-        CUDA_CHECK(cudaMallocHost(&h_page_single_buf_,  h_page_meta_buf_size_));
-    }
-    if (needed_offsets_bytes > h_pages_dense_buf_size_) {
-        if (h_pages_dense_buf_) CUDA_CHECK(cudaFreeHost(h_pages_dense_buf_));
-        h_pages_dense_buf_size_ = needed_offsets_bytes + (needed_offsets_bytes / 4);
-        CUDA_CHECK(cudaMallocHost(&h_pages_dense_buf_, h_pages_dense_buf_size_));
+    // Setup sized the device page meta and the pinned page buffers for the worst case, which
+    // the active ranges cannot exceed (consecutive ranges share at most one address); a block
+    // past it would overrun them, so it gets no device plan rather than a grown host side only.
+    if (needed_pages > max_total_pages_) {
+        fprintf(stderr, "CountAndPlan WARNING: %zu offset pages exceed the planner's %zu; "
+                        "no device plan for this block\n", needed_pages, max_total_pages_);
+        return false;
     }
 
     // Per-instance region base positions for the fused addr-offsets
