@@ -126,6 +126,26 @@ async fn run_recovery_within<R: RecoveryActions + Send + Sync + 'static>(
     }
 }
 
+/// Whether `state` computes `job_id`: how a cancellation finds a wrap or a recurser prove,
+/// which run off the loop with no current job.
+fn computes(state: &WorkerState, job_id: &JobId) -> bool {
+    matches!(state, WorkerState::Computing((computing, _)) if computing == job_id)
+}
+
+/// The recovery from a cancelled wrap or recurser prove, which cannot be stopped: wait for
+/// the task to end, then signal `WorkerRecoveryComplete`. The coordinator keeps the worker
+/// parked until then, and the task's own result, sent before it ends, reaches the loop first.
+async fn recover_after_task(task: JoinHandle<()>, loop_tx: LoopEventSender, worker_id: String) {
+    if let Err(e) = task.await {
+        warn!("[Recovery] {worker_id}: cancelled task join error: {e}");
+    }
+    info!("[Recovery] {worker_id}: cancelled task ended; signalling Ready");
+    let msg = WorkerRecoveryComplete { worker_id: worker_id.clone() };
+    if let Err(e) = loop_tx.send_recovery_complete(msg) {
+        error!("[Recovery] {worker_id}: enqueue RecoveryComplete failed: {e}");
+    }
+}
+
 /// The exit status of a worker that ends itself because it cannot recover
 /// in-process: `EX_TEMPFAIL`, since a restart is what recovers it.
 pub(crate) const WEDGED_EXIT_CODE: i32 = 75;
@@ -452,10 +472,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // and acking one twice is harmless.
         self.deferred.retain(|work| matches!(work, DeferredWork::Setup(_)));
 
-        let telemetry = &self.worker_config.telemetry;
-        let heartbeat_seconds =
-            if telemetry.enabled { telemetry.interval_seconds.clamp(1, 30) } else { 30 };
-        let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(heartbeat_seconds));
+        let mut heartbeat_interval = tokio::time::interval(Self::HEARTBEAT_INTERVAL);
 
         // Main non-blocking event loop
         loop {
@@ -675,6 +692,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     success,
                     result,
                     message_sender,
+                    loop_tx,
                     AggOutcome {
                         executed_steps,
                         proof_type,
@@ -685,13 +703,29 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 )
                 .await
             }
-            ComputationResult::RecurserAck { job_id, ack } => {
+            ComputationResult::RecurserAck { job_id, ack }
+            | ComputationResult::WrapResponse { job_id, response: ack } => {
                 // Ack already built by the blocking handler; just forward it.
                 if let Err(e) = message_sender.send(ack) {
-                    warn!("[Recurser] Failed to send recurser ack for job {job_id}: {e}");
+                    warn!("Failed to send the response of job {job_id}: {e}");
                 }
                 self.worker.set_current_job(None);
                 self.worker.set_state(WorkerState::Ready);
+                Ok(())
+            }
+            ComputationResult::WrappedFinalProof { job_id, response } => {
+                message_sender.send(response)?;
+                // A cancellation stops waiting for the wrap after a while, and the worker may
+                // have taken another job since: only this job ends here.
+                let own = match self.worker.current_job() {
+                    Some(job) => job.lock().await.job_id == job_id,
+                    None => false,
+                };
+                if own {
+                    info!("Aggregation task completed for {}", job_id);
+                    self.worker.set_current_job(None);
+                    self.worker.set_state(WorkerState::Ready);
+                }
                 Ok(())
             }
             ComputationResult::SetupProgramComplete {
@@ -1138,6 +1172,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         success: bool,
         result: Result<Option<Vec<AggProofs>>>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+        loop_tx: &LoopEventSender,
         outcome: AggOutcome,
     ) -> Result<()> {
         let AggOutcome { executed_steps, proof_type, instances, is_final, drain } = outcome;
@@ -1195,38 +1230,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         let hash =
                             self.worker.hash().context("Failed to get proving-key hash family")?;
                         match Proof::new_from_vadcop_proof(&flat_proof, minimal, verkey, hash) {
-                            Ok(zisk_proof) => {
-                                // On wrap failure, emit nothing: returning the
-                                // unwrapped Vadcop proof would answer a PLONK request
-                                // with a different proof kind.
-                                let final_proof: Option<Proof> = if is_plonk {
-                                    match self
-                                        .worker
-                                        .prover_arc()
-                                        .wrap_proof(&zisk_proof, ProofKind::Plonk)
-                                        .run()
-                                    {
-                                        Ok(wrapped) => Some(wrapped.get_proof().clone()),
-                                        Err(e) => {
-                                            fail_aggregation(
-                                                &mut success,
-                                                &mut error_message,
-                                                format!(
-                                                    "Failed to wrap Plonk proof for \
-                                                     {job_id}: {e}"
-                                                ),
-                                            );
-                                            None
-                                        }
-                                    }
-                                } else {
-                                    Some(zisk_proof)
-                                };
-                                match final_proof {
-                                    Some(p) => p.to_bincode().unwrap_or_default(),
-                                    None => vec![],
-                                }
+                            // The SNARK wrap takes seconds to minutes: it runs off the loop
+                            // and sends the job's final response itself.
+                            Ok(zisk_proof) if is_plonk => {
+                                let wrap = FinalWrap { job_id, executed_steps, instances };
+                                self.wrap_final_proof(wrap, zisk_proof, loop_tx);
+                                return Ok(());
                             }
+                            Ok(zisk_proof) => zisk_proof.to_bincode().unwrap_or_default(),
                             Err(e) => fail_aggregation(
                                 &mut success,
                                 &mut error_message,
@@ -1263,18 +1274,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             }
         };
 
-        let message = WorkerMessage {
-            payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
-                worker_id: self.worker_config.worker.worker_id.as_string(),
-                job_id: job_id.as_string(),
-                task_type: TaskType::Aggregate as i32,
-                success,
-                result_data,
-                error_message,
-                worker_in_recovery: false,
-            })),
-        };
-
+        let worker_id = self.worker_config.worker.worker_id.as_string();
+        let message = aggregate_response(worker_id, &job_id, success, result_data, error_message);
         message_sender.send(message)?;
 
         // TODO! move this logic to the client
@@ -1285,6 +1286,47 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
 
         Ok(())
+    }
+
+    /// Wraps a prove job's final proof into a SNARK off the message loop, so heartbeats keep
+    /// flowing while it runs and a `JobCancelled` is taken at once: the job stays the
+    /// worker's current one, and the wrap its computation. The job's final response comes
+    /// back as a `WrappedFinalProof`. On a failed wrap the response carries no proof: the
+    /// unwrapped Vadcop proof would answer a PLONK request with a different proof kind.
+    fn wrap_final_proof(&mut self, wrap: FinalWrap, proof: Proof, loop_tx: &LoopEventSender) {
+        let prover = self.worker.prover_arc();
+        let worker_id = self.worker_config.worker.worker_id.as_string();
+        let tx = loop_tx.clone();
+        let handle = tokio::task::spawn_blocking(move || {
+            let FinalWrap { job_id, executed_steps, instances } = wrap;
+            let mut success = true;
+            let mut error_message = String::new();
+            let wrapped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                prover.wrap_proof(&proof, ProofKind::Plonk).run()
+            }));
+            let proof_data = match wrapped {
+                Ok(Ok(wrapped)) => wrapped.get_proof().to_bincode().unwrap_or_default(),
+                Ok(Err(e)) => fail_aggregation(
+                    &mut success,
+                    &mut error_message,
+                    format!("Failed to wrap Plonk proof for {job_id}: {e}"),
+                ),
+                Err(_) => fail_aggregation(
+                    &mut success,
+                    &mut error_message,
+                    format!("Plonk wrap for {job_id} panicked"),
+                ),
+            };
+            let result_data =
+                Some(ResultData::FinalProof(FinalProof { proof_data, executed_steps, instances }));
+            let response =
+                aggregate_response(worker_id, &job_id, success, result_data, error_message);
+            let result = ComputationResult::WrappedFinalProof { job_id, response };
+            if tx.send_computation(result).is_err() {
+                warn!("[Wrap] Failed to deliver the final proof: event loop channel closed");
+            }
+        });
+        self.worker.set_current_computation(handle);
     }
 
     /// `true` when this failure should drive recovery for `job_id`. Returns
@@ -1451,6 +1493,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
     }
 
+    /// How often the worker sends its heartbeat, with the latest telemetry sample when it reports
+    /// telemetry. The coordinator drops a worker it has not heard from within its heartbeat
+    /// threshold, so this stays well below it, whatever the telemetry interval.
+    const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
+
     /// Healthy reset is sub-second; this only fires when the prover is stuck.
     const RECOVERY_TIMEOUT: Duration = Duration::from_secs(300);
 
@@ -1588,14 +1635,20 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     matched = true;
                 }
                 self.deferred.retain(|work| work.job_id() != Some(cancelled.job_id.as_str()));
+                let cancelled_job_id = JobId::from(cancelled.job_id.clone());
                 if let Some(ref job) = self.worker.current_job() {
-                    let cancelled_job_id = JobId::from(cancelled.job_id.clone());
-
                     if job.lock().await.job_id == cancelled_job_id {
                         cancelled_work = self.worker.clear_current_job();
                         self.worker.set_state(WorkerState::Ready);
                         matched = true;
                     }
+                }
+                // A wrap or a recurser prove runs off the loop with no current job: found by
+                // the state it set. It cannot be stopped, so the worker recovers once it ends.
+                let mut task = None;
+                if !matched && computes(self.worker.state(), &cancelled_job_id) {
+                    task = self.worker.take_current_computation();
+                    matched = true;
                 }
 
                 let ack = WorkerMessage {
@@ -1612,8 +1665,18 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 // WorkerRecoveryComplete when a compute task was live. Otherwise,
                 // if we matched the job, emit it directly (coordinator parked us
                 // SettingUp awaiting it).
-                let recovery_spawned =
-                    self.drive_cancellation(loop_tx, cancelled_work, cancelled.job_id);
+                let recovery_spawned = match task {
+                    Some(task) => {
+                        let worker_id = self.worker_config.worker.worker_id.as_string();
+                        self.recovery = Some(tokio::spawn(recover_after_task(
+                            task,
+                            loop_tx.clone(),
+                            worker_id,
+                        )));
+                        true
+                    }
+                    None => self.drive_cancellation(loop_tx, cancelled_work, cancelled.job_id),
+                };
                 if !recovery_spawned && matched {
                     let rc = WorkerRecoveryComplete {
                         worker_id: self.worker_config.worker.worker_id.as_string(),
@@ -1937,7 +2000,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             Ok(TaskType::PartialContribution) => self.partial_contribution(request, loop_tx).await,
             Ok(TaskType::Prove) => self.prove(request, loop_tx).await,
             Ok(TaskType::Aggregate) => self.aggregate(request, loop_tx).await,
-            Ok(TaskType::Wrap) => self.handle_wrap_task(request, message_sender).await,
+            Ok(TaskType::Wrap) => self.handle_wrap_task(request, loop_tx),
             Err(_) => Err(anyhow!("Unknown task type: {task_type_int}")),
         };
 
@@ -2679,10 +2742,13 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
-    async fn handle_wrap_task(
+    /// Runs a wrap off the message loop, as a recurser prove: heartbeats keep flowing
+    /// while it runs, which can be minutes for a SNARK, and a `JobCancelled` finds it by the
+    /// state it sets. Its response comes back as a `WrapResponse`.
+    fn handle_wrap_task(
         &mut self,
         request: ExecuteTaskRequest,
-        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+        loop_tx: &LoopEventSender,
     ) -> Result<()> {
         let job_id = JobId::from(request.job_id.clone());
 
@@ -2695,39 +2761,77 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         let prover = self.worker.prover_arc();
         let worker_id_str = self.worker_config.worker.worker_id.as_string();
-        let job_id_str = job_id.as_string();
+        let tx = loop_tx.clone();
 
-        let (success, result_data, error_message) = tokio::task::spawn_blocking(move || {
-            match Worker::<T>::execute_wrap_task(&prover, proof_data, proof_dest) {
-                Ok(wrapped_bytes) => (
+        self.worker.set_state(WorkerState::Computing((job_id.clone(), JobPhase::Recurse)));
+
+        let handle = tokio::task::spawn_blocking(move || {
+            let job_id_str = job_id.as_string();
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                Worker::<T>::execute_wrap_task(&prover, proof_data, proof_dest)
+            }));
+            let (success, result_data, error_message) = match outcome {
+                Ok(Ok(wrapped_bytes)) => (
                     true,
                     Some(ResultData::WrapResult(zisk_cluster_api::WrapResult {
                         proof_data: wrapped_bytes,
                     })),
                     String::new(),
                 ),
-                Err(e) => {
+                Ok(Err(e)) => {
                     error!("Wrap task failed for {}: {}", job_id_str, e);
                     (false, None, e.to_string())
                 }
+                Err(_) => {
+                    error!("Wrap task for {job_id_str} panicked");
+                    (false, None, "wrap panicked".to_string())
+                }
+            };
+            let response = WorkerMessage {
+                payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+                    worker_id: worker_id_str,
+                    job_id: job_id_str,
+                    task_type: TaskType::Wrap as i32,
+                    success,
+                    result_data,
+                    error_message,
+                    worker_in_recovery: false,
+                })),
+            };
+            if tx.send_computation(ComputationResult::WrapResponse { job_id, response }).is_err() {
+                warn!("[Wrap] Failed to deliver the wrap's response: event loop channel closed");
             }
-        })
-        .await?;
-
-        let message = WorkerMessage {
-            payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
-                worker_id: worker_id_str,
-                job_id: job_id.as_string(),
-                task_type: TaskType::Wrap as i32,
-                success,
-                result_data,
-                error_message,
-                worker_in_recovery: false,
-            })),
-        };
-
-        message_sender.send(message)?;
+        });
+        self.worker.set_current_computation(handle);
         Ok(())
+    }
+}
+
+/// What a prove job's final proof needs to be reported once it is wrapped.
+struct FinalWrap {
+    job_id: JobId,
+    executed_steps: u64,
+    instances: u64,
+}
+
+/// The response to an aggregation task.
+fn aggregate_response(
+    worker_id: String,
+    job_id: &JobId,
+    success: bool,
+    result_data: Option<ResultData>,
+    error_message: String,
+) -> WorkerMessage {
+    WorkerMessage {
+        payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+            worker_id,
+            job_id: job_id.as_string(),
+            task_type: TaskType::Aggregate as i32,
+            success,
+            result_data,
+            error_message,
+            worker_in_recovery: false,
+        })),
     }
 }
 
@@ -2959,6 +3063,47 @@ mod recovery_tests {
         assert!(stdout.contains("worker_node.rs:"), "the panic's location is passed on: {stdout}");
         let stderr = String::from_utf8_lossy(&child.stderr);
         assert!(stderr.contains("a witness thread's panic"), "the panic is reported: {stderr}");
+    }
+
+    /// A wrap or a recurser prove holds no current job: a cancellation finds it by the job
+    /// its state computes.
+    #[test]
+    fn a_cancellation_finds_a_task_by_the_job_it_computes() {
+        let job = JobId::from("job-1".to_string());
+        let other = JobId::from("job-2".to_string());
+        assert!(computes(&WorkerState::Computing((job.clone(), JobPhase::Recurse)), &job));
+        assert!(!computes(&WorkerState::Computing((other, JobPhase::Recurse)), &job));
+        assert!(!computes(&WorkerState::Ready, &job));
+    }
+
+    /// A cancelled task cannot be stopped: the worker reports its recovery once the task
+    /// ends, after the task's own result.
+    #[tokio::test]
+    async fn a_cancelled_task_is_recovered_once_it_ends() {
+        let (raw_tx, mut loop_rx) = mpsc::unbounded_channel::<LoopEvent>();
+        let loop_tx = LoopEventSender::new(raw_tx);
+        let (release, held) = std::sync::mpsc::channel::<()>();
+        let tx = loop_tx.clone();
+        let task = tokio::task::spawn_blocking(move || {
+            held.recv().unwrap();
+            let job_id = JobId::from("job-1".to_string());
+            let response = WorkerMessage { payload: None };
+            tx.send_computation(ComputationResult::WrapResponse { job_id, response }).unwrap();
+        });
+        let recovery = tokio::spawn(recover_after_task(task, loop_tx, "w0".into()));
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(loop_rx.try_recv().is_err(), "no recovery while the task runs");
+
+        release.send(()).unwrap();
+        recovery.await.unwrap();
+        let first = loop_rx.recv().await.unwrap();
+        assert!(
+            matches!(&first, LoopEvent::Computation(result)
+                if matches!(**result, ComputationResult::WrapResponse { .. })),
+            "the task's result comes first"
+        );
+        assert!(matches!(loop_rx.recv().await, Some(LoopEvent::RecoveryComplete(_))));
     }
 
     /// Process-long loop channel must redeliver after the original

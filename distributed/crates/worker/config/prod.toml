@@ -55,7 +55,7 @@ heartbeat_timeout_seconds = 30
 # `--no-telemetry` turns it off too.
 enabled = true
 
-# Seconds between two reports; the heartbeat goes this often too (at most 30).
+# Seconds between two samples. The heartbeat, every 5 s, carries the latest.
 interval_seconds = 10
 
 # ── Logging ───────────────────────────────────────────────────────────────────

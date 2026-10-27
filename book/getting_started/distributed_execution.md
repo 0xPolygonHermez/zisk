@@ -464,7 +464,7 @@ table.
 | Setting            | Default | Notes                                                                                 |
 | ---                | ---     | ---                                                                                   |
 | `enabled`          | `true`  | Report host and process telemetry with the heartbeat. CLI: `--no-telemetry` turns it off. |
-| `interval_seconds` | `10`    | Seconds between two reports. The heartbeat goes this often too (at most every 30 s).  |
+| `interval_seconds` | `10`    | Seconds between two samples. The heartbeat, every 5 s, carries the latest.            |
 
 After editing:
 
