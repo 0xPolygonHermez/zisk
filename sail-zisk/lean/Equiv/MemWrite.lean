@@ -55,4 +55,29 @@ theorem zisk_writeBytes (z : Equiv.Zisk.ZState) (a : Nat) (v : BitVec (8 * n)) :
   simp only [Sail.ConcurrencyInterfaceV1.PreSail.writeBytes, Equiv.Zisk.run_bind']
   rw [zisk_writeBytes_list]; rfl
 
+/-- The bytes of hi ++ lo: lo's, then hi's. -/
+theorem byteList_append {p q : Nat} (a : Nat) (lo : BitVec (8 * p)) (hi : BitVec (8 * q)) :
+    byteList (n := p + q) a ((show 8 * q + 8 * p = 8 * (p + q) by omega) ▸ (hi ++ lo)) =
+      byteList a lo ++ byteList (a + p) hi := by
+  simp only [byteList, List.ofFn_add, rec_cast]
+  congr 1
+  · congr 1; funext i
+    simp only [Fin.val_castLE, Prod.mk.injEq, true_and]
+    apply BitVec.eq_of_getLsbD_eq; intro j hj
+    have := i.isLt
+    simp [BitVec.getLsbD_append, hj]
+    intro h; omega
+  · congr 1; funext i
+    simp only [Fin.val_natAdd, Prod.mk.injEq]
+    refine ⟨by omega, ?_⟩
+    apply BitVec.eq_of_getLsbD_eq; intro j hj
+    simp [BitVec.getLsbD_append, hj]
+    rw [if_neg (by omega)]; congr 1; omega
+
+/-- Two writes side by side, lo's then hi's after it: one write of both. -/
+theorem memWrite_append {p q : Nat} (m : Mem) (a : Nat) (lo : BitVec (8 * p)) (hi : BitVec (8 * q)) :
+    memWrite (memWrite m a lo) (a + p) hi =
+      memWrite (n := p + q) m a ((show 8 * q + 8 * p = 8 * (p + q) by omega) ▸ (hi ++ lo)) := by
+  simp only [memWrite, byteList_append, List.foldl_append]
+
 end Equiv

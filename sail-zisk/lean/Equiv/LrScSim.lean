@@ -148,8 +148,8 @@ theorem lrdstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
       intro t he htm hmr hsec hwf hnext _
       rw [execute_load_eq, insert_same t _ _ hnext]
       obtain ⟨sv, hsv, hpm⟩ := hr.pmm
-      have hv := Equiv.riscv_readBytes t 8 (v1 + sign_extend (m := 64) (0 : BitVec 12)).toNat v
-        (by rw [htm, e0]; exact hbytes1)
+      have hv : Equiv.memRead t.mem 8 (v1 + sign_extend (m := 64) (0 : BitVec 12)).toNat = some v := by
+        rw [htm, e0]; exact hbytes1
       have := execute_ld t hwf rs hmr sv (hsec.trans hsv) hpm rs1 rd 0 v1 (getX_of_agree he l1 hv1)
         r (by rw [e0]; exact hm) (by exact hrb) (by rw [e0]; exact hal) v (by rw [e0] at hv ⊢; exact hv)
       exact this) n
@@ -225,8 +225,8 @@ theorem lrwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
       intro t he htm hmr hsec hwf hnext _
       rw [execute_load_w, Int.toNat_natCast, insert_same t _ _ hnext]
       obtain ⟨sv, hsv, hpm⟩ := hr.pmm
-      have hv := Equiv.riscv_readBytes t LKind.lw.w (v1 + sign_extend (m := 64) (0 : BitVec 12)).toNat v
-        (by rw [htm, e0]; exact hbytes1)
+      have hv : Equiv.memRead t.mem LKind.lw.w (v1 + sign_extend (m := 64) (0 : BitVec 12)).toNat = some v := by
+        rw [htm, e0]; exact hbytes1
       exact LKind.lw.exec t hwf rs hmr sv (hsec.trans hsv) hpm rs1 rd 0 v1 (getX_of_agree he l1 hv1)
         r (by rw [e0]; exact hm) hrb (by rw [e0]; exact hal) v hv) n
   -- ZisK: the load

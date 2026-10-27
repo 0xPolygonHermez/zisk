@@ -52,11 +52,11 @@ structure LdAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   rom : zrom pc = Equiv.Zisk.loadInst (.ZOP_COPYB ()) i.rd.toNat i.rs1.toNat (i.imm.signExtend 64) 8
 
 /-- What the load needs when it runs, at address a: in a readable region on
-    both sides, aligned or within the region's granule (`AlignOk`), off ZisK's register file and free input, and the
+    both sides, at any alignment (`SplitOk`: what sail-riscv's split path needs of the region), off ZisK's register file and free input, and the
     8 bytes there. -/
 structure LdOk (s : RVState) (rs : List PMA_Region) (a : BitVec 64) (v : BitVec 64) : Prop where
   region : ∃ r, matching_pma_region rs (.Physaddr a) 8 = some r ∧ r.attributes.readable = true ∧
-    AlignOk r (.Load .Data) a 8
+    SplitOk r a 8
   zread : _root_.Zisk.Functions.readable a 8 = true
   zregs : _root_.Zisk.Functions.hits_registers a 8 = false
   zin : a ≠ _root_.Zisk.Functions.INPUT_ADDR
@@ -102,7 +102,7 @@ theorem ldstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   · intro t he htm hmr hsec hwf
     rw [execute_load_eq]
     obtain ⟨sv, hsv, hpm⟩ := hr.pmm
-    have hv := Equiv.riscv_readBytes t 8 _ v (htm ▸ hbytes)
+    have hv : Equiv.memRead t.mem 8 _ = some v := htm ▸ hbytes
     exact execute_ld t hwf rs hmr sv (hsec.trans hsv) hpm i.rs1 i.rd i.imm v1 (getX_of_agree he l1 hv1)
       r hm hrb hal v hv
   · rw [zstep_run zrom z pc' hzpc, hi.rom]

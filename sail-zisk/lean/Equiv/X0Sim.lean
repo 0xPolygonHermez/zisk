@@ -670,7 +670,7 @@ theorem lwtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
   · intro t he htm hmr hsec hwf hnext _
     rw [execute_load_w, Int.toNat_natCast, insert_same t _ _ hnext]
     obtain ⟨sv, hsv, hpm⟩ := hr.pmm
-    have hv := Equiv.riscv_readBytes t i.k.w _ v (htm ▸ hbytes)
+    have hv : Equiv.memRead t.mem i.k.w _ = some v := htm ▸ hbytes
     exact i.k.exec t hwf rs hmr sv (hsec.trans hsv) hpm i.rs1 i.rd i.imm v1 (getX_of_agree he l1 hv1)
       r hm hrb hal v hv
   · rw [zstep_run zrom z pc' hzpc, i.zisk_of_spec' hi.tr]
@@ -735,7 +735,7 @@ theorem ldtstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
   · intro t he htm hmr hsec hwf hnext _
     rw [execute_load_eq, insert_same t _ _ hnext]
     obtain ⟨sv, hsv, hpm⟩ := hr.pmm
-    have hv := Equiv.riscv_readBytes t 8 _ v (htm ▸ hbytes)
+    have hv : Equiv.memRead t.mem 8 _ = some v := htm ▸ hbytes
     exact execute_ld t hwf rs hmr sv (hsec.trans hsv) hpm i.rs1 i.rd i.imm v1 (getX_of_agree he l1 hv1)
       r hm hrb hal v hv
   · rw [zstep_run zrom z pc' hzpc, i.zisk_of_spec' hi.tr]

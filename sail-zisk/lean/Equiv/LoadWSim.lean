@@ -105,7 +105,7 @@ structure LwAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
     there. -/
 structure LwOk (s : RVState) (rs : List PMA_Region) (a : BitVec 64) (w : Nat) (v : BitVec (8 * w)) : Prop where
   region : ∃ r, matching_pma_region rs (.Physaddr a) w = some r ∧ r.attributes.readable = true ∧
-    AlignOk r (.Load .Data) a w
+    SplitOk r a w
   zread : _root_.Zisk.Functions.readable a w = true
   zregs : _root_.Zisk.Functions.hits_registers a w = false
   /-- Off the input's first 8 bytes, which are not memory. -/
@@ -122,10 +122,9 @@ theorem LKind.exec (k : LKind) (t : RVState) (hwf : WF t) (rs : List PMA_Region)
     (hpm : _get_Seccfg_PMM sec = 0#2)
     (rs1 rd : RegBits) (imm : BitVec 12) (v1 : BitVec 64) (h1 : getX t rs1.toNat = some v1)
     (r : PMA_Region) (hm : matching_pma_region rs (.Physaddr (v1 + sign_extend (m := 64) imm)) k.w = some r)
-    (hrd : r.attributes.readable = true) (hal : AlignOk r (.Load .Data) (v1 + sign_extend (m := 64) imm) k.w)
+    (hrd : r.attributes.readable = true) (hal : SplitOk r (v1 + sign_extend (m := 64) imm) k.w)
     (v : BitVec (8 * k.w))
-    (hv : (Sail.ArchSem.readBytes k.w (v1 + sign_extend (m := 64) imm).toNat :
-      Sail.ArchSem.ArchSemSeqM exception _).run t = .ok v t) :
+    (hv : Equiv.memRead t.mem k.w (v1 + sign_extend (m := 64) imm).toNat = some v) :
     (interpretSailEffects (execute_LOAD imm (.Regidx rs1) (.Regidx rd) k.u k.w)).run t
       = .ok RETIRE_SUCCESS (setX t rd.toNat (extend_value k.u v)) := by
   cases k
@@ -177,7 +176,7 @@ theorem lwstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
   · intro t he htm hmr hsec hwf
     rw [execute_load_w, Int.toNat_natCast]
     obtain ⟨sv, hsv, hpm⟩ := hr.pmm
-    have hv := Equiv.riscv_readBytes t i.k.w _ v (htm ▸ hbytes)
+    have hv : Equiv.memRead t.mem i.k.w _ = some v := htm ▸ hbytes
     exact i.k.exec t hwf rs hmr sv (hsec.trans hsv) hpm i.rs1 i.rd i.imm v1 (getX_of_agree he l1 hv1)
       r hm hrb hal v hv
   · rw [zstep_run zrom z pc' hzpc, hi.rom]

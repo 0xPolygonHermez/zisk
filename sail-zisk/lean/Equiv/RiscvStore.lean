@@ -90,43 +90,4 @@ theorem execute_store_eq (imm : BitVec 12) (a b : regidx) :
     execute (.STORE (imm, a, b, 8)) = execute_STORE imm a b 8 := by
   simp [execute]
 
-set_option maxHeartbeats 4000000 in
-/-- `sd rs2, imm(rs1)`, at an address the PMA check passes unsplit (`AlignOk`) in a writable region, in
-    machine mode with no pointer masking: rs2's 8 bytes go there. -/
-theorem execute_sd (t : RVState) (_h : WF t) (rs : List PMA_Region) (hs : MemReady t rs)
-    (sec : RegisterType mseccfg) (hsec : t.regs.get? mseccfg = some sec) (hpm : _get_Seccfg_PMM sec = 0#2)
-    (rs1 rs2 : RegBits) (imm : BitVec 12) (v1 v2 : BitVec 64)
-    (h1 : getX t rs1.toNat = some v1) (h2 : getX t rs2.toNat = some v2)
-    (r : PMA_Region) (hm : matching_pma_region rs (.Physaddr (v1 + sign_extend (m := 64) imm)) 8 = some r)
-    (hwr : r.attributes.writable = true) (hal : AlignOk r (.Store .Data) (v1 + sign_extend (m := 64) imm) 8) :
-    (interpretSailEffects (execute_STORE imm (.Regidx rs2) (.Regidx rs1) 8)).run t
-      = .ok RETIRE_SUCCESS
-          { t with mem := Equiv.memWrite (n := 8) t.mem (v1 + sign_extend (m := 64) imm).toNat v2 } := by
-  have hs' := hs
-  obtain ⟨hp, ⟨ms, hms, hmprv⟩, ⟨mi, hmi⟩, ⟨se, hse⟩, ⟨me, hme⟩, hh, hr⟩ := hs
-  have r1 := rX_run t rs1.toNat rs1.lt v1 h1
-  have r2 := rX_run t rs2.toNat rs2.lt v2 h2
-  have hacc : PlainAccess (.Store .Data) := Or.inr (Or.inr rfl)
-  have ht := translateAddr_run t (v1 + sign_extend (m := 64) imm) _ hacc mi hmi hp se hse me hme
-  have hea := mem_write_ea_run t rs hr hh _ r hm hwr hal
-  simp only [execute_STORE, vmem_write, vmem_write_explicit, default_access_info, get_pmlen,
-    get_transformed_data_addr, ext_data_get_addr, transform_effective_address, vmem_write_addr,
-    rX_bits, LeanZiskRV.assert, Sail.ArchSem.PreSail.assert, is_pmm_applicable, pm_transform_PA,
-    Functions.xlen_bytes, get_pmm, pmlen_of_mode, toNatInt_toNat, Functions.satp_mode, currentlyEnabled,
-    hartSupports, LeanZiskRV.not]
-  repeat (first
-    | rv_step _h
-    | (rw [effectivePrivilege_run _ _ _ _ hmprv]; try dsimp only)
-    | (rw [r1]; try dsimp only)
-    | (rw [r2]; try dsimp only)
-    | (simp only [pmm_mode_backwards, pm_id, plat_st, bits_of_virtaddr, ite_self]; try dsimp only)
-    | (rw [split8_run _ _ _ _ hal]; try dsimp only)
-    | (rw [ht]; try dsimp only)
-    | (erw [hea]; try dsimp only)
-    | (erw [mem_write_value_run t rs hr hh _ r hm hwr hal]; try dsimp only))
-  congr 3
-  change BitVec.setWidth 64 (Sail.BitVec.extractLsb (BitVec.setWidth 64 (Sail.BitVec.extractLsb v2 63 0)) 63 0) = v2
-  apply BitVec.eq_of_getLsbD_eq; intro i hi
-  simp [Sail.BitVec.extractLsb, hi]
-
 end Equiv.Riscv

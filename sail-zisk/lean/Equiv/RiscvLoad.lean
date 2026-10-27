@@ -5,6 +5,7 @@
   (pointer masking, translation, the PMA check, the page split, the read).
 -/
 import Equiv.RiscvStep
+import Equiv.RiscvSplit
 
 namespace Equiv.Riscv
 
@@ -70,10 +71,9 @@ theorem execute_ld (t : RVState) (_h : WF t) (rs : List PMA_Region) (hs : MemRea
     (sec : RegisterType mseccfg) (hsec : t.regs.get? mseccfg = some sec) (hpm : _get_Seccfg_PMM sec = 0#2)
     (rs1 rd : RegBits) (imm : BitVec 12) (v1 : BitVec 64) (h1 : getX t rs1.toNat = some v1)
     (r : PMA_Region) (hm : matching_pma_region rs (.Physaddr (v1 + sign_extend (m := 64) imm)) 8 = some r)
-    (hrd : r.attributes.readable = true) (hal : AlignOk r (.Load .Data) (v1 + sign_extend (m := 64) imm) 8)
+    (hrd : r.attributes.readable = true) (hal : SplitOk r (v1 + sign_extend (m := 64) imm) 8)
     (v : BitVec 64)
-    (hv : (Sail.ArchSem.readBytes 8 (v1 + sign_extend (m := 64) imm).toNat :
-      Sail.ArchSem.ArchSemSeqM exception _).run t = .ok v t) :
+    (hv : Equiv.memRead t.mem 8 (v1 + sign_extend (m := 64) imm).toNat = some v) :
     (interpretSailEffects (execute_LOAD imm (.Regidx rs1) (.Regidx rd) false 8)).run t
       = .ok RETIRE_SUCCESS (setX t rd.toNat v) := by
   have hs' := hs
@@ -81,7 +81,8 @@ theorem execute_ld (t : RVState) (_h : WF t) (rs : List PMA_Region) (hs : MemRea
   have r1 := rX_run t rs1.toNat rs1.lt v1 h1
   have hacc : PlainAccess (.Load .Data) := Or.inr (Or.inl rfl)
   have ht := translateAddr_run t (v1 + sign_extend (m := 64) imm) _ hacc mi hmi hp se hse me hme
-  have hrd' := mem_read_run t rs hr hh _ 8 (by omega) _ hacc r hm (by simpa [permits] using hrd) hal v hv
+  have hrd' := mem_read_any t rs hr hh _ 8 (by decide) hal.2.2 r hm (by simpa [permits] using hrd) hal.1 hal.2.1 v hv
+  obtain ⟨sp, hsp⟩ := split_any (v1 + sign_extend (m := 64) imm) 8 (by decide)
   have hw := wX_run t rd.toNat rd.lt v
   simp only [execute_LOAD, vmem_read, vmem_read_explicit, default_access_info, get_pmlen,
     get_transformed_data_addr, ext_data_get_addr, transform_effective_address, vmem_read_addr,
@@ -93,7 +94,8 @@ theorem execute_ld (t : RVState) (_h : WF t) (rs : List PMA_Region) (hs : MemRea
     | (rw [effectivePrivilege_run _ _ _ _ hmprv]; try dsimp only)
     | (rw [r1]; try dsimp only)
     | (simp only [pmm_mode_backwards, pm_id, plat_ld, bits_of_virtaddr, ite_self]; try dsimp only)
-    | (rw [split8_run _ _ _ _ hal]; try dsimp only)
+    | (rw [hsp]; try dsimp only)
+    | (simp only [bare_ne, Bool.false_and, Bool.and_false, Bool.false_eq_true, if_false]; try dsimp only)
     | (rw [ht]; try dsimp only)
     | (rw [hrd']; try dsimp only)
     | (erw [hrd']; try dsimp only))

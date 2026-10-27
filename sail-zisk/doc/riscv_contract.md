@@ -39,7 +39,14 @@ Zicond, the privileged instructions (`mret`, `wfi`, `sfence.vma`).
   `lr` whose bytes include its own instruction word is outside the contract
   (precondition **L**): the machine runs the plain load in the `lr`'s place
   (§ "As a machine"), and would read that load's word there. The AMOs are
-  RISC-V's.
+  RISC-V's, within a 16-byte granule (precondition **A**): RISC-V, in this
+  profile, faults on an AMO that crosses one, where ZisK's translation —
+  a load, the operation, a store — runs it as any other access:
+
+  > **Precondition A.** No AMO's bytes cross a 16-byte boundary.
+
+  Compilers align atomics to their size, so an AMO of 4 or 8 bytes never
+  crosses one.
 - The transpiler decodes as RISC-V does, in this profile: a word RISC-V
   rejects becomes a halt, never another instruction, and a word of an
   extension outside the set fails only if it runs, as on RISC-V; it does not
@@ -248,7 +255,8 @@ meets **E** (no `ecall` but exit), **C** (no CSR access but the ZisK calls
 of §§ 7–8, reading `marchid` and writing a read-only CSR, no store to
 `marchid`'s cell), **I** (the
 free input's 8 bytes read only as the free input), **Z** (no zkvmcall) and
-**L** (no `lr` reading its own instruction word). Everything else
+**L** (no `lr` reading its own instruction word) and **A** (no AMO across
+a 16-byte boundary). Everything else
 it may do — touch memory outside § 2, write a read-only CSR, misuse a
 precompile — has a defined outcome above: a failure, which ZisK does not
 prove, and which the theorem must show both sides agree on.

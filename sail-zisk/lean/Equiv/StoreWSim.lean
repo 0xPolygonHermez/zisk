@@ -6,7 +6,7 @@
 -/
 import Equiv.StoreSim
 import Equiv.LoadWSim
-import Equiv.RiscvStoreW
+import Equiv.RiscvStoreSplit
 import Equiv.RiscvDecodeStore
 import Equiv.ZiskStoreW
 
@@ -78,7 +78,7 @@ structure SwAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
     writable region on both sides, off ZisK's register file. -/
 structure SwOk (rs : List PMA_Region) (a : BitVec 64) (w : Nat) : Prop where
   region : ∃ r, matching_pma_region rs (.Physaddr a) w = some r ∧ r.attributes.writable = true ∧
-    AlignOk r (.Store .Data) a w
+    SplitOk r a w
   zwrite : _root_.Zisk.Functions.writable a w = true
   zregs : _root_.Zisk.Functions.hits_registers a w = false
 
@@ -93,7 +93,7 @@ theorem SKind.exec (k : SKind) (t : RVState) (hwf : WF t) (rs : List PMA_Region)
     (rs1 rs2 : RegBits) (imm : BitVec 12) (v1 v2 : BitVec 64)
     (h1 : getX t rs1.toNat = some v1) (h2 : getX t rs2.toNat = some v2)
     (r : PMA_Region) (hm : matching_pma_region rs (.Physaddr (v1 + sign_extend (m := 64) imm)) k.w = some r)
-    (hwr : r.attributes.writable = true) (hal : AlignOk r (.Store .Data) (v1 + sign_extend (m := 64) imm) k.w) :
+    (hwr : r.attributes.writable = true) (hal : SplitOk r (v1 + sign_extend (m := 64) imm) k.w) :
     (interpretSailEffects (execute_STORE imm (.Regidx rs2) (.Regidx rs1) k.w)).run t
       = .ok RETIRE_SUCCESS
           { t with mem := (Equiv.memWrite (n := k.w) t.mem (v1 + sign_extend (m := 64) imm).toNat

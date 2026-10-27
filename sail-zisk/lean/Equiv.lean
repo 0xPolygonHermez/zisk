@@ -38,6 +38,7 @@ import Equiv.ZiskLoadW
 import Equiv.RiscvDecodeLoad
 import Equiv.LoadWSim
 import Equiv.RiscvStoreW
+import Equiv.RiscvStoreSplit
 import Equiv.ZiskStoreW
 import Equiv.RiscvDecodeStore
 import Equiv.StoreWSim

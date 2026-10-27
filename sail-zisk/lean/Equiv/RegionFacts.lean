@@ -67,6 +67,24 @@ theorem region_gran {a : BitVec 64} {w : Nat} {r : PMA_Region}
   · cases hm; rfl
   · cases hm
 
+theorem region_noex {a : BitVec 64} {w : Nat} {r : PMA_Region}
+    (hm : matching_pma_region ziskRegions (.Physaddr a) w = some r) :
+    r.attributes.misaligned_exceptions.load_store = none := by
+  simp only [matching_pma_region, matching_pma_region_bits_range, ziskRegions] at hm
+  split at hm
+  · cases hm; rfl
+  split at hm
+  · cases hm; rfl
+  split at hm
+  · cases hm; rfl
+  · cases hm
+
+/-- In ZisK's regions, a load or store runs at any alignment, short of
+    wrapping past the address space's end. -/
+theorem splitOk_zisk {a : BitVec 64} {w : Nat} {r : PMA_Region}
+    (hm : matching_pma_region ziskRegions (.Physaddr a) w = some r) (h : a.toNat + w < 2 ^ 64) : SplitOk r a w :=
+  ⟨region_gran hm, region_noex hm, h⟩
+
 theorem allowed_of_mod (a : BitVec 64) (w : Nat) (hw : w = 1 ∨ w = 2 ∨ w = 4 ∨ w = 8)
     (h : a.toNat % 16 + w ≤ 16) : allowed_misaligned a w 4 = true := by
   have hb : (a &&& 15#64).toNat = a.toNat % 16 := by

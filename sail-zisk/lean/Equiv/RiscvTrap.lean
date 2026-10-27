@@ -290,31 +290,6 @@ theorem pmaCheck_fault (s : RVState) (rs : List PMA_Region) (hr : s.regs.get? pm
         accessFaultFromAccessType, LeanZiskRV.assert, Sail.ArchSem.PreSail.assert, bind_assoc, LeanZiskRV.not,
         me_run_map_lift]
 
-/-- The page split of any access of 1, 2, 4 or 8 bytes runs. -/
-theorem split_any (a : BitVec 64) (w : Nat) (hw : w = 1 ∨ w = 2 ∨ w = 4 ∨ w = 8) :
-    ∃ p, ∀ s : RVState, (interpretSailEffects (split_on_page_boundary a w)).run s = .ok p s := by
-  simp only [split_on_page_boundary, Sail.BitVec.length]
-  split
-  · exact ⟨_, fun _ => rfl⟩
-  · next hn =>
-    simp only [LeanZiskRV.assert, Sail.ArchSem.PreSail.assert]
-    rw [if_pos ?c]
-    · exact ⟨_, fun _ => rfl⟩
-    revert hn
-    simp only [Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange', ones, zeros, BitVec.subInt,
-      BitVec.addInt, Functions.pagesize_bits, sail_ones, BitVec.zero_eq, BitVec.toNatInt, Sail.BitVec.extractLsb]
-    have hb : (a &&& 7#64).toNat = a.toNat % 8 := by
-      rw [BitVec.toNat_and]; exact Nat.and_two_pow_sub_one_eq_mod a.toNat 3
-    rcases hw with rfl | rfl | rfl | rfl <;> simp <;> intro hn <;> refine Classical.byContradiction fun hc => hn ?_
-    · have h7 : a &&& 7#64 ≤ 7#64 := by rw [BitVec.le_def, hb]; simp; omega
-      revert h7; bv_decide
-    · have h7 : a &&& 7#64 ≤ 6#64 := by rw [BitVec.le_def, hb]; simp; omega
-      revert h7; bv_decide
-    · have h7 : a &&& 7#64 ≤ 4#64 := by rw [BitVec.le_def, hb]; simp; omega
-      revert h7; bv_decide
-    · have h7 : a &&& 7#64 ≤ 0#64 := by rw [BitVec.le_def, hb]; simp; omega
-      revert h7; bv_decide
-
 /-- A read no region permits: the PMA check's fault, at the address. -/
 theorem mem_read_fault (s : RVState) (rs : List PMA_Region) (hr : s.regs.get? pma_regions = some rs)
     (a : BitVec 64) (w : Nat) (acc : MemoryAccessType mem_payload) (hacc : PlainAccess acc)
@@ -326,8 +301,6 @@ theorem mem_read_fault (s : RVState) (rs : List PMA_Region) (hr : s.regs.get? pm
   refine ⟨e, ?_⟩
   simp [mem_read, mem_read_priv_meta, checked_mem_read, check_pma_with_pmp_priority, he, pmpCheck_run,
     me_run_lift_bind, bind_assoc, me_run_throw_bind, MemoryOpResult_drop_meta]
-
-theorem bare_ne : (SATPMode.Bare != SATPMode.Bare) = false := rfl
 
 set_option maxHeartbeats 4000000 in
 /-- A load no region permits, of 1, 2, 4 or 8 bytes, in machine mode with

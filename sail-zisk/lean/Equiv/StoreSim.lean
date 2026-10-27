@@ -5,11 +5,11 @@
   so their memories stay equal.
 
   As for loads, what the store needs when it runs is a hypothesis of the
-  step: the address aligned and in a writable region on both sides (RAM),
+  step: the address in a writable region on both sides (RAM),
   off ZisK's register file.
 -/
 import Equiv.LoadSim
-import Equiv.RiscvStore
+import Equiv.RiscvStoreSplit
 import Equiv.RiscvStepStore
 import Equiv.ZiskStore
 
@@ -54,11 +54,12 @@ structure SdAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   rs2 : i.rs2 ≠ 0
   rom : zrom pc = Equiv.Zisk.storeInst i.rs1.toNat i.rs2.toNat ((i.immHi ++ i.immLo).signExtend 64) 8
 
-/-- What the store needs when it runs, at address a: aligned, in a writable
-    region on both sides, off ZisK's register file. -/
+/-- What the store needs when it runs, at address a: in a writable region on
+    both sides, at any alignment (`SplitOk`: what sail-riscv's split path
+    needs of the region), off ZisK's register file. -/
 structure SdOk (rs : List PMA_Region) (a : BitVec 64) : Prop where
   region : ∃ r, matching_pma_region rs (.Physaddr a) 8 = some r ∧ r.attributes.writable = true ∧
-    AlignOk r (.Store .Data) a 8
+    SplitOk r a 8
   zwrite : _root_.Zisk.Functions.writable a 8 = true
   zregs : _root_.Zisk.Functions.hits_registers a 8 = false
 
