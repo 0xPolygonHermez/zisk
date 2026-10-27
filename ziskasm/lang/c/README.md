@@ -33,7 +33,7 @@ precompile CSRs directly. One `.zisk` implementation serves every guest.
 | `include/`            | the public headers, one per family (see [Coverage](#coverage)) |
 | `src/zkvm_calls.s`    | the zkvmcall thunks |
 | `src/zkvm_mem.s`      | `zkvm_memset_any` and weak libc `memcpy`/`memmove`/`memcmp`/`memset` on the DMA ops |
-| `src/_start.s`        | the guest entry point (EF §9) |
+| `src/_start.s`        | the guest entry point (EF §9), `abort` and the DMA `mem*` |
 | `CMakeLists.txt`      | builds the `zisklib_c` static library + include dir |
 | `package.sh`          | builds and stages the distributable archive |
 
@@ -76,7 +76,7 @@ dist/lib/libzisklib_c.a
 dist/share/zisk/zisk_linker_script.ld
 ```
 
-and then checks the archive really exports `_start`, `read_input`, `write_output`,
+and then checks the archive really exports `_start`, `abort`, `read_input`, `write_output`,
 a sample accelerator and the four `mem*` routines before declaring success.
 
 A guest then needs nothing from this source tree:
@@ -99,7 +99,13 @@ behave like an ordinary static library:
   a zkvmcall thunk (`csrs <id>, x0; ret`, see [`src/zkvm_calls.s`](src/zkvm_calls.s))
   that the transpiler turns into a jump to a hand-written `.zisk` routine, so a guest
   linked against it runs only under ZisK. A clean link proves nothing on its own.
-  The exception is `_start` and the `mem*` routines below, which are real code.
+  The exception is `_start`, `abort` and the `mem*` routines below, which are real code.
+- **It defines `abort` (EF termination, draft eth-act PR #46).** It ends the run as a
+  failed execution with exit code 134 (128 + SIGABRT), as if `main` had returned it,
+  without running destructors. It lives in the same object as `_start`, so it is the
+  `abort` a guest gets even when it links a libc (newlib's would never reach the ZisK
+  termination); C++ `std::terminate` reaches it too. Freestanding guests declare it
+  themselves: `_Noreturn void abort(void);`.
 - **It defines `memcpy`/`memmove`/`memcmp`/`memset` (EF §2).** They are DMA
   precompile thunks (`memmove` is overlap-safe; it shares `memcpy`'s DMA op, which
   has memmove semantics) and they live in the same object as `_start`. Every guest
@@ -172,8 +178,8 @@ unchanged, checks the big-endian one too), and `u256_bench_guest.c -DU256_LE` me
 The zkvmcall IDs live in `definitions/src/zkvmcall.rs`.
 
 The library also provides `_start` (`src/_start.s`), which EF §9 requires the
-archive to ship, and the DMA-backed `memcpy`/`memmove`/`memcmp`/`memset` in the
-same file (EF §2).
+archive to ship, and in the same file `abort` (draft eth-act PR #46) and the
+DMA-backed `memcpy`/`memmove`/`memcmp`/`memset` (EF §2).
 
 Adding a routine = a row in `definitions/src/zkvmcall.rs` (a new ID, never a
 reused one), a `ZKVMCALL` line in `src/zkvm_calls.s`, a prototype in the header for

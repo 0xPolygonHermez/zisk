@@ -146,4 +146,11 @@ mod exports {
     // --- Lifecycle (lib.rs) --------------------------------------------------
     wrap_export!(fn zkvm_init() => ziskos::zkvm_init);
     wrap_export!(fn zkvm_deinit() => ziskos::zkvm_deinit);
+
+    // --- Termination (lib.rs) ------------------------------------------------
+    // The failed termination of the EF standard (draft eth-act PR #46)
+    #[no_mangle]
+    pub extern "C" fn abort() -> ! {
+        ziskos::abort()
+    }
 }

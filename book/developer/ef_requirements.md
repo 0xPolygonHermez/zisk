@@ -198,14 +198,14 @@ conform but not yet audited against the spec.
 | 5 | [Memory layout restrictions](#5-memory-layout-restrictions) | **Conformant** | Standard is non-prescriptive; ZisK ships a vendor linker script defining its map. |
 | 6 | [Memory safety guard regions](#6-memory-safety-guard-regions) | **Conformant** | Null region and the span below the stack bottom are both unmapped and trap; the guard is adjacent with no gap, named in `core/src/mem.rs` and enforced by compile-time assertions. |
 | 7 | [RISC-V target](#7-risc-v-target) | **Partial** | RV64IMA, little-endian, LP64, unaligned access supported and counted/priced by `ziskemu` stats; `compressed` (`C`) feature implemented (off by default); unaligned operands no longer reach a precompile. One change remains: emit a per-proof unaligned-access count from the proving path (the tally already exists in `MemCounters`). |
-| 8 | [Standard termination semantics](#8-standard-termination-semantics) | **Conformant** (Type 1, to confirm) | A nonzero `main` return, a trap or a write to a read-only CSR halts as a failed execution, reported with its exit code and rejected before proving. A failed run cannot end at the pc the circuit requires, so it cannot be proven; the PIL owners are to confirm that argument. |
-| 9 | [Static library and linker script](#9-static-library-and-linker-script) | **Conformant** | `package.sh` stages `libzisklib_c.a` (`_start` incl. C++ ctors/dtors, I/O, all accelerators) + headers + the W^X linker script exporting `_heap_start`/`_heap_end`; verified by linking C and C++ guests against the installed artifacts alone. |
+| 8 | [Standard termination semantics](#8-standard-termination-semantics) | **Conformant** (Type 1, to confirm) | A nonzero `main` return, `abort()` (exit code 134, draft eth-act PR #46), a trap or a write to a read-only CSR halts as a failed execution, reported with its exit code and rejected before proving. A failed run cannot end at the pc the circuit requires, so it cannot be proven; the PIL owners are to confirm that argument. |
+| 9 | [Static library and linker script](#9-static-library-and-linker-script) | **Conformant** | `package.sh` stages `libzisklib_c.a` (`_start` incl. C++ ctors/dtors, `abort`, I/O, all accelerators) + headers + the W^X linker script exporting `_heap_start`/`_heap_end`; verified by linking C and C++ guests against the installed artifacts alone. |
 | 10 | [Instruction-address-misaligned semantics](#10-instruction-address-misaligned-exception-semantics) | **Conformant** | At the default `IALIGN=32` (`compressed` off): misaligned entry points and executable-segment starts rejected at load; a misaligned computed jump hits its own `emu_end` slot in the per-byte jump map (rounding impossible by construction) and exits with `end=0`; the Rust emulator panics. |
 | 11 | [Host randomness](#11-host-randomness) | **Conformant** | `zkvm_random_u64` returns the SHAKE256 stream of a 256-bit seed drawn per execution from the OS CSPRNG (or provided with `--random-seed` to replay a run); the guest cannot set or observe it. Not available with hints. Standard still a draft (eth-act PR #42). |
 | 12 | [Diagnostic logging](#12-diagnostic-logging) | **Conformant** (draft) | Draft standard (eth-act PR #27). Each `write_log` call site is one no-op step, the same in every ROM, so logging never changes the verification key; `ziskemu --write-log` prints the text, and executions and proofs ignore it. |
 
-Draft standards that ZisK does not meet yet (`abort`, proving cost estimation,
-minimum memory resources) are listed in
+Draft standards that ZisK does not meet yet (proving cost estimation, minimum
+memory resources) are listed in
 [Draft standards](#draft-standards).
 
 ---
@@ -721,8 +721,8 @@ does not satisfy it, because a malicious prover controls its own software.
   whose operand is the exit code.
 - **Faults.** `unimp` and any other write to a read-only CSR (all three forms),
   `ebreak` and `c.ebreak` also halt as failed executions. Rust panics end in a
-  trap (`ziskos-staticlib`'s panic handler emits `unimp`). C/C++ guests have no
-  vendor `abort()` yet; see draft PR #46 in [Draft standards](#draft-standards).
+  trap (`ziskos-staticlib`'s panic handler emits `unimp`).
+- **`abort`.** See [below](#abort-draft-eth-act-pr-46).
 - **Host report.** Both emulator entry points, `emulate` (`ziskemu`,
   `cargo-zisk execute`) and `compute_minimal_traces` (the first phase of proving),
   return `ZiskEmulatorErr::ExecutionFailed` with the reason (trap or exit code),
@@ -730,7 +730,8 @@ does not satisfy it, because a malicious prover controls its own software.
   exit code and exits with its low 8 bits (1 if those are 0).
 - **Tests.** `emulator/tests/failed_execution.rs` runs the guests in
   `elf-regressions/failed_execution/` (each failure kind, plus an `exit_ok` control)
-  through both entry points, with and without `compressed`.
+  through both entry points, with and without `compressed`, and the `abort` guests
+  of `elf-regressions/abort/` (below).
 
 **Why a failed run cannot be proven (Type 1).** Rejecting before proving is what an
 honest prover does; the circuit gives the guarantee. Main's continuation bus requires
@@ -742,8 +743,44 @@ guest's code. A trace that ends in one cannot close the bus, so no valid proof o
 exists. This argument still has to be confirmed by the PIL owners.
 ZisK provides no Type 2 (proof-of-failure) verifier.
 
+### `abort` (draft eth-act PR #46)
+
+**Standard.** The vendor static library must provide `_Noreturn void abort(void)`. It
+ends the execution as a failed termination, exactly as if `main` had returned a
+non-zero value, with a vendor-defined non-zero code; it never returns and may be called
+from anywhere. A guest that brings its own language runtime maps that runtime's
+failures onto it.
+
+**ZisK.** Both libraries provide it, with exit code **134** (128 + SIGABRT, what a
+shell reports for an aborted process, so it is told apart from `main` returning 1):
+
+- **`zisklib_c`.** `abort` is in `ziskasm/lang/c/src/_start.s`: it sets `a0 = 134` and
+  jumps to `_start`'s exit dispatch, the code that runs after `main` returns and
+  destructors run. So it reaches the same `SYS_exit` ecall (or, off ZisK, the
+  `sifive_test` exit) as a `main` that returned 134. Like C's `abort` it runs no
+  destructors or `atexit` handlers. It lives in `_start`'s object, which every guest
+  links, so a libc in the link cannot replace it: newlib's `abort` raises SIGABRT
+  through stubs that would never reach the ZisK termination. C++ `std::terminate`
+  calls it too.
+- **`ziskos` / `libziskos.a`.** `ziskos::abort()` does the same through the label
+  `_zisk_exit` on the exit dispatch of `ziskos`'s `_start`, and `libziskos.a` exports
+  it as `abort`. Natively it is `std::process::abort()`.
+
+The halt it ends in is the one a non-zero `main` return reaches, so everything above
+applies: the emulators report `ExitCode(134)`, the run is rejected before proving,
+and the circuit cannot prove it.
+
+**Validation.** `elf-regressions/abort/` holds a C guest
+(`ziskasm/lang/c/example/abort_guest.c`) that writes an output and calls `abort` from
+a nested function; its destructor traps, so a run that ran destructors would fail as a
+trap. `failed_execution.rs` checks it fails with `ExitCode(134)` on both entry points,
+and that the control build (`main` returns 0) does run the destructor. The same guest
+gives 134 when linked against `libziskos.a`, and so does a C++ guest calling
+`std::terminate()` linked with libstdc++ and newlib, where the link map shows `abort`
+resolved to `_start.s`. The ASM emulator rejects it as it does any non-zero exit.
+
 **Assessment: Conformant (Type 1)**, pending the PIL owners' confirmation of the
-argument above.
+argument above. `abort` follows draft PR #46.
 
 ---
 
@@ -762,6 +799,7 @@ builds the whole guest-side surface into one static library, **`zisklib_c`**:
 | Requirement | Provided by |
 |---|---|
 | `_start` (gp/sp init, **C++ constructors**, `main`, **destructors**, termination) | `src/_start.s` |
+| `abort` (failed termination, draft PR #46, §8) | `src/_start.s` |
 | I/O functions | `src/zkvm_calls.s` + [`include/zkvm_io.h`](../../ziskasm/lang/c/include/zkvm_io.h) |
 | Host randomness (`zkvm_random_u64`) | `src/zkvm_calls.s` + [`include/zkvm_random.h`](../../ziskasm/lang/c/include/zkvm_random.h) |
 | Accelerator functions | `src/zkvm_calls.s` (19 `zkvm_*` + 27 `zkvm_u256_*`; `zkvm_keccak_f1600` is inline in the header), plus ZisK's 24 `zkvm_zisklib_*` |
@@ -820,9 +858,9 @@ against it runs only under ZisK. A clean link proves nothing on its own.
 **Assessment: Conformant** (`_start` incl. C++ constructors/destructors, the I/O
 functions, every accelerator, a W^X linker script exporting `_heap_start`/`_heap_end`,
 and a build that stages them as a distributable `.a` + script). `write_log` (draft
-PR #27, §12) is in `zisklib_c` too. Draft PR #46 would add `abort` to the library's
-required contents, and draft #36 the cost-scope functions; neither is in `zisklib_c` yet
-(see [Draft standards](#draft-standards)).
+PR #27, §12) and `abort` (draft PR #46, §8) are in `zisklib_c` too. Draft #36 would add
+the cost-scope functions, which are not in `zisklib_c` yet (see
+[Draft standards](#draft-standards)).
 
 ---
 
@@ -1014,11 +1052,10 @@ can only be seen from `ziskemu`, not from SDK executions or proofs.
 ## Draft standards
 
 Open pull requests on eth-act/zkevm-standards as of 2026-10-27, beyond those already
-covered above (#22 in §1b, #26 in §1, #42 in §11, #27 in §12):
+covered above (#22 in §1b, #26 in §1, #46 in §8, #42 in §11, #27 in §12):
 
 | PR | Draft | What it requires | ZisK |
 |----|-------|------------------|------|
-| [#46](https://github.com/eth-act/zkevm-standards/pull/46) | Termination: `abort` | The vendor static library exports `_Noreturn void abort(void)`, which ends the run as a failed termination with a vendor-defined nonzero code, as if `main` had returned nonzero. Language runtimes map their failures onto it. | **Missing.** `zisklib_c` defines no `abort`. It would be a thunk that executes the exit ecall with a nonzero `a0`. |
 | [#36](https://github.com/eth-act/zkevm-standards/pull/36) | Proving cost estimation | The emulator reports a deterministic scalar cost, linear in proving time, with a cost-model version. The library exports `zkvm_cost_scope_start/end(uint8_t)`, which cost nothing and are attributed inclusively; the emulator stops with a diagnostic on a misnested or still-open scope. | **Partial.** `ziskemu -X` reports a deterministic cost with a breakdown; there is no version and no cost scopes. |
 | [#20](https://github.com/eth-act/zkevm-standards/pull/20) | Minimum memory resources | A minimum stack and heap size, reflected in the linker script. The values are still placeholders. | Nothing to do until values are set. ZisK's stack is 4 MB (§5). |
 
@@ -1029,8 +1066,8 @@ covered above (#22 in §1b, #26 in §1, #42 in §11, #27 in §12):
 - **§7:** emit the per-proof unaligned-access count from the proving path (TODO 1).
 - **§8:** have the PIL owners confirm the Type 1 argument (final pc bound to
   `END_PC_ADDR`).
-- Follow the open drafts above, `abort` (#46) first: it is small and fixes how a C
-  guest fails.
+- Follow the open drafts above, the cost scopes (#36) first.
+- Track the **`abort`** draft (eth-act PR #46) until it is merged.
 - Track the **host randomness** draft (eth-act PR #42) until it is merged, and revisit
   the generator if the standard ends up requiring an SP 800-90A DRBG.
 - Track the **diagnostic logging** draft (eth-act PR #27) until it is merged.
