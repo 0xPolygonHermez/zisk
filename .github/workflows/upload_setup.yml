@@ -26,8 +26,8 @@ on:
         required: false
         type: boolean
         default: true
-      include_blake3_fflonk:
-        description: "Blake3 FFLONK setup"
+      include_blake3_pilfflonk:
+        description: "Blake3 pilfflonk setup"
         required: false
         type: boolean
         default: false
@@ -36,8 +36,8 @@ on:
         required: false
         type: boolean
         default: false
-      include_poseidon1_plonk:
-        description: "Poseidon1 PLONK setup"
+      include_poseidon1_pilfflonk:
+        description: "Poseidon1 pilfflonk setup"
         required: false
         type: boolean
         default: false
@@ -66,8 +66,8 @@ jobs:
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       include_dylib: ${{ steps.resolve.outputs.include_dylib }}
-      include_blake3_fflonk: ${{ steps.resolve.outputs.include_blake3_fflonk }}
-      include_poseidon1_plonk: ${{ steps.resolve.outputs.include_poseidon1_plonk }}
+      include_blake3_pilfflonk: ${{ steps.resolve.outputs.include_blake3_pilfflonk }}
+      include_poseidon1_pilfflonk: ${{ steps.resolve.outputs.include_poseidon1_pilfflonk }}
       build_blake3: ${{ steps.resolve.outputs.build_blake3 }}
       build_poseidon1: ${{ steps.resolve.outputs.build_poseidon1 }}
       # JSON array of the selected hash modes, for macos-dylibs' matrix.
@@ -139,24 +139,24 @@ jobs:
           echo "include_dylib: $INCLUDE_DYLIB"
 
           # SNARK setups: only when asked for on workflow_dispatch, each on top of its
-          # hash mode's setup. blake3 wraps with pilfflonk, published as
-          # zisk-provingkey-fflonk-<VER>; Poseidon1 with PLONK (zisk-provingkey-plonk-<VER>-poseidon1).
-          INCLUDE_BLAKE3_FFLONK="${{ inputs.include_blake3_fflonk && '1' || '0' }}"
-          INCLUDE_POSEIDON1_PLONK="${{ inputs.include_poseidon1_plonk && '1' || '0' }}"
-          if [ "$INCLUDE_BLAKE3_FFLONK" = "1" ] && [ "$BUILD_BLAKE3" = "0" ]; then
-            echo "include_blake3_fflonk needs include_blake3" >&2
+          # hash mode's setup, both wrapped with pilfflonk: zisk-provingkey-pilfflonk-<VER>
+          # for blake3, zisk-provingkey-pilfflonk-<VER>-poseidon1 for Poseidon1.
+          INCLUDE_BLAKE3_PILFFLONK="${{ inputs.include_blake3_pilfflonk && '1' || '0' }}"
+          INCLUDE_POSEIDON1_PILFFLONK="${{ inputs.include_poseidon1_pilfflonk && '1' || '0' }}"
+          if [ "$INCLUDE_BLAKE3_PILFFLONK" = "1" ] && [ "$BUILD_BLAKE3" = "0" ]; then
+            echo "include_blake3_pilfflonk needs include_blake3" >&2
             exit 1
           fi
-          if [ "$INCLUDE_POSEIDON1_PLONK" = "1" ] && [ "$BUILD_POSEIDON1" = "0" ]; then
-            echo "include_poseidon1_plonk needs include_poseidon1" >&2
+          if [ "$INCLUDE_POSEIDON1_PILFFLONK" = "1" ] && [ "$BUILD_POSEIDON1" = "0" ]; then
+            echo "include_poseidon1_pilfflonk needs include_poseidon1" >&2
             exit 1
           fi
           {
-            echo "include_blake3_fflonk=$INCLUDE_BLAKE3_FFLONK"
-            echo "include_poseidon1_plonk=$INCLUDE_POSEIDON1_PLONK"
+            echo "include_blake3_pilfflonk=$INCLUDE_BLAKE3_PILFFLONK"
+            echo "include_poseidon1_pilfflonk=$INCLUDE_POSEIDON1_PILFFLONK"
           } >> "$GITHUB_OUTPUT"
-          echo "include_blake3_fflonk: $INCLUDE_BLAKE3_FFLONK"
-          echo "include_poseidon1_plonk: $INCLUDE_POSEIDON1_PLONK"
+          echo "include_blake3_pilfflonk: $INCLUDE_BLAKE3_PILFFLONK"
+          echo "include_poseidon1_pilfflonk: $INCLUDE_POSEIDON1_PILFFLONK"
 
       - name: Prepare staging root
         run: |
@@ -192,8 +192,8 @@ jobs:
         if: ${{ steps.resolve.outputs.build_blake3 == '1' }}
         env:
           HASH_MODE: blake3
-          # The pilfflonk setup on top of the proving key (build_setup.sh picks it for blake3).
-          INCLUDE_SNARK: ${{ steps.resolve.outputs.include_blake3_fflonk }}
+          # The pilfflonk setup on top of the proving key.
+          INCLUDE_SNARK: ${{ steps.resolve.outputs.include_blake3_pilfflonk }}
           # include_dylib (resolved) -> DYLIB_INPUT_FILES (stage the macOS dylib inputs).
           DYLIB_INPUT_FILES: ${{ steps.resolve.outputs.include_dylib }}
           PTAU_PATH: /home/ziskuser/output/powersOfTau28_hez_final_24.ptau
@@ -240,8 +240,8 @@ jobs:
         if: ${{ steps.resolve.outputs.build_poseidon1 == '1' }}
         env:
           HASH_MODE: Poseidon1
-          # The PLONK setup on top of the proving key (build_setup.sh picks PLONK for Poseidon1).
-          INCLUDE_SNARK: ${{ steps.resolve.outputs.include_poseidon1_plonk }}
+          # The pilfflonk setup on top of the proving key.
+          INCLUDE_SNARK: ${{ steps.resolve.outputs.include_poseidon1_pilfflonk }}
           DYLIB_INPUT_FILES: ${{ steps.resolve.outputs.include_dylib }}
           PTAU_PATH: /home/ziskuser/output/powersOfTau28_hez_final_24.ptau
         run: |

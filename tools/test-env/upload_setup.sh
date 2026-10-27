@@ -11,7 +11,7 @@
 #   provingKey/.../vadcop_final{,_compressed}.verkey.bin
 #                                          -> zisk-verifykey-<VER><SFX>.tar.gz        (+ .md5)
 #   circom/            (if present)        -> zisk-circuits-<VER><SFX>.tar.gz         (+ .md5)
-#   provingKeySnark/   (if present)        -> zisk-provingkey-<fflonk|plonk>-<VER><SFX>.tar.gz (+ .md5)
+#   provingKeySnark/   (if present)        -> zisk-provingkey-<pilfflonk|plonk>-<VER><SFX>.tar.gz (+ .md5)
 #
 # Every tarball present is uploaded. circom/ comes out of the recursive setup;
 # provingKeySnark/ only when INCLUDE_SNARK=1.
@@ -164,11 +164,11 @@ main() {
     PROVINGKEY_FILE="zisk-provingkey-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
     VERIFYKEY_FILE="zisk-verifykey-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
     CIRCUITS_FILE="zisk-circuits-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
-    # Named by the final SNARK it holds: `final/provingKey/` is a pilfflonk key, published as
-    # the fflonk setup (zisk-provingkey-fflonk-<VER>, the blake3 one), `final/final.zkey` PLONK's
-    # (zisk-provingkey-plonk-<VER>-poseidon1). ziskup and the release workflow read these names.
+    # Named by the final SNARK it holds: `final/provingKey/` is a pilfflonk key
+    # (zisk-provingkey-pilfflonk-<VER><SFX>, the default for both hash modes), `final/final.zkey`
+    # PLONK's (FINAL_SNARK=plonk). ziskup and the release workflow read the pilfflonk names.
     SNARK_PROTOCOL=plonk
-    [[ -d build/provingKeySnark/final/provingKey ]] && SNARK_PROTOCOL=fflonk
+    [[ -d build/provingKeySnark/final/provingKey ]] && SNARK_PROTOCOL=pilfflonk
     SNARK_FILE="zisk-provingkey-${SNARK_PROTOCOL}-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
     HASH_FILE="${PROVINGKEY_FILE%.tar.gz}.hash"
     info "Publishing as ${PROVINGKEY_FILE} (gate: ${HASH_FILE})"

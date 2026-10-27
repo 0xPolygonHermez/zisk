@@ -1,7 +1,7 @@
 name: Test ZisK Quickstart (variant)
 
-# Reusable workflow that builds ZisK, its blake3 proving key and the fflonk setup
-# (pilfflonk) on top of it from the checked-out sources on the ZisK runner
+# Reusable workflow that builds ZisK, its blake3 proving key and the pilfflonk setup
+# on top of it from the checked-out sources on the ZisK runner
 # container, and runs the quickstart test against them. It is called once per variant (CPU and GPU) by
 # test_quickstart.yml.
 
@@ -150,11 +150,10 @@ jobs:
             '
 
       - name: Build setup
-        # INCLUDE_SNARK adds the fflonk setup the --pilfflonk combinations need (the
+        # INCLUDE_SNARK adds the pilfflonk setup the --pilfflonk combinations need (the
         # key sets the protocol up, and the flag must name it); unlike the
         # proving key it is not cached, so it is rebuilt on every run. INSTALL_SETUP
-        # installs both into $HOME/.zisk. The hash mode is the blake3 default, so
-        # build_setup.sh wraps with pilfflonk (the fflonk setup, as published).
+        # installs both into $HOME/.zisk. build_setup.sh wraps with pilfflonk.
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \

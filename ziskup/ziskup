@@ -638,8 +638,7 @@ OPTIONS:
                    short-circuit (avoids re-download when worker + coordinator
                    install on the same host).
     --with-snark   Only works with --system. Download and install the SNARK proving key
-                   of the same hash mode as the proving key (fflonk for blake3, PLONK
-                   for Poseidon1).
+                   (pilfflonk) of the same hash mode as the proving key.
                    Skipped if already present unless --force is also given.
     --poseidon1    Install the Poseidon1 proving/verify key instead of the default
                    blake3 one. With --with-snark / setup_snark, the SNARK key is
@@ -961,13 +960,8 @@ install_setup() {
 
 # Install the SNARK proving key
 install_setup_snark() {
-    # Per hash mode, like the proving key (HASH_SUFFIX): the blake3 key wraps with fflonk
-    # (zisk-provingkey-fflonk-<VER>), the Poseidon1 one with PLONK
-    # (zisk-provingkey-plonk-<VER>-poseidon1). A setup version from before the per-mode
-    # names has the PLONK key of the Poseidon1 mode only, without suffix.
-    local SNARK_PROTOCOL=plonk
-    [[ "${HASH_MODE}" == "blake3" ]] && SNARK_PROTOCOL=fflonk
-    local KEY_FILE="zisk-provingkey-${SNARK_PROTOCOL}-${SETUP_VERSION}${HASH_SUFFIX}.tar.gz"
+    # The final SNARK is pilfflonk, published per hash mode like the proving key (HASH_SUFFIX).
+    local KEY_FILE="zisk-provingkey-pilfflonk-${SETUP_VERSION}${HASH_SUFFIX}.tar.gz"
     if ! url_exists "${BUCKET_URL}/${KEY_FILE}" && [[ "${HASH_MODE}" != "blake3" ]]; then
       KEY_FILE="zisk-provingkey-plonk-${SETUP_VERSION}.tar.gz"
     fi
