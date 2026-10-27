@@ -16,6 +16,9 @@ void emu_start(void);
 // to generate the assembly code, and that in some cases must match the C main program configuration
 void write_ro_init_data(void);
 void write_rw_init_data(void);
+// Zero what write_ro_init_data and write_rw_init_data write, and nothing else
+void clear_ro_init_data(void);
+void clear_rw_init_data(void);
 uint64_t get_rom_length(void);
 uint64_t get_frops_length(void); // Rows of the FROPS multiplicity table, 0 if this generation method does not count frequent operations
 uint64_t get_gen_method(void); // Must match the C main program provided argument

@@ -1169,6 +1169,29 @@ impl ZiskRom2Asm {
         Self::pop_external_registers(&mut ctx, code);
         *code += "\tret\n\n";
 
+        /*******************/
+        /* CLEAR ROM DATA  */
+        /*******************/
+
+        // Zero what write_ro_init_data and write_rw_init_data write, and nothing else, for the
+        // reset request's release (emulator-asm/src/main.c): one `rep stosq` per data block. It
+        // uses only rax, rcx and rdi, which the C caller does not expect kept, and the direction
+        // flag is clear on any call.
+        for (name, blocks) in
+            [("clear_ro_init_data", &rom.ro_data_64), ("clear_rw_init_data", &rom.rw_data_64)]
+        {
+            *code += "\n";
+            *code += &format!(".global {name}\n");
+            *code += &format!("{name}:\n");
+            *code += "\txor eax, eax\n";
+            for block in blocks.iter().filter(|block| !block.data.is_empty()) {
+                *code += &format!("\tmov rdi, 0x{:x}\n", block.addr);
+                *code += &format!("\tmov rcx, 0x{:x}\n", block.data.len());
+                *code += "\trep stosq\n";
+            }
+            *code += "\tret\n\n";
+        }
+
         /*****************/
         /* BRANCH TABLES */
         /*****************/
