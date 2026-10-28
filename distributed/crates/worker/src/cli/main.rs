@@ -102,11 +102,13 @@ struct Cli {
     #[clap(long, default_value_t = false)]
     pub cpu_mops: bool,
 
-    #[clap(short = 'p', long, default_value_t = false)]
-    pub plonk: bool,
+    /// Prove final SNARKs, of whichever protocol the SNARK proving key is set up for
+    #[clap(short = 'p', long, alias = "plonk", default_value_t = false)]
+    pub snark: bool,
 
-    #[clap(short = 'P', long, default_value_t = false)]
-    pub preload_plonk: bool,
+    /// Load the SNARK proving key at startup. Only with --snark
+    #[clap(short = 'P', long, alias = "preload-plonk", default_value_t = false)]
+    pub preload_snark: bool,
 }
 
 #[tokio::main]
@@ -150,10 +152,10 @@ async fn main() -> Result<()> {
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,
         minimal_memory: cli.minimal_memory,
-        preload_plonk: cli.preload_plonk,
+        preload_snark: cli.preload_snark,
         gpu,
         cpu_mops,
-        plonk: cli.plonk,
+        snark: cli.snark,
     };
 
     let prover_config = ProverConfig::load(prover_config_dto)?;

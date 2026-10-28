@@ -29,6 +29,20 @@ pub fn snark_protocol_of_key(proving_key_snark: &Path) -> Result<SnarkProtocol> 
     }
 }
 
+/// Errors unless the final SNARK key of `proving_key_snark` is set up for `protocol`.
+pub fn ensure_snark_key(protocol: SnarkProtocol, proving_key_snark: &Path) -> Result<()> {
+    match snark_protocol_of_key(proving_key_snark) {
+        Ok(found) if found == protocol => Ok(()),
+        Ok(found) => Err(anyhow!(
+            "a {} final SNARK was asked for, but the SNARK proving key {} is set up for {}",
+            protocol.name(),
+            proving_key_snark.display(),
+            found.name()
+        )),
+        Err(e) => Err(anyhow!("a {} final SNARK was asked for, but {e}", protocol.name())),
+    }
+}
+
 /// The protocol id of a zkey: the first `u32` of its header section (1), which need not be the
 /// first section. Reads the section table only, not the key.
 fn zkey_protocol(zkey: &Path) -> io::Result<u32> {

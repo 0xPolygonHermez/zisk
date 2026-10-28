@@ -18,7 +18,7 @@ use crate::ux::{print_banner, print_banner_command};
 /// itself. A production integration must hold both as contract constants, or
 /// verification is self-keyed.
 pub(crate) struct ExportSolidityCalldataCmd {
-    /// Path to the final SNARK proof file (`prove --plonk`, or `wrap-proof --plonk`)
+    /// Path to the final SNARK proof file (`prove`/`wrap` with `--pilfflonk` or `--plonk`)
     #[arg(short = 'p', long)]
     proof: PathBuf,
 
@@ -71,7 +71,7 @@ impl ExportSolidityCalldataCmd {
             ),
             _ => {
                 return Err(anyhow!(
-                    "Expected a final SNARK proof; got {:?}. Prove or wrap with --plonk first.",
+                    "Expected a final SNARK proof; got {:?}. Prove or wrap with --pilfflonk or --plonk first.",
                     proof.kind()
                 ));
             }

@@ -372,7 +372,7 @@ impl<Out> EmbeddedClientBuilder<Out> {
     ) -> Result<EmbeddedProver> {
         let emu = EmuProver::new(
             proof_kind == ProofKind::Plonk,        // plonk
-            backend_opts.preload_plonk(),          // preload_snark
+            backend_opts.preload_snark(),          // preload_snark
             pk,                                    // proving_key
             pk_snark,                              // proving_key_snark
             true,                                  // shared_tables
@@ -392,7 +392,7 @@ impl<Out> EmbeddedClientBuilder<Out> {
         let asm_opts = backend_opts.asm_options();
         let asm = AsmProver::new(
             proof_kind == ProofKind::Plonk,        // plonk
-            backend_opts.preload_plonk(),          // preload_snark
+            backend_opts.preload_snark(),          // preload_snark
             pk,                                    // proving_key
             pk_snark,                              // proving_key_snark
             true,                                  // shared_tables

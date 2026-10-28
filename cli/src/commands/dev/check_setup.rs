@@ -18,17 +18,17 @@ pub(crate) struct CheckSetupCmd {
     #[arg(short = 'k', long)]
     proving_key: Option<PathBuf>,
 
-    /// Path to a precomputed PLONK proving key
-    #[arg(short = 'w', long)]
-    proving_key_plonk: Option<PathBuf>,
+    /// Path to a precomputed SNARK proving key
+    #[arg(short = 'w', long, alias = "proving-key-plonk")]
+    proving_key_snark: Option<PathBuf>,
 
     /// Disable proofs aggregation
     #[arg(short = 'a', long)]
     no_aggregation: bool,
 
-    /// Enable PLONK proofs
-    #[arg(short = 's', long)]
-    plonk: bool,
+    /// Also check the SNARK proving key, of whichever protocol it is set up for
+    #[arg(short = 's', long, alias = "plonk")]
+    snark: bool,
 
     /// Use GPU acceleration
     #[cfg(not(feature = "cpu-only"))]
@@ -60,9 +60,9 @@ impl CheckSetupCmd {
         )
         .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?;
 
-        if self.plonk {
+        if self.snark {
             check_setup_snark::<Goldilocks>(
-                &ZiskPaths::get_proving_key_snark(self.proving_key_plonk.as_ref()),
+                &ZiskPaths::get_proving_key_snark(self.proving_key_snark.as_ref()),
                 self.verbose.into(),
                 gpu,
             )

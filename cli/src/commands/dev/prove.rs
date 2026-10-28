@@ -1,4 +1,5 @@
 use crate::common::{detect_current_project_elf, resolve_output_path};
+use crate::proof::{ensure_snark_key, select_prove_kind, SnarkArgs};
 use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
 use anyhow::Result;
 
@@ -45,8 +46,8 @@ pub(crate) struct ProveCmd {
     proving_key: Option<PathBuf>,
 
     /// Path to a precomputed SNARK proving key
-    #[arg(short = 'w', long)]
-    proving_key_plonk: Option<PathBuf>,
+    #[arg(short = 'w', long, alias = "proving-key-plonk")]
+    proving_key_snark: Option<PathBuf>,
 
     /// Save the generated proof to the specified file path
     #[arg(short = 'o', long)]
@@ -56,17 +57,16 @@ pub(crate) struct ProveCmd {
     #[arg(long, default_value_t = false)]
     no_aggregation: bool,
 
-    /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with plonk
-    #[arg(short = 'c', long, conflicts_with = "plonk")]
+    /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with --plonk and --pilfflonk
+    #[arg(short = 'c', long, conflicts_with_all = ["plonk", "pilfflonk"])]
     minimal: bool,
 
-    /// SNARK proof, of the protocol of the proving key (pilfflonk, or PLONK). Mutually exclusive with minimal. Either is exported for the on-chain EVM verifier with `cargo-zisk-dev export-solidity-calldata`
-    #[arg(long, conflicts_with = "minimal")]
-    plonk: bool,
+    #[command(flatten)]
+    snark: SnarkArgs,
 
     /// Load the SNARK proving key at startup rather than when the proof is wrapped. Requires
-    /// --plonk
-    #[arg(long, requires = "plonk")]
+    /// --plonk or --pilfflonk
+    #[arg(long, requires = "SnarkArgs")]
     preload: bool,
 
     /// Verify proofs after generation
@@ -159,9 +159,10 @@ impl ProveCmd {
             print_banner_field("Prec. Hints", hints);
         }
 
-        if self.plonk && self.minimal {
-            anyhow::bail!("Minimal proofs are not supported for SNARK generation.");
+        if let Some(protocol) = self.snark.protocol() {
+            ensure_snark_key(protocol, self.proving_key_snark.as_ref())?;
         }
+        let proof_kind = select_prove_kind(self.snark.protocol(), self.minimal);
 
         // Build BackendProverOpts once with all configuration
         let mut prover_options =
@@ -181,14 +182,14 @@ impl ProveCmd {
         if self.cpu_mops {
             prover_options = prover_options.cpu_mops();
         }
-        if self.plonk {
-            prover_options = prover_options.plonk(self.preload);
+        if self.snark.protocol().is_some() {
+            prover_options = prover_options.snark(self.preload);
         }
         if let Some(ref path) = self.proving_key {
             prover_options = prover_options.proving_key(path.clone());
         }
-        if let Some(ref path) = self.proving_key_plonk {
-            prover_options = prover_options.proving_key_plonk(path.clone());
+        if let Some(ref path) = self.proving_key_snark {
+            prover_options = prover_options.proving_key_snark(path.clone());
         }
         if let Some(max) = self.max_witness_stored {
             prover_options = prover_options.max_witness_stored(max);
@@ -248,9 +249,9 @@ impl ProveCmd {
         }
 
         let (result, executor_time) = if emulator {
-            self.run_emu(stdin, prover_options)?
+            self.run_emu(stdin, proof_kind, prover_options)?
         } else {
-            self.run_asm(stdin, hints_stream, prover_options)?
+            self.run_asm(stdin, hints_stream, proof_kind, prover_options)?
         };
 
         info!("{}", "--- PROVE SUMMARY ------------------------".bright_green().bold());
@@ -282,6 +283,7 @@ impl ProveCmd {
     pub(crate) fn run_emu(
         &mut self,
         stdin: ZiskStdin,
+        proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<(ProveOutput, ZiskExecutorTime)> {
         let prover =
@@ -292,11 +294,8 @@ impl ProveCmd {
 
         let mut builder =
             prover.prove(&guest_program, stdin).random_seed(self.random_seed.provided());
-        if self.plonk {
-            builder = builder.wrap_proof(ProofKind::Plonk);
-        }
-        if self.minimal {
-            builder = builder.wrap_proof(ProofKind::VadcopFinalMinimal);
+        if proof_kind != ProofKind::VadcopFinal {
+            builder = builder.wrap_proof(proof_kind);
         }
         let result = builder.run()?;
         let executor_time = prover.get_executor_time()?;
@@ -308,6 +307,7 @@ impl ProveCmd {
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
+        proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<(ProveOutput, ZiskExecutorTime)> {
         let prover =
@@ -326,11 +326,8 @@ impl ProveCmd {
         }
 
         let mut builder = job.prove(stdin).random_seed(self.random_seed.provided());
-        if self.plonk {
-            builder = builder.wrap_proof(ProofKind::Plonk);
-        }
-        if self.minimal {
-            builder = builder.wrap_proof(ProofKind::VadcopFinalMinimal);
+        if proof_kind != ProofKind::VadcopFinal {
+            builder = builder.wrap_proof(proof_kind);
         }
         let result = builder.run()?;
         let executor_time = prover.get_executor_time()?;

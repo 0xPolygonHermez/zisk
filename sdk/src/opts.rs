@@ -111,14 +111,14 @@ impl EmbeddedOpts {
         }
 
         if let Some(pk_snark) = self.proving_key_snark {
-            opts = opts.proving_key_plonk(pk_snark);
+            opts = opts.proving_key_snark(pk_snark);
         }
 
         // A final SNARK (pilfflonk, or PLONK: the protocol of the SNARK proving key) is declared to
         // proofman, as the worker and `cargo-zisk-dev prove` do: proofman sets the GPU arena up for
         // the wrap, and a blake3 key needs it to prove the recursivef its SNARK wraps.
         if final_snark || self.preload_snark {
-            opts = opts.plonk(self.preload_snark);
+            opts = opts.snark(self.preload_snark);
         }
 
         if gpu {
@@ -153,14 +153,14 @@ mod tests {
     fn a_final_snark_is_declared_to_proofman() {
         let opts = EmbeddedOpts::default().into_backend_opts(false, true);
         assert!(opts.build_proofman_options().final_snark.is_some());
-        assert!(!opts.preload_plonk());
+        assert!(!opts.preload_snark());
     }
 
     #[test]
     fn a_preloaded_snark_key_is_a_final_snark() {
         let opts = EmbeddedOpts::default().preload_snark().into_backend_opts(false, true);
         assert!(opts.build_proofman_options().final_snark.is_some());
-        assert!(opts.preload_plonk());
+        assert!(opts.preload_snark());
     }
 
     #[test]

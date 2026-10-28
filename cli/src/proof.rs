@@ -3,7 +3,10 @@
 //! Centralises logic that was previously duplicated across the embedded, remote,
 //! and dev command trees, and makes it unit-testable in isolation.
 
+use std::path::PathBuf;
+
 use anyhow::Result;
+use zisk_common::ZiskPaths;
 use zisk_sdk::{Proof, ProofBody, ProofKind, SnarkProtocol};
 
 /// The final SNARK flags of the prove and wrap commands. The SNARK proving key (the workers', for a
@@ -35,6 +38,18 @@ impl SnarkArgs {
             None
         }
     }
+}
+
+/// Errors unless the SNARK proving key (`proving_key_snark`, or the default one) is set up for
+/// `protocol`. For the dev commands, which drive the backend directly rather than through the SDK.
+pub(crate) fn ensure_snark_key(
+    protocol: SnarkProtocol,
+    proving_key_snark: Option<&PathBuf>,
+) -> Result<()> {
+    zisk_prover_backend::ensure_snark_key(
+        protocol,
+        &ZiskPaths::get_proving_key_snark(proving_key_snark),
+    )
 }
 
 /// Select the proof kind for a *prove* request.

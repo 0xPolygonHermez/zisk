@@ -259,7 +259,7 @@ pub struct ProverConfig {
     /// Path to the proving key
     pub proving_key: PathBuf,
 
-    /// Path to the PLONK proving key
+    /// Path to the SNARK proving key
     pub proving_key_snark: Option<PathBuf>,
 
     /// Protocol of the final SNARK the SNARK proving key is set up for, when there is one
@@ -289,11 +289,8 @@ pub struct ProverConfig {
     /// Run mops planner on CPU even with GPU proving (leaves proof generation on GPU)
     pub cpu_mops: bool,
 
-    /// Enable PLONK proofs
-    pub plonk: bool,
-
-    /// Whether to preload PLONK proving key and verification key into the prover service on startup (only applies if `plonk` is true)
-    pub preload_plonk: bool,
+    /// Preload the SNARK proving key on startup (only with a `proving_key_snark`)
+    pub preload_snark: bool,
 
     /// Maximum number of GPU streams
     pub max_streams: Option<usize>,
@@ -313,7 +310,7 @@ impl ProverConfig {
     /// paths, building the debug info, and forcing the emulator backend on macOS.
     pub fn load(prover_service_config: ProverServiceConfigDto) -> Result<Self> {
         let proving_key = ZiskPaths::get_proving_key(prover_service_config.proving_key.as_ref());
-        let proving_key_snark = if prover_service_config.plonk {
+        let proving_key_snark = if prover_service_config.snark {
             Some(ZiskPaths::get_proving_key_snark(prover_service_config.proving_key_snark.as_ref()))
         } else {
             None
@@ -324,7 +321,7 @@ impl ProverConfig {
             .as_deref()
             .map(snark_protocol_of_key)
             .transpose()
-            .map_err(|e| anyhow::anyhow!("--plonk needs a final SNARK proving key, but {e}"))?;
+            .map_err(|e| anyhow::anyhow!("--snark needs a final SNARK proving key, but {e}"))?;
         let debug_info = match &prover_service_config.debug {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
@@ -333,7 +330,7 @@ impl ProverConfig {
             }
         };
 
-        let preload_plonk = prover_service_config.plonk && prover_service_config.preload_plonk;
+        let preload_snark = prover_service_config.snark && prover_service_config.preload_snark;
 
         let emulator =
             if cfg!(target_os = "macos") { true } else { prover_service_config.emulator };
@@ -354,8 +351,7 @@ impl ProverConfig {
             max_recursive_streams: prover_service_config.max_recursive_streams,
             number_threads_witness: prover_service_config.number_threads_witness,
             max_witness_stored: prover_service_config.max_witness_stored,
-            plonk: prover_service_config.plonk,
-            preload_plonk,
+            preload_snark,
         })
     }
 }
@@ -433,15 +429,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             .verbose(prover_config.verbose)
             .aggregation(true);
 
-        if prover_config.plonk {
-            if prover_config.proving_key_snark.is_none() {
-                return Err(anyhow::anyhow!(
-                    "PLONK proving key must be provided when PLONK is enabled"
-                ));
-            }
-            prover_options = prover_options
-                .proving_key_plonk(prover_config.proving_key_snark.clone().unwrap())
-                .plonk(prover_config.preload_plonk);
+        // `load` resolves a SNARK key exactly when --snark is set.
+        if let Some(pk) = &prover_config.proving_key_snark {
+            prover_options =
+                prover_options.proving_key_snark(pk.clone()).snark(prover_config.preload_snark);
         }
 
         if prover_config.minimal_memory {
@@ -491,15 +482,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             .verbose(prover_config.verbose)
             .aggregation(true);
 
-        if prover_config.plonk {
-            if prover_config.proving_key_snark.is_none() {
-                return Err(anyhow::anyhow!(
-                    "PLONK proving key must be provided when PLONK is enabled"
-                ));
-            }
-            prover_options = prover_options
-                .proving_key_plonk(prover_config.proving_key_snark.clone().unwrap())
-                .plonk(prover_config.preload_plonk);
+        // `load` resolves a SNARK key exactly when --snark is set.
+        if let Some(pk) = &prover_config.proving_key_snark {
+            prover_options =
+                prover_options.proving_key_snark(pk.clone()).snark(prover_config.preload_snark);
         }
 
         if prover_config.minimal_memory {

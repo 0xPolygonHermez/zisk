@@ -208,10 +208,10 @@ pub struct ProverServiceConfigDto {
     pub minimal_memory: bool,
     /// Use the GPU proving path.
     pub gpu: bool,
-    /// Enable PLONK/SNARK proof generation.
-    pub plonk: bool,
-    /// Preload the PLONK/SNARK proving keys.
-    pub preload_plonk: bool,
+    /// Prove final SNARKs, of the protocol of the SNARK proving key.
+    pub snark: bool,
+    /// Preload the SNARK proving key.
+    pub preload_snark: bool,
     /// Use the CPU MOPs
     pub cpu_mops: bool,
 }
