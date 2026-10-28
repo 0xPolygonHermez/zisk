@@ -100,8 +100,8 @@ pub struct BackendProverOpts {
     pub(crate) proving_key: Option<PathBuf>,
     pub(crate) proving_key_snark: Option<PathBuf>,
 
-    pub(crate) plonk: bool, // Whether to generate PLONK/SNARK proofs are allowed
-    pub(crate) preload_plonk: bool, // Whether to preload PLONK/SNARK proving keys
+    pub(crate) snark: bool,         // Whether final SNARK proofs are allowed
+    pub(crate) preload_snark: bool, // Whether to preload the SNARK proving key
 
     // ProofmanOptions fields (flattened)
     pub(crate) gpu: bool,
@@ -127,8 +127,8 @@ impl Default for BackendProverOpts {
             verbose: 0,
             proving_key: None,
             proving_key_snark: None,
-            preload_plonk: false,
-            plonk: false,
+            preload_snark: false,
+            snark: false,
             gpu: false,
             cpu_mops: false,
             packed: false,
@@ -210,7 +210,7 @@ impl BackendProverOpts {
 
         // The plonk wrapper borrows the GPU unified buffer; proofman pads the arena to the
         // snark floor only when told a final snark will run.
-        if self.plonk {
+        if self.snark {
             options.final_snark(zisk_common::ZiskPaths::get_proving_key_snark(
                 self.proving_key_snark.as_ref(),
             ));
@@ -247,9 +247,15 @@ impl BackendProverOpts {
         self.proving_key_snark.as_ref()
     }
 
-    /// Whether PLONK/SNARK proving keys are preloaded.
+    /// Whether the SNARK proving key is preloaded.
+    pub fn preload_snark(&self) -> bool {
+        self.preload_snark
+    }
+
+    /// Whether the SNARK proving key is preloaded.
+    #[deprecated(note = "the key may be of any final SNARK: use `preload_snark`")]
     pub fn preload_plonk(&self) -> bool {
-        self.preload_plonk
+        self.preload_snark()
     }
 
     /// Whether the CPU minimal-ops path is enabled.
@@ -301,19 +307,31 @@ impl BackendProverOpts {
         self
     }
 
-    /// Set the PLONK/SNARK proving-key path.
-    pub fn proving_key_plonk(mut self, path: PathBuf) -> Self {
+    /// Set the SNARK proving-key path.
+    pub fn proving_key_snark(mut self, path: PathBuf) -> Self {
         self.proving_key_snark = Some(path);
         self
     }
 
-    /// Enable PLONK/SNARK proof generation, optionally preloading its keys.
-    pub fn plonk(mut self, preload: bool) -> Self {
-        self.plonk = true;
+    /// Set the SNARK proving-key path.
+    #[deprecated(note = "the key may be of any final SNARK: use `proving_key_snark`")]
+    pub fn proving_key_plonk(self, path: PathBuf) -> Self {
+        self.proving_key_snark(path)
+    }
+
+    /// Enable final SNARK proof generation, optionally preloading its key.
+    pub fn snark(mut self, preload: bool) -> Self {
+        self.snark = true;
         if preload {
-            self.preload_plonk = true;
+            self.preload_snark = true;
         }
         self
+    }
+
+    /// Enable final SNARK proof generation, optionally preloading its key.
+    #[deprecated(note = "the key may be of any final SNARK: use `snark`")]
+    pub fn plonk(self, preload: bool) -> Self {
+        self.snark(preload)
     }
 
     /// Use the GPU proving path.

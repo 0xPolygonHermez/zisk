@@ -4,7 +4,6 @@
 use std::path::Path;
 
 use zisk_common::{Proof, ProofBody};
-use zisk_prover_backend::snark_protocol_of_key;
 
 use crate::{Result, SdkError};
 
@@ -32,21 +31,8 @@ pub(crate) fn ensure_snark_proof(protocol: SnarkProtocol, proof: &Proof) -> Resu
 /// Errors unless the final SNARK key of `proving_key_snark`, found as the prover finds it, is set
 /// up for `protocol`.
 pub(crate) fn ensure_snark_key(protocol: SnarkProtocol, proving_key_snark: &Path) -> Result<()> {
-    let refuse = |found: String| {
-        Err(SdkError::InvalidConfig(format!(
-            "a {} final SNARK was asked for, but {found}",
-            protocol.name()
-        )))
-    };
-    match snark_protocol_of_key(proving_key_snark) {
-        Ok(found) if found == protocol => Ok(()),
-        Ok(found) => refuse(format!(
-            "the SNARK proving key {} is set up for {}",
-            proving_key_snark.display(),
-            found.name()
-        )),
-        Err(e) => refuse(e.to_string()),
-    }
+    zisk_prover_backend::ensure_snark_key(protocol, proving_key_snark)
+        .map_err(|e| SdkError::InvalidConfig(e.to_string()))
 }
 
 #[cfg(test)]

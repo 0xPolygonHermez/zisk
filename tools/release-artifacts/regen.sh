@@ -162,7 +162,7 @@ for family in "${FAMILY_LIST[@]}"; do
     wrap -c -o "$proofs/compressed.bin"
     if [[ $snark -eq 1 && ",$SOLIDITY_FAMILIES," == *",$family,"* ]]; then
       log "[$family] wrap fib_mod: pilfflonk"
-      wrap --plonk -o "$proofs/pilfflonk.bin"
+      wrap --pilfflonk -o "$proofs/pilfflonk.bin"
     fi
     # A wrapped committed leaf commits to its own program, not to today's ELF's.
     program=(--elf "$FIB_MOD_ELF")

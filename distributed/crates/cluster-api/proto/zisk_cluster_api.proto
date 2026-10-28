@@ -227,7 +227,7 @@ message WorkerReconnectRequest {
 
 // Protocol of the final SNARK a worker's SNARK proving key is set up for.
 enum SnarkProtocol {
-  SNARK_PROTOCOL_NONE      = 0; // no SNARK proving key (a worker started without --plonk)
+  SNARK_PROTOCOL_NONE      = 0; // no SNARK proving key (a worker started without --snark)
   SNARK_PROTOCOL_PLONK     = 1;
   SNARK_PROTOCOL_PILFFLONK = 2;
 }

@@ -339,7 +339,7 @@ fi
 if $NO_SERVICE; then
     WORKER_ARGS=(--config "${CONFIG_DST}")
     [[ -n "${PROVING_KEY}" ]] && WORKER_ARGS+=(--proving-key "${PROVING_KEY}")
-    [[ -n "${PROVING_KEY_SNARK}" ]] && WORKER_ARGS+=(--proving-key-snark "${PROVING_KEY_SNARK}")
+    [[ -n "${PROVING_KEY_SNARK}" ]] && WORKER_ARGS+=(--snark --proving-key-snark "${PROVING_KEY_SNARK}")
     [[ -n "${COORDINATOR_URL}" ]] && WORKER_ARGS+=(--coordinator-url "${COORDINATOR_URL}")
     [[ -n "${WORKER_ID}" ]] && WORKER_ARGS+=(--worker-id "${WORKER_ID}")
     [[ -n "${COMPUTE_CAPACITY}" ]] && WORKER_ARGS+=(--compute-capacity "${COMPUTE_CAPACITY}")
@@ -414,6 +414,7 @@ if [[ "$OS_NAME" == "Darwin" ]]; then
             printf '        <string>%s</string>\n' "${PROVING_KEY}"
         fi
         if [[ -n "$PROVING_KEY_SNARK" ]]; then
+            printf '        <string>--snark</string>\n'
             printf '        <string>--proving-key-snark</string>\n'
             printf '        <string>%s</string>\n' "${PROVING_KEY_SNARK}"
         fi
@@ -522,7 +523,7 @@ else
     # wrapper or to bare ExecStart depending on MPI_ENABLED.
     WORKER_ARGS="--config ${CONFIG_DST}"
     [[ -n "$PROVING_KEY" ]]       && WORKER_ARGS+=" --proving-key ${PROVING_KEY}"
-    [[ -n "$PROVING_KEY_SNARK" ]] && WORKER_ARGS+=" --proving-key-snark ${PROVING_KEY_SNARK}"
+    [[ -n "$PROVING_KEY_SNARK" ]] && WORKER_ARGS+=" --snark --proving-key-snark ${PROVING_KEY_SNARK}"
     [[ -n "$COORDINATOR_URL" ]]   && WORKER_ARGS+=" --coordinator-url ${COORDINATOR_URL}"
     [[ -n "$WORKER_ID" ]]         && WORKER_ARGS+=" --worker-id ${WORKER_ID}"
     [[ -n "$COMPUTE_CAPACITY" ]]  && WORKER_ARGS+=" --compute-capacity ${COMPUTE_CAPACITY}"
