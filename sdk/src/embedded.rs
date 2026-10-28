@@ -301,11 +301,11 @@ impl<Out> EmbeddedClientBuilder<Out> {
     }
 
     /// Enable the final SNARK proof mode, of `protocol`: proofs are wrapped with
-    /// [`ProofKind::Plonk`] into a SNARK of it. The SNARK proving key must be set up for it
+    /// [`ProofKind::Snark`] into a SNARK of it. The SNARK proving key must be set up for it
     /// (`setup-snark --final-snark`), or [`build`](EmbeddedClientBuilder::build) fails.
     #[must_use]
     pub fn snark(mut self, protocol: SnarkProtocol) -> Self {
-        self.proof_kind = ProofKind::Plonk;
+        self.proof_kind = ProofKind::Snark;
         self.snark = Some(protocol);
         self
     }
@@ -371,7 +371,7 @@ impl<Out> EmbeddedClientBuilder<Out> {
         proof_kind: ProofKind,
     ) -> Result<EmbeddedProver> {
         let emu = EmuProver::new(
-            proof_kind == ProofKind::Plonk,        // plonk
+            proof_kind == ProofKind::Snark,        // plonk
             backend_opts.preload_snark(),          // preload_snark
             pk,                                    // proving_key
             pk_snark,                              // proving_key_snark
@@ -391,7 +391,7 @@ impl<Out> EmbeddedClientBuilder<Out> {
     ) -> Result<EmbeddedProver> {
         let asm_opts = backend_opts.asm_options();
         let asm = AsmProver::new(
-            proof_kind == ProofKind::Plonk,        // plonk
+            proof_kind == ProofKind::Snark,        // plonk
             backend_opts.preload_snark(),          // preload_snark
             pk,                                    // proving_key
             pk_snark,                              // proving_key_snark
@@ -437,7 +437,7 @@ impl<Out: From<EmbeddedClient>> EmbeddedClientBuilder<Out> {
             embedded_opts.proving_key_snark = Some(pk);
         }
         let mut backend_opts =
-            embedded_opts.into_backend_opts(self.gpu, self.proof_kind == ProofKind::Plonk);
+            embedded_opts.into_backend_opts(self.gpu, self.proof_kind == ProofKind::Snark);
         if self.cpu_mops {
             backend_opts = backend_opts.cpu_mops();
         }

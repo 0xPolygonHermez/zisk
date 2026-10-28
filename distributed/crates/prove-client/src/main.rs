@@ -137,8 +137,8 @@ fn parse_proof_kind(s: &str) -> Result<DomainProofKind, String> {
     match s.to_lowercase().as_str() {
         "stark" => Ok(DomainProofKind::Stark),
         "stark-minimal" | "stark_minimal" | "minimal" => Ok(DomainProofKind::StarkMinimal),
-        "plonk" => Ok(DomainProofKind::Plonk),
-        other => Err(format!("unknown proof kind '{other}'; use stark, stark-minimal, or plonk")),
+        "snark" | "plonk" => Ok(DomainProofKind::Snark),
+        other => Err(format!("unknown proof kind '{other}'; use stark, stark-minimal, or snark")),
     }
 }
 

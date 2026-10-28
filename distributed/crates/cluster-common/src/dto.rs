@@ -91,7 +91,7 @@ pub struct LaunchProofRequestDto {
     pub execution_only: bool,
     /// The kind of proof requested.
     pub proof_type: ProofKind,
-    /// The protocol a final SNARK (`ProofKind::Plonk`) must be of; `None` takes the workers'.
+    /// The protocol a final SNARK (`ProofKind::Snark`) must be of; `None` takes the workers'.
     pub snark_protocol: Option<SnarkProtocol>,
     /// Host randomness seed provided by the client; `None` draws a fresh one. If the coordinator
     /// does not allow client random seeds, the job is rejected (`ClientRandomSeedNotAllowed`)
@@ -111,7 +111,7 @@ pub struct LaunchWrapRequestDto {
     pub proof_data: Vec<u8>,
     /// Target proof kind (a `ProofKind` value).
     pub proof_dest: i32,
-    /// The protocol a final SNARK (`ProofKind::Plonk`) must be of; `None` takes the workers'.
+    /// The protocol a final SNARK (`ProofKind::Snark`) must be of; `None` takes the workers'.
     pub snark_protocol: Option<SnarkProtocol>,
 }
 

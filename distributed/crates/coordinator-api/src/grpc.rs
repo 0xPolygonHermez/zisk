@@ -167,7 +167,7 @@ impl From<DomainProofKind> for ProofKind {
         match kind {
             DomainProofKind::Stark => ProofKind::Stark,
             DomainProofKind::StarkMinimal => ProofKind::StarkMinimal,
-            DomainProofKind::Plonk => ProofKind::Plonk,
+            DomainProofKind::Snark => ProofKind::Plonk,
         }
     }
 }
@@ -179,7 +179,7 @@ impl TryFrom<i32> for DomainProofKind {
         match ProofKind::try_from(value).unwrap_or(ProofKind::Unspecified) {
             ProofKind::Stark => Ok(DomainProofKind::Stark),
             ProofKind::StarkMinimal => Ok(DomainProofKind::StarkMinimal),
-            ProofKind::Plonk => Ok(DomainProofKind::Plonk),
+            ProofKind::Plonk => Ok(DomainProofKind::Snark),
             _ => Err(value),
         }
     }
@@ -937,7 +937,7 @@ mod tests {
     fn prove_request_snark_protocol_round_trips() {
         for protocol in SNARK_PROTOCOLS {
             let request = DomainProveRequest {
-                proof_dest: DomainProofKind::Plonk,
+                proof_dest: DomainProofKind::Snark,
                 snark_protocol: protocol,
                 ..prove_request(None)
             };
@@ -954,14 +954,14 @@ mod tests {
                     proof_id: Uuid::nil(),
                     hash_id: String::new(),
                     verification_key: vec![],
-                    proof_kind: DomainProofKind::Plonk,
+                    proof_kind: DomainProofKind::Snark,
                     data: vec![1, 2, 3],
                     public_inputs: vec![],
                     started_at: None,
                     completed_at: None,
                     random_seed: None,
                 },
-                proof_dest: DomainProofKind::Plonk,
+                proof_dest: DomainProofKind::Snark,
                 snark_protocol: protocol,
                 wrap_timeout: None,
             };

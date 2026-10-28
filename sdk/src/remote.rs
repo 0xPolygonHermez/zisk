@@ -69,7 +69,7 @@ impl<Out> RemoteClientBuilder<Out> {
         }
     }
 
-    /// Ask for final SNARK proofs of `protocol`, wrapped with [`ProofKind::Plonk`]. The workers'
+    /// Ask for final SNARK proofs of `protocol`, wrapped with [`ProofKind::Snark`]. The workers'
     /// SNARK proving key sets the protocol up: the coordinator refuses a job when theirs is of
     /// another, and a final SNARK proof of another still fails the job's result. Unset, the proof
     /// is the workers' SNARK.
@@ -261,7 +261,7 @@ pub(crate) fn requested_snark(
     snark: Option<SnarkProtocol>,
     proof_kind: ProofKind,
 ) -> Option<SnarkProtocol> {
-    snark.filter(|_| proof_kind == ProofKind::Plonk)
+    snark.filter(|_| proof_kind == ProofKind::Snark)
 }
 
 /// Fail a remote proof that is not a final SNARK of `protocol`. The coordinator sends
@@ -598,8 +598,8 @@ mod tests {
     #[test]
     fn a_final_snark_job_asks_for_the_client_protocol() {
         let pilfflonk = Some(SnarkProtocol::Pilfflonk);
-        assert_eq!(requested_snark(pilfflonk, ProofKind::Plonk), pilfflonk);
-        assert_eq!(requested_snark(None, ProofKind::Plonk), None);
+        assert_eq!(requested_snark(pilfflonk, ProofKind::Snark), pilfflonk);
+        assert_eq!(requested_snark(None, ProofKind::Snark), None);
         for stark in [ProofKind::VadcopFinal, ProofKind::VadcopFinalMinimal] {
             assert_eq!(requested_snark(pilfflonk, stark), None);
         }

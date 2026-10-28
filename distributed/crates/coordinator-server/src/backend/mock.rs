@@ -872,7 +872,7 @@ mod tests {
             .submit_job(
                 DomainJobKind::Wrap(DomainWrapRequest {
                     proof: src_proof,
-                    proof_dest: DomainProofKind::Plonk,
+                    proof_dest: DomainProofKind::Snark,
                     snark_protocol: None,
                     wrap_timeout: None,
                 }),

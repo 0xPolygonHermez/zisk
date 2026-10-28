@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     client.setup(&PROGRAM).run_sync()?;
 
     // Execute guest and generate the ZK proof and wrap it into a constant-size pilfflonk SNARK proof.
-    let proof = client.prove(&PROGRAM, stdin).wrap(ProofKind::Plonk).run_sync()?;
+    let proof = client.prove(&PROGRAM, stdin).wrap(ProofKind::Snark).run_sync()?;
 
     // Cryptographic verification of the proof
     if proof.with_program_vk(&PROGRAM.vk()?).verify().is_ok() {

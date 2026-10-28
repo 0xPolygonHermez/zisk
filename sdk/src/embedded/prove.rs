@@ -90,7 +90,7 @@ impl EmbeddedClient {
                     ProofKind::VadcopFinalMinimal => {
                         builder.wrap_proof(ProofKind::VadcopFinalMinimal)
                     }
-                    ProofKind::Plonk => builder.wrap_proof(ProofKind::Plonk),
+                    ProofKind::Snark => builder.wrap_proof(ProofKind::Snark),
                 }
             }};
         }

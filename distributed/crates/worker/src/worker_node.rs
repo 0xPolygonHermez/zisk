@@ -1174,7 +1174,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     reset_current_job = !final_proof.is_empty();
 
                     let proof_data = if !final_proof.is_empty() {
-                        let is_plonk = proof_type == ProofKind::Plonk;
+                        let is_plonk = proof_type == ProofKind::Snark;
                         let flat_proof: Vec<u64> = final_proof.into_iter().flatten().collect();
                         // Proofman's tree split across workers: the root is a leaf of this one
                         // job (flag=1), like a single-node proof, so it may be compressed.
@@ -1199,7 +1199,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                     match self
                                         .worker
                                         .prover_arc()
-                                        .wrap_proof(&zisk_proof, ProofKind::Plonk)
+                                        .wrap_proof(&zisk_proof, ProofKind::Snark)
                                         .run()
                                     {
                                         Ok(wrapped) => Some(wrapped.get_proof().clone()),

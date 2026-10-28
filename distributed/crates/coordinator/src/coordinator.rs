@@ -1011,7 +1011,7 @@ impl Coordinator {
             return Err(CoordinatorError::ProgramNotSetup(request.hash_id.clone()));
         }
         // The worker that aggregates wraps the SNARK, so one the workers cannot prove fails here.
-        if request.proof_type == ProofKind::Plonk {
+        if request.proof_type == ProofKind::Snark {
             self.ensure_snark_available(request.snark_protocol).await?;
         }
         let (requested, minimum) = self.resolve_capacity(&request).await?;
@@ -5702,7 +5702,7 @@ mod tests {
         ] {
             let coordinator = coordinator_with_snark(cluster).await;
             let mut request = capacity_request(None, None);
-            request.proof_type = ProofKind::Plonk;
+            request.proof_type = ProofKind::Snark;
             request.snark_protocol = asked;
 
             let result = coordinator.launch_proof(request).await;
@@ -5726,7 +5726,7 @@ mod tests {
             let coordinator = coordinator_with_snark(cluster).await;
             let request = LaunchWrapRequestDto {
                 proof_data: vec![],
-                proof_dest: ProofKind::Plonk.into(),
+                proof_dest: ProofKind::Snark.into(),
                 snark_protocol: asked,
             };
 
@@ -5750,8 +5750,8 @@ mod tests {
 
         for (cluster, proof_dest, asked) in [
             (None, ProofKind::VadcopFinalMinimal, None),
-            (PLONK, ProofKind::Plonk, PLONK),
-            (PILFFLONK, ProofKind::Plonk, None),
+            (PLONK, ProofKind::Snark, PLONK),
+            (PILFFLONK, ProofKind::Snark, None),
         ] {
             let coordinator = coordinator_with_snark(cluster).await;
             let request = LaunchWrapRequestDto {

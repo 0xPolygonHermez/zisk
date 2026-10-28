@@ -87,6 +87,6 @@ cargo-zisk prove --release -i samples/example-input.bin --asm --gpu --verify-pro
 
 - **`ProverClient::embedded()`** — runs the prover in-process; `EmbeddedOpts::minimal_memory()` reduces RAM usage.
 - **`ProverClient::remote()`** — connects to a prover server over HTTP with configurable connect and request timeouts.
-- **`ProofKind::Stark`** — standard STARK proof with no additional wrapping.
+- **`ProofKind::VadcopFinal`** — standard STARK proof with no additional wrapping.
 - **`ProofKind::VadcopFinalMinimal`** — compact proof for efficient off-chain or on-chain verification.
-- **`ProofKind::Plonk`** — PLONK proof for EVM-compatible on-chain verification.
+- **`ProofKind::Snark`** — final SNARK for EVM-compatible on-chain verification: pilfflonk with the release key.

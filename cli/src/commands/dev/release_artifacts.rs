@@ -338,7 +338,7 @@ fn fixtures(hash: &str, proofs_dir: &Path, vk: &[u64; 4], repo: &Path) -> Result
     }
     let snark = proofs_dir.join("pilfflonk.bin");
     if snark.exists() {
-        let proof = load_proof(&snark, ProofKind::Plonk, hash, vk)?;
+        let proof = load_proof(&snark, ProofKind::Snark, hash, vk)?;
         if !matches!(proof.body, ProofBody::Pilfflonk { .. }) {
             bail!("{} is not a pilfflonk proof", snark.display());
         }

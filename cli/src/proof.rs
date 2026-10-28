@@ -59,7 +59,7 @@ pub(crate) fn ensure_snark_key(
 /// at the clap layer; if both are somehow set, the SNARK wins so the result stays deterministic.
 pub(crate) fn select_prove_kind(snark: Option<SnarkProtocol>, minimal: bool) -> ProofKind {
     if snark.is_some() {
-        ProofKind::Plonk
+        ProofKind::Snark
     } else if minimal {
         ProofKind::VadcopFinalMinimal
     } else {
@@ -73,7 +73,7 @@ pub(crate) fn select_prove_kind(snark: Option<SnarkProtocol>, minimal: bool) -> 
 /// `--minimal` must be supplied, otherwise it is a usage error.
 pub(crate) fn select_wrap_kind(snark: Option<SnarkProtocol>, minimal: bool) -> Result<ProofKind> {
     if snark.is_some() {
-        Ok(ProofKind::Plonk)
+        Ok(ProofKind::Snark)
     } else if minimal {
         Ok(ProofKind::VadcopFinalMinimal)
     } else {
@@ -84,7 +84,7 @@ pub(crate) fn select_wrap_kind(snark: Option<SnarkProtocol>, minimal: bool) -> R
 /// Label for a wrapped proof, used in the `wrap` summary line ("SNARK" / "minimal").
 pub(crate) fn wrap_kind_label(kind: ProofKind) -> &'static str {
     match kind {
-        ProofKind::Plonk => "SNARK",
+        ProofKind::Snark => "SNARK",
         _ => "minimal",
     }
 }
@@ -94,8 +94,8 @@ pub(crate) fn wrap_kind_label(kind: ProofKind) -> &'static str {
 pub(crate) fn verify_kind_label(proof: &Proof) -> &'static str {
     match (proof.kind(), &proof.body) {
         (ProofKind::VadcopFinal | ProofKind::VadcopFinalMinimal, _) => "STARK",
-        (ProofKind::Plonk, ProofBody::Pilfflonk { .. }) => "PILFFLONK",
-        (ProofKind::Plonk, _) => "PLONK",
+        (ProofKind::Snark, ProofBody::Pilfflonk { .. }) => "PILFFLONK",
+        (ProofKind::Snark, _) => "PLONK",
     }
 }
 
@@ -123,28 +123,28 @@ mod tests {
 
     #[test]
     fn prove_kind_snark_and_minimal_select_wrapped() {
-        assert!(matches!(select_prove_kind(PLONK, false), ProofKind::Plonk));
-        assert!(matches!(select_prove_kind(PILFFLONK, false), ProofKind::Plonk));
+        assert!(matches!(select_prove_kind(PLONK, false), ProofKind::Snark));
+        assert!(matches!(select_prove_kind(PILFFLONK, false), ProofKind::Snark));
         assert!(matches!(select_prove_kind(None, true), ProofKind::VadcopFinalMinimal));
     }
 
     #[test]
     fn prove_kind_snark_wins_when_both_set() {
         // clap forbids this combination, but the precedence must stay deterministic.
-        assert!(matches!(select_prove_kind(PILFFLONK, true), ProofKind::Plonk));
+        assert!(matches!(select_prove_kind(PILFFLONK, true), ProofKind::Snark));
     }
 
     #[test]
     fn wrap_kind_requires_a_flag() {
         assert!(select_wrap_kind(None, false).is_err());
-        assert!(matches!(select_wrap_kind(PLONK, false).unwrap(), ProofKind::Plonk));
-        assert!(matches!(select_wrap_kind(PILFFLONK, false).unwrap(), ProofKind::Plonk));
+        assert!(matches!(select_wrap_kind(PLONK, false).unwrap(), ProofKind::Snark));
+        assert!(matches!(select_wrap_kind(PILFFLONK, false).unwrap(), ProofKind::Snark));
         assert!(matches!(select_wrap_kind(None, true).unwrap(), ProofKind::VadcopFinalMinimal));
     }
 
     #[test]
     fn wrap_label_maps_snark_else_minimal() {
-        assert_eq!(wrap_kind_label(ProofKind::Plonk), "SNARK");
+        assert_eq!(wrap_kind_label(ProofKind::Snark), "SNARK");
         assert_eq!(wrap_kind_label(ProofKind::VadcopFinalMinimal), "minimal");
         assert_eq!(wrap_kind_label(ProofKind::VadcopFinal), "minimal");
     }
@@ -165,7 +165,7 @@ mod tests {
             publics_full: vec![],
             rootc: vec![],
         });
-        assert_eq!(pilfflonk.kind(), ProofKind::Plonk);
+        assert_eq!(pilfflonk.kind(), ProofKind::Snark);
         assert_eq!(verify_kind_label(&pilfflonk), "PILFFLONK");
     }
 }
