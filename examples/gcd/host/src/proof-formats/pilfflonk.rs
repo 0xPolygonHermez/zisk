@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     stdin.write(&input.0);
     stdin.write(&input.1);
 
-    // One-time preprocessing: generates the program setup and the program vertification key
+    // One-time preprocessing: generates the program setup and the program verification key
     client.setup(&PROGRAM).run_sync()?;
 
     // Execute guest and generate the ZK proof and wrap it into a constant-size pilfflonk SNARK proof.

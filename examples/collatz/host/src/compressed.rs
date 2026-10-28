@@ -36,7 +36,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let stdin = ZiskStdin::new();
     stdin.write(&input);
 
-    // One-time preprocessing: generates the program setup and the program vertification key
+    // One-time preprocessing: generates the program setup and the program verification key
     client.setup(&PROGRAM).run_sync()?;
 
     // Execute guest and generate the ZK proof
