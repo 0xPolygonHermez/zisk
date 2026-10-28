@@ -9,6 +9,9 @@ use crate::{
 use zisk_common::{
     BusDevice, BusId, ExtOperationData, OperationBusData, A, B, OP, OPERATION_BUS_ID,
 };
+use zisk_core::frops::frops_multiplicity_from_asm;
+#[cfg(feature = "debug_frops")]
+use zisk_core::frops::{frops_check_claim_row, frops_check_enabled, FROPS_BINARY_BASIC_BASE};
 use zisk_core::ZiskOperationType;
 
 use pil2_std_lib::Std;
@@ -25,6 +28,19 @@ pub struct BinaryBasicCollector<F: PrimeField64> {
 
     /// The table ID for the Binary FROPS
     frops_table_id: usize,
+
+    /// Whether this collector publishes the FROPS multiplicity column. False when the column comes
+    /// from the ROM-histogram assembly instead, in which case publishing here as well would count
+    /// every multiplicity twice. Read once, at construction: it is process state for the whole
+    /// execution.
+    publish_frops: bool,
+
+    /// Whether to cross-check the reference column against the rows this collector would have
+    /// published (`zisk_core::frops`): the assembly's on the ASM path, a Rust replay of the
+    /// minimal traces on the emulated one. Debug only, and compiled out without the `debug_frops`
+    /// feature so that neither the field nor the per-operation test below it survives.
+    #[cfg(feature = "debug_frops")]
+    check_frops: bool,
 
     /// Standard library instance, providing common functionalities.
     std: Arc<Std<F>>,
@@ -45,7 +61,36 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
             .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
             .expect("Failed to get FROPS table ID");
 
-        Self { inputs: Vec::new(), cursor: BinaryCollectCursor::new(collect), frops_table_id, std }
+        // Where the FROPS multiplicity column comes from is fixed for the whole execution, so it is
+        // resolved once here rather than per operation.
+        let publish_frops = !frops_multiplicity_from_asm();
+        #[cfg(feature = "debug_frops")]
+        let check_frops = frops_check_enabled();
+
+        Self {
+            inputs: Vec::new(),
+            cursor: BinaryCollectCursor::new(collect),
+            frops_table_id,
+            publish_frops,
+            #[cfg(feature = "debug_frops")]
+            check_frops,
+            std,
+        }
+    }
+
+    /// Whether the FROPS table row of an operation is needed, rather than just whether the operation
+    /// is a frequent one: to publish the multiplicity, or to cross-check the assembly's column when
+    /// the `debug_frops` feature is on.
+    #[inline]
+    fn needs_frops_row(&self) -> bool {
+        #[cfg(feature = "debug_frops")]
+        {
+            self.publish_frops || self.check_frops
+        }
+        #[cfg(not(feature = "debug_frops"))]
+        {
+            self.publish_frops
+        }
     }
 
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
@@ -74,13 +119,30 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
         // an operation the plan counted somewhere else.
         let kind = add_family_kind(OperationBusData::get_op(&op_data), data[A], data[B]);
 
-        let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
+        // The table row is only needed to publish the multiplicity or to cross-check the
+        // assembly's column. Otherwise all the cursor needs is whether the operation is a frequent
+        // one, which is the same test without the row arithmetic.
+        let (is_frop, frops_row) = if self.needs_frops_row() {
+            let row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
+            (row != BinaryBasicFrops::NO_FROPS, row)
+        } else {
+            (
+                BinaryBasicFrops::is_frequent_op(data[OP] as u8, data[A], data[B]),
+                BinaryBasicFrops::NO_FROPS,
+            )
+        };
 
-        match self.cursor.next(kind, frops_row != BinaryBasicFrops::NO_FROPS) {
+        match self.cursor.next(kind, is_frop) {
             CollectAction::Stop => false,
             CollectAction::Pass => true,
             CollectAction::CountFrop => {
-                self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
+                if self.publish_frops {
+                    self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
+                }
+                #[cfg(feature = "debug_frops")]
+                if self.check_frops {
+                    frops_check_claim_row(FROPS_BINARY_BASIC_BASE + frops_row as u64);
+                }
                 true
             }
             CollectAction::Collect => {

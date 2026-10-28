@@ -8,6 +8,7 @@ use zisk_common::ChunkId;
 use crate::{MemAlignCounters, MemHelpers};
 use std::fmt;
 use zisk_common::{BusDevice, BusId, MemBusData, Metrics, MEM_BUS_DATA_SIZE, MEM_BUS_ID};
+use zisk_core::{RAM_ADDR, ROM_ADDR};
 
 const ST_BITS_OFFSET: u32 = 30;
 const ST_INI: u8 = 0;
@@ -69,10 +70,10 @@ impl MemCounters {
         addr_vector.par_sort_by_key(|(key, _)| *key);
 
         // Divide the original vector into three parts
-        let point = addr_vector.partition_point(|x| x.0 < (0xA000_0000 / 8));
+        let point = addr_vector.partition_point(|x| x.0 < (RAM_ADDR / 8) as u32);
         self.addr_sorted[2] = addr_vector.split_off(point);
 
-        let point = addr_vector.partition_point(|x| x.0 < (0x8000_0000 / 8));
+        let point = addr_vector.partition_point(|x| x.0 < (ROM_ADDR / 8) as u32);
         self.addr_sorted[0] = addr_vector.split_off(point);
 
         self.addr_sorted[1] = addr_vector;

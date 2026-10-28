@@ -1,8 +1,10 @@
-use super::stdio::StdioService;
+use super::segments::{ActiveProgram, SegmentsClaim, SetOnDrop, SharedSegments};
+use super::stdio::{Launch, StdioService};
 use crate::{
-    AsmRunnerOptions, MemoryOperationsResponse, MinimalTraceResponse, RomHistogramResponse,
-    NAMESPACE,
+    process_prefix_for, sem_prefix_for, shm_prefix_for, AsmRunError, AsmRunnerOptions,
+    MemoryOperationsResponse, MinimalTraceResponse, RomHistogramResponse,
 };
+
 use anyhow::{Context, Result};
 
 use std::process::Stdio;
@@ -51,7 +53,18 @@ impl AsmService {
     }
 
     /// Returns the command path for a given service based on the trimmed base path.
+    ///
+    /// The memory-ops emulator comes in two forms with their own names, so a cache shared with
+    /// a build that knows only the plain `-mo` form never hands either one the other's stream:
+    /// `-moh` (values and steps, what the device witness needs) and `-mol` (one word per record).
     pub fn command_path_for(&self, trimmed_path: &str) -> String {
+        if *self == AsmService::MO {
+            return if crate::mops_light() {
+                format!("{trimmed_path}-mol.bin")
+            } else {
+                format!("{trimmed_path}-moh.bin")
+            };
+        }
         format!("{}-{}.bin", trimmed_path, self)
     }
 
@@ -71,6 +84,7 @@ impl AsmService {
             unsafe {
                 command.pre_exec(|| {
                     libc::setpriority(libc::PRIO_PROCESS, 0, -5);
+                    // Killed with the thread that starts it, hence `spawner`.
                     libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
                     Ok(())
                 });
@@ -109,6 +123,9 @@ impl AsmService {
         if options.verbose {
             command.arg("-v");
         }
+        if options.metrics {
+            command.arg("-m");
+        }
 
         command.stderr(if options.verbose { Stdio::inherit() } else { Stdio::null() });
 
@@ -127,7 +144,10 @@ impl fmt::Display for AsmService {
     }
 }
 
-/// Handle to the ASM microservices for one `(pid, local_rank)`.
+/// Handle to one program's ASM microservices: its three service processes and
+/// its semaphores. The shared-memory segments they use are shared with every
+/// other program on the same `(pid, local_rank, hints mode)` (see
+/// [`SharedSegments`]).
 ///
 /// `Clone` shares a single `AsmServicesInner` via `Arc`: the runner threads
 /// (MO/MT/RH) each hold a clone for the duration of a run. Teardown lives in
@@ -139,22 +159,38 @@ pub struct AsmServices {
     inner: Arc<AsmServicesInner>,
 }
 
-struct AsmServicesInner {
+/// A program's services. The fields drop in order after `Drop` has stopped the
+/// services, and also when it panics: `service`, which kills and reaps any process
+/// left, then `stopped`, which reports it, then `segments`.
+pub(super) struct AsmServicesInner {
     service: StdioService,
-    shm_prefix: String,
     sem_prefix: String,
+    /// Set once the services are gone; see [`ActiveProgram`].
+    stopped: SetOnDrop,
+    /// The segments the services use.
+    segments: Arc<SharedSegments>,
 }
 
 impl AsmServices {
     /// Array of all services, used for iteration in setup and cleanup.
     pub const SERVICES: [AsmService; 3] = [AsmService::MO, AsmService::MT, AsmService::RH];
 
-    /// Returns the shared memory prefix  `ZISK_{pid}_{rank}`.
+    /// Returns the shared memory prefix `ZISK_{pid}_{rank}_h{0,1}`, where the
+    /// trailing marker is the hints mode.
     pub fn shm_prefix(&self) -> &str {
-        &self.inner.shm_prefix
+        self.inner.segments.shm_prefix()
     }
 
-    /// Returns the semaphore prefix `ZISK_{pid}_{hash}_{rank}`.
+    /// The shared segments the services use. Whatever else maps them, such as
+    /// the parent's readers and writers, holds this too, so that they outlive it.
+    pub fn segments(&self) -> &Arc<SharedSegments> {
+        &self.inner.segments
+    }
+
+    /// Returns the semaphore prefix `ZISK_{pid}_{hash}_{rank}_h{0,1}`, where
+    /// `hash` is the first 32 characters of the program hash.
+    ///
+    /// Per-program, unlike the shmem prefix.
     pub fn sem_prefix(&self) -> &str {
         &self.inner.sem_prefix
     }
@@ -169,7 +205,11 @@ impl AsmServices {
         self.inner.service.world_rank
     }
 
-    /// Wrapper used by the CLI and the first worker setup.
+    /// Start a program's services on this process's segments for its rank and
+    /// hints mode, creating the segments if no program holds them yet.
+    ///
+    /// Returns them with the claim taken to start them: keep it until the program
+    /// is active ([`Self::activate`]), so no other setup or job gets in between.
     pub fn new(
         world_rank: i32,
         local_rank: i32,
@@ -177,15 +217,16 @@ impl AsmServices {
         ziskemuasm_path: &Path,
         with_hints: bool,
         options: AsmRunnerOptions,
-    ) -> Result<AsmServices> {
+    ) -> Result<(AsmServices, SegmentsClaim)> {
         let pid = std::process::id();
-        let hash8 = &hash_id[..hash_id.len().min(8)];
 
-        let shm_prefix = format!("{NAMESPACE}_{pid}_{local_rank}");
-        let sem_prefix = format!(
-            "{NAMESPACE}_{pid}_{hash8}_{local_rank}{hints}",
-            hints = if with_hints { "_h" } else { "" }
-        );
+        // The hints mode belongs on both prefixes: `get_precompile_results()` comes
+        // from the generated assembly, so the hints binary variant creates a
+        // `_precompile` segment the non-hints one neither creates nor opens. The two
+        // modes therefore do not have the same *set* of segments and cannot share one.
+        // Two sets per worker at most, one per mode, each reused by every program in it.
+        let shm_prefix = shm_prefix_for(pid, local_rank, with_hints);
+        let sem_prefix = sem_prefix_for(pid, &hash_id, local_rank, with_hints);
 
         // Strip it to get the base path.
         // `ziskemuasm_path` expected format: "<base>-??.bin".
@@ -200,20 +241,34 @@ impl AsmServices {
             } else {
                 return Err(anyhow::anyhow!("invalid path format: expected '-??.bin' suffix"));
             };
-        // Phase 1: create shmem segments for this process.
-        Self::create_shmem(world_rank, &shm_prefix, &sem_prefix, stripped_path, &options)?;
+        // Phase 1: create the shmem segments, once per prefix, not once per program.
+        let segments = SharedSegments::acquire(&shm_prefix, || {
+            Self::create_shmem(world_rank, &shm_prefix, &sem_prefix, stripped_path, &options)
+        })?;
+
+        // Starting services writes the shared guest RAM and ROM, so no job may be
+        // using the segments, and the program they serve must have finished with
+        // them first.
+        let claim = segments.claim();
+        Self::quiesce_active(&segments);
 
         // Phase 2: start services and wait for them to be ready.
-        let stdio_service = StdioService::start_services(
-            world_rank,
-            local_rank,
-            stripped_path,
-            &options,
-            &shm_prefix,
-            &sem_prefix,
-        )?;
+        // The services that started before one failed have created their semaphores.
+        let launch = Launch {
+            trimmed_path: stripped_path.to_string(),
+            options,
+            shm_prefix,
+            sem_prefix: sem_prefix.clone(),
+        };
+        let stdio_service = StdioService::start_services(world_rank, local_rank, launch)
+            .inspect_err(|_| super::janitor::cleanup_sem_prefix(&sem_prefix))?;
 
-        let inner = AsmServicesInner { service: stdio_service, shm_prefix, sem_prefix };
+        let inner = AsmServicesInner {
+            service: stdio_service,
+            sem_prefix,
+            stopped: SetOnDrop::default(),
+            segments,
+        };
 
         for service in &Self::SERVICES {
             inner
@@ -222,7 +277,7 @@ impl AsmServices {
                 .with_context(|| format!("Service {service} failed to respond to ping"))?;
         }
 
-        Ok(AsmServices { inner: Arc::new(inner) })
+        Ok((AsmServices { inner: Arc::new(inner) }, claim))
     }
 
     /// Clean up all shared memory and semaphores for currently running services.
@@ -231,6 +286,22 @@ impl AsmServices {
     pub fn cleanup_stale_shmem() {
         super::janitor::cleanup_stale();
     }
+
+    /// Kill every service this process started and unlink every segment and semaphore it
+    /// named, waiting at most `timeout` for the services to exit.
+    ///
+    /// For a process about to exit without running its destructors, which would otherwise
+    /// do this program by program, such as the distributed worker on a requested stop.
+    /// Nothing in the process may use the services afterwards.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    pub fn release_all_for_exit(timeout: Duration) {
+        super::janitor::release_process(&process_prefix_for(std::process::id()), timeout);
+    }
+
+    /// Kill every service this process started and unlink every segment and semaphore it
+    /// named. No-op off Linux-x86_64, where the ASM services never run.
+    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+    pub fn release_all_for_exit(_timeout: std::time::Duration) {}
 
     /// Create all of the shared-memory segments.
     ///
@@ -273,10 +344,9 @@ impl AsmServices {
         });
 
         if result.is_err() {
-            // Roll back any segments the partial creation left behind. Unlinks
-            // all `{shm_prefix}*` entries (per-service *and* the untagged
-            // `_input`/`_precompile`/`_control` ones); the semaphore sweep is a
-            // no-op here since no semaphores exist yet at creation time.
+            // Roll back whatever the partial creation left behind: every
+            // `{shm_prefix}*` segment, per-service and shared alike, and any
+            // semaphore the helpers created.
             super::janitor::cleanup_prefix(shm_prefix, sem_prefix);
         }
         result
@@ -348,12 +418,158 @@ impl AsmServices {
 
         spawn_result?; // surface the spawn error only after reaping live children
         if any_failed {
-            // Roll back any segments the partial creation left behind. Unlinks
-            // all `{shm_prefix}*` entries (per-service *and* the untagged
-            // `_input`/`_precompile`/`_control` ones); the semaphore sweep is a
-            // no-op here since no semaphores exist yet at creation time.
-            super::janitor::cleanup_prefix(shm_prefix, sem_prefix);
             return Err(anyhow::anyhow!("One or more shmem creation commands failed"));
+        }
+        Ok(())
+    }
+
+    /// Make the shared segments serve this program, unless they already do.
+    ///
+    /// The segments serve one program at a time, so a switch takes three steps,
+    /// in order: wait until the program they serve now has finished with them
+    /// (`quiesce_active`), let the caller rebind whatever is per program
+    /// (`bind`, the semaphores of the parent's shared writers), and rebuild this
+    /// program's guest RAM and ROM (`reset_services`). It is recorded as
+    /// active only once all three have succeeded.
+    ///
+    /// The record lives with the segments, not with the caller, so every client
+    /// in the process that set up programs on them sees the same one.
+    ///
+    /// `claim` must be on this program's segments, held for the job that follows: without it,
+    /// a second handoff could find no program recorded while the first waits for
+    /// the outgoing one, skip that wait, and reset the guest memory under it.
+    ///
+    /// A service of this program that can serve no more requests, because its process
+    /// exited or was stopped, is started again here, so that a crash costs the job it
+    /// happened in and not every later one. A restart is a switch even when this program
+    /// is the active one: the new process writes its guest memory and recreates its
+    /// semaphores as it starts, so it starts only once the active program is quiesced,
+    /// and the writers are bound again and the guest memory reset after it. Fails if a
+    /// service cannot be started again; the next activation tries again.
+    pub fn activate(&self, claim: &SegmentsClaim, bind: impl FnOnce() -> Result<()>) -> Result<()> {
+        let segments = &self.inner.segments;
+        if !Arc::ptr_eq(claim.segments(), segments) {
+            return Err(anyhow::anyhow!(
+                "activating a program on {} under a claim on {}",
+                segments.shm_prefix(),
+                claim.segments().shm_prefix()
+            ));
+        }
+        let exited = self.inner.service.exited();
+        if exited.is_empty() && segments.is_active(&self.inner) {
+            return Ok(());
+        }
+        Self::quiesce_active(segments);
+        for (service, how) in &exited {
+            tracing::warn!(
+                "[{}] Restarting ASM service {service} of {}: it can serve no more requests ({how})",
+                self.inner.service.world_rank,
+                self.inner.sem_prefix
+            );
+            self.inner
+                .service
+                .restart(service)
+                .with_context(|| format!("Failed to restart ASM service {service}"))?;
+        }
+        bind()?;
+        self.reset_services()?;
+
+        segments.set_active(ActiveProgram {
+            services: Arc::downgrade(&self.inner),
+            stopped: Arc::clone(&self.inner.stopped.0),
+        });
+        Ok(())
+    }
+
+    /// Wait until no setup or job is using this program's shared segments, and
+    /// hold them until the returned claim is dropped. See [`SegmentsClaim`].
+    pub fn claim(&self) -> SegmentsClaim {
+        self.inner.segments.claim()
+    }
+
+    /// Wait until the services of the program `segments` serve have finished
+    /// every request already sent, and record that they serve none.
+    ///
+    /// A service keeps writing the shared guest RAM and ROM after it has
+    /// answered: its request may still be in flight (the ROM histogram's is
+    /// parked until a job reads it), and its own reset runs after the response.
+    /// A ping is answered only after both, since each service reads its next
+    /// request only when it is done with the last, and a request in flight holds
+    /// that service's handle until its response arrives. A request its runner has
+    /// not sent yet is not waited for: see `AsmJob` in `zisk-executor`. A
+    /// service whose ping fails is taken as stopped. A program already dropped is
+    /// not pinged but waited for, until its teardown has stopped its services.
+    fn quiesce_active(segments: &SharedSegments) {
+        let Some(outgoing) = segments.take_active() else { return };
+        // Its last reference is gone, but its teardown, which holds no claim, may
+        // still be stopping services that write the segments: wait for it to finish.
+        let Some(outgoing) = outgoing.services.upgrade() else {
+            outgoing.stopped.wait();
+            return;
+        };
+        for service in &Self::SERVICES {
+            if let Err(e) = outgoing.service.send_status_request(service) {
+                tracing::warn!(
+                    "Service {service} of the outgoing program did not answer before a switch; \
+                     taking it as stopped: {e:#}"
+                );
+            }
+        }
+    }
+
+    /// Re-initialize every service's guest RAM and ROM, and wait for all three
+    /// to confirm.
+    ///
+    /// Call this before the first emulation after the active program changes.
+    /// The `_ram`/`_rom` segments are shared across programs, and a service's
+    /// own post-emulation `server_reset_slow` only leaves them correct for its
+    /// own next run — it says nothing about what another program's services
+    /// wrote there in between. The C side services the request synchronously,
+    /// so a response means that service's memory is ready.
+    ///
+    /// Runs the three in parallel: each clears 640 MiB (512 MiB of RAM, 128 MiB of
+    /// ROM) and rewrites its init data, and they are separate processes with
+    /// independent stdio state. On threads of their own, not rayon's: this runs under
+    /// the segments' claim, which a rayon worker must not wait on while it could steal
+    /// a task that takes the claim too.
+    fn reset_services(&self) -> Result<()> {
+        std::thread::scope(|scope| {
+            let resets: Vec<_> = Self::SERVICES
+                .iter()
+                .map(|service| scope.spawn(move || self.reset_service(service)))
+                .collect();
+            resets.into_iter().try_for_each(|reset| {
+                reset.join().unwrap_or_else(|_| Err(anyhow::anyhow!("a service's reset panicked")))
+            })
+        })
+        .context("Failed to reset ASM services")
+    }
+
+    /// One service's part of [`reset_services`](Self::reset_services).
+    fn reset_service(&self, service: &AsmService) -> Result<()> {
+        let response = self.inner.service.send_reset_request(service).map_err(|e| {
+            // A binary generated before the reset request existed exits on
+            // it, and its own message is lost with its stderr. The cache names
+            // binaries by ELF hash and hints mode only, so say what fixes it.
+            let died = e.chain().any(|cause| {
+                matches!(cause.downcast_ref::<AsmRunError>(), Some(AsmRunError::ServiceDied { .. }))
+            });
+            if died {
+                e.context(format!(
+                    "Service {service} exited on the reset request. A binary cached \
+                         before that request existed exits on it with status 255; if \
+                         that is the status reported, clear the cached ASM binaries \
+                         (~/.zisk/cache by default) to regenerate them"
+                ))
+            } else {
+                e.context(format!("Service {service} failed to reset"))
+            }
+        })?;
+        if response.result != 0 {
+            return Err(anyhow::anyhow!(
+                "ASM {service} service returned non-zero result to the reset request: {}",
+                response.result
+            ));
         }
         Ok(())
     }
@@ -473,19 +689,21 @@ impl AsmServicesInner {
         Ok(())
     }
 
-    /// Unlink every `/dev/shm/{shm_prefix}*` shmem segment and
-    /// `/dev/shm/sem.{sem_prefix}*` semaphore. The C-side `server_cleanup`
-    /// only unlinks if `delete_input_shm`/`delete_output_shm` flags are
-    /// set — which the long-running ASM service children don't have — so
-    /// the parent has to do it. Call after `stop_asm_services` so the
-    /// children are already detached from the segments.
-    fn cleanup_my_shmem(&self) {
-        super::janitor::cleanup_prefix(&self.shm_prefix, &self.sem_prefix);
+    /// Unlink the semaphores this program owns.
+    ///
+    /// Only the semaphores: they carry the program hash, so they are this
+    /// program's to remove. The shmem segments are shared with every other
+    /// program on the same prefix, and unlinking those is `SharedSegments`' job
+    /// once the last of them is gone.
+    fn cleanup_my_semaphores(&self) {
+        super::janitor::cleanup_sem_prefix(&self.sem_prefix);
     }
 }
 
 impl Drop for AsmServicesInner {
-    /// RAII teardown for the ASM microservices and their `/dev/shm` segments.
+    /// RAII teardown for this program's services and semaphores. The shared
+    /// segments outlive it unless it was their last owner: its `segments`,
+    /// dropped after this body, decides.
     ///
     /// Runs exactly once: this is the sole owner behind the `Arc` in
     /// [`AsmServices`], so `drop` fires only when the last `AsmServices` clone
@@ -499,14 +717,341 @@ impl Drop for AsmServicesInner {
                 e
             );
         }
-
-        self.cleanup_my_shmem();
+        self.cleanup_my_semaphores();
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A program's teardown holds no claim, and the activation record stops
+    /// upgrading as soon as its last reference goes, before its services are
+    /// stopped. A switch that finds it dropped must wait for that teardown rather
+    /// than reset the segments under services still writing them.
+    #[test]
+    fn a_switch_waits_for_a_dropped_program_to_stop_its_services() {
+        use super::super::segments::StoppedLatch;
+        use std::sync::{mpsc, Weak};
+        use std::time::Duration;
+
+        let prefix = format!("ZISK_unittest_teardown_{}", std::process::id());
+        let segments = SharedSegments::acquire(&prefix, || Ok(())).unwrap();
+        let stopped = Arc::new(StoppedLatch::default());
+        // A program whose last reference is gone: its `Weak` no longer upgrades.
+        segments.set_active(ActiveProgram { services: Weak::new(), stopped: Arc::clone(&stopped) });
+
+        let (switched, rx) = mpsc::channel();
+        let switch = {
+            let segments = Arc::clone(&segments);
+            std::thread::spawn(move || {
+                AsmServices::quiesce_active(&segments);
+                switched.send(()).unwrap();
+            })
+        };
+        assert!(
+            rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            "a switch must wait while the dropped program's services are stopping"
+        );
+
+        stopped.set();
+        rx.recv_timeout(Duration::from_secs(10)).expect("the teardown's end must let it in");
+        switch.join().unwrap();
+        assert!(segments.take_active().is_none(), "the switch must leave no program recorded");
+    }
+
+    /// A program whose services are stand-ins: shell scripts that answer pings and,
+    /// unless `exit_on_reset`, resets, log each request's id, and exit on anything else,
+    /// a shutdown included. One that exits on the reset is a binary cached before the
+    /// reset request existed. Its directory goes when it is dropped.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    struct FakeProgram {
+        dir: std::path::PathBuf,
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    impl FakeProgram {
+        /// The path `AsmServices::new` takes.
+        fn path(&self) -> std::path::PathBuf {
+            self.dir.join("prog-mt.bin")
+        }
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    impl Drop for FakeProgram {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn fake_program(name: &str, exit_on_reset: bool) -> FakeProgram {
+        use std::io::Write;
+
+        let on_reset = if exit_on_reset { "exit 255" } else { r"answer '\024'" };
+        let script = format!(
+            r#"#!/bin/sh
+for arg in "$@"; do case "$arg" in --just_create*) exit 0;; esac; done
+answer() {{ printf "$1"; head -c 39 /dev/zero; }}
+while :; do
+  id=$(head -c 40 | od -An -tu8 -N8 | tr -d ' ')
+  [ -n "$id" ] || exit 0
+  echo "$id" >> "$0.log"
+  case "$id" in
+    1) answer '\002' ;;
+    19) {on_reset} ;;
+    *) exit 0 ;;
+  esac
+done
+"#
+        );
+        let dir = std::env::temp_dir()
+            .join(format!("zisk_unittest_services_{}_{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // Written by a child process, so that this one never holds the file open for writing:
+        // a child another test forks meanwhile would inherit that descriptor until it
+        // execs, and running the script then would fail with ETXTBSY.
+        // At the names the services run them by (the memory-ops emulator's has its form in it).
+        let trimmed = dir.join("prog");
+        for service in AsmServices::SERVICES {
+            let path = service.command_path_for(&trimmed.to_string_lossy());
+            let mut writer = Command::new("sh")
+                .args(["-c", r#"cat > "$0" && chmod 755 "$0""#])
+                .arg(&path)
+                .stdin(Stdio::piped())
+                .spawn()
+                .unwrap();
+            writer.stdin.take().unwrap().write_all(script.as_bytes()).unwrap();
+            assert!(writer.wait().unwrap().success(), "write {path}");
+        }
+        FakeProgram { dir }
+    }
+
+    /// The ids of the requests `service` of the program at `program` has received.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn requests(program: &Path, service: AsmService) -> Vec<u64> {
+        let trimmed = program.with_file_name("prog");
+        let log = format!("{}.log", service.command_path_for(&trimmed.to_string_lossy()));
+        std::fs::read_to_string(log)
+            .unwrap_or_default()
+            .lines()
+            .map(|id| id.parse().unwrap())
+            .collect()
+    }
+
+    /// Starts `program` on `local_rank`'s segments, as its setup does.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn start(program: &Path, local_rank: i32, hash: char) -> (AsmServices, SegmentsClaim) {
+        let hash_id = hash.to_string().repeat(64);
+        AsmServices::new(0, local_rank, hash_id, program, false, AsmRunnerOptions::new())
+            .expect("the stand-in services start")
+    }
+
+    /// Kill the process `pid` as a crash would, and wait until it is gone.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn kill(pid: u32) {
+        assert_eq!(unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) }, 0, "kill {pid}");
+        // A zombie still exists for `kill(pid, 0)`, so ask the kernel for its state.
+        let dead = || {
+            std::fs::read_to_string(format!("/proc/{pid}/stat"))
+                .map_or(true, |stat| stat.rsplit(") ").next().is_some_and(|s| s.starts_with('Z')))
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !dead() {
+            assert!(std::time::Instant::now() < deadline, "{pid} must die");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    const PING: u64 = super::super::CMD_PING_REQUEST_ID;
+    const RESET: u64 = super::super::CMD_RESET_REQUEST_ID;
+
+    /// A switch waits for the outgoing program's services, binds the incoming
+    /// program's semaphores, and has its services rebuild their guest memory; a
+    /// program already active is left alone.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[test]
+    fn a_switch_waits_for_the_outgoing_program_and_resets_the_incoming_one() {
+        let rank = 101;
+        let (a_program, b_program) =
+            (fake_program("switch_a", false), fake_program("switch_b", false));
+        let (a_path, b_path) = (a_program.path(), b_program.path());
+        let binds = std::cell::Cell::new(0);
+        let bind = || {
+            binds.set(binds.get() + 1);
+            Ok(())
+        };
+
+        let (a, claim) = start(&a_path, rank, 'a');
+        a.activate(&claim, bind).unwrap();
+        drop(claim);
+        for service in AsmServices::SERVICES {
+            assert_eq!(
+                requests(&a_path, service),
+                [PING, RESET],
+                "A's {service} starts, then resets"
+            );
+        }
+        assert_eq!(binds.get(), 1);
+
+        let claim = a.claim();
+        a.activate(&claim, bind).unwrap();
+        drop(claim);
+        assert_eq!(
+            requests(&a_path, AsmService::MT),
+            [PING, RESET],
+            "an active program is left alone"
+        );
+        assert_eq!(binds.get(), 1);
+
+        // Starting B's services writes the shared segments, so A's are waited for first.
+        let (b, claim) = start(&b_path, rank, 'b');
+        b.activate(&claim, bind).unwrap();
+        drop(claim);
+        for service in AsmServices::SERVICES {
+            assert_eq!(
+                requests(&a_path, service),
+                [PING, RESET, PING],
+                "A's {service} is waited for"
+            );
+            assert_eq!(
+                requests(&b_path, service),
+                [PING, RESET],
+                "B's {service} starts, then resets"
+            );
+        }
+
+        let claim = a.claim();
+        a.activate(&claim, bind).unwrap();
+        drop(claim);
+        for service in AsmServices::SERVICES {
+            assert_eq!(
+                requests(&b_path, service),
+                [PING, RESET, PING],
+                "B's {service} is waited for"
+            );
+            assert_eq!(
+                requests(&a_path, service),
+                [PING, RESET, PING, RESET],
+                "A's {service} resets"
+            );
+        }
+        assert_eq!(binds.get(), 3, "the semaphores are bound on every switch, and only then");
+    }
+
+    /// A program whose reset fails, as one whose binary predates the reset request,
+    /// fails its activation with `ServiceDied` and says what fixes it; no program is
+    /// recorded as active, and a later activation starts its services again, to fail
+    /// the same way.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[test]
+    fn a_program_that_cannot_reset_is_never_recorded_as_active() {
+        let stale = fake_program("stale", true);
+        let (program, claim) = start(&stale.path(), 102, 's');
+
+        let error = program.activate(&claim, || Ok(())).unwrap_err();
+        assert!(
+            error.chain().any(|cause| matches!(
+                cause.downcast_ref::<AsmRunError>(),
+                Some(AsmRunError::ServiceDied { .. })
+            )),
+            "the activation fails with ServiceDied: {error:#}"
+        );
+        assert!(format!("{error:#}").contains("clear the cached ASM binaries"), "{error:#}");
+        assert!(program.segments().take_active().is_none(), "no program is recorded as active");
+
+        let again = program.activate(&claim, || Ok(())).unwrap_err();
+        assert!(format!("{again:#}").contains("clear the cached ASM binaries"), "{again:#}");
+        for service in AsmServices::SERVICES {
+            assert_eq!(
+                requests(&stale.path(), service),
+                [PING, RESET, PING, RESET],
+                "{service} is started again, and exits on the reset again"
+            );
+        }
+        assert!(program.segments().take_active().is_none(), "no program is recorded as active");
+    }
+
+    /// A service that dies is started again by its program's next activation, as the
+    /// active program or not, and the program then serves requests as before: a crash
+    /// costs the job it happened in, not every later one.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[test]
+    fn a_service_that_died_is_started_again_by_the_next_activation() {
+        let rank = 105;
+        let (a_program, b_program) =
+            (fake_program("restart_a", false), fake_program("restart_b", false));
+        let (a_path, b_path) = (a_program.path(), b_program.path());
+
+        let (a, claim) = start(&a_path, rank, 'e');
+        a.activate(&claim, || Ok(())).unwrap();
+        drop(claim);
+
+        // A's MT dies while A is active, as by a crash; the job running then fails.
+        let killed = a.inner.service.pid(&AsmService::MT);
+        kill(killed);
+        let Err(error) = a.inner.service.send_status_request(&AsmService::MT) else {
+            panic!("a request to a dead service must fail");
+        };
+        assert!(format!("{error:#}").contains("can serve no more requests"), "{error:#}");
+
+        // The next job's activation starts it again and rebuilds A's guest memory.
+        let binds = std::cell::Cell::new(0);
+        let claim = a.claim();
+        a.activate(&claim, || {
+            binds.set(binds.get() + 1);
+            Ok(())
+        })
+        .expect("the activation restarts the dead service");
+        drop(claim);
+        assert_ne!(a.inner.service.pid(&AsmService::MT), killed, "a new process serves MT");
+        assert_eq!(binds.get(), 1, "the new process's semaphores are bound");
+        assert_eq!(
+            requests(&a_path, AsmService::MT),
+            [PING, RESET, PING, RESET],
+            "MT is started (and pinged) again, then reset"
+        );
+        for service in [AsmService::MO, AsmService::RH] {
+            assert_eq!(
+                requests(&a_path, service),
+                [PING, RESET, PING, RESET],
+                "A's {service} is waited for before the restart, then reset"
+            );
+        }
+        a.inner.service.send_status_request(&AsmService::MT).expect("the new MT serves requests");
+        assert!(a.segments().is_active(&a.inner), "A is recorded as active again");
+
+        // B takes the segments; then A's RH dies while A is not the active program.
+        let (b, claim) = start(&b_path, rank, 'f');
+        b.activate(&claim, || Ok(())).unwrap();
+        drop(claim);
+        kill(a.inner.service.pid(&AsmService::RH));
+
+        let claim = a.claim();
+        a.activate(&claim, || Ok(())).expect("A's RH is started again on a switch back to A");
+        drop(claim);
+        assert_eq!(
+            requests(&b_path, AsmService::MT),
+            [PING, RESET, PING],
+            "B's services are waited for before A's RH starts"
+        );
+        a.inner.service.send_status_request(&AsmService::RH).expect("the new RH serves requests");
+    }
+
+    /// A claim holds the segments it was taken on, and no others.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[test]
+    fn a_program_is_not_activated_under_another_segments_claim() {
+        let (a_program, b_program) =
+            (fake_program("claim_a", false), fake_program("claim_b", false));
+        let (a, a_claim) = start(&a_program.path(), 103, 'c');
+        let (_b, b_claim) = start(&b_program.path(), 104, 'd');
+
+        let error = a.activate(&b_claim, || Ok(())).unwrap_err();
+        assert!(format!("{error:#}").contains("under a claim on"), "{error:#}");
+        a.activate(&a_claim, || Ok(())).unwrap();
+    }
 
     #[test]
     fn gen_index_matches_c_binary_contract() {
@@ -529,7 +1074,12 @@ mod tests {
         // names the shmem segments. Keeping them distinct is deliberate.
         assert_eq!(AsmService::MO.to_string(), "mo");
         assert_eq!(AsmService::RH.to_string(), "rh");
-        assert_eq!(AsmService::MO.command_path_for("/x/ziskemuasm"), "/x/ziskemuasm-mo.bin");
+        // The memory-ops emulator has a form of its own either way, never the plain `-mo`.
+        let mo = AsmService::MO.command_path_for("/x/ziskemuasm");
+        assert_eq!(
+            mo,
+            if crate::mops_light() { "/x/ziskemuasm-mol.bin" } else { "/x/ziskemuasm-moh.bin" }
+        );
         assert_eq!(AsmService::RH.command_path_for("base"), "base-rh.bin");
     }
 

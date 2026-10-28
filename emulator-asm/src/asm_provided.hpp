@@ -17,6 +17,7 @@ void emu_start(void);
 void write_ro_init_data(void);
 void write_rw_init_data(void);
 uint64_t get_rom_length(void);
+uint64_t get_frops_length(void); // Rows of the FROPS multiplicity table, 0 if this generation method does not count frequent operations
 uint64_t get_gen_method(void); // Must match the C main program provided argument
 uint64_t get_precompile_results(void);
 

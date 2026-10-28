@@ -2,8 +2,8 @@ use anyhow::Result;
 use std::path::Path;
 use std::time::Duration;
 use zisk_common::{
-    ProgramVK, PublicValues, StatsCostPerType, ZiskExecutorSummary, ZiskExecutorTime,
-    ZiskVerifyBuilder, ZISK_PUBLICS,
+    PlonkVkey, ProgramVK, ProofBody, PublicValues, RandomSeed, StatsCostPerType,
+    ZiskExecutorSummary, ZiskExecutorTime, ZiskVerifyBuilder, ZISK_PUBLICS,
 };
 use zisk_executor::{AirClassifier, PlanSummaryEntry};
 
@@ -83,6 +83,7 @@ pub struct ExecuteOutput {
     executor_time: ZiskExecutorTime,
     publics: PublicValues,
     plan: Option<Vec<PlanSummaryEntry>>,
+    random_seed: Option<RandomSeed>,
 }
 
 impl ExecuteOutput {
@@ -100,6 +101,7 @@ impl ExecuteOutput {
             executor_time: executor_summary.executor_time,
             publics: PublicValues::new(publics),
             plan: None,
+            random_seed: executor_summary.random_seed,
         }
     }
 
@@ -119,6 +121,7 @@ impl ExecuteOutput {
             executor_time: executor_summary.executor_time,
             publics: pairs_to_publics(pub_outs),
             plan: Some(plan),
+            random_seed: executor_summary.random_seed,
         }
     }
 
@@ -149,11 +152,18 @@ impl ExecuteOutput {
         self.plan.as_deref()
     }
 
+    /// The host randomness seed the execution ran with, which decided the values the guest got from
+    /// `zkvm_random_u64`. Passing it to `.random_seed()` on a new request reproduces the run.
+    /// `None` only when a remote coordinator that predates this field ran it.
+    pub fn get_random_seed(&self) -> Option<RandomSeed> {
+        self.random_seed
+    }
+
     /// Construct a result from a remote coordinator response.
     ///
     /// `plan` carries raw `(airgroup_id, air_id, count)` triples from the wire; the
     /// AIR display name is resolved here via [`AirClassifier`] so remote output matches
-    /// the embedded plan.
+    /// the embedded plan. `seed` is the one the coordinator reported, if any.
     #[allow(clippy::too_many_arguments)]
     pub fn from_remote(
         steps: u64,
@@ -162,6 +172,7 @@ impl ExecuteOutput {
         executor_time: ZiskExecutorTime,
         plan: &[(usize, usize, u64)],
         publics: &[u8],
+        seed: Option<RandomSeed>,
     ) -> Self {
         let plan: Vec<PlanSummaryEntry> = plan
             .iter()
@@ -179,6 +190,7 @@ impl ExecuteOutput {
             executor_time,
             publics: PublicValues::new(publics),
             plan: (!plan.is_empty()).then_some(plan),
+            random_seed: seed,
         }
     }
 }
@@ -190,18 +202,92 @@ impl_public_outputs!(ExecuteOutput, publics);
 pub struct ProveOutput {
     summary: ExecutionSummary,
     proof: Proof,
+    /// Trusted key `verify` uses: the producing setup's, or one the caller supplied.
+    setup_vk: Option<Vec<u64>>,
+    /// `setup_vk` is a setup's leaf key rather than a recurser's.
+    leaf_setup_vk: bool,
+    /// Trusted PLONK key: the producing setup's, or one the caller supplied.
+    plonk_vk: Option<PlonkVkey>,
+    /// Trusted pilfflonk key (its JSON): the producing setup's, or one the caller supplied.
+    pilfflonk_vkey: Option<String>,
 }
 
 impl ProveOutput {
-    /// Construct from a completed proof and its execution summary.
+    /// Construct from a completed proof and the execution it attests to, whose seed the proof
+    /// takes.
     pub fn new(execution: ZiskExecutorSummary, proving_time: Duration, proof: Proof) -> Self {
-        Self { summary: ExecutionSummary::new(proving_time, &execution), proof }
+        Self::with_summary(
+            ExecutionSummary::new(proving_time, &execution),
+            proof.with_random_seed(execution.random_seed),
+        )
+    }
+
+    fn with_summary(summary: ExecutionSummary, proof: Proof) -> Self {
+        Self {
+            summary,
+            proof,
+            setup_vk: None,
+            leaf_setup_vk: false,
+            plonk_vk: None,
+            pilfflonk_vkey: None,
+        }
+    }
+
+    /// Set the key `verify` uses to the leaf key of the setup which produced the proof.
+    pub fn with_produced_under(mut self, setup_vk: Option<Vec<u64>>) -> Self {
+        self.leaf_setup_vk = setup_vk.is_some();
+        self.setup_vk = setup_vk;
+        self
+    }
+
+    /// Set the key `verify` uses: a recurser's verkey for an aggregate, as for
+    /// [`Proof::with_setup_vk`]. For a leaf from a non-release setup, use
+    /// [`with_leaf_setup_vk`](Self::with_leaf_setup_vk).
+    pub fn with_setup_vk(mut self, setup_vk: Vec<u64>) -> Self {
+        self.setup_vk = Some(setup_vk);
+        self.leaf_setup_vk = false;
+        self
+    }
+
+    /// Set the key `verify` uses to a non-release setup's leaf key, as for
+    /// [`Proof::with_leaf_setup_vk`]: its `vadcop_final.verkey.json`, or
+    /// `vadcop_final_compressed.verkey.json` for a minimal proof.
+    pub fn with_leaf_setup_vk(self, setup_vk: Vec<u64>) -> Self {
+        self.with_produced_under(Some(setup_vk))
+    }
+
+    /// Set the PLONK key `verify` uses, as for [`Proof::with_plonk_vk`].
+    pub fn with_plonk_vk(mut self, plonk_vk: PlonkVkey) -> Self {
+        self.plonk_vk = Some(plonk_vk);
+        self
+    }
+
+    /// Set the pilfflonk key `verify` uses, as for [`Proof::with_pilfflonk_vkey`].
+    pub fn with_pilfflonk_vkey(mut self, vkey_json: String) -> Self {
+        self.pilfflonk_vkey = Some(vkey_json);
+        self
+    }
+
+    /// Trust the SNARK key a proof just produced carries: the producer loaded it from its
+    /// own setup.
+    pub(crate) fn with_produced_snark_vkey(self) -> Self {
+        match &self.proof.body {
+            ProofBody::Plonk { plonk_vk, .. } => {
+                let vkey = plonk_vk.plonk_vkey.clone();
+                self.with_plonk_vk(vkey)
+            }
+            ProofBody::Pilfflonk { vkey_json, .. } => {
+                let vkey = vkey_json.clone();
+                self.with_pilfflonk_vkey(vkey)
+            }
+            ProofBody::Vadcop { .. } => self,
+        }
     }
 
     /// Construct with an empty (default) proof — used when only the execution
-    /// statistics are wanted, not a real proof.
+    /// statistics are wanted, not a real proof. The proof still carries the execution's seed.
     pub fn new_null(execution: ZiskExecutorSummary, proving_time: Duration) -> Self {
-        Self { summary: ExecutionSummary::new(proving_time, &execution), proof: Proof::default() }
+        Self::new(execution, proving_time, Proof::default())
     }
 
     /// Construct a result from a remote coordinator response (no ExecutorStatsHandle).
@@ -211,7 +297,10 @@ impl ProveOutput {
         proving_time: Duration,
         cost_per_type: StatsCostPerType,
     ) -> Self {
-        Self { summary: ExecutionSummary::from_remote(proving_time, steps, &cost_per_type), proof }
+        Self::with_summary(
+            ExecutionSummary::from_remote(proving_time, steps, &cost_per_type),
+            proof,
+        )
     }
 
     /// Proving time, in milliseconds.
@@ -229,6 +318,19 @@ impl ProveOutput {
         self.summary.cost
     }
 
+    /// The host randomness seed the proven execution ran with (see
+    /// [`ExecuteOutput::get_random_seed`]). `None` for proofs that do not come from a single
+    /// execution (aggregates), or when a remote coordinator that predates this field ran it.
+    pub fn get_random_seed(&self) -> Option<RandomSeed> {
+        self.proof.random_seed
+    }
+
+    /// Stamp the seed of the execution the proof attests to. Wrapping a proof re-proves its
+    /// statement without running the guest, so the result keeps the source proof's seed.
+    pub(crate) fn with_random_seed(self, seed: Option<RandomSeed>) -> Self {
+        Self { proof: self.proof.with_random_seed(seed), ..self }
+    }
+
     /// The generated proof.
     pub fn get_proof(&self) -> &Proof {
         &self.proof
@@ -239,7 +341,7 @@ impl ProveOutput {
         Ok(self.proof.get_proof_u64()?)
     }
 
-    /// The proof serialized as raw bytes.
+    /// The proof's flat layout, without the seed trailer [`Proof::to_bytes`] adds.
     pub fn get_proof_bytes(&self) -> Result<Vec<u8>> {
         Ok(self.proof.get_proof_bytes()?)
     }
@@ -255,20 +357,39 @@ impl ProveOutput {
         Ok(self.proof.save(path)?)
     }
 
-    /// Verify the proof against its embedded public values and verification key.
+    /// Verify under the producing setup's keys or those passed in, else the release keys.
     pub fn verify(&self) -> Result<()> {
-        Ok(self.proof.verify()?)
+        Ok(self.with_produced_setup_vk(self.proof.verify_builder()).verify()?)
     }
 
     /// Start a verification with the given public values (overriding the ones
     /// embedded in the proof).
     pub fn with_publics<'a>(&'a self, publics: &'a PublicValues) -> ZiskVerifyBuilder<'a> {
-        self.proof.with_publics(publics)
+        self.with_produced_setup_vk(self.proof.with_publics(publics))
     }
 
     /// Start a verification against the given program verification key.
     pub fn with_program_vk<'a>(&'a self, program_vk: &'a ProgramVK) -> ZiskVerifyBuilder<'a> {
-        self.proof.with_program_vk(program_vk)
+        self.with_produced_setup_vk(self.proof.with_program_vk(program_vk))
+    }
+
+    fn with_produced_setup_vk<'a>(
+        &'a self,
+        builder: ZiskVerifyBuilder<'a>,
+    ) -> ZiskVerifyBuilder<'a> {
+        let builder = match &self.setup_vk {
+            Some(vk) if self.leaf_setup_vk => builder.with_leaf_setup_vk(vk),
+            Some(vk) => builder.with_setup_vk(vk),
+            None => builder,
+        };
+        let builder = match &self.plonk_vk {
+            Some(vkey) => builder.with_plonk_vk(vkey),
+            None => builder,
+        };
+        match &self.pilfflonk_vkey {
+            Some(vkey) => builder.with_pilfflonk_vkey(vkey),
+            None => builder,
+        }
     }
 }
 
@@ -309,6 +430,7 @@ pub struct VerifyConstraintsOutput {
     executor_time: ZiskExecutorTime,
     cost_per_type: StatsCostPerType,
     publics: PublicValues,
+    random_seed: Option<RandomSeed>,
 }
 
 impl VerifyConstraintsOutput {
@@ -320,6 +442,7 @@ impl VerifyConstraintsOutput {
             executor_time: executor_summary.executor_time,
             cost_per_type: executor_summary.cost_per_type,
             publics: PublicValues::new(publics),
+            random_seed: executor_summary.random_seed,
         }
     }
 
@@ -347,6 +470,65 @@ impl VerifyConstraintsOutput {
     pub fn get_duration(&self) -> u64 {
         self.summary.time
     }
+
+    /// Host randomness seed the execution ran with. Always set for outputs built from an
+    /// execution.
+    pub fn get_random_seed(&self) -> Option<RandomSeed> {
+        self.random_seed
+    }
 }
 
 impl_public_outputs!(VerifyConstraintsOutput, publics);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SEED: RandomSeed = RandomSeed::new([4; RandomSeed::LEN]);
+
+    fn executed() -> ZiskExecutorSummary {
+        ZiskExecutorSummary { random_seed: Some(SEED), ..Default::default() }
+    }
+
+    fn publics() -> Vec<u8> {
+        vec![0u8; 32 + ZISK_PUBLICS * 8]
+    }
+
+    #[test]
+    fn prove_output_takes_the_seed_of_the_execution_it_attests() {
+        let other = RandomSeed::new([5; RandomSeed::LEN]);
+        let output =
+            ProveOutput::new(executed(), Duration::ZERO, Proof::default().with_random_seed(other));
+        assert_eq!(output.get_random_seed(), Some(SEED));
+        assert_eq!(output.get_proof().random_seed, Some(SEED));
+    }
+
+    /// Ranks that end a prove without the final proof still report what they ran with.
+    #[test]
+    fn prove_output_without_a_final_proof_reports_the_seed() {
+        let output = ProveOutput::new_null(executed(), Duration::ZERO);
+        assert_eq!(output.get_random_seed(), Some(SEED));
+    }
+
+    /// A wrap runs no execution, so its output keeps the source proof's seed.
+    #[test]
+    fn wrap_output_keeps_the_source_seed() {
+        let output =
+            ProveOutput::new(ZiskExecutorSummary::default(), Duration::ZERO, Proof::default())
+                .with_random_seed(Some(SEED));
+        assert_eq!(output.get_random_seed(), Some(SEED));
+        assert_eq!(output.get_proof().random_seed, Some(SEED));
+    }
+
+    #[test]
+    fn execute_and_verify_constraints_outputs_report_the_random_seed() {
+        let execute = ExecuteOutput::new(Duration::ZERO, executed(), &publics());
+        assert_eq!(execute.get_random_seed(), Some(SEED));
+
+        let standalone = ExecuteOutput::new_standalone(Duration::ZERO, executed(), &[], Vec::new());
+        assert_eq!(standalone.get_random_seed(), Some(SEED));
+
+        let verify = VerifyConstraintsOutput::new(executed(), 0, &publics());
+        assert_eq!(verify.get_random_seed(), Some(SEED));
+    }
+}

@@ -3,7 +3,7 @@ OUTPUT_ARCH("riscv")
 ENTRY(_start)
 
 MEMORY {
-  rom   (xa) : ORIGIN = 0x80000000, LENGTH = 0x08000000
+  rom   (xa) : ORIGIN = 0x90000000, LENGTH = 0x08000000
   ram   (wxa) : ORIGIN = 0xa0000000, LENGTH = 0x20000000
 }
 
@@ -23,19 +23,21 @@ _general_registers_data_size = 0x8000;    /* 32 kB */
 _float_registers_data_size   = 0x8000;    /* 32 kB */
 _output_data_size            = 0x20000;   /* 128 KB reserved */
 _float_ram_data_size         = 0x10000;   /* 64 KB reserved */
+_zisklib_ram_data_size       = 0x30000;   /* 192 KB reserved (ZisK library scratch);
+                                             keep in sync with ZISKLIB_RAM_SIZE in core/src/mem.rs */
 
 /*
 
-0x4000_0000  ┌────────────────────┐← free input entry
+0x1000_0000  ┌────────────────────┐← free input entry
              │    input data      │
-             │       (1GB)        │
-0x7FFF_FFFF  └────────────────────┘
-0x8000_0000  ┌────────────────────┐
-             │     ROM data       │             
+             │       (2GB)        │
+0x8FFF_FFFF  └────────────────────┘
+0x9000_0000  ┌────────────────────┐
+             │     ROM data       │
              │      (128MB)       │
-0x87FF_FFFF  └────────────────────┘
+0x97FF_FFFF  └────────────────────┘
                        ↑
-                    384 MB
+                    128 MB (stack guard)
                        ↓
 0xA000_0000  ┌────────────────────┐← _init_stack_bottom
              │                    │
@@ -59,8 +61,11 @@ _float_ram_data_size         = 0x10000;   /* 64 KB reserved */
              │                    │
              │                    │
              │                    │
-0xBFFF_0000  ├────────────────────┤ ← _heap_top 
-             │ float ram          │
+0xBFFC_0000  ├────────────────────┤ ← _heap_top
+             │ zisklib ram        │  192 KB reserved (ZisK library scratch)
+             │  0x30000 bytes     │  = ZISKLIB_RAM (core/src/mem.rs)
+0xBFFF_0000  ├────────────────────┤
+             │ float ram          │  64 KB reserved
 0xC000_0000  └────────────────────┘
 
 */
@@ -138,8 +143,23 @@ SECTIONS
   } >ram AT>ram :bss
 
   PROVIDE(_heap_bottom = .);
-  PROVIDE(_heap_top = ORIGIN(ram) + LENGTH(ram) - _float_ram_data_size);
+  PROVIDE(_heap_top = ORIGIN(ram) + LENGTH(ram) - _float_ram_data_size - _zisklib_ram_data_size);
   PROVIDE(_heap_size = _heap_top - _heap_bottom);
+
+  /* EF zkVM standard §9 names the allocator bounds `_heap_start` / `_heap_end`.
+     Same two addresses as `_heap_bottom` / `_heap_top` above; added alongside them
+     rather than renaming, so ziskos's allocator (which reads _heap_bottom /
+     _heap_size) is untouched.
+
+     Assigned UNCONDITIONALLY, not with PROVIDE: PROVIDE only materializes a symbol
+     that some input object *references*, and an EF consumer discovers these by
+     reading the ELF symbol table — it never references them at link time. Under
+     PROVIDE they would be absent from .symtab for any guest that does not itself
+     mention them, i.e. exactly the case the standard requires them for. The values
+     are recomputed rather than aliased so they do not depend on the PROVIDEs above
+     having materialized either. */
+  _heap_start = .;
+  _heap_end = ORIGIN(ram) + LENGTH(ram) - _float_ram_data_size - _zisklib_ram_data_size;
 
   _end = .;
 }

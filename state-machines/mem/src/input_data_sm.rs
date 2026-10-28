@@ -12,10 +12,8 @@ use zisk_sm_mem_common::MemHelpers;
 use crate::{MemModule, MemOps, MemPreviousSegment};
 use zisk_sm_mem_common::{
     MemLanes, MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_DISTANCE,
-    SEGMENT_ADDR_MAX_RANGE,
 };
 
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
@@ -31,7 +29,6 @@ pub const INPUT_DATA_W_ADDR_END: u32 = (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32 
 
 const OFFSET_USE_FLAG: u32 = 0x8000_0000;
 const OFFSET_VALUE_MASK: u32 = 0x7FFF_FFFF;
-const MAX_RANGE_CHECK_CACHE: usize = 2048;
 
 #[allow(clippy::assertions_on_constants)]
 const _: () = {
@@ -40,8 +37,8 @@ const _: () = {
         "INPUT_DATA memory exceeds the 32-bit addressable range"
     );
     assert!(
-        (MAX_INPUT_SIZE - 1) <= (1024 << 20),
-        "INPUT_DATA is too large. Input size must be <= 1024MB"
+        (MAX_INPUT_SIZE - 1) <= (2048 << 20),
+        "INPUT_DATA is too large. Input size must be <= 2048MB"
     );
 };
 
@@ -76,27 +73,75 @@ fn set_input_data_padding_lane<F: PrimeField64, R: InputDataTraceRowOps<F>>(
     }
 }
 
+/// The scalars an InputData instance's air values are built from: the last lane and the padding.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct InputDataFillOutput {
+    last_addr: u32,
+    last_step: u64,
+    last_value: u64,
+    padding_size: u32,
+}
+
+impl InputDataFillOutput {
+    /// The scalars of the row-hash dump (`mem-witness-test`).
+    #[cfg(feature = "mem-witness-test")]
+    fn scalars(
+        &self,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+    ) -> [u64; 9] {
+        [
+            usize::from(segment_id) as u64,
+            is_last_segment as u64,
+            previous_segment.addr as u64,
+            previous_segment.step,
+            previous_segment.value,
+            self.last_addr as u64,
+            self.last_step,
+            self.last_value,
+            self.padding_size as u64,
+        ]
+    }
+
+    fn air_values<F: PrimeField64>(
+        &self,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+    ) -> InputDataAirValues<'static, F> {
+        let mut air_values = InputDataAirValues::<F>::new();
+        air_values.segment_id = F::from_usize(segment_id.into());
+        air_values.is_first_segment = F::from_bool(segment_id == 0);
+        air_values.is_last_segment = F::from_bool(is_last_segment);
+        air_values.previous_segment_step = F::from_u64(previous_segment.step);
+        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
+        air_values.segment_last_addr = F::from_u32(self.last_addr);
+        air_values.segment_last_step = F::from_u64(self.last_step);
+        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
+        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
+        air_values.segment_last_value[0] = F::from_u32(self.last_value as u32);
+        air_values.segment_last_value[1] = F::from_u32((self.last_value >> 32) as u32);
+        let distance_base = previous_segment.addr - INPUT_DATA_W_ADDR_INIT;
+        let distance_end = INPUT_DATA_W_ADDR_END - self.last_addr;
+        air_values.distance_base[0] = F::from_u16(distance_base as u16);
+        air_values.distance_base[1] = F::from_u16((distance_base >> 16) as u16);
+        air_values.distance_end[0] = F::from_u16(distance_end as u16);
+        air_values.distance_end[1] = F::from_u16((distance_end >> 16) as u16);
+        air_values
+    }
+}
+
 pub struct InputDataSM<F: PrimeField64> {
-    /// PIL2 standard library
-    std: Arc<Std<F>>,
-
-    /// Range check ID
-    range_id: usize,
-
-    /// Range check ID for the 16-bit chunks of the input values
-    range_16bits_id: usize,
+    _phantom: std::marker::PhantomData<F>,
 }
 
 #[allow(unused, unused_variables)]
 impl<F: PrimeField64> InputDataSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let range_id = std
-            .get_range_id(0, SEGMENT_ADDR_MAX_RANGE as i64, None)
-            .expect("Failed to get range ID");
-        let range_16bits_id =
-            std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
-
-        Arc::new(Self { range_16bits_id, std: std.clone(), range_id })
+    /// Takes no `Std`: the only thing this machine used it for was range checks, which the prover
+    /// now computes from the committed trace.
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: std::marker::PhantomData })
     }
     fn get_u16_values(&self, value: u64) -> [u16; 4] {
         [value as u16, (value >> 16) as u16, (value >> 32) as u16, (value >> 48) as u16]
@@ -225,10 +270,6 @@ impl<F: PrimeField64> InputDataSM<F> {
             num_slots
         );
 
-        let mut range_16bits: Vec<u32> = vec![0; 1 << 16];
-
-        let mut max_range_distance_count = 0;
-
         let distance_base = previous_segment.addr - INPUT_DATA_W_ADDR_INIT;
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
@@ -254,7 +295,6 @@ impl<F: PrimeField64> InputDataSM<F> {
                 let (row, lane) = lanes.split(i);
                 trace[row].set_addr_changes(lane, true);
                 last_addr += SEGMENT_ADDR_MAX_DISTANCE as u32;
-                max_range_distance_count += 1;
                 trace[row].set_addr(lane, last_addr);
 
                 // the step, value of internal reads isn't relevant
@@ -274,7 +314,6 @@ impl<F: PrimeField64> InputDataSM<F> {
                     // same lane content as the previous internal read, only the address moves on
                     let (row, lane) = lanes.split(i);
                     last_addr += SEGMENT_ADDR_MAX_DISTANCE as u32;
-                    max_range_distance_count += 1;
                     trace[row].set_addr(lane, last_addr);
                     trace[row].set_addr_changes(lane, true);
                     trace[row].set_step(lane, 0);
@@ -286,7 +325,6 @@ impl<F: PrimeField64> InputDataSM<F> {
 
                     i += 1;
                 }
-                range_16bits[0] += 4 * internal_reads;
                 if incomplete {
                     break;
                 }
@@ -300,15 +338,13 @@ impl<F: PrimeField64> InputDataSM<F> {
 
             let value = mem_op.value;
             let value_words = self.get_u16_values(value);
-            for j in 0..4 {
-                range_16bits[value_words[j] as usize] += 1;
-                trace[row].set_value_word(lane, j, value_words[j]);
+            for (j, value) in value_words.iter().enumerate() {
+                trace[row].set_value_word(lane, j, *value);
             }
 
             let addr_changes = last_addr != mem_op.addr;
             if addr_changes {
                 trace[row].set_addr_changes(lane, true);
-                self.std.range_check_one(self.range_id, mem_op.addr - last_addr - 1);
             } else {
                 trace[row].set_addr_changes(lane, false);
             }
@@ -352,17 +388,6 @@ impl<F: PrimeField64> InputDataSM<F> {
 
         let distance_end = INPUT_DATA_W_ADDR_END - last_addr;
 
-        self.std.range_check(
-            self.range_id,
-            SEGMENT_ADDR_MAX_RANGE,
-            max_range_distance_count as u32,
-        );
-
-        // range of chunks
-        for j in 0..4 {
-            range_16bits[last_value_word[j] as usize] += padding_size as u32;
-        }
-
         let mut air_values = InputDataAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());
         air_values.is_first_segment = F::from_bool(segment_id == 0);
@@ -386,13 +411,6 @@ impl<F: PrimeField64> InputDataSM<F> {
 
         air_values.distance_end[0] = F::from_u16(distance_end[0]);
         air_values.distance_end[1] = F::from_u16(distance_end[1]);
-
-        range_16bits[distance_base[0] as usize] += 1;
-        range_16bits[distance_base[1] as usize] += 1;
-        range_16bits[distance_end[0] as usize] += 1;
-        range_16bits[distance_end[1] as usize] += 1;
-
-        self.std.range_check_ranged(self.range_16bits_id, None, &range_16bits);
 
         #[cfg(feature = "debug_mem")]
         {
@@ -442,6 +460,53 @@ impl<F: PrimeField64> InputDataSM<F> {
                 seg,
             )
         }
+    }
+
+    /// The bits a packed InputData row uses.
+    #[cfg(feature = "mem-witness-test")]
+    fn packed_used_bits() -> usize {
+        crate::mem_gpu_fill::packed_used_bits(
+            InputDataTrace::<()>::AIRGROUP_ID,
+            InputDataTrace::<()>::AIR_ID,
+        )
+        .unwrap_or(InputDataTraceRowPacked::<F>::PACKED_WORDS * 64)
+    }
+
+    /// The device's scalars of an instance as its fill output and continuation.
+    fn from_result(
+        res: &zisk_sm_mem_planner::MemFillResult,
+        n_rows: usize,
+    ) -> (InputDataFillOutput, MemPreviousSegment) {
+        let num_slots = n_rows * zisk_sm_mem_common::input_data_lanes_x_row();
+        let out = InputDataFillOutput {
+            last_addr: res.last_addr_w,
+            last_step: res.last_step,
+            last_value: res.last_value,
+            padding_size: (num_slots - res.n_lanes as usize) as u32,
+        };
+        let prev = MemPreviousSegment {
+            addr: res.prev_addr_w,
+            step: res.prev_step,
+            value: res.prev_value,
+        };
+        (out, prev)
+    }
+
+    fn device_rows(
+        rows: &mut [u64],
+        n_rows: usize,
+        segment_id: SegmentId,
+    ) -> Result<(InputDataFillOutput, MemPreviousSegment), String> {
+        let res = zisk_sm_mem_planner::gpu_input_witness_fill(
+            usize::from(segment_id) as u32,
+            rows,
+            n_rows as u32,
+        )?;
+        crate::mem_gpu_fill::check_scalars(
+            &res,
+            n_rows * zisk_sm_mem_common::input_data_lanes_x_row(),
+        )?;
+        Ok(Self::from_result(&res, n_rows))
     }
     /// Fills the witness trace using a precomputed **offset table** (GPU path).
     ///
@@ -498,8 +563,6 @@ impl<F: PrimeField64> InputDataSM<F> {
         );
 
         let mut current_offsets = vec![0u32; seg.addr_range_slots as usize];
-        let mut range_16bits: Vec<u32> = vec![0; 1 << 16];
-        let mut range_check_cache = vec![0u32; MAX_RANGE_CHECK_CACHE];
 
         #[cfg(feature = "debug_mem")]
         let mut filled_slots = vec![false; num_slots];
@@ -542,10 +605,6 @@ impl<F: PrimeField64> InputDataSM<F> {
 
             let value_words = self.get_u16_values(mem_op.value);
 
-            range_16bits[value_words[0] as usize] += 1;
-            range_16bits[value_words[1] as usize] += 1;
-            range_16bits[value_words[2] as usize] += 1;
-            range_16bits[value_words[3] as usize] += 1;
             trace[row].set_value_word(lane, 0, value_words[0]);
             trace[row].set_value_word(lane, 1, value_words[1]);
             trace[row].set_value_word(lane, 2, value_words[2]);
@@ -557,11 +616,6 @@ impl<F: PrimeField64> InputDataSM<F> {
                     .previous_change_addr_w(addr_index as u32)
                     .unwrap_or(previous_segment.addr as u64);
                 let distance = mem_op.addr as i64 - previous_addr as i64 - 1;
-                if distance < MAX_RANGE_CHECK_CACHE as i64 {
-                    range_check_cache[distance as usize] += 1;
-                } else {
-                    self.std.range_check_one(self.range_id, distance);
-                }
             } else {
                 trace[row].set_addr_changes(lane, false);
             }
@@ -633,45 +687,30 @@ impl<F: PrimeField64> InputDataSM<F> {
             }
         }
 
-        range_16bits[value_0 as usize] += padding_size as u32;
-        range_16bits[value_1 as usize] += padding_size as u32;
-        range_16bits[value_2 as usize] += padding_size as u32;
-        range_16bits[value_3 as usize] += padding_size as u32;
-
-        self.std.range_check_ranged(self.range_id, None, &range_check_cache);
-
-        let mut air_values = InputDataAirValues::<F>::new();
-        air_values.segment_id = F::from_usize(segment_id.into());
-        air_values.is_first_segment = F::from_bool(segment_id == 0);
-        air_values.is_last_segment = F::from_bool(is_last_segment);
-        air_values.previous_segment_step = F::from_u64(previous_segment.step);
-        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
-        air_values.segment_last_addr = F::from_u32(last_addr);
-        air_values.segment_last_step = F::from_u64(last_step);
-
-        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
-        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
-
-        air_values.segment_last_value[0] = F::from_u32(value_0 as u32 + ((value_1 as u32) << 16));
-        air_values.segment_last_value[1] = F::from_u32(value_2 as u32 + ((value_3 as u32) << 16));
-
-        let distance_end = (INPUT_DATA_W_ADDR_END - last_addr) as i64;
-        let distance_base = previous_segment.addr - INPUT_DATA_W_ADDR_INIT;
-
-        let distance_base_chunks = [distance_base as u16, (distance_base >> 16) as u16];
-        let distance_end_chunks = [distance_end as u16, (distance_end >> 16) as u16];
-
-        air_values.distance_base[0] = F::from_u16(distance_base_chunks[0]);
-        air_values.distance_base[1] = F::from_u16(distance_base_chunks[1]);
-
-        air_values.distance_end[0] = F::from_u16(distance_end_chunks[0]);
-        air_values.distance_end[1] = F::from_u16(distance_end_chunks[1]);
-
-        range_16bits[distance_base_chunks[0] as usize] += 1;
-        range_16bits[distance_base_chunks[1] as usize] += 1;
-        range_16bits[distance_end_chunks[0] as usize] += 1;
-        range_16bits[distance_end_chunks[1] as usize] += 1;
-        self.std.range_check_ranged(self.range_16bits_id, None, &range_16bits);
+        let out = InputDataFillOutput {
+            last_addr,
+            last_step,
+            last_value: value_0 as u64
+                | ((value_1 as u64) << 16)
+                | ((value_2 as u64) << 32)
+                | ((value_3 as u64) << 48),
+            padding_size: padding_size as u32,
+        };
+        #[cfg(feature = "mem-witness-test")]
+        {
+            use proofman_common::trace::TraceRow;
+            let used_bits =
+                if R::IS_PACKED { Self::packed_used_bits() } else { std::mem::size_of::<R>() * 8 };
+            crate::mem_trace_hash::dump_scalars(
+                self.get_mem_name(),
+                usize::from(segment_id),
+                crate::mem_gpu_fill::rows_as_words(&trace.buffer),
+                &out.scalars(segment_id, is_last_segment, previous_segment),
+                std::mem::size_of::<R>() / 8,
+                used_bits,
+            );
+        }
+        let mut air_values = out.air_values::<F>(segment_id, is_last_segment, previous_segment);
 
         #[cfg(feature = "debug_mem")]
         {
@@ -687,6 +726,50 @@ impl<F: PrimeField64> InputDataSM<F> {
 }
 
 impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
+    fn compute_witness_gpu_arena(
+        &self,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> zisk_common::WitnessResult<F> {
+        if !packed {
+            return Err(zisk_common::WitnessError::with_buffer(
+                proofman_common::ProofmanError::InvalidParameters(
+                    "the device memory witness needs the packed InputData trace".to_string(),
+                ),
+                trace_buffer,
+            ));
+        }
+        let seg_idx = usize::from(segment_id);
+        // The device rows cover every row of the instance, padding included.
+        let mut trace = InputDataTrace::<InputDataTraceRowPacked<F>>::new_from_vec(trace_buffer)?;
+        let n_rows = trace.num_rows();
+        let (out, previous_segment) = {
+            let words = crate::mem_gpu_fill::rows_as_words_mut(&mut trace.buffer);
+            Self::device_rows(words, n_rows, segment_id)
+        }
+        .map_err(|e| {
+            let error = proofman_common::ProofmanError::InvalidParameters(format!(
+                "InputData[{seg_idx}] witness from the GPU planner failed: {e}"
+            ));
+            zisk_common::WitnessError::with_buffer(error, trace.get_buffer())
+        })?;
+        #[cfg(feature = "mem-witness-test")]
+        crate::mem_trace_hash::dump_scalars(
+            self.get_mem_name(),
+            seg_idx,
+            crate::mem_gpu_fill::rows_as_words(&trace.buffer),
+            &out.scalars(segment_id, is_last_segment, &previous_segment),
+            InputDataTraceRowPacked::<F>::PACKED_WORDS,
+            Self::packed_used_bits(),
+        );
+        let mut air_values = out.air_values::<F>(segment_id, is_last_segment, &previous_segment);
+        Ok(Some(AirInstance::new_from_trace(
+            FromTrace::new(&mut trace).with_air_values(&mut air_values),
+        )))
+    }
+
     fn get_addr_range(&self) -> (u32, u32) {
         (INPUT_DATA_W_ADDR_INIT, INPUT_DATA_W_ADDR_END)
     }

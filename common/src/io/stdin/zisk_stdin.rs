@@ -109,6 +109,19 @@ impl ZiskStdin {
         self.inner.data.lock().unwrap().clone()
     }
 
+    /// Consumes this `ZiskStdin` and returns its raw byte data: the buffer itself when no clone
+    /// of it is alive, else a copy, as [`read_data`](Self::read_data) makes. Inputs reach 2 GB.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
+    pub fn into_data(self) -> Vec<u8> {
+        match Arc::try_unwrap(self.inner) {
+            Ok(inner) => inner.data.into_inner().unwrap(),
+            Err(inner) => inner.data.lock().unwrap().clone(),
+        }
+    }
+
     /// Borrow the raw buffer for the duration of `f`. Prefer this over
     /// [`read_data`](Self::read_data) for read-only use; inputs reach tens of MB.
     ///
@@ -279,6 +292,23 @@ mod tests {
         // The path a saved `input.bin` takes.
         let reloaded = ZiskStdin::from_vec(stdin.read_data());
         assert_eq!(reloaded.read_bytes(), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn into_data_takes_the_buffer_when_no_clone_is_alive() {
+        let data = vec![7u8; 64];
+        let ptr = data.as_ptr();
+        let taken = ZiskStdin::from_vec(data).into_data();
+        assert_eq!(taken.as_ptr(), ptr, "the buffer was copied");
+        assert_eq!(taken, vec![7u8; 64]);
+    }
+
+    #[test]
+    fn into_data_copies_the_buffer_a_clone_still_holds() {
+        let stdin = ZiskStdin::from_vec(vec![1, 2, 3]);
+        let clone = stdin.clone();
+        assert_eq!(stdin.into_data(), vec![1, 2, 3]);
+        assert_eq!(clone.read_data(), vec![1, 2, 3]);
     }
 
     #[test]

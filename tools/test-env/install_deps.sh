@@ -58,10 +58,11 @@ install_dependencies_linux() {
     ensure_sudo apt-get update || return 1
     ensure_sudo apt-get install -y apt-utils dialog libterm-readline-perl-perl || return 1
 
+    # openssh-client and rsync: setup_build.sh pulls the setup cache from another worker with them.
     ensure_sudo apt-get install -y curl git xz-utils jq build-essential qemu-system libomp-dev libgmp-dev \
         nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev \
         libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common \
-        sudo ca-certificates gnupg lsb-release wget libclang-dev clang gcc-riscv64-unknown-elf llvm || return 1
+        sudo ca-certificates gnupg lsb-release wget libclang-dev clang gcc-riscv64-unknown-elf llvm openssh-client rsync || return 1
 
     ensure_sudo apt-get install -y cmake || return 1
 

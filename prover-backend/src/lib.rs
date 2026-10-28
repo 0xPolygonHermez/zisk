@@ -47,6 +47,7 @@ mod execute_client;
 mod guest;
 mod output;
 mod prover;
+mod snark;
 mod utils;
 
 pub use execute_client::ExecuteClient;
@@ -61,5 +62,6 @@ pub use circuit::*;
 pub use guest::*;
 pub use output::*;
 pub use prover::*;
+pub use snark::*;
 pub use utils::*;
 pub use zisk_program_macros::load_program;

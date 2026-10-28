@@ -1,6 +1,6 @@
 //! BLAKE2s hash function.
 
-use crate::syscalls::{syscall_blake2sf, SyscallBlake2sfParams};
+use crate::syscalls::syscall_blake2sf;
 
 /// BLAKE2s initialization vectors
 const IV: [u32; 8] = [
@@ -37,9 +37,9 @@ pub fn blake2s_compress(
     }
 
     // Perform the cryptographic mixing
-    let mut params = SyscallBlake2sfParams { state: &mut state, input: &input };
     syscall_blake2sf(
-        &mut params,
+        &mut state,
+        &input,
         #[cfg(feature = "hints")]
         hints,
     );

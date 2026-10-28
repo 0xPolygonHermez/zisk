@@ -1,0 +1,135 @@
+; ============================================================================
+; zkvm/blake2f.zisk - BLAKE2b compression F (EIP-152) for the EF zkVM accelerator
+; C ABI. Entry `ziskasm_zkvm_blake2f`, zkvmcall target of `zkvm_blake2f`.
+;
+;   zkvm_status zkvm_blake2f(uint32_t rounds, zkvm_blake2f_state* h,   (64B = 8 u64)
+;                            const zkvm_blake2f_message* m,            (128B = 16 u64)
+;                            const zkvm_blake2f_offset* t, uint8_t f)  (16B = 2 u64)
+;     [r10=rounds, r11=h, r12=m, r13=t, r14=f] -> a0 = ZKVM_EOK (0); h updated in place.
+;
+; BLAKE2b is little-endian, so the EF byte structs are ABI-identical to the u64
+; arrays (same LE layout) — NO rev8 marshalling. This is the single BLAKE2b F
+; compression body in the library. Labels `zb2_`, data `ZKVM_BLK_*`.
+; ============================================================================
+
+const u64 ZKVM_BLK_IV[8] =
+	0x6A09E667F3BCC908, 0xBB67AE8584CAA73B, 0x3C6EF372FE94F82B, 0xA54FF53A5F1D36F1,
+	0x510E527FADE682D1, 0x9B05688C2B3E6C1F, 0x1F83D9ABFB41BD6B, 0x5BE0CD19137E2179
+
+; The work vector v and a private copy of the message. The blake2b precompile
+; takes a = &v (updated in place) and b = &m directly, and the round index
+; 0..9 (round r uses index r % 10) plus the chain mode as its static argument,
+; j(arg, next), so a round is a single step.
+u64 ZKVM_BLK_V[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_BLK_M[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+ziskasm_zkvm_blake2f:
+	; --- v[0..8] = h, v[8..16] = IV, m copied (DMA) ---
+	dma_xmemcpy(ZKVM_BLK_V, r11) -> r5, j(64, 4)
+	dma_xmemcpy(ZKVM_BLK_V + 64, ZKVM_BLK_IV) -> r5, j(64, 4)
+	dma_xmemcpy(ZKVM_BLK_M, r12) -> r5, j(128, 4)
+	; --- v[12] ^= t[0], v[13] ^= t[1], v[14] = ~v[14] if f ---
+	copyb(r13, 8[a + 0])
+	xor(c, [ZKVM_BLK_V + 96]) -> [ZKVM_BLK_V + 96]
+	copyb(r13, 8[a + 8])
+	xor(c, [ZKVM_BLK_V + 104]) -> [ZKVM_BLK_V + 104]
+	eq(r14, 0), j(zb2_rounds)
+	xor([ZKVM_BLK_V + 112], 0xffffffffffffffff) -> [ZKVM_BLK_V + 112]
+zb2_rounds:
+	and(r10, 0xffffffff) -> r10         ; rounds is a u32 (the ABI sign-extends it)
+	; --- R = 0: no round; R = 1: one stand-alone round ---
+	eq(r10, 0), j(zb2_finalize)
+	eq(r10, 1), j(zb2_one)
+	; --- R >= 2: round 0 reads v and m, rounds 1..R-2 pass them on over the chain bus and
+	; round R-1 writes v. Static arg: index + 16*rd_chain + 32*wr_chain + 64*gap, gap =
+	; steps back to the previous round. R-2 = 10*r6 + r7: r6 passes of zb2_loop, then r7
+	; rounds and the last one in zb2_tail ---
+	sub(r10, 2) -> r10
+	divu(r10, 10) -> r6
+	remu(r10, 10) -> r7
+	add(r6, 1) -> r6
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(32, zb2_ctl)
+zb2_one:
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(0, zb2_finalize)
+zb2_loop:
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(241)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(114)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(115)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(116)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(117)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(118)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(119)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(120)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(121)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(112)
+zb2_ctl:
+	sub(r6, 1) -> r6
+	eq(r6, 0), j(zb2_tail, zb2_loop)
+zb2_tail:
+	eq(r7, 0), j(zb2_l1)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(305)
+	eq(r7, 1), j(zb2_l2)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(178)
+	eq(r7, 2), j(zb2_l3)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(179)
+	eq(r7, 3), j(zb2_l4)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(180)
+	eq(r7, 4), j(zb2_l5)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(181)
+	eq(r7, 5), j(zb2_l6)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(182)
+	eq(r7, 6), j(zb2_l7)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(183)
+	eq(r7, 7), j(zb2_l8)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(184)
+	eq(r7, 8), j(zb2_l9)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(185)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(80, zb2_finalize)
+zb2_l1:
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(273, zb2_finalize)
+zb2_l2:
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(146, zb2_finalize)
+zb2_l3:
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(147, zb2_finalize)
+zb2_l4:
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(148, zb2_finalize)
+zb2_l5:
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(149, zb2_finalize)
+zb2_l6:
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(150, zb2_finalize)
+zb2_l7:
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(151, zb2_finalize)
+zb2_l8:
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(152, zb2_finalize)
+zb2_l9:
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(153)
+
+zb2_finalize:
+	; --- h[i] ^= v[i] ^ v[i+8]: built in v[0..8], then copied to h (DMA) ---
+	copyb(r11, 8[a + 0])
+	xor(c, [ZKVM_BLK_V + 0])
+	xor(c, [ZKVM_BLK_V + 64]) -> [ZKVM_BLK_V + 0]
+	copyb(r11, 8[a + 8])
+	xor(c, [ZKVM_BLK_V + 8])
+	xor(c, [ZKVM_BLK_V + 72]) -> [ZKVM_BLK_V + 8]
+	copyb(r11, 8[a + 16])
+	xor(c, [ZKVM_BLK_V + 16])
+	xor(c, [ZKVM_BLK_V + 80]) -> [ZKVM_BLK_V + 16]
+	copyb(r11, 8[a + 24])
+	xor(c, [ZKVM_BLK_V + 24])
+	xor(c, [ZKVM_BLK_V + 88]) -> [ZKVM_BLK_V + 24]
+	copyb(r11, 8[a + 32])
+	xor(c, [ZKVM_BLK_V + 32])
+	xor(c, [ZKVM_BLK_V + 96]) -> [ZKVM_BLK_V + 32]
+	copyb(r11, 8[a + 40])
+	xor(c, [ZKVM_BLK_V + 40])
+	xor(c, [ZKVM_BLK_V + 104]) -> [ZKVM_BLK_V + 40]
+	copyb(r11, 8[a + 48])
+	xor(c, [ZKVM_BLK_V + 48])
+	xor(c, [ZKVM_BLK_V + 112]) -> [ZKVM_BLK_V + 48]
+	copyb(r11, 8[a + 56])
+	xor(c, [ZKVM_BLK_V + 56])
+	xor(c, [ZKVM_BLK_V + 120]) -> [ZKVM_BLK_V + 56]
+	dma_xmemcpy(r11, ZKVM_BLK_V) -> r5, j(64, 4)
+	copyb(0, 0) -> r10                  ; return ZKVM_EOK
+	ret

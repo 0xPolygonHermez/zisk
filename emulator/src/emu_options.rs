@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use std::fmt;
-use zisk_common::ProfilingMode;
+use zisk_common::{ProfilingMode, RandomSeed};
 use zisk_core::{DEFAULT_MAX_STEPS, DEFAULT_MAX_STEPS_STR, MAX_INPUT_SIZE};
 
 pub const ZISK_VERSION_MESSAGE: &str = concat!(
@@ -25,6 +25,11 @@ pub struct EmuOptions {
     /// Sets the ELF data file path, to be converted to ZisK ROM data
     #[clap(short, long, value_name = "ELF_FILE")]
     pub elf: Option<String>,
+    /// Sets the ZisK assembly path, to be assembled into ZisK ROM data. It may be a
+    /// single `.zisk` file or a directory containing one or more `.zisk` files.
+    /// Incompatible with `-e`/`-r`.
+    #[clap(short = 'z', long, value_name = "ZISK_FILE_OR_DIR")]
+    pub zisk: Option<String>,
     /// Sets the input data file path
     #[clap(short, long, value_name = "INPUT_FILE")]
     pub inputs: Option<String>,
@@ -286,6 +291,12 @@ pub struct EmuOptions {
     pub disasm: Option<String>,
     #[clap(long, value_name = "MAX_INPUT_MEM", default_value = "134217728")] // 128 MiB
     pub max_input_mem: u64,
+    /// Host randomness seed (`zkvm_random_u64`). Not a flag here: ziskemu takes it through
+    /// `--random-seed` and fills it in. A full emulation needs one, as there is no safe default;
+    /// re-emulating chunks from minimal traces does not read it (the fcall results come from the
+    /// traces).
+    #[clap(skip)]
+    pub random_seed: Option<RandomSeed>,
     /// In mode fast, without stats, show coverage steps consumed without stats.
     #[clap(long, default_value = "false")]
     pub steps: bool,
@@ -329,6 +340,7 @@ impl Default for EmuOptions {
         Self {
             rom: None,
             elf: None,
+            zisk: None,
             inputs: None,
             output: None,
             max_steps: DEFAULT_MAX_STEPS,
@@ -391,6 +403,7 @@ impl Default for EmuOptions {
             top_roi_filter: false,
             disasm: None,
             max_input_mem: MAX_INPUT_SIZE,
+            random_seed: None,
             steps: false,
             with_progress: false,
             legacy_inputs: None,
@@ -408,6 +421,7 @@ impl fmt::Display for EmuOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "ROM: {:?}", self.rom)?;
         writeln!(f, "ELF: {:?}", self.elf)?;
+        writeln!(f, "ZISK: {:?}", self.zisk)?;
         writeln!(f, "INPUT: {:?}", self.inputs)?;
         writeln!(f, "MAX_STEPS: {}", self.max_steps)?;
         writeln!(f, "PRINT_STEP: {:?}", self.print_step)?;
@@ -440,6 +454,7 @@ impl fmt::Display for EmuOptions {
         writeln!(f, "TOP_ROI_FILTER: {:?}", self.top_roi_filter)?;
         writeln!(f, "DISASM: {:?}", self.disasm)?;
         writeln!(f, "MAX_INPUT_MEM: {:?}", self.max_input_mem)?;
+        writeln!(f, "RANDOM_SEED: {:?}", self.random_seed)?;
         writeln!(f, "STEPS: {:?}", self.steps)?;
         writeln!(f, "WITH_PROGRESS: {:?}", self.with_progress)?;
         Ok(())

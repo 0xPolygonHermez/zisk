@@ -6,7 +6,7 @@
 
 use crate::{BinaryBasicCollector, BinaryBasicSM, ChunkCollect, ADD_KINDS};
 use pil2_std_lib::Std;
-use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_common::{ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
@@ -105,7 +105,7 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
         packed: bool,
-    ) -> ProofmanResult<Option<AirInstance<F>>> {
+    ) -> zisk_common::WitnessResult<F> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| {

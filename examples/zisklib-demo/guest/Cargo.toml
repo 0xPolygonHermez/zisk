@@ -1,0 +1,12 @@
+[package]
+name = "zisklib-demo-guest"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "zisklib-demo-guest"
+path = "src/guest.rs"
+
+[dependencies]
+ziskos = { workspace = true }
+zisklib = { path = "../../../ziskasm/lang/rust" }

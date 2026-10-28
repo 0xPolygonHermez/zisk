@@ -329,9 +329,9 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "cc"
-version = "1.6.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f74872d07caf508b30a21f6836e7d7016a2eaf7d9ff4f48deaa58cd8a0407630"
+checksum = "86e055fa6e3e40ad6187ba25b6855eeb635d5271f8e0f0e1e9a5826b8d75bea0"
 dependencies = [
  "find-msvc-tools",
  "shlex 2.0.1",
@@ -386,21 +386,6 @@ checksum = "5ca28b0ae3115b884660db4118d803791fd6756b6e88f39c0f3f7859060d7566"
 dependencies = [
  "libc",
 ]
-
-[[package]]
-name = "crossbeam-channel"
-version = "0.5.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98b0cc327b5bc766e7fda9c9260cc0fa81b43a8e240440422dff70788e3f9ef1"
-dependencies = [
- "crossbeam-utils",
-]
-
-[[package]]
-name = "crossbeam-utils"
-version = "0.8.23"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
 name = "crunchy"
@@ -473,7 +458,7 @@ checksum = "a65863d15a4ce2888bd2f0f543cc963d3879c3a022c8ee43f6141d479a3ac815"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -488,9 +473,9 @@ dependencies = [
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.14"
+version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aedcfb3409746eddb02b9e19ebda1c3394f759a152e48ee875a0844d1b955484"
+checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
 
 [[package]]
 name = "fnv"
@@ -593,9 +578,9 @@ checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 
 [[package]]
 name = "libc"
-version = "0.2.190"
+version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
+checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "libloading"
@@ -832,39 +817,22 @@ dependencies = [
 
 [[package]]
 name = "proofman-fields"
-version = "1.3.2-alpha"
+version = "1.4.0-alpha"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5f97afb3a6383aee3ad8e335591564ec4c0904c591536c41fdd5ec5d666a81b"
+checksum = "5437c76a4057e306207e86b3b541fe22b4bc09b38d1f31d476a6a71fb7c210fd"
 dependencies = [
  "blake3",
  "cfg-if",
  "num-bigint",
  "paste",
- "proofman-starks-lib-c",
  "serde",
 ]
 
 [[package]]
-name = "proofman-starks-lib-c"
-version = "1.3.2-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "727e567d696fd28129f87693f51f01c7e1dda6cb4baa4348881262cc7be3285c"
-dependencies = [
- "crossbeam-channel",
- "proofman-starks-src",
-]
-
-[[package]]
-name = "proofman-starks-src"
-version = "1.3.2-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "824a7f69aeb6ca119fc330533dbf65adc9daad4b7de416f940546cd35a897710"
-
-[[package]]
 name = "proofman-verifier"
-version = "1.3.2-alpha"
+version = "1.4.0-alpha"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c28c5df32f6465a106d6125ec4ab6a544a739027bd1f668df9a14a92658ce16b"
+checksum = "e010f8abe6954a7abebebbeae918684cdf602027983c549f594d34b72a317b4b"
 dependencies = [
  "num-traits",
  "proofman-fields",
@@ -1051,7 +1019,7 @@ checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -1089,9 +1057,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.16.2"
+version = "1.16.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9395f0f0eee849a9b707b2f06bb92a6a422090e2123bb2ef8e87a0e61892a8e"
+checksum = "d0d5d4b1981b8bbbb7aed204cae5726d683d5d6ac7e74ec54122ea28f315e7c8"
 
 [[package]]
 name = "socket2"
@@ -1116,9 +1084,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "3.0.6"
+version = "3.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8593e8e72159ed2257d083c7a454a85cbf854f37a0966d8d483aff8c8a3ebcee"
+checksum = "d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1142,7 +1110,7 @@ checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -1165,9 +1133,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.53.2"
+version = "1.54.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e95f91fcc7a621e8b030f6aa23c71fe9838ae2fb4d8118b75602a328f5144044"
+checksum = "b52fd3255258d26fac7264ab5a76b53c13367136dc011d3d6ad4f8ed070396a3"
 dependencies = [
  "bytes",
  "libc",
@@ -1188,7 +1156,7 @@ checksum = "78773a2a397f451582ce068015985c33193cf6dea8b74d2a639fe457b2f07b0e"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -1230,9 +1198,9 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.26"
+version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
+checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
 
 [[package]]
 name = "unty"
@@ -1284,18 +1252,18 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "zerocopy"
-version = "0.8.62"
+version = "0.8.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86502bf56ac7c77571a32e2647bb2a15894565e981fb2a48d7bde2d91c965a9d"
+checksum = "e5fe1f8f1b06191a00962174c61aa5005e0bb391a6d80d07e24d115c01a92ed8"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.62"
+version = "0.8.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5457206954b06561e2608c7e19cf58b1926586d999c246eebe4502f7e2039d1a"
+checksum = "863ad3ac83293fb4d740aedbfdc9240dd8d1a50c1099acd76ce80ce7c7230c7f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1324,19 +1292,19 @@ dependencies = [
 
 [[package]]
 name = "zisk-circuit"
-version = "1.3.2-alpha"
+version = "1.4.0-alpha"
 
 [[package]]
 name = "zisk-definitions"
-version = "1.3.2-alpha"
+version = "1.4.0-alpha"
 
 [[package]]
 name = "zisk-lib-c"
-version = "1.3.2-alpha"
+version = "1.4.0-alpha"
 
 [[package]]
 name = "zisk-precomp-helpers"
-version = "1.3.2-alpha"
+version = "1.4.0-alpha"
 dependencies = [
  "ark-bls12-381",
  "ark-bn254",
@@ -1353,7 +1321,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-stream"
-version = "1.3.2-alpha"
+version = "1.4.0-alpha"
 dependencies = [
  "libc",
  "thiserror",
@@ -1362,7 +1330,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-verifier"
-version = "1.3.2-alpha"
+version = "1.4.0-alpha"
 dependencies = [
  "proofman-fields",
  "proofman-verifier",
@@ -1370,14 +1338,14 @@ dependencies = [
 
 [[package]]
 name = "zisk-zkvm-interface"
-version = "1.3.2-alpha"
+version = "1.4.0-alpha"
 dependencies = [
  "bindgen",
 ]
 
 [[package]]
 name = "ziskos"
-version = "1.3.2-alpha"
+version = "1.4.0-alpha"
 dependencies = [
  "anyhow",
  "ark-bn254",

@@ -58,6 +58,11 @@ extern uint64_t reg_31;
 extern uint64_t reg_32;
 extern uint64_t reg_33;
 extern uint64_t reg_34;
+extern uint64_t reg_35;
+extern uint64_t reg_36;
+extern uint64_t reg_37;
+extern uint64_t reg_38;
+extern uint64_t reg_39;
 #endif
 
 // Used for debugging purposes
@@ -100,6 +105,11 @@ extern int _print_regs()
     asm_raw_printf("\treg[32]=%lu=0x%lx=@%p\n", reg_32, reg_32, &reg_32);
     asm_raw_printf("\treg[33]=%lu=0x%lx=@%p\n", reg_33, reg_33, &reg_33);
     asm_raw_printf("\treg[34]=%lu=0x%lx=@%p\n", reg_34, reg_34, &reg_34);
+    asm_raw_printf("\treg[35]=%lu=0x%lx=@%p\n", reg_35, reg_35, &reg_35);
+    asm_raw_printf("\treg[36]=%lu=0x%lx=@%p\n", reg_36, reg_36, &reg_36);
+    asm_raw_printf("\treg[37]=%lu=0x%lx=@%p\n", reg_37, reg_37, &reg_37);
+    asm_raw_printf("\treg[38]=%lu=0x%lx=@%p\n", reg_38, reg_38, &reg_38);
+    asm_raw_printf("\treg[39]=%lu=0x%lx=@%p\n", reg_39, reg_39, &reg_39);
     asm_raw_printf("\n");
     fflush(stdout);
 #endif

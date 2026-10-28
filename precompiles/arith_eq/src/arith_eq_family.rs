@@ -11,8 +11,7 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use pil2_std_lib::Std;
-use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_common::{ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use zisk_common::{
     BusDevice, BusDeviceMetrics, BusDeviceMode, BusId, CheckPoint, ChunkId, CollectCounter,
@@ -470,7 +469,7 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
         packed: bool,
-    ) -> ProofmanResult<Option<AirInstance<F>>> {
+    ) -> zisk_common::WitnessResult<F> {
         let inputs: Vec<Vec<ArithEqInput>> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<ArithEqCollector>().unwrap().inputs)
@@ -515,8 +514,8 @@ pub struct ArithEqManager<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> ArithEqManager<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        Arc::new(Self { arith_eq_sm: ArithEqSM::new(std) })
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { arith_eq_sm: ArithEqSM::new() })
     }
 }
 

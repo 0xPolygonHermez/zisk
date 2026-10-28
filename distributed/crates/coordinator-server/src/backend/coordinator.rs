@@ -14,10 +14,12 @@ use tokio_stream::StreamExt as _;
 use tracing::warn;
 use uuid::Uuid;
 use zisk_cluster_common::{JobPhase, JobState};
+use zisk_common::RandomSeed;
 use zisk_coordinator::{
     job_events::{CoordinatorExecutionStats, CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator,
 };
+use zisk_core::MAX_STDIN_SIZE;
 
 use super::{
     BackendService, DomainAggregationProgramSpec, DomainAirInstanceCount, DomainAsmExecution,
@@ -50,7 +52,7 @@ impl CoordinatorBackend {
 
 // ── Type mapping helpers ─────────────────────────────────────────────────────
 
-fn make_proof(hash_id: String, data: Vec<u8>) -> DomainProof {
+fn make_proof(hash_id: String, data: Vec<u8>, seed: Option<RandomSeed>) -> DomainProof {
     DomainProof {
         proof_id: Uuid::new_v4(),
         hash_id,
@@ -60,6 +62,7 @@ fn make_proof(hash_id: String, data: Vec<u8>) -> DomainProof {
         public_inputs: vec![],
         started_at: Some(Utc::now()),
         completed_at: Some(Utc::now()),
+        random_seed: seed,
     }
 }
 
@@ -98,21 +101,31 @@ fn coord_result_to_domain(result: CoordinatorJobResult, hash_id: &str) -> Domain
         CoordinatorJobResult::Setup { vk, hash_mode } => {
             DomainJobKindResponse::Setup { vk, hash_mode }
         }
-        CoordinatorJobResult::Prove { proof_bytes, stats } => DomainJobKindResponse::Prove {
-            proof: make_proof(hash_id.to_string(), proof_bytes),
-            stats: coord_stats_to_domain(stats),
-        },
-        CoordinatorJobResult::Execute { stats, public_outputs } => {
-            DomainJobKindResponse::Execute { stats: coord_stats_to_domain(stats), public_outputs }
+        CoordinatorJobResult::Prove { proof_bytes, stats, random_seed: seed } => {
+            DomainJobKindResponse::Prove {
+                proof: make_proof(hash_id.to_string(), proof_bytes, seed),
+                stats: coord_stats_to_domain(stats),
+            }
         }
-        CoordinatorJobResult::Wrap { proof_bytes } => {
-            DomainJobKindResponse::Wrap(make_proof(hash_id.to_string(), proof_bytes))
+        CoordinatorJobResult::Execute { stats, public_outputs, random_seed: seed } => {
+            DomainJobKindResponse::Execute {
+                stats: coord_stats_to_domain(stats),
+                public_outputs,
+                random_seed: seed,
+            }
+        }
+        CoordinatorJobResult::Wrap { proof_bytes, random_seed: seed } => {
+            DomainJobKindResponse::Wrap(make_proof(hash_id.to_string(), proof_bytes, seed))
         }
         CoordinatorJobResult::SetupAggregationProgram { vk, hash_mode } => {
             DomainJobKindResponse::SetupAggregationProgram { vk, hash_mode }
         }
         CoordinatorJobResult::AggregateProofs { proof_bytes } => {
-            DomainJobKindResponse::AggregateProofs(make_proof(hash_id.to_string(), proof_bytes))
+            DomainJobKindResponse::AggregateProofs(make_proof(
+                hash_id.to_string(),
+                proof_bytes,
+                None,
+            ))
         }
     }
 }
@@ -190,6 +203,26 @@ fn domain_hints_to_dto(hints: Option<DomainInputKind>) -> HintsModeDto {
     }
 }
 
+/// The bytes of input a job was submitted with inline. Chunks pushed to the job count after them:
+/// `PushJobInput` also appends to such a job.
+fn inline_input_len(inputs: &InputsModeDto) -> u64 {
+    match inputs {
+        InputsModeDto::InputsData(data) => data.len() as u64,
+        _ => 0,
+    }
+}
+
+/// Counts a pushed input chunk of `len` bytes into the `received` so far, and refuses it when the
+/// input no longer fits the guest's input region. A refused chunk is not forwarded: a worker would
+/// fail on it, and with several MPI ranks it would take the whole worker down.
+fn admit_input_chunk(received: &mut u64, len: usize) -> ApiResult<()> {
+    *received += len as u64;
+    if *received > MAX_STDIN_SIZE {
+        return Err(ApiError::InputTooLarge { limit: MAX_STDIN_SIZE });
+    }
+    Ok(())
+}
+
 fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
     use zisk_coordinator::CoordinatorError;
     match e {
@@ -207,9 +240,13 @@ fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
         },
         CoordinatorError::NotFoundOrInaccessible => ApiError::Internal("resource not found".into()),
         CoordinatorError::ProgramNotFound(hash_id) => ApiError::ProgramNotFound(hash_id),
+        CoordinatorError::ProgramNotSetup(hash_id) => ApiError::ProgramNotSetup(hash_id),
         CoordinatorError::InvalidArgument(msg) | CoordinatorError::InvalidRequest(msg) => {
             ApiError::InvalidJobState { reason: msg }
         }
+        CoordinatorError::ClientRandomSeedNotAllowed => ApiError::ClientRandomSeedNotAllowed,
+        CoordinatorError::JobMetadataNotAllowed => ApiError::JobMetadataNotAllowed,
+        CoordinatorError::SnarkUnavailable(reason) => ApiError::SnarkUnavailable(reason),
         CoordinatorError::WorkerError(msg) | CoordinatorError::Internal(msg) => {
             ApiError::Internal(msg)
         }
@@ -284,6 +321,10 @@ fn catchup_events(state: &JobState, job_id: Uuid) -> Vec<DomainJobEvent> {
 
 #[async_trait]
 impl BackendService for CoordinatorBackend {
+    async fn render_metrics(&self) -> String {
+        self.coordinator.render_metrics().await
+    }
+
     async fn register_guest_program(&self, elf: Vec<u8>) -> ApiResult<String> {
         // blake3 hashing + the multi-MB ELF `fs::write` are blocking; run them off
         // the async runtime so they don't stall a tonic worker thread.
@@ -317,7 +358,7 @@ impl BackendService for CoordinatorBackend {
         Ok(recurser_id)
     }
 
-    async fn submit_job_with_metadata(
+    async fn submit_job(
         &self,
         kind: DomainJobKind,
         metadata: Option<std::collections::BTreeMap<String, String>>,
@@ -337,7 +378,7 @@ impl BackendService for CoordinatorBackend {
                 let hash_id = r.hash_id.clone();
                 let proof_type = match r.proof_dest {
                     DomainProofKind::StarkMinimal => ProofKind::VadcopFinalMinimal,
-                    DomainProofKind::Plonk => ProofKind::Plonk,
+                    DomainProofKind::Snark => ProofKind::Snark,
                     _ => ProofKind::VadcopFinal,
                 };
                 let hints_mode = domain_hints_to_dto(r.hints);
@@ -354,6 +395,8 @@ impl BackendService for CoordinatorBackend {
                         metadata,
                         execution_only: false,
                         proof_type,
+                        snark_protocol: r.snark_protocol,
+                        random_seed: r.random_seed,
                     })
                     .await
                     .map_err(coord_err_to_api)?;
@@ -378,6 +421,8 @@ impl BackendService for CoordinatorBackend {
                         metadata,
                         execution_only: true,
                         proof_type: ProofKind::VadcopFinal,
+                        snark_protocol: None,
+                        random_seed: r.random_seed,
                     })
                     .await
                     .map_err(coord_err_to_api)?;
@@ -389,12 +434,19 @@ impl BackendService for CoordinatorBackend {
             DomainJobKind::Wrap(r) => {
                 let proof_dest = match r.proof_dest {
                     DomainProofKind::StarkMinimal => 1,
-                    DomainProofKind::Plonk => 2,
+                    DomainProofKind::Snark => 2,
                     DomainProofKind::Stark => 1,
                 };
                 let response = self
                     .coordinator
-                    .launch_wrap(LaunchWrapRequestDto { proof_data: r.proof.data, proof_dest })
+                    .launch_wrap(
+                        LaunchWrapRequestDto {
+                            proof_data: r.proof.data,
+                            proof_dest,
+                            snark_protocol: r.snark_protocol,
+                        },
+                        metadata,
+                    )
                     .await
                     .map_err(coord_err_to_api)?;
                 let job_id = Uuid::parse_str(&response.job_id.as_string())
@@ -421,6 +473,7 @@ impl BackendService for CoordinatorBackend {
                         r.free_inputs_a,
                         r.free_inputs_b,
                         r.root_c_recurser_agg,
+                        metadata,
                     )
                     .await
                     .map_err(coord_err_to_api)?;
@@ -562,14 +615,14 @@ impl BackendService for CoordinatorBackend {
     async fn push_job_input(&self, job_id: Uuid, mut chunks: InputChunkStream) -> ApiResult<()> {
         let job_id_internal = zisk_cluster_common::JobId::from(job_id.to_string());
 
-        // Look up the job and grab the worker list.
-        let workers = {
+        // Look up the job and grab the worker list, and how much input it already carries.
+        let (workers, mut received) = {
             let jobs = self.coordinator.jobs().read().await;
             let job_arc = jobs
                 .get(&job_id_internal)
                 .ok_or_else(|| ApiError::Internal(format!("job {} not found", job_id)))?;
             let job = job_arc.read().await;
-            job.workers.clone()
+            (job.workers.clone(), inline_input_len(&job.inputs_mode))
         };
 
         if workers.is_empty() {
@@ -582,6 +635,7 @@ impl BackendService for CoordinatorBackend {
             while let Some(chunk_result) = chunks.next().await {
                 let chunk =
                     chunk_result.map_err(|e| internal(format!("input stream error: {e}")))?;
+                admit_input_chunk(&mut received, chunk.data.len())?;
                 // Converted once so each worker's send is a refcount bump.
                 let payload = Bytes::from(chunk.data);
                 for worker_id in &workers {
@@ -661,5 +715,33 @@ impl BackendService for CoordinatorBackend {
             self.job_hash.write().await.remove(&job_id.to_string());
         }
         Ok(cancelled)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pushed_input_is_admitted_up_to_what_the_input_region_holds() {
+        let mut received = 0;
+        admit_input_chunk(&mut received, MAX_STDIN_SIZE as usize - 1).unwrap();
+        admit_input_chunk(&mut received, 1).unwrap();
+        assert_eq!(received, MAX_STDIN_SIZE);
+        let err = admit_input_chunk(&mut received, 1).unwrap_err();
+        assert!(
+            matches!(err, ApiError::InputTooLarge { limit } if limit == MAX_STDIN_SIZE),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn pushed_chunks_count_after_the_inline_input() {
+        let inline = InputsModeDto::InputsData(Bytes::from(vec![0u8; 24]));
+        let mut received = inline_input_len(&inline);
+        assert_eq!(received, 24);
+        admit_input_chunk(&mut received, MAX_STDIN_SIZE as usize - 24).unwrap();
+        assert!(admit_input_chunk(&mut received, 8).is_err());
+        assert_eq!(inline_input_len(&InputsModeDto::InputsStream("grpc://push".into())), 0);
     }
 }

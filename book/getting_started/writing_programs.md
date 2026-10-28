@@ -23,7 +23,7 @@ Writing a Rust program for ZisK is similar to writing a standard Rust program, w
 
     ```toml
     [dependencies]
-    ziskos = "1.3.2-alpha"
+    ziskos = "1.4.0-alpha"
     ```
 
 Let's show these changes using the example program from the [Quickstart](./quickstart.md) section.
@@ -309,6 +309,8 @@ In this command:
 * `<num_processes>` specifies the number of processes to launch.
 * `<num_threads_per_process>` sets the number of threads used by each process via the `OMP_NUM_THREADS` and `RAYON_NUM_THREADS` environment variables.
 * `--bind-to none` prevents binding processes to specific cores, allowing the operating system to schedule them dynamically for better load balancing.
+
+To provide a random seed to a multi-process run, pass it as `--random-seed <HEX>`: every process receives the same command line. If you use the `ZISK_RANDOM_SEED` environment variable instead, export it to every process with `-x ZISK_RANDOM_SEED`, since processes on other servers do not inherit it. Processes that see no seed, or a different one, make the run hang or diverge.
 
 Running a Zisk proof with multiple processes enables efficient workload distribution across multiple servers. **On a single server with many cores, splitting execution into smaller subsets of cores generally improves performance by increasing concurrency**. As a general rule, `<num_processes>` * `<num_threads_per_process>` should match the number of available CPU cores or double that if hyperthreading is enabled.
 

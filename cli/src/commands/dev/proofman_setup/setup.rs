@@ -66,8 +66,8 @@ pub(crate) struct ZiskProofmanSetupSetup {
     #[arg(long, env = "RECURSIVE_N_BITS")]
     recursive_n_bits: Option<usize>,
 
-    /// Build the `vadcop_final_compressed` stage. Defaults per hash family: on for poseidon,
-    /// off for blake3. A key built without it can gain it later with `setup-compressed-final`.
+    /// Build the `vadcop_final_compressed` stage. On by default for every hash family; a key
+    /// built without it can gain it later with `setup-compressed-final`.
     #[arg(long)]
     compressed_final: Option<bool>,
 

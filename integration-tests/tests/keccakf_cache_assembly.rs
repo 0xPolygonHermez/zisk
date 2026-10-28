@@ -30,6 +30,6 @@ fn keccakf_cache_assembly() {
     client.setup(&ELF_KECCAKF_CACHE, false).expect("ROM setup failed");
 
     client
-        .execute(&ELF_KECCAKF_CACHE, ZiskStdin::new(), None)
+        .execute(&ELF_KECCAKF_CACHE, ZiskStdin::new(), None, None)
         .expect("keccakf cache guest execution failed");
 }

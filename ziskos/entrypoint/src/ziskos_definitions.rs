@@ -3,7 +3,7 @@ pub mod ziskos_config {
 
     pub const QEMU_EXIT_ADDR: u64 = 0x100000;
     pub const QEMU_EXIT_CODE: u64 = 0x5555;
-    pub const INPUT_ADDR: u64 = 0x4000_0000;
+    pub const INPUT_ADDR: u64 = 0x1000_0000;
     pub const RAM_ADDR: u64 = 0xA0000000;
     pub const RAM_SIZE: u64 = 0x20000000; // 512M
     pub const STACK_SIZE: u64 = 0x400000; // 4MB

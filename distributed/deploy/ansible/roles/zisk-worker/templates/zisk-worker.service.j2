@@ -10,7 +10,7 @@
 {# Worker arg list — required + conditional appends. Used by both ExecStart branches. #}
 {%- set worker_args -%}
 --config {{ zisk_worker_config_dst }} --proving-key {{ zisk_worker_proving_key }}
-{%- if effective_snark | length > 0 %} --proving-key-snark {{ effective_snark }}{% endif -%}
+{%- if effective_snark | length > 0 %} --snark --proving-key-snark {{ effective_snark }}{% endif -%}
 {%- if zisk_worker_coordinator_url %} --coordinator-url {{ zisk_worker_coordinator_url }}{% endif -%}
 {%- if zisk_worker_id %} --worker-id {{ zisk_worker_id }}{% endif -%}
 {%- if zisk_worker_compute_capacity %} --compute-capacity {{ zisk_worker_compute_capacity }}{% endif -%}
@@ -49,14 +49,23 @@ ExecStart={{ zisk_worker_mpirun_bin }} --report-bindings --allow-run-as-root \
     -map-by ppr:{{ zisk_worker_mpi_numa_ppr }}:numa \
     --bind-to numa \
     --rank-by slot \
+    --mca orte_allowed_exit_without_sync 1 \
     -x RAYON_NUM_THREADS={{ zisk_worker_mpi_threads }} \
     -x ZISK_HOME \
     -x ZISK_CACHE_DIR \
     -x HOME \
     {{ zisk_worker_binary_dst }} {{ worker_args }}
+# Stop: SIGUSR1 to mpirun alone, which forwards it to every rank; each one kills
+# its ASM services, unlinks their shared memory and exits 0 without MPI_Finalize,
+# which orte_allowed_exit_without_sync (Open MPI 4) accepts, so mpirun exits 0.
+# SIGTERM would not do: mpirun cannot forward it, aborts the job on it and exits 1.
+KillMode=mixed
+KillSignal=SIGUSR1
 {% else %}
 ExecStart={{ zisk_worker_binary_dst }} {{ worker_args }}
 {% endif %}
+# A stop takes a few seconds, then the kernel frees the GPUs and pinned memory.
+TimeoutStopSec=60
 
 Restart=on-failure
 RestartSec=5

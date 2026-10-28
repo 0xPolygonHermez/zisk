@@ -25,6 +25,7 @@ zisk-cluster-api = { workspace = true }
 zisk-coordinator = { workspace = true }
 
 zisk-common = { workspace = true }
+zisk-asm-runner = { workspace = true }
 zisk-prover-backend = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
@@ -45,6 +46,8 @@ clap = { workspace = true }
 colored = { workspace = true }
 config = { workspace = true }
 uuid = { workspace = true }
+libc = { workspace = true }
+signal-hook = { workspace = true }
 
 # Not used directly; pins the transitive `time` to =0.3.47 (workspace dep) to
 # avoid the rcgen 0.14.x E0119 coherence bug triggered by time 0.3.48.

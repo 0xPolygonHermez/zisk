@@ -5,7 +5,7 @@ use zisk_prover_backend::setup_logger;
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-/// Generate final SNARK setup (recursivef + fflonk/plonk final).
+/// Generate final SNARK setup (recursivef + pilfflonk/fflonk/plonk final).
 pub(crate) struct ZiskProofmanSetupSnark {
     /// Build directory (must already contain provingKey/ from a previous setup run)
     #[arg(short = 'b', long)]
@@ -15,8 +15,9 @@ pub(crate) struct ZiskProofmanSetupSnark {
     #[arg(long)]
     powers_of_tau: Option<String>,
 
-    /// Final SNARK type: plonk (default) or fflonk
-    #[arg(long, default_value = "plonk")]
+    /// Final SNARK type: pilfflonk (default), plonk or fflonk. PLONK and FFLONK take a key of a
+    /// poseidon family only (setup --hash Poseidon1 or Poseidon2); a blake3 key takes pilfflonk
+    #[arg(long, default_value = "pilfflonk")]
     final_snark: String,
 
     /// Path to publics hash info JSON (optional)
@@ -26,6 +27,15 @@ pub(crate) struct ZiskProofmanSetupSnark {
     /// Only generate the recursivef step; skip the final SNARK
     #[arg(long)]
     only_recursive_final: bool,
+
+    /// pilfflonk: the extra scalar multiplications of its grouping, instead of the wrap family's
+    #[arg(long)]
+    extra_muls: Option<u64>,
+
+    /// CUDA arch spec of the Q kernels (.exps.so), pilfflonk's wrap's and a blake3 key's recursivef's
+    /// when setup-snark sets it up: auto | major | "89,120" | sm_120. No kernel without nvcc.
+    #[arg(long, default_value = "major")]
+    exps_arch: String,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
@@ -42,8 +52,9 @@ impl ZiskProofmanSetupSnark {
             final_snark: self.final_snark.clone(),
             publics_info: self.publics_info.clone(),
             only_recursive_final: self.only_recursive_final,
-            // The contract is bound to this setup's keys, so it carries the setup version.
-            contract_version: Some(format!("v{}", zisk_setup::ZISK_SETUP_VERSION)),
+            extra_muls: self.extra_muls,
+            exps_arch: self.exps_arch.clone(),
+            contract_version: Some(format!("v{}", env!("CARGO_PKG_VERSION"))),
         };
         run_setup_snark(&opts)
     }

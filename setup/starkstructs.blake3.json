@@ -1,5 +1,8 @@
 {
   "Keccakf": {
     "hasCompressor": true
+  },
+  "Poseidon2KoalaBear": {
+    "hasCompressor": true
   }
 }

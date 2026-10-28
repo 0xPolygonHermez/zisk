@@ -273,19 +273,6 @@ extern void keccakf1600_generic(uint64_t state[25])
     keccakf1600_implementation(state);
 }
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-extern void zisk_keccakf1600(uint64_t state[25])
-{
-    keccakf1600_implementation(state);
-}
-
-#ifdef __cplusplus
-}
-#endif
-
 /// The pointer to the best Keccak-f[1600] function implementation,
 /// selected during runtime initialization.
 static void (*keccakf1600_best)(uint64_t[25]) = keccakf1600_generic;
@@ -307,6 +294,20 @@ __attribute__((constructor)) static void select_keccakf1600_implementation(void)
     // report BMI2 but not BMI being available.
     if (__builtin_cpu_supports("bmi") && __builtin_cpu_supports("bmi2"))
         keccakf1600_best = keccakf1600_bmi;
+}
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Uses the best implementation for this CPU (the BMI/BMI2 one, when supported)
+extern void zisk_keccakf1600(uint64_t state[25])
+{
+    keccakf1600_best(state);
+}
+
+#ifdef __cplusplus
 }
 #endif
 

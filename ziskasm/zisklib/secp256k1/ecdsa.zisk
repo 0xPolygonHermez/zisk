@@ -1,0 +1,332 @@
+; ============================================================================
+; secp256k1/ecdsa.zisk - ECDSA verification for secp256k1. Mirrors
+; ziskos/entrypoint/src/zisklib/lib/secp256k1/ecdsa.rs (ecdsa_verify +
+; ecdsa_recover), using the GLV-accelerated `glv_double_scalar_mul_with_g`.
+; Internal helper labels: `eiz_/egt_/eeq_` (leaf 256-bit compares),
+; `ev_` (ecdsa_verify), `er_` (ecdsa_recover).
+; ============================================================================
+
+u64 SECP_ECV_PK[1]   = 0
+u64 SECP_ECV_Z[1]    = 0
+u64 SECP_ECV_R[1]    = 0
+u64 SECP_ECV_S[1]    = 0
+u64 SECP_ECV_SINV[4] = 0, 0, 0, 0
+u64 SECP_ECV_U1[4]   = 0, 0, 0, 0
+u64 SECP_ECV_U2[4]   = 0, 0, 0, 0
+u64 SECP_ECV_PT[8]   = 0, 0, 0, 0, 0, 0, 0, 0
+u64 SECP_ECV_XR[4]   = 0, 0, 0, 0
+
+; --- 256-bit compare leaf helpers (all args are &[u64;4], caller-saved regs) ---
+
+; u64 ecu_is_zero(const u64* a)  [r10=a] -> r10 = 1 if all four limbs are zero.
+ecu_is_zero:
+	copyb(0, r10) -> r5
+	copyb(0, 4) -> r6
+eiz_l:
+	eq(r6, 0), j(eiz_yes)
+	copyb(r5, 8[a + 0]) -> r7
+	ltu(0, r7), j(eiz_no)
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(eiz_l)
+eiz_no:
+	copyb(0, 0) -> r10
+	ret
+eiz_yes:
+	copyb(0, 1) -> r10
+	ret
+
+; u64 ecu_gt(const u64* a, const u64* b)  [r10=a, r11=b] -> r10 = 1 if a > b.
+ecu_gt:
+	copyb(0, r10) -> r5
+	add(r5, 24) -> r5
+	copyb(0, r11) -> r6
+	add(r6, 24) -> r6
+	copyb(0, 4) -> r7
+egt_l:
+	eq(r7, 0), j(egt_no)               ; all limbs equal -> not greater
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	ltu(r15, r14), j(egt_yes)          ; b_limb < a_limb -> a > b
+	ltu(r14, r15), j(egt_no)           ; a_limb < b_limb -> a < b
+	sub(r5, 8) -> r5
+	sub(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(egt_l)
+egt_yes:
+	copyb(0, 1) -> r10
+	ret
+egt_no:
+	copyb(0, 0) -> r10
+	ret
+
+; u64 ecu_eq(const u64* a, const u64* b)  [r10=a, r11=b] -> r10 = 1 if a == b.
+ecu_eq:
+	copyb(0, r10) -> r5
+	copyb(0, r11) -> r6
+	copyb(0, 4) -> r7
+eeq_l:
+	eq(r7, 0), j(eeq_yes)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	eq(r14, r15), j(eeq_n)
+	copyb(0, 0) -> r10
+	ret
+eeq_n:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(eeq_l)
+eeq_yes:
+	copyb(0, 1) -> r10
+	ret
+
+; u64 zisklib_ecdsa_verify_secp256k1(const u64* pk, const u64* z, const u64* r,
+;                                    const u64* s)
+;   [r10=pk, r11=z, r12=r, r13=s] -> r10 = 1 if the signature (r,s) over hash z
+;   verifies under public key pk (8 u64 = x‖y), else 0. Mirrors ecdsa_verify:
+;   range-check r,s in [1, n-1]; pk non-identity, canonical, on-curve; then
+;   u1=z*s^-1, u2=r*s^-1 (mod n); (x,y)=u1*G+u2*pk; accept iff x == r (mod n).
+;   Non-leaf: args saved to RAM, ra saved with push/pop.
+zisklib_ecdsa_verify_secp256k1:
+	push r1
+	copyb(0, SECP_ECV_PK) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, SECP_ECV_Z) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, SECP_ECV_R) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, SECP_ECV_S) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+
+	; --- r in [1, n-1] ---
+	copyb(0, SECP_ECV_R) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	call ecu_is_zero
+	ltu(0, r10), j(ev_false)
+	copyb(0, SECP_ECV_R) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, SECP_N_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(ev_false)
+
+	; --- s in [1, n-1] ---
+	copyb(0, SECP_ECV_S) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	call ecu_is_zero
+	ltu(0, r10), j(ev_false)
+	copyb(0, SECP_ECV_S) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, SECP_N_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(ev_false)
+
+	; --- pk != identity (pk_x == 0 and pk_y == 0) ---
+	copyb(0, SECP_ECV_PK) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	call ecu_is_zero
+	eq(r10, 0), j(ev_pkxok)            ; pk_x != 0 -> not identity
+	copyb(0, SECP_ECV_PK) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	call ecu_is_zero
+	ltu(0, r10), j(ev_false)           ; pk_y == 0 too -> identity
+ev_pkxok:
+	; --- pk_x, pk_y in [0, p-1] ---
+	copyb(0, SECP_ECV_PK) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, SECP_P_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(ev_false)
+	copyb(0, SECP_ECV_PK) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	copyb(0, SECP_P_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(ev_false)
+
+	; --- pk on curve ---
+	copyb(0, SECP_ECV_PK) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	call zisklib_is_on_curve_secp256k1
+	eq(r10, 0), j(ev_false)
+
+	; --- s_inv = s^-1 (mod n) ---
+	copyb(0, SECP_ECV_S) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, SECP_ECV_SINV) -> r11
+	call zisklib_inv_fn_secp256k1
+
+	; --- u1 = z * s_inv (mod n) ---
+	copyb(0, SECP_ECV_Z) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, SECP_ECV_SINV) -> r11
+	copyb(0, SECP_ECV_U1) -> r12
+	call zisklib_mul_fn_secp256k1
+
+	; --- u2 = r * s_inv (mod n) ---
+	copyb(0, SECP_ECV_R) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, SECP_ECV_SINV) -> r11
+	copyb(0, SECP_ECV_U2) -> r12
+	call zisklib_mul_fn_secp256k1
+
+	; --- (x,y) = u1*G + u2*pk ---
+	copyb(0, SECP_ECV_U1) -> r10
+	copyb(0, SECP_ECV_U2) -> r11
+	copyb(0, SECP_ECV_PK) -> r5
+	copyb(r5, 8[a + 0]) -> r12
+	copyb(0, SECP_ECV_PT) -> r13
+	call zisklib_glv_double_scalar_mul_with_g_secp256k1
+	ltu(0, r10), j(ev_false)           ; infinity -> invalid
+
+	; --- accept iff x == r (mod n) ---
+	copyb(0, SECP_ECV_PT) -> r10       ; &x
+	copyb(0, SECP_ECV_R) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	call ecu_eq
+	ltu(0, r10), j(ev_true)
+	; reduce x mod n and compare again
+	copyb(0, SECP_ECV_PT) -> r10
+	copyb(0, SECP_ECV_XR) -> r11
+	call zisklib_reduce_fn_secp256k1
+	copyb(0, SECP_ECV_XR) -> r10
+	copyb(0, SECP_ECV_R) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	call ecu_eq
+	ltu(0, r10), j(ev_true)
+
+ev_false:
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+ev_true:
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+
+u64 SECP_ECR_R[1]     = 0
+u64 SECP_ECR_S[1]     = 0
+u64 SECP_ECR_Z[1]     = 0
+u64 SECP_ECR_RECID[1] = 0
+u64 SECP_ECR_RES[1]   = 0
+u64 SECP_ECR_PAR[1]   = 0
+u64 SECP_ECR_RPOINT[8] = 0, 0, 0, 0, 0, 0, 0, 0
+u64 SECP_ECR_RINV[4]  = 0, 0, 0, 0
+u64 SECP_ECR_NEGZ[4]  = 0, 0, 0, 0
+u64 SECP_ECR_U1[4]    = 0, 0, 0, 0
+u64 SECP_ECR_U2[4]    = 0, 0, 0, 0
+
+; u64 zisklib_ecdsa_recover_secp256k1(const u64* r, const u64* s, const u64* z,
+;                                     u64 recid, u64* result)
+;   [r10=r, r11=s, r12=z, r13=recid, r14=result] -> r10 = error code
+;   (0 success and result = recovered pk (x‖y); 1 invalid r, 2 invalid s,
+;   3 invalid recid, 4 point not on curve, 5 recovery failed). Mirrors
+;   ecdsa_recover: R = lift_x(r, recid&1); u1 = -z*r^-1, u2 = s*r^-1 (mod n);
+;   pk = u1*G + u2*R.
+zisklib_ecdsa_recover_secp256k1:
+	push r1
+	copyb(0, SECP_ECR_R) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, SECP_ECR_S) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, SECP_ECR_Z) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, SECP_ECR_RECID) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+	copyb(0, SECP_ECR_RES) -> r5
+	copyb(r5, r14) -> 8[a + 0]
+
+	; --- r in [1, n-1] else err 1 ---
+	copyb(0, SECP_ECR_R) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	call ecu_is_zero
+	ltu(0, r10), j(er_err1)
+	copyb(0, SECP_ECR_R) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, SECP_N_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(er_err1)
+
+	; --- s in [1, n-1] else err 2 ---
+	copyb(0, SECP_ECR_S) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	call ecu_is_zero
+	ltu(0, r10), j(er_err2)
+	copyb(0, SECP_ECR_S) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, SECP_N_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(er_err2)
+
+	; --- recid <= 1 else err 3 ; y_is_odd = recid & 1 ---
+	copyb(0, SECP_ECR_RECID) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(1, r6), j(er_err3)
+	and(r6, 1) -> r6
+	copyb(0, SECP_ECR_PAR) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+
+	; --- R = lift_x(r, y_is_odd) else err 4 ---
+	copyb(0, SECP_ECR_R) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, SECP_ECR_PAR) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, SECP_ECR_RPOINT) -> r12
+	call zisklib_lift_x_secp256k1
+	ltu(0, r10), j(er_err4)
+
+	; --- r_inv = r^-1 (mod n) ---
+	copyb(0, SECP_ECR_R) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, SECP_ECR_RINV) -> r11
+	call zisklib_inv_fn_secp256k1
+
+	; --- neg_z = -z (mod n) ---
+	copyb(0, SECP_ECR_Z) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, SECP_ECR_NEGZ) -> r11
+	call zisklib_neg_fn_secp256k1
+
+	; --- u1 = neg_z * r_inv ; u2 = s * r_inv (mod n) ---
+	copyb(0, SECP_ECR_NEGZ) -> r10
+	copyb(0, SECP_ECR_RINV) -> r11
+	copyb(0, SECP_ECR_U1) -> r12
+	call zisklib_mul_fn_secp256k1
+	copyb(0, SECP_ECR_S) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, SECP_ECR_RINV) -> r11
+	copyb(0, SECP_ECR_U2) -> r12
+	call zisklib_mul_fn_secp256k1
+
+	; --- pk = u1*G + u2*R ; infinity -> err 5 ---
+	copyb(0, SECP_ECR_U1) -> r10
+	copyb(0, SECP_ECR_U2) -> r11
+	copyb(0, SECP_ECR_RPOINT) -> r12
+	copyb(0, SECP_ECR_RES) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	call zisklib_glv_double_scalar_mul_with_g_secp256k1
+	ltu(0, r10), j(er_err5)
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+er_err1:
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+er_err2:
+	copyb(0, 2) -> r10
+	pop r1
+	ret
+er_err3:
+	copyb(0, 3) -> r10
+	pop r1
+	ret
+er_err4:
+	copyb(0, 4) -> r10
+	pop r1
+	ret
+er_err5:
+	copyb(0, 5) -> r10
+	pop r1
+	ret

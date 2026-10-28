@@ -14,29 +14,38 @@
 //! `|`
 //! `|---------------`
 //! `      ...`
-//! `|--------------- INPUT_ADDR                          (0x40000000)`
+//! `|--------------- INPUT_ADDR = FREE_INPUT_ADDR       (0x10000000)`
 //! `|`
-//! `| Contains program input data.`
+//! `| Contains program input data (2GB).`
+//! `| A load from FREE_INPUT_ADDR returns the free input (fcall result).`
 //! `|`
-//! `|--------------- ROM_ADDR: first program instruction (0x80000000)`
+//! `|--------------- ROM_ADDR: first program instruction (0x90000000)`
 //! `|`
-//! `| Contains program instructions.`
+//! `| Contains program instructions and read-only data (ROM data).`
 //! `| Calls ecalls/system calls when required.`
 //! `|`
-//! `|--- FLOAT_LIB_ROM_ADDR: first float lib instruction (0x87F00000)`
+//! `|--- ZISKLIB_ROM_ADDR: first ZisK lib instruction    (0x97E00000)`
+//! `|`
+//! `|--- FLOAT_LIB_ROM_ADDR: first float lib instruction (0x97F00000)`
 //! `|`
 //! `| Contains float library instructions. 1M before ROM_ADDR_MAX.`
 //! `|`
 //! `| Initial value of the float library stack pointer.`
 //! `|`
-//! `|--------------- RAM_ADDR                            (0xa0000000)`
+//! `|--- STACK_GUARD_ADDR (= ROM_ADDR + ROM_SIZE)       (0x98000000)`
+//! `|`
+//! `| UNMAPPED stack guard region, 128MB, running up to the stack bottom.`
+//! `| EF standard 6 requires >= 4kB here; any access traps. The assembly`
+//! `| emulator reserves this same span PROT_NONE (see constants.hpp).`
+//! `|`
+//! `|--------------- RAM_ADDR = STACK_ADDR: stack bottom (0xa0000000)`
 //! `|`
 //! `|--------------- RAM_ADDR + STACK_SIZE - 16          (0xa03ffff0)`
 //! `|`
 //! `|--------------- SYS_ADDR (= RAM_ADDR + STACK_SIZE)  (0xa0400000)`
 //! `|`
 //! `| Contains system address.`
-//! `| The first 256 bytes contain 32 8-byte registers`
+//! `| The first 320 bytes contain 40 8-byte registers (r0..r39)`
 //! `| The address UART_ADDR is used as a stdout at addr = 0xa0400200`
 //! `| The first float register is at         FREG_FIRST = 0xa0401000`
 //! `| The first CSR register is at             CSR_ADDR = 0xa0408000`
@@ -91,8 +100,9 @@
 //!   read-write (RW) memory region.
 //! * The first RW memory region going from `SYS_ADDR` to `OUTPUT_ADDR` is reserved for the system
 //!   operation.
-//! * The lower addresses of this region is used to store 32 registers of 8 bytes each, i.e. 256
-//!   bytes in total.  These registers are the equivalent to the RISC-V registers.
+//! * The lower addresses of this region is used to store 40 registers of 8 bytes each, i.e. 320
+//!   bytes in total: the 32 RISC-V registers, then 8 extra registers (r32..r39) that only ZisK
+//!   code uses. All of them but r0 are held in the main trace, not in memory.
 //! * Any data of exactly 1-byte length written to UART_ADDR will be sent to the standard output of
 //!   the system.
 //! * The second RW memory region going from `OUTPUT_ADDR` onwards, up to where the general-purpose
@@ -104,9 +114,12 @@ use crate::{M16, M3, M32, M8, REG_FIRST, REG_LAST};
 use core::fmt;
 
 /// Fist input data memory address
-pub const INPUT_ADDR: u64 = 0x4000_0000;
+pub const INPUT_ADDR: u64 = 0x1000_0000;
 /// Maximum size of the input data
-pub const MAX_INPUT_SIZE: u64 = 0x4000_0000; // 128M,
+pub const MAX_INPUT_SIZE: u64 = 0x8000_0000; // 2GB
+/// Maximum size of a guest's stdin: the input region less its first word, the free input, and its
+/// last one, as the ASM client checks an input file
+pub const MAX_STDIN_SIZE: u64 = MAX_INPUT_SIZE - 16;
 /// Free input data memory address = first input address
 pub const FREE_INPUT_ADDR: u64 = INPUT_ADDR;
 /// First global RW memory address
@@ -117,6 +130,59 @@ pub const RAM_SIZE: u64 = 0x20000000; // 512M
 pub const STACK_ADDR: u64 = RAM_ADDR;
 /// Program stack size
 pub const STACK_SIZE: u64 = 0x400000; // 4MB
+
+/// Minimum stack guard size EF zkVM standard 6 demands: "a guard region of at least
+/// 4 kB ... immediately below the bottom of the stack".
+pub const STACK_GUARD_MIN_SIZE: u64 = 0x1000; // 4KB
+
+/// First address of the stack guard region.
+///
+/// The guard is the *entire* unmapped span between the top of ROM and the bottom of
+/// the stack -- 128MB, far more than the 4 kB the standard requires. It satisfies EF
+/// standard 6: not mapped readable or writable, contiguous with the stack bottom and
+/// with no gap between them, and any access aborts.
+///
+/// `emulator-asm/src/constants.hpp` mirrors these two values as `GUARD_ADDR` /
+/// `GUARD_SIZE`, and `server_setup()` reserves exactly this span `PROT_NONE`. That
+/// matters because the assembly emulator has no software bounds check: a guest access
+/// outside the mapped regions traps only because the host has nothing there, and an
+/// unmapped hole is where the kernel would satisfy a later `mmap(NULL, ...)`.
+pub const STACK_GUARD_ADDR: u64 = ROM_ADDR + ROM_SIZE;
+/// Size of the stack guard region (see [`STACK_GUARD_ADDR`]).
+pub const STACK_GUARD_SIZE: u64 = STACK_ADDR - STACK_GUARD_ADDR;
+
+/// Compile-time enforcement of the guard-region invariant.
+///
+/// The guard is a consequence of the address map rather than a declared section, so
+/// it would shrink or vanish silently if a mapped region were grown or moved into it.
+/// These assertions turn that into a build failure instead.
+const _: () = {
+    // The stack must sit at the very bottom of RAM; otherwise the span below it is
+    // mapped RAM, not a guard.
+    assert!(
+        STACK_ADDR == RAM_ADDR,
+        "the stack must start at RAM_ADDR for the guard to be adjacent"
+    );
+    // Adjacency, restated so the intent survives a redefinition above.
+    assert!(
+        STACK_GUARD_ADDR + STACK_GUARD_SIZE == STACK_ADDR,
+        "the stack guard must be adjacent to the stack bottom, with no gap"
+    );
+    // Growing ROM eats into the guard. (Growing it past RAM_ADDR underflows the
+    // STACK_GUARD_SIZE subtraction above, which also fails const evaluation.)
+    assert!(
+        STACK_GUARD_SIZE >= STACK_GUARD_MIN_SIZE,
+        "ROM now reaches into the stack guard: fewer than the 4 kB EF standard 6 requires remain"
+    );
+    // The input window must stay above the BIOS ROM and below the program ROM (and so
+    // below the guard, which starts where the program ROM ends).
+    assert!(MAX_ZISK_OS_ROM_ADDR < INPUT_ADDR, "the input window now overlaps the BIOS ROM");
+    assert!(
+        INPUT_ADDR + MAX_INPUT_SIZE <= ROM_ADDR,
+        "the input window now reaches into the program ROM"
+    );
+};
+
 /// First system RW memory address
 pub const SYS_ADDR: u64 = RAM_ADDR + STACK_SIZE;
 /// Size of the system RW memory
@@ -125,6 +191,8 @@ pub const SYS_SIZE: u64 = 0x10000;
 pub const OUTPUT_ADDR: u64 = SYS_ADDR + SYS_SIZE;
 /// Size of the output RW memory
 pub const OUTPUT_MAX_SIZE: u64 = 0x20000; // 128K
+/// First general purpose RW memory address
+pub const GENERAL_RAM_ADDR: u64 = OUTPUT_ADDR + OUTPUT_MAX_SIZE;
 /// First BIOS instruction address, i.e. first instruction executed
 pub const ROM_ENTRY: u64 = 0x1000;
 /// Size of the BIOS instruction area
@@ -134,7 +202,7 @@ pub const ROM_EXIT: u64 = 0x1004;
 /// Maximum Zisk OS ROM instruction address, i.e. last instruction of the BIOS
 pub const MAX_ZISK_OS_ROM_ADDR: u64 = 0x10000000 - 1;
 /// First program ROM instruction address, i.e. first RISC-V transpiled instruction
-pub const ROM_ADDR: u64 = 0x80000000;
+pub const ROM_ADDR: u64 = 0x9000_0000;
 /// Size of the program ROM instruction area
 pub const ROM_SIZE: u64 = 0x08000000; // 128M
 /// Maximum program ROM instruction address
@@ -153,6 +221,29 @@ pub const FLOAT_LIB_RAM_ADDR: u64 = RAM_ADDR + RAM_SIZE - FLOAT_LIB_RAM_SIZE;
 pub const FLOAT_LIB_RAM_ADDR_MAX: u64 = FLOAT_LIB_RAM_ADDR + FLOAT_LIB_RAM_SIZE - 1;
 /// Float library stack pointer address
 pub const FLOAT_LIB_SP: u64 = RAM_ADDR + RAM_SIZE - 16;
+
+// -------------------------------------------------------------------------
+// ZisK library (`.zisk` routines callable from a RISC-V guest via symbol
+// redirect). Reserved just below the float-library regions; code + ROM
+// constants live in ZISKLIB_ROM, mutable scratch/variables in ZISKLIB_RAM.
+// The guest linker fences these off so guest allocations never collide.
+// -------------------------------------------------------------------------
+/// Size of ZisK library ROM (code + read-only constants)
+pub const ZISKLIB_ROM_SIZE: u64 = 0x100000; // 1M
+/// First ZisK library ROM instruction address (just below the float library)
+pub const ZISKLIB_ROM_ADDR: u64 = FLOAT_LIB_ROM_ADDR - ZISKLIB_ROM_SIZE;
+/// Maximum ZisK library ROM address
+pub const ZISKLIB_ROM_ADDR_MAX: u64 = ZISKLIB_ROM_ADDR + ZISKLIB_ROM_SIZE - 1;
+/// Size of ZisK library RAM (mutable scratch / variables).
+/// Keep in sync with `_zisklib_ram_data_size` in the guest linker scripts
+/// (ziskbuild/zisk_linker_script.ld),
+/// which reserve this same amount below the float-library RAM so the guest heap
+/// never grows into it.
+pub const ZISKLIB_RAM_SIZE: u64 = 0x30000; // 192K
+/// First ZisK library RAM address (just below the float-library RAM)
+pub const ZISKLIB_RAM_ADDR: u64 = FLOAT_LIB_RAM_ADDR - ZISKLIB_RAM_SIZE;
+/// Maximum ZisK library RAM address
+pub const ZISKLIB_RAM_ADDR_MAX: u64 = ZISKLIB_RAM_ADDR + ZISKLIB_RAM_SIZE - 1;
 /// Zisk architecture ID
 pub const ARCH_ID_ZISK: u64 = 0xFFFEEEE;
 /// UART memory address; single bytes written here will be copied to the standard output

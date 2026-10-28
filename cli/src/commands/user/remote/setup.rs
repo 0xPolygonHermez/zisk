@@ -58,7 +58,7 @@ impl ZiskRemoteSetup {
             info!("Recurser ID: {}", agg.recurser_id());
 
             client.upload(&agg).run()?;
-            client.setup(&agg).run()?.await?;
+            super::await_job(client.setup(&agg).run()?, None).await?;
 
             info!("{}", "--- SETUP SUMMARY -------------".bright_green().bold());
             info!("Setup completed for recurser ID: {}", agg.recurser_id());
@@ -97,7 +97,7 @@ impl ZiskRemoteSetup {
             }
             (upload.hash_id().to_string(), setup.run()?)
         };
-        handle.await?;
+        super::await_job(handle, None).await?;
 
         info!("{}", "--- SETUP SUMMARY -------------".bright_green().bold());
         info!("Setup completed for Hash ID: {hash_id}");
