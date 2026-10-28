@@ -803,4 +803,85 @@ theorem halt_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : Bi
   · exact .inr ⟨msg, fun fuel => by
       simp only [ZiskRiscv.run]; rw [show k + 1 + fuel = k + (fuel + 1) by omega]; exact hmsg _ 0⟩
 
+/-- The machine's step on sparse memory, where on full memory it meets a
+    sequence the transpiler refuses, the words it reads code: the failure. -/
+theorem go_sparse_malformed {C : BitVec 64 → Prop} {T : ZiskRiscv.State model} {why : String}
+    (hx : model.getPC T.rv ≠ model.exitAddr) (hcc : C (model.getPC T.rv))
+    (hC4 : C (model.getPC T.rv + 4) ∧ (model.getPC T.rv + 4).toNat = (model.getPC T.rv).toNat + 4)
+    (hC8 : C (model.getPC T.rv + 8) ∧ (model.getPC T.rv + 8).toNat = (model.getPC T.rv).toNat + 8)
+    (hd : ZiskRiscv.decode (ZiskRiscv.readWord (model.mem T.rv)) (model.getPC T.rv).toNat = .malformed why)
+    (f : Nat) (S : ZiskRiscv.State model) (h : SparseOf S T) (hcd : CodeIn C S) :
+    ∃ m, ZiskRiscv.step.go (f + 1) S = .ok (S, .failure m) := by
+  have hg := getPC_eq h
+  have hx' : model.getPC S.rv ≠ model.exitAddr := by rw [hg]; exact hx
+  have hw : ∀ p, C p → ZiskRiscv.readWord S.rv.mem p.toNat = ZiskRiscv.readWord T.rv.mem p.toNat := by
+    intro p hp
+    obtain ⟨ws, hws⟩ := hcd p hp
+    rw [hws, readWord_ext h.ext hws]
+  have hdS : ZiskRiscv.decode (ZiskRiscv.readWord (model.mem S.rv)) (model.getPC S.rv).toNat = .malformed why := by
+    rw [hg]
+    obtain ⟨w, hwT⟩ := hcd _ hcc
+    rw [hw _ hcc] at hwT
+    have h4 := hw _ hC4.1
+    have h8 := hw _ hC8.1
+    rw [hC4.2] at h4
+    rw [hC8.2] at h8
+    have e1 := decode_fetch3 (ZiskRiscv.readWord (model.mem S.rv)) (by rw [← hwT]; exact hw _ hcc) h4 h8
+    have e2 := decode_fetch3 (ZiskRiscv.readWord (model.mem T.rv)) hwT rfl rfl
+    exact e1.trans (e2.symm.trans hd)
+  have e1 : ZiskRiscv.tryStep S = .ok (S, .failure s!"a ZisK call the transpiler refuses: {why}") := by
+    simp only [ZiskRiscv.tryStep, hdS]
+    simp [hx', pure, Except.pure]; rfl
+  exact ⟨_, by rw [ZiskRiscv.step.go, e1]⟩
+
+open Equiv.Top in
+/-- `malformed_end` on sparse memory, as `exit_end_sparse`, the two words
+    after pc code too. -/
+theorem malformed_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
+    (rs : List PMA_Region) (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC)
+    (C : BitVec 64 → Prop) (hnx : NoCodeRam C) (hni : NoCodeIn C)
+    (m0 : Mem) (hspec : SpecRom zrom C m0) (s0 : RVState) (hs0 : Start s0 rs entry m0)
+    (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
+    (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
+    (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
+    (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
+    (pc : BitVec 64) (hpc : (sIter 0 k ⟨s0, fc⟩).rv.regs.get? Register.PC = some pc) (hpx : ExecAt rs pc) (hpcc : C pc)
+    (w : BitVec 32) (hrw : ZiskRiscv.readWord (sIter 0 k ⟨s0, fc⟩).rv.mem pc.toNat = some w)
+    (h4 : (pc + 4).toNat = pc.toNat + 4) (h8 : (pc + 8).toNat = pc.toNat + 8) (why : String)
+    (hd : ZiskRiscv.decode (Transpiler.fetch3 pc w (nextWord (sIter 0 k ⟨s0, fc⟩).rv pc)
+      (nextWord2 (sIter 0 k ⟨s0, fc⟩).rv pc)) pc.toNat = .malformed why)
+    (hdesc : ∃ ia l, Transpiler.convert pc w (nextWord (sIter 0 k ⟨s0, fc⟩).rv pc) ia
+      (nextWord2 (sIter 0 k ⟨s0, fc⟩).rv pc) = some l)
+    (hC4 : C (pc + 4)) (hC8 : C (pc + 8))
+    (s0' : RVState) (hsp : Ext zeroFill s0' s0) (hcode : ∀ pc, C pc → ∃ w, ZiskRiscv.readWord s0'.mem pc.toNat = some w) :
+    ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
+      ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
+    ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some true := by
+  refine ⟨?_, (malformed_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k
+    hrun hin pc hpc hpx hpcc w hrw h4 h8 why hd hdesc).2⟩
+  obtain ⟨-, -, -, -, -, -, -, hm⟩ :=
+    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
+  generalize sIter 0 k ⟨s0, fc⟩ = T at *
+  have hmr := hm (PcOk.of_exec ht hpc hpx)
+  have hg : model.getPC T.rv = pc := by simp [model, hpc]
+  have hxT : model.getPC T.rv ≠ model.exitAddr := by
+    rw [hg]; intro e; have e' : pc = EXIT_ADDR := e; exact hx (e' ▸ hpx)
+  have hdT : ZiskRiscv.decode (ZiskRiscv.readWord (model.mem T.rv)) (model.getPC T.rv).toNat = .malformed why := by
+    rw [hg]
+    show ZiskRiscv.decode (ZiskRiscv.readWord T.rv.mem) pc.toNat = _
+    rw [decode_fetch3 _ hrw (by rw [← h4]; try rfl) (by rw [← h8]; try rfl)]
+    exact hd
+  rcases runs_sparse hmr ⟨s0', fc⟩ ⟨hsp, rfl⟩ hcode with ⟨Sk, hsk, hgk, hgo⟩ | ⟨msg, hmsg⟩
+  · have hcdk : CodeIn C Sk := CodeIn.grow (S := ⟨s0', fc⟩) hcode hgk
+    obtain ⟨m, hs⟩ := go_sparse_malformed hxT (by rw [hg]; exact hpcc) (by rw [hg]; exact ⟨hC4, h4⟩)
+      (by rw [hg]; exact ⟨hC8, h8⟩) hdT 4095 Sk hsk hcdk
+    refine .inl ⟨Sk, m, fun fuel => ?_⟩
+    have hs' : ZiskRiscv.step Sk = .ok (Sk, .failure m) := hs
+    simp only [ZiskRiscv.run]
+    rw [show k + 1 + fuel = k + (fuel + 1) by omega, hgo, ZiskRiscv.run.go]
+    simp [hs', bind, Except.bind, pure, Except.pure]
+  · exact .inr ⟨msg, fun fuel => by
+      simp only [ZiskRiscv.run]; rw [show k + 1 + fuel = k + (fuel + 1) by omega]; exact hmsg _ 0⟩
+
 end Equiv.Sparse
