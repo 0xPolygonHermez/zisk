@@ -18,6 +18,7 @@
   lemmas of Equiv/RiscvMem, Equiv/RiscvDecode and Equiv/Riscv.
 -/
 import Equiv.RiscvDecode
+import Equiv.Vtype
 
 namespace Equiv.Riscv
 
@@ -198,6 +199,11 @@ structure StepReady (s : RVState) (rs : List PMA_Region) : Prop where
   /-- mtvec at 4, direct mode, as the machine's model sets it: a trap lands
       outside ZisK's memory (no program in the contract writes it). -/
   mtvec : s.regs.get? mtvec = some 0x4#64
+  /-- vtype's SEW and LMUL fields not reserved, as reset leaves them (vill
+      set, the fields 0): sail-riscv's decoder reads them on a vector word
+      before finding the vector extensions off (no program in the contract
+      writes vtype: only vector instructions do). -/
+  vtypeOk : ∃ v, s.regs.get? vtype = some v ∧ VtypeOk v
 
 /-- An instruction word at pc that sail-riscv fetches as such: aligned, in
     executable memory, not compressed. -/
