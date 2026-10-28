@@ -185,7 +185,7 @@ def tryStep (s : State M) : Except StepError (State M × Status) := do
   match decode (readWord (M.mem s.rv)) pc.toNat with
   | .call c => return (← call s c, .running)
   | .nop => return ({ s with rv := M.setPC s.rv (pc + 4) }, .running)
-  | .malformed why => return (s, .failure s!"a ZisK call the transpiler refuses: {why}")
+  | .malformed why => return (s, .failure s!"what the transpiler refuses: {why}")
   | .ecall =>
     if M.getX s.rv 17 == 93 then return (s, .exit (M.getX s.rv 10))
     else return (s, .outside "an ecall other than exit (precondition E)")

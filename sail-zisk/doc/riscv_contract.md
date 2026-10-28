@@ -26,7 +26,11 @@ Zicond, the privileged instructions (`mret`, `wfi`, `sfence.vma`).
 - `fence` and `fence.i` do nothing. A program that rewrites its own code is
   outside the contract: ZisK runs code from a read-only ROM.
 - `ebreak`, an instruction outside the set, and a reserved encoding end the
-  run in failure (§ 4).
+  run in failure (§ 4). So does every SYSTEM word of funct3 0 but `ecall`
+  and `ebreak` — `mret`, `sret`, `wfi`, `sfence.vma` and the reserved ones
+  — which the transpiler makes a halt. Here the contract departs from
+  sail-riscv, which in machine mode runs `mret` (a jump to `mepc`), `wfi`
+  (a wait for an interrupt that never comes) and `sfence.vma` (a nop).
 - `lr.w` and `lr.d` are plain loads (sign-extended for `.w`), and `sc.w` and
   `sc.d` always succeed: the store, then 0 to rd. ZisK keeps no reservation:
   it is one hart, with no interrupts, so the failures RISC-V requires of an
@@ -229,7 +233,8 @@ definition, and is left for later.
 `lean/ZiskRiscv` states this contract in Lean, as a machine: sail-riscv's
 step, in ZisK's profile, except at a sequence of §§ 7–8, which runs
 sail-zisk's own operation on the RISC-V memory, at the end of § 4, and at
-`lr` and `sc`, which run as § 1 says. It
+`lr` and `sc`, which run as § 1 says, and at a SYSTEM word of funct3 0
+but `ecall` and `ebreak`, which ends the run in failure (§ 1). It
 is generic in the RISC-V model: on sail-riscv's Lean, it is the RISC-V side
 of the theorem; on its executable Lean (`lean/ZiskRiscvRun`,
 `make riscv-run`), it runs programs, and ends every compliance test and the

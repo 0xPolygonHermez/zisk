@@ -46,6 +46,12 @@ def describe : Decoded → String
 #guard describe (decode (prog [csrrs 0 0x800 0]) 0) == "nop"
 #guard describe (decode (prog [ecall]) 0) == "ecall"
 #guard describe (decode (prog [csrrs 10 0xF12 0]) 0) == "riscv"
+-- ebreak is sail-riscv's trap; mret, sret, wfi, sfence.vma, the transpiler's halt
+#guard describe (decode (prog [0x00100073]) 0) == "riscv"
+#guard describe (decode (prog [0x30200073]) 0) == "malformed"
+#guard describe (decode (prog [0x10200073]) 0) == "malformed"
+#guard describe (decode (prog [0x10500073]) 0) == "malformed"
+#guard describe (decode (prog [0x12000073]) 0) == "malformed"
 -- lr.w a0, (a1): lw a0, 0(a1) in its place
 #guard describe (decode (prog [BitVec.ofNat 32 (2 <<< 27 ||| 11 <<< 15 ||| 2 <<< 12 ||| 10 <<< 7 ||| 0x2F)]) 0)
   == s!"subst {11 <<< 15 ||| 2 <<< 12 ||| 10 <<< 7 ||| 0x03} rd=0"

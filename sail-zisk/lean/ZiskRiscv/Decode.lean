@@ -14,10 +14,14 @@
   It follows the transpiler's dispatch exactly
   (transpilers/riscv/src/riscv2zisk_context.rs: `csrrs`, `csrrsi`, `csrrwi`
   and the `transpile_*_pattern` functions), in its default build. What the
-  transpiler refuses — a sequence of the wrong shape — is `malformed`: the
-  transpiler makes it a halt, so a run fails if it gets there. CSR accesses outside these forms are not ZisK calls; by
-  precondition C a program in the contract makes none but reading `marchid`,
-  and they are left to sail-riscv.
+  transpiler refuses — a sequence of the wrong shape, or a SYSTEM
+  instruction other than `ecall`, `ebreak` and the CSR accesses (`mret`,
+  `wfi`, `sfence.vma`, ..., § 1) — is `malformed`: the transpiler makes it a
+  halt, so a run fails if it gets there. sail-riscv would run `mret`, `wfi`
+  and `sfence.vma` in machine mode; the machine departs from it there. CSR
+  accesses outside these forms are not ZisK calls; by precondition C a
+  program in the contract makes none but reading `marchid`, and they are
+  left to sail-riscv.
 
   Pure and computable: it reads instruction words through `fetch`, and
   nothing else.
@@ -53,14 +57,20 @@ def fields (w : BitVec 32) : Fields where
 /-- The instructions the contract tells apart. -/
 inductive Kind where
   | csrrw | csrrs | csrrc | csrrwi | csrrsi | csrrci
-  | add | addi | ecall | lr | sc | other
+  | add | addi | ecall | lr | sc
+  /-- SYSTEM with funct3 0, but `ecall` and `ebreak`: `mret`, `wfi`, ... -/
+  | system
+  | other
 deriving Repr, BEq, DecidableEq
 
 def kind (f : Fields) : Kind :=
   match f.opcode, f.funct3 with
   | 0x73, 1 => .csrrw  | 0x73, 2 => .csrrs  | 0x73, 3 => .csrrc
   | 0x73, 5 => .csrrwi | 0x73, 6 => .csrrsi | 0x73, 7 => .csrrci
-  | 0x73, 0 => if f.csr == 0 && f.rs1 == 0 && f.rd == 0 then .ecall else .other
+  | 0x73, 0 =>
+    if f.rs1 == 0 && f.rd == 0 && f.csr == 0 then .ecall
+    else if f.rs1 == 0 && f.rd == 0 && f.csr == 1 then .other  -- ebreak: sail-riscv's trap
+    else .system
   | 0x33, 0 => if f.funct7 == 0 then .add else .other
   | 0x13, 0 => .addi
   -- lr (funct5 2, its rs2 field 0: any other is reserved) and sc (funct5 3), .w or .d
@@ -101,7 +111,8 @@ inductive Decoded where
   /-- An access to a ZisK CSR number that ZisK makes nothing of: `csrs ID,
       x0`. sail-riscv, which has no such CSR, would trap. -/
   | nop
-  /-- A sequence the transpiler refuses: a halt, the run's failure. -/
+  /-- A sequence the transpiler refuses, or a SYSTEM instruction it does not
+      translate (`mret`, `wfi`, ...): a halt, the run's failure. -/
   | malformed (why : String)
   /-- `lr` or `sc` (§ 1): sail-riscv runs the plain load or store `w` in its
       place (`lw`/`ld rd, 0(rs1)`, `sw`/`sd rs2, 0(rs1)`); then, for `sc`,
@@ -263,6 +274,7 @@ def decode (fetch : Nat → Option (BitVec 32)) (pc : Nat) : Decoded :=
     | .csrrwi => decodeCsrrwi f
     | .lr => .subst (0#12 ++ w.extractLsb' 15 5 ++ w.extractLsb' 12 3 ++ w.extractLsb' 7 5 ++ 0x03#7) 0
     | .sc => .subst (0#7 ++ w.extractLsb' 20 5 ++ w.extractLsb' 15 5 ++ w.extractLsb' 12 3 ++ 0#5 ++ 0x23#7) f.rd
+    | .system => .malformed "a SYSTEM instruction other than ecall and ebreak (mret, wfi, sfence.vma, ...)"
     | _ => .riscv
 
 end ZiskRiscv

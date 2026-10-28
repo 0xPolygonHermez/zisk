@@ -264,9 +264,10 @@ theorem halt_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64
   exact ⟨⟨_, m, fun fuel => run_of hmr.toMRun hs (by simp) fuel⟩, z', ZEnds.of_run hz1 ⟨0, z1, .done _, hze'⟩,
     hzerr⟩
 
-/-! ## A call sequence the transpiler refuses -/
+/-! ## What the transpiler refuses -/
 
-/-- A ZisK call sequence the transpiler refuses (`malformed`), at a code
+/-- A ZisK call sequence the transpiler refuses, or a SYSTEM word of
+    funct3 0 but `ecall` and `ebreak` (`malformed`), at a code
     address, that the spec describes: the machine's run ends in failure;
     sail-zisk's in error, on the halt. -/
 theorem malformed_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)

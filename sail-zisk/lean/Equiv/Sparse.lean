@@ -804,7 +804,7 @@ theorem halt_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : Bi
       simp only [ZiskRiscv.run]; rw [show k + 1 + fuel = k + (fuel + 1) by omega]; exact hmsg _ 0⟩
 
 /-- The machine's step on sparse memory, where on full memory it meets a
-    sequence the transpiler refuses, the words it reads code: the failure. -/
+    sequence or a word the transpiler refuses, the words it reads code: the failure. -/
 theorem go_sparse_malformed {C : BitVec 64 → Prop} {T : ZiskRiscv.State model} {why : String}
     (hx : model.getPC T.rv ≠ model.exitAddr) (hcc : C (model.getPC T.rv))
     (hC4 : C (model.getPC T.rv + 4) ∧ (model.getPC T.rv + 4).toNat = (model.getPC T.rv).toNat + 4)
@@ -829,7 +829,7 @@ theorem go_sparse_malformed {C : BitVec 64 → Prop} {T : ZiskRiscv.State model}
     have e1 := decode_fetch3 (ZiskRiscv.readWord (model.mem S.rv)) (by rw [← hwT]; exact hw _ hcc) h4 h8
     have e2 := decode_fetch3 (ZiskRiscv.readWord (model.mem T.rv)) hwT rfl rfl
     exact e1.trans (e2.symm.trans hd)
-  have e1 : ZiskRiscv.tryStep S = .ok (S, .failure s!"a ZisK call the transpiler refuses: {why}") := by
+  have e1 : ZiskRiscv.tryStep S = .ok (S, .failure s!"what the transpiler refuses: {why}") := by
     simp only [ZiskRiscv.tryStep, hdS]
     simp [hx', pure, Except.pure]; rfl
   exact ⟨_, by rw [ZiskRiscv.step.go, e1]⟩

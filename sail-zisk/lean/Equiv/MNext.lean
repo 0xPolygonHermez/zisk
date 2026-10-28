@@ -41,7 +41,7 @@ theorem decode_riscv {fetch : Nat → Option (BitVec 32)} {a : Nat} {w : BitVec 
     · exact .inr (BitVec.eq_of_toNat_eq (by rw [← this, e2]; rfl))
   simp only [ZiskRiscv.decode, hf]
   generalize hk : ZiskRiscv.kind (ZiskRiscv.fields w) = k
-  have : k ≠ .ecall ∧ k ≠ .csrrs ∧ k ≠ .csrrsi ∧ k ≠ .csrrwi ∧ k ≠ .lr ∧ k ≠ .sc := by
+  have : k ≠ .ecall ∧ k ≠ .csrrs ∧ k ≠ .csrrsi ∧ k ≠ .csrrwi ∧ k ≠ .lr ∧ k ≠ .sc ∧ k ≠ .system := by
     subst hk
     simp only [ZiskRiscv.kind]
     split <;> simp_all <;> split <;> simp_all <;> split <;> simp_all

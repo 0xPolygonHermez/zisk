@@ -182,6 +182,27 @@ theorem spec_decode_csr (w : BitVec 32)
   simp only [Transpiler.decode, e1, e3, h1, hne, hne']
   rcases h3 with h3 | h3 | h3 <;> simp [h3]
 
+/-- A SYSTEM word of funct3 0 but `ecall` and `ebreak` (`mret`, `wfi`, ...):
+    the spec decodes it to nothing, a word the transpiler refuses. -/
+theorem spec_decode_system (w : BitVec 32) (hk : kind (fields w) = .system) : Transpiler.decode w = none := by
+  have ho : (fields w).opcode = 0x73 ∧ (fields w).funct3 = 0 ∧
+      ¬ ((fields w).rs1 = 0 ∧ (fields w).rd = 0 ∧ (fields w).csr = 0) ∧
+      ¬ ((fields w).rs1 = 0 ∧ (fields w).rd = 0 ∧ (fields w).csr = 1) := by
+    revert hk
+    simp only [kind]
+    split <;> simp_all <;> split <;> simp_all <;> split <;> simp_all
+  obtain ⟨h1, h3, he, hb⟩ := ho
+  have e1 : (Transpiler.opcode w).toNat = (fields w).opcode := by
+    simp [Transpiler.opcode, fields, BitVec.extractLsb, BitVec.extractLsb'_toNat]
+  have e3 : (Transpiler.funct3 w).toNat = (fields w).funct3 := by
+    simp [Transpiler.funct3, fields, BitVec.extractLsb, BitVec.extractLsb'_toNat]
+  have hne : (w == 0x00000073#32) = false := by
+    simp only [beq_eq_false_iff_ne]; intro e; subst e; exact he (by simp [fields])
+  have hne' : (w == 0x00100073#32) = false := by
+    simp only [beq_eq_false_iff_ne]; intro e; subst e; exact hb (by simp [fields])
+  simp only [Transpiler.decode, e1, e3, h1, h3, hne, hne']
+  rfl
+
 /-- The length of a call the pairs make: two words. -/
 theorem dmaPair_len {csr rd src : Nat} {n0 : Fields} {c : Call} (h : dmaPair csr rd src n0 = .call c) : c.len = 2 := by
   simp only [dmaPair] at h

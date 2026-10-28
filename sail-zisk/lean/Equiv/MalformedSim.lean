@@ -1,8 +1,10 @@
 /-
-  A ZisK call sequence the transpiler refuses (`malformed`: a call port
-  without the instruction after it the call needs, the memset port with an
-  immediate other than 0 or 2, ...): the machine's step is the run's
-  failure, and the spec's translation, when it describes the word, the halt.
+  What the transpiler refuses (`malformed`): a ZisK call sequence of the
+  wrong shape (a call port without the instruction after it the call needs,
+  the memset port with an immediate other than 0 or 2, ...), or a SYSTEM
+  word of funct3 0 but `ecall` and `ebreak` (`mret`, `wfi`, `sfence.vma`,
+  ...). The machine's step is the run's failure, and the spec's
+  translation, when it describes the word, the halt.
 -/
 import Equiv.CallRun
 
@@ -10,10 +12,12 @@ namespace Equiv.Machine
 
 open ZiskRiscv
 
-/-- A sequence the transpiler refuses comes from a word of `csrrs` or `csrrsi`. -/
+/-- What the transpiler refuses starts at a word of `csrrs` or `csrrsi`, or
+    is one SYSTEM word of funct3 0. -/
 theorem decode_malformed_kind {fetch : Nat → Option (BitVec 32)} {a : Nat} {why : String}
     (h : decode fetch a = .malformed why) :
-    ∃ w, fetch a = some w ∧ (kind (fields w) = .csrrs ∨ kind (fields w) = .csrrsi) := by
+    ∃ w, fetch a = some w ∧
+      (kind (fields w) = .csrrs ∨ kind (fields w) = .csrrsi ∨ kind (fields w) = .system) := by
   simp only [decode] at h
   split at h
   · cases h
@@ -63,8 +67,8 @@ theorem decode_fetch3 (fetch : Nat → Option (BitVec 32)) {pc : BitVec 64} {w :
   have f8 : Transpiler.fetch3 pc w next next2 (pc.toNat + 8) = next2 := by simp [Transpiler.fetch3]
   simp only [decode, h0, h4, h8, f0, f4, f8]
 
-/-- A sequence the transpiler refuses, that the spec describes: its
-    translation, the halt. -/
+/-- What the transpiler refuses, that the spec describes: its translation,
+    the halt. -/
 theorem convert_malformed3 {pc : BitVec 64} {w : BitVec 32} {next next2 : Option (BitVec 32)} {why : String}
     (h : decode (Transpiler.fetch3 pc w next next2) pc.toNat = .malformed why) {ia : BitVec 64}
     {l : List (BitVec 64 × Zisk.zisk_inst)} (hl : Transpiler.convert pc w next ia next2 = some l) :
@@ -72,7 +76,10 @@ theorem convert_malformed3 {pc : BitVec 64} {w : BitVec 32} {next next2 : Option
   obtain ⟨w', hw', hk⟩ := decode_malformed_kind h
   have : w' = w := by simp [Transpiler.fetch3] at hw'; exact hw'.symm
   subst this
-  have hd := spec_decode_csr w' (by rcases hk with hk | hk <;> simp [hk])
+  by_cases hs : kind (fields w') = .system
+  · simp only [Transpiler.convert, spec_decode_system w' hs, Option.some.injEq] at hl
+    exact hl.symm
+  have hd := spec_decode_csr w' (by rcases hk with hk | hk | hk <;> simp_all)
   simp only [Transpiler.convert, hd] at hl
   cases next2 with
   | none =>
@@ -92,11 +99,11 @@ theorem convert_malformed3 {pc : BitVec 64} {w : BitVec 32} {next next2 : Option
       · cases hl
       · cases hl; rfl
 
-/-- The machine's step on a sequence the transpiler refuses: the run's failure. -/
+/-- The machine's step on what the transpiler refuses: the run's failure. -/
 theorem step_malformed (S : ZiskRiscv.State model) {why : String} (hx : model.getPC S.rv ≠ model.exitAddr)
     (hd : ZiskRiscv.decode (ZiskRiscv.readWord (model.mem S.rv)) (model.getPC S.rv).toNat = .malformed why) :
     ∃ m, ZiskRiscv.step S = .ok (S, .failure m) := by
-  have e1 : ZiskRiscv.tryStep S = .ok (S, .failure s!"a ZisK call the transpiler refuses: {why}") := by
+  have e1 : ZiskRiscv.tryStep S = .ok (S, .failure s!"what the transpiler refuses: {why}") := by
     simp only [ZiskRiscv.tryStep, hd]
     simp [hx, pure, Except.pure]; rfl
   exact ⟨_, by rw [ZiskRiscv.step, ZiskRiscv.step.go, e1]⟩

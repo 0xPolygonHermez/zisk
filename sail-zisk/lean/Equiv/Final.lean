@@ -177,7 +177,8 @@ theorem zisk_halt (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 6
   halt_end_sparse zrom entry hb ziskRegions exit_not_exec trap_not_exec C (noCodeRam_of_exec hcx)
     (noCodeIn_of_exec hcx) m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin hha s0' hsp hcode
 
-/-- A ZisK call sequence the transpiler refuses, at a code address, the
+/-- A ZisK call sequence the transpiler refuses, or a SYSTEM word of
+    funct3 0 but `ecall` and `ebreak` (`mret`, `wfi`, ...), at a code address, the
     two words after it code too, that the spec describes: the machine's
     run ends in failure, or in its own error; sail-zisk's ends in error. -/
 theorem zisk_malformed (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
