@@ -6,7 +6,9 @@
         - 0x50, 0x51 (LT_ABS_NP, LT_ABS_PN: internal, assumed by Arith)
         - 0x52-0x55 (Zbb/Zbkb bitwise)
         - 0x56-0x58 (Zba shift-and-add)
-        - 0x59-0x5F (free, reserved for binary)
+        - 0x59 (LTU_DIV: bus tag of the LTU assumed by Arith on divisions, not an opcode)
+        - 0x5A (UNAL8: 8-byte alignment predicate, ZisK-only)
+        - 0x5B-0x5F (free, reserved for binary)
         - 0x60-0x6F (m32 shadows of 0x50-0x5F, must stay empty)
       - Binary Extension Operations:
         - 0x21-0x29
@@ -121,6 +123,10 @@ const int OP_SH1ADD = 0x56;
 const int OP_SH2ADD = 0x57;
 const int OP_SH3ADD = 0x58;
 
+// ZisK-only alignment predicate, proven by Binary: c = flag = 1 iff a or b is not a multiple of 8
+// (i.e. some of the 3 low bits of a | b is set). No m32 variant, so its shadow (0x6A) must stay empty
+const int OP_UNAL8 = 0x5A;
+
 const int OP_PUBOUT = 0xA0;
 
 const int OP_MULU = 0xB0;
@@ -142,6 +148,8 @@ const int OP_REM_W = 0xBF;
 
 const int OP_JUMP_DEST = 0xC0;
 
+const int OP_POSEIDON2_KOALABEAR = 0xC1;
+
 const int OP_DMA_MEMCPY = 0xD0;
 const int OP_DMA_MEMCMP = 0xD1;
 const int OP_DMA_INPUTCPY = 0xD2;
@@ -154,6 +162,8 @@ const int OP_DMA_XMEMCPY = OP_DMA_MEMCPY + OP_DMA_X_OFFSET;     // 0xD6
 const int OP_DMA_XMEMCMP = OP_DMA_MEMCMP + OP_DMA_X_OFFSET;     // 0xD7
 const int OP_DMA_XMEMSET = __OP_DMA_MEMSET__ + OP_DMA_X_OFFSET; // 0xD9
 const int OP_DMA_XMEMEQ = __OP_DMA_MEMEQ__ + OP_DMA_X_OFFSET;   // 0xDA
+
+const int OP_ED25519_ADD = 0xE1;
 
 const int OP_ARITH384_MOD = 0xE2;
 const int OP_BLS12_381_CURVE_ADD = 0xE3;

@@ -23,6 +23,8 @@ vergen-git2 = { workspace = true }
 
 [dependencies]
 zisk-common = { workspace = true }
+zisk-verifier = { workspace = true }
+proofman-pilfflonk = { workspace = true }
 zisk-setup = { workspace = true }
 zisk-build = { workspace = true }
 zisk-prover-backend = { workspace = true }
@@ -72,11 +74,6 @@ default = []
 # table, the extra replay, and the per-operation branch that feeds it. See
 # `zisk_core::frops`.
 debug_frops = ["zisk-sdk/debug_frops", "zisk-prover-backend/debug_frops"]
-# Redirect zisklib guests through the ZisK library in the proving pipeline too.
-# OFF by default: without it, ROM generation and proving behave like mainline.
-# Feature unification makes zisk-transpiler-common consistent across every
-# transpile path in the build once any of these enables it.
-ziskasm = ["zisk-rom-setup/ziskasm", "zisk-prover-backend/ziskasm"]
 # Enable RISC-V C (compressed) extension decoding in the transpiler across ROM
 # generation and proving (see zisk-riscv's `compressed`). OFF by default.
 compressed = ["zisk-rom-setup/compressed", "zisk-prover-backend/compressed"]
@@ -86,4 +83,5 @@ custom_rust_llvm = []
 stats = []
 # Per-phase timings inside the witness computations (memory and the arith precompiles).
 witness_timers = ["zisk-sdk/witness_timers", "zisk-prover-backend/witness_timers"]
-verify = ["proofman-fields/verify"]
+# The memory witness test knobs and row-hash dump (tools/test-env/test_mem_witness.sh).
+mem-witness-test = ["zisk-sdk/mem-witness-test", "zisk-prover-backend/mem-witness-test"]

@@ -5,14 +5,26 @@
 mod bindings;
 mod mem_checkpoints;
 mod mem_planner;
+mod mem_witness_types;
 
 #[cfg(gpu)]
 mod gpu_bindings;
 #[cfg(gpu)]
 mod gpu_count_and_plan;
+#[cfg(gpu)]
+mod gpu_mem_witness;
+#[cfg(not(gpu))]
+mod gpu_mem_witness_stub;
+#[cfg(all(test, gpu))]
+mod plan_edge_tests;
 
 pub use mem_checkpoints::*;
 pub use mem_planner::*;
+pub use mem_witness_types::*;
 
 #[cfg(gpu)]
 pub use gpu_count_and_plan::*;
+#[cfg(gpu)]
+pub use gpu_mem_witness::*;
+#[cfg(not(gpu))]
+pub use gpu_mem_witness_stub::*;

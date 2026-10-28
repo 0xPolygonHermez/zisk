@@ -6,7 +6,7 @@
 //! On zkVM targets each fcall issues a CSR read; on native targets it delegates to
 //! [`fcalls_impl`](super::fcalls_impl).
 
-// fcall 0x860 - 0x8DF (128 fcalls)
+// fcalls: CSR 0x8C0 + (id >> 5) with immediate id & 31, so 0x8C0 - 0x8DF (1024 ids)
 
 pub const FCALL_SECP256K1_FP_INV_ID: u16 = 1;
 pub const FCALL_SECP256K1_FN_INV_ID: u16 = 2;
@@ -33,6 +33,13 @@ pub const FCALL_BIGINT_DIV_ID: u16 = 22;
 pub const FCALL_INPUT_READY_ID: u16 = 23;
 pub const FCALL_SET_KECCAKF_CACHE_INDEX_ID: u16 = 24;
 pub const FCALL_GET_KECCAKF_CACHE_INDEX_ID: u16 = 25;
+pub const FCALL_ED25519_FP_SQRT_RATIO_ID: u16 = 26;
+/// Returns the 256-bit host randomness seed (`zkvm_random_u64`), as [`RANDOM_SEED_WORDS`]
+/// little-endian words. Resolved by the executor, which receives the seed with each execution;
+/// never part of the precompile hints.
+pub const FCALL_RANDOM_SEED_ID: u16 = 27;
+/// Size of the host randomness seed in 64-bit words (256 bits).
+pub const RANDOM_SEED_WORDS: usize = 4;
 
 /// Returned by [`fcall_get_keccakf_cache_index`] when the executor has not cached the state.
 /// Reserved: it cannot be used as a cache index.
@@ -42,6 +49,7 @@ mod bigint_div;
 mod bin_decomp;
 mod bls12_381;
 mod bn254;
+mod ed25519;
 mod input;
 mod keccakf_cache;
 mod msb_pos_256;
@@ -54,6 +62,7 @@ pub use bigint_div::*;
 pub use bin_decomp::*;
 pub use bls12_381::*;
 pub use bn254::*;
+pub use ed25519::*;
 pub use input::*;
 pub use keccakf_cache::*;
 pub use msb_pos_256::*;

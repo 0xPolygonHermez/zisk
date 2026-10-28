@@ -92,6 +92,9 @@ airtemplate ArithEq384(const int N) {
     const expr sel_check_diff = sel_bls12_381_curve_add;
     const expr sel_check_x_lt_prime = sel_arith384_mod + sel_bls12_381_curve + sel_bls12_381_complex;
     const expr sel_check_y_lt_prime = sel_bls12_381_curve + sel_bls12_381_complex;
+    // ops called with two direct operands: main sends a = p1/f1 address and b = p2/f2 address
+    // (no parameter struct, no indirections); the result overwrites p1/f1.
+    const expr sel_direct_ab = sel_bls12_381_curve_add + sel_bls12_381_complex;
 
     // constraint to set (x1,y1) = (x2,y2)
     sel_bls12_381_curve_dbl * (x1 - x2) === 0;
@@ -392,16 +395,22 @@ airtemplate ArithEq384(const int N) {
 
     // 6 reads    384 bits  = 4 * 6 = 24 reads 64 bits
     // 2 writes   384 bits  = 2 * 6 = 12 writes 64 bits
-    // 6 indirect  64 bits  = 6 * 1 =  6 reads 64 bits
-    //                     TOTAL    = 42 memory accesses
+    // 5 indirect  64 bits  = 5 * 1 =  5 reads 64 bits
+    //                     TOTAL    = 41 memory accesses
 
-    //                        READ           WRITE      INDIRECT
-    // arith384_mod           x1,y1,x2,y2    x3         x1,y1,x2,y2,x3
-    // bls12_381_curve_add    x1,y1,x2,y2    x3,y3      x1,y1,x2,y2
-    // bls12_381_curve_dbl    x1,y2          x3,y3      x1,y1
-    // bls12_381_complex_add  x1,y1,x2,y2    x3,y3      x1,y1,x2,y2
-    // bls12_381_complex_sub  x1,y1,x2,y2    x3,y3      x1,y1,x2,y2
-    // bls12_381_complex_mul  x1,y1,x2,y2    x3,y3      x1,y1,x2,y2
+    // Two calling conventions (see arith_eq.pil):
+    //   · struct:    b = address of a struct of pointers (ADDR_OP), a = 0, pointers read as
+    //                indirections (ADDR_IND_x).
+    //   · direct a/b: a = first operand address (ADDR_A), b = second operand address (ADDR_OP).
+    //   · single:    b = address of the only operand (ADDR_OP), a = 0.
+    //
+    //                        READ           WRITE      CALL        INDIRECT
+    // arith384_mod           x1,y1,x2,y2    x3         struct      x1,y1,x2,y2,x3
+    // bls12_381_curve_add    x1,y1,x2,y2    x3,y3      direct a/b  -
+    // bls12_381_curve_dbl    x1,y2          x3,y3      single      -
+    // bls12_381_complex_add  x1,y1,x2,y2    x3,y3      direct a/b  -
+    // bls12_381_complex_sub  x1,y1,x2,y2    x3,y3      direct a/b  -
+    // bls12_381_complex_mul  x1,y1,x2,y2    x3,y3      direct a/b  -
 
     const int ADDR_OP = MAIN_STEP + 1;
     const int ADDR_X1 = ADDR_OP + 1;
@@ -416,7 +425,9 @@ airtemplate ArithEq384(const int N) {
     const int ADDR_IND_2 = ADDR_IND_0 + 2;
     const int ADDR_IND_3 = ADDR_IND_0 + 3;
     const int ADDR_IND_4 = ADDR_IND_0 + 4;
-    const int ADDR_IND_5 = ADDR_IND_0 + 5;
+
+    // Main operand a: the first operand address of the direct a/b ops, 0 for the rest.
+    const int ADDR_A = ADDR_IND_4 + 1;
 
     // MEMORY ACCESS MAP
     //
@@ -440,7 +451,7 @@ airtemplate ArithEq384(const int N) {
     // 17  STEP + 1 | W | ADDR_X3 + 40  x3[20..23]  1         | ADDR_Y3 + 40  y3[20..23]  use_y3
     // 18  STEP     | R | ADDR_OP + 0   ADDR_IND_0  use_ind_0 | ADDR_OP + 8   ADDR_IND_1  use_ind_1
     // 19  STEP     | R | ADDR_OP + 16  ADDR_IND_2  use_ind_2 | ADDR_OP + 24  ADDR_IND_3  use_ind_3
-    // 20  STEP     | R | ADDR_OP + 32  ADDR_IND_4  use_ind_4 | ADDR_OP + 40  ADDR_IND_5  use_ind_5
+    // 20  STEP     | R | ADDR_OP + 32  ADDR_IND_4  use_ind_4 | ---
     // 21  ---       ----------     -------                 ----------      ---------
     // 22  ---       ----------     -------                 ----------      ---------
     // 23  ---       ----------     -------                 ----------      ---------
@@ -451,22 +462,27 @@ airtemplate ArithEq384(const int N) {
 
     // [arith384_mod]        ADDR_X1 === ADDR_IND_0
     //
-    // [bls12_381_curve_add] ADDR_X1 === ADDR_IND_0,
-    //                       ADDR_Y1 === ADDR_IND_0 + 48
+    // [bls12_381_curve_add] ADDR_X1 === ADDR_A,
+    //                       ADDR_Y1 === ADDR_A + 48
     //                       ADDR_X3 === ADDR_X1, ADDR_Y3 === ADDR_Y1
     //
     // [bls12_381_curve_dbl] ADDR_X1 === ADDR_OP,
     //                       ADDR_Y1 === ADDR_OP + 48
     //                       ADDR_X3 === ADDR_X1, ADDR_Y3 === ADDR_Y1
     //
-    // [bls12_381_complex]   ADDR_X1 === ADDR_IND_0
-    //                       ADDR_Y1 === ADDR_IND_0 + 48
+    // [bls12_381_complex]   ADDR_X1 === ADDR_A
+    //                       ADDR_Y1 === ADDR_A + 48
     //                       ADDR_X3 === ADDR_X1, ADDR_Y3 === ADDR_Y1
 
-    const expr use_ind_0 = sel_arith384_mod + sel_bls12_381_curve_add + sel_bls12_381_complex;
+    const expr use_ind_0 = sel_arith384_mod;
 
-    (sel_arith384_mod + sel_bls12_381_curve_add + sel_bls12_381_complex) * clock_eq(step_addr, ADDR_X1, ADDR_IND_0) === 0;
-    (sel_bls12_381_curve_add + sel_bls12_381_complex) * clock_eq(step_addr, ADDR_Y1, ADDR_IND_0, 48) === 0;
+    sel_arith384_mod * clock_eq(step_addr, ADDR_X1, ADDR_IND_0) === 0;
+
+    sel_direct_ab * clock_eq(step_addr, ADDR_X1, ADDR_A) === 0;
+    sel_direct_ab * clock_eq(step_addr, ADDR_Y1, ADDR_A, 48) === 0;
+
+    // The other ops are called with a = 0
+    (in_use - sel_direct_ab) * FIRST_CLK * step_addr'(ADDR_A) === 0;
 
     sel_bls12_381_curve_dbl * clock_eq(step_addr, ADDR_X1, ADDR_OP) === 0;
     sel_bls12_381_curve_dbl * clock_eq(step_addr, ADDR_Y1, ADDR_OP, 48) === 0;
@@ -476,18 +492,18 @@ airtemplate ArithEq384(const int N) {
 
     // [arith384_mod]        ADDR_Y1 === ADDR_IND_1
     //
-    // [bls12_381_curve_add] ADDR_X2 === ADDR_IND_1
-    //                       ADDR_Y2 === ADDR_IND_1 + 48
+    // [bls12_381_curve_add] ADDR_X2 === ADDR_OP
+    //                       ADDR_Y2 === ADDR_OP + 48
     //
-    // [bls12_381_complex]   ADDR_X2 === ADDR_IND_1
-    //                       ADDR_Y2 === ADDR_IND_1 + 48
+    // [bls12_381_complex]   ADDR_X2 === ADDR_OP
+    //                       ADDR_Y2 === ADDR_OP + 48
 
-    const expr use_ind_1 = sel_arith384_mod + sel_bls12_381_curve_add + sel_bls12_381_complex;
+    const expr use_ind_1 = sel_arith384_mod;
 
     sel_arith384_mod * clock_eq(step_addr, ADDR_Y1, ADDR_IND_1) === 0;
 
-    (sel_bls12_381_curve_add + sel_bls12_381_complex) * clock_eq(step_addr, ADDR_X2, ADDR_IND_1) === 0;
-    (sel_bls12_381_curve_add + sel_bls12_381_complex) * clock_eq(step_addr, ADDR_Y2, ADDR_IND_1, 48) === 0;
+    sel_direct_ab * clock_eq(step_addr, ADDR_X2, ADDR_OP) === 0;
+    sel_direct_ab * clock_eq(step_addr, ADDR_Y2, ADDR_OP, 48) === 0;
 
     // [arith384_mod]  ADDR_X2 === ADDR_IND_2
 
@@ -506,8 +522,6 @@ airtemplate ArithEq384(const int N) {
     const expr use_ind_4 = sel_arith384_mod;
 
     sel_arith384_mod * clock_eq(step_addr, ADDR_X3, ADDR_IND_4) === 0;
-
-    const expr use_ind_5 = 0;
 
     const expr mem_addr[2];
     mem_addr[0] = clock_map(step_addr, ADDR_X1, start: 0,  end: 5,  delta: 8) +
@@ -542,8 +556,7 @@ airtemplate ArithEq384(const int N) {
                         map_chunks_to_m32(y2, start: 6,  end: 11) +
                         map_chunks_to_m32(y3, start: 12, end: 17) +
                         clock_map(step_addr, ADDR_IND_1, 18) +
-                        clock_map(step_addr, ADDR_IND_3, 19) +
-                        clock_map(step_addr, ADDR_IND_5, 20);
+                        clock_map(step_addr, ADDR_IND_3, 19);
 
     mem_value[1][1] =   map_chunks_to_m32(y1, index: 2, start: 0,  end: 5) +
                         map_chunks_to_m32(y2, index: 2, start: 6,  end: 11) +
@@ -563,8 +576,7 @@ airtemplate ArithEq384(const int N) {
                  clock_set(use_y2, start: 6,  end: 11) +
                  clock_set(use_y3, start: 12, end: 17) +
                  clock_set(use_ind_1, 18) +
-                 clock_set(use_ind_3, 19) +
-                 clock_set(use_ind_5, 20);
+                 clock_set(use_ind_3, 19);
 
 
     precompiled_mem_op(
@@ -590,7 +602,9 @@ airtemplate ArithEq384(const int N) {
                         sel_bls12_381_complex_sub * OP_BLS12_381_COMPLEX_SUB +
                         sel_bls12_381_complex_mul * OP_BLS12_381_COMPLEX_MUL;
 
-    proves_operation(op: bus_op,  a:[0, 0],  b:[step_addr'(ADDR_OP), 0], c:[0, 0], flag:0, 
+    // a is the first operand address for the direct a/b ops (0 for the rest), b the parameter
+    // struct address or the second (or only) operand address.
+    proves_operation(op: bus_op, a:[step_addr'(ADDR_A), 0], b:[step_addr'(ADDR_OP), 0], c:[0, 0], flag:0,
                      main_step: step_addr'(MAIN_STEP), mul: in_use_clk0);
 
     // selclk0 is the clock 0 for dedicated to one operation

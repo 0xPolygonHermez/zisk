@@ -1,0 +1,24 @@
+[package]
+name = "patch-k256"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Standalone workspace: every guest pins its own patch revision, so two
+# versions of the same patched crate can be tested side by side.
+[workspace]
+
+[dependencies]
+ziskos = { path = "../../ziskos/entrypoint" }
+patch-test-common = { path = "../common" }
+k256 = { version = "=0.13.4", default-features = false, features = ["ecdsa", "schnorr", "alloc", "arithmetic"] }
+sha3 = { version = "0.10", default-features = false }
+
+[patch.crates-io]
+k256 = { git = "https://github.com/0xPolygonHermez/zisk-patch-elliptic-curves", package = "k256", tag = "patch-k256-0.13.4-zisk-1.4.0" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

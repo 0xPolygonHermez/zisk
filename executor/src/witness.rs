@@ -26,7 +26,7 @@ use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use zisk_asm_runner::AsmRunnerRH;
 use zisk_common::{
-    CheckPoint, Instance, InstanceCtx, InstanceType, LateJoinHandle, Plan, StatsScope,
+    CheckPoint, Instance, InstanceCtx, InstanceType, LateJoinHandle, LateValue, Plan, StatsScope,
 };
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
@@ -97,7 +97,7 @@ impl<'a, F: PrimeField64> WitnessContext<'a, F> {
 pub struct WitnessPhase<F: PrimeField64> {
     /// Constructed SM bundle. Held directly so the populator-style
     /// methods can dispatch `build_instance` / `configure_instances`
-    /// / `get_std` without going through `collector`.
+    /// without going through `collector`.
     sm_bundle: Arc<StaticSMBundle<F>>,
 
     /// Chunk data collector for secondary instances.
@@ -140,9 +140,10 @@ impl<F: PrimeField64> WitnessPhase<F> {
         self.sm_bundle.arm_frops_cross_check()
     }
 
-    /// Retires a ROM-histogram runner a previous execution left unconsumed.
-    pub fn drain_rh(&self) {
-        self.sm_bundle.drain_rh();
+    /// The cell the ROM-histogram runner is parked in; see
+    /// [`StaticSMBundle::rom_histogram`].
+    pub fn rom_histogram(&self) -> Option<Arc<LateValue<AsmRunnerRH>>> {
+        self.sm_bundle.rom_histogram()
     }
 
     /// Selects where the FROPS multiplicity column comes from; see
@@ -182,10 +183,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
             state.instance_set.main_instances.write_or_poison("main_instances")?;
         for (global_id, plan) in assignments {
             main_instances.entry(global_id).or_insert_with(|| {
-                std::sync::Arc::new(MainInstance::new(
-                    InstanceCtx::new(global_id, plan),
-                    self.sm_bundle.get_std(),
-                ))
+                std::sync::Arc::new(MainInstance::new(InstanceCtx::new(global_id, plan)))
             });
 
             let gid = GlobalId(global_id);
@@ -299,7 +297,6 @@ impl<F: PrimeField64> WitnessPhase<F> {
                 ctx.pctx,
                 ctx.sctx,
                 global_id,
-                ctx.buffer_pool,
                 stats_scope_id,
             ),
             InstanceType::Instance => {
@@ -315,6 +312,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
                         global_id,
                         ctx.buffer_pool,
                         stats_scope_id,
+                        !AirClassifier::mem_collected_on_device(air_id),
                     )
                 }
             }
@@ -369,16 +367,18 @@ impl<F: PrimeField64> WitnessPhase<F> {
         let trace_buffer =
             std::mem::take(&mut *self.trace_buffer_rom.lock_or_poison("trace_buffer_rom")?);
 
-        self.witness_generator.compute_secn_witness(
-            ctx.pctx,
-            ctx.sctx,
-            ctx.state,
-            global_id,
-            instance,
-            collectors,
-            trace_buffer,
-            stats_scope_id,
-        )?;
+        self.witness_generator
+            .compute_secn_witness(
+                ctx.pctx,
+                ctx.sctx,
+                ctx.state,
+                global_id,
+                instance,
+                collectors,
+                trace_buffer,
+                stats_scope_id,
+            )
+            .map_err(|(e, _)| e)?;
 
         // After the trace is handed over, so the ROM proof does not wait on the copy.
         if !self.frops_published.swap(true, Ordering::Relaxed) {
@@ -409,6 +409,11 @@ impl<F: PrimeField64> WitnessPhase<F> {
         for &global_id in global_ids {
             let info = registry.instance_info(GlobalId(global_id))?;
 
+            // Filled on the device: nothing to collect, ready as is.
+            if AirClassifier::mem_collected_on_device(info.air_id) {
+                registry.announce_witness_ready(GlobalId(global_id));
+                continue;
+            }
             if AirClassifier::is_main(info.air_id) {
                 registry.announce_witness_ready(GlobalId(global_id));
             } else if AirClassifier::is_rom(info.airgroup_id, info.air_id) {

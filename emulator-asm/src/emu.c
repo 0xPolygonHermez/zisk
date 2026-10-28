@@ -18,8 +18,10 @@
 #include "../../lib-c/c/src/arith384/arith384.hpp"
 #include "../../lib-c/c/src/bn254/bn254.hpp"
 #include "../../lib-c/c/src/babyjubjub/babyjubjub.hpp"
+#include "../../lib-c/c/src/ed25519/ed25519.hpp"
 #include "../../lib-c/c/src/bls12_381/bls12_381.hpp"
 #include "../../lib-c/c/src/poseidon2/poseidon2_goldilocks.hpp"
+#include "../../lib-c/c/src/poseidon2/poseidon2_non_native.hpp"
 #include "../../lib-c/c/src/poseidon1/poseidon1_goldilocks.hpp"
 #include "../../lib-c/c/src/blake2/blake2.hpp"
 #include "../../lib-c/c/src/blake3/blake3.hpp"
@@ -49,6 +51,7 @@ static const char * asm_call_names[ASM_CALL_COUNT] = {
     [ASM_CALL_BLAKE2S] = "blake2s",
     [ASM_CALL_POSEIDON2] = "poseidon2",
     [ASM_CALL_POSEIDON1] = "poseidon1",
+    [ASM_CALL_POSEIDON2_KOALABEAR] = "poseidon2_koalabear",
     [ASM_CALL_ARITH256] = "arith256",
     [ASM_CALL_ARITH256_MOD] = "arith256_mod",
     [ASM_CALL_ARITH384_MOD] = "arith384_mod",
@@ -68,6 +71,7 @@ static const char * asm_call_names[ASM_CALL_COUNT] = {
     [ASM_CALL_BLS12_381_COMPLEX_SUB] = "bls12_381_complex_sub",
     [ASM_CALL_BLS12_381_COMPLEX_MUL] = "bls12_381_complex_mul",
     [ASM_CALL_BABYJUBJUB_ADD] = "babyjubjub_add",
+    [ASM_CALL_ED25519_ADD] = "ed25519_add",
     [ASM_CALL_ADD256] = "add256",
 };
 
@@ -97,6 +101,8 @@ static const char * asm_call_fcall_names[ASM_CALL_FCALL_IDS] = {
     [FCALL_BIGINT_DIV_ID] = "bigint_div",
     [FCALL_SET_KECCAKF_CACHE_INDEX_ID] = "set_keccakf_cache_index",
     [FCALL_GET_KECCAKF_CACHE_INDEX_ID] = "get_keccakf_cache_index",
+    [FCALL_ED25519_FP_SQRT_RATIO_ID] = "ed25519_fp_sqrt_ratio",
+    [FCALL_RANDOM_SEED_ID] = "random_seed",
 };
 
 // Mean cost of an empty start/stop measurement, subtracted from the recorded calls when printing
@@ -516,14 +522,15 @@ extern int _opcode_keccak(uint64_t address)
     return 0;
 }
 
-extern int _opcode_sha256(uint64_t * address)
+// Called with two direct operands: state (receives the result) and input, no parameter struct
+extern int _opcode_sha256(uint64_t * state, uint64_t * input)
 {
     ASM_CALL_METRICS_START();
 #ifdef DEBUG
 #ifdef ASM_CALL_METRICS
-    if (emu_verbose) asm_printf("opcode_sha256() calling zisk_sha256() counter=%lu address=%p\n", asm_call_metrics.call[ASM_CALL_SHA256].counter, address);
+    if (emu_verbose) asm_printf("opcode_sha256() calling zisk_sha256() counter=%lu state=%p input=%p\n", asm_call_metrics.call[ASM_CALL_SHA256].counter, state, input);
 #else
-    if (emu_verbose) asm_printf("opcode_sha256() calling zisk_sha256() address=%p\n", address);
+    if (emu_verbose) asm_printf("opcode_sha256() calling zisk_sha256() state=%p input=%p\n", state, input);
 #endif
 #endif
 
@@ -532,16 +539,16 @@ extern int _opcode_sha256(uint64_t * address)
     {
 #endif
         // Call SHA256 compression function
-        zisk_sha256((uint64_t *)address[0], (uint64_t *)address[1]);
+        zisk_sha256(state, input);
 
 #ifdef ASM_PRECOMPILE_CACHE
         // Store result in cache
-        precompile_cache_store((uint8_t *)address[0], 4*8);
+        precompile_cache_store((uint8_t *)state, 4*8);
     }
     else if (precompile_cache_loading)
     {
         // Load result from cache
-        precompile_cache_load((uint8_t *)address[0], 4*8);
+        precompile_cache_load((uint8_t *)state, 4*8);
     }
 #endif
 
@@ -552,14 +559,16 @@ extern int _opcode_sha256(uint64_t * address)
     return 0;
 }
 
-extern int _opcode_blake2b(uint64_t * address)
+// Called with two direct operands, state (receives the result) and input, plus the round index
+// (static argument of the instruction); no parameter struct
+extern int _opcode_blake2b(uint64_t * state, uint64_t * input, uint64_t index)
 {
     ASM_CALL_METRICS_START();
 #ifdef DEBUG
 #ifdef ASM_CALL_METRICS
-    if (emu_verbose) asm_printf("opcode_blake2b() calling blake2b() counter=%lu address=%p\n", asm_call_metrics.call[ASM_CALL_BLAKE2B].counter, address);
+    if (emu_verbose) asm_printf("opcode_blake2b() calling blake2b() counter=%lu state=%p input=%p index=%lu\n", asm_call_metrics.call[ASM_CALL_BLAKE2B].counter, state, input, index);
 #else
-    if (emu_verbose) asm_printf("opcode_blake2b() calling blake2b() address=%p\n", address);
+    if (emu_verbose) asm_printf("opcode_blake2b() calling blake2b() state=%p input=%p index=%lu\n", state, input, index);
 #endif
 #endif
 
@@ -568,16 +577,16 @@ extern int _opcode_blake2b(uint64_t * address)
     {
 #endif
         // Call blake2b compression function
-        blake2b_round((uint64_t *)address[1], (uint64_t *)address[2], address[0]);
+        blake2b_round(state, input, index);
 
 #ifdef ASM_PRECOMPILE_CACHE
         // Store result in cache
-        precompile_cache_store((uint8_t *)address[1], 16*8);
+        precompile_cache_store((uint8_t *)state, 16*8);
     }
     else if (precompile_cache_loading)
     {
         // Load result from cache
-        precompile_cache_load((uint8_t *)address[1], 16*8);
+        precompile_cache_load((uint8_t *)state, 16*8);
     }
 #endif
 
@@ -588,14 +597,15 @@ extern int _opcode_blake2b(uint64_t * address)
     return 0;
 }
 
-extern int _opcode_blake3(uint64_t * address)
+// Called with two direct operands: state (receives the result) and input, no parameter struct
+extern int _opcode_blake3(uint64_t * state, uint64_t * input)
 {
     ASM_CALL_METRICS_START();
 #ifdef DEBUG
 #ifdef ASM_CALL_METRICS
-    if (emu_verbose) asm_printf("opcode_blake3() calling blake3_f() counter=%lu address=%p\n", asm_call_metrics.call[ASM_CALL_BLAKE3].counter, address);
+    if (emu_verbose) asm_printf("opcode_blake3() calling blake3_f() counter=%lu state=%p input=%p\n", asm_call_metrics.call[ASM_CALL_BLAKE3].counter, state, input);
 #else
-    if (emu_verbose) asm_printf("opcode_blake3() calling blake3_f() address=%p\n", address);
+    if (emu_verbose) asm_printf("opcode_blake3() calling blake3_f() state=%p input=%p\n", state, input);
 #endif
 #endif
 
@@ -603,17 +613,17 @@ extern int _opcode_blake3(uint64_t * address)
     if (precompile_cache_storing)
     {
 #endif
-        // Call blake3 permutation function (address[0] = state ptr, address[1] = input ptr)
-        blake3_f((uint32_t *)address[0], (const uint32_t *)address[1]);
+        // Call blake3 permutation function
+        blake3_f((uint32_t *)state, (const uint32_t *)input);
 
 #ifdef ASM_PRECOMPILE_CACHE
         // Store result in cache
-        precompile_cache_store((uint8_t *)address[0], 8*8);
+        precompile_cache_store((uint8_t *)state, 8*8);
     }
     else if (precompile_cache_loading)
     {
         // Load result from cache
-        precompile_cache_load((uint8_t *)address[0], 8*8);
+        precompile_cache_load((uint8_t *)state, 8*8);
     }
 #endif
 
@@ -624,14 +634,15 @@ extern int _opcode_blake3(uint64_t * address)
     return 0;
 }
 
-extern int _opcode_blake2s(uint64_t * address)
+// Called with two direct operands: state (receives the result) and input, no parameter struct
+extern int _opcode_blake2s(uint64_t * state, uint64_t * input)
 {
     ASM_CALL_METRICS_START();
 #ifdef DEBUG
 #ifdef ASM_CALL_METRICS
-    if (emu_verbose) asm_printf("opcode_blake2s() calling blake2s_f() counter=%lu address=%p\n", asm_call_metrics.call[ASM_CALL_BLAKE2S].counter, address);
+    if (emu_verbose) asm_printf("opcode_blake2s() calling blake2s_f() counter=%lu state=%p input=%p\n", asm_call_metrics.call[ASM_CALL_BLAKE2S].counter, state, input);
 #else
-    if (emu_verbose) asm_printf("opcode_blake2s() calling blake2s_f() address=%p\n", address);
+    if (emu_verbose) asm_printf("opcode_blake2s() calling blake2s_f() state=%p input=%p\n", state, input);
 #endif
 #endif
 
@@ -639,17 +650,17 @@ extern int _opcode_blake2s(uint64_t * address)
     if (precompile_cache_storing)
     {
 #endif
-        // Call blake2s permutation function (address[0] = state ptr, address[1] = input ptr)
-        blake2s_f((uint32_t *)address[0], (const uint32_t *)address[1]);
+        // Call blake2s permutation function
+        blake2s_f((uint32_t *)state, (const uint32_t *)input);
 
 #ifdef ASM_PRECOMPILE_CACHE
         // Store result in cache
-        precompile_cache_store((uint8_t *)address[0], 8*8);
+        precompile_cache_store((uint8_t *)state, 8*8);
     }
     else if (precompile_cache_loading)
     {
         // Load result from cache
-        precompile_cache_load((uint8_t *)address[0], 8*8);
+        precompile_cache_load((uint8_t *)state, 8*8);
     }
 #endif
 
@@ -657,6 +668,46 @@ extern int _opcode_blake2s(uint64_t * address)
     if (emu_verbose) asm_printf("opcode_blake2s() called blake2s_f()\n");
 #endif
     ASM_CALL_METRICS_STOP(ASM_CALL_BLAKE2S);
+    return 0;
+}
+
+// Poseidon2 over a 31-bit field: permutes `words` u64 in place at `address`; a non-canonical
+// element is not a valid input
+static void opcode_poseidon2_non_native(uint64_t address, int (*permute)(uint64_t *), uint64_t words, const char *name)
+{
+    (void)words; // only used with ASM_PRECOMPILE_CACHE
+#ifdef DEBUG
+    if (emu_verbose) asm_printf("opcode_%s() address=%08lx\n", name, address);
+#endif
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
+    {
+#endif
+        int result = permute((uint64_t *)address);
+        if (result != 0)
+        {
+            asm_printf("_opcode_%s() found a non-canonical field element result=%d;", name, result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)address, words*8);
+    }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)address, words*8);
+    }
+#endif
+}
+
+extern int _opcode_poseidon2_koalabear(uint64_t address)
+{
+    ASM_CALL_METRICS_START();
+    opcode_poseidon2_non_native(address, poseidon2_koalabear, 8, "poseidon2_koalabear");
+    ASM_CALL_METRICS_STOP(ASM_CALL_POSEIDON2_KOALABEAR);
     return 0;
 }
 
@@ -919,19 +970,18 @@ extern int _opcode_arith384_mod(uint64_t * address)
     return 0;
 }
 
-extern int _opcode_secp256k1_add(uint64_t * address)
+// Called with two direct operands: p1 (receives the result) and p2, no parameter struct
+extern int _opcode_secp256k1_add(uint64_t * p1, uint64_t * p2)
 {
     ASM_CALL_METRICS_START();
 
-    uint64_t * p1 = (uint64_t *)address[0];
-    uint64_t * p2 = (uint64_t *)address[1];
 #ifdef DEBUG
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        asm_printf("opcode_secp256k1_add() calling AddPointEcP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_SECP256K1_ADD].counter, address, p1, p2);
+        asm_printf("opcode_secp256k1_add() calling AddPointEcP() counter=%lu p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_SECP256K1_ADD].counter, p1, p2);
 #else
-        asm_printf("opcode_secp256k1_add() calling AddPointEcP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("opcode_secp256k1_add() calling AddPointEcP() p1_address=%p p2_address=%p\n", p1, p2);
 #endif
         asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
         asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
@@ -1037,19 +1087,18 @@ extern int _opcode_secp256k1_dbl(uint64_t * address)
     return 0;
 }
 
-extern int _opcode_secp256r1_add(uint64_t * address)
+// Called with two direct operands: p1 (receives the result) and p2, no parameter struct
+extern int _opcode_secp256r1_add(uint64_t * p1, uint64_t * p2)
 {
     ASM_CALL_METRICS_START();
 
-    uint64_t * p1 = (uint64_t *)address[0];
-    uint64_t * p2 = (uint64_t *)address[1];
 #ifdef DEBUG
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        asm_printf("opcode_secp256r1_add() calling AddPointEcP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_SECP256R1_ADD].counter, address, p1, p2);
+        asm_printf("opcode_secp256r1_add() calling AddPointEcP() counter=%lu p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_SECP256R1_ADD].counter, p1, p2);
 #else
-        asm_printf("opcode_secp256r1_add() calling AddPointEcP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("opcode_secp256r1_add() calling AddPointEcP() p1_address=%p p2_address=%p\n", p1, p2);
 #endif
         asm_printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
         asm_printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
@@ -1247,19 +1296,18 @@ extern int _opcode_fcall(struct FcallContext * ctx)
 /* BN254 */
 /*********/
 
-extern int _opcode_bn254_curve_add(uint64_t * address)
+// Called with two direct operands: p1 (receives the result) and p2, no parameter struct
+extern int _opcode_bn254_curve_add(uint64_t * p1, uint64_t * p2)
 {
     ASM_CALL_METRICS_START();
 
-    uint64_t * p1 = (uint64_t *)address[0];
-    uint64_t * p2 = (uint64_t *)address[1];
 #ifdef DEBUG
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        asm_printf("_opcode_bn254_curve_add() calling BN254CurveAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BN254_CURVE_ADD].counter, address, p1, p2);
+        asm_printf("_opcode_bn254_curve_add() calling BN254CurveAddP() counter=%lu p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BN254_CURVE_ADD].counter, p1, p2);
 #else
-        asm_printf("_opcode_bn254_curve_add() calling BN254CurveAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_bn254_curve_add() calling BN254CurveAddP() p1_address=%p p2_address=%p\n", p1, p2);
 #endif
         asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
         asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
@@ -1306,19 +1354,18 @@ extern int _opcode_bn254_curve_add(uint64_t * address)
     return 0;
 }
 
-extern int _opcode_babyjubjub_add(uint64_t * address)
+// Called with two direct operands: p1 (receives the result) and p2, no parameter struct
+extern int _opcode_babyjubjub_add(uint64_t * p1, uint64_t * p2)
 {
     ASM_CALL_METRICS_START();
 
-    uint64_t * p1 = (uint64_t *)address[0];
-    uint64_t * p2 = (uint64_t *)address[1];
 #ifdef DEBUG
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        asm_printf("_opcode_babyjubjub_add() calling BabyJubJubAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BABYJUBJUB_ADD].counter, address, p1, p2);
+        asm_printf("_opcode_babyjubjub_add() calling BabyJubJubAddP() counter=%lu p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BABYJUBJUB_ADD].counter, p1, p2);
 #else
-        asm_printf("_opcode_babyjubjub_add() calling BabyJubJubAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_babyjubjub_add() calling BabyJubJubAddP() p1_address=%p p2_address=%p\n", p1, p2);
 #endif
         asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
         asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
@@ -1362,6 +1409,63 @@ extern int _opcode_babyjubjub_add(uint64_t * address)
     }
 #endif
     ASM_CALL_METRICS_STOP(ASM_CALL_BABYJUBJUB_ADD);
+    return 0;
+}
+
+extern int _opcode_ed25519_add(uint64_t * p1, uint64_t * p2)
+{
+    ASM_CALL_METRICS_START();
+
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+#ifdef ASM_CALL_METRICS
+        asm_printf("_opcode_ed25519_add() calling Ed25519AddP() counter=%lu p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_ED25519_ADD].counter, p1, p2);
+#else
+        asm_printf("_opcode_ed25519_add() calling Ed25519AddP() p1_address=%p p2_address=%p\n", p1, p2);
+#endif
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p2.x = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0]);
+        asm_printf("p2.y = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4]);
+    }
+#endif
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
+    {
+#endif
+        // Call point addition function
+        int result = Ed25519AddP (
+            p1, // p1 = [x1, y1] = 8x64bits
+            p2, // p2 = [x2, y2] = 8x64bits
+            p1 // p3 = [x3, y3] = 8x64bits
+        );
+        if (result != 0)
+        {
+            asm_printf("_opcode_ed25519_add() failed calling Ed25519AddP() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 8*8);
+    }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 8*8);
+    }
+#endif
+
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+    }
+#endif
+    ASM_CALL_METRICS_STOP(ASM_CALL_ED25519_ADD);
     return 0;
 }
 
@@ -1420,19 +1524,18 @@ extern int _opcode_bn254_curve_dbl(uint64_t * address)
     return 0;
 }
 
-extern int _opcode_bn254_complex_add(uint64_t * address)
+// Called with two direct operands: p1 (receives the result) and p2, no parameter struct
+extern int _opcode_bn254_complex_add(uint64_t * p1, uint64_t * p2)
 {
     ASM_CALL_METRICS_START();
 
-    uint64_t * p1 = (uint64_t *)address[0];
-    uint64_t * p2 = (uint64_t *)address[1];
 #ifdef DEBUG
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        asm_printf("_opcode_bn254_complex_add() calling BN254ComplexAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BN254_COMPLEX_ADD].counter, address, p1, p2);
+        asm_printf("_opcode_bn254_complex_add() calling BN254ComplexAddP() counter=%lu p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BN254_COMPLEX_ADD].counter, p1, p2);
 #else
-        asm_printf("_opcode_bn254_complex_add() calling BN254ComplexAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_bn254_complex_add() calling BN254ComplexAddP() p1_address=%p p2_address=%p\n", p1, p2);
 #endif
         asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
         asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
@@ -1479,19 +1582,18 @@ extern int _opcode_bn254_complex_add(uint64_t * address)
     return 0;
 }
 
-extern int _opcode_bn254_complex_sub(uint64_t * address)
+// Called with two direct operands: p1 (receives the result) and p2, no parameter struct
+extern int _opcode_bn254_complex_sub(uint64_t * p1, uint64_t * p2)
 {
     ASM_CALL_METRICS_START();
 
-    uint64_t * p1 = (uint64_t *)address[0];
-    uint64_t * p2 = (uint64_t *)address[1];
 #ifdef DEBUG
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        asm_printf("_opcode_bn254_complex_sub() calling BN254ComplexSubP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BN254_COMPLEX_SUB].counter, address, p1, p2);
+        asm_printf("_opcode_bn254_complex_sub() calling BN254ComplexSubP() counter=%lu p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BN254_COMPLEX_SUB].counter, p1, p2);
 #else
-        asm_printf("_opcode_bn254_complex_sub() calling BN254ComplexSubP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_bn254_complex_sub() calling BN254ComplexSubP() p1_address=%p p2_address=%p\n", p1, p2);
 #endif
         asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
         asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
@@ -1538,19 +1640,18 @@ extern int _opcode_bn254_complex_sub(uint64_t * address)
     return 0;
 }
 
-extern int _opcode_bn254_complex_mul(uint64_t * address)
+// Called with two direct operands: p1 (receives the result) and p2, no parameter struct
+extern int _opcode_bn254_complex_mul(uint64_t * p1, uint64_t * p2)
 {
     ASM_CALL_METRICS_START();
 
-    uint64_t * p1 = (uint64_t *)address[0];
-    uint64_t * p2 = (uint64_t *)address[1];
 #ifdef DEBUG
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        asm_printf("_opcode_bn254_complex_mul() calling BN254ComplexMulP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BN254_COMPLEX_MUL].counter, address, p1, p2);
+        asm_printf("_opcode_bn254_complex_mul() calling BN254ComplexMulP() counter=%lu p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BN254_COMPLEX_MUL].counter, p1, p2);
 #else
-        asm_printf("_opcode_bn254_complex_mul() calling BN254ComplexMulP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_bn254_complex_mul() calling BN254ComplexMulP() p1_address=%p p2_address=%p\n", p1, p2);
 #endif
         asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
         asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
@@ -1601,19 +1702,18 @@ extern int _opcode_bn254_complex_mul(uint64_t * address)
 /* BLS12_381 */
 /*************/
 
-extern int _opcode_bls12_381_curve_add(uint64_t * address)
+// Called with two direct operands: p1 (receives the result) and p2, no parameter struct
+extern int _opcode_bls12_381_curve_add(uint64_t * p1, uint64_t * p2)
 {
     ASM_CALL_METRICS_START();
 
-    uint64_t * p1 = (uint64_t *)address[0];
-    uint64_t * p2 = (uint64_t *)address[1];
 #ifdef DEBUG
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        asm_printf("_opcode_bls12_381_curve_add() calling BLS12_381CurveAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BLS12_381_CURVE_ADD].counter, address, p1, p2);
+        asm_printf("_opcode_bls12_381_curve_add() calling BLS12_381CurveAddP() counter=%lu p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BLS12_381_CURVE_ADD].counter, p1, p2);
 #else
-        asm_printf("_opcode_bls12_381_curve_add() calling BLS12_381CurveAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_bls12_381_curve_add() calling BLS12_381CurveAddP() p1_address=%p p2_address=%p\n", p1, p2);
 #endif
         asm_printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
         asm_printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
@@ -1715,19 +1815,18 @@ extern int _opcode_bls12_381_curve_dbl(uint64_t * address)
     return 0;
 }
 
-extern int _opcode_bls12_381_complex_add(uint64_t * address)
+// Called with two direct operands: p1 (receives the result) and p2, no parameter struct
+extern int _opcode_bls12_381_complex_add(uint64_t * p1, uint64_t * p2)
 {
     ASM_CALL_METRICS_START();
 
-    uint64_t * p1 = (uint64_t *)address[0];
-    uint64_t * p2 = (uint64_t *)address[1];
 #ifdef DEBUG
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        asm_printf("_opcode_bls12_381_complex_add() calling BLS12_381ComplexAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BLS12_381_COMPLEX_ADD].counter, address, p1, p2);
+        asm_printf("_opcode_bls12_381_complex_add() calling BLS12_381ComplexAddP() counter=%lu p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BLS12_381_COMPLEX_ADD].counter, p1, p2);
 #else
-        asm_printf("_opcode_bls12_381_complex_add() calling BLS12_381ComplexAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_bls12_381_complex_add() calling BLS12_381ComplexAddP() p1_address=%p p2_address=%p\n", p1, p2);
 #endif
         asm_printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
         asm_printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
@@ -1774,19 +1873,18 @@ extern int _opcode_bls12_381_complex_add(uint64_t * address)
     return 0;
 }
 
-extern int _opcode_bls12_381_complex_sub(uint64_t * address)
+// Called with two direct operands: p1 (receives the result) and p2, no parameter struct
+extern int _opcode_bls12_381_complex_sub(uint64_t * p1, uint64_t * p2)
 {
     ASM_CALL_METRICS_START();
 
-    uint64_t * p1 = (uint64_t *)address[0];
-    uint64_t * p2 = (uint64_t *)address[1];
 #ifdef DEBUG
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        asm_printf("_opcode_bls12_381_complex_sub() calling BLS12_381ComplexSubP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BLS12_381_COMPLEX_SUB].counter, address, p1, p2);
+        asm_printf("_opcode_bls12_381_complex_sub() calling BLS12_381ComplexSubP() counter=%lu p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BLS12_381_COMPLEX_SUB].counter, p1, p2);
 #else
-        asm_printf("_opcode_bls12_381_complex_sub() calling BLS12_381ComplexSubP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_bls12_381_complex_sub() calling BLS12_381ComplexSubP() p1_address=%p p2_address=%p\n", p1, p2);
 #endif
         asm_printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
         asm_printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
@@ -1833,19 +1931,18 @@ extern int _opcode_bls12_381_complex_sub(uint64_t * address)
     return 0;
 }
 
-extern int _opcode_bls12_381_complex_mul(uint64_t * address)
+// Called with two direct operands: p1 (receives the result) and p2, no parameter struct
+extern int _opcode_bls12_381_complex_mul(uint64_t * p1, uint64_t * p2)
 {
     ASM_CALL_METRICS_START();
 
-    uint64_t * p1 = (uint64_t *)address[0];
-    uint64_t * p2 = (uint64_t *)address[1];
 #ifdef DEBUG
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        asm_printf("_opcode_bls12_381_complex_mul() calling BLS12_381ComplexMulP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BLS12_381_COMPLEX_MUL].counter, address, p1, p2);
+        asm_printf("_opcode_bls12_381_complex_mul() calling BLS12_381ComplexMulP() counter=%lu p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BLS12_381_COMPLEX_MUL].counter, p1, p2);
 #else
-        asm_printf("_opcode_bls12_381_complex_mul() calling BLS12_381ComplexMulP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_bls12_381_complex_mul() calling BLS12_381ComplexMulP() p1_address=%p p2_address=%p\n", p1, p2);
 #endif
         asm_printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
         asm_printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);

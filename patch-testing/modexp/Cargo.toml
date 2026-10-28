@@ -1,0 +1,24 @@
+[package]
+name = "patch-modexp"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Standalone workspace: every guest pins its own patch revision, so two
+# versions of the same patched crate can be tested side by side.
+[workspace]
+
+[dependencies]
+ziskos = { path = "../../ziskos/entrypoint" }
+patch-test-common = { path = "../common" }
+aurora-engine-modexp = { version = "=1.2.0", default-features = false }
+num-bigint = { version = "0.4", default-features = false }
+
+[patch.crates-io]
+aurora-engine-modexp = { git = "https://github.com/0xPolygonHermez/zisk-patch-modexp", package = "aurora-engine-modexp", tag = "patch-1.2.0-zisk-0.16.0+" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

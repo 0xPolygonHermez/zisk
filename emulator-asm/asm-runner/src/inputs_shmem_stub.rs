@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use zisk_common::io::{StreamError, StreamProcessor, StreamSink};
 
-use crate::ControlShmem;
+use crate::{ControlShmem, RANDOM_SEED_WORDS};
 
 use anyhow::Result;
 
@@ -29,12 +29,6 @@ impl InputsShmemWriter {
         );
     }
 
-    pub fn unbind_semaphores(&self) {
-        unreachable!(
-            "InputsShmemWriter::unbind_semaphores() is not supported on this platform. Only Linux x86_64 is supported."
-        );
-    }
-
     pub fn write_input(&self, _inputs: &[u8]) -> Result<()> {
         unreachable!(
             "InputsShmemWriter::write_input() is not supported on this platform. Only Linux x86_64 is supported."
@@ -47,9 +41,21 @@ impl InputsShmemWriter {
         );
     }
 
+    pub fn set_random_seed(&self, _seed: &[u64; RANDOM_SEED_WORDS]) -> Result<()> {
+        unreachable!(
+            "InputsShmemWriter::set_random_seed() is not supported on this platform. Only Linux x86_64 is supported."
+        );
+    }
+
     pub fn signal_reset(&self) -> Result<()> {
         unreachable!(
             "InputsShmemWriter::signal_reset() is not supported on this platform. Only Linux x86_64 is supported."
+        );
+    }
+
+    pub fn clear_reset(&self) -> Result<()> {
+        unreachable!(
+            "InputsShmemWriter::clear_reset() is not supported on this platform. Only Linux x86_64 is supported."
         );
     }
 

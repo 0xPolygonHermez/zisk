@@ -44,6 +44,7 @@ impl Coordinator {
             }
             InputsModeDto::InputsData(ref inputs) => {
                 info!("Job {} using inline input data ({} bytes)", job.job_id, inputs.len());
+                crate::metrics::record_job_input(&job.job_id, inputs.len() as u64);
                 InputSourceDto::InputData(inputs.clone())
             }
             InputsModeDto::InputsStream(_) => {
@@ -65,6 +66,10 @@ impl Coordinator {
             HintsModeDto::HintsNone => HintsSourceDto::HintsNull,
         };
 
+        let seed = job.random_seed.ok_or_else(|| {
+            CoordinatorError::Internal(format!("job {} has no random seed", job.job_id))
+        })?;
+
         // Use Arc to avoid expensive clones
         let active_workers = active_workers.to_vec();
         let total_workers = active_workers.len() as u32;
@@ -83,7 +88,6 @@ impl Coordinator {
             let data_id = job.data_id.clone();
             let worker_allocation = job.partitions[rank_id].clone();
             let job_compute_capacity = job.compute_capacity;
-            let job_metadata = job.metadata.clone();
             let workers_pool = &self.workers_pool;
 
             async move {
@@ -98,6 +102,7 @@ impl Coordinator {
                     total_workers,
                     worker_allocation,
                     job_compute_units: job_compute_capacity,
+                    random_seed: seed,
                 };
 
                 let params = if execution_only {
@@ -106,11 +111,12 @@ impl Coordinator {
                     ExecuteTaskRequestTypeDto::ContributionParams(contribution_params)
                 };
 
+                #[allow(deprecated)] // `metadata` is deprecated and left empty.
                 let req = ExecuteTaskRequestDto {
                     worker_id: worker_id.clone(),
                     job_id: job_id.clone(),
                     params,
-                    metadata: job_metadata,
+                    metadata: None,
                 };
                 let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
 
@@ -454,6 +460,7 @@ impl Coordinator {
         drop(job); // Release jobs lock early
 
         self.fire_job_event(&job_id, CoordinatorJobEvent::Progress(JobPhase::Prove)).await;
+        crate::metrics::record_job_phase(&job_id, crate::metrics::PHASE_PROVE);
 
         // Start Phase2 for all workers
         self.start_prove(&job_id, &active_workers, challenges_dto).await?;
@@ -642,13 +649,21 @@ impl Coordinator {
         }
 
         let exec_stats = exec_stats_from_job(&job);
+        let seed = job.random_seed;
 
         // Pairs with launch_proof's record_job_started (execution-only path).
-        crate::metrics::record_job_terminal(
-            crate::metrics::OUTCOME_SUCCESS,
-            &job.workers,
-            job.phase_start_time(&JobPhase::Execution),
-        );
+        crate::metrics::record_job_terminal(crate::metrics::JobOutcome {
+            job_id: &job_id,
+            outcome: crate::metrics::OUTCOME_SUCCESS,
+            reason: None,
+            workers: &job.workers,
+            contributions_started: job.phase_start_time(&JobPhase::Execution),
+            duration: Some(duration.as_secs_f64()),
+            phases: None,
+            steps: job.executed_steps,
+            instances: job.instances,
+            costs: Some(super::cost_per_type_from_job(&job)),
+        });
 
         // Release job lock before cleanup
         drop(job);
@@ -658,6 +673,7 @@ impl Coordinator {
             CoordinatorJobEvent::Completed(CoordinatorJobResult::Execute {
                 stats: exec_stats,
                 public_outputs,
+                random_seed: seed,
             }),
         )
         .await;
@@ -890,6 +906,9 @@ impl Coordinator {
             if let Some((_worker_id, job_result)) = contributions_results.iter().next() {
                 if let JobResultData::Challenges(contributions_result) = &job_result.data {
                     info!("Execution Summary: {}", contributions_result.witness_info.summary_info);
+                    crate::metrics::record_execution_summary(
+                        &contributions_result.witness_info.summary_info,
+                    );
                 }
             }
         }
@@ -945,6 +964,20 @@ impl Coordinator {
                     let witness_str = format!(
                         ", Witness: {:.3}s",
                         contributions_result.witness_info.witness_time / 1000.0
+                    );
+
+                    crate::metrics::record_worker_execution(
+                        &job.job_id,
+                        crate::metrics::KIND_PROVE,
+                        crate::metrics::WorkerExecution {
+                            executor: &contributions_result.zisk_executor_time,
+                            witness_seconds: Some(
+                                f64::from(contributions_result.witness_info.witness_time) / 1000.0,
+                            ),
+                            dispatch_delay: contributions_result.task_received_time.map(
+                                |received| (received - phase_start_time).as_seconds_f64().max(0.0),
+                            ),
+                        },
                     );
 
                     (asm_str, witness_str, delay_str)
@@ -1016,6 +1049,18 @@ impl Coordinator {
                             )
                         })
                         .unwrap_or_default();
+
+                    crate::metrics::record_worker_execution(
+                        &job.job_id,
+                        crate::metrics::KIND_EXECUTE,
+                        crate::metrics::WorkerExecution {
+                            executor: &execution_result.zisk_executor_time,
+                            witness_seconds: None,
+                            dispatch_delay: execution_result.task_received_time.map(|received| {
+                                (received - phase_start_time).as_seconds_f64().max(0.0)
+                            }),
+                        },
+                    );
 
                     (asm_str, delay_str)
                 }

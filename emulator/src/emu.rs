@@ -2,8 +2,8 @@ use std::borrow::Cow;
 use std::mem;
 
 use crate::{
-    parse_ops_x_row, ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, ParEmuOptions,
-    RegStepCheck, MEM_DUAL_MAX,
+    parse_ops_x_row, ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, FailureReason,
+    ParEmuOptions, RegStepCheck, MEM_DUAL_MAX,
 };
 use proofman_fields::PrimeField64;
 use zisk_common::{
@@ -21,8 +21,9 @@ use zisk_common::{DataBusTrait, EmuTrace, EmuTraceStart};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{
     EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, FREG_F0, FREG_INST,
-    FREG_RA, FREG_X0, OUTPUT_ADDR, RAM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG,
-    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, SYS_ADDR,
+    FREG_RA, FREG_X0, OUTPUT_ADDR, RAM_ADDR, REGS_IN_MAIN_TO, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
+    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
+    STORE_REG, SYS_ADDR,
 };
 
 const LOAD_SYMBOLS: [&str; 3] = ["_heap_bottom", "_heap_top", "ZISK_BUMP_HEAP_POS"];
@@ -84,8 +85,8 @@ pub struct Emu<'a> {
 /// ZiskExecutor::calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>, global_ids: &[usize], n_cores: usize, buffer_pool: &dyn BufferPool<F>,)
 ///     ZiskExecutor::witness_main_instance(&self, pctx: &ProofCtx<F>, main_instance: &MainInstance, trace_buffer: Vec<F>,)
 ///         MainSM::compute_witness<F: PrimeField64>(zisk_rom: &ZiskRom, min_traces: &[EmuTrace], chunk_size: u64, main_instance: &MainInstance, std: Arc<Std<F>>, trace_buffer: Vec<F>,) -> AirInstance<F>
-///             MainSM::fill_partial_trace<F: PrimeField64>(zisk_rom: &ZiskRom, main_trace: &mut [MainTraceRow<F>], min_trace: &EmuTrace, reg_trace: &mut EmuRegTrace, step_range_check: &mut [u32], last_reg_values: bool, with_pad_row: bool,) -> (u64, Vec<u64>, Option<MainTraceRow<F>>)
-///                 Emu::step_slice_full_trace<R: MainTraceRowOps<F>, F: PrimeField64>(&mut self, trace: &mut R, lane: usize, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace, step_range_check: Option<&mut [u32]>,)
+///             MainSM::fill_partial_trace<F: PrimeField64>(zisk_rom: &ZiskRom, main_trace: &mut [MainTraceRow<F>], min_trace: &EmuTrace, reg_trace: &mut EmuRegTrace, last_reg_values: bool, with_pad_row: bool,) -> (u64, Vec<u64>, Option<MainTraceRow<F>>)
+///                 Emu::step_slice_full_trace<R: MainTraceRowOps<F>, F: PrimeField64>(&mut self, trace: &mut R, lane: usize, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace,)
 ///                     Emu::source_a_mem_reads_consume(&mut self, instruction: &ZiskInst, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace,)
 ///
 /// 2.- When called from ZiskEmu to simply emulate a RISC-V ELF file with an input file:
@@ -1054,7 +1055,7 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                if instruction.store_offset >= 32 {
+                if instruction.store_offset > REGS_IN_MAIN_TO as i64 {
                     println!("instruction ALERT 0 {instruction:?}");
                 }
 
@@ -1149,7 +1150,7 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                if instruction.store_offset >= 32 {
+                if instruction.store_offset > REGS_IN_MAIN_TO as i64 {
                     println!("instruction ALERT 1 {instruction:?}");
                 }
 
@@ -1305,7 +1306,7 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                if instruction.store_offset >= 32 {
+                if instruction.store_offset > REGS_IN_MAIN_TO as i64 {
                     println!("instruction ALERT 2 {instruction:?}");
                 }
 
@@ -1457,7 +1458,7 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                if instruction.store_offset >= 32 {
+                if instruction.store_offset > REGS_IN_MAIN_TO as i64 {
                     println!("instruction ALERT 2 {instruction:?}");
                 }
 
@@ -1566,7 +1567,7 @@ impl<'a> Emu<'a> {
         if self.ctx.inst_ctx.error {
             eprintln!(
                 "Emu::run_fast() finished with error at step={} pc=0x{:x}",
-                self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
+                self.ctx.inst_ctx.error_step, self.ctx.inst_ctx.error_pc
             );
         }
     }
@@ -1723,6 +1724,15 @@ impl<'a> Emu<'a> {
                         (symbol.address + symbol.size - 1) as u32,
                         &symbol.name,
                     );
+                }
+                // The ZisK library merged into the ROM has no ELF symbols: its ROIs are found
+                // from the ROM and named after the library's labels.
+                if !self.rom.zkvmcalls.is_empty() {
+                    let symbols = ziskasm::assemble_zisk_library()
+                        .map(|library| library.symbols)
+                        .unwrap_or_default();
+                    let lib_rois = self.ctx.stats.add_zisklib_rois(self.rom, &symbols);
+                    println!("Added {lib_rois} ZisK library ROIs");
                 }
 
                 self.ctx.stats.load_rom_data(self.rom);
@@ -2021,7 +2031,7 @@ impl<'a> Emu<'a> {
         if self.ctx.inst_ctx.error {
             eprintln!(
                 "Emu::run() finished with error at step={} pc=0x{:x}",
-                self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
+                self.ctx.inst_ctx.error_step, self.ctx.inst_ctx.error_pc
             );
         }
 
@@ -2146,6 +2156,7 @@ impl<'a> Emu<'a> {
             } else {
                 // Check if is the first step of a new block
                 if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
+                    self.ctx.inst_ctx.blake2b_chain_cached = false;
                     emu_traces.push(EmuTrace {
                         start_state: EmuTraceStart {
                             pc: self.ctx.inst_ctx.pc,
@@ -2173,7 +2184,7 @@ impl<'a> Emu<'a> {
         if self.ctx.inst_ctx.error {
             eprintln!(
                 "Emu::par_run() finished with error at step={} pc=0x{:x}",
-                self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
+                self.ctx.inst_ctx.error_step, self.ctx.inst_ctx.error_pc
             );
         }
 
@@ -2201,6 +2212,7 @@ impl<'a> Emu<'a> {
         while !self.ctx.inst_ctx.end {
             // Check if is the first step of a new block
             if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
+                self.ctx.inst_ctx.blake2b_chain_cached = false;
                 emu_traces.push(EmuTrace {
                     start_state: EmuTraceStart {
                         pc: self.ctx.inst_ctx.pc,
@@ -2501,8 +2513,8 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             self.ctx.inst_ctx.extended_arg = instruction.jmp_offset1;
-            // round_up => (size + 7) >> 3
-            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            let number_of_mem_reads =
+                instruction.min_trace_words(self.ctx.inst_ctx.blake2b_chain_cached);
             for _ in 0..number_of_mem_reads {
                 let mem_read = mem_reads[*mem_reads_index];
                 *mem_reads_index += 1;
@@ -2579,8 +2591,8 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             self.ctx.inst_ctx.extended_arg = instruction.jmp_offset1;
-            // round_up => (size + 7) >> 3
-            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            let number_of_mem_reads =
+                instruction.min_trace_words(self.ctx.inst_ctx.blake2b_chain_cached);
             for _ in 0..number_of_mem_reads {
                 let mem_read = mem_reads[*mem_reads_index];
                 *mem_reads_index += 1;
@@ -2640,6 +2652,7 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step = emu_trace.start_state.step;
         self.ctx.inst_ctx.c = emu_trace.start_state.c;
         self.ctx.inst_ctx.regs = emu_trace.start_state.regs;
+        self.ctx.inst_ctx.blake2b_chain_cached = false;
         self.ctx.inst_ctx.emulation_mode = EmulationMode::ConsumeMemReads;
 
         let mut mem_reads_index: usize = 0;
@@ -2672,6 +2685,7 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step = emu_trace_start.step;
         self.ctx.inst_ctx.c = emu_trace_start.c;
         self.ctx.inst_ctx.regs = emu_trace_start.regs;
+        self.ctx.inst_ctx.blake2b_chain_cached = false;
         self.ctx.inst_ctx.emulation_mode = EmulationMode::ConsumeMemReads;
 
         let mut current_step_idx = 0;
@@ -2716,7 +2730,8 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             self.ctx.inst_ctx.extended_arg = instruction.jmp_offset1;
-            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            let number_of_mem_reads =
+                instruction.min_trace_words(self.ctx.inst_ctx.blake2b_chain_cached);
             for _ in 0..number_of_mem_reads {
                 let mem_read = mem_reads[*mem_reads_index];
                 *mem_reads_index += 1;
@@ -2792,7 +2807,6 @@ impl<'a> Emu<'a> {
         mem_reads: &[u64],
         mem_reads_index: &mut usize,
         reg_trace: &mut EmuRegTrace,
-        step_range_check: Option<&mut [u32]>,
     ) where
         R: MainTraceRowOps<F> + IndexedFill,
     {
@@ -2807,7 +2821,7 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.step, mem_reads_index, self.ctx.inst_ctx.pc
         );
 
-        reg_trace.clear_reg_step_ranges();
+        reg_trace.clear_reg_prev_steps();
 
         self.source_a_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
         self.source_b_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
@@ -2817,7 +2831,8 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             self.ctx.inst_ctx.extended_arg = instruction.jmp_offset1;
-            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            let number_of_mem_reads =
+                instruction.min_trace_words(self.ctx.inst_ctx.blake2b_chain_cached);
             for _ in 0..number_of_mem_reads {
                 let mem_read = mem_reads[*mem_reads_index];
                 *mem_reads_index += 1;
@@ -2830,10 +2845,6 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.data_ext_len = 0;
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
-
-        if let Some(step_range_check) = step_range_check {
-            reg_trace.update_step_range_check(step_range_check);
-        }
 
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
@@ -3014,6 +3025,17 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.end
     }
 
+    /// Returns why the execution failed and the step and pc of the failing instruction, or
+    /// None if it did not fail
+    pub fn failure(&self) -> Option<(FailureReason, u64, u64)> {
+        let ctx = &self.ctx.inst_ctx;
+        let reason = match ctx.error_code {
+            0 => FailureReason::Trap,
+            code => FailureReason::ExitCode(code),
+        };
+        ctx.error.then_some((reason, ctx.error_step, ctx.error_pc))
+    }
+
     /// Returns the number of executed steps
     pub fn number_of_steps(&self) -> u64 {
         self.ctx.inst_ctx.step
@@ -3066,7 +3088,7 @@ impl<'a> Emu<'a> {
         self.ctx.tracerv.clone()
     }
 
-    /// Gets the current values of the 32 registers
+    /// Gets the current values of the 32 RISC-V registers (not r32..r39)
     pub fn get_regs_array(&self) -> [u64; 32] {
         let mut regs_array: [u64; 32] = [0; 32];
         for (i, reg) in regs_array.iter_mut().enumerate() {
@@ -3090,13 +3112,13 @@ impl<'a> Emu<'a> {
 
     #[inline(always)]
     pub fn get_reg(&self, index: usize) -> u64 {
-        debug_assert!(index < 32);
+        debug_assert!(index < REGS_IN_MAIN_TOTAL_NUMBER);
         self.ctx.inst_ctx.regs[index]
     }
 
     #[inline(always)]
     pub fn set_reg(&mut self, index: usize, value: u64) {
-        debug_assert!(index < 32);
+        debug_assert!(index < REGS_IN_MAIN_TOTAL_NUMBER);
         self.ctx.inst_ctx.regs[index] = value;
     }
 

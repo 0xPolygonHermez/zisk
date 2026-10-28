@@ -11,6 +11,8 @@
 /// Wire messages exchanged between coordinator and workers.
 pub mod agg_tree;
 pub mod dto;
+/// The Prometheus text format, for series the `metrics` facade cannot express.
+pub mod prometheus_text;
 /// Logging/tracing initialization helpers.
 pub mod tracing;
 /// Core cluster types: worker ids, states, capacities, and job phases.

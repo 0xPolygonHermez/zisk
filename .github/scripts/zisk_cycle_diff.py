@@ -110,6 +110,45 @@ def breakdown(program, base, pr):
     )
 
 
+def read_commit(bench_dir):
+    """Return (commit, parents) as recorded by zisk_bench.sh, or (None, []) if missing."""
+    path = os.path.join(bench_dir, "commit")
+    if not os.path.isfile(path):
+        return None, []
+    with open(path) as f:
+        lines = f.read().splitlines()
+    commit = lines[0].strip() if lines else ""
+    parents = lines[1].split() if len(lines) > 1 else []
+    return (commit or None), parents
+
+
+def compared_commits(base_dir, pr_dir):
+    """Lines naming the two compared commits, with a warning if the PR side was not built on
+    the same base commit as the base side (the base branch moved during the run)."""
+    base, _ = read_commit(base_dir)
+    pr, pr_parents = read_commit(pr_dir)
+    if base is None and pr is None:
+        return []
+
+    def short(commit):
+        # Plain (not code-formatted) so that GitHub links the commits
+        return commit[:10] if commit else "unknown"
+
+    pr_line = f"**PR:** {short(pr)}"
+    if len(pr_parents) == 2:
+        # The PR side is GitHub's test merge commit: first parent base, second parent PR head
+        pr_line += f" (PR head {short(pr_parents[1])} merged into {short(pr_parents[0])})"
+    out = [f"**Base:** {short(base)}<br>", pr_line, ""]
+    if len(pr_parents) == 2 and base is not None and pr_parents[0] != base:
+        out.append(
+            f"> ⚠️ The PR side was built on base {short(pr_parents[0])}, but the base side on "
+            f"{short(base)}: differences may come from changes to the base branch, not from "
+            "this PR."
+        )
+        out.append("")
+    return out
+
+
 def main():
     if len(sys.argv) != 3:
         sys.exit(__doc__)
@@ -133,6 +172,7 @@ def main():
         "Emulator cost report (`ziskemu -X`) comparing this PR against the base branch."
     )
     out.append("")
+    out.extend(compared_commits(base_dir, pr_dir))
 
     if not rows:
         out.append("> ⚠️ No benchmark reports were produced.")

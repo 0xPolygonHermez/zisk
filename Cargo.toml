@@ -9,10 +9,10 @@ documentation = "https://0xpolygonhermez.github.io/zisk-docs/"
 categories = ["cryptography"]
 
 [workspace.metadata]
-gha_zisk_ethproofs_branch = "develop-0.13.0"
-gha_zisk_eth_client_branch = "develop-0.13.0"
+gha_zisk_ethproofs_branch = "develop-0.14.0"
+gha_zisk_eth_client_branch = "develop-0.14.0"
 gha_zisk_template_branch = "pre-develop-1.4.0-alpha"
-gha_zisk_testvectors_branch = "develop-0.4.0"
+gha_zisk_testvectors_branch = "develop-0.6.0"
 gha_pil2_compiler_branch = "develop-0.14.0"
 
 [workspace]
@@ -26,10 +26,11 @@ members = [
   "prover-backend",
   "prover-backend/macros",
   "transpilers/riscv",
-  "transpilers/riscv2zisk",
   "transpilers/common",
+  "transpilers/riscv2zisk",
   "ziskasm",
   "ziskasm/lang/rust",
+  "transpilers/wasm",
   "rom-setup",
   "setup",
   "state-machines/arith",
@@ -53,7 +54,7 @@ members = [
   "precompiles/blake2",
   "precompiles/blake3",
   "precompiles/big_int",
-  "precompiles/babyjubjub",
+  "precompiles/twisted_edwards",
   "precompiles/dma",
   "precompiles/evm",
   "precompiles/poseidon",
@@ -79,6 +80,8 @@ members = [
   "zkvm-interface",
   "verifier",
   "recurser",
+  "cuda-build",
+  "gpu-witness",
 ]
 resolver = "2"
 exclude = ["test-artifacts"]
@@ -115,12 +118,13 @@ zisk-precomp-blake2 = { path = "precompiles/blake2", version = "1.4.0-alpha" }
 zisk-precomp-blake3 = { path = "precompiles/blake3", version = "1.4.0-alpha" }
 zisk-precomp-poseidon = { path = "precompiles/poseidon", version = "1.4.0-alpha" }
 zisk-precomp-big-int = { path = "precompiles/big_int", version = "1.4.0-alpha" }
-zisk-precomp-babyjubjub = { path = "precompiles/babyjubjub", version = "1.4.0-alpha" }
+zisk-precomp-twisted-edwards = { path = "precompiles/twisted_edwards", version = "1.4.0-alpha" }
 zisk-precomp-dma = { path = "precompiles/dma", version = "1.4.0-alpha" }
 zisk-precomp-evm = { path = "precompiles/evm", version = "1.4.0-alpha" }
 zisk-riscv = { path = "transpilers/riscv", version = "1.4.0-alpha" }
 zisk-transpiler-common = { path = "transpilers/common", version = "1.4.0-alpha" }
 zisk-transpiler-riscv = { path = "transpilers/riscv2zisk", version = "1.4.0-alpha" }
+zisk-transpiler-wasm = { path = "transpilers/wasm", version = "1.4.0-alpha" }
 zisk-rom-setup = { path = "rom-setup", version = "1.4.0-alpha" }
 zisk-setup = { path = "setup", version = "1.4.0-alpha" }
 zisk-sm-arith = { path = "state-machines/arith", version = "1.4.0-alpha" }
@@ -155,37 +159,44 @@ zisk-coordinator-server = { path = "distributed/crates/coordinator-server", vers
 zisk-coordinator-api = { path = "distributed/crates/coordinator-api", version = "1.4.0-alpha" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client", version = "1.4.0-alpha" }
 
+# GPU witness kernels
+zisk-cuda-build = { path = "cuda-build", version = "1.4.0-alpha" }
+zisk-gpu-witness = { path = "gpu-witness", version = "1.4.0-alpha" }
+
 # Proofman git
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha", default-features = false }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
-pil2-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
-proofman-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
-proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
-pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
-pil2-stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
-pil2-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
-proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
+# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
+# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
+# proofman-pilfflonk = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
+# proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
+# proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha", default-features = false }
+# proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
+# pil2-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
+# proofman-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
+# proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
+# pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
+# pil2-stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
+# pil2-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
+# proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
 
 # Proofman crates.io (enable once pil2-proofman is published; use instead of the path/git blocks)
-# proofman = "1.4.0-alpha"
-# proofman-common = "1.4.0-alpha"
-# proofman-macros = "1.4.0-alpha"
-# proofman-verifier = { version = "1.4.0-alpha", default-features = false }
-# proofman-util = "1.4.0-alpha"
-# pil2-std-lib = "1.4.0-alpha"
-# proofman-witness = "1.4.0-alpha"
-# proofman-fields = "1.4.0-alpha"
-# pil2-stark-setup = "1.4.0-alpha"
-# pil2-stark-recurser = "1.4.0-alpha"
-# pil2-pilout = "1.4.0-alpha"
-# proofman-starks-lib-c = "1.4.0-alpha"
+proofman = "1.4.0-alpha"
+proofman-common = "1.4.0-alpha"
+proofman-macros = "1.4.0-alpha"
+proofman-verifier = { version = "1.4.0-alpha", default-features = false }
+proofman-util = "1.4.0-alpha"
+pil2-std-lib = "1.4.0-alpha"
+proofman-witness = "1.4.0-alpha"
+proofman-fields = "1.4.0-alpha"
+proofman-pilfflonk = "1.4.0-alpha"
+pil2-stark-setup = "1.4.0-alpha"
+pil2-stark-recurser = "1.4.0-alpha"
+pil2-pilout = "1.4.0-alpha"
+proofman-starks-lib-c = "1.4.0-alpha"
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman", version = "1.4.0-alpha" }
 # proofman-common = { path = "../pil2-proofman/common", version = "1.4.0-alpha" }
+# proofman-pilfflonk = { path = "../pil2-proofman/pilfflonk", version = "1.4.0-alpha" }
 # proofman-macros = { path = "../pil2-proofman/macros", version = "1.4.0-alpha" }
 # proofman-verifier = { path = "../pil2-proofman/verifier", version = "1.4.0-alpha", default-features = false }
 # proofman-util = { path = "../pil2-proofman/util", version = "1.4.0-alpha" }
@@ -200,6 +211,8 @@ proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofma
 # External dependencies
 arc-swap = "1"
 rayon = "1.10"
+wasmparser = "0.244"
+wat = "1"
 num-bigint = "0.4"
 num-traits = "0.2"
 num-integer = "0.1"
@@ -215,6 +228,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 toml = "0.8"
 anyhow = "1.0"
+mpi = "0.8.2"
 named-sem = "0.2.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = [

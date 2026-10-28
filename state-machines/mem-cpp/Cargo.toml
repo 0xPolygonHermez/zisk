@@ -17,11 +17,15 @@ zisk-sm-mem-common = { workspace = true }
 zisk-pil = { workspace = true }
 
 proofman-util = { workspace = true }
+proofman-fields = { workspace = true }
 tracing = { workspace = true }
 
 [features]
 default = []
 cpu-only = []
+# The planner's test knobs (`ZISK_MEM_TEST_*`, see tools/test-env/test_mem_witness.sh): the
+# release build reads none of them.
+mem-witness-test = []
 save_mem_bus_data = []
 save_mem_plans = []
 save_mem_align_counters = []
@@ -31,3 +35,6 @@ save_mem_bus_data_asm = []
 # `gpu` is set by build.rs only when CUDA is detected; declare it so the
 # `unexpected_cfgs` lint does not flag it on non-GPU targets (e.g. macOS CI).
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(gpu)'] }
+
+[build-dependencies]
+zisk-cuda-build = { workspace = true }

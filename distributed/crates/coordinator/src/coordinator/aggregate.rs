@@ -125,13 +125,19 @@ impl Coordinator {
 
         let agg_worker_id = worker_id;
 
-        // Decode before changing any state.
-        let zisk_proof = bincode::serde::decode_from_slice::<Proof, _>(
-            &proof_data.proof_data,
-            bincode::config::standard(),
-        )
-        .map(|(v, _)| v)
-        .map_err(|e| CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e)))?;
+        // Decode before changing any state. A proof that does not decode, or cannot be saved
+        // (which would complete the job with no proof for its webhook), fails the job.
+        let zisk_proof = Proof::from_bincode(&proof_data.proof_data)
+            .and_then(|p| p.ensure_saveable().map(|()| p));
+        let zisk_proof = match zisk_proof {
+            Ok(p) => p,
+            Err(e) => {
+                drop(job);
+                let reason = format!("Final proof from worker {agg_worker_id} is malformed: {e}");
+                let _ = self.fail_job(job_id, &reason).await;
+                return Err(CoordinatorError::Internal(reason));
+            }
+        };
 
         let scheduler = job.agg.as_mut().expect("checked above");
         scheduler.take_live(&agg_worker_id);
@@ -143,17 +149,13 @@ impl Coordinator {
         }
 
         self.workers_pool.release_computing_to_ready(&agg_worker_id, job_id).await;
-        job.proof = Some(zisk_proof);
+        // Workers assemble the final proof from proof words alone, which carry no seed: stamp the
+        // job's, since the final proof attests to its execution.
+        job.proof = Some(zisk_proof.with_random_seed(job.random_seed));
         job.executed_steps = Some(proof_data.executed_steps);
         job.instances = Some(proof_data.instances);
 
         job.change_state(JobState::Completed);
-
-        crate::metrics::record_job_terminal(
-            crate::metrics::OUTCOME_SUCCESS,
-            &job.workers,
-            job.phase_start_time(&JobPhase::Contributions),
-        );
 
         let end_time = Utc::now();
 
@@ -182,6 +184,36 @@ impl Coordinator {
         );
 
         let duration = Duration::from_millis(job.duration_ms.unwrap_or(0));
+
+        crate::metrics::record_job_terminal(crate::metrics::JobOutcome {
+            job_id,
+            outcome: crate::metrics::OUTCOME_SUCCESS,
+            reason: None,
+            workers: &job.workers,
+            contributions_started: job.phase_start_time(&JobPhase::Contributions),
+            duration: job.duration_ms.map(|ms| ms as f64 / 1000.0),
+            phases: Some([
+                phase1_duration.as_seconds_f64(),
+                phase2_duration.as_seconds_f64(),
+                phase3_duration.as_seconds_f64(),
+            ]),
+            steps: job.executed_steps,
+            instances: job.instances,
+            costs: Some(super::cost_per_type_from_job(&job)),
+        });
+        for (label, phase) in [("1", JobPhase::Contributions), ("2", JobPhase::Prove)] {
+            if let (Some(results), Some(start)) =
+                (job.results.get(&phase), job.phase_start_time(&phase))
+            {
+                let durations: Vec<(WorkerId, f64)> = results
+                    .iter()
+                    .map(|(worker_id, result)| {
+                        (worker_id.clone(), (result.end_time - start).as_seconds_f64())
+                    })
+                    .collect();
+                crate::metrics::record_proof_worker_phases(label, &durations);
+            }
+        }
 
         let header = format!("[Job] Finished {} successfully ✔", job_id).green();
         let duration_str = format!("Duration: {:.3}s", duration.as_secs_f32()).bold();
@@ -413,15 +445,18 @@ impl Coordinator {
         // Build proof bytes and stats for the event before releasing the lock
         let prove_event = {
             let proof_bytes = match job.proof.as_ref() {
-                Some(p) => bincode::serde::encode_to_vec(p, bincode::config::standard())
-                    .unwrap_or_else(|e| {
-                        warn!("Failed to serialize proof for event on job {}: {}", job_id, e);
-                        vec![]
-                    }),
+                Some(p) => p.to_bincode().unwrap_or_else(|e| {
+                    warn!("Failed to serialize proof for event on job {}: {}", job_id, e);
+                    vec![]
+                }),
                 None => vec![],
             };
             let stats = exec_stats_from_job(&job);
-            CoordinatorJobEvent::Completed(CoordinatorJobResult::Prove { proof_bytes, stats })
+            CoordinatorJobEvent::Completed(CoordinatorJobResult::Prove {
+                proof_bytes,
+                stats,
+                random_seed: job.random_seed,
+            })
         };
 
         // Release job lock before calling post_launch_proof
@@ -663,6 +698,7 @@ impl Coordinator {
             })
             .collect();
 
+        #[allow(deprecated)] // `metadata` is deprecated and left empty.
         let req = ExecuteTaskRequestDto {
             worker_id: dispatch.worker.clone(),
             job_id: job_id.clone(),

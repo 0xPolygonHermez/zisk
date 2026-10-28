@@ -26,7 +26,7 @@ use zisk_common::{Instance, InstanceCtx, Plan};
 use zisk_pil::ZISK_AIRGROUP_ID;
 
 use zisk_asm_runner::AsmRunnerRH;
-use zisk_common::LateJoinHandle;
+use zisk_common::{LateJoinHandle, LateValue};
 
 use zisk_core::ZiskRom;
 use zisk_sm_rom::RomSM;
@@ -58,7 +58,8 @@ pub struct StaticSMBundle<F: PrimeField64> {
     /// Every built-in and precompile SM registered in this bundle.
     sm: Vec<SMType<F>>,
 
-    /// The standard library instance to be shared across built-in SMs and precompiles.
+    /// The standard library instance; `publish_frops_from_asm` publishes the FROPS
+    /// multiplicity into its virtual tables.
     std: Arc<Std<F>>,
 }
 
@@ -178,12 +179,10 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         .map_err(|e| ExecutorError::Internal(format!("ROM histogram unavailable: {e}")))?
     }
 
-    /// Retires a runner a previous execution left unconsumed, and releases its
-    /// histogram. Must run before the next execution touches the ASM shared memory.
-    pub(crate) fn drain_rh(&self) {
-        if let Some(rom_sm) = self.rom_sm() {
-            rom_sm.rh().drain();
-        }
+    /// The cell the bundle's `RomSM` parks the ROM-histogram runner in, or `None`
+    /// if the bundle has no `RomSM`.
+    pub(crate) fn rom_histogram(&self) -> Option<Arc<LateValue<AsmRunnerRH>>> {
+        self.rom_sm().map(|rom_sm| rom_sm.rh())
     }
 
     /// The bundle's `RomSM`, or `None` if it has none. The one place that knows where
@@ -193,11 +192,6 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) => Some(rom_sm),
             _ => None,
         })
-    }
-
-    /// Getter for the shared `Std` instance in the bundle, used by built-in SMs and precompiles.
-    pub fn get_std(&self) -> Arc<Std<F>> {
-        self.std.clone()
     }
 
     /// Configure the instances of the SMs in the bundle for the given plans.
@@ -259,9 +253,4 @@ pub fn plan_sec<F: PrimeField64>(
     }
 
     plans
-}
-
-/// Appends mem-related plans (from the ASM MO runner) into the mem slot.
-pub fn extend_mem_plans(planning: &mut BTreeMap<usize, Vec<Plan>>, plans: Vec<Plan>) {
-    planning.entry(MEM_POSITION).or_default().extend(plans);
 }

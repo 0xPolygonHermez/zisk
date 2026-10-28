@@ -1,0 +1,60 @@
+; ============================================================================
+; msb.zisk - most significant set bit across n 256-bit values, hinted by
+; FCALL_MSB_POS_256 and checked, as ziskos fcall_msb_pos_256{,_2,_4}.
+; ============================================================================
+
+; (u64 limb, u64 bit) zisklib_msb_pos_256(const u64* x, u64 n)
+;   [r10 = x (n consecutive 4-word values), r11 = n] -> r10 = limb, r11 = bit.
+;   Checks that no value has a set bit above (limb, bit) and that one has it set.
+;   Halts if the hint is wrong or every value is zero. Uses r5-r7, r12-r15.
+zisklib_msb_pos_256:
+	fcall_param(1, r11) -> r14
+	copyb(0, r10) -> r5
+	copyb(0, r11) -> r6
+msb_par:
+	fcall_param(4, r5) -> r14
+	add(r5, 32) -> r5
+	sub(r6, 1) -> r6
+	ltu(0, r6), j(msb_par)
+	fcall(FCALL_MSB_POS_256, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r12
+	fcall_get(0, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r13
+	ltu(r12, 4), j(msb_lok)
+	jump(msb_bad)
+msb_lok:
+	ltu(r13, 64), j(msb_bok)
+	jump(msb_bad)
+msb_bok:
+	; r15 = OR over the values of x_i[limb] >> bit, each one 0 or 1
+	copyb(0, 0) -> r15
+	copyb(0, r10) -> r5
+	copyb(0, r11) -> r6
+msb_val:
+	sll(r12, 3) -> r7
+	add(r5, r7) -> r7
+	copyb(r7, 8[a + 0]) -> r14
+	srl(r14, r13) -> r14
+	ltu(r14, 2), j(msb_vok)
+	jump(msb_bad)
+msb_vok:
+	or(r15, r14) -> r15
+	; the words above limb must be zero
+msb_hi:
+	add(r7, 8) -> r7
+	sub(r7, r5) -> r14
+	eq(r14, 32), j(msb_next)
+	copyb(r7, 8[a + 0]) -> r14
+	eq(r14, 0), j(msb_hi)
+	jump(msb_bad)
+msb_next:
+	add(r5, 32) -> r5
+	sub(r6, 1) -> r6
+	ltu(0, r6), j(msb_val)
+	eq(r15, 1), j(msb_ok)
+msb_bad:
+	copyb(0, 0) -> r10, end
+msb_ok:
+	copyb(0, r12) -> r10
+	copyb(0, r13) -> r11
+	ret

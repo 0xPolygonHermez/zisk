@@ -4,7 +4,10 @@ mod mem_inputs;
 pub use mem_module::*;
 mod mem_module;
 pub use mem_inputs::*;
+mod mem_gpu_fill;
 mod mem_sm;
+#[cfg(feature = "mem-witness-test")]
+mod mem_trace_hash;
 pub use mem_sm::*;
 mod mem_witness_split;
 mod rom_data_sm;

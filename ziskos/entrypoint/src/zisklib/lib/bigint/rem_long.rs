@@ -88,15 +88,16 @@ pub fn rem_long_init(
     rem.to_vec()
 }
 
-/// Computes the remainder of two large numbers (with scratch)
+/// Computes the remainder of two large numbers (with scratch): out = a mod b
 ///
 /// # Assumptions
 /// - `len(a) > 0` and `len(b) > 0`
 /// - `a` and `b` have no leading zeros (unless `a` being zero)
 /// - `b > 0`
+/// - `out` has at least `len(b)` limbs
 ///
 /// # Returns
-/// The remainder: a mod b
+/// The number of limbs in the result
 ///
 /// # Note
 /// Not optimal for `len(b) == 1`, use `rem_short_init` instead
@@ -104,8 +105,9 @@ pub fn rem_long(
     a: &[U256],
     b: &[U256],
     scratch: &mut RemLongScratch,
+    out: &mut [U256],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> Vec<U256> {
+) -> usize {
     #[cfg(debug_assertions)]
     {
         let len_a = a.len();
@@ -121,9 +123,11 @@ pub fn rem_long(
     // Check if a = b, a < b or a > b
     let comp = U256::compare_slices(a, b);
     if comp == Ordering::Less {
-        return a.to_vec();
+        out[..a.len()].copy_from_slice(a);
+        return a.len();
     } else if comp == Ordering::Equal {
-        return vec![U256::ZERO];
+        out[0] = U256::ZERO;
+        return 1;
     }
     // We can assume a > b from here on
 
@@ -166,7 +170,8 @@ pub fn rem_long(
         hints,
     );
 
-    rem.to_vec()
+    out[..rem.len()].copy_from_slice(rem);
+    rem.len()
 }
 
 /// Verify that a = q·b + r

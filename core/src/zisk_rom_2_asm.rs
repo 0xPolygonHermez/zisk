@@ -4,15 +4,27 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use ziskos::zisklib::FCALL_INPUT_READY_ID;
+use ziskos::zisklib::{FCALL_INPUT_READY_ID, FCALL_RANDOM_SEED_ID};
 
 use crate::{
     frops_asm::{self, FropsCallSite, FropsOperand, FropsSpec},
     zisk_ops::ZiskOp,
     ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR, INPUT_ADDR, M64,
-    ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM,
-    STORE_NONE, STORE_REG, UART_ADDR, ZISKLIB_ROM_ADDR,
+    REGS_IN_MAIN_TO, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
+    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR, ZISKLIB_ROM_ADDR,
 };
+use crate::{
+    zisk_ops::blake2b_gap_is_provable, BLAKE2B_RD_CHAIN, BLAKE2B_ROUND_MASK, BLAKE2B_WR_CHAIN,
+};
+
+/// Last register held in the main trace; the asm keeps a `reg_N` slot for r0..=LAST_REG.
+const LAST_REG: u64 = REGS_IN_MAIN_TO as u64;
+
+// Minimal-trace chunk layout, in u64 words: pc, sp, c, step, reg[1..=LAST_REG], last_c, end,
+// steps, mem_reads_size. Must match `emulator-asm` (constants.hpp, server.c, trace_logs.c) and
+// `AsmMTChunk` in emulator-asm/asm-runner/src/asm_mt.rs.
+const CHUNK_LAST_C: u64 = 4 + LAST_REG;
+const CHUNK_MEM_READS_SIZE: u64 = CHUNK_LAST_C + 3;
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
 // Reg rax is used to store a function’s return value.
@@ -35,6 +47,8 @@ const REG_C_W: &str = "r15d";
 const REG_C_H: &str = "r15w";
 const REG_C_B: &str = "r15b";
 const REG_FLAG: &str = "rdx";
+const REG_FLAG_W: &str = "edx";
+const REG_FLAG_B: &str = "dl";
 const REG_STEP: &str = "r14";
 const REG_VALUE: &str = "r9";
 const REG_VALUE_W: &str = "r9d";
@@ -57,6 +71,18 @@ const REG_PC: &str = "r8";
 // Only used to calculate histogram position for every rom pc
 const TRACE_ADDR_NUMBER: u64 = 0xd0000000 + 0x20;
 
+// Control input and output shared memory pages, mapped by the emulator at these fixed addresses.
+// They must match CONTROL_INPUT_ADDR and CONTROL_OUTPUT_ADDR in emulator-asm/src/constants.hpp.
+// The generated code accesses them as absolute 32-bit displacements, which are sign-extended, so
+// they must lie below 2GB; and they must lie outside the guest data regions, so they sit just
+// below INPUT_ADDR, at the top of the BIOS ROM span, which the guest never accesses as data.
+const CONTROL_INPUT_ADDR: u64 = 0x0FF0_0000;
+const CONTROL_OUTPUT_ADDR: u64 = 0x0FF0_1000;
+const _: () = {
+    assert!(CONTROL_INPUT_ADDR < 0x8000_0000 && CONTROL_OUTPUT_ADDR < 0x8000_0000);
+    assert!(CONTROL_OUTPUT_ADDR + 0x1000 <= INPUT_ADDR);
+};
+
 // Fcall params and result lengths
 // NOTE: if these parameters are update, review dma_constants.inc
 const FCALL_PARAMS_LENGTH: u64 = 386;
@@ -78,24 +104,46 @@ const XMM_MAPPED_REGS: [u64; 16] = [1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
 
 const F_MOPS_CLEAR_WRITE_BYTE: u64 = 1 << 37;
 
-const F_MOPS_BLOCK_READ: u64 = 0x0000_000A_0000_0000;
-const F_MOPS_BLOCK_WRITE: u64 = 0x0000_000B_0000_0000;
+// Memory-ops records are tagged 8-byte words: bit 63 set on the header word, clear on payload
+// words, so a consumer finds record boundaries in parallel. A read is one header word; a write
+// adds the value with its bit 63 moved to header bit 62; a block read adds the step field. The
+// light form (no values, no steps: header bits 58 and 62) is one word per record. Layout:
+// state-machines/mem-cpp/cpp/mops_format.hpp.
+const F_MOPS_TAG: u64 = 1 << 63;
 
-const F_MOPS_READ_8: u64 = 0x0000_0008_0000_0000;
-const F_MOPS_READ_4: u64 = 0x0000_0004_0000_0000;
-const F_MOPS_READ_2: u64 = 0x0000_0002_0000_0000;
-const F_MOPS_READ_1: u64 = 0x0000_0001_0000_0000;
+const F_MOPS_BLOCK_READ: u64 = 0x0000_000A_0000_0000 | F_MOPS_TAG;
 
-const F_MOPS_WRITE_8: u64 = 0x0000_0018_0000_0000;
-const F_MOPS_WRITE_4: u64 = 0x0000_0014_0000_0000;
-const F_MOPS_WRITE_2: u64 = 0x0000_0012_0000_0000;
-const F_MOPS_WRITE_1: u64 = 0x0000_0011_0000_0000;
+const F_MOPS_READ_8: u64 = 0x0000_0008_0000_0000 | F_MOPS_TAG;
+const F_MOPS_READ_4: u64 = 0x0000_0004_0000_0000 | F_MOPS_TAG;
+const F_MOPS_READ_2: u64 = 0x0000_0002_0000_0000 | F_MOPS_TAG;
+const F_MOPS_READ_1: u64 = 0x0000_0001_0000_0000 | F_MOPS_TAG;
 
-const F_MOPS_ALIGNED_READ: u64 = 0x0000_000C_0000_0000;
-const F_MOPS_ALIGNED_WRITE: u64 = 0x0000_000D_0000_0000;
+const F_MOPS_WRITE_8: u64 = 0x0000_0018_0000_0000 | F_MOPS_TAG;
+const F_MOPS_WRITE_4: u64 = 0x0000_0014_0000_0000 | F_MOPS_TAG;
+const F_MOPS_WRITE_2: u64 = 0x0000_0012_0000_0000 | F_MOPS_TAG;
+const F_MOPS_WRITE_1: u64 = 0x0000_0011_0000_0000 | F_MOPS_TAG;
+
+const F_MOPS_ALIGNED_READ: u64 = 0x0000_000C_0000_0000 | F_MOPS_TAG;
+/// An aligned 8-byte read with its value: the free-input word, whose reads are fcall results.
+const F_MOPS_READ_8_VALUE: u64 = 0x0000_0028_0000_0000 | F_MOPS_TAG;
+const F_MOPS_ALIGNED_WRITE: u64 = 0x0000_000D_0000_0000 | F_MOPS_TAG;
 // const F_MOPS_ALIGNED_BLOCK_READ: u64 = 0x0000_000E_0000_0000;
-// const F_MOPS_ALIGNED_BLOCK_WRITE: u64 = 0x0000_000F_0000_0000;
+const F_MOPS_ALIGNED_BLOCK_WRITE: u64 = 0x0000_000F_0000_0000 | F_MOPS_TAG;
+// Light form: a write header without a value word, a block header without a step word.
+const F_MOPS_NO_VALUE_BIT: u64 = 58;
+const F_MOPS_NO_PAYLOAD_BIT: u64 = 62;
 const F_MOPS_BLOCK_LENGTH_SHIFT: u64 = 36;
+// Non-block headers: `(step_in_chunk << 2) | slot` at bits 38-57. Block records carry the same
+// field, at the same position, in their payload word.
+const F_MOPS_STEP_SHIFT: u64 = 38;
+/// Trace space the memory-ops runner keeps for the initialised-data records at the ROM entry,
+/// two words per data word (constants.hpp MAX_MO_INIT_DATA_MARGIN).
+pub const MAX_MO_INIT_DATA_MARGIN: u64 = 64 << 20;
+/// The most memory-ops bytes one step can write (constants.hpp TRACE_TARGET_MO mirrors it): the
+/// runner keeps that much room before the end of the mapped stream.
+pub const MAX_MO_BYTES_PER_STEP: u64 = 1024;
+// The step field of a record holds the step in its chunk and 2 slot bits in 20 bits.
+const _: () = assert!(crate::CHUNK_SIZE_BITS + 2 <= 20);
 
 // const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x100000; // 1MB
 const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x8000000; // 128MB
@@ -138,6 +186,8 @@ pub enum AsmGenerationMethod {
     AsmRomHistogram,
     /// Generate assembly code to compute the memory operations [w/r, width, address] trace
     AsmMemOp,
+    /// The memory operations trace in its light form: one word per record, no values, no steps
+    AsmMemOpLight,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -149,8 +199,18 @@ pub struct ZiskAsmRegister {
                          // (e.g. "rax")
 }
 
+/// A precompile output block whose per-word write records are emitted once the precompile ran.
+#[derive(Debug, Clone)]
+struct MopsPendingWrite {
+    /// Parameter slot holding the block's address, or `None` when `mops_base` is the block.
+    param_index: Option<u64>,
+    words: u64,
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct ZiskAsmContext {
+    mops_pending_writes: Vec<MopsPendingWrite>,
+    mem_mops_base: String,
     pc: u64,
     next_pc: u64,
     flag_is_always_one: bool,
@@ -183,7 +243,7 @@ pub struct ZiskAsmContext {
     mem_chunk_start_step: String,
     fcall_ctx: String,
     mem_rsp: String,        // Backup of rsp register value from caller
-    mem_free_input: String, // Free input address (0x40000000) used in free call operations, but stored in memory to allow sharing the input shared memory
+    mem_free_input: String, // Free input address (FREE_INPUT_ADDR) used in free call operations, but stored in memory to allow sharing the input shared memory
     mem_precompile_results_address: String, // Address where precompile results are read from
     mem_precompile_written_address: String, // Address where precompile written counter is stored
     mem_precompile_read_address: String, // Address where precompile read counter is stored
@@ -218,6 +278,10 @@ impl ZiskAsmContext {
     }
     pub fn mem_op(&self) -> bool {
         self.mode == AsmGenerationMethod::AsmMemOp
+            || self.mode == AsmGenerationMethod::AsmMemOpLight
+    }
+    pub fn light_mops(&self) -> bool {
+        self.mode == AsmGenerationMethod::AsmMemOpLight
     }
 
     // Creates a comment with the specified prefix and sufix, i.e. with the requested syntax
@@ -250,6 +314,7 @@ impl ZiskAsmContext {
                 | ZiskOp::Sha256
                 | ZiskOp::Poseidon2
                 | ZiskOp::Poseidon1
+                | ZiskOp::Poseidon2KoalaBear
                 | ZiskOp::Arith256
                 | ZiskOp::Arith256Mod
                 | ZiskOp::Secp256k1Add
@@ -270,6 +335,7 @@ impl ZiskAsmContext {
                 | ZiskOp::Secp256r1Dbl
                 | ZiskOp::Blake2b
                 | ZiskOp::BabyJubJubAdd
+                | ZiskOp::Ed25519Add
                 | ZiskOp::Blake3
                 | ZiskOp::Blake2s
         )
@@ -303,6 +369,9 @@ impl ZiskAsmContext {
         self.precompile_results()
     }
     pub fn precompile_results_babyjubjubadd(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_ed25519add(&self) -> bool {
         self.precompile_results()
     }
     pub fn precompile_results_fcall(&self) -> bool {
@@ -584,16 +653,20 @@ impl ZiskRom2Asm {
         ctx.mem_trace_address = format!("qword {}[MEM_TRACE_ADDRESS]", ctx.ptr);
         ctx.mem_chunk_address = format!("qword {}[MEM_CHUNK_ADDRESS]", ctx.ptr);
         ctx.mem_chunk_start_step = format!("qword {}[MEM_CHUNK_START_STEP]", ctx.ptr);
+        ctx.mem_mops_base = format!("qword {}[MEM_MOPS_BASE]", ctx.ptr);
         ctx.fcall_ctx = "fcall_ctx".to_string();
         ctx.mem_rsp = format!("qword {}[MEM_RSP]", ctx.ptr);
         ctx.mem_free_input = format!("qword {}[MEM_FREE_INPUT]", ctx.ptr);
         if ctx.precompile_results() {
             ctx.mem_precompile_results_address =
                 format!("qword {}[MEM_PRECOMPILE_RESULTS_ADDRESS]", ctx.ptr);
-            ctx.mem_precompile_written_address = format!("qword {}[0x70000000]", ctx.ptr);
-            ctx.mem_precompile_read_address = format!("qword {}[0x70001000]", ctx.ptr);
+            ctx.mem_precompile_written_address =
+                format!("qword {}[0x{CONTROL_INPUT_ADDR:x}]", ctx.ptr);
+            ctx.mem_precompile_read_address =
+                format!("qword {}[0x{CONTROL_OUTPUT_ADDR:x}]", ctx.ptr);
         }
-        ctx.mem_input_written_address = format!("qword {}[0x70000010]", ctx.ptr);
+        ctx.mem_input_written_address =
+            format!("qword {}[0x{:x}]", ctx.ptr, CONTROL_INPUT_ADDR + 0x10);
 
         // Preamble
         *code += ".intel_syntax noprefix\n";
@@ -607,8 +680,10 @@ impl ZiskRom2Asm {
         *code += ".comm MEM_END, 8, 8\n";
         *code += ".comm MEM_ERROR, 8, 8\n";
         *code += ".comm MEM_TRACE_ADDRESS, 8, 8\n";
+        *code += ".comm MEM_MOPS_BASE, 8, 8\n";
         *code += ".comm MEM_CHUNK_ADDRESS, 8, 8\n";
         *code += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
+        *code += ".comm MEM_BLAKE2B_CHAIN, 8, 8\n";
         *code += ".comm MEM_RSP, 8, 8\n";
         *code += ".comm MEM_FREE_INPUT, 8, 8\n";
         if ctx.precompile_results() {
@@ -616,7 +691,7 @@ impl ZiskRom2Asm {
         }
 
         // Allocate space for the registers
-        for r in 0u64..35u64 {
+        for r in 0u64..=LAST_REG {
             if !XMM_MAPPED_REGS.contains(&r) {
                 *code += &format!(".comm reg_{r}, 8, 8\n");
             }
@@ -655,6 +730,7 @@ impl ZiskRom2Asm {
         *code += ".extern opcode_secp256r1_add\n";
         *code += ".extern opcode_secp256r1_dbl\n";
         *code += ".extern opcode_babyjubjub_add\n";
+        *code += ".extern opcode_ed25519_add\n";
         *code += ".extern opcode_fcall\n";
         *code += ".extern opcode_bn254_curve_add\n";
         *code += ".extern opcode_bn254_curve_dbl\n";
@@ -779,7 +855,7 @@ impl ZiskRom2Asm {
         // Initialize registers to zero
         *code += &ctx.full_line_comment("Set RISC-V registers to zero".to_string());
 
-        for r in 0u64..35u64 {
+        for r in 0u64..=LAST_REG {
             if !XMM_MAPPED_REGS.contains(&r) {
                 *code += &format!("\tmov qword {}[reg_{}], 0\n", ctx.ptr, r);
             }
@@ -1194,13 +1270,10 @@ impl ZiskRom2Asm {
                 continue;
             }
 
-            // The ZisK library is entered only by *static* jumps, never dynamically, so its
-            // instructions are never a dynamic-jump target and need no map_pc entry. Skipping
-            // the reserved library window [ZISKLIB_ROM_ADDR, FLOAT_LIB_ROM_ADDR) also avoids
-            // filling the large ROM gap between the guest program and the library with one
-            // `.quad emu_end` per address (tens of millions of entries). The library's own
-            // `ret` back into guest code IS dynamic, but it targets guest addresses, which are
-            // resolved through the unaffected map_pc_{ROM_ADDR} entries.
+            // The reserved ZisK library window [ZISKLIB_ROM_ADDR, FLOAT_LIB_ROM_ADDR) gets a
+            // table of its own (below), based at ZISKLIB_ROM_ADDR: mapping it here would fill
+            // the large ROM gap between the guest program and the library with one
+            // `.quad emu_end` per address (tens of millions of entries).
             if (ZISKLIB_ROM_ADDR..FLOAT_LIB_ROM_ADDR).contains(key) {
                 continue;
             }
@@ -1234,6 +1307,30 @@ impl ZiskRom2Asm {
 
             // Update previous key
             previous_key = *key;
+        }
+
+        // The ZisK library's table, indexed by `pc - ZISKLIB_ROM_ADDR`. Library code reaches
+        // its own addresses dynamically: a `ret` from a library routine that the library
+        // itself called jumps to the library address left in r1.
+        let mut previous_key: Option<u64> = None;
+        for &key in &rom.sorted_pc_list {
+            if key & 0x1 != 0 || !(ZISKLIB_ROM_ADDR..FLOAT_LIB_ROM_ADDR).contains(&key) {
+                continue;
+            }
+            // Pad from the table base (first entry) or from the previous entry.
+            let pad_from = match previous_key {
+                None if key > ZISKLIB_ROM_ADDR => {
+                    *code += &format!("map_pc_{ZISKLIB_ROM_ADDR:x}: \t.quad emu_end\n");
+                    ZISKLIB_ROM_ADDR + 1
+                }
+                None => key,
+                Some(previous_key) => previous_key + 1,
+            };
+            for _ in pad_from..key {
+                *code += "\t.quad emu_end\n";
+            }
+            *code += &format!("map_pc_{key:x}: \t.quad pc_{key:x}\n");
+            previous_key = Some(key);
         }
         *code += "\n";
     }
@@ -1388,7 +1485,7 @@ impl ZiskRom2Asm {
                 *code +=
                     &ctx.full_line_comment(format!("a=SRC_REG reg={}", instruction.a_offset_imm0));
 
-                assert!(instruction.a_offset_imm0 <= 34);
+                assert!(instruction.a_offset_imm0 <= LAST_REG);
 
                 // Read from memory and store in the proper register: a or c
                 let dest_reg = if ctx.store_a_in_c { REG_C } else { REG_A };
@@ -1459,7 +1556,7 @@ impl ZiskRom2Asm {
                 }
 
                 if ctx.mem_op() {
-                    Self::src_read_mops(ctx, code);
+                    Self::src_read_mops(ctx, code, 0);
                 }
 
                 ctx.a.is_saved = true;
@@ -1533,7 +1630,7 @@ impl ZiskRom2Asm {
                 *code +=
                     &ctx.full_line_comment(format!("b=SRC_REG reg={}", instruction.b_offset_imm0));
 
-                assert!(instruction.b_offset_imm0 <= 34);
+                assert!(instruction.b_offset_imm0 <= LAST_REG);
 
                 // Read from memory and store in the proper register: b or c
                 let dest_reg = if ctx.store_b_in_c { REG_C } else { REG_B };
@@ -1627,7 +1724,7 @@ impl ZiskRom2Asm {
                 ctx.b.is_saved = !ctx.store_b_in_c;
 
                 if ctx.mem_op() {
-                    Self::src_read_mops(ctx, code);
+                    Self::src_read_mops(ctx, code, 1);
                 }
             }
             SRC_IMM => {
@@ -1676,8 +1773,14 @@ impl ZiskRom2Asm {
                 // The ROM-histogram mode is the exception: the FROPS count emitted further down
                 // reads `a` from REG_A, so overwriting it here would count the row of
                 // `a + b_offset_imm0` instead of the row of `a`.
+                //
+                // An indirect store is the other exception: STORE_IND forms its address from
+                // REG_A too (`a + store_offset`), so `a` must survive the read.  The RISC-V
+                // transpiler never pairs SRC_IND with STORE_IND, but the wasm lowering does for
+                // its slot-to-slot copies (`copy_slot`: `mem[FP+dst] = mem[FP+src]`).
                 let mut reg_address: &str = REG_A;
                 if !ctx.rom_histogram()
+                    && instruction.store != STORE_IND
                     && (instruction.op == ZiskOp::COPYB
                         || instruction.op == ZiskOp::SIGNEXTEND_B
                         || instruction.op == ZiskOp::SIGNEXTEND_H
@@ -2041,7 +2144,7 @@ impl ZiskRom2Asm {
             STORE_REG => {
                 assert!(ctx.c.is_saved);
                 assert!(instruction.store_offset >= 0);
-                assert!(instruction.store_offset <= 34);
+                assert!(instruction.store_offset <= LAST_REG as i64);
 
                 *code +=
                     &ctx.full_line_comment(format!("STORE_REG reg={}", instruction.store_offset));
@@ -2712,6 +2815,8 @@ impl ZiskRom2Asm {
             | ZiskOp::Ror
             | ZiskOp::RorW
             | ZiskOp::SllUW => ctx.store_a_in_c = true,
+            // c = (a | b) & 7 is computed in place over a
+            ZiskOp::Unal8 => ctx.store_a_in_c = true,
             // lea c, [b + a*scale] needs both operands in a register
             ZiskOp::Sh1add | ZiskOp::Sh2add | ZiskOp::Sh3add => {
                 ctx.store_a_in_a = true;
@@ -2924,6 +3029,39 @@ impl ZiskRom2Asm {
                 );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Unal8 => {
+                // c = flag = ((a | b) & 7 != 0): 1 iff a or b is not a multiple of 8
+                assert!(ctx.store_a_in_c);
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Unal8: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                }
+                *code += &format!(
+                    "\tor {}, {} {}\n",
+                    REG_C,
+                    ctx.b.string_value,
+                    ctx.comment_str("Unal8: c = a | b")
+                );
+                *code += &format!("\tand {}, 7 {}\n", REG_C, ctx.comment_str("Unal8: c = c & 7"));
+                *code += &format!("\tjnz pc_{:x}_unal8_true\n", ctx.pc);
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\tjmp pc_{:x}_unal8_done\n", ctx.pc);
+                *code += &format!("pc_{:x}_unal8_true:\n", ctx.pc);
+                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("pc_{:x}_unal8_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
             }
             ZiskOp::Sub => {
                 assert!(ctx.store_a_in_c);
@@ -3336,16 +3474,7 @@ impl ZiskRom2Asm {
                     ctx.b.string_value,
                     ctx.comment_str("Eq: a == b ?")
                 );
-                *code += &format!("\tje pc_{:x}_equal_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_equal_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_equal_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_equal_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "e");
             }
             ZiskOp::EqW => {
                 // Make sure a is in REG_A to compare it against b (constant, expression or reg)
@@ -3391,16 +3520,7 @@ impl ZiskRom2Asm {
                         ctx.comment_str("EqW: a == b ?")
                     );
                 }
-                *code += &format!("\tje pc_{:x}_equal_w_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_equal_w_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_equal_w_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_equal_w_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "e");
             }
             ZiskOp::Ltu => {
                 assert!(ctx.store_a_in_a);
@@ -3423,16 +3543,7 @@ impl ZiskRom2Asm {
                     ctx.b.string_value,
                     ctx.comment_str("Ltu: a == b ?")
                 );
-                *code += &format!("\tjb pc_{:x}_ltu_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_ltu_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_ltu_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_ltu_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "b");
             }
             ZiskOp::Lt => {
                 assert!(ctx.store_a_in_a);
@@ -3455,16 +3566,7 @@ impl ZiskRom2Asm {
                     ctx.b.string_value,
                     ctx.comment_str("Lt: a == b ?")
                 );
-                *code += &format!("\tjl pc_{:x}_lt_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_lt_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_lt_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_lt_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "l");
             }
             ZiskOp::LtuW => {
                 assert!(ctx.store_a_in_a);
@@ -3502,16 +3604,7 @@ impl ZiskRom2Asm {
                         ctx.comment_str("LtuW: a < b ?")
                     );
                 }
-                *code += &format!("\tjb pc_{:x}_ltuw_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_ltuw_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_ltuw_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_ltuw_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "b");
             }
             ZiskOp::LtW => {
                 assert!(ctx.store_a_in_a);
@@ -3549,16 +3642,7 @@ impl ZiskRom2Asm {
                         ctx.comment_str("LtW: a < b ?")
                     );
                 }
-                *code += &format!("\tjl pc_{:x}_ltw_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_ltw_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_ltw_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_ltw_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "l");
             }
             ZiskOp::Leu => {
                 assert!(ctx.store_a_in_a);
@@ -3581,16 +3665,7 @@ impl ZiskRom2Asm {
                     ctx.b.string_value,
                     ctx.comment_str("Leu: a == b ?")
                 );
-                *code += &format!("\tjbe pc_{:x}_leu_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_leu_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_leu_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_leu_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "be");
             }
             ZiskOp::Le => {
                 assert!(ctx.store_a_in_a);
@@ -3613,16 +3688,7 @@ impl ZiskRom2Asm {
                     ctx.b.string_value,
                     ctx.comment_str("Le: a == b ?")
                 );
-                *code += &format!("\tjle pc_{:x}_le_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_le_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_le_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_le_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "le");
             }
             ZiskOp::LeuW => {
                 assert!(ctx.store_a_in_a);
@@ -3660,16 +3726,7 @@ impl ZiskRom2Asm {
                         ctx.comment_str("LeuW: a <= b ?")
                     );
                 }
-                *code += &format!("\tjbe pc_{:x}_leuw_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_leuw_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_leuw_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_leuw_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "be");
             }
             ZiskOp::LeW => {
                 assert!(ctx.store_a_in_a);
@@ -3707,16 +3764,7 @@ impl ZiskRom2Asm {
                         ctx.comment_str("LeW: a <= b ?")
                     );
                 }
-                *code += &format!("\tjle pc_{:x}_lew_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_lew_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_lew_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_lew_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "le");
             }
             ZiskOp::And => {
                 assert!(ctx.store_a_in_c);
@@ -4861,6 +4909,13 @@ impl ZiskRom2Asm {
                 *code +=
                     &format!("\tmov {}, {} {}\n", REG_C, REG_B, ctx.comment_str("MinuW: c = b "));
                 *code += &format!("pc_{:x}_minuw_a_is_below_b:\n", ctx.pc);
+                // The result is the chosen 32-bit value sign-extended, as in op_minu_w
+                *code += &format!(
+                    "\tmovsxd {}, {} {}\n",
+                    REG_C,
+                    REG_C_W,
+                    ctx.comment_str("MinuW: c = sign extend c(32b)")
+                );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -4877,6 +4932,13 @@ impl ZiskRom2Asm {
                 *code +=
                     &format!("\tmov {}, {} {}\n", REG_C, REG_B, ctx.comment_str("MinW: c = b"));
                 *code += &format!("pc_{:x}_minw_a_is_below_b:\n", ctx.pc);
+                // The result is the chosen 32-bit value sign-extended, as in op_min_w
+                *code += &format!(
+                    "\tmovsxd {}, {} {}\n",
+                    REG_C,
+                    REG_C_W,
+                    ctx.comment_str("MinW: c = sign extend c(32b)")
+                );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -4957,6 +5019,13 @@ impl ZiskRom2Asm {
                 *code +=
                     &format!("\tmov {}, {} {}\n", REG_C, REG_B, ctx.comment_str("MaxuW: c = b"));
                 *code += &format!("pc_{:x}_maxuw_a_is_above_b:\n", ctx.pc);
+                // The result is the chosen 32-bit value sign-extended, as in op_maxu_w
+                *code += &format!(
+                    "\tmovsxd {}, {} {}\n",
+                    REG_C,
+                    REG_C_W,
+                    ctx.comment_str("MaxuW: c = sign extend c(32b)")
+                );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -4973,6 +5042,13 @@ impl ZiskRom2Asm {
                 *code +=
                     &format!("\tmov {}, {} {}\n", REG_C, REG_B, ctx.comment_str("MaxW: c = b"));
                 *code += &format!("pc_{:x}_maxw_a_is_above_b:\n", ctx.pc);
+                // The result is the chosen 32-bit value sign-extended, as in op_max_w
+                *code += &format!(
+                    "\tmovsxd {}, {} {}\n",
+                    REG_C,
+                    REG_C_W,
+                    ctx.comment_str("MaxW: c = sign extend c(32b)")
+                );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -5142,6 +5218,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code +=
                     &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Keccak: c = 0"));
@@ -5149,29 +5228,32 @@ impl ZiskRom2Asm {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sha256 => {
-                // Use the memory address as the first and unique parameter
-                *code += &ctx.full_line_comment("SHA256: rdi = b".to_string());
+                // Two direct operands: a = state address (receives the result), b = input address
+                *code += &ctx.full_line_comment("SHA256: rdi = a, rsi = b".to_string());
 
-                // Use the memory address as the first and unique parameter
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = state address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = input address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[4, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 4, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[4, 8], 0, 0, 4);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 4, 8, 4);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_sha256() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 4);
                 } else {
                     // Call the SHA256 function
@@ -5182,6 +5264,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code +=
                     &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("SHA256: c = 0"));
@@ -5189,29 +5274,68 @@ impl ZiskRom2Asm {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Blake2b => {
-                // Use the memory address as the first and unique parameter
-                *code += &ctx.full_line_comment("Blake2b: rdi = b".to_string());
+                // Two direct operands (a = state address, receives the result; b = input address)
+                // plus the round index as the static argument of the instruction
+                *code +=
+                    &ctx.full_line_comment("Blake2b: rdi = a, rsi = b, rdx = index".to_string());
 
-                // Use the memory address as the first and unique parameter
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = state address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = input address")
+                );
+                // The Rust path asserts this per execution; generated code would run it unchecked
+                assert!(
+                    blake2b_gap_is_provable(inst.jmp_offset1 as u64),
+                    "[blake2b] static argument 0x{:x} has an unprovable gap at PC:0x{:08X}",
+                    inst.jmp_offset1,
+                    ctx.pc
+                );
+                let round = inst.jmp_offset1 as u64 & BLAKE2B_ROUND_MASK;
+                *code += &format!(
+                    "\tmov rdx, {round} {}\n",
+                    ctx.comment(format!("rdx = index = {round}"))
                 );
 
-                // Save data into mem_reads
+                // A chained round neither reads nor writes its state and m (they come from the
+                // previous round and go to the next one); the minimal trace logs its input only
+                // until the chunk has it, i.e. until a round that hands its state on
+                let rd_chain = inst.jmp_offset1 as u64 & BLAKE2B_RD_CHAIN != 0;
+                let wr_chain = inst.jmp_offset1 as u64 & BLAKE2B_WR_CHAIN != 0;
+
+                // Save data into mem_reads: the index first, then the state and the input
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 3, &[0, 16, 16]);
+                    let logged = format!("pc_{:x}_blake2b_chain_cached", ctx.pc);
+                    if rd_chain {
+                        *code += "\tcmp qword ptr [MEM_BLAKE2B_CHAIN], 0\n";
+                        *code += &format!("\tjne {logged}\n");
+                    }
+                    Self::precompiled_save_static_arg_mem_reads(ctx, code, inst.jmp_offset1);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 16, 16);
+                    if rd_chain {
+                        *code += &format!("{logged}:\n");
+                    }
+                    if wr_chain {
+                        *code += "\tmov qword ptr [MEM_BLAKE2B_CHAIN], 1\n";
+                    }
                 }
 
                 // Save memory operations into mem_reads
-                if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 3, &[0, 16, 16], 1, 1, 16);
+                if ctx.mem_op() && !rd_chain {
+                    Self::mem_op_array(ctx, code, "rdi", false, 16);
+                    Self::mem_op_array(ctx, code, "rsi", false, 16);
+                }
+                if ctx.mem_op() && !wr_chain {
+                    Self::mem_op_array(ctx, code, "rdi", true, 16);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_blake2b() {
-                    *code += "\tmov rdi, [rdi+8]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 16);
                 } else {
                     // Call the Blake2b function
@@ -5222,6 +5346,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code +=
                     &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Blake2b: c = 0"));
@@ -5229,29 +5356,32 @@ impl ZiskRom2Asm {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Blake3 => {
-                // Use the memory address as the first and unique parameter
-                *code += &ctx.full_line_comment("Blake3: rdi = b".to_string());
+                // Two direct operands: a = state address (receives the result), b = input address
+                *code += &ctx.full_line_comment("Blake3: rdi = a, rsi = b".to_string());
 
-                // Use the memory address as the first and unique parameter
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = state address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = input address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_blake3() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the Blake3 function
@@ -5262,6 +5392,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code +=
                     &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Blake3: c = 0"));
@@ -5269,29 +5402,32 @@ impl ZiskRom2Asm {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Blake2s => {
-                // Use the memory address as the first and unique parameter
-                *code += &ctx.full_line_comment("Blake2s: rdi = b".to_string());
+                // Two direct operands: a = state address (receives the result), b = input address
+                *code += &ctx.full_line_comment("Blake2s: rdi = a, rsi = b".to_string());
 
-                // Use the memory address as the first and unique parameter
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = state address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = input address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_blake2s() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the Blake2s function
@@ -5302,15 +5438,19 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code +=
                     &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Blake2s: c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Poseidon2 | ZiskOp::Poseidon1 => {
-                let pname =
-                    if matches!(zisk_op, ZiskOp::Poseidon1) { "poseidon1" } else { "poseidon2" };
+            ZiskOp::Poseidon2 | ZiskOp::Poseidon1 | ZiskOp::Poseidon2KoalaBear => {
+                // In-place state of input_size bytes, handled by _opcode_<name>
+                let pname = zisk_op.name();
+                let words = zisk_op.input_size() / 8;
                 *code += &ctx.full_line_comment(format!("{pname}: rdi = A0"));
 
                 // Generate mem reads
@@ -5325,7 +5465,7 @@ impl ZiskRom2Asm {
                 // Copy read data into mem_reads_address and advance it
                 if ctx.minimal_trace() {
                     *code += &format!("\tmov {REG_ADDRESS}, rdi\n");
-                    for k in 0..16 {
+                    for k in 0..words {
                         *code += &format!(
                             "\tmov {}, [{} + {}] {}\n",
                             REG_VALUE,
@@ -5343,19 +5483,20 @@ impl ZiskRom2Asm {
                         );
                     }
 
-                    // Increment chunk.steps.mem_reads_size in 16 units
+                    // Increment chunk.steps.mem_reads_size in `words` units
                     *code += &format!(
-                        "\tadd {}, 16 {}\n",
+                        "\tadd {}, {} {}\n",
                         REG_MEM_READS_SIZE,
-                        ctx.comment_str("mem_reads_size += 16")
+                        words,
+                        ctx.comment(format!("mem_reads_size += {words}"))
                     );
                 }
 
-                // Trace 16 memory read operations
+                // Trace the memory read and write operations
                 if ctx.mem_op() {
                     *code += &format!("\tmov {REG_ADDRESS}, rdi\n");
-                    Self::mem_op_array(ctx, code, REG_ADDRESS, false, 16);
-                    Self::mem_op_array(ctx, code, REG_ADDRESS, true, 16);
+                    Self::mem_op_array(ctx, code, REG_ADDRESS, false, words);
+                    Self::mem_op_array(ctx, code, REG_ADDRESS, true, words);
                 }
 
                 // Call the poseidon function for the selected family
@@ -5365,6 +5506,9 @@ impl ZiskRom2Asm {
                 Self::pop_internal_registers(ctx, code, false);
                 //Self::assert_rsp_is_aligned(ctx, code);
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!(
                     "\txor {}, {} {}\n",
@@ -5418,6 +5562,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -5482,6 +5629,9 @@ impl ZiskRom2Asm {
                     // *code += "\tpop rax\n";
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -5490,26 +5640,30 @@ impl ZiskRom2Asm {
             ZiskOp::Secp256k1Add => {
                 *code += &ctx.full_line_comment("Secp256k1Add".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_secp256k1add() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the secp256k1_add function
@@ -5520,6 +5674,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -5582,6 +5739,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -5590,26 +5750,30 @@ impl ZiskRom2Asm {
             ZiskOp::Secp256r1Add => {
                 *code += &ctx.full_line_comment("Secp256r1Add".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_secp256r1add() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the secp256r1_add function
@@ -5620,6 +5784,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -5682,6 +5849,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -5789,8 +5959,11 @@ impl ZiskRom2Asm {
                         ctx.fcall_ctx,
                         ctx.comment_str("rdi = fcall context")
                     );
-                    // Get result from precompile results data
-                    if ctx.precompile_results_fcall() {
+                    // Get result from precompile results data, except the host randomness seed,
+                    // which is not part of the hints: the emulator always provides it itself
+                    if ctx.precompile_results_fcall()
+                        && ctx.a.constant_value != FCALL_RANDOM_SEED_ID as u64
+                    {
                         Self::precompile_results_fcall(ctx, code, unusual_code, "rdi");
                     } else {
                         // Call the fcall function
@@ -5901,26 +6074,30 @@ impl ZiskRom2Asm {
             ZiskOp::Bn254CurveAdd => {
                 *code += &ctx.full_line_comment("Bn254CurveAdd".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_bn254curveadd() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the bn254_curve_add function
@@ -5931,6 +6108,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -5993,6 +6173,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -6001,26 +6184,30 @@ impl ZiskRom2Asm {
             ZiskOp::Bn254ComplexAdd => {
                 *code += &ctx.full_line_comment("Bn254ComplexAdd".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_bn254complexadd() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the bn254_complex_add function
@@ -6031,6 +6218,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -6039,26 +6229,30 @@ impl ZiskRom2Asm {
             ZiskOp::Bn254ComplexSub => {
                 *code += &ctx.full_line_comment("Bn254ComplexSub".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_bn254complexsub() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the bn254_complex_sub function
@@ -6069,6 +6263,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -6077,26 +6274,30 @@ impl ZiskRom2Asm {
             ZiskOp::Bn254ComplexMul => {
                 *code += &ctx.full_line_comment("Bn254ComplexMul".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_bn254complexmul() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the bn254_complex_mul function
@@ -6107,6 +6308,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -6154,6 +6358,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -6162,26 +6369,30 @@ impl ZiskRom2Asm {
             ZiskOp::Bls12_381CurveAdd => {
                 *code += &ctx.full_line_comment("Bls12_381CurveAdd".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[12, 12]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 12, 12);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[12, 12], 0, 0, 12);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 12, 12, 12);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_bls12_381curveadd() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
                 } else {
                     // Call the bls12_381_curve_add function
@@ -6192,6 +6403,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -6254,6 +6468,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -6262,26 +6479,30 @@ impl ZiskRom2Asm {
             ZiskOp::Bls12_381ComplexAdd => {
                 *code += &ctx.full_line_comment("Bls12_381ComplexAdd".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[12, 12]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 12, 12);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[12, 12], 0, 0, 12);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 12, 12, 12);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_bls12_381complexadd() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
                 } else {
                     // Call the bls12_381_complex_add function
@@ -6292,6 +6513,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -6300,26 +6524,30 @@ impl ZiskRom2Asm {
             ZiskOp::Bls12_381ComplexSub => {
                 *code += &ctx.full_line_comment("Bls12_381ComplexSub".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[12, 12]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 12, 12);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[12, 12], 0, 0, 12);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 12, 12, 12);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_bls12_381complexsub() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
                 } else {
                     // Call the bls12_381_complex_sub function
@@ -6330,6 +6558,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -6338,26 +6569,30 @@ impl ZiskRom2Asm {
             ZiskOp::Bls12_381ComplexMul => {
                 *code += &ctx.full_line_comment("Bls12_381ComplexMul".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[12, 12]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 12, 12);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[12, 12], 0, 0, 12);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 12, 12, 12);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_bls12_381complexmul() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
                 } else {
                     // Call the bls12_381_complex_mul function
@@ -6368,6 +6603,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -6413,6 +6651,9 @@ impl ZiskRom2Asm {
                 }
                 // Self::assert_rsp_is_aligned(ctx, code);
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -6420,26 +6661,30 @@ impl ZiskRom2Asm {
             ZiskOp::BabyJubJubAdd => {
                 *code += &ctx.full_line_comment("BabyJubJubAdd".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_babyjubjubadd() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the babyjubjub_add function
@@ -6450,6 +6695,54 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
+                // Set result
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Ed25519Add => {
+                *code += &ctx.full_line_comment("Ed25519Add".to_string());
+
+                // Two direct operands: a = first operand address (receives the result), b = second
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rsi = b = second operand address")
+                );
+
+                // Save data into mem_reads
+                if ctx.minimal_trace() {
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
+                }
+
+                // Get result from precompile results data
+                if ctx.precompile_results_ed25519add() {
+                    Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
+                } else {
+                    // Call the ed25519_add function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_ed25519_add\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                }
+
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -6500,7 +6793,7 @@ impl ZiskRom2Asm {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall dma_memcpy_fast\n";
                     }
-                    AsmGenerationMethod::AsmMemOp => {
+                    AsmGenerationMethod::AsmMemOp | AsmGenerationMethod::AsmMemOpLight => {
                         // the maximum number of mops of memcpy is limited because in case of range
                         // of address only send one address as block. The maximum number of mops
                         // generated by memcpy is 6, means that no need check size.
@@ -6568,7 +6861,7 @@ impl ZiskRom2Asm {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall fast_memcmp\n";
                     }
-                    AsmGenerationMethod::AsmMemOp => {
+                    AsmGenerationMethod::AsmMemOp | AsmGenerationMethod::AsmMemOpLight => {
                         // the maximum number of mops of memcpy is limited because in case of range
                         // of address only send one address as block. The maximum number of mops
                         // generated by memcmp is 6, means that no need check size.
@@ -6619,7 +6912,7 @@ impl ZiskRom2Asm {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall fast_inputcpy\n";
                     }
-                    AsmGenerationMethod::AsmMemOp => {
+                    AsmGenerationMethod::AsmMemOp | AsmGenerationMethod::AsmMemOpLight => {
                         // the maximum number of mops of memcpy is limited because in case of range
                         // of address only send one address as block. The maximum number of mops
                         // generated by memcpy is 6, means that no need check size.
@@ -6671,7 +6964,7 @@ impl ZiskRom2Asm {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall fast_memset\n";
                     }
-                    AsmGenerationMethod::AsmMemOp => {
+                    AsmGenerationMethod::AsmMemOp | AsmGenerationMethod::AsmMemOpLight => {
                         // the maximum number of mops of memcpy is limited because in case of range
                         // of address only send one address as block. The maximum number of mops
                         // generated by memcpy is 6, means that no need check size.
@@ -6723,7 +7016,7 @@ impl ZiskRom2Asm {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall jump_dest_fast\n";
                     }
-                    AsmGenerationMethod::AsmMemOp => {
+                    AsmGenerationMethod::AsmMemOp | AsmGenerationMethod::AsmMemOpLight => {
                         // Unlike the DMA ops, the mops count is not bounded by a
                         // constant: loads can alternate word on / word off, so the
                         // reads cost up to ceil(count/16) entries on top of the
@@ -6756,6 +7049,56 @@ impl ZiskRom2Asm {
                 panic!("B extension opcode {:?} not supported in assembly emulator", inst.op);
             }
         }
+        assert!(
+            ctx.mops_pending_writes.is_empty(),
+            "{:?}: precompile output writes not flushed to the memory-ops stream",
+            inst.op
+        );
+    }
+
+    /// Materialize the result of a comparison operation branchlessly using `setcc`.
+    ///
+    /// `cc` is the x86 condition-code suffix matching the preceding `cmp`
+    /// (e.g. "e" for equal, "b" for unsigned-below, "l" for signed-less-than,
+    /// "be", "le").  The `cmp` must already have set the CPU flags.
+    ///
+    /// Register `c` (REG_C) is persistent Zisk state: the next instruction can
+    /// read it via SRC_C and it is saved at chunk boundaries, so it is *always*
+    /// materialized.  The `flag` register (REG_FLAG) is only consumed by
+    /// `set_pc` when the instruction is a conditional branch (its two possible
+    /// jump offsets differ), so it is materialized only in that case.
+    ///
+    /// This replaces the previous branchy sequence
+    /// (`jcc _true / xor c / xor flag / jmp _done / _true: mov c,1 / mov flag,1`),
+    /// removing a data-dependent, frequently-mispredicted branch and skipping the
+    /// flag computation entirely for comparisons that only store their result.
+    fn materialize_cmp_result(
+        ctx: &mut ZiskAsmContext,
+        instruction: &ZiskInst,
+        code: &mut String,
+        cc: &str,
+    ) {
+        // c is always needed: it is persistent state (SRC_C / chunk save)
+        *code += &format!("\tset{} {} {}\n", cc, REG_C_B, ctx.comment_str("c = cond"));
+        *code +=
+            &format!("\tmovzx {}, {} {}\n", REG_C_W, REG_C_B, ctx.comment_str("zero-extend c"));
+
+        // flag is only consumed by a conditional-branch pc update (see set_pc)
+        let need_flag = !instruction.set_pc
+            && !ctx.flag_is_always_one
+            && !ctx.flag_is_always_zero
+            && (instruction.jmp_offset1 != instruction.jmp_offset2);
+        if need_flag {
+            *code += &format!("\tset{} {} {}\n", cc, REG_FLAG_B, ctx.comment_str("flag = cond"));
+            *code += &format!(
+                "\tmovzx {}, {} {}\n",
+                REG_FLAG_W,
+                REG_FLAG_B,
+                ctx.comment_str("zero-extend flag")
+            );
+        }
+
+        ctx.c.is_saved = true;
     }
 
     /**********/
@@ -6895,53 +7238,105 @@ impl ZiskRom2Asm {
         } else {
             *code += &ctx.full_line_comment("pc = f(flag)".to_string());
 
-            // Calculate the new pc if flag == 1
+            let target1 = (ctx.pc as i64 + instruction.jmp_offset1) as u64; // flag == 1
+            let target2 = (ctx.pc as i64 + instruction.jmp_offset2) as u64; // flag == 0
+
             *code += &format!("\tcmp {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag == 1 ?"));
-            *code += &format!("\tjne pc_{:x}_{}_flag_false\n", ctx.pc, id);
+
             if id == "z" {
+                // Cold path (chunk boundary): compute the new pc into REG_PC for
+                // both outcomes; control returns to the hot path afterwards, so
+                // this must not fall through to the next instruction.
+                *code += &format!("\tjne pc_{:x}_{}_flag_false\n", ctx.pc, id);
                 *code += &format!(
                     "\tmov {}, 0x{:x} {}\n",
                     REG_PC,
-                    (ctx.pc as i64 + instruction.jmp_offset1) as u64,
+                    target1,
                     ctx.comment_str("pc += i.jmp_offset1")
                 );
-            }
-            if id == "nz" {
-                *code += &format!(
-                    "\tjmp pc_{:x} {}\n",
-                    (ctx.pc as i64 + instruction.jmp_offset1) as u64,
-                    ctx.comment_str("jump to static pc flag=1")
-                );
-            }
-            if id == "z" {
                 *code += &format!("\tjmp pc_{:x}_{}_flag_done\n", ctx.pc, id);
-            }
-
-            // Calculate the new pc if flag == 0
-            *code += &format!("pc_{:x}_{}_flag_false:\n", ctx.pc, id);
-            if id == "z" {
+                *code += &format!("pc_{:x}_{}_flag_false:\n", ctx.pc, id);
                 *code += &format!(
                     "\tmov {}, 0x{:x} {}\n",
                     REG_PC,
-                    (ctx.pc as i64 + instruction.jmp_offset2) as u64,
+                    target2,
                     ctx.comment_str("pc += i.jmp_offset2")
                 );
-            }
-            if id == "nz" {
-                *code += &format!(
-                    "\tjmp pc_{:x} {}\n",
-                    (ctx.pc as i64 + instruction.jmp_offset2) as u64,
-                    ctx.comment_str("jump to static pc flag=0")
-                );
-            }
-            if id == "z" {
                 *code += &format!("pc_{:x}_{}_flag_done:\n", ctx.pc, id);
+            } else {
+                // Hot path: branch directly on the flag.  Whenever one of the two
+                // targets is the fall-through pc (ctx.next_pc, the block emitted
+                // right after this one), let it fall through instead of emitting a
+                // redundant unconditional jump to it.
+                if target2 == ctx.next_pc {
+                    // flag == 0 falls through to the next instruction
+                    *code += &format!(
+                        "\tje pc_{:x} {}\n",
+                        target1,
+                        ctx.comment_str("jump to static pc flag=1 (flag=0 falls through)")
+                    );
+                } else if target1 == ctx.next_pc {
+                    // flag == 1 falls through to the next instruction
+                    *code += &format!(
+                        "\tjne pc_{:x} {}\n",
+                        target2,
+                        ctx.comment_str("jump to static pc flag=0 (flag=1 falls through)")
+                    );
+                } else {
+                    // Neither target is the fall-through: one conditional jump to
+                    // the taken target, one unconditional to the other.
+                    *code += &format!(
+                        "\tje pc_{:x} {}\n",
+                        target1,
+                        ctx.comment_str("jump to static pc flag=1")
+                    );
+                    *code += &format!(
+                        "\tjmp pc_{:x} {}\n",
+                        target2,
+                        ctx.comment_str("jump to static pc flag=0")
+                    );
+                }
             }
         }
     }
 
     fn jumpt_to_dynamic_pc(ctx: &mut ZiskAsmContext, code: &mut String) {
         *code += &ctx.full_line_comment("jump to dynamic pc".to_string());
+
+        // ZisK library code can jump to a library address (a `ret` to a library caller),
+        // which only the library's own map_pc table resolves. Guest code never jumps into
+        // the library dynamically (it enters it by static jumps), so it skips this check.
+        if (ZISKLIB_ROM_ADDR..FLOAT_LIB_ROM_ADDR).contains(&ctx.pc) {
+            *code += &format!(
+                "\tmov {}, 0x{:x} {}\n",
+                REG_ADDRESS,
+                ZISKLIB_ROM_ADDR,
+                ctx.comment_str("is pc a ZisK library address?")
+            );
+            *code += &format!("\tcmp {REG_PC}, {REG_ADDRESS}\n");
+            *code += &format!("\tjb pc_{:x}_jump_to_non_library_address\n", ctx.pc);
+            *code += &format!(
+                "\tsub {}, {} {}\n",
+                REG_PC,
+                REG_ADDRESS,
+                ctx.comment_str("pc -= ZISKLIB_ROM_ADDR")
+            );
+            *code += &format!(
+                "\tlea {}, [map_pc_{:x}] {}\n",
+                REG_ADDRESS,
+                ZISKLIB_ROM_ADDR,
+                ctx.comment_str("address = library map")
+            );
+            *code += &format!(
+                "\tmov {}, [{} + {}*8] {}\n",
+                REG_ADDRESS,
+                REG_ADDRESS,
+                REG_PC,
+                ctx.comment_str("address = map[pc]")
+            );
+            *code += &format!("\tjmp {} {}\n", REG_ADDRESS, ctx.comment_str("jump to address"));
+            *code += &format!("pc_{:x}_jump_to_non_library_address:\n", ctx.pc);
+        }
 
         // When executing zisk without float support, there are no dynamic jumps to low addresses,
         // so we can optimize the code by skipping the check for address range, assuming that the pc
@@ -6953,17 +7348,24 @@ impl ZiskRom2Asm {
                 ctx.pc < FLOAT_LIB_ROM_ADDR,
                 "Non-float build must not emit dynamic-jump code for float-lib PCs (ctx.pc must be < FLOAT_LIB_ROM_ADDR)"
             );
-            // The next assembly line is an optimization that depends on the ROM_ADDR being
-            // 0x8000_0000, so we assert it to ensure correctness.  If it wasn't, we should subtract
-            // ROM_ADDR from pc, but since it is, we can just clear the 31st bit of pc to get the
-            // correct index into the map.
-            const {
-                assert!(ROM_ADDR == 0x8000_0000, "ROM_ADDR must be 0x8000_0000");
-            }
-            *code += &format!("\tbtr {}, 31 {}\n", REG_PC, ctx.comment_str("pc -= ROM_ADDR"));
+            // ROM_ADDR does not fit in a sign-extended 32-bit immediate, so it is loaded into
+            // a register to be subtracted from pc, giving the index into the map.
             *code += &format!(
-                "\tmov {}, [map_pc_80000000 + {}*8] {}\n",
+                "\tmov {}, 0x{:x} {}\n",
                 REG_ADDRESS,
+                ROM_ADDR,
+                ctx.comment_str("address = ROM_ADDR")
+            );
+            *code += &format!(
+                "\tsub {}, {} {}\n",
+                REG_PC,
+                REG_ADDRESS,
+                ctx.comment_str("pc -= ROM_ADDR")
+            );
+            *code += &format!(
+                "\tmov {}, [map_pc_{:x} + {}*8] {}\n",
+                REG_ADDRESS,
+                ROM_ADDR,
                 REG_PC,
                 ctx.comment_str("address = map[pc]")
             );
@@ -7322,6 +7724,57 @@ impl ZiskRom2Asm {
         );
     }
 
+    /// Minimal trace of a precompile called with two direct operands (no parameter struct):
+    /// `chunks_a` words read from the address in rdi (a) followed by `chunks_b` words read from
+    /// the address in rsi (b).
+    fn precompiled_save_ab_mem_reads(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        chunks_a: u64,
+        chunks_b: u64,
+    ) {
+        // This index will be incremented as we insert data into mem_reads
+        let mut mem_reads_index: u64 = 0;
+
+        for (reg, chunks) in [("rdi", chunks_a), ("rsi", chunks_b)] {
+            for k in 0..chunks {
+                *code += &format!(
+                    "\tmov {REG_VALUE}, [{reg} + {k}*8] {}\n",
+                    ctx.comment(format!("value = mem[{reg}+{k}]"))
+                );
+                *code += &format!(
+                    "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + {mem_reads_index}*8], {REG_VALUE} {}\n",
+                    ctx.comment_str("mem_reads[@+size*8+ind*8] = value")
+                );
+                mem_reads_index += 1;
+            }
+        }
+
+        // Increment chunk.steps.mem_reads_size
+        *code += &format!(
+            "\tadd {REG_MEM_READS_SIZE}, {mem_reads_index} {}\n",
+            ctx.comment(format!("mem_reads_size+={mem_reads_index}"))
+        );
+    }
+
+    /// Stores a static argument of the instruction (an immediate carried by the rom, e.g. the
+    /// blake2b round index) as the next word of the minimal trace.
+    fn precompiled_save_static_arg_mem_reads(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        value: i64,
+    ) {
+        *code += &format!(
+            "\tmov {REG_VALUE}, {value} {}\n",
+            ctx.comment(format!("value = static arg {value}"))
+        );
+        *code += &format!(
+            "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8], {REG_VALUE} {}\n",
+            ctx.comment_str("mem_reads[@+size*8] = static arg")
+        );
+        *code += &format!("\tinc {REG_MEM_READS_SIZE} {}\n", ctx.comment_str("mem_reads_size++"));
+    }
+
     fn precompiled_save_result(ctx: &mut ZiskAsmContext, code: &mut String) {
         *code += &format!(
             "\tmov [{} + {}*8], {} {}\n",
@@ -7343,116 +7796,188 @@ impl ZiskRom2Asm {
     /* MEMORY OPERATIONS */
     /*********************/
 
-    fn src_read_mops(ctx: &mut ZiskAsmContext, code: &mut String) {
-        // Calculate the trace value on top of the address
+    /// `reg = ((chunk_size - step_count_down) << 2 | slot) << F_MOPS_STEP_SHIFT`.
+    fn mops_step_bits(ctx: &mut ZiskAsmContext, code: &mut String, reg: &str, slot: u64) {
+        *code += &format!(
+            "\tmov {reg}, qword {}[chunk_size] {}\n",
+            ctx.ptr,
+            ctx.comment_str("step bits = chunk_size")
+        );
+        *code +=
+            &format!("\tsub {reg}, {REG_STEP} {}\n", ctx.comment_str("step bits -= count down"));
+        *code += &format!("\tshl {reg}, 2 {}\n", ctx.comment_str("step bits <<= 2"));
+        if slot != 0 {
+            *code += &format!("\tor {reg}, {slot} {}\n", ctx.comment_str("step bits |= slot"));
+        }
+        *code += &format!(
+            "\tshl {reg}, {F_MOPS_STEP_SHIFT} {}\n",
+            ctx.comment_str("step bits <<= F_MOPS_STEP_SHIFT")
+        );
+    }
+
+    /// Stores a read record (the header word only) or a block record (`payload` is a register
+    /// holding the step field, below 2^58). In the light form a block record is its header with
+    /// the no-payload bit.
+    fn mops_store_record(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        reg_header: &str,
+        payload: Option<&str>,
+    ) {
+        let payload = if ctx.light_mops() && payload.is_some() {
+            *code += &format!(
+                "\tbts {reg_header}, {F_MOPS_NO_PAYLOAD_BIT} {}\n",
+                ctx.comment_str("header |= no payload")
+            );
+            None
+        } else {
+            payload
+        };
+        *code += &format!(
+            "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8], {reg_header} {}\n",
+            ctx.comment_str("mem_reads[@+size*8] = mem op header")
+        );
+        if let Some(payload) = payload {
+            *code += &format!(
+                "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + 8], {payload} {}\n",
+                ctx.comment_str("mem_reads[@+size*8+8] = payload")
+            );
+            *code += &format!(
+                "\tadd {REG_MEM_READS_SIZE}, 2 {}\n",
+                ctx.comment_str("mem_reads_size += 2")
+            );
+        } else {
+            *code +=
+                &format!("\tinc {REG_MEM_READS_SIZE} {}\n", ctx.comment_str("mem_reads_size += 1"));
+        }
+    }
+
+    /// Stores a write record: the value's bit 63 moves to header bit 62 so the payload word
+    /// carries a clear tag. `reg_value` is kept; `scratch` is clobbered. In the light form the
+    /// record is the header with the no-value bit.
+    fn mops_store_write(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        reg_header: &str,
+        reg_value: &str,
+        scratch: &str,
+    ) {
+        if ctx.light_mops() {
+            *code += &format!(
+                "\tbts {reg_header}, {F_MOPS_NO_VALUE_BIT} {}\n",
+                ctx.comment_str("header |= no value")
+            );
+            Self::mops_store_record(ctx, code, reg_header, None);
+            return;
+        }
+        *code += &format!("\tmov {scratch}, {reg_value} {}\n", ctx.comment_str("scratch = value"));
+        *code += &format!("\tshr {scratch}, 63 {}\n", ctx.comment_str("scratch = value bit 63"));
+        *code += &format!("\tshl {scratch}, 62 {}\n", ctx.comment_str("scratch <<= 62"));
+        *code += &format!(
+            "\tor {reg_header}, {scratch} {}\n",
+            ctx.comment_str("header |= value top bit")
+        );
+        *code += &format!(
+            "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8], {reg_header} {}\n",
+            ctx.comment_str("mem_reads[@+size*8] = mem op header")
+        );
+        *code += &format!("\tmov {scratch}, {reg_value} {}\n", ctx.comment_str("scratch = value"));
+        *code += &format!("\tbtr {scratch}, 63 {}\n", ctx.comment_str("payload tag clear"));
+        *code += &format!(
+            "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + 8], {scratch} {}\n",
+            ctx.comment_str("mem_reads[@+size*8+8] = value")
+        );
+        *code +=
+            &format!("\tadd {REG_MEM_READS_SIZE}, 2 {}\n", ctx.comment_str("mem_reads_size += 2"));
+    }
+
+    /// Header of a non-block record for `mops_mask` at the address in `reg_address`, step bits
+    /// included. Uses `REG_AUX` as scratch.
+    fn mops_header(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        reg_address: &str,
+        mops_mask: u64,
+        slot: u64,
+    ) {
         if ctx.address_is_constant {
             *code += &format!(
-                "\tmov {REG_ADDRESS}, 0x{:x} {}\n",
-                if ctx.address_constant_value & 0x07 == 0 {
-                    F_MOPS_ALIGNED_READ
-                } else {
-                    F_MOPS_READ_8
-                } + ctx.address_constant_value,
-                ctx.comment_str("aux = constant mem op")
+                "\tmov {reg_address}, 0x{:x} {}\n",
+                mops_mask + ctx.address_constant_value,
+                ctx.comment_str("header = constant mem op")
             );
         } else {
             *code += &format!(
-                "\tmov {REG_AUX}, 0x{F_MOPS_READ_8:x} {}\n",
+                "\tmov {REG_AUX}, 0x{mops_mask:x} {}\n",
                 ctx.comment_str("aux = mem op mask")
             );
             *code += &format!(
-                "\tor {REG_ADDRESS}, {REG_AUX} {}\n",
-                ctx.comment_str("address |= mem op mask")
+                "\tor {reg_address}, {REG_AUX} {}\n",
+                ctx.comment_str("header |= mem op mask")
             );
         }
-
-        // Copy read data into mem_reads_address and increment it
-        *code += &format!(
-            "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8], {REG_ADDRESS} {}\n",
-            ctx.comment_str("mem_reads[@+size*8] = mem op")
-        );
-
-        // Increment chunk.steps.mem_reads_size
-        *code += &format!("\tinc {} {}\n", REG_MEM_READS_SIZE, ctx.comment_str("mem_reads_size++"));
+        if !ctx.light_mops() {
+            Self::mops_step_bits(ctx, code, REG_AUX, slot);
+            *code += &format!(
+                "\tor {reg_address}, {REG_AUX} {}\n",
+                ctx.comment_str("header |= step bits")
+            );
+        }
     }
 
-    fn b_src_ind_mops(ctx: &mut ZiskAsmContext, code: &mut String, reg_address: &str, width: u64) {
-        if ctx.address_is_constant {
-            let mops = if width == 8 && ctx.address_constant_value & 0x07 == 0 {
-                F_MOPS_ALIGNED_READ + ctx.address_constant_value
-            } else {
-                ctx.address_constant_value
-                    + match width {
-                        1 => F_MOPS_READ_1,
-                        2 => F_MOPS_READ_2,
-                        4 => F_MOPS_READ_4,
-                        8 => F_MOPS_READ_8,
-                        _ => panic!("Invalid width"),
-                    }
-            };
-            *code += &format!(
-                "\tmov {reg_address}, 0x{mops:x} {}\n",
-                ctx.comment_str("aux = constant mem op")
-            );
+    fn read_mops_mask(ctx: &ZiskAsmContext, width: u64) -> u64 {
+        if width == 8 && ctx.address_is_constant && ctx.address_constant_value & 0x07 == 0 {
+            F_MOPS_ALIGNED_READ
         } else {
-            // Calculate the trace value on top of the address
-            let mops = match width {
+            match width {
                 1 => F_MOPS_READ_1,
                 2 => F_MOPS_READ_2,
                 4 => F_MOPS_READ_4,
                 8 => F_MOPS_READ_8,
                 _ => panic!("Invalid width"),
-            };
-
-            *code +=
-                &format!("\tmov {REG_AUX}, 0x{mops:x} {}\n", ctx.comment_str("aux = mem op mask"));
-            *code += &format!(
-                "\tor {reg_address}, {REG_AUX} {}\n",
-                ctx.comment_str("address |= mem op mask")
-            );
+            }
         }
+    }
 
-        // Copy read data into mem_reads_address and increment it
-        *code += &format!(
-            "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8], {reg_address} {}\n",
-            ctx.comment_str("mem_reads[@+size*8] = mem op")
-        );
+    fn write_mops_mask(ctx: &ZiskAsmContext, width: u64) -> u64 {
+        if width == 8 && ctx.address_is_constant && ctx.address_constant_value & 0x07 == 0 {
+            F_MOPS_ALIGNED_WRITE
+        } else {
+            match width {
+                1 => F_MOPS_WRITE_1,
+                2 => F_MOPS_WRITE_2,
+                4 => F_MOPS_WRITE_4,
+                8 => F_MOPS_WRITE_8,
+                _ => panic!("Invalid width"),
+            }
+        }
+    }
 
-        // Increment chunk.steps.mem_reads_size
-        *code += &format!("\tinc {REG_MEM_READS_SIZE} {}\n", ctx.comment_str("mem_reads_size++"));
+    /// Source read of a whole word; `slot` is 0 for `a` and 1 for `b`.
+    fn src_read_mops(ctx: &mut ZiskAsmContext, code: &mut String, slot: u64) {
+        // The free-input word returns a different fcall result on every read, so the record
+        // carries the value just loaded (b, or c when b is stored there).
+        if ctx.address_is_constant && ctx.address_constant_value == FREE_INPUT_ADDR {
+            Self::mops_header(ctx, code, REG_ADDRESS, F_MOPS_READ_8_VALUE, slot);
+            let reg_value = if ctx.store_b_in_c { REG_C } else { REG_B };
+            Self::mops_store_write(ctx, code, REG_ADDRESS, reg_value, REG_AUX);
+            return;
+        }
+        let mask = Self::read_mops_mask(ctx, 8);
+        Self::mops_header(ctx, code, REG_ADDRESS, mask, slot);
+        Self::mops_store_record(ctx, code, REG_ADDRESS, None);
+    }
+
+    fn b_src_ind_mops(ctx: &mut ZiskAsmContext, code: &mut String, reg_address: &str, width: u64) {
+        let mask = Self::read_mops_mask(ctx, width);
+        Self::mops_header(ctx, code, reg_address, mask, 1);
+        Self::mops_store_record(ctx, code, reg_address, None);
     }
 
     fn c_store_mem_mem_op(ctx: &mut ZiskAsmContext, code: &mut String) {
-        // Calculate the trace value on top of the address
-        if ctx.address_is_constant {
-            *code += &format!(
-                "\tmov {REG_ADDRESS}, 0x{:x} {}\n",
-                if ctx.address_constant_value & 0x07 == 0 {
-                    F_MOPS_ALIGNED_WRITE
-                } else {
-                    F_MOPS_WRITE_8
-                } + ctx.address_constant_value,
-                ctx.comment_str("aux = constant mem op")
-            );
-        } else {
-            *code += &format!(
-                "\tmov {REG_AUX}, 0x{F_MOPS_WRITE_8:x} {}\n",
-                ctx.comment_str("aux = mem op mask")
-            );
-            *code += &format!(
-                "\tor {REG_ADDRESS}, {REG_AUX} {}\n",
-                ctx.comment_str("address |= mem op mask")
-            );
-        }
-
-        // Copy read data into mem_reads_address and increment it
-        *code += &format!(
-            "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8], {REG_ADDRESS} {}\n",
-            ctx.comment_str("mem_reads[@+size*8] = mem op")
-        );
-
-        // Increment chunk.steps.mem_reads_size
-        *code += &format!("\tinc {REG_MEM_READS_SIZE} {}\n", ctx.comment_str("mem_reads_size++"));
+        let mask = Self::write_mops_mask(ctx, 8);
+        Self::mops_header(ctx, code, REG_ADDRESS, mask, 2);
+        Self::mops_store_write(ctx, code, REG_ADDRESS, REG_C, REG_AUX);
     }
 
     fn c_store_ind_mem_op(
@@ -7470,38 +7995,8 @@ impl ZiskRom2Asm {
 
         // Calculate the fixed trace value adding write (bit 36) and width (bits 32-35) on top of
         // the address
-        if ctx.address_is_constant {
-            let mops = if width == 8 && ctx.address_constant_value & 0x07 == 0 {
-                F_MOPS_ALIGNED_WRITE + ctx.address_constant_value
-            } else {
-                ctx.address_constant_value
-                    + match width {
-                        1 => F_MOPS_WRITE_1,
-                        2 => F_MOPS_WRITE_2,
-                        4 => F_MOPS_WRITE_4,
-                        8 => F_MOPS_WRITE_8,
-                        _ => panic!("Invalid width"),
-                    }
-            };
-            *code += &format!(
-                "\tmov {reg_address}, 0x{mops:x} {}\n",
-                ctx.comment_str("address = constant mem op")
-            );
-        } else {
-            let mops = match width {
-                1 => F_MOPS_WRITE_1,
-                2 => F_MOPS_WRITE_2,
-                4 => F_MOPS_WRITE_4,
-                8 => F_MOPS_WRITE_8,
-                _ => panic!("Invalid width"),
-            };
-            *code +=
-                &format!("\tmov {REG_AUX}, 0x{mops:x} {}\n", ctx.comment_str("aux = mem op mask"));
-            *code += &format!(
-                "\tor {reg_address}, {REG_AUX} {}\n",
-                ctx.comment_str("address |= mem op mask")
-            );
-        }
+        let mask = Self::write_mops_mask(ctx, width);
+        Self::mops_header(ctx, code, reg_address, mask, 2);
 
         // Dynamic trace value: if rest of bytes were zero, set flag on bit F_MEM_CLEAR_WRITE_BYTE
         if width == 1 {
@@ -7522,17 +8017,12 @@ impl ZiskRom2Asm {
             );
             *code += &format!("\npc_{}_rest_of_bytes_not_zero:\n", ctx.pc);
         }
-
-        // Copy read data into mem_reads_address and increment it
-        *code += &format!(
-            "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8], {reg_address} {}\n",
-            ctx.comment_str("mem_reads[@+size*8] = mem op")
-        );
-
-        // Increment chunk.steps.mem_reads_size
-        *code += &format!("\tinc {REG_MEM_READS_SIZE} {}\n", ctx.comment_str("mem_reads_size++"));
+        Self::mops_store_write(ctx, code, reg_address, REG_C, REG_AUX);
     }
 
+    /// Records `length` words at the address in `reg_address`. Reads are one block record with the
+    /// step in the payload. Writes are deferred: the values exist only after the precompile runs,
+    /// so they are emitted per word by `mem_op_precompiled_flush_writes`.
     fn mem_op_array(
         ctx: &mut ZiskAsmContext,
         code: &mut String,
@@ -7540,96 +8030,119 @@ impl ZiskRom2Asm {
         write: bool,
         length: u64,
     ) {
+        if write {
+            *code += &format!(
+                "\tmov {}, {reg_address} {}\n",
+                ctx.mem_mops_base,
+                ctx.comment_str("mops_base = address of the precompile data")
+            );
+            ctx.mops_pending_writes.push(MopsPendingWrite { param_index: None, words: length });
+            return;
+        }
         let mops_mask: u64 = if length > 1 {
-            // compress operation in one single block
-            (if write { F_MOPS_BLOCK_WRITE } else { F_MOPS_BLOCK_READ })
-                | (length << F_MOPS_BLOCK_LENGTH_SHIFT)
-        } else if write {
-            F_MOPS_WRITE_8
+            F_MOPS_BLOCK_READ | (length << F_MOPS_BLOCK_LENGTH_SHIFT)
         } else {
             F_MOPS_READ_8
         };
-
-        // Load mask the mask
+        if !ctx.light_mops() {
+            Self::mops_step_bits(ctx, code, "rcx", 2);
+        }
         *code += &format!(
             "\tmov {REG_VALUE}, 0x{mops_mask:x} {}\n",
             ctx.comment_str("value = mem op mask")
         );
-
-        // Get a copy of the address register
         *code +=
-            &format!("\tadd {REG_VALUE}, {reg_address} {}\n", ctx.comment_str("value = address"));
-
-        *code += &format!(
-            "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8], {REG_VALUE} {}\n",
-            ctx.comment_str("mem_reads[@+size*8] = mem op")
-        );
-
-        // Increment chunk.steps.mem_reads_size
-        *code +=
-            &format!("\tinc {REG_MEM_READS_SIZE} {}\n", ctx.comment_str("mem_reads_size += 1"));
+            &format!("\tadd {REG_VALUE}, {reg_address} {}\n", ctx.comment_str("value += address"));
+        if length > 1 {
+            Self::mops_store_record(ctx, code, REG_VALUE, Some("rcx"));
+        } else {
+            *code += &format!("\tor {REG_VALUE}, rcx {}\n", ctx.comment_str("header |= step bits"));
+            Self::mops_store_record(ctx, code, REG_VALUE, None);
+        }
     }
 
+    /// One write record per word of every ROM and RAM data section, value included. Emitted at the
+    /// ROM entry: step 0, slot 2, which is the memory init step.
     fn mem_op_rom_init_data(ctx: &mut ZiskAsmContext, code: &mut String, rom: &ZiskRom) {
         *code += &ctx
             .full_line_comment("Trace ROM and RAM memory initialization operations".to_string());
 
-        // Skip if there is no data to load
-        let sections_count = rom.ro_data_64.len() + rom.rw_data_64.len();
-        if sections_count == 0 {
+        let sections: Vec<(u64, u64)> = rom
+            .ro_data_64
+            .iter()
+            .chain(rom.rw_data_64.iter())
+            .filter(|s| !s.data.is_empty())
+            .map(|s| (s.addr, s.data.len() as u64))
+            .collect();
+        if sections.is_empty() {
             return;
         }
-
-        for (i, section) in rom.ro_data_64.iter().chain(rom.rw_data_64.iter()).enumerate() {
-            let address = section.addr;
-            let length = section.data.len() as u64;
-            let write = true;
-
-            let mops_mask: u64 = if length > 1 {
-                // compress operation in one single block
-                (if write { F_MOPS_BLOCK_WRITE } else { F_MOPS_BLOCK_READ })
-                    | (length << F_MOPS_BLOCK_LENGTH_SHIFT)
-            } else if write {
-                F_MOPS_WRITE_8
-            } else {
-                F_MOPS_READ_8
-            };
-
-            // Load mask the mask
-            *code += &format!(
-                "\tmov {REG_VALUE}, 0x{:x} {}\n",
-                mops_mask + address,
-                ctx.comment_str("value = mem op mask + address")
-            );
-
-            // Copy read data into mem_reads_address and increment it
-            *code += &format!(
-                "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + {i}*8], {REG_VALUE} {}\n",
-                ctx.comment_str("mem_reads[@+size*8] = mem op")
-            );
-        }
-
-        // Increment mem_reads_size
-        *code += &format!(
-            "\tadd {REG_MEM_READS_SIZE}, {} {}\n",
-            sections_count,
-            ctx.comment_str(&format!("mem_reads_size += {}", sections_count))
+        let init_words: u64 = sections.iter().map(|(_, len)| len).sum();
+        assert!(
+            init_words * 16 <= MAX_MO_INIT_DATA_MARGIN,
+            "initialised data of {init_words} words needs {} bytes of memory-ops trace, more than the \
+             {MAX_MO_INIT_DATA_MARGIN} reserved for it",
+            init_words * 16
         );
+        if ctx.light_mops() {
+            for (address, length) in &sections {
+                assert!(
+                    *length < (1u64 << 26),
+                    "initialised data section of {length} words exceeds a block header"
+                );
+                *code += &format!(
+                    "\tmov {REG_AUX}, 0x{:x} {}\n",
+                    F_MOPS_ALIGNED_BLOCK_WRITE
+                        | (length << F_MOPS_BLOCK_LENGTH_SHIFT)
+                        | (1u64 << F_MOPS_NO_PAYLOAD_BIT)
+                        | address,
+                    ctx.comment(format!("aux = init block write of {length} words, no payload"))
+                );
+                Self::mops_store_record(ctx, code, REG_AUX, None);
+            }
+            return;
+        }
+        let mask = F_MOPS_ALIGNED_WRITE | (2u64 << F_MOPS_STEP_SHIFT);
+        *code +=
+            &format!("\tmov {REG_AUX}, 0x{mask:x} {}\n", ctx.comment_str("aux = init write mask"));
+        for (i, (address, length)) in sections.iter().enumerate() {
+            *code += &format!(
+                "\tmov {REG_ADDRESS}, 0x{address:x} {}\n",
+                ctx.comment_str("address = section")
+            );
+            *code += &format!("\tmov rcx, {length} {}\n", ctx.comment_str("rcx = section words"));
+            *code += &format!("mops_init_section_{i}:\n");
+            *code += &format!(
+                "\tmov {REG_VALUE}, [{REG_ADDRESS}] {}\n",
+                ctx.comment_str("value = mem[address]")
+            );
+            *code += &format!("\tmov rsi, {REG_ADDRESS} {}\n", ctx.comment_str("header = address"));
+            *code +=
+                &format!("\tor rsi, {REG_AUX} {}\n", ctx.comment_str("header |= init write mask"));
+            Self::mops_store_write(ctx, code, "rsi", REG_VALUE, "rdi");
+            *code += &format!("\tadd {REG_ADDRESS}, 8 {}\n", ctx.comment_str("address += 8"));
+            *code += "\tdec rcx\n";
+            *code += &format!("\tjnz mops_init_section_{i}\n");
+        }
     }
 
+    /// Block read records for a precompile's parameters: `params_count` words at `rdi`, then the
+    /// blocks the non-zero `load_sizes` point to. Saves `rdi` for the deferred writes.
     fn internal_mem_op_precompiled_read(
         ctx: &mut ZiskAsmContext,
         code: &mut String,
         params_count: u64,
         load_sizes: &[usize],
-        update_index: bool,
-    ) -> u64 {
-        // This index will be incremented as we insert data into mem_reads
-        let mut mem_reads_index: u64 = 0;
-
-        // We get a copy of the precompiled data address
+    ) {
         *code += &format!("\tmov {REG_ADDRESS}, rdi {}\n", ctx.comment_str("address = rdi"));
-
+        *code += &format!(
+            "\tmov {}, {REG_ADDRESS} {}\n",
+            ctx.mem_mops_base,
+            ctx.comment_str("mops_base = address of the precompile params")
+        );
+        if !ctx.light_mops() {
+            Self::mops_step_bits(ctx, code, "rcx", 2);
+        }
         if params_count > 0 {
             *code += &format!(
                 "\tmov {REG_AUX}, 0x{:x} {}\n",
@@ -7642,26 +8155,17 @@ impl ZiskRom2Asm {
                 &format!("\tadd {REG_AUX}, {REG_ADDRESS} {}\n", ctx.comment_str("aux += address"));
 
             // Store it in the trace
-            *code += &format!(
-                "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + {mem_reads_index}*8], {REG_AUX} {}\n",
-                ctx.comment_str("mem_reads[@+size*8+ind*8] = mem_op")
-            );
-            mem_reads_index += 1;
+            Self::mops_store_record(ctx, code, REG_AUX, Some("rcx"));
         }
-
         let mut previous_size = 0;
-
         for (i, size) in load_sizes.iter().enumerate() {
             if *size == 0 {
                 continue;
             }
-
-            // Store next aligned address value in mem_reads, and advance it
             *code += &format!(
                 "\tmov {REG_VALUE}, [{REG_ADDRESS} + {i}*8] {}\n",
                 ctx.comment(format!("value = mem[address+{i}]"))
             );
-
             // if previous_size = size, means that REG_AUX has the correct value
             // and not need to generate again
             if previous_size != *size {
@@ -7673,39 +8177,18 @@ impl ZiskRom2Asm {
                 previous_size = *size;
             }
 
-            // Store a block with all consecutive mem_reads
-
             // Add the mask over the reg_value to reuse mops_mask (reg_aux) if width is the
             // same of last previous parameter
-
             *code +=
                 &format!("\tadd {REG_VALUE}, {REG_AUX} {}\n", ctx.comment_str("value += aux "));
 
             // Store it in the trace
-            *code += &format!(
-                "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + {mem_reads_index}*8], {REG_VALUE} {}\n",
-                ctx.comment_str("mem_reads[@+size*8+ind*8] = mops")
-            );
-
-            mem_reads_index += 1;
+            Self::mops_store_record(ctx, code, REG_VALUE, Some("rcx"));
         }
-        if update_index && mem_reads_index > 0 {
-            // Increment chunk.steps.mem_reads_size
-            if mem_reads_index == 1 {
-                *code += &format!(
-                    "\tinc {REG_MEM_READS_SIZE}, {}\n",
-                    ctx.comment_str("mem_reads_size+=1")
-                );
-            } else {
-                *code += &format!(
-                    "\tadd {REG_MEM_READS_SIZE}, {mem_reads_index} {}\n",
-                    ctx.comment(format!("mem_reads_size+={mem_reads_index}"))
-                );
-            }
-        }
-        mem_reads_index
     }
 
+    /// Reads now, writes deferred to `mem_op_precompiled_flush_writes`: parameters `begin..=end`
+    /// each point to a block of `write_size` words the precompile writes.
     fn mem_op_precompiled_read_and_write(
         ctx: &mut ZiskAsmContext,
         code: &mut String,
@@ -7715,69 +8198,128 @@ impl ZiskRom2Asm {
         end: u64,
         write_size: u64,
     ) {
-        let mem_reads_index =
-            Self::internal_mem_op_precompiled_read(ctx, code, params_count, load_sizes, false);
-        Self::internal_mem_op_precompiled_write(ctx, code, begin, end, write_size, mem_reads_index);
+        Self::internal_mem_op_precompiled_read(ctx, code, params_count, load_sizes);
+        for i in begin..=end {
+            ctx.mops_pending_writes
+                .push(MopsPendingWrite { param_index: Some(i), words: write_size });
+        }
     }
 
-    #[inline(always)]
-    fn internal_mem_op_precompiled_write(
+    /// Memory operations of a precompile called with two direct operands: a block read of `read_a`
+    /// words at rdi (a), a block read of `read_b` words at rsi (b) and a block write of `write_a`
+    /// words at rdi (the result overwrites the first operand).
+    fn mem_op_precompiled_ab_read_and_write(
         ctx: &mut ZiskAsmContext,
         code: &mut String,
-        begin: u64,
-        end: u64,
-        load_size: u64,
-        initial_mem_reads_index: u64,
+        read_a: u64,
+        read_b: u64,
+        write_a: u64,
     ) {
-        // This index will be incremented as we insert data into mem_reads
-        let mut mem_reads_index: u64 = initial_mem_reads_index;
+        Self::mem_op_array(ctx, code, "rdi", false, read_a);
+        Self::mem_op_array(ctx, code, "rsi", false, read_b);
+        Self::mem_op_array(ctx, code, "rdi", true, write_a);
+    }
 
-        if initial_mem_reads_index == 0 {
-            // We get a copy of the precompiled data address
-            *code += &format!("\tmov {REG_ADDRESS}, rdi {}\n", ctx.comment_str("address = rdi"));
+    /// One write record per word of every pending precompile output, value read back from memory.
+    /// Runs after the precompile, so the values are final. Uses `rcx` and `rsi` as scratch.
+    fn mem_op_precompiled_flush_writes(ctx: &mut ZiskAsmContext, code: &mut String) {
+        let pending = std::mem::take(&mut ctx.mops_pending_writes);
+        if pending.is_empty() {
+            return;
         }
-        if begin <= end {
-            // Load the mask + offset
+        if ctx.light_mops() {
+            *code += &ctx.full_line_comment("Precompile output write blocks".to_string());
             *code += &format!(
-                "\tmov {REG_AUX}, 0x{:x} {}\n",
-                F_MOPS_BLOCK_WRITE | (load_size << F_MOPS_BLOCK_LENGTH_SHIFT),
-                ctx.comment(format!("aux = BLOCK_WRITE({})", load_size))
+                "\tmov {REG_ADDRESS}, {} {}\n",
+                ctx.mem_mops_base,
+                ctx.comment_str("address = mops_base")
             );
-        }
-
-        // For every parameter
-        for i in begin..=end {
-            // Store next aligned address value in mem_reads, and advance it
-            *code += &format!(
-                "\tmov {REG_VALUE}, [{REG_ADDRESS} + {i}*8] {}\n",
-                ctx.comment(format!("value = mem[address+{i}]"))
-            );
-
-            // Add the address
-            *code +=
-                &format!("\tadd {REG_VALUE}, {REG_AUX} {}\n", ctx.comment_str("value += address"));
-
-            // Store it in the trace
-            *code += &format!(
-                    "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + {mem_reads_index}*8], {REG_VALUE} {}\n",
-                    ctx.comment_str("mem_reads[@+size*8+ind*8] = value (mops)")
-                );
-            mem_reads_index += 1;
-        }
-
-        // Increment chunk.steps.mem_reads_size
-        if mem_reads_index > 0 {
-            if mem_reads_index == 1 {
+            for pw in pending {
+                match pw.param_index {
+                    Some(i) => {
+                        *code += &format!(
+                            "\tmov rsi, [{REG_ADDRESS} + {i}*8] {}\n",
+                            ctx.comment(format!("header = mem[address+{i}] (output block)"))
+                        );
+                    }
+                    None => {
+                        *code += &format!(
+                            "\tmov rsi, {REG_ADDRESS} {}\n",
+                            ctx.comment_str("header = output block")
+                        );
+                    }
+                }
                 *code += &format!(
-                    "\tinc {REG_MEM_READS_SIZE} {}\n",
-                    ctx.comment_str("mem_reads_size+=1")
+                    "\tmov rdi, 0x{:x} {}\n",
+                    F_MOPS_ALIGNED_BLOCK_WRITE
+                        | (pw.words << F_MOPS_BLOCK_LENGTH_SHIFT)
+                        | (1u64 << F_MOPS_NO_PAYLOAD_BIT),
+                    ctx.comment(format!("rdi = block write of {} words, no payload", pw.words))
                 );
-            } else {
+                *code += &format!("\tor rsi, rdi {}\n", ctx.comment_str("header |= mask"));
+                Self::mops_store_record(ctx, code, "rsi", None);
+            }
+            return;
+        }
+        *code += &ctx.full_line_comment("Precompile output write records".to_string());
+        Self::mops_step_bits(ctx, code, "rcx", 3);
+        *code += &format!(
+            "\tmov rsi, 0x{F_MOPS_ALIGNED_WRITE:x} {}\n",
+            ctx.comment_str("rsi = aligned write mask | tag")
+        );
+        *code += &format!("\tor rcx, rsi {}\n", ctx.comment_str("rcx = mask | step bits"));
+        *code += &format!(
+            "\tmov {REG_ADDRESS}, {} {}\n",
+            ctx.mem_mops_base,
+            ctx.comment_str("address = mops_base")
+        );
+        for pw in pending {
+            match pw.param_index {
+                Some(i) => {
+                    *code += &format!(
+                        "\tmov {REG_AUX}, [{REG_ADDRESS} + {i}*8] {}\n",
+                        ctx.comment(format!("aux = mem[address+{i}] (output block)"))
+                    );
+                }
+                None => {
+                    *code += &format!(
+                        "\tmov {REG_AUX}, {REG_ADDRESS} {}\n",
+                        ctx.comment_str("aux = output block")
+                    );
+                }
+            }
+            for k in 0..pw.words {
                 *code += &format!(
-                    "\tadd {REG_MEM_READS_SIZE}, {mem_reads_index} {}\n",
-                    ctx.comment(format!("mem_reads_size+={mem_reads_index}"))
+                    "\tmov {REG_VALUE}, [{REG_AUX} + {k}*8] {}\n",
+                    ctx.comment(format!("value = block[{k}]"))
+                );
+                *code += &format!(
+                    "\tlea rsi, [{REG_AUX} + {k}*8] {}\n",
+                    ctx.comment_str("header = word address")
+                );
+                *code +=
+                    &format!("\tor rsi, rcx {}\n", ctx.comment_str("header |= mask | step bits"));
+                *code += &format!("\tmov rdi, {REG_VALUE} {}\n", ctx.comment_str("rdi = value"));
+                *code += "\tshr rdi, 63\n\tshl rdi, 62\n";
+                *code += &format!("\tor rsi, rdi {}\n", ctx.comment_str("header |= value top bit"));
+                *code +=
+                    &format!("\tbtr {REG_VALUE}, 63 {}\n", ctx.comment_str("payload tag clear"));
+                *code += &format!(
+                    "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + {}], rsi {}\n",
+                    k * 16,
+                    ctx.comment_str("mem_reads[...] = header")
+                );
+                *code += &format!(
+                    "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + {}], {REG_VALUE} {}\n",
+                    k * 16 + 8,
+                    ctx.comment_str("mem_reads[...] = value")
                 );
             }
+            *code += &format!(
+                "\tadd {REG_MEM_READS_SIZE}, {} {}\n",
+                pw.words * 2,
+                ctx.comment(format!("mem_reads_size += {}", pw.words * 2))
+            );
         }
     }
 
@@ -8172,6 +8714,7 @@ impl ZiskRom2Asm {
 
         if ctx.minimal_trace() {
             *code += &ctx.full_line_comment("Write chunk start data".to_string());
+            *code += "\tmov qword ptr [MEM_BLAKE2B_CHAIN], 0\n"; // the chunk has no chained state
 
             // Write chunk.start.pc
             *code += &format!(
@@ -8230,7 +8773,7 @@ impl ZiskRom2Asm {
             );
 
             // Write chunk.start.reg
-            for i in 1..34 {
+            for i in 1..=LAST_REG {
                 Self::read_riscv_reg(ctx, code, i, REG_VALUE, "value");
                 *code += &format!(
                     "\tmov [{} + {}], {} {}\n",
@@ -8240,8 +8783,11 @@ impl ZiskRom2Asm {
                     ctx.comment(format!("chunk.start.reg[{i}] = value"))
                 );
             }
-            *code +=
-                &format!("\tadd {}, 33*8 {}\n", REG_ADDRESS, ctx.comment_str("address += 33*8"));
+            *code += &format!(
+                "\tadd {}, {LAST_REG}*8 {}\n",
+                REG_ADDRESS,
+                ctx.comment_str("address += regs")
+            );
         }
 
         if ctx.minimal_trace() || ctx.mem_op() {
@@ -8253,7 +8799,11 @@ impl ZiskRom2Asm {
                 ctx.comment_str("aux = chunk_size")
             );
             if ctx.minimal_trace() {
-                *code += &format!("\tadd {}, 40*8 {}\n", REG_AUX, ctx.comment_str("aux += 40*8"));
+                *code += &format!(
+                    "\tadd {}, {CHUNK_MEM_READS_SIZE}*8 {}\n",
+                    REG_AUX,
+                    ctx.comment_str("aux = &chunk.mem_reads_size")
+                );
             }
             if ctx.mem_op() {
                 // Skip chunk.end
@@ -8325,9 +8875,9 @@ impl ZiskRom2Asm {
                 ctx.comment_str("address = chunk_address")
             );
             *code += &format!(
-                "\tadd {}, 37*8 {}\n",
+                "\tadd {}, {CHUNK_LAST_C}*8 {}\n",
                 REG_ADDRESS,
-                ctx.comment_str("address = chunk_address + 37*8")
+                ctx.comment_str("address = &chunk.last.c")
             );
 
             // Write chunk.last.c
@@ -8942,13 +9492,41 @@ mod tests {
         );
     }
 
-    /// The `map_pc_*` branch table must not map the reserved ZisK-library window
-    /// [ZISKLIB_ROM_ADDR, FLOAT_LIB_ROM_ADDR): the library is entered only by static jumps,
-    /// so its instructions are never dynamic-jump targets, and mapping them would pad the
-    /// ~126 MB gap between the guest program and the library with one `.quad emu_end` per
-    /// address (tens of millions of lines). Regression guard for that skip.
     #[test]
-    fn branch_table_excludes_zisk_library_window() {
+    fn unal8_tests_the_low_bits_of_a_or_b() {
+        // c = a | b is computed in place over a (REG_C), masked to its 3 low bits, and both c and
+        // the flag are set to 1 iff some of those bits is set
+        let tail = format!(
+            "\tand {REG_C}, 7\n\tjnz pc_0_unal8_true\n\txor {REG_FLAG}, {REG_FLAG}\n\
+             \tjmp pc_0_unal8_done\npc_0_unal8_true:\n\tmov {REG_C}, 1\n\tmov {REG_FLAG}, 1\n\
+             pc_0_unal8_done:\n"
+        );
+
+        // b in a register
+        let (ctx, code) = operation_asm(ZiskOp::Unal8, None);
+        assert!(ctx.store_a_in_c, "Unal8 works in place on REG_C");
+        assert_eq!(code, format!("\tor {REG_C}, {REG_B}\n{tail}"));
+        assert!(ctx.c.is_saved);
+        assert!(!ctx.flag_is_always_zero, "the flag is the result of the test");
+
+        // A constant b that fits a sign-extended imm32 is used as an immediate
+        let (ctx, code) = operation_asm(ZiskOp::Unal8, Some(0x18));
+        assert_eq!(code, format!("\tor {REG_C}, 0x18\n{tail}"));
+        assert!(!ctx.b.is_saved);
+
+        // A larger constant b has to go through REG_B first
+        let (ctx, code) = operation_asm(ZiskOp::Unal8, Some(0x1_0000_0008));
+        assert_eq!(code, format!("\tmov {REG_B}, 0x100000008\n\tor {REG_C}, {REG_B}\n{tail}"));
+        assert!(ctx.b.is_saved);
+    }
+
+    /// The reserved ZisK-library window [ZISKLIB_ROM_ADDR, FLOAT_LIB_ROM_ADDR) gets its own
+    /// `map_pc_*` table based at ZISKLIB_ROM_ADDR (library code `ret`s to library callers),
+    /// never the guest table: mapping it there would pad the ~126 MB gap between the guest
+    /// program and the library with one `.quad emu_end` per address (tens of millions of
+    /// lines). Regression guard for both.
+    #[test]
+    fn branch_table_maps_zisk_library_window_apart() {
         let guest0 = ROM_ADDR;
         let guest1 = ROM_ADDR + 4;
         let lib0 = ZISKLIB_ROM_ADDR;
@@ -8969,18 +9547,73 @@ mod tests {
         assert!(code.contains(&format!("map_pc_{guest1:x}:")), "guest1 should be mapped");
         assert!(code.contains(&format!("map_pc_{float0:x}:")), "float base should be mapped");
 
-        // ...but the ZisK-library window is not.
-        assert!(!code.contains(&format!("map_pc_{lib0:x}:")), "library pc must not be mapped");
-        assert!(!code.contains(&format!("map_pc_{lib1:x}:")), "library pc must not be mapped");
+        // ...and so is the library, in its own table starting at the window base, after
+        // the guest one.
+        assert!(code.contains(&format!("map_pc_{lib0:x}: \t.quad pc_{lib0:x}")));
+        assert!(code.contains(&format!("map_pc_{lib1:x}:")), "lib1 should be mapped");
+        assert!(
+            code.find(&format!("map_pc_{lib0:x}:")) > code.find(&format!("map_pc_{float0:x}:"))
+        );
 
-        // The only padding is the 3 addresses strictly between the two adjacent guest
-        // instructions (guest0+1..guest1). The huge guest->library and library->float gaps
-        // are left unmapped; a regression that maps the library window would emit tens of
-        // millions of `.quad emu_end` lines instead of exactly 3.
+        // The only padding is the 3 addresses strictly between each pair of adjacent
+        // instructions (guest0+1..guest1, lib0+1..lib1). The huge guest->library and
+        // library->float gaps are left unmapped; a regression that maps the library window
+        // in the guest table would emit tens of millions of `.quad emu_end` lines.
         assert_eq!(
             code.matches(".quad emu_end").count(),
-            3,
+            6,
             "unexpected padding; the ZisK-library window may be getting mapped"
+        );
+    }
+
+    /// A slot-to-slot copy, `mem[a + dst] = mem[a + src]` in one instruction (b = SRC_IND,
+    /// store = STORE_IND with the same `a`), is what the wasm lowering emits for every
+    /// `local.get`/`local.set`/`local.tee`.  The b read must not build its address in REG_A,
+    /// because the store builds its own address from REG_A afterwards: doing so wrote the value
+    /// to `a + src + dst`.  The Rust emulator computes both addresses from `a`, so only the
+    /// assembly backend showed it.
+    #[test]
+    fn indirect_store_keeps_a_intact_across_an_indirect_read() {
+        let pc = ROM_ADDR;
+        let mut zib = crate::ZiskInstBuilder::new(pc);
+        zib.src_a("reg", 2, false); // a = FP
+        zib.src_b("ind", (-40i64) as u64, false); // b = mem[a - 40]
+        zib.op("copyb").unwrap();
+        zib.ind_width(8);
+        zib.store("ind", -24, false, false); // mem[a - 24] = c
+        zib.j(4, 4);
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
+        zib.build(&mut rom);
+        rom.optimize_instruction_lookup().unwrap();
+
+        let mut asm = String::new();
+        ZiskRom2Asm::save_to_asm(&rom, &mut asm, AsmGenerationMethod::AsmFast, false, false, false);
+        let block: Vec<&str> = asm
+            .lines()
+            .skip_while(|l| !l.starts_with(&format!("pc_{pc:x}:")))
+            .skip(1)
+            .take_while(|l| !l.starts_with("pc_"))
+            .map(str::trim)
+            .collect();
+        assert!(!block.is_empty(), "no code emitted for pc {pc:#x}");
+
+        // The read goes through REG_ADDRESS (a copied, then offset by the b offset) ...
+        let read_offset = (-40i64) as u64;
+        assert!(
+            block.contains(&format!("mov {REG_ADDRESS}, {REG_A}").as_str())
+                && block.contains(&format!("add {REG_ADDRESS}, 0x{read_offset:x}").as_str()),
+            "the b indirection must not clobber REG_A:\n{}",
+            block.join("\n")
+        );
+        // ... and REG_A, still holding `a`, only ever receives the store offset.
+        let store_offset = (-24i64) as u64;
+        let adds_to_a: Vec<&&str> =
+            block.iter().filter(|l| l.starts_with(&format!("add {REG_A},"))).collect();
+        assert_eq!(
+            adds_to_a,
+            vec![&format!("add {REG_A}, 0x{store_offset:x}").as_str()],
+            "the store address must be a + store_offset:\n{}",
+            block.join("\n")
         );
     }
 }

@@ -4,7 +4,7 @@ ENTRY(_start)
 SECTIONS
 {
     /* Standard ROM address */
-    . = 0x80000000;
+    . = 0x90000000;
     
     /* Create a separate section for FIPS start marker */
     .fipsstart : {
@@ -40,6 +40,6 @@ SECTIONS
     }
     
     /* Stack */
-    . = 0x80100000;
+    . = 0x90100000;
     _stack_top = .;
 }

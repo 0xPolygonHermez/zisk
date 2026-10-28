@@ -15,7 +15,14 @@ enum ControlShmemOffsets {
     ShutdownFlag = 8,
     InputsSize = 16,
     ResetFlag = 24,
+    /// The host randomness seed for the next execution: 4 little-endian u64 words.
+    RandomSeed = 32,
+    /// 1 once the `RandomSeed` slot holds the seed, 0 for none (the guest then fails if it asks).
+    RandomSeedSet = 64,
 }
+
+/// Size of the host randomness seed in u64 words (256 bits).
+pub const RANDOM_SEED_WORDS: usize = 4;
 
 impl ControlShmem {
     /// The total size of the control shared memory region, in bytes.
@@ -36,6 +43,26 @@ impl ControlShmem {
         self.writer.write_u64_at(ControlShmemOffsets::ShutdownFlag as usize, 0)?;
         self.writer.write_u64_at(ControlShmemOffsets::InputsSize as usize, 0)?;
         self.writer.write_u64_at(ControlShmemOffsets::ResetFlag as usize, 0)?;
+        self.clear_random_seed()?;
+        Ok(())
+    }
+
+    /// Sets the host randomness seed that the ASM services read when they start the next execution.
+    /// Write it before they start: the words first, then the flag.
+    pub fn set_random_seed(&self, seed: &[u64; RANDOM_SEED_WORDS]) -> Result<()> {
+        for (i, word) in seed.iter().enumerate() {
+            self.writer.write_u64_at(ControlShmemOffsets::RandomSeed as usize + 8 * i, *word)?;
+        }
+        self.writer.write_u64_at(ControlShmemOffsets::RandomSeedSet as usize, 1)?;
+        Ok(())
+    }
+
+    /// Clears the host randomness seed, so that a guest that asks for one fails.
+    pub fn clear_random_seed(&self) -> Result<()> {
+        self.writer.write_u64_at(ControlShmemOffsets::RandomSeedSet as usize, 0)?;
+        for i in 0..RANDOM_SEED_WORDS {
+            self.writer.write_u64_at(ControlShmemOffsets::RandomSeed as usize + 8 * i, 0)?;
+        }
         Ok(())
     }
 
@@ -54,6 +81,19 @@ impl ControlShmem {
     pub fn set_reset_flag(&self) -> Result<()> {
         self.writer.write_u64_at(ControlShmemOffsets::ResetFlag as usize, 1)?;
         Ok(())
+    }
+
+    /// Clears the reset flag alone, keeping the sizes and the seed already written.
+    pub fn clear_reset_flag(&self) -> Result<()> {
+        self.writer.write_u64_at(ControlShmemOffsets::ResetFlag as usize, 0)?;
+        Ok(())
+    }
+
+    /// The inputs size another process (or this one) recorded, read through a fresh mapping.
+    pub fn inputs_size_of(shm_prefix: &str) -> Result<u64> {
+        let name = shmem_control_input_name(shm_prefix);
+        let reader = crate::ShmemReader::new(&name, Self::CONTROL_WRITER_SIZE as usize)?;
+        Ok(reader.read_u64_at(ControlShmemOffsets::InputsSize as usize))
     }
 
     /// Increments the inputs size in the control shared memory by the given size, which signals the C++ side that new inputs have been added.
@@ -107,15 +147,26 @@ mod tests {
         c.inc_inputs_size(5).unwrap();
         assert_eq!(r.read_u64_at(16), 15);
 
-        // ResetFlag @ offset 24
+        // ResetFlag @ offset 24, cleared alone: the inputs size stays
         c.set_reset_flag().unwrap();
         assert_eq!(r.read_u64_at(24), 1);
+        c.clear_reset_flag().unwrap();
+        assert_eq!(r.read_u64_at(24), 0);
+        assert_eq!(r.read_u64_at(16), 15);
+        c.set_reset_flag().unwrap();
+
+        // RandomSeed @ offsets 32..64 (words 4..7), RandomSeedSet @ offset 64 (word 8), as
+        // the C side reads them (CONTROL_INPUT_RANDOM_SEED_INDEX / _SET_INDEX)
+        c.set_random_seed(&[1, 2, 3, 4]).unwrap();
+        assert_eq!([32, 40, 48, 56].map(|o| r.read_u64_at(o)), [1, 2, 3, 4]);
+        assert_eq!(r.read_u64_at(64), 1);
 
         // reset() clears every slot
         c.reset().unwrap();
         assert_eq!(c.prec_hints_size(), 0);
         assert_eq!(r.read_u64_at(16), 0);
         assert_eq!(r.read_u64_at(24), 0);
+        assert_eq!([32, 40, 48, 56, 64].map(|o| r.read_u64_at(o)), [0; 5]);
 
         drop(r);
         unlink_segment(&seg);

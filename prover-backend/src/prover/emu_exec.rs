@@ -12,9 +12,10 @@ use proofman_fields::Goldilocks;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::RandomSeed;
 use zisk_core::ZiskRom;
 use zisk_executor::ZiskExecutor;
-use zisk_transpiler_riscv::Riscv2zisk;
+use zisk_transpiler_common::ZiskTranspiler;
 
 use crate::execute_client::ExecuteClient;
 use crate::guest::GuestProgram;
@@ -42,7 +43,7 @@ impl EmuExecClient {
     pub fn setup(&self, program: &GuestProgram) -> Result<()> {
         tracing::info!("Setting up EmuExecClient for ELF '{}'", program.name());
         tracing::debug!("Parsing ELF into ZiskRom");
-        let zisk_rom = Riscv2zisk::new(program.elf())
+        let zisk_rom = ZiskTranspiler::new(program.elf())
             .run()
             .map_err(|e| anyhow::anyhow!("failed to parse ELF: {e}"))?;
         *self.program.lock().expect("program mutex") =
@@ -52,15 +53,18 @@ impl EmuExecClient {
     }
 
     /// Run the program set up by [`setup`](Self::setup) once with the given
-    /// stdin. Returns an error if `setup` has not been called.
-    pub fn execute(&self, stdin: ZiskStdin) -> Result<ExecuteOutput> {
+    /// stdin and seed (`None` draws a fresh one). Returns an error if `setup`
+    /// has not been called.
+    pub fn execute(&self, stdin: ZiskStdin, seed: Option<RandomSeed>) -> Result<ExecuteOutput> {
         let guard = self.program.lock().expect("program mutex");
         let setup = guard.as_ref().context("call setup(program) before execute(stdin)")?;
+        let seed = seed.map_or_else(RandomSeed::random, Ok)?;
         tracing::info!("Running Emu execute");
         let started = Instant::now();
         let (summary, pub_outs, plan) = self.executor.execute_standalone(
             setup.zisk_rom.clone(),
             stdin,
+            seed,
             /* use_hints */ false,
         )?;
         Ok(ExecuteOutput::new_standalone(started.elapsed(), summary, &pub_outs, plan))
@@ -77,7 +81,8 @@ impl ExecuteClient for EmuExecClient {
         _program: &GuestProgram,
         stdin: ZiskStdin,
         _hints: Option<StreamSource>,
+        seed: Option<RandomSeed>,
     ) -> Result<ExecuteOutput> {
-        EmuExecClient::execute(self, stdin)
+        EmuExecClient::execute(self, stdin, seed)
     }
 }

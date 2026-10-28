@@ -5,11 +5,12 @@
 # inputcpy_mops - Optimized inputcpy with memory ops tracing
 #
 # This function performs two main tasks:
-# 1. Records all addresses of memory operations (read and write addresses)
+# 1. Records the addresses of the memory reads
 # 2. Performs the actual inputcpy operation filling with free-inputs
+# 3. Records one write per destination word with its value (dma_constants.inc)
 #
 # REGISTER USAGE:
-# Uses general-purpose registers: rax, rbx, rcx, rdx, rdi, rsi, r8, r9, r12, r13
+# Uses general-purpose registers: rax, rbx, rcx, rdx, rdi, rsi, r8, r9, r10, r11, r12, r13; reads r14 (step)
 # Does NOT use XMM registers (caller doesn't need to save them)
 # Preserves callee-saved registers (rbx, r12, r13 saved/restored in wrapper)
 #
@@ -24,6 +25,7 @@
 
 .global direct_dma_inputcpy_mops
 .extern fast_memcpy
+.extern check_dynamic_mops
 .extern fcall_ctx
 
 .include "dma_constants.inc"
@@ -48,6 +50,13 @@ direct_dma_inputcpy_mops:
     test    rdx, rdx
     jz      .L_inputcpy_mops_done
 
+    # Make sure the trace has room for one write record per word
+    cmp     rdx, MAX_DMA_BYTES_DIRECT_MOPS
+    jbe     .L_inputcpy_mops_headers
+    call    check_dynamic_mops
+.L_inputcpy_mops_headers:
+    MOPS_STEP_HEADERS
+
     # test dst aligned
     test    rdi, 0x7
     jnz     .L_inputcpy_mops_rdi_unaligned
@@ -69,11 +78,9 @@ direct_dma_inputcpy_mops:
     add     r9, rax
     add     r9, rdi                       # rdi aligned 
 
-    mov     [r12 + r13 * 8], r9           # ~4 cycles - write mops entry (block write)
-    inc     r13                           # 1 cycle - advance mops index
+    mov     [r12 + r13 * 8], r9           # ~4 cycles - write block descriptor, expanded after the copy
 
-    jmp     fast_inputcpy
-    # fast_inputcpy "execute" the return
+    jmp     .L_inputcpy_mops_copy
 
 
 .L_inputcpy_mops_count_remain:
@@ -94,7 +101,7 @@ direct_dma_inputcpy_mops:
     lea     rcx, [rdi + r9 * 8 - 8]
     mov     rax, MOPS_ALIGNED_READ
     add     rcx, rax
-    mov     [r12 + r13 * 8], rcx
+    MOPS_REC_READ rcx
 
     # BRANCH 1 - specific MOPS block write
     # set rcx = qwords to write
@@ -104,11 +111,9 @@ direct_dma_inputcpy_mops:
     add     rax, r9
     add     rax, rdi                       # rdi is aligned in this path
 
-    mov     [r12 + r13 * 8 + 8], rax        # ~4 cycles - write mops entry (block write)
-    add     r13, 2
+    mov     [r12 + r13 * 8], rax            # ~4 cycles - write block descriptor, expanded after the copy
 
-    jmp     fast_inputcpy
-    # fast_inputcpy "execute" the return
+    jmp     .L_inputcpy_mops_copy
 
 .L_inputcpy_mops_rdi_unaligned:
     # BRANCH 2 - worse
@@ -145,18 +150,16 @@ direct_dma_inputcpy_mops:
     add     rcx, r9
     add     rcx, rax
 
-    mov     [r12 + r13 * 8 + 8], rcx        # ~4 cycles - write mops entry (block write)
+    mov     [r12 + r13 * 8 + 8], rcx        # ~4 cycles - write block descriptor after the read record
 
     # BRANCH 2.1 - specific MOPS pre-read part PRE
     # rax = rdi & ALIGN_MASK
 
     mov     rcx, MOPS_ALIGNED_READ
     add     rcx, rax
-    mov     [r12 + r13 * 8], rcx
-    add     r13, 2
+    MOPS_REC_READ rcx
 
-    jmp    fast_inputcpy
-    # fast_inputcpy "execute" the return
+    jmp    .L_inputcpy_mops_copy
 
 .L_branch_2_2:
 
@@ -172,7 +175,7 @@ direct_dma_inputcpy_mops:
     and     rcx, ALIGN_MASK
     add     rax, rcx                       # rax |= rdi & ALIGN MASK
 
-    mov     [r12 + r13 * 8 + 16], rax      # ~4 cycles - write mops entry (block write)
+    mov     [r12 + r13 * 8 + 16], rax      # ~4 cycles - write block descriptor after the two read records
 
     # rcx = rdi & ALIGN_MASK
     # BRANCH 2.2 - PRE write
@@ -180,23 +183,20 @@ direct_dma_inputcpy_mops:
     mov     rax, MOPS_ALIGNED_READ
 
     add     rcx, rax                    # rcx = rdi & ALIGN_MASK
-    mov     [r12 + r13 * 8], rcx
+    MOPS_REC_READ rcx
 
     # BRANCH 2.2 - POST write
 
     lea     r9, [rdi + rdx]
     and     r9, ALIGN_MASK
     add     r9, rax
-    mov     [r12 + r13 * 8 + 8], r9
+    MOPS_REC_READ r9
 
-    add     r13, 3
-
-    # rsi = input + mops
-    # incr mops
-
-    jmp     fast_inputcpy
-
-    # fast_inputcpy "execute" the return
+    # copy, then one write record per destination word
+.L_inputcpy_mops_copy:
+    call    fast_inputcpy               # rax = dst; keeps r10 (step field)
+    MOPS_EXPAND_BLOCK_WRITE
+    ret
 
 .L_inputcpy_mops_done:
     ret

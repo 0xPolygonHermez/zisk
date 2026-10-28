@@ -4,15 +4,18 @@ const fs = require("fs");
 const path = require("path");
 
 describe("ZiskVerifier", function () {
-  it("verifies a wrapped PLONK proof on-chain", async function () {
+  // ZISK_SOLIDITY_CONTRACT picks the family's pilfflonk verifier the fixture is for.
+  const contract = process.env.ZISK_SOLIDITY_CONTRACT || "blake3/ZiskVerifier.sol:ZiskVerifier";
+
+  it(`verifies a final SNARK proof on-chain (${contract})`, async function () {
     const fxPath =
       process.env.ZISK_SOLIDITY_FIXTURE ||
-      path.join(__dirname, "..", "fixtures", "fixture.json");
+      path.join(__dirname, "..", "fixtures", "blake3.json");
 
     if (!fs.existsSync(fxPath)) {
       throw new Error(
         `Fixture not found at ${fxPath}. ` +
-          `Generate one with: cargo zisk export-solidity-calldata -p <plonk.bin> -o ${fxPath}`
+          `Generate one with: cargo-zisk-dev export-solidity-calldata -p <proof.bin> -o ${fxPath}`
       );
     }
 
@@ -23,12 +26,12 @@ describe("ZiskVerifier", function () {
       }
     }
 
-    const Verifier = await ethers.getContractFactory("ZiskVerifier");
+    const Verifier = await ethers.getContractFactory(contract);
     const verifier = await Verifier.deploy();
     await verifier.waitForDeployment();
 
     // Catch the most common failure mode early: a proof wrapped against a different
-    // PLONK proving key than the one PlonkVerifier.sol was generated for. The fixture is
+    // SNARK proving key than the one the verifier was generated for. The fixture is
     // a leaf, so its root must be the contract's; a mismatch would otherwise surface only
     // as a confusing InvalidProof.
     const onchainRootC = await verifier.getRootCVadcopFinal();

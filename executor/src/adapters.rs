@@ -154,6 +154,13 @@ impl<F: PrimeField64> ProofRegistry for ProofmanAdapter<'_, F> {
         Ok(self.pctx.assign_table_to(info.airgroup_id, info.air_id, gid.0)?)
     }
 
+    fn instance_weight(&self, info: InstanceInfo) -> u64 {
+        let (ag, air) = (info.airgroup_id, info.air_id);
+        self.pctx.get_weight(ag, air)
+            + self.pctx.get_recursion_weight(ag, air)
+            + self.pctx.get_compressor_weight(ag, air)
+    }
+
     fn instance_counts(&self) -> std::collections::HashMap<(usize, usize), usize> {
         self.instance_counts.lock().expect("instance_counts mutex").clone()
     }
