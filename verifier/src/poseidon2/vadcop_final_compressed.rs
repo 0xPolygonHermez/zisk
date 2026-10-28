@@ -4,9 +4,7 @@ use proofman_fields::{
     CubicExtensionField, Field, Goldilocks, Poseidon2_16, Poseidon2_8, Transcript,
 };
 use proofman_verifier::VadcopFinalProof;
-use proofman_verifier::{
-    stark_verify_stir, Boundary, FriEvalGroup, FriEvalRef, StirParams, StirVerifierInfo,
-};
+use proofman_verifier::{Boundary, FriEvalGroup, FriEvalRef, StirParams, StirVerifierInfo};
 
 #[inline(never)]
 #[rustfmt::skip]
@@ -3668,16 +3666,12 @@ pub fn verify(proof: &VadcopFinalProof, vk: &[u64]) -> bool {
 
 pub fn verify_u64(proof: &[u64], vk: &[u64]) -> bool {
     let info = verifier_info();
-    let Some(flat) = proofman_verifier::expand_proof::<
+    proofman_verifier::verify_multiproof_stir::<
         Poseidon2_8,
         Poseidon2_8,
         Transcript<Goldilocks, Poseidon2_16>,
-    >(proof, vk, &info.proof_layout()) else {
-        return false;
-    };
-    stark_verify_stir::<Poseidon2_8, Poseidon2_8, Transcript<Goldilocks, Poseidon2_16>, Poseidon2_8>(
-        &flat, vk, &info, q_verify,
-    )
+        Poseidon2_8,
+    >(proof, vk, &info, q_verify)
 }
 
 /// Upper bound: a multiproof never outgrows the flat proof by more than its tag.

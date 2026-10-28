@@ -215,7 +215,8 @@ pub fn proof_size() -> crate::ProofSize {
 
 /// A generated verifier as `zisk-verifier` compiles it. Refuses one of another low-degree test.
 pub(crate) fn rewrite_generated_verifier(src: &str, ldt: &str) -> Result<String> {
-    let built = if src.contains("stark_verify_stir") { "STIR" } else { "FRI" };
+    let stir = src.contains("stark_verify_stir") || src.contains("verify_multiproof_stir");
+    let built = if stir { "STIR" } else { "FRI" };
     if built != ldt {
         bail!("the verifier checks a {built} proof; the release's is {ldt}");
     }
@@ -591,6 +592,15 @@ mod tests {
                    crate::expected_stir_proof_size_bytes(&verifier_info()) + 8\n}\n";
         let out = rewrite_generated_verifier(src, "STIR").unwrap();
         assert!(out.ends_with("    crate::ProofSize::AtMost(max_proof_bytes())\n}\n"), "{out}");
+    }
+
+    #[test]
+    fn a_multiproof_stir_entry_point_is_a_stir_verifier() {
+        let src = "pub fn verify_u64(p: &[u64], vk: &[u64]) -> bool {\n\
+                   crate::verify_multiproof_stir::<A, A, T, A>(p, vk, &info, q_verify)\n}\n\
+                   pub fn max_proof_bytes() -> usize { 8 }\n";
+        assert!(rewrite_generated_verifier(src, "STIR").is_ok());
+        assert!(rewrite_generated_verifier(src, "FRI").is_err());
     }
 
     #[test]
