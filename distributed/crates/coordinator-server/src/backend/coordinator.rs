@@ -378,7 +378,7 @@ impl BackendService for CoordinatorBackend {
                 let hash_id = r.hash_id.clone();
                 let proof_type = match r.proof_dest {
                     DomainProofKind::StarkMinimal => ProofKind::VadcopFinalMinimal,
-                    DomainProofKind::Plonk => ProofKind::Plonk,
+                    DomainProofKind::Snark => ProofKind::Snark,
                     _ => ProofKind::VadcopFinal,
                 };
                 let hints_mode = domain_hints_to_dto(r.hints);
@@ -434,7 +434,7 @@ impl BackendService for CoordinatorBackend {
             DomainJobKind::Wrap(r) => {
                 let proof_dest = match r.proof_dest {
                     DomainProofKind::StarkMinimal => 1,
-                    DomainProofKind::Plonk => 2,
+                    DomainProofKind::Snark => 2,
                     DomainProofKind::Stark => 1,
                 };
                 let response = self

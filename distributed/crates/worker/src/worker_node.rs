@@ -1174,7 +1174,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     reset_current_job = !final_proof.is_empty();
 
                     let proof_data = if !final_proof.is_empty() {
-                        let is_plonk = proof_type == ProofKind::Plonk;
+                        let is_snark = proof_type == ProofKind::Snark;
                         let flat_proof: Vec<u64> = final_proof.into_iter().flatten().collect();
                         // Proofman's tree split across workers: the root is a leaf of this one
                         // job (flag=1), like a single-node proof, so it may be compressed.
@@ -1193,13 +1193,13 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         match Proof::new_from_vadcop_proof(&flat_proof, minimal, verkey, hash) {
                             Ok(zisk_proof) => {
                                 // On wrap failure, emit nothing: returning the
-                                // unwrapped Vadcop proof would answer a PLONK request
+                                // unwrapped Vadcop proof would answer a SNARK request
                                 // with a different proof kind.
-                                let final_proof: Option<Proof> = if is_plonk {
+                                let final_proof: Option<Proof> = if is_snark {
                                     match self
                                         .worker
                                         .prover_arc()
-                                        .wrap_proof(&zisk_proof, ProofKind::Plonk)
+                                        .wrap_proof(&zisk_proof, ProofKind::Snark)
                                         .run()
                                     {
                                         Ok(wrapped) => Some(wrapped.get_proof().clone()),
@@ -1208,7 +1208,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                                 &mut success,
                                                 &mut error_message,
                                                 format!(
-                                                    "Failed to wrap Plonk proof for \
+                                                    "Failed to wrap SNARK proof for \
                                                      {job_id}: {e}"
                                                 ),
                                             );

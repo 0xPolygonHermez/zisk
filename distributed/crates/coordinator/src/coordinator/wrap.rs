@@ -24,7 +24,7 @@ impl Coordinator {
     ) -> CoordinatorResult<LaunchProofResponseDto> {
         let metadata = self.admit_job_metadata(metadata)?;
         // Before any worker is reserved, as in `launch_proof`.
-        if ProofKind::from(request.proof_dest) == ProofKind::Plonk {
+        if ProofKind::from(request.proof_dest) == ProofKind::Snark {
             self.ensure_snark_available(request.snark_protocol).await?;
         }
 

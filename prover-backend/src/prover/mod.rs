@@ -1328,7 +1328,7 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
     /// Enable minimal/compressed/SNARK proof generation.
     pub fn wrap_proof(mut self, proof_kind: ProofKind) -> Self {
         assert!(
-            matches!(proof_kind, ProofKind::VadcopFinalMinimal | ProofKind::Plonk),
+            matches!(proof_kind, ProofKind::VadcopFinalMinimal | ProofKind::Snark),
             "Invalid proof mode for ProveBuilder: {:?}",
             proof_kind
         );

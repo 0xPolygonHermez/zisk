@@ -305,15 +305,24 @@ pub enum ProofKind {
     VadcopFinal,
     /// A minimal STARKs proof variant optimized for size.
     VadcopFinalMinimal,
-    /// A Plonk SNARK proof.
-    Plonk,
+    /// A final SNARK proof, of the protocol the SNARK proving key is set up for (PLONK or
+    /// pilfflonk; see `SnarkProtocol`).
+    #[serde(alias = "Plonk")]
+    Snark,
+}
+
+#[allow(non_upper_case_globals)]
+impl ProofKind {
+    /// A final SNARK proof.
+    #[deprecated(note = "the proof may be of any final SNARK: use `ProofKind::Snark`")]
+    pub const Plonk: ProofKind = ProofKind::Snark;
 }
 
 impl From<i32> for ProofKind {
     fn from(v: i32) -> Self {
         match v {
             1 => ProofKind::VadcopFinalMinimal,
-            2 => ProofKind::Plonk,
+            2 => ProofKind::Snark,
             _ => ProofKind::VadcopFinal,
         }
     }
@@ -324,7 +333,7 @@ impl From<ProofKind> for i32 {
         match k {
             ProofKind::VadcopFinal => 0,
             ProofKind::VadcopFinalMinimal => 1,
-            ProofKind::Plonk => 2,
+            ProofKind::Snark => 2,
         }
     }
 }
@@ -1295,7 +1304,7 @@ impl Proof {
         match &self.body {
             ProofBody::Vadcop { kind: VadcopKind::Minimal, .. } => ProofKind::VadcopFinalMinimal,
             ProofBody::Vadcop { .. } => ProofKind::VadcopFinal,
-            ProofBody::Plonk { .. } | ProofBody::Pilfflonk { .. } => ProofKind::Plonk,
+            ProofBody::Plonk { .. } | ProofBody::Pilfflonk { .. } => ProofKind::Snark,
         }
     }
 
@@ -2311,12 +2320,24 @@ mod tests {
         )
     }
 
-    /// A pilfflonk body is a SNARK proof: it takes the `Plonk` kind, and its bytes and key
+    /// A pilfflonk body is a SNARK proof: it takes the `Snark` kind, and its bytes and key
     /// survive a save and a load.
+    /// `Plonk`, the old name of `Snark`, still reads and still matches.
+    #[test]
+    #[allow(deprecated)]
+    fn the_old_plonk_name_is_snark() {
+        assert_eq!(ProofKind::Plonk, ProofKind::Snark);
+        assert!(matches!(ProofKind::Snark, ProofKind::Plonk));
+        let kind: ProofKind = serde_json::from_str("\"Plonk\"").unwrap();
+        assert_eq!(kind, ProofKind::Snark);
+        assert_eq!(serde_json::to_string(&ProofKind::Snark).unwrap(), "\"Snark\"");
+        assert_eq!(i32::from(ProofKind::Snark), 2);
+    }
+
     #[test]
     fn pilfflonk_proof_is_a_snark_kind_and_roundtrips() {
         let original = pilfflonk_proof();
-        assert_eq!(original.kind(), ProofKind::Plonk);
+        assert_eq!(original.kind(), ProofKind::Snark);
         assert!(!original.is_empty());
 
         let (bytes, loaded) = save_and_load(&original);

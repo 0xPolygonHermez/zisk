@@ -1370,7 +1370,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> Result<Vec<u8>> {
         let proof_kind = match proof_dest {
             1 => ProofKind::VadcopFinalMinimal,
-            2 => ProofKind::Plonk,
+            2 => ProofKind::Snark,
             _ => anyhow::bail!("Unsupported proof_dest for wrap: {}", proof_dest),
         };
 

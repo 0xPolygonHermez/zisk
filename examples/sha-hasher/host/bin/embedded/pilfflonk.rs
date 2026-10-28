@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("Setup completed successfully");
 
     println!("Generating pilfflonk proof (this may take a while)...");
-    let snark_proof = client.prove(&ELF_SHA_HASHER, stdin).wrap(ProofKind::Plonk).run_sync()?;
+    let snark_proof = client.prove(&ELF_SHA_HASHER, stdin).wrap(ProofKind::Snark).run_sync()?;
     println!("pilfflonk proof generated successfully in {} ms", snark_proof.get_proving_time());
     println!("Execution steps: {}", snark_proof.get_execution_steps());
 

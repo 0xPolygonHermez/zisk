@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Vadcop proof generated in {} ms", vadcop_result.get_proving_time());
 
     println!("Wrapping into pilfflonk proof (this may take a while)...");
-    let snark_proof = client.wrap_proof(vadcop_result.get_proof(), ProofKind::Plonk).run()?.await?;
+    let snark_proof = client.wrap_proof(vadcop_result.get_proof(), ProofKind::Snark).run()?.await?;
     println!("pilfflonk proof wrapped successfully in {} ms", snark_proof.get_proving_time());
     println!("Execution steps: {}", snark_proof.get_execution_steps());
 

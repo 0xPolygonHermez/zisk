@@ -12,7 +12,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tracing::{error, info, warn};
-use zisk_common::{JobMetadataArgs, Proof, RandomSeed, RandomSeedArgs};
+use zisk_common::{JobMetadataArgs, Proof, RandomSeed, RandomSeedArgs, SnarkProtocol};
 use zisk_coordinator_api::dto::{
     deadline_from_now, DomainExecuteRequest, DomainInputChunk, DomainInputKind, DomainJobKind,
     DomainJobKindResponse, DomainProofKind, DomainProveRequest, DomainSetupRequest, TerminalStatus,
@@ -77,9 +77,10 @@ enum Commands {
         #[arg(long, conflicts_with = "input")]
         hints: Option<PathBuf>,
 
-        /// Proof type to generate
+        /// Proof type to generate: stark, stark-minimal, snark (the workers' SNARK), plonk or
+        /// pilfflonk (a SNARK of that protocol only)
         #[arg(long, default_value = "stark", value_parser = parse_proof_kind)]
-        proof: DomainProofKind,
+        proof: (DomainProofKind, Option<SnarkProtocol>),
 
         /// Save the proof bytes to this file
         #[arg(short, long)]
@@ -133,12 +134,16 @@ enum Commands {
     },
 }
 
-fn parse_proof_kind(s: &str) -> Result<DomainProofKind, String> {
+fn parse_proof_kind(s: &str) -> Result<(DomainProofKind, Option<SnarkProtocol>), String> {
     match s.to_lowercase().as_str() {
-        "stark" => Ok(DomainProofKind::Stark),
-        "stark-minimal" | "stark_minimal" | "minimal" => Ok(DomainProofKind::StarkMinimal),
-        "plonk" => Ok(DomainProofKind::Plonk),
-        other => Err(format!("unknown proof kind '{other}'; use stark, stark-minimal, or plonk")),
+        "stark" => Ok((DomainProofKind::Stark, None)),
+        "stark-minimal" | "stark_minimal" | "minimal" => Ok((DomainProofKind::StarkMinimal, None)),
+        "snark" => Ok((DomainProofKind::Snark, None)),
+        "plonk" => Ok((DomainProofKind::Snark, Some(SnarkProtocol::Plonk))),
+        "pilfflonk" => Ok((DomainProofKind::Snark, Some(SnarkProtocol::Pilfflonk))),
+        other => Err(format!(
+            "unknown proof kind '{other}'; use stark, stark-minimal, snark, plonk or pilfflonk"
+        )),
     }
 }
 
@@ -259,7 +264,7 @@ fn run_prove(
     hash_id: &str,
     input: Option<&PathBuf>,
     hints: Option<&PathBuf>,
-    proof: &DomainProofKind,
+    proof: &(DomainProofKind, Option<SnarkProtocol>),
     output: Option<&PathBuf>,
     seed: Option<RandomSeed>,
     metadata: BTreeMap<String, String>,
@@ -278,6 +283,7 @@ fn run_prove(
     };
     let timeout_opt = (timeout != 0).then(|| deadline_from_now(Duration::from_secs(timeout)));
 
+    let (proof, snark_protocol) = proof;
     info!("Submitting prove job (proof_dest = {proof:?}) …");
     let job = client.submit_job_with_metadata(
         DomainJobKind::Prove(DomainProveRequest {
@@ -286,7 +292,7 @@ fn run_prove(
             hints: hints_kind,
             random_seed: seed,
             proof_dest: proof.clone(),
-            snark_protocol: None,
+            snark_protocol: *snark_protocol,
             proof_timeout: timeout_opt,
         }),
         metadata,

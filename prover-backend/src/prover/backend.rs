@@ -407,7 +407,7 @@ impl ProverBackend {
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
-        if proof_kind == ProofKind::Plonk && self.snark_wrapper.is_none() {
+        if proof_kind == ProofKind::Snark && self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(
                 "Snark wrapper is not initialized. Cannot generate snark proof."
             ));
@@ -454,7 +454,7 @@ impl ProverBackend {
         self.proofman.set_barrier();
 
         match (proof_kind, proof) {
-            (ProofKind::Plonk, Some(vadcop_proof)) => {
+            (ProofKind::Snark, Some(vadcop_proof)) => {
                 let vadcop_vk_u64 = self.get_vadcop_vk(minimal)?;
 
                 // Freshly proven vadcop_final proof — stamp the default
@@ -585,7 +585,7 @@ impl ProverBackend {
 
     /// SNARK-wrap a vadcop_final proof. `source_kind` supplies the flag `RecursiveF`
     /// expects, and selects the verification root (see below).
-    pub(crate) fn plonk(
+    pub(crate) fn snark(
         &self,
         proof: &[u64],
         publics_full: &[u64],

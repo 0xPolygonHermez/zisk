@@ -112,7 +112,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Optional (ZISK_L2_PLONK=1 or ZISK_L2_PILFFLONK=1): wrap the folded proof into that SNARK.
     if let Some(protocol) = snark {
         timer_start_info!(WRAP_SNARK);
-        let wrapped = client.wrap_proof(&abc, ProofKind::Plonk).run()?.await?;
+        let wrapped = client.wrap_proof(&abc, ProofKind::Snark).run()?.await?;
         timer_stop_and_log_info!(WRAP_SNARK);
         // On the result, not a copy of its proof: it carries the SNARK key it was wrapped under.
         wrapped.with_setup_vk(agg_vk).verify()?;
