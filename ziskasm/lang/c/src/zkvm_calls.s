@@ -142,3 +142,9 @@ ZKVMCALL zkvm_zisklib_modexp_u64_c, 0x8B2
 
 /* ---- host randomness (zkvm_random.h) ---- */
 ZKVMCALL zkvm_random_u64, 0x8B3
+
+/* ---- diagnostic log (zkvm_io.h, draft eth-act PR #27) ----
+ * Used with ZKVM_IO_CALLS or by a header that only declares write_log; the
+ * default zkvm_io.h inlines it. Either way the transpiler makes it one step, which
+ * the emulators print only when asked to. */
+ZKVMCALL write_log, 0x8B4
