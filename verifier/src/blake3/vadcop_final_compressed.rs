@@ -2,9 +2,7 @@ use alloc::string::ToString;
 use alloc::vec;
 use proofman_fields::{Blake3Transcript, Blake3_8, CubicExtensionField, Field, Goldilocks};
 use proofman_verifier::VadcopFinalProof;
-use proofman_verifier::{
-    Boundary, FriEvalGroup, FriEvalRef, StirParams, StirVerifierInfo,
-};
+use proofman_verifier::{Boundary, FriEvalGroup, FriEvalRef, StirParams, StirVerifierInfo};
 
 #[inline(never)]
 #[rustfmt::skip]
@@ -4300,7 +4298,12 @@ pub fn verify(proof: &VadcopFinalProof, vk: &[u64]) -> bool {
 
 pub fn verify_u64(proof: &[u64], vk: &[u64]) -> bool {
     let info = verifier_info();
-    proofman_verifier::verify_multiproof_stir::<Blake3_8, Blake3_8, Blake3Transcript<Goldilocks>, Blake3_8>(proof, vk, &info, q_verify)
+    proofman_verifier::verify_multiproof_stir::<
+        Blake3_8,
+        Blake3_8,
+        Blake3Transcript<Goldilocks>,
+        Blake3_8,
+    >(proof, vk, &info, q_verify)
 }
 
 /// Upper bound: a multiproof never outgrows the flat proof by more than its tag.
