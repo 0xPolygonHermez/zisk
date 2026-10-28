@@ -1605,6 +1605,7 @@ impl<'a> Riscv2ZiskContext<'a> {
         zib.src_a(a_src, a, false);
         zib.src_b(b_src, b, false);
         zib.op("flag").unwrap();
+        zib.i.write_log = true;
         zib.i.func = zisk_core::opc_write_log;
         let jmp = next_addr as i64 - at_addr as i64;
         zib.j(jmp, jmp);

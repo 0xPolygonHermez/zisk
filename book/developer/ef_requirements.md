@@ -1025,7 +1025,10 @@ implements it itself, as one step that does nothing in the proof.
   (`core/src/ops_core_context.rs`) instead of `opc_flag`. When the run asks for it, it
   reads `b` bytes at address `a` and prints them (invalid UTF-8 is replaced, not
   rejected), then does what `opc_flag` does. The Rust emulator calls it through each
-  instruction's function pointer, so other instructions pay nothing.
+  instruction's function pointer, so other instructions pay nothing. That pointer is
+  not derived from the opcode, so the instruction is also marked `write_log`, which
+  the ziskbin format stores (flag f23, version 4): a ROM saved as a ziskbin ELF keeps
+  printing.
   `ziskemu --write-log` (`EmuOptions.write_log`) is the only way to turn printing on.
   Witness generation, minimal traces and the ASM emulator never print: the ASM emulator
   generates code from the opcode, which is a plain `flag`.
@@ -1048,7 +1051,9 @@ final text.
 `write_log_thunk.c`) with six inline call sites and one thunk. It checks that each call
 site is one `flag` that reads the right registers and jumps past the sequence, that
 `write_log` needs no library routine, that the output is the same with and without
-printing, and that the minimal-trace path runs it. `ziskemu --write-log` prints the
+printing, and that the minimal-trace path runs it. It also runs `ziskemu` on the guest,
+and on its ROM saved as a ziskbin ELF, checking that the text is printed exactly with
+`--write-log` and not at all without it. `ziskemu --write-log` prints the
 seven lines; the step count is the same without the flag.
 
 **Assessment: Conformant** (draft). Logging has no effect on the execution, the public

@@ -8,7 +8,7 @@
 //! inline call sites and one thunk, and outputs a sum computed between the logs (21).
 
 use zisk_common::EmuTrace;
-use zisk_core::{ZiskRom, SRC_REG};
+use zisk_core::{ziskbin, ZiskRom, SRC_REG};
 use zisk_definitions::{zkvmcall_id, ZKVMCALL_ARG_ADDR_START};
 use zisk_transpiler_common::program2rom;
 use ziskemu::{EmuOptions, Emulator, ZiskEmulator};
@@ -85,7 +85,7 @@ fn each_call_site_is_one_flag_that_reads_the_text() {
     let rom = rom();
     for (addr, regs, len) in write_log_sites(&elf) {
         let inst = &rom.insts[&addr].i;
-        assert!(inst.verbose.starts_with("write_log"), "0x{addr:x}");
+        assert!(inst.write_log, "0x{addr:x}");
         assert_eq!(inst.op_str, "flag", "0x{addr:x}");
         assert_eq!((inst.a_src, inst.a_offset_imm0), (SRC_REG, regs[0]), "0x{addr:x}");
         assert_eq!((inst.b_src, inst.b_offset_imm0), (SRC_REG, regs[1]), "0x{addr:x}");
@@ -106,10 +106,10 @@ fn the_output_does_not_depend_on_the_log() {
     assert_eq!(quiet, printed);
 }
 
-/// The stdout of `ziskemu` running the guest, printing its log or not
-fn ziskemu_stdout(write_log: bool) -> String {
+/// The stdout of `ziskemu` running the ELF at `elf`, printing its log or not
+fn ziskemu_stdout(elf: &str, write_log: bool) -> String {
     let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_ziskemu"));
-    cmd.args(["-e", &elf_path()]);
+    cmd.args(["-e", elf]);
     if write_log {
         cmd.arg("--write-log");
     }
@@ -120,9 +120,29 @@ fn ziskemu_stdout(write_log: bool) -> String {
 
 #[test]
 fn ziskemu_prints_the_log_only_when_asked() {
-    let (quiet, printed) = (ziskemu_stdout(false), ziskemu_stdout(true));
+    let (quiet, printed) = (ziskemu_stdout(&elf_path(), false), ziskemu_stdout(&elf_path(), true));
     assert!(!quiet.contains("hello, log"), "printed without --write-log: {quiet:?}");
     // With it, the same output followed by the log, in order and nothing else
+    assert_eq!(printed, format!("{quiet}{LOG}"));
+}
+
+/// Saved as a ziskbin ELF, the ROM keeps its write_log sites: the decoder rebuilds each
+/// instruction's `func` from its opcode, a plain flag, unless the site is marked
+#[test]
+fn a_ziskbin_round_trip_keeps_the_log() {
+    let rom = rom();
+    let elf = ziskbin::rom_to_elf(&rom);
+    let decoded = program2rom(&elf).expect("the ziskbin ELF must load");
+    let sites = rom.insts.values().filter(|zib| zib.i.write_log).count();
+    assert_eq!(sites, 7);
+    assert_eq!(decoded.insts.values().filter(|zib| zib.i.write_log).count(), sites);
+
+    let file = std::env::temp_dir().join(format!("write_log_{}.ziskbin.elf", std::process::id()));
+    std::fs::write(&file, &elf).unwrap();
+    let path = file.to_str().unwrap().to_string();
+    let (quiet, printed) = (ziskemu_stdout(&path, false), ziskemu_stdout(&path, true));
+    let _ = std::fs::remove_file(&file);
+    assert!(!quiet.contains("hello, log"), "printed without --write-log: {quiet:?}");
     assert_eq!(printed, format!("{quiet}{LOG}"));
 }
 

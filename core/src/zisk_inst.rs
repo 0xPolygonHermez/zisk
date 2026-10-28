@@ -164,6 +164,10 @@ pub struct ZiskInst {
     pub external_ref_addr: Option<u64>, // external address of the instruction, if any
     pub meta_rs1: Option<u8>, // meta information used for callstack.
     pub meta_rd: Option<u8>, // meta information used for callstack.
+    /// A write_log call site: a `flag` whose a and b are the text's pointer and length, and
+    /// whose `func` is `opc_write_log`. Not part of the ROM the prover commits to; kept so
+    /// that a ROM saved as ziskbin gets that `func` back
+    pub write_log: bool,
 }
 
 /// Default constructor
@@ -207,6 +211,7 @@ impl Default for ZiskInst {
             external_ref_addr: None,
             meta_rs1: None,
             meta_rd: None,
+            write_log: false,
         }
     }
 }
