@@ -232,9 +232,10 @@ def decode (w : BitVec 32) : Option Inst :=
     | 0 => some (.branch .beq) | 1 => some (.branch .bne) | 4 => some (.branch .blt)
     | 5 => some (.branch .bge) | 6 => some (.branch .bltu) | 7 => some (.branch .bgeu) | _ => none
   | 103 => if f3 == 0 then some .jalr else none
-  -- ecall and ebreak are the one words 0x00000073 and 0x00100073 (riscv_interpreter.rs)
+  -- ecall and ebreak are the one words 0x00000073 and 0x00100073 (riscv_interpreter.rs);
+  -- funct3 4 is reserved (riscv_decoder.rs)
   | 115 => if w == 0x00000073#32 then some .ecall else if w == 0x00100073#32 then some .ebreak
-      else if f3 == 0 then none else some .csr
+      else if f3 == 0 || f3 == 4 then none else some .csr
   | 111 => some .jal
   | _ => none
 

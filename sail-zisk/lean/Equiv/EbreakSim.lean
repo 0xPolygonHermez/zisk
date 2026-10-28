@@ -14,6 +14,7 @@ import Equiv.RiscvCsrRo
 import Equiv.RiscvDecodeIllegal
 import Equiv.RiscvDecodeRej
 import Equiv.RiscvDecodeVec
+import Equiv.Decode.Sys.Sys4
 import Equiv.MNext
 import Equiv.ZbkbSim
 
@@ -165,6 +166,9 @@ theorem RoInstr.spec (i : RoInstr) (pc ia : BitVec 64) (next next2 : Option (Bit
   have hf3 : ((Transpiler.funct3 i.encode).toNat == 0) = false := by
     have : Transpiler.funct3 i.encode = i.f3 := by simp only [Transpiler.funct3, RoInstr.encode]; bv_decide
     rw [this]; rcases i.writes with e | e | ⟨e | e | e | e, -⟩ <;> rw [e] <;> rfl
+  have hf4 : (Transpiler.funct3 i.encode).toNat ≠ 4 := by
+    have : Transpiler.funct3 i.encode = i.f3 := by simp only [Transpiler.funct3, RoInstr.encode]; bv_decide
+    rw [this]; rcases i.writes with e | e | ⟨e | e | e | e, -⟩ <;> rw [e] <;> decide
   have hk : ZiskRiscv.kind (ZiskRiscv.fields i.encode) ≠ .csrrsi ∨ (ZiskRiscv.fields i.encode).csr ≠ 0x816 :=
     .inr (by omega)
   have hw : Transpiler.writesReadOnly (ZiskRiscv.fields i.encode) = true := by
@@ -182,7 +186,7 @@ theorem RoInstr.spec (i : RoInstr) (pc ia : BitVec 64) (next next2 : Option (Bit
     cases hk' : ZiskRiscv.kind (ZiskRiscv.fields i.encode) <;> rw [hk'] at hk1 <;> (try exact absurd hk1 (by decide))
     simp only [Transpiler.writesReadOnly, hk']; simp; exact fun h _ => h
   cases next2 <;>
-    simp [Transpiler.convert, Transpiler.decode, ho, hne, hne', hf3, Transpiler.csr3, Transpiler.csr, hd, hw, h3,
+    simp [Transpiler.convert, Transpiler.decode, ho, hne, hne', hf3, hf4, Transpiler.csr3, Transpiler.csr, hd, hw, h3,
       show i.csr.toNat ≠ 2070 by omega]
   all_goals (intro h1' _ h3' _; exact absurd h3' (hrs h1'))
 
@@ -440,16 +444,67 @@ theorem vec_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (h
   rw [RejWord.word e]
   exact decode_vec t e (by simpa only [VecWord] using he) htp v hv b hb haA hbB ms hms vt hvt hok l hl st hst
 
+/-- A word of SYSTEM, funct3 4: H's loads and stores, Zimop, Zicfiss,
+    none in the profile. -/
+def SysWord (e : BitVec 32) : Prop := e.extractLsb 6 0 = 0x73#7 ∧ e.extractLsb 14 12 = 4#3
+
+theorem SysWord.low {e : BitVec 32} (h : SysWord e) : (byte e 0).extractLsb 1 0 = 3#2 := by
+  simp only [SysWord] at h; simp only [byte]; revert h; bv_decide
+
+/-- The machine leaves it to sail-riscv: no CSR access, no call. -/
+theorem SysWord.plain {e : BitVec 32} (h : SysWord e) : Equiv.Machine.Plain e := by
+  intro fetch a hf
+  have ho : (ZiskRiscv.fields e).opcode = (e.extractLsb 6 0).toNat := by
+    simp only [ZiskRiscv.fields]; congr 1
+  have h3 : (ZiskRiscv.fields e).funct3 = (e.extractLsb 14 12).toNat := by
+    simp only [ZiskRiscv.fields]; congr 1
+  simp only [ZiskRiscv.decode, hf]
+  simp only [ZiskRiscv.kind, ho, h3, h.1, h.2]; rfl
+
+/-- The spec's translation: the halt. -/
+theorem SysWord.spec {e : BitVec 32} (h : SysWord e) (pc ia : BitVec 64) (next next2 : Option (BitVec 32)) :
+    Transpiler.convert pc e next ia next2 = some [(pc, Transpiler.halt)] := by
+  have hd : Transpiler.decode e = none := by
+    have ho : Transpiler.opcode e = e.extractLsb 6 0 := rfl
+    have h3 : Transpiler.funct3 e = e.extractLsb 14 12 := rfl
+    have hne : (e == 0x00000073#32) = false := by
+      simp only [beq_eq_false_iff_ne]; intro he; subst he; revert h; simp [SysWord]
+    have hne' : (e == 0x00100073#32) = false := by
+      simp only [beq_eq_false_iff_ne]; intro he; subst he; revert h; simp [SysWord]
+    simp only [Transpiler.decode, ho, h3, h.1, h.2, hne, hne']
+    rfl
+  simp only [Transpiler.convert, hd]
+
+set_option maxHeartbeats 4000000 in
+/-- A SYSTEM word of funct3 4 at pc, one step of each: sail-riscv's to the
+    trap vector (an illegal instruction); sail-zisk's on the halt, the run's
+    end with Zerror set. -/
+theorem sys_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hrel : Rel s z rs)
+    (pc : BitVec 64) (hpc : s.regs.get? Register.PC = some pc)
+    (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (e : BitVec 32) (he : SysWord e) (next : Option (BitVec 32))
+    (hi : WordsAt s rs pc zrom e next) (n : Nat) :
+    (∃ s', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
+      s'.regs.get? Register.PC = some 0x4#64) ∧
+    ∃ z', (zstep zrom).run z = .ok true z' ∧ z'.regs.get? _root_.Zisk.Register.Zerror = some true := by
+  refine illegal_step_of s z rs hrel pc hpc zrom e next hi he.spec he.low (.ILLEGAL e)
+    (fun t htp ⟨v, hv⟩ ⟨b, hb, hbB⟩ ⟨a, ha, haA⟩ _ _ _ _ => ?_)
+    (fun t _ _ => rfl) n
+  rw [hb] at ha
+  cases ha
+  rw [RejWord.word e]
+  exact decode_sys4 t e he htp v hv b hb haA hbB
+
 /-- A word the transpiler halts on, and the simulation covers: `ebreak`, a
     write to a read-only CSR, or a word RISC-V rejects for its opcode or
-    within it, a vector word among them. -/
+    within it, a vector word and a SYSTEM word of funct3 4 among them. -/
 def HaltWord (e : BitVec 32) : Prop :=
-  e = EBREAK ∨ (∃ i : RoInstr, i.encode = e) ∨ RejWord e ∨ RejField e ∨ VecWord e
+  e = EBREAK ∨ (∃ i : RoInstr, i.encode = e) ∨ RejWord e ∨ RejField e ∨ VecWord e ∨ SysWord e
 
 theorem HaltWord.plain {e : BitVec 32} (h : HaltWord e) : Equiv.Machine.Plain e := by
-  rcases h with rfl | ⟨i, rfl⟩ | h | h | h
+  rcases h with rfl | ⟨i, rfl⟩ | h | h | h | h
   · exact ebreak_plain
   · exact i.plain
+  · exact h.plain
   · exact h.plain
   · exact h.plain
   · exact h.plain
@@ -461,12 +516,13 @@ theorem halt_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     (∃ s', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
       s'.regs.get? Register.PC = some 0x4#64) ∧
     ∃ z', (zstep zrom).run z = .ok true z' ∧ z'.regs.get? _root_.Zisk.Register.Zerror = some true := by
-  rcases he with rfl | ⟨i, rfl⟩ | he | he | he
+  rcases he with rfl | ⟨i, rfl⟩ | he | he | he | he
   · exact ebreak_step s z rs hrel pc hpc zrom next hi n
   · exact ro_step s z rs hrel pc hpc zrom i next hi n
   · exact rej_step s z rs hrel pc hpc zrom e he next hi n
   · exact rejf_step s z rs hrel pc hpc zrom e he next hi n
   · exact vec_step s z rs hrel pc hpc zrom e he next hi n
+  · exact sys_step s z rs hrel pc hpc zrom e he next hi n
 
 end Equiv.Sim
 
