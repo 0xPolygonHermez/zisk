@@ -100,9 +100,13 @@ _start:
    failed execution that is never proven.
 
    It is defined here, not in its own archive member, for the reason given for
-   mem* below: this object is always linked, so this abort is the one a guest
-   gets, also when it links a libc whose abort (newlib's raises SIGABRT through
-   stubs) would never reach the ZisK termination. */
+   mem* below. With this archive before the libc on the command line (the gcc
+   driver adds -lc last), this object is linked before the libc is searched, so
+   the libc's abort (newlib's raises SIGABRT through stubs that never reach the
+   ZisK termination) is never pulled. With the libc first, a guest that calls
+   abort gets the libc's, and the link then fails with a multiple-definition
+   error. It never silently keeps the libc's abort, which an abort in its own
+   member would do. */
 .equ ABORT_EXIT_CODE, 134
 .globl abort
 .type  abort, @function

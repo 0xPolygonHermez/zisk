@@ -102,18 +102,27 @@ behave like an ordinary static library:
   The exception is `_start`, `abort` and the `mem*` routines below, which are real code.
 - **It defines `abort` (EF termination, draft eth-act PR #46).** It ends the run as a
   failed execution with exit code 134 (128 + SIGABRT), as if `main` had returned it,
-  without running destructors. It lives in the same object as `_start`, so it is the
-  `abort` a guest gets even when it links a libc (newlib's would never reach the ZisK
-  termination); C++ `std::terminate` reaches it too. Freestanding guests declare it
-  themselves: `_Noreturn void abort(void);`.
+  without running destructors. It lives in the same object as `_start`, so with the
+  archive before the libc on the command line it is the `abort` the guest gets, and
+  C++ `std::terminate` reaches it too. With the libc first, the link fails with a
+  multiple-definition error rather than silently keeping the libc's `abort` (newlib's
+  would never reach the ZisK termination); see the link order note below.
+  Freestanding guests declare it themselves: `_Noreturn void abort(void);`.
 - **It defines `memcpy`/`memmove`/`memcmp`/`memset` (EF §2).** They are DMA
   precompile thunks (`memmove` is overlap-safe; it shares `memcpy`'s DMA op, which
   has memmove semantics) and they live in the same object as `_start`. Every guest
-  links that object, so they always win symbol resolution regardless of link order.
-  If a libc on the command line also contributes its `mem*`, the link fails with a
+  links that object, so the accelerated definitions are always in the link. If a
+  libc earlier on the command line also contributes its `mem*`, the link fails with a
   multiple-definition error rather than silently falling back to a byte loop. Build
   guests with `-fno-builtin` if you want GCC to keep calls out-of-line instead of
   inlining small copies.
+- **Link order: the archive goes before the libc.** That is where the gcc driver puts
+  it, since it adds `-lc` after the files and libraries on the command line. With an
+  explicit `-lc` before the archive, `abort` and the `mem*` routines are defined twice
+  and the link fails; it never silently uses the libc's versions. Static archives
+  give no order-independent override short of extra linker flags (`--defsym`,
+  `--wrap`), and the linker script cannot stand in for them: a symbol assigned there
+  does not stop the linker from pulling the libc's member.
 - **The linker script is not optional.** The archive's `_start` depends on symbols
   only the script defines (`_global_pointer`, `_init_stack_top`, `__init_array_*`,
   `_heap_start`/`_heap_end`), which is why the two are installed together.

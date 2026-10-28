@@ -192,7 +192,7 @@ conform but not yet audited against the spec.
 |---|----------|------------|-----------------|
 | 1 | [C interface for accelerators](#1-c-interface-for-accelerators) | **Conformant** | All 19 `zkvm_*` functions implemented natively in `.zisk`; runtime-validated on real blocks via ziskethone. `zkvm_keccak_f1600` (draft PR #26) also provided. |
 | 1b | [U256 arithmetic C interface](#1b-u256-arithmetic-accelerator-c-interface) | **Conformant** (draft) | Draft standard (eth-act PR #22). All 27 `zkvm_u256_*` functions implemented natively in `.zisk` over the shared uint256 precompile cores; golden-vector-validated against an EVM reference. |
-| 2 | [Accelerated memory operations](#2-accelerated-memory-operations) | **Conformant** | All four `mem*` accelerated via DMA precompiles in ziskos and in the packaged C archive; `memmove` shares `memcpy`'s DMA op, which is overlap-safe in the emulator and the prover; the C archive's definitions sit in `_start`'s object, so they win symbol resolution regardless of link order. |
+| 2 | [Accelerated memory operations](#2-accelerated-memory-operations) | **Conformant** | All four `mem*` accelerated via DMA precompiles in ziskos and in the packaged C archive; `memmove` shares `memcpy`'s DMA op, which is overlap-safe in the emulator and the prover; the C archive's definitions sit in `_start`'s object, so they are always linked; with a libc before the archive on the command line, the link fails rather than silently keeping the libc's. |
 | 3 | [ELF loading and validation](#3-elf-loading-and-validation) | **Partial** | `elf2rom` enforces header, PT_LOAD-only loading, zero-fill, no overlap, W^X and entry-point validation. But it accepts both `PF_X` and `PF_X\|PF_R` executable segments, and the standard requires a zkVM to accept exactly one. |
 | 4 | [I/O interface](#4-io-interface) | **Conformant** | `read_input` / `write_output` implemented in the ZisK library, reached through zkvmcalls. |
 | 5 | [Memory layout restrictions](#5-memory-layout-restrictions) | **Conformant** | Standard is non-prescriptive; ZisK ships a vendor linker script defining its map. |
@@ -759,9 +759,13 @@ shell reports for an aborted process, so it is told apart from `main` returning 
   destructors run. So it reaches the same `SYS_exit` ecall (or, off ZisK, the
   `sifive_test` exit) as a `main` that returned 134. Like C's `abort` it runs no
   destructors or `atexit` handlers. It lives in `_start`'s object, which every guest
-  links, so a libc in the link cannot replace it: newlib's `abort` raises SIGABRT
-  through stubs that would never reach the ZisK termination. C++ `std::terminate`
-  calls it too.
+  links, as the `mem*` routines do (§2), and with the same link-order rule. With the
+  archive before the libc (where the gcc driver puts `-lc`), this `abort` is defined
+  before the libc is searched, so the libc's is never pulled; newlib's raises SIGABRT
+  through stubs that would never reach the ZisK termination. With the libc first, a
+  guest that calls `abort` gets the libc's, and the link fails with a
+  multiple-definition error, never silently keeping it. C++ `std::terminate` calls it
+  too.
 - **`ziskos` / `libziskos.a`.** `ziskos::abort()` does the same through the label
   `_zisk_exit` on the exit dispatch of `ziskos`'s `_start`, and `libziskos.a` exports
   it as `abort`. Natively it is `std::process::abort()`.
@@ -777,7 +781,11 @@ trap. `failed_execution.rs` checks it fails with `ExitCode(134)` on both entry p
 and that the control build (`main` returns 0) does run the destructor. The same guest
 gives 134 when linked against `libziskos.a`, and so does a C++ guest calling
 `std::terminate()` linked with libstdc++ and newlib, where the link map shows `abort`
-resolved to `_start.s`. The ASM emulator rejects it as it does any non-zero exit.
+resolved to `_start.s`. Both link orders were checked against newlib: archive first
+gives 134; libc first fails with multiple definitions of `abort` (and of `memset`). A
+symbol assignment in the linker script was tried as an order-independent override and
+does not work: the linker still pulls newlib's `abort`. The ASM emulator rejects the
+run as it does any non-zero exit.
 
 **Assessment: Conformant (Type 1)**, pending the PIL owners' confirmation of the
 argument above. `abort` follows draft PR #46.
