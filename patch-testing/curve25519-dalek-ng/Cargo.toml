@@ -1,0 +1,25 @@
+[package]
+name = "patch-curve25519-dalek-ng"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Standalone workspace: every guest pins its own patch revision, so two
+# versions of the same patched crate can be tested side by side.
+[workspace]
+
+[dependencies]
+ziskos = { path = "../../ziskos/entrypoint" }
+patch-test-common = { path = "../common" }
+curve25519-dalek-ng = { version = "=4.1.1", default-features = false, features = ["u64_backend", "alloc"] }
+ed25519-consensus = { version = "=2.1.0", default-features = false, features = ["std"] }
+num-bigint = "0.4"
+
+[patch.crates-io]
+curve25519-dalek-ng = { git = "https://github.com/0xPolygonHermez/zisk-patch-curve25519-dalek-ng", package = "curve25519-dalek-ng", tag = "patch-4.1.1-zisk-1.4.0" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

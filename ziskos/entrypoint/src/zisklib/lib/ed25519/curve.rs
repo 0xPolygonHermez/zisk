@@ -5,7 +5,7 @@
 
 use crate::{
     syscalls::{syscall_ed25519_add, SyscallPoint256},
-    zisklib::{eq, le_bytes_to_u64_4, u64_4_to_le_bytes},
+    zisklib::{eq, le_bytes_to_u64_4, lt, u64_4_to_le_bytes},
 };
 
 use super::{
@@ -88,6 +88,54 @@ pub fn is_small_order_ed25519(
         );
     }
     eq(&point_to_u64_8(&q), &IDENTITY)
+}
+
+/// Whether `p` is a point of Ed25519 in canonical form: both coordinates `< p` and
+/// `-x² + y² = 1 + d·x²·y²`.
+pub fn is_on_curve_ed25519(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> bool {
+    let x: &[u64; 4] = p[0..4].try_into().unwrap();
+    let y: &[u64; 4] = p[4..8].try_into().unwrap();
+    if !lt(x, &P) || !lt(y, &P) {
+        return false;
+    }
+
+    let x2 = square_fp_ed25519(
+        x,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let y2 = square_fp_ed25519(
+        y,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    // lhs = y² - x² = x²·(p - 1) + y²
+    let lhs = arith_mod(
+        &x2,
+        &P_MINUS_ONE,
+        &y2,
+        &P,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    // rhs = d·(x²·y²) + 1
+    let x2y2 = arith_mod(
+        &x2,
+        &y2,
+        &[0, 0, 0, 0],
+        &P,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let rhs = arith_mod(
+        &D,
+        &x2y2,
+        &[1, 0, 0, 0],
+        &P,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    eq(&lhs, &rhs)
 }
 
 /// Decompresses a 32-byte Ed25519 point encoding: the little-endian `y` with the sign of `x`
@@ -229,4 +277,74 @@ pub fn double_scalar_mul_with_base_ed25519(
         }
     }
     point_to_u64_8(&r)
+}
+
+/// Pointer-based [`decompress_ed25519`] for the C accelerator interface. On success writes
+/// `x ‖ y` (64 bytes, each coordinate 32-byte little-endian and canonical) and returns true.
+///
+/// # Safety
+/// - `compressed` must point to 32 bytes
+/// - `point` must point to a writable 64-byte buffer
+#[inline]
+pub(crate) unsafe fn decompress_ed25519_c(
+    compressed: *const u8,
+    point: *mut u8,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> bool {
+    let compressed: &[u8; 32] = &*(compressed as *const [u8; 32]);
+    let Some(p) = decompress_ed25519(
+        compressed,
+        #[cfg(feature = "hints")]
+        hints,
+    ) else {
+        return false;
+    };
+    let out: &mut [u8; 64] = &mut *(point as *mut [u8; 64]);
+    out[0..32].copy_from_slice(&u64_4_to_le_bytes(p[0..4].try_into().unwrap()));
+    out[32..64].copy_from_slice(&u64_4_to_le_bytes(p[4..8].try_into().unwrap()));
+    true
+}
+
+/// Pointer-based [`double_scalar_mul_with_base_ed25519`] for the C accelerator interface:
+/// `result = [k]a + [s]B`. Scalars are 32-byte little-endian (any 256-bit value), points are
+/// `x ‖ y` with each coordinate 32-byte little-endian. Returns false, writing nothing, if `a`
+/// is not a canonical curve point (see [`is_on_curve_ed25519`]).
+///
+/// # Safety
+/// - `k` and `s` must point to 32 bytes, `a` to 64 bytes
+/// - `result` must point to a writable 64-byte buffer
+#[inline]
+pub(crate) unsafe fn double_scalar_mul_with_base_ed25519_c(
+    k: *const u8,
+    a: *const u8,
+    s: *const u8,
+    result: *mut u8,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> bool {
+    let k = le_bytes_to_u64_4(&*(k as *const [u8; 32]));
+    let s = le_bytes_to_u64_4(&*(s as *const [u8; 32]));
+    let a_bytes: &[u8; 64] = &*(a as *const [u8; 64]);
+    let x = le_bytes_to_u64_4(a_bytes[0..32].try_into().unwrap());
+    let y = le_bytes_to_u64_4(a_bytes[32..64].try_into().unwrap());
+    let a = [x[0], x[1], x[2], x[3], y[0], y[1], y[2], y[3]];
+
+    if !is_on_curve_ed25519(
+        &a,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        return false;
+    }
+
+    let r = double_scalar_mul_with_base_ed25519(
+        &k,
+        &a,
+        &s,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let out: &mut [u8; 64] = &mut *(result as *mut [u8; 64]);
+    out[0..32].copy_from_slice(&u64_4_to_le_bytes(r[0..4].try_into().unwrap()));
+    out[32..64].copy_from_slice(&u64_4_to_le_bytes(r[4..8].try_into().unwrap()));
+    true
 }
