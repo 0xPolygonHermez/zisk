@@ -64,7 +64,7 @@ status folds away. The body writes only memory and the virtual registers
 has a thunk (used with `ZKVM_U256_CALLS` or by a declarations-only header), which
 expands the same body; the inline `zkvm_u256_le.h` functions have none.
 `definitions/src/zkvmcall.rs` marks which IDs are inline and explains the
-sequence; [the C binding's README](../../ziskasm/lang/c/README.md#coverage) lists
+sequence; [the C binding's README](https://github.com/0xPolygonHermez/zisk/blob/main/ziskasm/lang/c/README.md#coverage) lists
 the builds of each family.
 
 `zkvm_keccak_f1600` is neither: it is a single keccak-f precompile, so the header
@@ -361,7 +361,7 @@ fails; idempotent) and `void write_output(const uint8_t* output, size_t size)`
 free-input region (`INPUT_ADDR = 0x1000_0000`); output is written to the public
 output region (`OUTPUT_ADDR = 0xa041_0000`). Reads are non-failing and side-effect
 free; successive `write_output` calls concatenate. C guests get both from
-[`zkvm_io.h`](../../ziskasm/lang/c/include/zkvm_io.h) and the zkvmcall thunks in
+[`zkvm_io.h`](https://github.com/0xPolygonHermez/zisk/blob/main/ziskasm/lang/c/include/zkvm_io.h) and the zkvmcall thunks in
 `ziskasm/lang/c/src/zkvm_calls.s`, linked via `zisklib_c` (§9).
 
 **Assessment: Conformant.**
@@ -682,8 +682,8 @@ builds the whole guest-side surface into one static library, **`zisklib_c`**:
 | Requirement | Provided by |
 |---|---|
 | `_start` (gp/sp init, **C++ constructors**, `main`, **destructors**, termination) | `src/_start.s` |
-| I/O functions | `src/zkvm_calls.s` + [`include/zkvm_io.h`](../../ziskasm/lang/c/include/zkvm_io.h) |
-| Host randomness (`zkvm_random_u64`) | `src/zkvm_calls.s` + [`include/zkvm_random.h`](../../ziskasm/lang/c/include/zkvm_random.h) |
+| I/O functions | `src/zkvm_calls.s` + [`include/zkvm_io.h`](https://github.com/0xPolygonHermez/zisk/blob/main/ziskasm/lang/c/include/zkvm_io.h) |
+| Host randomness (`zkvm_random_u64`) | `src/zkvm_calls.s` + [`include/zkvm_random.h`](https://github.com/0xPolygonHermez/zisk/blob/main/ziskasm/lang/c/include/zkvm_random.h) |
 | Accelerator functions | `src/zkvm_calls.s` (19 `zkvm_*` + 27 `zkvm_u256_*`; `zkvm_keccak_f1600` is inline in the header), plus ZisK's 24 `zkvm_zisklib_*` |
 
 Every entry is a zkvmcall thunk that the transpiler turns into a jump to the
