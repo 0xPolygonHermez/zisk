@@ -1053,8 +1053,9 @@ site is one `flag` that reads the right registers and jumps past the sequence, t
 `write_log` needs no library routine, that the output is the same with and without
 printing, and that the minimal-trace path runs it. It also runs `ziskemu` on the guest,
 and on its ROM saved as a ziskbin ELF, checking that the text is printed exactly with
-`--write-log` and not at all without it. `ziskemu --write-log` prints the
-seven lines; the step count is the same without the flag.
+`--write-log` and not at all without it. `ziskemu --write-log` prints six
+lines, since one of the seven call sites logs empty text; the step count is the same
+without the flag.
 
 **Assessment: Conformant** (draft). Logging has no effect on the execution, the public
 output or the proof, and ZisK ignores it when proving, as the draft allows. The text
