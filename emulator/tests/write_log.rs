@@ -15,6 +15,9 @@ use ziskemu::{EmuOptions, Emulator, ZiskEmulator};
 
 const WRITE_LOG_ID: u16 = zkvmcall_id("write_log");
 
+/// What the guest logs: six inline call sites (one of them empty) and one thunk
+const LOG: &str = "hello, log\ni=0\ni=1\ni=2\nsum > 5\nthrough the thunk\n";
+
 fn elf_path() -> String {
     format!("{}/../elf-regressions/write_log/write_log.elf", env!("CARGO_MANIFEST_DIR"))
 }
@@ -101,6 +104,26 @@ fn the_output_does_not_depend_on_the_log() {
     let (quiet, printed) = (emulate(false), emulate(true));
     assert_eq!(quiet[..4], 21u32.to_le_bytes());
     assert_eq!(quiet, printed);
+}
+
+/// The stdout of `ziskemu` running the guest, printing its log or not
+fn ziskemu_stdout(write_log: bool) -> String {
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_ziskemu"));
+    cmd.args(["-e", &elf_path()]);
+    if write_log {
+        cmd.arg("--write-log");
+    }
+    let out = cmd.output().expect("ziskemu must run");
+    assert!(out.status.success(), "ziskemu failed: {}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8(out.stdout).expect("UTF-8 stdout")
+}
+
+#[test]
+fn ziskemu_prints_the_log_only_when_asked() {
+    let (quiet, printed) = (ziskemu_stdout(false), ziskemu_stdout(true));
+    assert!(!quiet.contains("hello, log"), "printed without --write-log: {quiet:?}");
+    // With it, the same output followed by the log, in order and nothing else
+    assert_eq!(printed, format!("{quiet}{LOG}"));
 }
 
 #[test]
