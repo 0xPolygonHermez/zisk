@@ -12,6 +12,7 @@ import Equiv.ZiskBios
 import Equiv.RiscvDecodeCsr
 import Equiv.RiscvCsrRo
 import Equiv.RiscvDecodeIllegal
+import Equiv.RiscvDecodeRej
 import Equiv.MNext
 import Equiv.ZbkbSim
 
@@ -209,6 +210,8 @@ theorem illegal_step_of (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Reg
     (hc : (byte e 0).extractLsb 1 0 = 3#2) (ins : instruction)
     (hdec : ∀ t : RVState, t.regs.get? Register.cur_privilege = some .Machine →
       (∃ v, t.regs.get? Register.mseccfg = some v) →
+      (∃ v, t.regs.get? Register.misa = some v ∧ _get_Misa_B v = 1#1) →
+      (∃ v, t.regs.get? Register.misa = some v ∧ _get_Misa_A v = 1#1) →
       (interpretSailEffects (ext_decode (byte e 3 ++ byte e 2 ++ (byte e 1 ++ byte e 0)))).run t
         = .ok ins t)
     (hexec : ∀ t : RVState, WF t → t.regs.get? Register.cur_privilege = some .Machine →
@@ -222,8 +225,8 @@ theorem illegal_step_of (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Reg
   have hw : WordAt s rs pc' (byte e 0) (byte e 1) (byte e 2) (byte e 3) :=
     ⟨hi.al, hi.x1, hi.x2, hi.h0, hi.h1, hi.h2, hi.h3, hc⟩
   refine ⟨try_step_illegal s rs hr hr.mtvec pc' hpc _ _ _ _ hw ins ?_ ?_ n, ?_⟩
-  · intro t htp hsec _ _
-    exact hdec t htp hsec
+  · intro t htp hsec _ hb ha
+    exact hdec t htp hsec hb ha
   · intro t _ _ hmr _ hwf
     exact hexec t hwf hmr.priv
   · have hrom : zrom pc' = Transpiler.halt := hi.tr.one fun ia => hspec pc' ia _ _
@@ -245,29 +248,29 @@ theorem ro_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hr
   have ha := i.acc
   rcases i.writes with e | e | ⟨e | e | e | e, hr⟩
   · refine illegal_step_of s z rs hrel pc hpc zrom _ next hi (i.spec) i.fields.2.2.2.2.2 (.CSRReg (i.csr, .Regidx i.rs1, .Regidx i.rd, .CSRRW))
-      (fun t htp ⟨w, hw'⟩ => ?_) (fun t hwf hp => execute_csrreg_ro t hwf hp _ _ _ _ ?_) n
+      (fun t htp ⟨w, hw'⟩ _ _ => ?_) (fun t hwf hp => execute_csrreg_ro t hwf hp _ _ _ _ ?_) n
     · have := decode_csrrw t _ hop (by rw [hf3, e]; rfl) htp w hw'; rwa [hcsr, hr1, hrd] at this
     · cases (regidx.Regidx i.rd == zreg) <;> simp (config := { decide := true }) [check_CSR_access, csr_access_type, LeanZiskRV.not, ha]
   · refine illegal_step_of s z rs hrel pc hpc zrom _ next hi (i.spec) i.fields.2.2.2.2.2 (.CSRImm (i.csr, i.rs1, .Regidx i.rd, .CSRRW))
-      (fun t htp ⟨w, hw'⟩ => ?_) (fun t hwf hp => execute_csrimm_ro t hwf hp _ _ _ _ ?_) n
+      (fun t htp ⟨w, hw'⟩ _ _ => ?_) (fun t hwf hp => execute_csrimm_ro t hwf hp _ _ _ _ ?_) n
     · have := decode_csrrwi t _ hop (by rw [hf3, e]; rfl) htp w hw'; rwa [hcsr, hr1, hrd] at this
     · cases (regidx.Regidx i.rd == zreg) <;> simp (config := { decide := true }) [check_CSR_access, csr_access_type, LeanZiskRV.not, ha]
   · refine illegal_step_of s z rs hrel pc hpc zrom _ next hi (i.spec) i.fields.2.2.2.2.2 (.CSRReg (i.csr, .Regidx i.rs1, .Regidx i.rd, .CSRRS))
-      (fun t htp ⟨w, hw'⟩ => ?_) (fun t hwf hp => execute_csrreg_ro t hwf hp _ _ _ _ ?_) n
+      (fun t htp ⟨w, hw'⟩ _ _ => ?_) (fun t hwf hp => execute_csrreg_ro t hwf hp _ _ _ _ ?_) n
     · have := decode_csrrs t _ hop (by rw [hf3, e]; rfl) htp w hw'; rwa [hcsr, hr1, hrd] at this
     · simp (config := { decide := true }) [check_CSR_access, csr_access_type, LeanZiskRV.not, ha, regidx_ne _ hr]
   · refine illegal_step_of s z rs hrel pc hpc zrom _ next hi (i.spec) i.fields.2.2.2.2.2 (.CSRReg (i.csr, .Regidx i.rs1, .Regidx i.rd, .CSRRC))
-      (fun t htp ⟨w, hw'⟩ => ?_) (fun t hwf hp => execute_csrreg_ro t hwf hp _ _ _ _ ?_) n
+      (fun t htp ⟨w, hw'⟩ _ _ => ?_) (fun t hwf hp => execute_csrreg_ro t hwf hp _ _ _ _ ?_) n
     · have := decode_csrrc t _ hop (by rw [hf3, e]; rfl) htp w hw'; rwa [hcsr, hr1, hrd] at this
     · simp (config := { decide := true }) [check_CSR_access, csr_access_type, LeanZiskRV.not, ha, regidx_ne _ hr]
   · refine illegal_step_of s z rs hrel pc hpc zrom _ next hi (i.spec) i.fields.2.2.2.2.2 (.CSRImm (i.csr, i.rs1, .Regidx i.rd, .CSRRS))
-      (fun t htp ⟨w, hw'⟩ => ?_) (fun t hwf hp => execute_csrimm_ro t hwf hp _ _ _ _ ?_) n
+      (fun t htp ⟨w, hw'⟩ _ _ => ?_) (fun t hwf hp => execute_csrimm_ro t hwf hp _ _ _ _ ?_) n
     · have := decode_csrrsi t _ hop (by rw [hf3, e]; rfl) htp w hw'; rwa [hcsr, hr1, hrd] at this
     · rw [show (i.rs1 == zeros (n := 5)) = false by simpa [zeros] using hr]
       cases (regidx.Regidx i.rd == zreg) <;>
         simp (config := { decide := true }) [check_CSR_access, csr_access_type, LeanZiskRV.not, ha]
   · refine illegal_step_of s z rs hrel pc hpc zrom _ next hi (i.spec) i.fields.2.2.2.2.2 (.CSRImm (i.csr, i.rs1, .Regidx i.rd, .CSRRC))
-      (fun t htp ⟨w, hw'⟩ => ?_) (fun t hwf hp => execute_csrimm_ro t hwf hp _ _ _ _ ?_) n
+      (fun t htp ⟨w, hw'⟩ _ _ => ?_) (fun t hwf hp => execute_csrimm_ro t hwf hp _ _ _ _ ?_) n
     · have := decode_csrrci t _ hop (by rw [hf3, e]; rfl) htp w hw'; rwa [hcsr, hr1, hrd] at this
     · rw [show (i.rs1 == zeros (n := 5)) = false by simpa [zeros] using hr]
       cases (regidx.Regidx i.rd == zreg) <;>
@@ -327,18 +330,78 @@ theorem rej_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (h
       s'.regs.get? Register.PC = some 0x4#64) ∧
     ∃ z', (zstep zrom).run z = .ok true z' ∧ z'.regs.get? _root_.Zisk.Register.Zerror = some true := by
   refine illegal_step_of s z rs hrel pc hpc zrom e next hi he.spec he.low (.ILLEGAL e)
-    (fun t htp ⟨v, hv⟩ => ?_) (fun t _ _ => rfl) n
+    (fun t htp ⟨v, hv⟩ _ _ => ?_) (fun t _ _ => rfl) n
   rw [RejWord.word e]
   exact decode_rej_opcode t e (by simpa only [RejWord] using he) htp v hv
 
+/-- A word RISC-V rejects within a major opcode the profile uses (but
+    SYSTEM): one the spec decodes to nothing. The float opcodes are not
+    among them. -/
+def RejField (e : BitVec 32) : Prop := Transpiler.decode e = none ∧ RejOpcode e
+
+theorem RejField.low {e : BitVec 32} (h : RejField e) : (byte e 0).extractLsb 1 0 = 3#2 := by
+  obtain ⟨-, h⟩ := h
+  simp only [RejOpcode, Transpiler.opcode, BitVec.toNat_eq_nat, Nat.reducePow, Nat.reduceLT, true_and] at h
+  simp only [byte]; revert h; bv_decide
+
+/-- The spec's translation: the halt. -/
+theorem RejField.spec {e : BitVec 32} (h : RejField e) (pc ia : BitVec 64) (next next2 : Option (BitVec 32)) :
+    Transpiler.convert pc e next ia next2 = some [(pc, Transpiler.halt)] := by
+  simp only [Transpiler.convert, h.1]
+
+/-- No instruction the machine tells apart: not SYSTEM, and no lr or sc
+    (those the spec decodes). -/
+theorem RejField.kind {e : BitVec 32} (h : RejField e) :
+    ZiskRiscv.kind (ZiskRiscv.fields e) = .other ∨ ZiskRiscv.kind (ZiskRiscv.fields e) = .add ∨
+      ZiskRiscv.kind (ZiskRiscv.fields e) = .addi := by
+  obtain ⟨hd, ho⟩ := h
+  have h47 := Transpiler.rej_47 hd
+  simp only [RejOpcode, Transpiler.opcode, BitVec.extractLsb, Nat.reduceAdd, Nat.reduceSub] at ho h47
+  unfold ZiskRiscv.kind
+  simp only [ZiskRiscv.fields]
+  split
+  all_goals (try split)
+  all_goals (try split)
+  all_goals (first | (simp; done) | (exfalso; omega) | skip)
+  all_goals (exfalso; specialize h47 (by omega))
+  all_goals (simp only [← BitVec.toNat_ushiftRight, BitVec.toNat_eq_nat, Bool.and_eq_true, beq_iff_eq, Nat.reducePow,
+    Nat.reduceLT, true_and] at *; bv_decide)
+
+/-- The machine leaves it to sail-riscv: no call, no lr or sc. -/
+theorem RejField.plain {e : BitVec 32} (h : RejField e) : Equiv.Machine.Plain e := by
+  intro fetch a hf
+  simp only [ZiskRiscv.decode, hf]
+  rcases h.kind with hk | hk | hk <;> simp only [hk]
+
+set_option maxHeartbeats 4000000 in
+/-- A word RISC-V rejects within its opcode at pc, one step of each:
+    sail-riscv's to the trap vector (an illegal instruction); sail-zisk's on
+    the halt, the run's end with Zerror set. -/
+theorem rejf_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hrel : Rel s z rs)
+    (pc : BitVec 64) (hpc : s.regs.get? Register.PC = some pc)
+    (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (e : BitVec 32) (he : RejField e) (next : Option (BitVec 32))
+    (hi : WordsAt s rs pc zrom e next) (n : Nat) :
+    (∃ s', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
+      s'.regs.get? Register.PC = some 0x4#64) ∧
+    ∃ z', (zstep zrom).run z = .ok true z' ∧ z'.regs.get? _root_.Zisk.Register.Zerror = some true := by
+  refine illegal_step_of s z rs hrel pc hpc zrom e next hi he.spec he.low (.ILLEGAL e)
+    (fun t htp ⟨v, hv⟩ ⟨b, hb, hbB⟩ ⟨a, ha, haA⟩ => ?_) (fun t _ _ => rfl) n
+  rw [hb] at ha
+  cases ha
+  rw [RejWord.word e]
+  exact decode_rej_field t e he.1 he.2 htp v hv b hb haA hbB
+
 /-- A word the transpiler halts on, and the simulation covers: `ebreak`, a
-    write to a read-only CSR, or a word RISC-V rejects for its opcode. -/
-def HaltWord (e : BitVec 32) : Prop := e = EBREAK ∨ (∃ i : RoInstr, i.encode = e) ∨ RejWord e
+    write to a read-only CSR, or a word RISC-V rejects for its opcode or
+    within it. -/
+def HaltWord (e : BitVec 32) : Prop :=
+  e = EBREAK ∨ (∃ i : RoInstr, i.encode = e) ∨ RejWord e ∨ RejField e
 
 theorem HaltWord.plain {e : BitVec 32} (h : HaltWord e) : Equiv.Machine.Plain e := by
-  rcases h with rfl | ⟨i, rfl⟩ | h
+  rcases h with rfl | ⟨i, rfl⟩ | h | h
   · exact ebreak_plain
   · exact i.plain
+  · exact h.plain
   · exact h.plain
 
 theorem halt_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hrel : Rel s z rs)
@@ -348,10 +411,11 @@ theorem halt_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     (∃ s', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
       s'.regs.get? Register.PC = some 0x4#64) ∧
     ∃ z', (zstep zrom).run z = .ok true z' ∧ z'.regs.get? _root_.Zisk.Register.Zerror = some true := by
-  rcases he with rfl | ⟨i, rfl⟩ | he
+  rcases he with rfl | ⟨i, rfl⟩ | he | he
   · exact ebreak_step s z rs hrel pc hpc zrom next hi n
   · exact ro_step s z rs hrel pc hpc zrom i next hi n
   · exact rej_step s z rs hrel pc hpc zrom e he next hi n
+  · exact rejf_step s z rs hrel pc hpc zrom e he next hi n
 
 end Equiv.Sim
 

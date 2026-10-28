@@ -176,11 +176,13 @@ theorem try_step_illegal (s : RVState) (rs : List PMA_Region) (hr : StepReady s 
       (∃ v, t.regs.get? mseccfg = some v) →
       (∃ v, t.regs.get? misa = some v ∧ _get_Misa_M v = 1#1) →
       (∃ v, t.regs.get? misa = some v ∧ _get_Misa_B v = 1#1) →
+      (∃ v, t.regs.get? misa = some v ∧ _get_Misa_A v = 1#1) →
       (interpretSailEffects (ext_decode (b3 ++ b2 ++ (b1 ++ b0)))).run t = .ok ins t)
     (hexec : ∀ t : RVState, (∀ k, k < 32 → getX t k = getX s k) → t.mem = s.mem → MemReady t rs →
       t.regs.get? mseccfg = s.regs.get? mseccfg → WF t →
       (interpretSailEffects (execute ins)).run t = .ok (.Illegal_Instruction ()) t) (n : Nat) :
     ∃ s', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧ s'.regs.get? PC = some 0x4#64 := by
+  obtain ⟨av, hav, haA⟩ := hr.misaA
   obtain ⟨h, hmip, hmie, hhs, help, hs, -, ⟨mv, hmv, hmM⟩, ⟨bv, hbv, hbB⟩, -⟩ := hr
   obtain ⟨hal, ⟨r1, hm1, hx1⟩, ⟨r2, hm2, hx2⟩, h0, h1, h2, h3, hc⟩ := hw
   have hp := hs.priv
@@ -203,12 +205,13 @@ theorem try_step_illegal (s : RVState) (rs : List PMA_Region) (hr : StepReady s 
   · exact h3
   dsimp only [ext_fetch_hook]
   repeat rv_step h
-  rw [hdec _ ?hp1 ?hsec1 ?hm1 ?hb1]
+  rw [hdec _ ?hp1 ?hsec1 ?hm1 ?hb1 ?ha1]
   rotate_left
   · simp only [Std.ExtDHashMap.get?_insert]; simpa using hp
   · exact ⟨regVal h mseccfg, by simp only [Std.ExtDHashMap.get?_insert]; simpa using h.get? mseccfg⟩
   · exact ⟨mv, by simp only [Std.ExtDHashMap.get?_insert]; simpa using hmv, hmM⟩
   · exact ⟨bv, by simp only [Std.ExtDHashMap.get?_insert]; simpa using hbv, hbB⟩
+  · exact ⟨av, by simp only [Std.ExtDHashMap.get?_insert]; simpa using hav, haA⟩
   repeat rv_step h
   simp only [no_lp, Bool.false_and, Bool.false_eq_true, if_false]
   repeat rv_step h
