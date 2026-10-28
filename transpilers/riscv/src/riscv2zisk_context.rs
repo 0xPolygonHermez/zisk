@@ -1594,6 +1594,25 @@ impl<'a> Riscv2ZiskContext<'a> {
         zib.build(self.rom);
     }
 
+    /// A write_log call site, its `csrs` sequence from `at_addr` to before `next_addr`: one
+    /// `flag` that reads the text's pointer and length from `regs` and jumps past the sequence.
+    /// The prover sees a no-op; ziskemu prints the text when asked to (`opc_write_log`)
+    pub fn emit_write_log(&mut self, at_addr: u64, next_addr: u64, regs: &[u32]) {
+        let mut zib = ZiskInstBuilder::new_from_riscv(at_addr, "zkvmcall".to_string());
+        // x0 is not a main-trace register: read it as the immediate 0
+        let src = |reg: u32| if reg == 0 { ("imm", 0) } else { ("reg", reg as u64) };
+        let ((a_src, a), (b_src, b)) = (src(regs[0]), src(regs[1]));
+        zib.src_a(a_src, a, false);
+        zib.src_b(b_src, b, false);
+        zib.op("flag").unwrap();
+        zib.i.write_log = true;
+        zib.i.func = zisk_core::opc_write_log;
+        let jmp = next_addr as i64 - at_addr as i64;
+        zib.j(jmp, jmp);
+        zib.verbose(&format!("write_log r{}, r{}", regs[0], regs[1]));
+        zib.build(self.rom);
+    }
+
     /// An inline zkvmcall: the library routine's `body` (see `InlineBody`) in place
     /// of its `csrs` sequence, which starts at `at_addr` and ends before `next_addr`.
     /// The body reads `regs[k]` where it reads r(10 + k); its scratch registers
@@ -2975,6 +2994,15 @@ pub fn add_zisk_code(
                 skip_until = next_addr;
                 continue;
             }
+            // write_log has no library routine: one step that prints when asked to
+            if id == WRITE_LOG_ID {
+                let site = inline_zkvmcall_site(&riscv_instructions[i..])
+                    .unwrap_or_else(|e| panic!("{e}"));
+                let next_addr = inst_addr + 4 * site.len as u64;
+                ctx.emit_write_log(inst_addr, next_addr, &site.regs);
+                skip_until = next_addr;
+                continue;
+            }
             let lib_addr = *zkvmcalls.get(&id).unwrap_or_else(|| {
                 panic!("zkvmcall 0x{id:X} at 0x{inst_addr:x} has no library entry")
             });
@@ -2989,6 +3017,10 @@ pub fn add_zisk_code(
         ctx.convert(riscv_instruction, next_instructions);
     }
 }
+
+/// The zkvmcall of `write_log` (diagnostic text), which the transpiler emits itself (see
+/// `Riscv2ZiskContext::emit_write_log`)
+pub const WRITE_LOG_ID: u16 = zisk_definitions::zkvmcall_id("write_log");
 
 /// Returns the zkvmcall ID of `inst` if it is a zkvmcall (`csrs <id>, rs` with `id`
 /// in the zkvmcall CSR range; `rs` is x0 but for an inline one).

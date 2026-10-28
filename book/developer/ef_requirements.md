@@ -6,10 +6,20 @@ the `eth-act` working group at
 define a common contract between a zkVM and the guest programs it proves — the
 RISC-V target, the ELF it loads, the memory layout, the I/O and termination
 interfaces, the C ABI for cryptographic accelerators (the EVM precompiles), the
-C ABI for 256-bit EVM-word arithmetic, and host randomness —
+C ABI for 256-bit EVM-word arithmetic, host randomness and diagnostic logging —
 so that a single guest can be built once and proven on any conforming zkVM.
 
 This document records, standard by standard, how ZisK currently measures up.
+It was last checked against the repository on 2026-10-27 (`main` at `f433d48`,
+whose `standards/` last changed on 2026-08-11) and against the open pull requests
+of that date; the drafts are tracked in [Draft standards](#draft-standards).
+
+The standards are one item of a broader rubric: the EF's
+[zkVM handbook](https://github.com/eth-act/zkevm-standards/blob/main/handbooks/zkvm-handbook.md)
+lists the criteria for a zkVM to be considered for EIP-8025 (the test monitor,
+formal verification of the circuits, real-time proving on the EF reference cluster,
+MIT + Apache 2.0 licensing, final proofs of at most 300 KiB, cryptographic security
+review). Those are outside the scope of this document.
 
 > Note: the EF standards target a **RISC-V** guest. ZisK proves RISC-V programs;
 > the ZisK-assembly (`.zisk`) routines mentioned below are ZisK's *internal*
@@ -68,8 +78,9 @@ sequence; [the C binding's README](../../ziskasm/lang/c/README.md#coverage) list
 the builds of each family.
 
 `zkvm_keccak_f1600` is neither: it is a single keccak-f precompile, so the header
-defines it inline (`csrs 0x800, state`) and it costs one instruction at the call
-site.
+defines it inline. An 8-byte-aligned state costs one `csrs 0x800, state` and an
+alignment test at the call site; an unaligned state is DMA-copied into an aligned
+stack buffer, permuted there and copied back.
 
 Consequences worth knowing:
 
@@ -179,18 +190,23 @@ conform but not yet audited against the spec.
 
 | # | Standard | Assessment | One-line status |
 |---|----------|------------|-----------------|
-| 1 | [C interface for accelerators](#1-c-interface-for-accelerators) | **Conformant** | All 19 `zkvm_*` functions implemented natively in `.zisk`; runtime-validated on real blocks via ziskethone. |
-| 1b | [U256 arithmetic C interface](#1b-u256-arithmetic-accelerator-c-interface) | **Conformant** | All 27 `zkvm_u256_*` functions implemented natively in `.zisk` over the shared uint256 precompile cores; golden-vector-validated against an EVM reference. |
-| 2 | [Accelerated memory operations](#2-accelerated-memory-operations) | **Conformant** | All four `mem*` accelerated via DMA precompiles in ziskos and in the packaged C archive; `memmove` shares `memcpy`'s DMA op, which is overlap-safe in the emulator and the prover; the C archive's definitions sit in `_start`'s object, so they win symbol resolution regardless of link order. |
-| 3 | [ELF loading and validation](#3-elf-loading-and-validation) | **Conformant** | `elf2rom` enforces header, PT_LOAD-only loading, zero-fill, W^X and entry-point validation. |
+| 1 | [C interface for accelerators](#1-c-interface-for-accelerators) | **Conformant** | All 19 `zkvm_*` functions implemented natively in `.zisk`; runtime-validated on real blocks via ziskethone. `zkvm_keccak_f1600` (draft PR #26) also provided. |
+| 1b | [U256 arithmetic C interface](#1b-u256-arithmetic-accelerator-c-interface) | **Conformant** (draft) | Draft standard (eth-act PR #22). All 27 `zkvm_u256_*` functions implemented natively in `.zisk` over the shared uint256 precompile cores; golden-vector-validated against an EVM reference. |
+| 2 | [Accelerated memory operations](#2-accelerated-memory-operations) | **Conformant** | All four `mem*` accelerated via DMA precompiles in ziskos and in the packaged C archive; `memmove` shares `memcpy`'s DMA op, which is overlap-safe in the emulator and the prover; the C archive's definitions sit in `_start`'s object, so they are always linked; with a libc before the archive on the command line, the link fails rather than silently keeping the libc's. |
+| 3 | [ELF loading and validation](#3-elf-loading-and-validation) | **Partial** | `elf2rom` enforces header, PT_LOAD-only loading, zero-fill, no overlap, W^X and entry-point validation. But it accepts both `PF_X` and `PF_X\|PF_R` executable segments, and the standard requires a zkVM to accept exactly one. |
 | 4 | [I/O interface](#4-io-interface) | **Conformant** | `read_input` / `write_output` implemented in the ZisK library, reached through zkvmcalls. |
 | 5 | [Memory layout restrictions](#5-memory-layout-restrictions) | **Conformant** | Standard is non-prescriptive; ZisK ships a vendor linker script defining its map. |
 | 6 | [Memory safety guard regions](#6-memory-safety-guard-regions) | **Conformant** | Null region and the span below the stack bottom are both unmapped and trap; the guard is adjacent with no gap, named in `core/src/mem.rs` and enforced by compile-time assertions. |
-| 7 | [RISC-V target](#7-risc-v-target) | **Partial** | RV64IMA, little-endian, LP64, unaligned access supported and counted/priced by `ziskemu` stats; `compressed` (`C`) feature implemented (off by default). The observability wording is now resolved: it requires a per-proof count via CLI/log, so two changes remain — emit that count from the proving path (the tally already exists in `MemCounters`), and stage unaligned precompile operands into aligned buffers. |
-| 8 | [Standard termination semantics](#8-standard-termination-semantics) | **To verify** | `main` return maps to halt + host report; exact exit-code propagation to confirm. |
-| 9 | [Static library and linker script](#9-static-library-and-linker-script) | **Conformant** | `package.sh` stages `libzisklib_c.a` (`_start` incl. C++ ctors/dtors, I/O, all accelerators) + headers + the W^X linker script exporting `_heap_start`/`_heap_end`; verified by linking C and C++ guests against the installed artifacts alone. |
+| 7 | [RISC-V target](#7-risc-v-target) | **Partial** | RV64IMA, little-endian, LP64, unaligned access supported and counted/priced by `ziskemu` stats; `compressed` (`C`) feature implemented (off by default); unaligned operands no longer reach a precompile. One change remains: emit a per-proof unaligned-access count from the proving path (the tally already exists in `MemCounters`). |
+| 8 | [Standard termination semantics](#8-standard-termination-semantics) | **Conformant** (Type 1, to confirm) | A nonzero `main` return, `abort()` (exit code 134, draft eth-act PR #46), a trap or a write to a read-only CSR halts as a failed execution, reported with its exit code and rejected before proving. A failed run cannot end at the pc the circuit requires, so it cannot be proven; the PIL owners are to confirm that argument. |
+| 9 | [Static library and linker script](#9-static-library-and-linker-script) | **Conformant** | `package.sh` stages `libzisklib_c.a` (`_start` incl. C++ ctors/dtors, `abort`, I/O, all accelerators) + headers + the W^X linker script exporting `_heap_start`/`_heap_end`; verified by linking C and C++ guests against the installed artifacts alone. |
 | 10 | [Instruction-address-misaligned semantics](#10-instruction-address-misaligned-exception-semantics) | **Conformant** | At the default `IALIGN=32` (`compressed` off): misaligned entry points and executable-segment starts rejected at load; a misaligned computed jump hits its own `emu_end` slot in the per-byte jump map (rounding impossible by construction) and exits with `end=0`; the Rust emulator panics. |
 | 11 | [Host randomness](#11-host-randomness) | **Conformant** | `zkvm_random_u64` returns the SHAKE256 stream of a 256-bit seed drawn per execution from the OS CSPRNG (or provided with `--random-seed` to replay a run); the guest cannot set or observe it. Not available with hints. Standard still a draft (eth-act PR #42). |
+| 12 | [Diagnostic logging](#12-diagnostic-logging) | **Conformant** (draft) | Draft standard (eth-act PR #27). Each `write_log` call site is one no-op step, the same in every ROM, so logging never changes the verification key; `ziskemu --write-log` prints the text, and executions and proofs ignore it. |
+
+Draft standards that ZisK does not meet yet (proving cost estimation, minimum
+memory resources) are listed in
+[Draft standards](#draft-standards).
 
 ---
 
@@ -221,7 +237,12 @@ functions:
 Each routine performs the byte↔limb marshalling required by the EF encoding
 (including the BN254 EIP-197 imaginary-first Fp2 order and the BLS12-381 packed
 48-byte fields) and returns `ZKVM_EOK`. The header and the zkvmcall thunks live in
-`ziskasm/lang/c/`.
+`ziskasm/lang/c/`. Its types, struct layouts and prototypes match the upstream header
+exactly.
+
+The header also defines `zkvm_keccak_f1600(uint64_t* state)`, which draft
+[eth-act PR #26](https://github.com/eth-act/zkevm-standards/pull/26) adds to the
+standard header; see [How the standard interfaces are wired](#how-the-standard-interfaces-are-wired-zkvmcalls).
 
 **Validation.** Beyond per-function golden-vector tests, the full ABI was wired
 into ziskethone and run on three real mainnet blocks; the block hash is
@@ -234,7 +255,8 @@ keccak/sha256/secp256k1 and BN254 end-to-end on-chain traffic.
 
 ## 1b. U256 arithmetic accelerator C interface
 
-**Standard.** A companion header (`zkvm_u256.h`) in the same
+**Standard.** Draft, [eth-act/zkevm-standards PR #22](https://github.com/eth-act/zkevm-standards/pull/22)
+(not merged; unchanged since 2026-03-30). A companion header (`zkvm_u256.h`) in the same
 `c-interface-accelerators` family, defining accelerated **256-bit unsigned-integer
 (EVM word) arithmetic**: the arithmetic, comparison, bitwise and shift operations
 that back the EVM opcodes. Every operand and result is a 32-byte **big-endian**
@@ -270,9 +292,11 @@ in `ziskasm/lang/c/` (`zkvm_u256.h`, `zkvm_calls.s`) and the `zisklib` Rust crat
 **Validation.** A generated guest exercises all 27 functions (45 cases including
 the div/mod/addmod/mulmod-by-zero guards, cross-word shifts, `sar` sign-fill and
 `shift >= 256`, `byte >= 32`, `signextend`, and the signed min-int case) and every
-result is **byte-identical to a Python EVM reference**.
+result is **byte-identical to a Python EVM reference**. The prototypes match the
+draft header's 27 functions exactly. (`zkvm_u256_le.h`, the little-endian variant, is
+ZisK's own header, not part of the draft.)
 
-**Assessment: Conformant.**
+**Assessment: Conformant** to the draft.
 
 ---
 
@@ -328,24 +352,50 @@ end to end, and precedence independent of link order).
 **Standard.** The loader must validate the ELF header (`\x7fELF`, ELFCLASS64,
 little-endian, `EM_RISCV`, `ET_EXEC`), load only from `PT_LOAD` program headers,
 zero-fill `p_memsz > p_filesz`, keep all addresses in range, reject
-misaligned/overlapping segments, enforce W^X (reject `PF_W|PF_X`; executable
-segments only `PF_X` or `PF_X|PF_R`), and validate the entry point (aligned,
-inside a loaded executable segment). Invalid ELFs must be rejected with
-diagnostics before any state reaches the prover.
+misaligned/overlapping segments, enforce W^X (reject `PF_W|PF_X`), and validate
+the entry point (aligned, inside a loaded executable segment). Invalid ELFs must
+be rejected with diagnostics before any state reaches the prover.
 
-**ZisK.** `transpilers/riscv/src/elf2rom.rs` (with the `elf_extraction` module)
-builds the ROM exclusively from `PT_LOAD` segments, zero-fills BSS, checks every
-segment/address lies within the ZisK addressable space (and errors otherwise,
-e.g. the `PT_LOAD 0x0-0x0` rejection), and validates the entry point
-(`validate_entry_point`): non-zero `e_entry`, aligned to IALIGN (4 bytes by
-default, 2 with the `compressed` feature — see §10), inside a loaded
-executable segment — with an explicit diagnostic instructing the user to declare
-`ziskos::entrypoint!`. Executable segments are `PF_X`/`PF_X|PF_R`; a `PF_X|PF_R`
-segment currently produces a performance **warning** (allowed by the standard),
-and the guest linker script emits a clean W^X layout (see §9).
+An executable segment is either `PF_X` (execute-only: a load from it must end the
+run abnormally) or `PF_X|PF_R` (execute-and-read: a load returns the real byte).
+**A zkVM supports exactly one of the two**, as an inherent property, and its loader
+rejects an executable segment carrying the other. The standard encourages
+`PF_X|PF_R`, because a jump table or constant pool that the compiler leaves in
+`.text` stays correct under it.
 
-**Assessment: Conformant** (header-field strictness, e.g. rejecting a non-RISC-V
-`e_machine`, is worth an explicit audit but the substantive checks are in place).
+**ZisK.** `transpilers/riscv/src/elf_extraction.rs` (called from `elf2rom.rs`):
+
+- **Header.** Parsed as little-endian only (a big-endian file fails to parse rather
+  than being adapted to), then `ELFCLASS64`, `EM_RISCV` and `ET_EXEC` are checked,
+  each with its own diagnostic.
+- **Segments.** The image is built exclusively from `PT_LOAD` segments. Each one must
+  lie inside the ROM or RAM window, must not overlap another, must not have
+  `p_filesz > p_memsz`, and must be aligned (an executable one to IALIGN). The
+  `p_memsz > p_filesz` tail is zero-filled. An executable segment must lie in ROM and
+  be fully file-backed.
+- **W^X.** A `PF_W|PF_X` segment is rejected.
+- **Entry point.** `validate_entry_point`: non-zero `e_entry`, aligned to IALIGN
+  (4 bytes by default, 2 with the `compressed` feature, see §10), inside a loaded
+  executable segment, with a diagnostic telling the user to declare
+  `ziskos::entrypoint!`.
+
+**Gap: ZisK accepts both executable-segment models.** A `PF_X` segment is treated as
+execute-only. A `PF_X|PF_R` segment is accepted too, with a performance warning, and
+its bytes are also loaded as readable ROM data. That violates "a zkVM supports exactly
+one combination". The guest linker script emits `PF_X` (§9), so ZisK's model is
+execute-only, and the fix is to reject `PF_X|PF_R` executable segments instead of
+warning. That breaks any guest linked with another script whose code segment is
+`PF_X|PF_R`, so the change should come with a clear diagnostic. (The comment at that
+check also calls ZisK "an execute-and-read zkVM", which contradicts the code next to
+it.)
+
+Two consequences of the execute-only choice still need checking: that a data load
+from a `PF_X` segment ends the run abnormally rather than returning a value, and that
+our guest builds keep read-only data out of `.text` (`-fno-jump-tables`, or a
+post-link check, as the standard recommends).
+
+**Assessment: Partial** (header, loading, overlap, W^X and entry-point checks are in
+place; the executable-segment model must be made exclusive).
 
 ---
 
@@ -362,7 +412,8 @@ free-input region (`INPUT_ADDR = 0x1000_0000`); output is written to the public
 output region (`OUTPUT_ADDR = 0xa041_0000`). Reads are non-failing and side-effect
 free; successive `write_output` calls concatenate. C guests get both from
 [`zkvm_io.h`](../../ziskasm/lang/c/include/zkvm_io.h) and the zkvmcall thunks in
-`ziskasm/lang/c/src/zkvm_calls.s`, linked via `zisklib_c` (§9).
+`ziskasm/lang/c/src/zkvm_calls.s`, linked via `zisklib_c` (§9). The draft
+`write_log` function, which the same header declares, is covered in §12.
 
 **Assessment: Conformant.**
 
@@ -568,14 +619,21 @@ one-time zero-initialization accounting, not run-time accesses.)
 **Precompile operand alignment.** The memory-based precompiles (keccak, sha256,
 the arithmetic/EC precompiles, …) require their operand buffers to be **aligned**
 — they read and write the state as aligned words, not through the byte-granular
-unaligned path. It is therefore the **caller's** responsibility to pass aligned
-pointers: when a guest's argument is not aligned, the calling code must copy it
-into a temporary aligned buffer, invoke the precompile on that buffer, and copy
-the result back. This keeps the precompiles on the fast aligned path and means an
-unaligned guest argument never reaches a precompile directly. (The `.zisk`
-accelerator routines that marshal the EF byte-array ABI already stage their
-operands in library-owned, aligned scratch buffers, so this holds for the
-standard `zkvm_*` entry points.)
+unaligned path. An unaligned guest pointer must therefore never reach a precompile;
+the library routines stage such operands in aligned buffers:
+
+- The `.zisk` routines behind `zkvm_accelerators.h` marshal the EF byte-array ABI
+  into library-owned, aligned scratch, so their operands are always aligned.
+- The routines that used to hand the caller's result pointer straight to a precompile
+  (`zisklib_overflowing_add256/sub256/mul256`, the `zkvm_u256_le_*` add, sub, mul,
+  addmod, mulmod and negated signed-division results) now test the pointer and, when
+  it is unaligned, compute into aligned scratch and DMA-copy the result out. The
+  aligned path costs one extra step.
+- `zkvm_keccak_f1600`, the bare keccak-f precompile emitted inline, DMA-copies an
+  unaligned state into an aligned stack buffer and back.
+
+The `unaligned_out` test covers 90 cases across `zkvm_zisklib.h`, `zkvm_u256_le.h`,
+`zkvm_u256.h` and `zkvm_accelerators.h`.
 
 **Compressed instructions.** The misaligned-instruction semantics of §10 are
 defined for `IALIGN = 32` (no `C`), and the ZisK transpiler is able to decode
@@ -630,20 +688,13 @@ by default. The per-shape breakdown comes for free and covers the "more granular
 metrics are encouraged" clause. The exact log format becomes a documented interface
 the EF may check against, so it should be fixed here once chosen.
 
-**TODO 2 — align precompile operands.** The memory-based precompiles require aligned
-operand buffers (see *Precompile operand alignment* above), and today that is stated
-as the caller's responsibility. The `.zisk` accelerators already stage the EF
-byte-array ABI into aligned library scratch, so the standard `zkvm_*` entry points
-hold; the gap is the `zkvm_zisklib_*` functions and direct `zisklib` calls from Rust guests,
-where an unaligned guest pointer can reach a precompile. Make those call sites copy
-into a local aligned buffer when the argument is not aligned, and copy back. Note
-this costs a branch — and, when unaligned, a copy — on the common aligned path, so it
-should be measured against the `keccak_ab`/`modexp_ab` dual-backend benchmarks.
+**TODO 2 — align precompile operands: done** (October 2026; see *Precompile operand
+alignment* above).
 
-**Assessment: Partial** (base + M + little-endian + LP64 + unaligned support are met
-and the `compressed` feature is implemented; the observability question is now
-resolved *against* us — the required per-proof CLI/log output is TODO 1 — and TODO 2
-remains).
+**Assessment: Partial** (base + M + little-endian + LP64 + unaligned support are met,
+the `compressed` feature is implemented and unaligned operands no longer reach a
+precompile; the observability question is resolved *against* us, and the required
+per-proof CLI/log output, TODO 1, remains).
 
 ---
 
@@ -656,14 +707,88 @@ code to the host; the verifier either rejects failed-execution proofs (Type 1) o
 accepts only proofs matching the expected code (Type 2). Runtimes must map
 language-level aborts (Rust panic, C `abort()`) onto this interface.
 
-**ZisK.** ZisK programs run from the boot thunk to a defined ROM exit; a normal
-return halts the machine and produces the public output, and the `ziskos`
-runtime maps panics/aborts to a halt. The zero/non-zero success convention and
-end-to-end propagation of a non-zero `main` exit code to the host/verifier layer
-should be audited against this standard.
+Since [eth-act PR #34](https://github.com/eth-act/zkevm-standards/pull/34) (merged
+2026-08-11) the standard also says that the verifier requirement is a **soundness
+property enforced by the circuit**: a prover that declines to prove a failed run
+does not satisfy it, because a malicious prover controls its own software.
 
-**Assessment: To verify** (halt-and-report is in place; exact exit-code
-propagation and the verifier-side Type 1/Type 2 handling to be confirmed).
+**ZisK.** Implemented by PR #1375 (merged 2026-10-13):
+
+- **Exit code.** Both `_start`s (`ziskasm/lang/c/src/_start.s` and `ziskos`) pass
+  `main`'s return value in `a0` to the `SYS_exit` ecall. The BIOS exit handler
+  (`core/src/rom_layout.rs`) checks it: `0` publishes the output and jumps to the
+  `end` instruction at `ROM_EXIT` (`0x1004`); any other value executes a `halt`
+  whose operand is the exit code.
+- **Faults.** `unimp` and any other write to a read-only CSR (all three forms),
+  `ebreak` and `c.ebreak` also halt as failed executions. Rust panics end in a
+  trap (`ziskos-staticlib`'s panic handler emits `unimp`).
+- **`abort`.** See [below](#abort-draft-eth-act-pr-46).
+- **Host report.** Both emulator entry points, `emulate` (`ziskemu`,
+  `cargo-zisk execute`) and `compute_minimal_traces` (the first phase of proving),
+  return `ZiskEmulatorErr::ExecutionFailed` with the reason (trap or exit code),
+  step and pc, so the prover stops before generating any proof. `ziskemu` prints the
+  exit code and exits with its low 8 bits (1 if those are 0).
+- **Tests.** `emulator/tests/failed_execution.rs` runs the guests in
+  `elf-regressions/failed_execution/` (each failure kind, plus an `exit_ok` control)
+  through both entry points, with and without `compressed`, and the `abort` guests
+  of `elf-regressions/abort/` (below).
+
+**Why a failed run cannot be proven (Type 1).** Rejecting before proving is what an
+honest prover does; the circuit gives the guarantee. Main's continuation bus requires
+the last segment to end with `pc = END_PC_ADDR = 0x1004` (`state-machines/main/pil/main.pil`),
+the `end` instruction that only a zero exit code reaches. No failure `halt` leads
+there: the exit-code one in the BIOS jumps to itself, and a trap's
+(`halt_with_error` in `riscv2zisk_context.rs`) continues to the next address in the
+guest's code. A trace that ends in one cannot close the bus, so no valid proof of it
+exists. This argument still has to be confirmed by the PIL owners.
+ZisK provides no Type 2 (proof-of-failure) verifier.
+
+### `abort` (draft eth-act PR #46)
+
+**Standard.** The vendor static library must provide `_Noreturn void abort(void)`. It
+ends the execution as a failed termination, exactly as if `main` had returned a
+non-zero value, with a vendor-defined non-zero code; it never returns and may be called
+from anywhere. A guest that brings its own language runtime maps that runtime's
+failures onto it.
+
+**ZisK.** Both libraries provide it, with exit code **134** (128 + SIGABRT, what a
+shell reports for an aborted process, so it is told apart from `main` returning 1):
+
+- **`zisklib_c`.** `abort` is in `ziskasm/lang/c/src/_start.s`: it sets `a0 = 134` and
+  jumps to `_start`'s exit dispatch, the code that runs after `main` returns and
+  destructors run. So it reaches the same `SYS_exit` ecall (or, off ZisK, the
+  `sifive_test` exit) as a `main` that returned 134. Like C's `abort` it runs no
+  destructors or `atexit` handlers. It lives in `_start`'s object, which every guest
+  links, as the `mem*` routines do (§2), and with the same link-order rule. With the
+  archive before the libc (where the gcc driver puts `-lc`), this `abort` is defined
+  before the libc is searched, so the libc's is never pulled; newlib's raises SIGABRT
+  through stubs that would never reach the ZisK termination. With the libc first, a
+  guest that calls `abort` gets the libc's, and the link fails with a
+  multiple-definition error, never silently keeping it. C++ `std::terminate` calls it
+  too.
+- **`ziskos` / `libziskos.a`.** `ziskos::abort()` does the same through the label
+  `_zisk_exit` on the exit dispatch of `ziskos`'s `_start`, and `libziskos.a` exports
+  it as `abort`. Natively it is `std::process::abort()`.
+
+The halt it ends in is the one a non-zero `main` return reaches, so everything above
+applies: the emulators report `ExitCode(134)`, the run is rejected before proving,
+and the circuit cannot prove it.
+
+**Validation.** `elf-regressions/abort/` holds a C guest
+(`ziskasm/lang/c/example/abort_guest.c`) that writes an output and calls `abort` from
+a nested function; its destructor traps, so a run that ran destructors would fail as a
+trap. `failed_execution.rs` checks it fails with `ExitCode(134)` on both entry points,
+and that the control build (`main` returns 0) does run the destructor. The same guest
+gives 134 when linked against `libziskos.a`, and so does a C++ guest calling
+`std::terminate()` linked with libstdc++ and newlib, where the link map shows `abort`
+resolved to `_start.s`. Both link orders were checked against newlib: archive first
+gives 134; libc first fails with multiple definitions of `abort` (and of `memset`). A
+symbol assignment in the linker script was tried as an order-independent override and
+does not work: the linker still pulls newlib's `abort`. The ASM emulator rejects the
+run as it does any non-zero exit.
+
+**Assessment: Conformant (Type 1)**, pending the PIL owners' confirmation of the
+argument above. `abort` follows draft PR #46.
 
 ---
 
@@ -682,6 +807,7 @@ builds the whole guest-side surface into one static library, **`zisklib_c`**:
 | Requirement | Provided by |
 |---|---|
 | `_start` (gp/sp init, **C++ constructors**, `main`, **destructors**, termination) | `src/_start.s` |
+| `abort` (failed termination, draft PR #46, §8) | `src/_start.s` |
 | I/O functions | `src/zkvm_calls.s` + [`include/zkvm_io.h`](../../ziskasm/lang/c/include/zkvm_io.h) |
 | Host randomness (`zkvm_random_u64`) | `src/zkvm_calls.s` + [`include/zkvm_random.h`](../../ziskasm/lang/c/include/zkvm_random.h) |
 | Accelerator functions | `src/zkvm_calls.s` (19 `zkvm_*` + 27 `zkvm_u256_*`; `zkvm_keccak_f1600` is inline in the header), plus ZisK's 24 `zkvm_zisklib_*` |
@@ -739,7 +865,10 @@ against it runs only under ZisK. A clean link proves nothing on its own.
 
 **Assessment: Conformant** (`_start` incl. C++ constructors/destructors, the I/O
 functions, every accelerator, a W^X linker script exporting `_heap_start`/`_heap_end`,
-and a build that stages them as a distributable `.a` + script).
+and a build that stages them as a distributable `.a` + script). `write_log` (draft
+PR #27, §12) and `abort` (draft PR #46, §8) are in `zisklib_c` too. Draft #36 would add
+the cost-scope functions, which are not in `zisklib_c` yet (see
+[Draft standards](#draft-standards)).
 
 ---
 
@@ -866,12 +995,95 @@ replay without guest visibility are all in place. Two caveats:
 
 ---
 
+## 12. Diagnostic logging
+
+**Standard.** Draft, [eth-act/zkevm-standards PR #27](https://github.com/eth-act/zkevm-standards/pull/27),
+which adds to the I/O interface (§4)
+`void write_log(const uint8_t* utf8_bytes, size_t utf8_len)`. It writes UTF-8
+diagnostic text that is not part of the public output and has no effect on the
+execution. A zkVM may ignore it when proving.
+
+**ZisK.** `write_log` is a zkvmcall (`0x8B4`) with no library routine: the transpiler
+implements it itself, as one step that does nothing in the proof.
+
+- **The guest side.** In
+  [`zkvm_io.h`](../../ziskasm/lang/c/include/zkvm_io.h), on RISC-V, `write_log` is a
+  `static inline` that emits the inline zkvmcall form: `csrs 0x8B4, rP` and
+  `csrs 0x8E0, rL`, naming the registers that hold the pointer and the length. With
+  `ZKVM_IO_CALLS` defined, the header only declares it, and the guest calls the thunk
+  `csrs 0x8B4, x0; ret` in `zkvm_calls.s` (`zisklib_c`, §9), with the arguments in
+  `a0`/`a1`. Rust guests get the thunk through `ziskos` (`write_log`), which
+  `libziskos.a` also exports; natively it writes the text to stdout.
+- **The transpiler.** For each call site, `add_zisk_code` emits one ZisK `flag`
+  instruction whose `a` and `b` operands are the pointer and length registers, and
+  which jumps past the `csrs` sequence (`emit_write_log` in
+  `transpilers/riscv/src/riscv2zisk_context.rs`). Main constrains a `flag` only to
+  `c = 0` and `flag = 1`, so the operands are free and the step is a no-op in the
+  proof. No library routine is linked for it: `elf2rom` leaves zkvmcalls with no
+  target out of the library set.
+- **Printing.** The instruction's emulator function is `opc_write_log`
+  (`core/src/ops_core_context.rs`) instead of `opc_flag`. When the run asks for it, it
+  reads `b` bytes at address `a` and prints them (invalid UTF-8 is replaced, not
+  rejected), then does what `opc_flag` does. The Rust emulator calls it through each
+  instruction's function pointer, so other instructions pay nothing. That pointer is
+  not derived from the opcode, so the instruction is also marked `write_log`, which
+  the ziskbin format stores (flag f23, version 4): a ROM saved as a ziskbin ELF keeps
+  printing.
+  `ziskemu --write-log` (`EmuOptions.write_log`) is the only way to turn printing on.
+  Witness generation, minimal traces and the ASM emulator never print: the ASM emulator
+  generates code from the opcode, which is a plain `flag`.
+
+**Why it never changes the ROM.** Every call site becomes the same `flag` whether the
+text is printed or not. Any change to the ROM would change the program's verification
+key and every cache keyed by the ELF hash (the ASM binaries, the ROM merkle tree, the
+`ProgramId`), so printing is decided only by the emulator at run time, never at
+transpile time.
+
+**Cost.** One Main step per inline call site, with no other state machine involved:
+the registers read live in Main, and the text is never read when proving. The thunk
+form costs 3 steps (call, `flag`, `ret`). Around the call there is the code that
+puts the pointer and length in registers, and the inline asm's `"memory"` clobber,
+which makes the compiler store pending writes before the call so `ziskemu` reads the
+final text.
+
+**Validation.** `emulator/tests/write_log.rs` runs a committed guest
+(`elf-regressions/write_log/`, from `ziskasm/lang/c/example/write_log_guest.c` and
+`write_log_thunk.c`) with six inline call sites and one thunk. It checks that each call
+site is one `flag` that reads the right registers and jumps past the sequence, that
+`write_log` needs no library routine, that the output is the same with and without
+printing, and that the minimal-trace path runs it. It also runs `ziskemu` on the guest,
+and on its ROM saved as a ziskbin ELF, checking that the text is printed exactly with
+`--write-log` and not at all without it. `ziskemu --write-log` prints six
+lines, since one of the seven call sites logs empty text; the step count is the same
+without the flag.
+
+**Assessment: Conformant** (draft). Logging has no effect on the execution, the public
+output or the proof, and ZisK ignores it when proving, as the draft allows. The text
+can only be seen from `ziskemu`, not from SDK executions or proofs.
+
+---
+
+## Draft standards
+
+Open pull requests on eth-act/zkevm-standards as of 2026-10-27, beyond those already
+covered above (#22 in §1b, #26 in §1, #46 in §8, #42 in §11, #27 in §12):
+
+| PR | Draft | What it requires | ZisK |
+|----|-------|------------------|------|
+| [#36](https://github.com/eth-act/zkevm-standards/pull/36) | Proving cost estimation | The emulator reports a deterministic scalar cost, linear in proving time, with a cost-model version. The library exports `zkvm_cost_scope_start/end(uint8_t)`, which cost nothing and are attributed inclusively; the emulator stops with a diagnostic on a misnested or still-open scope. | **Partial.** `ziskemu -X` reports a deterministic cost with a breakdown; there is no version and no cost scopes. |
+| [#20](https://github.com/eth-act/zkevm-standards/pull/20) | Minimum memory resources | A minimum stack and heap size, reflected in the linker script. The values are still placeholders. | Nothing to do until values are set. ZisK's stack is 4 MB (§5). |
+
 ## Roadmap
 
-- Confirm the **Partial**/**To verify** items above (the explicit stack-guard region; whether `ziskemu`'s offline
-  unaligned-access count satisfies the EF "during proving" wording; exit-code
-  propagation; `_heap_*` symbols and the packaged `.a`).
+- **§3:** reject `PF_X|PF_R` executable segments (ZisK is execute-only); check that a
+  data load from a `PF_X` segment ends the run abnormally.
+- **§7:** emit the per-proof unaligned-access count from the proving path (TODO 1).
+- **§8:** have the PIL owners confirm the Type 1 argument (final pc bound to
+  `END_PC_ADDR`).
+- Follow the open drafts above, the cost scopes (#36) first.
+- Track the **`abort`** draft (eth-act PR #46) until it is merged.
 - Track the **host randomness** draft (eth-act PR #42) until it is merged, and revisit
   the generator if the standard ends up requiring an SP 800-90A DRBG.
+- Track the **diagnostic logging** draft (eth-act PR #27) until it is merged.
 - Replace ziskethone with **evm-asm** as the conformance vehicle once it is ready,
   re-running the same real-block validation against the C ABI.

@@ -27,9 +27,9 @@ const INST_SIZE: i64 = 4;
 const MAGIC: &[u8; 4] = b"ZKRM";
 /// Container format version. 2: r32..r39 are main-trace registers (`SRC_REG` /
 /// `STORE_REG`), where version 1 ROMs address them as RAM. 3: the IDs of the zkvmcalls
-/// the guest uses follow the data sections, and nothing may follow them. See
-/// ziskbin.md §8.
-const VERSION: u8 = 3;
+/// the guest uses follow the data sections, and nothing may follow them. 4: flag f23
+/// marks a write_log call site. See ziskbin.md §8.
+const VERSION: u8 = 4;
 /// Private ELF machine id marking a ziskbin ELF ("ZK").
 pub const EM_ZISK: u16 = 0x5a4b;
 /// Section name holding the ROM container blob.
@@ -133,9 +133,9 @@ impl<'a> Reader<'a> {
 /// Flag-bitmap width in bytes. The format defines f0..f27 (ziskbin.md §5.4) at
 /// 7 flags per byte, so the bitmap is at most 4 bytes; there is no fifth flag byte.
 const FLAG_BYTES: u32 = 4;
-/// Flags the format assigns a meaning: f0..f22. f23..f27 are reserved (ziskbin.md
+/// Flags the format assigns a meaning: f0..f23. f24..f27 are reserved (ziskbin.md
 /// §5.4) and, being unassigned, carry no payload -- see `read_flags`.
-const FLAG_DEFINED_MASK: u32 = (1 << 23) - 1;
+const FLAG_DEFINED_MASK: u32 = (1 << 24) - 1;
 
 /// Writes the 7-bits-per-byte flag bitmap (bit 7 = continuation).
 fn put_flags(out: &mut Vec<u8>, flags: u32) {
@@ -178,7 +178,7 @@ fn read_flags(r: &mut Reader) -> Result<u32, String> {
     let undefined = flags & !FLAG_DEFINED_MASK;
     if undefined != 0 {
         return Err(format!(
-            "ziskbin: reserved flag bits set (0x{undefined:08x}); f23..f27 are reserved"
+            "ziskbin: reserved flag bits set (0x{undefined:08x}); f24..f27 are reserved"
         ));
     }
     Ok(flags)
@@ -283,6 +283,9 @@ fn encode_inst(i: &ZiskInst, out: &mut Vec<u8>) {
         bit!(22);
         pay.push(v);
     }
+    if i.write_log {
+        bit!(23);
+    }
 
     put_flags(out, flags);
     out.extend_from_slice(&pay);
@@ -371,6 +374,14 @@ fn decode_inst(r: &mut Reader, paddr: u64) -> Result<ZiskInst, String> {
     }
     if has(22) {
         i.meta_rd = Some(r.u8()?);
+    }
+    // A write_log call site: the opcode is a plain flag, so its `func` is not derived
+    if has(23) {
+        if z != ZiskOp::Flag {
+            return Err(format!("ziskbin: write_log marks a {}, not a flag", z.name()));
+        }
+        i.write_log = true;
+        i.func = crate::opc_write_log;
     }
 
     Ok(i)
@@ -686,6 +697,8 @@ mod tests {
         assert_eq!(a.input_size, b.input_size);
         assert_eq!(a.is_external_op, b.is_external_op);
         assert_eq!(a.m32, b.m32);
+        assert_eq!(a.write_log, b.write_log);
+        assert_eq!(a.func as usize, b.func as usize);
     }
 
     #[test]
@@ -713,10 +726,11 @@ mod tests {
     }
 
     /// A blob of an older version is refused (version 1 addressed r32..r39 as RAM;
-    /// version 2 had no zkvmcall IDs, so a ROM that uses zkvm_random_u64 would lose them).
+    /// version 2 had no zkvmcall IDs, so a ROM that uses zkvm_random_u64 would lose them;
+    /// version 3 had no write_log marker, so its call sites would stop printing).
     #[test]
     fn rejects_other_versions() {
-        for version in [1, 2] {
+        for version in [1, 2, 3] {
             let mut blob = encode_rom(&sample_rom());
             blob[MAGIC.len()] = version;
             let err = decode_rom(&blob).unwrap_err();
@@ -806,28 +820,68 @@ mod tests {
 
     #[test]
     fn rejects_reserved_flag_bits() {
-        // f23..f27 are reserved and carry no payload, so a decoder that ignored them
-        // would read the next instruction's bytes as this one's fields. f23 is bit 2
+        // f24..f27 are reserved and carry no payload, so a decoder that ignored them
+        // would read the next instruction's bytes as this one's fields. f24 is bit 3
         // of flag byte 3.
         let mut blob = blob_header(1, 0, 0);
         put_uvarint(&mut blob, 0x1000);
         blob.push(0);
-        blob.extend_from_slice(&[0x80, 0x80, 0x80, 0x04]); // f23 set, terminated
+        blob.extend_from_slice(&[0x80, 0x80, 0x80, 0x08]); // f24 set, terminated
 
         let err = decode_rom(&blob).unwrap_err();
         assert!(err.contains("reserved flag bits set"), "{err}");
     }
 
+    /// A write_log call site: a `flag` marked write_log, whose `func` prints
+    fn write_log_site() -> ZiskInst {
+        let flag = ZiskOp::Flag.code();
+        let mut i = ZiskInst { paddr: crate::mem::ROM_ADDR + 4, op: flag, ..Default::default() };
+        derive(&mut i);
+        i.a_src = crate::SRC_REG;
+        i.a_offset_imm0 = 10;
+        i.b_src = crate::SRC_REG;
+        i.b_offset_imm0 = 11;
+        i.meta_rd = Some(7); // f22, so f23 shares the 4th flag byte with another flag
+        i.write_log = true;
+        i.func = crate::opc_write_log;
+        i
+    }
+
     #[test]
     fn accepts_the_full_defined_flag_range() {
-        // f22 is the highest assigned flag and sits in the 4th byte, so a legitimate
+        // f23 is the highest assigned flag and sits in the 4th byte, so a legitimate
         // 4-byte bitmap must still decode.
         let mut rom = sample_rom();
-        let (_, zib) = rom.insts.iter_mut().next().unwrap();
-        zib.i.meta_rd = Some(7); // f22
+        let site = write_log_site();
+        rom.insts.insert(site.paddr, ZiskInstBuilder { i: site });
         let decoded = decode_rom(&encode_rom(&rom)).unwrap();
-        let (addr, zib) = rom.insts.iter().next().unwrap();
-        assert_eq!(decoded.insts[addr].i.meta_rd, zib.i.meta_rd);
+        for (addr, zib) in &rom.insts {
+            assert_inst_eq(&decoded.insts[addr].i, &zib.i);
+        }
+    }
+
+    /// The marker is all that tells a write_log site from a plain flag, whose `func` the
+    /// decoder would otherwise derive from the opcode
+    #[test]
+    fn write_log_sites_keep_their_func() {
+        let mut rom = sample_rom();
+        let site = write_log_site();
+        let addr = site.paddr;
+        rom.insts.insert(addr, ZiskInstBuilder { i: site });
+        let decoded = decode_rom(&encode_rom(&rom)).unwrap();
+        let i = &decoded.insts[&addr].i;
+        assert!(i.write_log);
+        assert_eq!(i.func as usize, crate::opc_write_log as *const () as usize);
+        assert_eq!(i.op_str, "flag");
+    }
+
+    #[test]
+    fn rejects_write_log_on_other_ops() {
+        let mut rom = sample_rom();
+        let (_, zib) = rom.insts.iter_mut().next().unwrap();
+        zib.i.write_log = true;
+        let err = decode_rom(&encode_rom(&rom)).unwrap_err();
+        assert!(err.contains("not a flag"), "{err}");
     }
 
     #[test]

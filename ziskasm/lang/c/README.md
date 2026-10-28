@@ -33,7 +33,7 @@ precompile CSRs directly. One `.zisk` implementation serves every guest.
 | `include/`            | the public headers, one per family (see [Coverage](#coverage)) |
 | `src/zkvm_calls.s`    | the zkvmcall thunks |
 | `src/zkvm_mem.s`      | `zkvm_memset_any` and weak libc `memcpy`/`memmove`/`memcmp`/`memset` on the DMA ops |
-| `src/_start.s`        | the guest entry point (EF §9) |
+| `src/_start.s`        | the guest entry point (EF §9), `abort` and the DMA `mem*` |
 | `CMakeLists.txt`      | builds the `zisklib_c` static library + include dir |
 | `package.sh`          | builds and stages the distributable archive |
 
@@ -76,7 +76,7 @@ dist/lib/libzisklib_c.a
 dist/share/zisk/zisk_linker_script.ld
 ```
 
-and then checks the archive really exports `_start`, `read_input`, `write_output`,
+and then checks the archive really exports `_start`, `abort`, `read_input`, `write_output`,
 a sample accelerator and the four `mem*` routines before declaring success.
 
 A guest then needs nothing from this source tree:
@@ -99,15 +99,30 @@ behave like an ordinary static library:
   a zkvmcall thunk (`csrs <id>, x0; ret`, see [`src/zkvm_calls.s`](src/zkvm_calls.s))
   that the transpiler turns into a jump to a hand-written `.zisk` routine, so a guest
   linked against it runs only under ZisK. A clean link proves nothing on its own.
-  The exception is `_start` and the `mem*` routines below, which are real code.
+  The exception is `_start`, `abort` and the `mem*` routines below, which are real code.
+- **It defines `abort` (EF termination, draft eth-act PR #46).** It ends the run as a
+  failed execution with exit code 134 (128 + SIGABRT), as if `main` had returned it,
+  without running destructors. It lives in the same object as `_start`, so with the
+  archive before the libc on the command line it is the `abort` the guest gets, and
+  C++ `std::terminate` reaches it too. With the libc first, the link fails with a
+  multiple-definition error rather than silently keeping the libc's `abort` (newlib's
+  would never reach the ZisK termination); see the link order note below.
+  Freestanding guests declare it themselves: `_Noreturn void abort(void);`.
 - **It defines `memcpy`/`memmove`/`memcmp`/`memset` (EF §2).** They are DMA
   precompile thunks (`memmove` is overlap-safe; it shares `memcpy`'s DMA op, which
   has memmove semantics) and they live in the same object as `_start`. Every guest
-  links that object, so they always win symbol resolution regardless of link order.
-  If a libc on the command line also contributes its `mem*`, the link fails with a
+  links that object, so the accelerated definitions are always in the link. If a
+  libc earlier on the command line also contributes its `mem*`, the link fails with a
   multiple-definition error rather than silently falling back to a byte loop. Build
   guests with `-fno-builtin` if you want GCC to keep calls out-of-line instead of
   inlining small copies.
+- **Link order: the archive goes before the libc.** That is where the gcc driver puts
+  it, since it adds `-lc` after the files and libraries on the command line. With an
+  explicit `-lc` before the archive, `abort` and the `mem*` routines are defined twice
+  and the link fails; it never silently uses the libc's versions. Static archives
+  give no order-independent override short of extra linker flags (`--defsym`,
+  `--wrap`), and the linker script cannot stand in for them: a symbol assigned there
+  does not stop the linker from pulling the libc's member.
 - **The linker script is not optional.** The archive's `_start` depends on symbols
   only the script defines (`_global_pointer`, `_init_stack_top`, `__init_array_*`,
   `_heap_start`/`_heap_end`), which is why the two are installed together.
@@ -128,6 +143,7 @@ The library covers these families:
 | `zkvm_u256_*` — EF U256 | 27 | [`zkvm_u256.h`](include/zkvm_u256.h) | inline zkvmcalls, but for the division family and `exp`, which are calls, to `zkvm/u256.zisk`; every function also has a thunk in [`src/zkvm_calls.s`](src/zkvm_calls.s) (used with `ZKVM_U256_CALLS` or a declarations-only header); with `ZKVM_U256_INLINE`, inline C in the header except the division family |
 | `zkvm_u256_le_*` — little-endian U256 (ZisK proposal, not EF) | 27 | [`zkvm_u256_le.h`](include/zkvm_u256_le.h) | inline zkvmcalls, but for the division family and `exp`, which are zkvmcall thunks, to `zkvm/u256_le.zisk`; with `ZKVM_U256_LE_INLINE`, inline C in the header except the division family |
 | `read_input`/`write_output` — EF I/O | 2 | [`zkvm_io.h`](include/zkvm_io.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s) |
+| `write_log` — EF diagnostic log (draft eth-act PR #27) | 1 | [`zkvm_io.h`](include/zkvm_io.h) | an inline zkvmcall, also with a thunk in [`src/zkvm_calls.s`](src/zkvm_calls.s) (used with `ZKVM_IO_CALLS` or a declarations-only header). The transpiler makes each call site one step, a `flag` that reads the pointer and length, with no library routine; `ziskemu --write-log` prints the text; other executions and proofs ignore it. The ROM, and so the program's verification key, is the same either way |
 | `zkvm_memcpy`/`memset`/`memcmp` — memory (ZisK extension, not EF) | 3 | [`zkvm_mem.h`](include/zkvm_mem.h) | inline in the header: one DMA marker each (one ZisK instruction with a constant size); a run-time memset fill calls `zkvm_memset_any` in [`src/zkvm_mem.s`](src/zkvm_mem.s), which also defines weak libc `memcpy`/`memmove`/`memcmp`/`memset` on the same DMA ops |
 | `zkvm_evm_jumpdest_bitmap` — EVM JUMPDEST analysis (ZisK extension, not EF) | 1 | [`zkvm_evm.h`](include/zkvm_evm.h) | inline in the header (the jump_dest precompile marker); `ZKVM_EFAIL` when the precompile cannot take the arguments (unaligned, empty) |
 | `zkvm_zisklib_*` — other ZisK library functions (not EF): 256-bit arithmetic on u64[4] limbs, secp256k1/r1 signatures, BN254/BLS12-381 pairings, maps and hashes to curves, BLS and KZG verify, modexp | 24 | [`zkvm_zisklib.h`](include/zkvm_zisklib.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s), to the `zisklib_*` routines |
@@ -171,8 +187,8 @@ unchanged, checks the big-endian one too), and `u256_bench_guest.c -DU256_LE` me
 The zkvmcall IDs live in `definitions/src/zkvmcall.rs`.
 
 The library also provides `_start` (`src/_start.s`), which EF §9 requires the
-archive to ship, and the DMA-backed `memcpy`/`memmove`/`memcmp`/`memset` in the
-same file (EF §2).
+archive to ship, and in the same file `abort` (draft eth-act PR #46) and the
+DMA-backed `memcpy`/`memmove`/`memcmp`/`memset` (EF §2).
 
 Adding a routine = a row in `definitions/src/zkvmcall.rs` (a new ID, never a
 reused one), a `ZKVMCALL` line in `src/zkvm_calls.s`, a prototype in the header for

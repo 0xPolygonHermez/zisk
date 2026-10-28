@@ -151,6 +151,10 @@ pub struct InstContext {
     /// Host randomness seed (256 bits, as little-endian words), returned by the
     /// FCALL_RANDOM_SEED_ID fcall. Provided with each execution; `None` makes that fcall fail
     pub random_seed: Option<[u64; RANDOM_SEED_WORDS]>,
+
+    /// Print the text of every write_log call site (see `opc_write_log`). Only for a run that
+    /// holds the memory, which the text is read from
+    pub write_log: bool,
 }
 
 /// RisK instruction context implementation
@@ -184,6 +188,7 @@ impl InstContext {
             stats_hint: 0,
             input_len: 0,
             random_seed: None,
+            write_log: false,
         }
     }
 
