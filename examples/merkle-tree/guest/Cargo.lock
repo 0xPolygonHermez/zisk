@@ -818,7 +818,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#d657bd261e945228788c0c91ff34c36beafaf2f2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#5eb6d1acd0778390e2676fbb98697aff4c94a9e3"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -830,7 +830,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#d657bd261e945228788c0c91ff34c36beafaf2f2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#5eb6d1acd0778390e2676fbb98697aff4c94a9e3"
 dependencies = [
  "num-traits",
  "proofman-fields",
