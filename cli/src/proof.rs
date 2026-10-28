@@ -90,7 +90,7 @@ pub(crate) fn wrap_kind_label(kind: ProofKind) -> &'static str {
 }
 
 /// Proof-family label used by `verify` ("STARK" for VADCOP proofs, "PILFFLONK" or "PLONK" for the
-/// SNARK of that protocol). Both SNARKs have the `Plonk` kind, so the body says which.
+/// SNARK of that protocol). Both SNARKs have the `Snark` kind, so the body says which.
 pub(crate) fn verify_kind_label(proof: &Proof) -> &'static str {
     match (proof.kind(), &proof.body) {
         (ProofKind::VadcopFinal | ProofKind::VadcopFinalMinimal, _) => "STARK",

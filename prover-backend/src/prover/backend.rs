@@ -585,7 +585,7 @@ impl ProverBackend {
 
     /// SNARK-wrap a vadcop_final proof. `source_kind` supplies the flag `RecursiveF`
     /// expects, and selects the verification root (see below).
-    pub(crate) fn plonk(
+    pub(crate) fn snark(
         &self,
         proof: &[u64],
         publics_full: &[u64],

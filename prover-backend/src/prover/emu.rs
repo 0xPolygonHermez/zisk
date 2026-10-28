@@ -260,7 +260,7 @@ impl ProverEngine for EmuProver {
                 self.core_prover.backend.minimal(proof, publics_full, source_kind, seed)
             }
             ProofKind::Snark => {
-                self.core_prover.backend.plonk(proof, publics_full, source_kind, seed)
+                self.core_prover.backend.snark(proof, publics_full, source_kind, seed)
             }
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }

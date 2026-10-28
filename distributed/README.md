@@ -260,7 +260,7 @@ Runs the program with the given inputs and returns execution statistics and publ
 
 #### `JobRequest` — Prove
 
-Runs the program and generates a proof. The `proof_dest` field controls the output format and generation method. At this moment the coordinator supports three proof types: STARK, STARK Minimal, and PLONK.
+Runs the program and generates a proof. The `proof_dest` field controls the output format and generation method. At this moment the coordinator supports three proof types: STARK, STARK Minimal, and SNARK (the final SNARK of the workers' SNARK proving key: PLONK or pilfflonk).
 
 **Input kinds:**
 

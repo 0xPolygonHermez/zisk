@@ -31,7 +31,7 @@ gRPC Service definition: [`coordinator_api.proto`](../../distributed/crates/coor
 enum ProofKind {
     Stark,
     StarkMinimal,
-    Snark, // the final SNARK, of the protocol of the workers' SNARK proving key
+    Snark, // the final SNARK, of the protocol of the workers' SNARK proving key (PROOF_KIND_PLONK in the proto)
 }
 
 enum SnarkProtocol {
