@@ -387,13 +387,35 @@ Native crypto state and bridge save cells are **non-reentrant**: native routines
 call back into Wasm. The Wasm stack is reserved below library RAM for all callers, reducing its
 previous capacity by 128 KiB to 15.75 MiB; the float library remains in its separate windows.
 
-This is the crypto slice only. It does not provide Nitro witness/state/preimage/inbox services,
-Brotli, successful-exit claims, an adapter-aware runner, or a recorded block replay. The ROM and
-verification key must bind the chosen runtime registrations as described above. Assembly and
-end-to-end proof generation for this path remain unverified.
-Before proof use, native secp256k1 hint failures also need fail-closed validation: inherited
-failure paths use plain `end` without an emulator error. Test adversarial hints and reject
-premature termination before treating successful execution as a completed claim.
+These registrations provide crypto alone. Native secp256k1 inverse, square-root, GLV and
+lift-parity hint-check failures now trap; adversarial tests exercise those failure paths.
+The ROM and verification key must bind the chosen runtime registrations as described above.
+
+### Recorded Nitro replay
+
+The explicit Nitro entry point links a pinned, freestanding RISC-V runtime into the Wasm ROM:
+
+```rust,ignore
+let rom = zisk_transpiler_wasm::nitro::wasm2rom(wasm, runtime_elf)?;
+```
+
+This requires the `float` feature and the helper built by
+[`runtime/build.py`](runtime/build.py). It supplies bounded witness decoding, global state,
+Keccak/SHA-authenticated preimages, inbox accounting, Brotli, and successful-exit finalization.
+Console writes remain visible but do not occupy the public claim. Both normal `_start` return
+and `proc_exit(0)` publish exactly 256 bytes: replay SHA-256, start state, computed end state,
+sequencer claim and delayed claim. Expected end state is never passed to the VM.
+
+The recorded non-Stylus transfer executes 894,975,514 VM instructions and matches all 256
+independently prepared expected bytes. See the [runtime guide](runtime/README.md) for build,
+witness preparation, execution commands and artifact identities.
+
+This is bounded replay support: Stylus calls, nonzero Brotli dictionaries, unsupported preimage
+authentication and recovery IDs 2/3 trap. The runtime has an 8 MiB codec arena, a 64 MiB witness
+bound, and supports one delayed-count checkpoint per consumed inbox window. Before-accumulator
+anchors still need external L1/binder authentication. The trusted helper ELF is part of the
+program identity; the public Wasm hash alone does not identify it. Assembly execution and
+proof generation/verification remain unverified.
 
 ## Supported WebAssembly
 
@@ -592,15 +614,17 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 
 ## Current limitations
 
-- **Emulator backend only.** The ASM backend (`cargo-zisk execute --asm`, `rom-setup`, and so
-  ASM-based proving) still requires an ELF: `zisk_rom_setup::generate_assembly` fails with `ROM
-  file is not a valid ELF file`.
+- **Raw Wasm Assembly input is unsupported.** Assembly setup still requires an ELF. An exact
+  linked ROM can be exported as a ZisK binary ELF with `zisk_core::ziskbin::rom_to_elf`; a small
+  native-crypto control round-trips and generates all four Assembly source modes. Assembly
+  execution and proving still need validation on Linux x86-64.
 - **Proving is not verified.** The prover consumes the same `ZiskRom`, but end-to-end proof
   generation for a wasm guest has not been tested yet.
 - **No general guest precompile or hints API.** Ordinary Wasm cryptography uses software.
   Explicit library callers can register the Nitro crypto imports above; there is no general
   `ziskos` syscall or hints-stream interface for Wasm guests.
-- **Only 256 bytes of public output**, taken from the start of stdout/stderr.
+- **Only 256 bytes of public output**, taken from the start of stdout/stderr by default;
+  the explicit Nitro entry point instead publishes its structured claim.
 - **No filesystem, arguments or environment**, and the clock and randomness are deterministic
   stand-ins.
 
@@ -612,6 +636,10 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 | `emulator/tests/wasm_float.rs` | `f32`/`f64` operators against the wasm spec (requires `float`). |
 | `emulator/tests/wasm_imports.rs` | Registered import execution, calling convention, signature checks, unknown imports, traps and reserved namespaces. |
 | `emulator/tests/wasm_nitro_crypto.rs` | Native crypto vectors, rate boundaries, alignment/aliasing, bounds, failure statuses, preserved frames, symbol validation and library layout. |
+| `emulator/tests/native_crypto_failure.rs` | Forged inverse, square-root, GLV and parity hints must trap; optional Assembly source export control. |
+| `emulator/tests/wasm_nitro_runtime.rs` | Native runtime initialization, computed state and separation of console/public output. |
+| `emulator/tests/wasm_nitro_state.rs` | Actual VM preimage authentication/rejection, all 256 claim bytes and successful/failed `proc_exit`. |
+| `emulator/tests/wasm_nitro_brotli.rs` | Pinned codec bytes, aliases, failure preservation, bounds, large reserved capacity and streaming scratch growth. |
 | `emulator/tests/wasm_example.rs` | Builds [`examples/wasm-fibonacci`](../../examples/wasm-fibonacci) for `wasm32-wasip1` and runs it end to end. Skipped with a notice when the target is not installed. |
 
 ```bash

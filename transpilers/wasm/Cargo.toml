@@ -21,6 +21,7 @@ ziskasm = { workspace = true }
 zisk-definitions = { workspace = true }
 
 wasmparser = { workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
 wat = { workspace = true }

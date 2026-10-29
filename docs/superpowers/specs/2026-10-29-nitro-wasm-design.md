@@ -15,13 +15,17 @@ After explicitly registering diagnostic trapping imports, every one of the
 historical replay's 14,478 defined function bodies lowers, and complete ROM
 construction succeeds under the existing layout bounds. That diagnostic emits
 20,596,298 instructions for the defined bodies alone; the final integration
-check reaches about 16.2 GiB sampled peak RSS. This establishes compiler compatibility, not execution:
-Nitro runtime behavior, execution cost and proof generation remain untested.
+check reaches about 16.2 GiB sampled peak RSS. That initial diagnostic established compiler
+compatibility. The subsequent native-runtime implementation now executes the recorded
+transfer in 894,975,514 steps, matching all 256 expected public bytes with approximately
+15.15 GiB peak sampled RSS. Assembly execution and proof generation remain unverified.
 
 The historical replay has SHA-256
 `15a1bfa995d941d4ec2edc5d9dc3acbe0bab839499144029058944e1f0833521` and imports
 25 functions across `arbcrypto`, `wavmio`, `arbcompress`, `hooks`, and `programs`,
-in addition to WASI. The witness is still the previous guest's rkyv format.
+in addition to WASI. The new runtime uses the bounded `NZKWIT01` witness described in
+`transpilers/wasm/runtime/witness-format.md`; the fixture encoder reads the existing JSON
+recording and keeps its expected end state separate from VM input.
 
 ## Scope and milestones
 
@@ -106,9 +110,9 @@ steps, cost and memory. This milestone still requires a separate proof check.
 - Enable and verify Wasm Assembly setup/execution, starting with small controls.
   Inspect all program-loading paths; changing one ELF guard is insufficient.
 - Generate and verify a real transfer proof under the new program identity.
-- Make native crypto hint failures fail closed and test adversarial hints:
-  review found inherited secp256k1 failure paths using plain `end` without an
-  emulator error. Establish successful finalization before relying on proofs.
+- Completed locally: native secp256k1 inverse, square-root, GLV and lift-parity
+  hint-check failures now trap. Four adversarial tests and successful-exit
+  claim checks pass. This does not establish Assembly/prover rejection yet.
 - Connect existing L1 storage verification and binder logic; pin new keys and
   public layouts, test rejected mismatches, then demonstrate wrapping and the
   intended settlement verifier. Preserve the existing L1 finality assumptions.
@@ -125,6 +129,11 @@ The first runtime implementation is planned in
 through a safe native call bridge, starting with Keccak and recovery IDs 0/1.
 Recovery IDs 2/3 require explicit traps until the native implementation supports
 them. These crypto services alone do not complete the single-transfer milestone.
+
+The subsequent implementation and measured replay are recorded in
+`../plans/2026-10-29-nitro-wasm-replay.md`. The authenticated single-transfer
+execution milestone is implemented; proof, L1/binder integration and wider
+coverage in milestone 3 remain separate work.
 
 ## Trust boundary
 

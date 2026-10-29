@@ -6,6 +6,12 @@ The user authorized starting implementation after the import-registration slice.
 This plan implements the first actual Nitro runtime services. The full replay
 milestone remains defined in `../specs/2026-10-29-nitro-wasm-design.md`.
 
+This file records the earlier crypto slice. The subsequent
+[`2026-10-29-nitro-wasm-replay.md`](2026-10-29-nitro-wasm-replay.md) implements the
+state/Brotli/lifecycle runtime, executes the recorded transfer, and fixes/tests
+the five native hint-failure instructions identified below. Assembly execution
+and end-to-end proof verification remain outstanding.
+
 ## 1. Establish full-module compiler compatibility
 
 Add a diagnostic example which registers exact inspected custom signatures
@@ -76,7 +82,7 @@ Run the relevant Wasm, float, import and RISC-V linker tests, formatting and
 `c8190af8e`, then commit only this task's coherent changes. Preserve worktree;
 no push, merge, rebase or cross-worktree integration.
 
-## Still required for the recorded transfer
+## Remaining work at the crypto-slice checkpoint
 
 Authenticated witness decoding, `wavmio` state/preimage/inbox services and
 accumulator accounting; pinned Brotli; console/structured-output separation;

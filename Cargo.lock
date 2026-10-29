@@ -8368,6 +8368,7 @@ dependencies = [
 name = "zisk-transpiler-wasm"
 version = "1.4.0-alpha"
 dependencies = [
+ "sha2",
  "wasmparser 0.244.0",
  "wat",
  "zisk-asm",

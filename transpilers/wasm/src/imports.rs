@@ -49,10 +49,15 @@ pub(super) fn build(
     module: &WasmModule,
     index: usize,
     imports: &[Import<'_>],
+    nitro: bool,
 ) -> Result<Code, Box<dyn Error>> {
     let (namespace, name, _) = &module.imports[index];
     if namespace == "wasi_snapshot_preview1" || imports.is_empty() {
-        return wasi::build_wasi_stub(module, index);
+        return wasi::build_wasi_stub_with_finalize(
+            module,
+            index,
+            nitro.then_some(super::nitro::runtime::emit_finalize),
+        );
     }
     let import = imports
         .iter()

@@ -232,6 +232,14 @@ fn check_iovecs(code: &mut Code, iovs: u64, count: u64, j: u64, fault: LabelId) 
 /// say) is not failed or short-written for it, which would make `write_all`-style loops in
 /// Rust/Go runtimes abort.
 fn body_fd_write(code: &mut Code, fault: LabelId, done: LabelId) {
+    body_write(code, fault, done, true);
+}
+
+fn body_console_write(code: &mut Code, fault: LabelId, done: LabelId) {
+    body_write(code, fault, done, false);
+}
+
+fn body_write(code: &mut Code, fault: LabelId, done: LabelId, mirror: bool) {
     // locals: 0=fd, 1=iovs, 2=iovs_len, 3=nwritten
     const R_OUT: u64 = 22; // running absolute pointer into the public output region
     const R_NWRITTEN: u64 = 23; // absolute address of *nwritten
@@ -277,7 +285,9 @@ fn body_fd_write(code: &mut Code, fault: LabelId, done: LabelId) {
     code.store_reg_to_mem(R_UART, 0, R_H, 1); // stream to the console (width-1 store to UART)
     let no_mirror = code.new_label();
     code.cmp_reg_branch("ltu", R_OUT, R_LIMIT, no_mirror, false); // published output full
-    code.store_reg_to_mem(R_OUT, 0, R_H, 1); // mirror into public output
+    if mirror {
+        code.store_reg_to_mem(R_OUT, 0, R_H, 1); // mirror into public output
+    }
     code.alu_ri("add", R_OUT, R_OUT, 1);
     code.bind(no_mirror);
     code.alu_ri("add", R_F, R_F, 1);
@@ -470,6 +480,14 @@ fn check_signature(name: &str, declared: &FuncSig) -> Result<(), Box<dyn Error>>
 
 /// Builds the Zisk routine implementing imported function `import_index`.
 pub fn build_wasi_stub(module: &WasmModule, import_index: usize) -> Result<Code, Box<dyn Error>> {
+    build_wasi_stub_with_finalize(module, import_index, None)
+}
+
+pub(crate) fn build_wasi_stub_with_finalize(
+    module: &WasmModule,
+    import_index: usize,
+    finalize: Option<fn(&mut Code)>,
+) -> Result<Code, Box<dyn Error>> {
     let (mod_name, name, _ty) = &module.imports[import_index];
     if mod_name != "wasi_snapshot_preview1" {
         return Err(format!(
@@ -487,13 +505,18 @@ pub fn build_wasi_stub(module: &WasmModule, import_index: usize) -> Result<Code,
             code.load_slot_to_reg(R_A, local_offset(0));
             code.alu_ri("and", R_A, R_A, 0xFFFF_FFFF);
             code.cmp_imm_branch("eq", R_A, 0, failed, false);
+            if let Some(finalize) = finalize {
+                finalize(&mut code);
+            }
             emit_pubout_exit(&mut code);
             code.bind(failed);
             emit_console_str(&mut code, "wasm: guest exited with a non-zero status\n");
             code.trap();
             code
         }
-        "fd_write" => wrap_stub(body_fd_write),
+        "fd_write" => {
+            wrap_stub(if finalize.is_some() { body_console_write } else { body_fd_write })
+        }
         "fd_read" => wrap_stub(body_fd_read),
         "args_sizes_get" | "environ_sizes_get" => wrap_stub(store_two_zero_u32),
         "args_get" | "environ_get" => wrap_stub(|code, _fault, _done| {
