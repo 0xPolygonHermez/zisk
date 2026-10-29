@@ -26,18 +26,51 @@ def internalAddr (n : Nat) : BitVec 64 := ROM_ADDR + BitVec.ofNat 64 (2 * n + 1)
 /-- How many internal addresses a translation takes: its instructions at odd addresses. -/
 def internals (l : List (BitVec 64 × zisk_inst)) : Nat := (l.filter (·.1.getLsbD 0)).length
 
-/-- A segment's translations, appended to `acc`, the counter at `n`: the
-    ROM entries and the counter after them. -/
-def segRom (base : BitVec 64) (ws : Array (BitVec 32)) (acc : Array (BitVec 64 × zisk_inst)) (n : Nat) :
-    Array (BitVec 64 × zisk_inst) × Nat :=
-  (List.range ws.size).foldl (fun (acc, n) k =>
-    match convert (base + BitVec.ofNat 64 (4 * k)) ws[k]! ws[k + 1]? (internalAddr n) ws[k + 2]? with
-    | some l => (acc ++ l.toArray, n + internals l)
-    | none => (acc, n)) (acc, n)
+/-- The program's code words, its segments in order (each its base and its
+    words): each word's address, the word, and the two words after it in
+    its segment. -/
+def codeWords (segs : List (BitVec 64 × Array (BitVec 32))) :
+    List (BitVec 64 × BitVec 32 × Option (BitVec 32) × Option (BitVec 32)) :=
+  segs.flatMap fun (base, ws) =>
+    (List.range ws.size).map fun k => (base + BitVec.ofNat 64 (4 * k), ws[k]!, ws[k + 1]?, ws[k + 2]?)
 
-/-- The program's ROM entries, from its code segments in order (each its
-    base and its words). -/
-def programRom (segs : List (BitVec 64 × Array (BitVec 32))) : Array (BitVec 64 × zisk_inst) :=
-  (segs.foldl (fun (acc, n) (base, ws) => segRom base ws acc n) (#[], 0)).1
+/-- The translations of code words, the counter at n. -/
+def romFrom : List (BitVec 64 × BitVec 32 × Option (BitVec 32) × Option (BitVec 32)) → Nat →
+    List (BitVec 64 × zisk_inst)
+  | [], _ => []
+  | (pc, w, next, next2) :: rest, n =>
+    match convert pc w next (internalAddr n) next2 with
+    | some l => l ++ romFrom rest (n + internals l)
+    | none => romFrom rest n
+
+/-- `romFrom`, tail-recursive, its entries appended to `acc`: what runs. -/
+def romFromAcc (acc : Array (BitVec 64 × zisk_inst)) :
+    List (BitVec 64 × BitVec 32 × Option (BitVec 32) × Option (BitVec 32)) → Nat → Array (BitVec 64 × zisk_inst)
+  | [], _ => acc
+  | (pc, w, next, next2) :: rest, n =>
+    match convert pc w next (internalAddr n) next2 with
+    | some l => romFromAcc (acc ++ l.toArray) rest (n + internals l)
+    | none => romFromAcc acc rest n
+
+theorem romFromAcc_eq (acc : Array (BitVec 64 × zisk_inst)) (ws) (n : Nat) :
+    (romFromAcc acc ws n).toList = acc.toList ++ romFrom ws n := by
+  induction ws generalizing acc n with
+  | nil => simp [romFromAcc, romFrom]
+  | cons x rest ih =>
+    obtain ⟨pc, w, next, next2⟩ := x
+    simp only [romFromAcc, romFrom]
+    split <;> simp [ih]
+
+/-- What runs for `romFrom`. -/
+def romFromImpl (ws : List (BitVec 64 × BitVec 32 × Option (BitVec 32) × Option (BitVec 32))) (n : Nat) :
+    List (BitVec 64 × zisk_inst) :=
+  (romFromAcc #[] ws n).toList
+
+@[csimp] theorem romFrom_eq_impl : @romFrom = @romFromImpl := by
+  funext ws n; simp [romFromImpl, romFromAcc_eq]
+
+/-- The program's ROM entries, from its code segments in order. -/
+def programRom (segs : List (BitVec 64 × Array (BitVec 32))) : List (BitVec 64 × zisk_inst) :=
+  romFrom (codeWords segs) 0
 
 end Transpiler

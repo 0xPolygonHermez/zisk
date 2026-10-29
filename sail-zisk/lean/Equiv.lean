@@ -126,3 +126,5 @@ import Equiv.CallDecode
 import Equiv.ZKeep
 import Equiv.ZKeepAll
 import Equiv.ZStepKeep
+import Equiv.ProgramRom
+import Equiv.ProgramRomSpec
