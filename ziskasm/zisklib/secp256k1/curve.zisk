@@ -559,7 +559,7 @@ zisklib_lift_x_secp256k1:
 	copyb(0, SECP_LX_PAR) -> r5
 	copyb(r5, 8[a + 0]) -> r7
 	eq(r6, r7), j(lx_ok)
-	copyb(0, 0) -> r10, end            ; parity mismatch (unreachable given a valid hint)
+	halt(0, 0), end                   ; parity mismatch
 lx_ok:
 	; result = (x, y)
 	copyb(0, SECP_LX_RES) -> r5
