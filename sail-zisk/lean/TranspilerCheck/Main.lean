@@ -7,7 +7,7 @@
   Each listing is what `sail-difftest rom -e <elf>` writes: the ELF's code
   sections, and the ROM the Rust transpiler built from it, as ROM table
   entries (sail-zisk/model/zisk_rom_table.sail). The code is walked as
-  riscv_interpreter.rs walks it; for each 32-bit instruction the spec
+  RISC-V walks it, a word at every 4-byte boundary; for each 32-bit instruction the spec
   describes, every ZisK instruction it gives must be in the ROM, at the same
   address, field for field — the proofs' hypothesis `SpecRom`
   (Equiv/SpecRom.lean), its code addresses the ones walked here and the
@@ -67,20 +67,21 @@ def parseListing (text : String) : Except String Listing := do
     | _ => throw s!"bad line: {line}"
   return l
 
-/-- The instructions of a code section, as riscv_interpreter.rs splits it:
-    each address with its 32-bit word, or none for what the interpreter
-    turns into a halt (a 16-bit parcel, the word 0xffffffff). -/
+/-- The instructions of a code section, as RISC-V with IALIGN = 32 and
+    riscv_interpreter.rs (its `compressed` feature off) split it: a word at
+    every 4-byte boundary, with its 32-bit word, or none for what the
+    interpreter turns into a halt (a word that is no 32-bit instruction, the
+    word 0xffffffff). -/
 partial def parcels (base : Nat) (data : ByteArray) : Array (Nat × Option (BitVec 32)) :=
   go 0 #[]
 where
   half (k : Nat) : Nat := data[k]!.toNat + 256 * data[k + 1]!.toNat
   go (k : Nat) (acc : Array (Nat × Option (BitVec 32))) : Array (Nat × Option (BitVec 32)) :=
-    if k + 2 > data.size then acc
-    else if half k % 4 != 3 then go (k + 2) (acc.push (base + k, none))
-    else if k + 4 > data.size then acc
+    if k + 4 > data.size then acc
     else
       let w := half k + 65536 * half (k + 2)
-      go (k + 4) (acc.push (base + k, if w == 0xffffffff then none else some (BitVec.ofNat 32 w)))
+      let insn := half k % 4 == 3 && w != 0xffffffff
+      go (k + 4) (acc.push (base + k, if insn then some (BitVec.ofNat 32 w) else none))
 
 def hex (n : Nat) : String := String.ofList (Nat.toDigits 16 n)
 

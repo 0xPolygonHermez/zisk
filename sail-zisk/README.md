@@ -291,10 +291,11 @@ transpilation.
   readiness), so the machine's run ends in failure, and sail-zisk's step
   asserts (`lean/Equiv/ZiskFault.lean`; the two memory maps the same,
   `readable_match`, `writable_match`). Of the run's other conditions, not
-  all can fail alike: a jump to a target that is not 4-aligned traps on
-  sail-riscv, but on ZisK fetches whatever the ROM holds there (its
-  internal instructions sit at odd addresses, and the proofs' ROM is a
-  function, with no address left empty); an access to ZisK's register
+  all can fail alike yet: a jump to a target that is not 4-aligned traps on
+  sail-riscv, and on ZisK finds no instruction there (the transpiler walks
+  the code a word at a time, on 4-byte boundaries, and its internal
+  instructions sit at odd addresses), which the proofs' ROM, a function
+  with no address left empty, does not state; an access to ZisK's register
   slots fails on ZisK and is RAM to sail-riscv; an access to the input's
   first 8 bytes is precondition I. A load or store at any alignment is
   covered: within its 16-byte granule, sail-riscv's PMA check passes it

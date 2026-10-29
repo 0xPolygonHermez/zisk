@@ -51,6 +51,10 @@ Zicond, the privileged instructions (`mret`, `wfi`, `sfence.vma`).
 
   Compilers align atomics to their size, so an AMO of 4 or 8 bytes never
   crosses one.
+- The transpiler reads the code as RISC-V does with IALIGN = 32: a 32-bit
+  word at every 4-byte boundary. A word that is no 32-bit instruction —
+  data in the code, a 16-bit parcel — is a halt at its address, and the
+  instructions after it keep theirs.
 - The transpiler decodes as RISC-V does, in this profile: a word RISC-V
   rejects becomes a halt, never another instruction, and a word of an
   extension outside the set fails only if it runs, as on RISC-V; it does not
