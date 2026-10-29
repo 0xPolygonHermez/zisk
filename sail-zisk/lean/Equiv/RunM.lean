@@ -1,15 +1,17 @@
 /-
   Runs of the machine on its whole state, the fcall state with the RISC-V
   one (`sNext`, `sIter`): a ZisK call is the machine's (`ZiskRiscv.call`),
-  every other step `mNext` on the RISC-V state. The run's coverage
-  (`RunOkM`) takes each step as `OneOkT` does, or as a ZisK call
-  (`CallAt`); the simulation over it (`prog_romM`) relates ZisK's fcall
+  `csrs ID, x0` pc on by 4, every other step `mNext` on the RISC-V state.
+  The run's coverage (`RunOkM`) takes each step as `OneOkT` does, or as a
+  ZisK call (`CallAt`), an `ld` of the free input (`FreeLdAt`) or
+  `csrs ID, x0` (`NopAt`); the simulation over it (`prog_romM`) relates ZisK's fcall
   registers to the machine's fcall state too, and lets a call's memory
   change off the RAM in the input's first 8 bytes, the free input's mirror.
 -/
 import Equiv.CallRun
 import Equiv.SpecRom
 import Equiv.FreeInputSim
+import Equiv.NopStep
 
 namespace Equiv.Sim
 
@@ -17,14 +19,15 @@ open Equiv.Riscv Equiv.Machine
 open LeanZiskRV LeanZiskRV.Functions Sail Sail.ArchSem
 
 /-- The state the machine's step `n` leads to from S: on a ZisK call, the
-    call's (S, should it fail); otherwise `mNext` on the RISC-V state, the
-    fcall state as it is. -/
+    call's (S, should it fail); on `csrs ID, x0`, pc on by 4; otherwise
+    `mNext` on the RISC-V state, the fcall state as it is. -/
 noncomputable def sNext (n : Nat) (S : ZiskRiscv.State model) : ZiskRiscv.State model :=
   match ZiskRiscv.decode (ZiskRiscv.readWord S.rv.mem) ((S.rv.regs.get? Register.PC).getD 0).toNat with
   | .call c =>
     match ZiskRiscv.call S c with
     | .ok S' => S'
     | .error _ => S
+  | .nop => { S with rv := model.setPC S.rv (model.getPC S.rv + 4) }
   | _ => { S with rv := mNext n S.rv }
 
 /-- The state k steps of the machine reach from S, from step n. -/
@@ -35,16 +38,14 @@ noncomputable def sIter : Nat → Nat → ZiskRiscv.State model → ZiskRiscv.St
 theorem MStep.snext_eq {rs : List PMA_Region} {n : Nat} {S : ZiskRiscv.State model} {s' : RVState}
     (h : MStep rs n S.rv s') : sNext n S = { S with rv := s' } := by
   have hn := h.next
-  have hd : ∀ c, ZiskRiscv.decode (ZiskRiscv.readWord S.rv.mem) ((S.rv.regs.get? Register.PC).getD 0).toNat ≠
-      .call c := by
-    intro c
+  have hd : ZiskRiscv.decode (ZiskRiscv.readWord S.rv.mem) ((S.rv.regs.get? Register.PC).getD 0).toNat = .riscv ∨
+      ∃ w' zr, ZiskRiscv.decode (ZiskRiscv.readWord S.rv.mem) ((S.rv.regs.get? Register.PC).getD 0).toNat =
+        .subst w' zr := by
     cases h with
-    | plain pc e hpc hw hop _ => rw [hpc, Option.getD_some, hop _ _ hw]; exact fun h => nomatch h
-    | subst pc w w' zr s1 hpc hw hd _ _ _ => rw [hpc, Option.getD_some, hd _ hw]; exact fun h => nomatch h
+    | plain pc e hpc hw hop _ => left; rw [hpc, Option.getD_some, hop _ _ hw]
+    | subst pc w w' zr s1 hpc hw hd _ _ _ => right; exact ⟨w', zr, by rw [hpc, Option.getD_some, hd _ hw]⟩
   unfold sNext
-  split
-  · next c hc => exact absurd hc (hd c)
-  · rw [hn]
+  rcases hd with e | ⟨w', zr, e⟩ <;> rw [e] <;> dsimp only <;> rw [hn]
 
 theorem _root_.Equiv.Machine.CStep.snext_eq {C : BitVec 64 → Prop} {S S' : ZiskRiscv.State model}
     (h : CStep C S S') (n : Nat) : sNext n S = S' := by
@@ -52,6 +53,13 @@ theorem _root_.Equiv.Machine.CStep.snext_eq {C : BitVec 64 → Prop} {S S' : Zis
   have hd' : ZiskRiscv.decode (ZiskRiscv.readWord S.rv.mem) ((S.rv.regs.get? Register.PC).getD 0).toNat =
       .call c := hd _ rfl (fun _ => rfl) fun _ => rfl
   simp only [sNext, hd', hc]
+
+theorem _root_.Equiv.Machine.NStep.snext_eq {C : BitVec 64 → Prop} {S S' : ZiskRiscv.State model}
+    (h : NStep C S S') (n : Nat) : sNext n S = S' := by
+  obtain ⟨-, -, hd, rfl⟩ := h
+  have hd' : ZiskRiscv.decode (ZiskRiscv.readWord S.rv.mem) ((S.rv.regs.get? Register.PC).getD 0).toNat =
+      .nop := hd _ rfl
+  simp only [sNext, hd']
 
 /-! ## Memory off the RAM -/
 
@@ -115,11 +123,19 @@ def FreeLdAt (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst)
       ∃ r, matching_pma_region rs (.Physaddr (v1 + i.imm.signExtend 64)) 8 = some r ∧
         r.attributes.readable = true ∧ SplitOk r (v1 + i.imm.signExtend 64) 8
 
-/-- What one step of the machine needs: as `OneOkT`, a ZisK call, or an
-    `ld` of the free input. -/
+/-- `csrs ID, x0` at pc: the word there the machine's decoder makes a nop
+    of, whatever the words after it, the ZisK program holding its
+    translation. -/
+def NopAt (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (S : ZiskRiscv.State model) : Prop :=
+  ∃ pc w, S.rv.regs.get? Register.PC = some pc ∧ ExecAt rs pc ∧ ZiskRiscv.readWord S.rv.mem pc.toNat = some w ∧
+    Transpiled zrom pc w (nextWord S.rv pc) (nextWord2 S.rv pc) ∧
+    ∀ fetch : Nat → Option (BitVec 32), fetch pc.toNat = some w → ZiskRiscv.decode fetch pc.toNat = .nop
+
+/-- What one step of the machine needs: as `OneOkT`, a ZisK call, an `ld`
+    of the free input, or `csrs ID, x0`. -/
 def OneOkM (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (C : BitVec 64 → Prop)
     (S : ZiskRiscv.State model) : Prop :=
-  OneOkT rs zrom S.rv ∨ CallAt rs zrom C S ∨ FreeLdAt rs zrom S
+  OneOkT rs zrom S.rv ∨ CallAt rs zrom C S ∨ FreeLdAt rs zrom S ∨ NopAt rs zrom S
 
 /-- Memory that changed only in the RAM keeps the free input's mirror. -/
 theorem mirror_ramOnly {m m' : Equiv.Mem} (h : RamOnly m m') :
@@ -175,10 +191,11 @@ theorem RunInM.tail {C : BitVec 64 → Prop} {k : Nat} {S : ZiskRiscv.State mode
 theorem OneOkM.exec {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {S : ZiskRiscv.State model} (h : OneOkM rs zrom C S) :
     ∃ pc, S.rv.regs.get? Register.PC = some pc ∧ ExecAt rs pc := by
-  rcases h with h | ⟨pc, w, c, hpc, hx, -⟩ | ⟨pc, i, hpc, hi, -⟩
+  rcases h with h | ⟨pc, w, c, hpc, hx, -⟩ | ⟨pc, i, hpc, hi, -⟩ | ⟨pc, w, hpc, hx, -⟩
   · exact OneOkT.exec h
   · exact ⟨pc, hpc, hx⟩
   · exact ⟨pc, hpc, hi.x1⟩
+  · exact ⟨pc, hpc, hx⟩
 
 theorem RunOkM.exec {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {S : ZiskRiscv.State model} {n : Nat} :
@@ -190,10 +207,12 @@ theorem RunOkM.exec {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zis
 theorem OneOkM.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {rs : List PMA_Region} {S : ZiskRiscv.State model} (hs : SpecRom zrom C S.rv.mem)
     (hc : ∀ pc, S.rv.regs.get? Register.PC = some pc → C pc) (h : OneOkM rs zr C S) : OneOkM rs zrom C S := by
-  rcases h with h | ⟨pc, w, c, hpc, hx, hrw, ⟨ia, l, hl, -⟩, rest⟩ | ⟨pc, i, hpc, hi, rest⟩
+  rcases h with h | ⟨pc, w, c, hpc, hx, hrw, ⟨ia, l, hl, -⟩, rest⟩ | ⟨pc, i, hpc, hi, rest⟩ |
+    ⟨pc, w, hpc, hx, hrw, ⟨ia, l, hl, -⟩, rest⟩
   · exact .inl (OneOkT.retarget hs hc h)
   · exact .inr (.inl ⟨pc, w, c, hpc, hx, hrw, hs pc w (hc pc hpc) hrw ⟨ia, l, hl⟩, rest⟩)
-  · exact .inr (.inr ⟨pc, i, hpc, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩)
+  · exact .inr (.inr (.inl ⟨pc, i, hpc, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩))
+  · exact .inr (.inr (.inr ⟨pc, w, hpc, hx, hrw, hs pc w (hc pc hpc) hrw ⟨ia, l, hl⟩, rest⟩))
 
 /-! ## The simulation -/
 
@@ -207,7 +226,7 @@ theorem one_stepM (C : BitVec 64 → Prop) (S : ZiskRiscv.State model) (z : Equi
       RamOnlyX S.rv.mem (sNext n S).rv.mem ∧ Grows S.rv.mem (sNext n S).rv.mem ∧ Mirror (sNext n S) ∧
       ∀ m S'', PcOk (sNext n S).rv → MRunR C m (sNext n S) S'' → MRunR C (m + 1) S S'' := by
   rcases h with ho | ⟨pc, w, c, hpc, hex, hrw, htr, h4, h8, hd, hC4, hC8, hok⟩ |
-    ⟨pc, i, hpc, hi, v1, hv1, hva, r, hm, hrb, hal⟩
+    ⟨pc, i, hpc, hi, v1, hv1, hva, r, hm, hrb, hal⟩ | ⟨pc, w, hpc, hex, hrw, htr, hd⟩
   · obtain ⟨s', z', k', hm, hzr, hrel', hro, hk⟩ := one_stepT S.rv z rs hrel zrom ho n
     obtain ⟨pc, hpc, hex⟩ := OneOkT.exec ho
     rw [hm.snext_eq]
@@ -236,6 +255,17 @@ theorem one_stepM (C : BitVec 64 → Prop) (S : ZiskRiscv.State model) (z : Equi
       rw [h5]; exact Grows.refl _
     · show Equiv.memRead s'.mem 8 Equiv.IN_LO = some S.fcall.freeInput
       rw [h5]; exact hmir
+  · -- csrs ID, x0: pc on by 4, on both sides
+    obtain ⟨z', h2, hrel', hk⟩ := nop_rel S.rv z rs hrel pc hpc zrom (nop_rom htr hd)
+    have hg : model.getPC S.rv = pc := by simp [model, hpc]
+    have hns : NStep C S { S with rv := model.setPC S.rv (model.getPC S.rv + 4) } := by
+      refine ⟨?_, by rw [hg]; exact hC pc hpc, fun fetch hf => ?_, rfl⟩
+      · rw [hg]; intro e; have e' : pc = EXIT_ADDR := e; exact hx (e' ▸ hex)
+      · rw [hg] at hf ⊢; exact hd fetch (hf.trans hrw)
+    rw [hns.snext_eq n]
+    refine ⟨z', 1, .step h2 (.done _), ?_, fun r hr => (hk r hr).trans (hf r hr), RamOnlyX.refl _, Grows.refl _,
+      hmir, fun m S'' _ hrest => .nop hns hrest⟩
+    rw [hg]; exact hrel'
 
 set_option maxHeartbeats 1000000 in
 /-- The simulation over whole runs of the machine, ZisK calls among their

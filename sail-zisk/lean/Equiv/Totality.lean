@@ -101,6 +101,16 @@ def BreakL (s : RVState) (pc : BitVec 64) (w : BitVec 32) : Prop :=
 def BreakMarchid (s : RVState) (w : BitVec 32) : Prop :=
   ∃ k a n, access s w = some (k, a, n) ∧ k ≠ .load ∧ Overlaps a n MARCHID_CELL 8
 
+/-- I, on a ZisK call: the call at pc, its operation failing on one of the
+    free input's 8 bytes, which sail-zisk's memory does not hold. -/
+def BreakIC (S : ZiskRiscv.State model) : Prop :=
+  ∃ pc w c, S.rv.regs.get? Register.PC = some pc ∧ ZiskRiscv.readWord S.rv.mem pc.toNat = some w ∧
+    ZiskRiscv.decode (Transpiler.fetch3 pc w (nextWord S.rv pc) (nextWord2 S.rv pc)) pc.toNat = .call c ∧
+    ∃ k σ', (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
+      (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run
+      (ZiskRiscv.ziskState (Equiv.normIn (callMem S c)) S.fcall) = .error (.OutOfMemoryRange k) σ' ∧
+      Equiv.IN_LO ≤ k ∧ k < Equiv.IN_LO + 8
+
 /-- A precondition broken at the step, the word w at pc. -/
 def Broken (s : RVState) (pc : BitVec 64) (w : BitVec 32) : Prop :=
   BreakE s w ∨ BreakF w ∨ BreakCsr pc w (nextWord s pc) (nextWord2 s pc) ∨ BreakR s w ∨
@@ -132,7 +142,7 @@ def EndAt (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (C : BitVec 64 → Prop) 
 
 /-- At a step: a step the simulation covers (`OneOkM`, the fused pair two
     at a time), the return to the initial ra, one of the ends, or a
-    precondition broken (J, or one at the word at pc). -/
+    precondition broken (J, one at the word at pc, or I by a ZisK call). -/
 def StepCase (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (C : BitVec 64 → Prop) (S : ZiskRiscv.State model) : Prop :=
   OneOkM ziskRegions zrom C S ∨
   (∃ pc i, S.rv.regs.get? Register.PC = some pc ∧ FtAt S.rv ziskRegions pc zrom i) ∨
@@ -140,11 +150,13 @@ def StepCase (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (C : BitVec 64 → Pro
   EndAt zrom C S ∨
   BreakJ C S.rv ∨
   (∃ pc w, S.rv.regs.get? Register.PC = some pc ∧ ZiskRiscv.readWord S.rv.mem pc.toNat = some w ∧
-      Broken S.rv pc w)
+      Broken S.rv pc w) ∨
+  BreakIC S
 
 /-- What a step at a code address has to go on: its pc and word, the
     regions' facts, sail-riscv's state ready, the ZisK program the spec's
-    translation of the code, memory as ZisK starts it. -/
+    translation of the code, memory as ZisK starts it, marchid's cell
+    holding the ID. -/
 structure Ctx (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (C : BitVec 64 → Prop) (S : ZiskRiscv.State model)
     (pc : BitVec 64) (w : BitVec 32) : Prop where
   atPc : S.rv.regs.get? Register.PC = some pc
@@ -160,6 +172,7 @@ structure Ctx (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (C : BitVec 64 → Pr
   spec : SpecRom zrom C S.rv.mem
   full : Full S.rv.mem
   halt : HaltMis zrom
+  marchid : Equiv.memRead S.rv.mem 8 MARCHID_CELL.toNat = some ARCH_ID
 
 /-- The kinds of instruction the spec describes, as the proof takes them. -/
 inductive Group where

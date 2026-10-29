@@ -45,14 +45,15 @@ structure Kept (σ σ' τ τ' : ZState) : Prop where
 /-- A program that depends on memory and the fcall registers alone, and
     writes no other register: a run that succeeds on σ succeeds on τ the
     same way; one that fails on σ reads a byte σ lacks and τ has, or fails
-    on τ the same way. -/
+    on τ the same way — and fails on a missing byte only where σ lacks it. -/
 def Frame {α : Type} (P : SailM α) : Prop :=
   (∀ σ τ : ZState, FR σ τ → ∀ a σ', P.run σ = .ok a σ' →
     ∃ τ', P.run τ = .ok a τ' ∧ FR σ' τ' ∧ (∀ r, fregs r = false → τ'.regs.get? r = τ.regs.get? r) ∧
       Kept σ σ' τ τ') ∧
   (∀ σ τ : ZState, FR σ τ → ∀ e σ', P.run σ = .error e σ' →
-    (∃ k, e = .OutOfMemoryRange k ∧ σ.mem.get? k = none ∧ τ.mem.get? k ≠ none) ∨
-    ∃ τ', P.run τ = .error e τ')
+    ((∃ k, e = .OutOfMemoryRange k ∧ σ.mem.get? k = none ∧ τ.mem.get? k ≠ none) ∨
+      ∃ τ', P.run τ = .error e τ') ∧
+    ∀ k, e = .OutOfMemoryRange k → σ.mem.get? k = none)
 
 theorem Kept.refl (σ τ : ZState) : Kept σ σ τ τ :=
   ⟨fun _ v h => ⟨v, h⟩, fun _ _ _ => rfl, fun _ h => h, Equiv.RamOnly.refl _⟩
@@ -92,27 +93,33 @@ theorem Frame.bind {α β : Type} {P : SailM α} {f : α → SailM β} (hP : Fra
     | ok a σ1 =>
       rw [h1] at hr
       obtain ⟨τ1, ht1, h1', -, k1⟩ := hP.1 σ τ h a σ1 h1
-      rcases (hf a).2 σ1 τ1 h1' e σ' hr with ⟨k, rfl, hk1, hk2⟩ | ⟨τ', ht'⟩
+      obtain ⟨hd, hab⟩ := (hf a).2 σ1 τ1 h1' e σ' hr
+      refine ⟨?_, fun k hk => k1.none (hab k hk)⟩
+      rcases hd with ⟨k, rfl, hk1, hk2⟩ | ⟨τ', ht'⟩
       · have hs := k1.none hk1
         exact .inl ⟨k, rfl, hs, by rw [← k1.same k hs hk1]; exact hk2⟩
       · exact .inr ⟨τ', by rw [run_bind', ht1]; exact ht'⟩
     | error e' σ1 =>
       rw [h1] at hr; cases hr
-      rcases hP.2 σ τ h _ _ h1 with h2 | ⟨τ', ht'⟩
+      obtain ⟨hd, hab⟩ := hP.2 σ τ h _ _ h1
+      refine ⟨?_, hab⟩
+      rcases hd with h2 | ⟨τ', ht'⟩
       · exact .inl h2
       · exact .inr ⟨τ', by rw [run_bind', ht']⟩
 
-theorem Frame.throw {α : Type} (e : Sail.Error exception) : Frame (throw e : SailM α) := by
+theorem Frame.throw {α : Type} (e : Sail.Error exception) (he : ∀ k, e ≠ .OutOfMemoryRange k) :
+    Frame (throw e : SailM α) := by
   refine ⟨fun σ τ h b σ' hr => (by cases hr), fun σ τ h e' σ' hr => ?_⟩
   cases hr
-  exact .inr ⟨τ, rfl⟩
+  exact ⟨.inr ⟨τ, rfl⟩, fun k hk => absurd hk (he k)⟩
 
 theorem Frame.assert (p : Bool) (msg : String) : Frame (Sail.ConcurrencyInterfaceV1.PreSail.assert p msg :
     SailM Unit) := by
   unfold Sail.ConcurrencyInterfaceV1.PreSail.assert
   split
   · exact Frame.pure _
-  · exact Frame.throw _
+  · refine Frame.throw _ ?_
+    intro _ h; cases h
 
 theorem Frame.ite {α : Type} {c : Prop} [Decidable c] {P Q : SailM α} (hP : Frame P) (hQ : Frame Q) :
     Frame (if c then P else Q) := by
@@ -131,7 +138,7 @@ theorem Frame.readReg (r : Register) (hr : fregs r = true) : Frame (Zisk.readReg
     rw [← h.regs r hr]
     split at hrun
     · cases hrun
-    · cases hrun; exact .inr ⟨τ, rfl⟩
+    · cases hrun; exact ⟨.inr ⟨τ, rfl⟩, fun _ h => nomatch h⟩
 
 theorem Frame.writeReg (r : Register) (v : RegisterType r) (hr : fregs r = true) : Frame (Zisk.writeReg r v) := by
   refine ⟨fun σ τ h a σ' hrun => ?_, fun σ τ h e σ' hrun => by rw [writeReg_run] at hrun; cases hrun⟩
@@ -172,6 +179,7 @@ theorem Frame.readByte (k : Nat) : Frame (Sail.ConcurrencyInterfaceV1.PreSail.re
     | some v => rw [hv] at hrun; cases hrun
     | none =>
       rw [hv] at hrun; cases hrun
+      refine ⟨?_, fun k' hk => by cases hk; exact hv⟩
       cases ht : τ.mem.get? k with
       | none => exact .inr ⟨τ, rfl⟩
       | some v => exact .inl ⟨k, rfl, hv, by rw [ht]; simp⟩
@@ -286,11 +294,11 @@ theorem Frame.write_ram_w (addr : BitVec 64) (n : Nat) (v : BitVec (8 * n)) (hw 
       rw [e2] at h2'; cases h2'
     · exact Equiv.memWrite_get_off _ _ _ _ hoff
 
-theorem Frame.bind_throw {α β : Type} (e : Sail.Error exception) (f : α → SailM β) :
-    Frame ((MonadExcept.throw e : SailM α) >>= f) := by
+theorem Frame.bind_throw {α β : Type} (e : Sail.Error exception) (he : ∀ k, e ≠ .OutOfMemoryRange k)
+    (f : α → SailM β) : Frame ((MonadExcept.throw e : SailM α) >>= f) := by
   refine ⟨fun σ τ h b σ' hr => (by cases hr), fun σ τ h e' σ' hr => ?_⟩
   cases hr
-  exact .inr ⟨τ, rfl⟩
+  exact ⟨.inr ⟨τ, rfl⟩, fun k hk => absurd hk (he k)⟩
 
 theorem Frame.write_mem (addr : BitVec 64) (n : Nat) (v : BitVec (8 * n)) : Frame (Functions.write_mem addr n v) := by
   unfold Functions.write_mem
@@ -298,7 +306,8 @@ theorem Frame.write_mem (addr : BitVec 64) (n : Nat) (v : BitVec (8 * n)) : Fram
   · exact Frame.bind (Frame.assert _ _) (fun _ => Frame.bind (Frame.assert _ _) (fun _ => Frame.write_ram_w _ _ _ hw))
   · have : Functions.writable addr n = false := by simpa using hw
     simp only [Zisk.assert, Sail.ConcurrencyInterfaceV1.PreSail.assert, this, Bool.false_eq_true, if_false]
-    exact Frame.bind_throw _ _
+    refine Frame.bind_throw _ ?_ _
+    intro _ h; cases h
 
 theorem Frame.read_ram (as ds : Nat) (h addr : BitVec as) :
     Frame (Sail.ConcurrencyInterfaceV1.PreSail.read_ram as ds h addr : SailM (BitVec (8 * ds))) := by
@@ -353,7 +362,7 @@ macro_rules
   | `(tactic| frame) => `(tactic| first
       | (frame_head <;> frame)
       | exact Frame.assert _ _
-      | exact Frame.throw _
+      | (refine Frame.throw _ ?_; intro _ h; cases h)
       | exact Frame.read_mem _ _
       | exact Frame.write_mem _ _ _
       | exact Frame.read_ram _ _ _ _

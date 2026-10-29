@@ -231,8 +231,27 @@ theorem CStep.mstep {C : BitVec 64 → Prop} {S S' : ZiskRiscv.State model} (h :
   obtain ⟨hx, -, c, hc, -, -, hd⟩ := h
   exact step_call S c S' hx (hd _ rfl (fun _ => rfl) fun _ => rfl) hc
 
+/-- A machine step on `csrs ID, x0`, at a code address: not at the exit
+    address, the nop the decoder's on any words with the word at pc there;
+    pc on by 4. -/
+def NStep (C : BitVec 64 → Prop) (S S' : ZiskRiscv.State model) : Prop :=
+  model.getPC S.rv ≠ model.exitAddr ∧ C (model.getPC S.rv) ∧
+  (∀ fetch : Nat → Option (BitVec 32),
+    fetch (model.getPC S.rv).toNat = ZiskRiscv.readWord (model.mem S.rv) (model.getPC S.rv).toNat →
+    ZiskRiscv.decode fetch (model.getPC S.rv).toNat = .nop) ∧
+  S' = { S with rv := model.setPC S.rv (model.getPC S.rv + 4) }
+
+theorem NStep.mstep {C : BitVec 64 → Prop} {S S' : ZiskRiscv.State model} (h : NStep C S S') :
+    ZiskRiscv.step S = .ok (S', .running) := by
+  obtain ⟨hx, -, hd, rfl⟩ := h
+  have e : ZiskRiscv.tryStep S = .ok ({ S with rv := model.setPC S.rv (model.getPC S.rv + 4) }, .running) := by
+    simp only [ZiskRiscv.tryStep, hd _ rfl]
+    simp [hx, pure, Except.pure, bind, Except.bind]
+  rw [ZiskRiscv.step, ZiskRiscv.step.go, e]
+
 /-- `n` machine steps, each left to sail-riscv or, on lr and sc at a code
-    address, run by substitution, or a ZisK call at a code address. -/
+    address, run by substitution, or a ZisK call or `csrs ID, x0` at a code
+    address. -/
 inductive MRunR (C : BitVec 64 → Prop) : Nat → ZiskRiscv.State model → ZiskRiscv.State model → Prop
   | done (S : ZiskRiscv.State model) : MRunR C 0 S S
   | step {n : Nat} {S S'' : ZiskRiscv.State model} {t : model.State} :
@@ -241,6 +260,8 @@ inductive MRunR (C : BitVec 64 → Prop) : Nat → ZiskRiscv.State model → Zis
       SStep C S t → MRunR C n { S with rv := t } S'' → MRunR C (n + 1) S S''
   | call {n : Nat} {S S' S'' : ZiskRiscv.State model} :
       CStep C S S' → MRunR C n S' S'' → MRunR C (n + 1) S S''
+  | nop {n : Nat} {S S' S'' : ZiskRiscv.State model} :
+      NStep C S S' → MRunR C n S' S'' → MRunR C (n + 1) S S''
 
 theorem MRunR.toMRun {C : BitVec 64 → Prop} {n : Nat} {S S' : ZiskRiscv.State model} (h : MRunR C n S S') :
     MRun n S S' := by
@@ -249,6 +270,7 @@ theorem MRunR.toMRun {C : BitVec 64 → Prop} {n : Nat} {S S' : ZiskRiscv.State 
   | step h1 _ ih => exact .step h1.mstep ih
   | subst h1 _ ih => exact .step h1.mstep ih
   | call h1 _ ih => exact .step h1.mstep ih
+  | nop h1 _ ih => exact .step h1.mstep ih
 
 theorem MRunR.append {C : BitVec 64 → Prop} {a b : Nat} {S T U : ZiskRiscv.State model} (h1 : MRunR C a S T)
     (h2 : MRunR C b T U) : MRunR C (a + b) S U := by
@@ -263,6 +285,9 @@ theorem MRunR.append {C : BitVec 64 → Prop} {a b : Nat} {S T U : ZiskRiscv.Sta
   | @call m _ _ _ h r ih =>
     rw [show m + 1 + b = (m + b) + 1 by omega]
     exact .call h (ih h2)
+  | @nop m _ _ _ h r ih =>
+    rw [show m + 1 + b = (m + b) + 1 by omega]
+    exact .nop h (ih h2)
 
 /-- `mstep`, recording the step. -/
 theorem mstepR (S : ZiskRiscv.State model) (rs : List PMA_Region) (hr : StepReady S.rv rs) (pc : BitVec 64)

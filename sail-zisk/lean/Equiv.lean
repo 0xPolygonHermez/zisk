@@ -133,4 +133,6 @@ import Equiv.Totality
 import Equiv.TotalityPlain
 import Equiv.TotalityJump
 import Equiv.TotalityMem
+import Equiv.TotalitySys
 import Equiv.FreeInputSim
+import Equiv.NopStep

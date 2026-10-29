@@ -512,6 +512,32 @@ theorem go_sparse_fail {C : BitVec 64 → Prop} {T : ZiskRiscv.State model} (hx 
       | assertion m => exact .inl ⟨S, m, rfl⟩
       | other m => exact .inr ⟨m, rfl⟩
 
+theorem _root_.Equiv.Ext.setPC {s t : RVState} (h : Ext zeroFill s t) (v : BitVec 64) :
+    Ext zeroFill (model.setPC s v) (model.setPC t v) :=
+  ⟨by simp only [model]; rw [h.regs], h.tags, h.cycles, h.out, h.mem⟩
+
+/-- The machine's step on sparse memory holding the code, where on full
+    memory it is `csrs ID, x0`'s: the same nop. -/
+theorem go_sparse_nop {C : BitVec 64 → Prop} {T T' : ZiskRiscv.State model} (hT : NStep C T T') :
+    ∀ (f : Nat) (S : ZiskRiscv.State model), SparseOf S T → CodeIn C S →
+      (∃ S', ZiskRiscv.step.go f S = .ok (S', .running) ∧ SparseOf S' T' ∧
+        Grows S.rv.mem S'.rv.mem) ∨ ∃ msg, ZiskRiscv.step.go f S = .error msg
+  | 0, S, _, _ => .inr ⟨_, rfl⟩
+  | f + 1, S, h, hcd => by
+    obtain ⟨hx, hc, hd, rfl⟩ := hT
+    have hg := getPC_eq h
+    have hx' : model.getPC S.rv ≠ model.exitAddr := by rw [hg]; exact hx
+    obtain ⟨ws, hws⟩ := hcd _ hc
+    have hdS : ZiskRiscv.decode (ZiskRiscv.readWord (model.mem S.rv)) (model.getPC S.rv).toNat = .nop := by
+      rw [hg]; exact hd _ (by show ZiskRiscv.readWord S.rv.mem _ = ZiskRiscv.readWord T.rv.mem _; rw [hws, readWord_ext h.ext hws])
+    refine .inl ⟨{ S with rv := model.setPC S.rv (model.getPC S.rv + 4) }, ?_, ⟨?_, h.fcall⟩, Grows.refl _⟩
+    · have e1 : ZiskRiscv.tryStep S =
+          .ok ({ S with rv := model.setPC S.rv (model.getPC S.rv + 4) }, .running) := by
+        simp only [ZiskRiscv.tryStep, hdS]
+        simp [hx', pure, Except.pure, bind, Except.bind]
+      rw [ZiskRiscv.step.go, e1]
+    · rw [hg]; exact h.ext.setPC _
+
 /-- A run of the machine's steps, on sparse memory holding the code: to a
     state sparse of the full run's, or the machine's error. -/
 theorem runs_sparse {C : BitVec 64 → Prop} {k : Nat} {T Tk : ZiskRiscv.State model} (h : MRunR C k T Tk) :
@@ -556,6 +582,9 @@ theorem runs_sparse {C : BitVec 64 → Prop} {k : Nat} {T Tk : ZiskRiscv.State m
   | @call m T T' Tk hT _ ih =>
     intro S hs hcd
     exact step S (go_sparse_call hT 4096 S hs hcd) hcd ih
+  | @nop m T T' Tk hT _ ih =>
+    intro S hs hcd
+    exact step S (go_sparse_nop hT 4096 S hs hcd) hcd ih
 
 /-- The output the machine reads is the same from sparse memory as from
     full: a byte the sparse memory lacks reads 0, as full memory has it. -/

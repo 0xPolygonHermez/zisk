@@ -354,7 +354,7 @@ theorem ctx_at_mem {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 �
 theorem StepCase.ofBroken {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {S : ZiskRiscv.State model} {pc : BitVec 64} {w : BitVec 32} (hx : Ctx zrom C S pc w)
     (h : Broken S.rv pc w) : StepCase zrom C S :=
-  .inr (.inr (.inr (.inr (.inr ⟨pc, w, hx.atPc, hx.word, h⟩))))
+  .inr (.inr (.inr (.inr (.inr (.inl ⟨pc, w, hx.atPc, hx.word, h⟩)))))
 
 /-- The step's cases, from an access both sides refuse. -/
 theorem StepCase.ofFault {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
@@ -364,7 +364,7 @@ theorem StepCase.ofFault {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVe
 /-- The step's cases, from an `ld` of the free input. -/
 theorem StepCase.ofFreeLd {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {S : ZiskRiscv.State model} (h : FreeLdAt ziskRegions zrom S) : StepCase zrom C S :=
-  .inl (.inr (.inr h))
+  .inl (.inr (.inr (.inl h)))
 
 /-! ## Loads and stores -/
 
