@@ -12,7 +12,8 @@
   address, field for field — the proofs' hypothesis `SpecRom`
   (Equiv/SpecRom.lean), its code addresses the ones walked here and the
   next word the four bytes after. The internal address a translation continues
-  at is the Rust ROM's (see the spec's header). Exits 1 on any difference.
+  at is the Rust ROM's (see the spec's header). And no instruction is at an
+  address 2 mod 4, where a misaligned jump lands. Exits 1 on any difference.
 -/
 import Transpiler.Spec
 import Transpiler.Bios
@@ -143,6 +144,12 @@ def check (name : String) (l : Listing) : IO Tally := do
       | _ =>
         t := { t with differences := t.differences + 1 }
         IO.println s!"{name}: BIOS at {hex a.toNat}: no instruction in the Rust's ROM"
+  -- No instruction at an address 2 mod 4: a jump there, which sail-riscv
+  -- traps on, finds none on ZisK either (Equiv/MisJumpSim.lean).
+  for (a, _) in l.rom do
+    if a % 4 == 2 then
+      t := { t with differences := t.differences + 1 }
+      IO.println s!"{name}: an instruction at {hex a}, an address 2 mod 4"
   return t
 
 def main (args : List String) : IO UInt32 := do

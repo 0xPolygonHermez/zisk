@@ -52,7 +52,7 @@ theorem ldt_fault (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
   · intro t htp ⟨w, hw'⟩ _ _
     have := decode_load0 t _ hop (by rw [h13, h14]; decide) htp w hw'
     rw [himm, hr1x, hrdx, h13, h14] at this; exact this
-  · intro t he _ hmr hsec hwf
+  · intro t he _ hmr hsec hwf _
     rw [execute_load_eq]
     obtain ⟨sv, hsv, hpm⟩ := hr.pmm
     obtain ⟨c, p, h⟩ := execute_load_fault t hwf rs hmr sv (hsec.trans hsv) hpm i.rs1 i.rd i.imm v1
@@ -90,7 +90,7 @@ theorem lwt_fault (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
   · intro t htp ⟨w, hw'⟩ _ _
     have := decode_load0 t _ hop hvalid htp w hw'
     rw [himm, hr1x, hrdx, hu, hwd] at this; exact this
-  · intro t he _ hmr hsec hwf
+  · intro t he _ hmr hsec hwf _
     rw [execute_load_w, Int.toNat_natCast]
     obtain ⟨sv, hsv, hpm⟩ := hr.pmm
     obtain ⟨c, p, h⟩ := execute_load_fault t hwf rs hmr sv (hsec.trans hsv) hpm i.rs1 i.rd i.imm v1
@@ -127,7 +127,7 @@ theorem sdt_fault (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
   · intro t htp ⟨w, hw'⟩ _ _
     have := decode_sd t _ hop hf3 htp w hw'
     rw [hhi, hlo, hr2x, hr1x] at this; exact this
-  · intro t he _ hmr hsec hwf
+  · intro t he _ hmr hsec hwf _
     rw [execute_store_eq]
     obtain ⟨sv, hsv, hpm⟩ := hr.pmm
     obtain ⟨c, p, h⟩ := execute_store_fault t hwf rs hmr sv (hsec.trans hsv) hpm i.rs1 i.rs2 (i.immHi ++ i.immLo)
@@ -165,7 +165,7 @@ theorem swt_fault (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
   · intro t htp ⟨w, hw'⟩ _ _
     have := i.k.decode t _ hop hf3 htp w hw'
     rw [hhi, hlo, hr2x, hr1x] at this; exact this
-  · intro t he _ hmr hsec hwf
+  · intro t he _ hmr hsec hwf _
     rw [execute_store_w, Int.toNat_natCast]
     obtain ⟨sv, hsv, hpm⟩ := hr.pmm
     obtain ⟨c, p, h⟩ := execute_store_fault t hwf rs hmr sv (hsec.trans hsv) hpm i.rs1 i.rs2 (i.immHi ++ i.immLo)

@@ -20,6 +20,7 @@ import Equiv.RunM
 import Equiv.FaultSim
 import Equiv.EbreakSim
 import Equiv.MalformedSim
+import Equiv.MisJumpSim
 
 namespace Equiv.Top
 
@@ -232,6 +233,31 @@ theorem fault_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 6
   have hmr := hm (PcOk.of_exec ht hpc hw.1)
   obtain ⟨m, hs⟩ := mstep_trap T rs hrel.ready pc hpc hw hx hrun' hpc'
   exact ⟨⟨_, m, fun fuel => run_of hmr.toMRun hs (by simp) fuel⟩, n1, z1, e, z', hz1, hze'⟩
+
+/-! ## A jump to a target 2 mod 4 -/
+
+/-- A jump to a target 2 mod 4 (`MisJumpAt`): the machine's run ends in
+    failure (sail-riscv traps, an instruction address misaligned); sail-zisk's
+    takes the jump, to an address the transpiler puts no instruction at, where
+    the model's rom_fetch asserts. -/
+theorem misjump_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
+    (rs : List PMA_Region) (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC) (C : BitVec 64 → Prop) (hnx : NoCodeRam C) (hni : NoCodeIn C)
+    (m0 : Mem) (hspec : SpecRom zrom C m0) (s0 : RVState) (hs0 : Start s0 rs entry m0)
+    (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
+    (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
+    (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat) (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
+    (hmj : MisJumpAt rs zrom (sIter 0 k ⟨s0, fc⟩).rv) :
+    (∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0, fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∧
+    ∃ n z1 tgt, ZRun zrom n z0 z1 ∧ z1.regs.get? .PC = some tgt ∧ tgt[0] = false ∧ tgt[1] = true := by
+  obtain ⟨z1, n1, hz1, hrel, -, -, -, hm⟩ :=
+    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
+  generalize sIter 0 k ⟨s0, fc⟩ = T at *
+  obtain ⟨pc, tgt, hpc, hw, ht0, ht1, ⟨s', hrun', hpc'⟩, z', hz', hzt⟩ := misjump_step T.rv z1 rs hrel zrom hmj 0
+  have hmr := hm (PcOk.of_exec ht hpc hw.1)
+  obtain ⟨m, hs⟩ := mstep_trap T rs hrel.ready pc hpc hw hx hrun' hpc'
+  exact ⟨⟨_, m, fun fuel => run_of hmr.toMRun hs (by simp) fuel⟩, n1 + 1, z', tgt,
+    ZRun.append hz1 (.step hz' (.done _)), hzt, ht0, ht1⟩
 
 /-! ## A word the transpiler halts on -/
 

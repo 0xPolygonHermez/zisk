@@ -99,7 +99,7 @@ theorem try_step_trap_fn (s : RVState) (rs : List PMA_Region) (hr : StepReady s 
       (interpretSailEffects (ext_decode (b3 ++ b2 ++ (b1 ++ b0)))).run t = .ok ins t)
     (ctx : RVState → ExceptionContext) (pc' : RVState → BitVec 64)
     (hexec : ∀ t : RVState, (∀ k, k < 32 → getX t k = getX s k) → t.mem = s.mem → MemReady t rs →
-      t.regs.get? mseccfg = s.regs.get? mseccfg → WF t →
+      t.regs.get? mseccfg = s.regs.get? mseccfg → WF t → t.regs.get? PC = some pc →
       (interpretSailEffects (execute ins)).run t = .ok (.Trap (.Machine, ctx t, pc' t)) t) (n : Nat) :
     ∃ s', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧ s'.regs.get? PC = some 0x4#64 := by
   obtain ⟨h, hmip, hmie, hhs, help, hs, -, ⟨mv, hmv, hmM⟩, ⟨bv, hbv, hbB⟩, -⟩ := hr
@@ -133,7 +133,7 @@ theorem try_step_trap_fn (s : RVState) (rs : List PMA_Region) (hr : StepReady s 
   repeat rv_step h
   simp only [no_lp, Bool.false_and, Bool.false_eq_true, if_false]
   repeat rv_step h
-  rw [hexec _ ?gx ?gm ?gr ?gs ?gw]
+  rw [hexec _ ?gx ?gm ?gr ?gs ?gw ?gp]
   rotate_left
   · intro k _
     simp (disch := decide) only [getX, Std.ExtDHashMap.get?_insert, beq_xreg_false, Bool.false_eq_true,
@@ -145,6 +145,7 @@ theorem try_step_trap_fn (s : RVState) (rs : List PMA_Region) (hr : StepReady s 
       rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> simp [Std.ExtDHashMap.get?_insert])
   · simp [Std.ExtDHashMap.get?_insert]
   · exact ⟨isSome_insert _ _ _ (isSome_insert _ _ _ h.all)⟩
+  · simp [Std.ExtDHashMap.get?_insert, hpc]
   repeat rv_step h
   rw [(exception_handler_eq _ ?hw ?hp2 ?hmt2 _ _).1]
   rotate_left
@@ -264,7 +265,7 @@ theorem try_step_trap (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
       (∃ v, t.regs.get? misa = some v ∧ _get_Misa_B v = 1#1) →
       (interpretSailEffects (ext_decode (b3 ++ b2 ++ (b1 ++ b0)))).run t = .ok ins t)
     (hexec : ∀ t : RVState, (∀ k, k < 32 → getX t k = getX s k) → t.mem = s.mem → MemReady t rs →
-      t.regs.get? mseccfg = s.regs.get? mseccfg → WF t →
+      t.regs.get? mseccfg = s.regs.get? mseccfg → WF t → t.regs.get? PC = some pc →
       ∃ cp : ExceptionContext × BitVec 64,
         (interpretSailEffects (execute ins)).run t = .ok (.Trap (.Machine, cp.1, cp.2)) t) (n : Nat) :
     ∃ s', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧ s'.regs.get? PC = some 0x4#64 := by
@@ -274,8 +275,8 @@ theorem try_step_trap (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
         (interpretSailEffects (execute ins)).run t = .ok (.Trap (.Machine, cp.1, cp.2)) t
     then Classical.choose h else (make_exception_context (.E_Illegal_Instr ()) 0 false none, 0)
   refine try_step_trap_fn s rs hr hr.mtvec pc hpc b0 b1 b2 b3 hw ins hdec (fun t => (C t).1) (fun t => (C t).2)
-    (fun t a b c d e => ?_) n
-  have hx := hexec t a b c d e
+    (fun t a b c d e f => ?_) n
+  have hx := hexec t a b c d e f
   show _ = EStateM.Result.ok (ExecutionResult.Trap (.Machine, (C t).1, (C t).2)) t
   simp only [C, dif_pos hx]
   exact Classical.choose_spec hx

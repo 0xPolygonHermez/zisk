@@ -158,6 +158,25 @@ theorem zisk_fault (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 
   fault_end_sparse zrom entry hb ziskRegions exit_not_exec trap_not_exec C (noCodeRam_of_exec hcx)
     (noCodeIn_of_exec hcx) m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin hfa.faultAt s0' hsp hcode
 
+/-- A jump to a target 2 mod 4: the machine's run ends in failure, or in
+    its own error; sail-zisk's takes the jump, to an address with no
+    instruction (`misjump_end`). -/
+theorem zisk_misjump (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
+    (C : BitVec 64 → Prop) (hcx : ∀ pc, C pc → ExecAt ziskRegions pc)
+    (m0 : Mem) (hspec : SpecRom zrom C m0) (s0 : RVState) (hs0 : Start s0 ziskRegions entry m0)
+    (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
+    (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
+    (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
+    (hrun : RunOkM ziskRegions zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
+    (hmj : MisJumpAt ziskRegions zrom (sIter 0 k ⟨s0, fc⟩).rv)
+    (s0' : RVState) (hsp : Ext zeroFill s0' s0) (hcode : ∀ pc, C pc → ∃ w, ZiskRiscv.readWord s0'.mem pc.toNat = some w) :
+    ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
+      ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
+    ∃ n z1 tgt, ZRun zrom n z0 z1 ∧ z1.regs.get? .PC = some tgt ∧ tgt[0] = false ∧ tgt[1] = true :=
+  misjump_end_sparse zrom entry hb ziskRegions exit_not_exec trap_not_exec C (noCodeRam_of_exec hcx)
+    (noCodeIn_of_exec hcx) m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin hmj s0' hsp hcode
+
 /-- `ebreak`, a write to a read-only CSR, or a word RISC-V rejects: the
     machine's run ends in failure, or in its own error; sail-zisk's ends in
     error. -/

@@ -78,7 +78,7 @@ theorem ebreak_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region)
   refine ⟨try_step_trap s rs hr pc' hpc _ _ _ _ hw (.EBREAK ()) ?_ ?_ n, ?_⟩
   · intro t htp ⟨w, hw'⟩ _ _
     exact decode_ebreak t _ (by decide) htp w hw'
-  · intro t _ _ hmr _ hwf
+  · intro t _ _ hmr _ hwf _
     exact execute_ebreak t hwf hmr.priv
   · have hrom : zrom pc' = Transpiler.halt := hi.tr.one fun _ => rfl
     rw [zstep_run zrom z pc' hzpc, hrom]
