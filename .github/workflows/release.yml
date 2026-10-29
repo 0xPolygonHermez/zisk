@@ -183,6 +183,71 @@ jobs:
             cp ./target/zisk-libs/libziskc.a                       zisk-dist/bin/
           fi
 
+      # pil2-proofman files the binaries look for at paths baked in at build time. The recurser
+      # setup also looks for its sources and circom binary walking up from the executable, so
+      # under bin/; cargo-zisk verify finds pilfflonk's JS verifier through PILFFLONK_JS, which
+      # ziskup exports.
+      - name: Copy proofman files
+        env:
+          PLATFORM_NAME: ${{ matrix.platform }}
+        shell: bash
+        run: |
+          metadata="$(cargo metadata --format-version 1)"
+          # Sets crate_dir to the directory of the one package named $1 in the build's dependency
+          # graph (not a command substitution, so its error reaches the log).
+          find_crate() {
+            local paths
+            paths="$(jq -r --arg n "$1" '.packages[] | select(.name == $n) | .manifest_path' <<< "$metadata")"
+            if [[ -z "$paths" || "$paths" == *$'\n'* ]]; then
+              echo "::error::expected one $1 package in cargo metadata, found: ${paths:-none}"
+              exit 1
+            fi
+            crate_dir="$(dirname "$paths")"
+          }
+
+          # A crates.io crate holds only its own directory: take the rest of the repo from the
+          # commit it was published from. A git or path dependency is a whole checkout.
+          find_crate pil2-stark-setup
+          setup_dir="$crate_dir"
+          vcs_info="$setup_dir/.cargo_vcs_info.json"
+          if [[ -f "$vcs_info" ]]; then
+            if [[ "$(jq -r '.git.dirty // false' "$vcs_info")" == "true" ]]; then
+              echo "::error::pil2-stark-setup was published from a dirty tree: no commit holds its files"
+              exit 1
+            fi
+            proofman_root="$RUNNER_TEMP/pil2-proofman"
+            rm -rf "$proofman_root" && mkdir -p "$proofman_root"
+            curl -fsSL --retry 3 \
+              "https://codeload.github.com/0xPolygonHermez/pil2-proofman/tar.gz/$(jq -r .git.sha1 "$vcs_info")" \
+              | tar -xz -C "$proofman_root" --strip-components=1
+          else
+            proofman_root="$setup_dir/../.."
+          fi
+
+          for p in setup/circom setup/final_snark_circom setup/stark-recurser/stark2circom/circom_verifier \
+                   setup/stark-recurser/plonk2pil/pil pil2-components/lib/std/pil pil2-stark/src/goldilocks/src; do
+            if [[ ! -d "$proofman_root/$p" ]]; then
+              echo "::error::pil2-proofman has no $p (at $proofman_root)"
+              exit 1
+            fi
+            mkdir -p "zisk-dist/bin/$(dirname "$p")"
+            cp -R "$proofman_root/$p" "zisk-dist/bin/$p"
+          done
+          # proofman runs circom on Linux and circom_mac on macOS: keep this platform's.
+          if [[ "${PLATFORM_NAME}" == "darwin" ]]; then
+            circom=circom_mac other=circom
+          else
+            circom=circom other=circom_mac
+          fi
+          rm -f "zisk-dist/bin/setup/circom/$other"
+          test -x "zisk-dist/bin/setup/circom/$circom"
+
+          find_crate proofman-pilfflonk
+          js_dir="$crate_dir/js"
+          mkdir -p zisk-dist/zisk/pilfflonk-js
+          cp -R "$js_dir/bin" "$js_dir/src" "$js_dir/package.json" zisk-dist/zisk/pilfflonk-js/
+          test -f zisk-dist/zisk/pilfflonk-js/bin/verify.js
+
       - name: Build binaries (GPU)
         if: matrix.platform == 'linux'
         shell: bash
