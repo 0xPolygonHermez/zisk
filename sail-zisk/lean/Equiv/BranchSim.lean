@@ -85,13 +85,10 @@ structure BAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   h3 : s.mem.get? (pc.toNat + 3) = some (byte i.encode 3)
   rs1 : i.rs1 ≠ 0
   rs2 : i.rs2 ≠ 0
-  tal : (pc + i.imm.signExtend 64)[0] = false ∧ (pc + i.imm.signExtend 64)[1] = false
+  /-- Taken, the branch's target is 4-aligned. -/
+  tal : ∀ v1 v2, getX s i.rs1.toNat = some v1 → getX s i.rs2.toNat = some v2 → btypeTaken i.op v1 v2 = true →
+    (pc + i.imm.signExtend 64)[0] = false ∧ (pc + i.imm.signExtend 64)[1] = false
   rom : zrom pc = Equiv.Zisk.branchInst (zbopOp i.op) i.rs1.toNat i.rs2.toNat i.zjumps.1 i.zjumps.2
-
-theorem BAt.of_mem {s s' : RVState} {rs pc zrom i} (h : BAt s rs pc zrom i) (hm : s'.mem = s.mem) :
-    BAt s' rs pc zrom i := by
-  obtain ⟨al, x1, x2, h0, h1, h2, h3, r1, r2, tal, rom⟩ := h
-  exact ⟨al, x1, x2, hm ▸ h0, hm ▸ h1, hm ▸ h2, hm ▸ h3, r1, r2, tal, rom⟩
 
 theorem execute_btype_eq (imm : BitVec 13) (a b : regidx) (op : bop) :
     execute (.BTYPE (imm, a, b, op)) = execute_BTYPE imm a b op := by
@@ -139,7 +136,7 @@ theorem brstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
           have hmt : t.regs.get? Register.misa = some mi := by
             rw [hother _ (by decide) (by decide) (by decide)]; exact hmi
           rw [execute_btype t i.op i.rs1 i.rs2 i.imm v1 v2 pc' mi (getX_of_agree he l1 hv1)
-            (getX_of_agree he l2 hv2) hpct hmt hi.tal]
+            (getX_of_agree he l2 hv2) hpct hmt (hi.tal v1 v2 hv1 hv2)]
           simp only [setX, if_true, BInstr.target]
           split
           · rfl

@@ -414,7 +414,9 @@ structure BtAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   h1 : s.mem.get? (pc.toNat + 1) = some (byte i.encode 1)
   h2 : s.mem.get? (pc.toNat + 2) = some (byte i.encode 2)
   h3 : s.mem.get? (pc.toNat + 3) = some (byte i.encode 3)
-  tal : (pc + i.imm.signExtend 64)[0] = false ∧ (pc + i.imm.signExtend 64)[1] = false
+  /-- Taken, the branch's target is 4-aligned. -/
+  tal : ∀ v1 v2, getX s i.rs1.toNat = some v1 → getX s i.rs2.toNat = some v2 → btypeTaken i.op v1 v2 = true →
+    (pc + i.imm.signExtend 64)[0] = false ∧ (pc + i.imm.signExtend 64)[1] = false
   tr : Transpiled zrom pc i.encode next
 
 set_option maxHeartbeats 4000000 in
@@ -454,7 +456,7 @@ theorem btstep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
           have hmt : t.regs.get? Register.misa = some mi := by
             rw [hother _ (by decide) (by decide) (by decide)]; exact hmi
           rw [execute_btype t i.op i.rs1 i.rs2 i.imm v1 v2 pc' mi (getX_of_agree he l1 hv1)
-            (getX_of_agree he l2 hv2) hpct hmt hi.tal]
+            (getX_of_agree he l2 hv2) hpct hmt (hi.tal v1 v2 hv1 hv2)]
           simp only [setX, if_true, BInstr.target]
           split
           · rfl
