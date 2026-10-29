@@ -286,7 +286,10 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 
 /// Merges the assembled ZisK library into the guest ROM: its instructions and data
 /// live in the reserved region, disjoint from the guest.
-pub fn merge_library(rom: &mut ZiskRom, library: ziskasm::ZiskLibrary) -> Result<(), Box<dyn Error>> {
+pub fn merge_library(
+    rom: &mut ZiskRom,
+    library: ziskasm::ZiskLibrary,
+) -> Result<(), Box<dyn Error>> {
     // The guest linker script reserves ZISKLIB_RAM but not ZISKLIB_ROM, and unlike
     // the float-library region above nothing has fenced these off yet. `extend`
     // would silently overwrite a colliding guest instruction (BTreeMap) or leave
