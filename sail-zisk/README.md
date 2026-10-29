@@ -250,7 +250,8 @@ transpilation.
   `lean/Equiv/SpecRom.lean`: a hypothesis on the program; a run, which
   changes only the RAM and the input's first 8 bytes, keeps it, given no
   code there), ZisK's fcall registers at the start the machine's fcall
-  state, and whose run stays at code addresses (`RunInM`) and the
+  state, and whose run stays at code addresses (`RunInM`, precondition J
+  of the contract) and the
   simulation covers (`RunOkM`, of the RISC-V side: every step an
   instruction proved, with its accesses good, or a ZisK call, its
   operation succeeding on the memory without the input's first 8 bytes) up to the
@@ -1060,7 +1061,7 @@ set up a trap handler no test takes, and they end before the exit syscall.
 program starts and ends, `ecall`, the CSRs, the precompile and free-input
 CSR sequences — as the RISC-V side of the equivalence, with its
 preconditions: no `ecall` but exit, no CSR access but ZisK's own calls, no
-zkvmcall.
+zkvmcall, the pc in the program's code.
 
 ## Per-operation testing
 

@@ -117,8 +117,24 @@ A run ends in **success** when the program
 
 It ends in **failure** — a run ZisK does not prove — when it makes the exit
 system call with `a0` ≠ 0 (its exit code is `a0`), executes `ebreak` or an
-instruction outside § 1, writes a read-only CSR (§ 6), or accesses memory
-outside § 2. A precompile's own failures (§ 7) are failures too.
+instruction outside § 1, writes a read-only CSR (§ 6), accesses memory
+outside § 2, or jumps to an address 2 mod 4 (RISC-V, without the compressed
+instructions, traps on it; ZisK has no instruction there). A precompile's
+own failures (§ 7) are failures too.
+
+Where the program's pc may go is a precondition:
+
+> **Precondition J.** The pc stays in the program's code: every
+> instruction the program executes is in its executable segments, but for
+> the return to its initial `ra`.
+
+ZisK translates only the executable segments, and its ROM holds more than
+the program: the BIOS from `0x1000`, and the ZisK library's code from
+`0x97E0_0000`. RISC-V, in this profile, may execute the whole ROM region of
+§ 2, read-only data included. So a jump out of the code — into the
+read-only data, the BIOS, the library — would run different things on
+each side. Compiled code jumps only to code; a jump elsewhere is a
+memory-safety bug.
 
 On success, the output is the 32 64-bit words at `OUTPUT_ADDR`, which the
 BIOS publishes.
@@ -264,8 +280,8 @@ meets **E** (no `ecall` but exit), **C** (no CSR access but the ZisK calls
 of §§ 7–8, reading `marchid` and writing a read-only CSR, no store to
 `marchid`'s cell), **I** (the
 free input's 8 bytes read only as the free input), **Z** (no zkvmcall) and
-**L** (no `lr` reading its own instruction word) and **A** (no AMO across
-a 16-byte boundary). Everything else
+**L** (no `lr` reading its own instruction word), **A** (no AMO across
+a 16-byte boundary) and **J** (the pc in the code). Everything else
 it may do — touch memory outside § 2, write a read-only CSR, misuse a
 precompile — has a defined outcome above: a failure, which ZisK does not
 prove, and which the theorem must show both sides agree on.
