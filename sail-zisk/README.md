@@ -192,8 +192,10 @@ transpilation.
   contract and the refused sequences) and `test/transpiler/word_walk.S`,
   assembled when `RISCV_GCC` is there (1 283 054 instructions, the BIOS's
   included), and the fibonacci guest (11 409). Still to do: the rest of the
-  instruction set; wiring `make transpiler-check` and `make decoder-diff`
-  into CI. The top theorems hold with that ROM (`zisk_exit_prog`,
+  instruction set. CI (`.github/workflows/sail_zisk.yml`, its tools from
+  `ci/setup.sh`) runs `make compliance` and `make transpiler-check` on pull
+  requests that touch the transpiler, `core/src`, `tools/sail-difftest` or
+  sail-zisk, and nightly; `make decoder-diff` nightly. The top theorems hold with that ROM (`zisk_exit_prog`,
   `zisk_return_prog`, ..., `lean/Equiv/FinalProgram.lean`): what they need
   of their ROM, `BiosAt`, `SpecRom` and `HaltMis`, holds of it (`ProgramOk.rom`,
   `lean/Equiv/ProgramRom.lean` and `lean/Equiv/ProgramRomSpec.lean`: the
@@ -457,6 +459,9 @@ backend emits, which is how the Lean output leaves out the C emulator's main.
 > note when it does.
 
 Nothing below is assumed already built.
+`ci/setup.sh` installs the tools below but Rust and CMake (Sail through
+opam, z3, elan, the xPack RISC-V GCC, riscv-arch-test) on Ubuntu 22.04, as
+CI does.
 
 ### What you need
 
@@ -469,7 +474,7 @@ Nothing below is assumed already built.
 | CMake | sail-riscv's build | 3.20 or later |
 | Python 3 | `check_ops.py`, the per-op checks, `doc/ops.md`, the compliance runner | any 3.x |
 | A RISC-V GCC | compiling the architectural tests | e.g. the [xPack RISC-V GCC](https://xpack-dev-tools.github.io/riscv-none-elf-gcc-xpack/) 14 (`riscv-none-elf-gcc`) |
-| riscv-arch-test | the architectural tests | `git clone --branch 3.9.1 https://github.com/riscv-non-isa/riscv-arch-test` |
+| riscv-arch-test | the architectural tests | `git clone --branch 3.10.0 https://github.com/riscv-non-isa/riscv-arch-test` |
 | elan | Lean 4 | [lean-lang.org/install](https://lean-lang.org/install/). No `elan default` needed: each `lean-toolchain` picks v4.29.0, and elan fetches it on the first `lake build`. |
 
 ### The run

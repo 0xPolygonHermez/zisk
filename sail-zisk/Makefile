@@ -227,8 +227,9 @@ decoder-diff:
 	cd lean && $(LAKE) build decode_diff
 	@mkdir -p build/decoder-diff
 	lean/.lake/build/bin/decode_diff build/decoder-diff/sail.bin build/decoder-diff/names.txt
-	../target/release/sail-difftest decode-diff --sail build/decoder-diff/sail.bin \
-	  --names build/decoder-diff/names.txt | tee build/decoder-diff/report.txt
+	@../target/release/sail-difftest decode-diff --sail build/decoder-diff/sail.bin \
+	  --names build/decoder-diff/names.txt > build/decoder-diff/report.txt; \
+	  status=$$?; cat build/decoder-diff/report.txt; exit $$status
 
 ## Every program the model is difftested on.
 # ziskasm's diagnostic program: every family of operations, each checked
