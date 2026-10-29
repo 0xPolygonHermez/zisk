@@ -267,7 +267,8 @@ ziskemu -e $WASM -i input.bin -X -S --top-functions
 ```
 
 Floating point needs the `float` feature on whichever binary transpiles (`ziskemu`,
-`zisk-transpiler-wasm`, `zisk-transpiler-common`). Without it, a module that uses `f32`/`f64`
+`zisk-transpiler-wasm`, `zisk-transpiler-common`); for proving, see
+[Current limitations](#current-limitations). Without it, a module that uses `f32`/`f64`
 is rejected at transpile time. Rust programs that use no floats, like the example above, do not
 need it. Go programs always do, because the Go runtime does `f64` arithmetic even in integer-only
 programs:
@@ -516,8 +517,35 @@ traffic and calls see a larger ratio than tight arithmetic loops.
   instructions, for RISC-V and wasm guests alike. Larger guests, up to the 4,194,304-instruction
   ROM limit, need the emulator backend. A Rust `std` guest starts at about 73,000 instructions,
   a Go guest at about 2,000,000.
-- **No floats in the prover.** The `float` feature exists only on the transpiler and emulator
-  crates, so the prover binaries cannot load a guest that uses `f32`/`f64` (RISC-V or wasm).
+- **The released prover cannot prove guests that use floats.** The `float` feature exists only
+  on the transpiler and emulator crates (`zisk-transpiler-wasm`, `zisk-transpiler-common`,
+  `ziskemu`); `cargo-zisk`, the SDK and the prover backend do not expose it, and release builds do
+  not enable it. Setup of such a guest fails with ``wasm: floating-point types require the `float`
+  feature``. This affects every Go guest (the Go runtime always uses `f64`) and any Rust guest
+  that uses `f32`/`f64`, even only inside a dependency (a test guest using `serde_json`, `regex`,
+  `toml` and `syn`, with no float code of its own, is rejected).
+
+  It is not simply switched on because a `float` build transpiles *every* guest differently, not
+  only the ones that use floats: the BIOS gains the float handler and the soft-float library is
+  linked into the ROM. Every program's ROM, and so its program verification key, changes, for
+  RISC-V and wasm alike, and proofs made by a `float` build verify only against keys from a
+  `float` build. Whether to enable it, or to offer it as an opt-in feature, is still to be
+  decided.
+
+  Until then, a prover with float support can be built from a source checkout by enabling the
+  feature through `ziskemu` (Cargo unifies it into `cargo-zisk`'s dependencies):
+
+  ```bash
+  ZISK_CI_NO_DOCKER_REBUILD=1 \
+    cargo build --release -p cargo-zisk -p ziskemu --features ziskemu/float
+  ```
+
+  With that build, constraint verification passes for a Rust guest exercising `f32`/`f64`
+  arithmetic and conversions (emulator and ASM backends) and for a Go guest (emulator backend);
+  full proof generation of a float guest has not been tested yet. The ROM-setup cache is keyed by
+  the guest's bytes, not its ROM, so switching between `float` and non-`float` builds reuses
+  stale entries for a guest both can transpile; clear them with
+  `cargo-zisk utils clean-cache -e guest.wasm`.
 - **No precompiles, no hints.** There is no wasm equivalent of the `ziskos` precompile calls
   (Keccak, SHA-256, big-integer arithmetic, ...) or the hints stream. A wasm guest pays the full
   software cost of its cryptography.
