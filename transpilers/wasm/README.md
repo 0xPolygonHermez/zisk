@@ -328,7 +328,7 @@ its MVP-shaped subset lowers (see the rejected list).
 | Globals | 8,192 |
 | Table entries | 65,536 |
 | Operand stack depth per function | 1,024 |
-| Call stack | about 16 MiB of frames, shared with nothing else |
+| Call stack | about 16 MiB of frames, shared with nothing else. Every frame reserves 1,024 operand slots (8 KiB), so recursion stops at about 2,000 nested calls |
 | Program code | the program ROM window (and must stay below the float library when `float` is on) |
 
 ## How it is implemented
@@ -489,11 +489,13 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 
 ## Current limitations
 
-- **Emulator backend only.** The ASM backend (`cargo-zisk execute --asm`, `rom-setup`, and so
-  ASM-based proving) still requires an ELF: `zisk_rom_setup::generate_assembly` fails with `ROM
-  file is not a valid ELF file`.
-- **Proving is not verified.** The prover consumes the same `ZiskRom`, but end-to-end proof
-  generation for a wasm guest has not been tested yet.
+- **Emulator backend only.** Proving works with the Rust emulator backend (the default): a wasm
+  guest verifies its constraints and produces a STARK proof bound to the module's program
+  verification key (see the integration tests below). The ASM backend (`cargo-zisk execute
+  --asm`, `rom-setup`, and so ASM-based proving) still requires an ELF:
+  `zisk_rom_setup::generate_assembly` fails with `ROM file is not a valid ELF file`.
+- **No floats in the prover.** The `float` feature exists only on the transpiler and emulator
+  crates, so the prover binaries cannot load a guest that uses `f32`/`f64` (RISC-V or wasm).
 - **No precompiles, no hints.** There is no wasm equivalent of the `ziskos` precompile calls
   (Keccak, SHA-256, big-integer arithmetic, ...) or the hints stream. A wasm guest pays the full
   software cost of its cryptography.
@@ -508,11 +510,14 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 | `emulator/tests/wasm.rs` | Integer operators, control flow, calls, memory, WASI and traps, using hand-written WAT modules. |
 | `emulator/tests/wasm_float.rs` | `f32`/`f64` operators against the wasm spec (requires `float`). |
 | `emulator/tests/wasm_example.rs` | Builds [`examples/wasm-fibonacci`](../../examples/wasm-fibonacci) for `wasm32-wasip1` and runs it end to end. Skipped with a notice when the target is not installed. |
+| `integration-tests/tests/wasm_verify_constraints.rs` | Constraint verification on the emulator backend for five guests that together cover the lowering paths, WASI and the memory-layout limits, and rejection of guests that trap or exit with a nonzero status. Needs a proving key; ignored by default. |
+| `integration-tests/tests/wasm_prove.rs` | Proves `wasm-fibonacci` and verifies the proof under the module's program verification key (and not under any other). Needs a proving key; ignored by default. |
 
 ```bash
 cargo test -p ziskemu --release --test wasm --test wasm_example
 ZISK_CI_NO_DOCKER_REBUILD=1 \
   cargo test -p ziskemu --release --features float --test wasm --test wasm_float --test wasm_example
+cargo test --release -p integration-tests --test wasm_verify_constraints --test wasm_prove -- --ignored
 ```
 
 See also [`examples/wasm-fibonacci`](../../examples/wasm-fibonacci) for a minimal standalone guest,

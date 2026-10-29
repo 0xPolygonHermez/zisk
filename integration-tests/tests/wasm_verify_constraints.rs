@@ -12,6 +12,15 @@
 //!   `memory.grow`/`memory.size`/`memory.fill`/`memory.copy`, and deep recursion.
 //! - `wasi_surface` (WAT): every implemented WASI call, an unimplemented one (`ENOSYS`), a start
 //!   section, chunked stdin reads to EOF, output past the 256-byte public limit, and `proc_exit(0)`.
+//! - `memory_limits` (WAT): the edges of the wasm memory layout — a data segment at the top of a
+//!   7,000-page initial memory, `memory.grow` to the 7,680-page maximum and past it, a store to the
+//!   last byte of linear memory, and a 2,000-deep recursion that takes the call stack close to its
+//!   lower limit (frames reserve 1,024 operand slots, so about 2,020 frames fit).
+//!
+//! Guests that trap (`unreachable`, an out-of-bounds load) or call `proc_exit` with a nonzero
+//! status must be rejected. They halt through the `halt` op, which no valid main trace can
+//! contain (for an internal op, main.pil forces `flag = 1` and `flag = 0` when `op = 0xFF`), so
+//! the executor refuses them before any constraint is checked.
 //!
 //! Ignored by default because `verify_constraints` requires a generated proving key on disk.
 //! Run with:
@@ -305,6 +314,54 @@ const WASI_SURFACE_WAT: &str = r#"(module
     unreachable)
 )"#;
 
+const MEMORY_LIMITS_WAT: &str = r#"(module
+  (import "wasi_snapshot_preview1" "fd_read" (func $fd_read (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (memory 7000 7680)
+  ;; the last 24 bytes of the initial memory
+  (data (i32.const 458751976) "high data segment")
+  (func $depth (param $n i32) (result i32)
+    (if (result i32) (i32.eqz (local.get $n))
+      (then (i32.const 0))
+      (else (i32.add (call $depth (i32.sub (local.get $n) (i32.const 1))) (i32.const 1)))))
+  (func (export "_start")
+    (local $acc i64)
+    ;; recursion depth: the u64 on stdin
+    (i32.store (i32.const 0) (i32.const 64))
+    (i32.store (i32.const 4) (i32.const 8))
+    (drop (call $fd_read (i32.const 0) (i32.const 0) (i32.const 1) (i32.const 8)))
+    (local.set $acc (i64.extend_i32_u (call $depth (i32.load (i32.const 64)))))
+    (local.set $acc (i64.add (local.get $acc) (i64.load (i32.const 458751976))))
+    ;; grow to the 7,680-page maximum (returns 7000), then past it (returns -1)
+    (local.set $acc (i64.add (local.get $acc) (i64.extend_i32_s (memory.grow (i32.const 680)))))
+    (local.set $acc (i64.add (local.get $acc) (i64.extend_i32_s (memory.grow (i32.const 1)))))
+    ;; the last 8 bytes of linear memory, then its very last byte
+    (i64.store (i32.const 503316472) (local.get $acc))
+    (i64.store8 (i32.const 503316479) (i64.const 0x5a))
+    (local.set $acc (i64.add (local.get $acc) (i64.load (i32.const 503316472))))
+    (i64.store (i32.const 16) (local.get $acc))
+    (i32.store (i32.const 0) (i32.const 16))
+    (i32.store (i32.const 4) (i32.const 8))
+    (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40))))
+)"#;
+
+/// A command module that prints "OK" and then runs `tail`, which must make the run fail.
+fn failing_module(tail: &str) -> Vec<u8> {
+    let wat = format!(
+        r#"(module
+          (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+          (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+          (memory 1)
+          (func (export "_start")
+            (i64.store (i32.const 16) (i64.const 0x4b4f))
+            (i32.store (i32.const 0) (i32.const 16))
+            (i32.store (i32.const 4) (i32.const 8))
+            (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))
+            {tail}))"#
+    );
+    wat::parse_str(wat).expect("wat compile")
+}
+
 struct Case {
     name: &'static str,
     wasm: Vec<u8>,
@@ -343,6 +400,12 @@ fn cases() -> Vec<Case> {
             stdin: (0u8..23).collect(),
             // The checksum, then the 'A' run cut off at the 256-byte public output window.
             output: [0xd60c_9b11_c07a_de25u64.to_le_bytes().as_slice(), &[b'A'; 248]].concat(),
+        },
+        Case {
+            name: "memory_limits",
+            wasm: wat("memory_limits", MEMORY_LIMITS_WAT),
+            stdin: 2000u64.to_le_bytes().to_vec(),
+            output: 0xcec2_c840_d0cf_191eu64.to_le_bytes().to_vec(),
         },
     ]
 }
@@ -392,5 +455,36 @@ async fn wasm_guests_verify_constraints_on_emulator() {
             }
         }
     }
+
+    for (name, tail) in [
+        ("trap_unreachable", "unreachable"),
+        ("trap_out_of_bounds", "(drop (i64.load (i32.const 65536)))"),
+        ("exit_nonzero", "(call $proc_exit (i32.const 1))"),
+    ] {
+        let program = GuestProgram::from_bytes(name, failing_module(tail));
+        let result = async {
+            client.setup(&program).run()?.await?;
+            client
+                .verify_constraints(&program, ZiskStdin::new())
+                .executor(ExecutorKind::Emulator)
+                .run()?
+                .await
+        }
+        .await;
+        match result {
+            Err(e) if format!("{e:#}").contains("Guest execution failed") => {
+                eprintln!("[wasm_verify_constraints] {name}: rejected as expected");
+            }
+            Err(e) => {
+                eprintln!("[wasm_verify_constraints] {name}: rejected for the wrong reason: {e:#}");
+                failures.push(name);
+            }
+            Ok(_) => {
+                eprintln!("[wasm_verify_constraints] {name}: FAILED: a failing guest verified");
+                failures.push(name);
+            }
+        }
+    }
+
     assert!(failures.is_empty(), "constraint verification failed for: {failures:?}");
 }
