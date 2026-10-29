@@ -181,7 +181,7 @@ transpilation.
   spec of the transpiler in Lean, the per-instruction translation as a pure
   function, kept in step with the Rust (`transpilers/riscv`) by a CI check;
   the equivalence proofs then take T(P) from it instead of as a hypothesis.
-  Started: `lean/Transpiler/Spec.lean` describes RV64I (`ebreak` as the
+  Done: `lean/Transpiler/Spec.lean` describes RV64I (`ebreak` as the
   halt, and a write to a read-only CSR) but for CSR accesses outside the
   contract, x0 forms included, Zifencei, M, A,
   Zba, Zbs, Zbb and Zbkb, and the contract's CSR forms (§§ 6–8: the ZisK
@@ -197,9 +197,11 @@ transpilation.
   compliance tests, `test/transpiler/csr_forms.S` (every CSR form of the
   contract and the refused sequences) and `test/transpiler/word_walk.S`,
   assembled when `RISCV_GCC` is there (1 283 054 instructions, the BIOS's
-  included), and the fibonacci guest (11 409). Still to do: the rest of the
-  instruction set. CI (`.github/workflows/sail_zisk.yml`, its tools from
-  `ci/setup.sh`) runs `make compliance` and `make transpiler-check` on pull
+  included), and the fibonacci guest (11 409). The spec describes every
+  word of a program in the contract: the words it leaves out are CSR
+  accesses outside the contract's forms and zkvmcalls (preconditions C and
+  Z); the compliance tests have none (`0 it does not`). CI
+  (`.github/workflows/sail_zisk.yml`, its tools from `ci/setup.sh`) runs `make compliance` and `make transpiler-check` on pull
   requests that touch the transpiler, `core/src`, `tools/sail-difftest` or
   sail-zisk, and nightly, and `make proofs` on the same; `make decoder-diff`
   nightly. The top theorems hold with that ROM (`zisk_exit_prog`,
