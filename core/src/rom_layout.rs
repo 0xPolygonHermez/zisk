@@ -51,6 +51,12 @@ const _: () = assert!(
 /// to the handler directly must use this constant rather than derive it from its own features.
 pub const ECALL_HANDLER_ADDR: u64 = ENTRY_EXIT_JMP_ADDR + 4 * (13 + INPUT_ANCHOR_READS + 1);
 
+/// The register an `ecall` leaves its return address in, for the handler to return through: a
+/// virtual register (r32..r39), which RISC-V code cannot see, so that an `ecall` changes no
+/// RISC-V register but the ones its system call defines. r39 is the one the RISC-V transpiler
+/// never uses as scratch; it only has to survive the few BIOS instructions of the handler.
+pub const ECALL_RETURN_REG: u64 = 39;
+
 /// A library routine's body for an inline zkvmcall (see `ZiskLibrary::inline_body`),
 /// as a small control-flow graph: the instructions, entry first, and for each one
 /// the index of the instruction it continues to when its flag is set
@@ -293,10 +299,11 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // ECALL_HANDLER_ADDR + 4
-    // Return to the instruction next to the one that made this ecall
+    // Return to the instruction next to the one that made this ecall, whose address the ecall
+    // left in ECALL_RETURN_REG
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
-    zib.src_b("reg", 1, false);
+    zib.src_b("reg", ECALL_RETURN_REG, false);
     zib.op("copyb").unwrap();
     zib.set_pc();
     zib.j(0, 4);
@@ -670,6 +677,12 @@ mod tests {
             (1..=INPUT_ANCHOR_READS).map(|k| INPUT_ADDR + k * INPUT_ANCHOR_STEP).collect();
         assert_eq!(reads, expected);
         assert_eq!(expected.last().unwrap() + INPUT_ANCHOR_STEP, INPUT_ADDR + MAX_INPUT_SIZE);
+
+        // ECALL_HANDLER_ADDR + 4: a system call other than exit returns through
+        // ECALL_RETURN_REG, not ra
+        let ret = &rom.insts[&(ECALL_HANDLER_ADDR + 4)].i;
+        assert!(ret.set_pc && ret.b_src == crate::SRC_REG);
+        assert_eq!(ret.b_offset_imm0, ECALL_RETURN_REG);
 
         // ECALL_HANDLER_ADDR + 8: beq r10, 0 jumps back to the output block (:0014)
         let exit_check = &rom.insts[&(ECALL_HANDLER_ADDR + 8)].i;
