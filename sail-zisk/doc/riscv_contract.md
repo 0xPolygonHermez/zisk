@@ -8,9 +8,10 @@ program starts and ends, `ecall`, the CSRs, and the CSR numbers through which
 a program calls ZisK's precompiles and its free input — this document is the
 specification, and sail-zisk's operations give the precompiles' meaning.
 
-The theorem to prove, informally: for a program in the profile that meets the
+The theorem, informally: for a program in the profile that meets the
 preconditions below, the run sail-riscv and this contract define, and the run
 of its transpilation on sail-zisk, end the same way, with the same output.
+It is proved in Lean (`zisk_total`; see *The theorem*, at the end).
 
 Each statement is from the transpiler and the BIOS of `pre-develop-1.4.0-alpha`
 (`transpilers/riscv/src/riscv2zisk_context.rs`, `core/src/rom_layout.rs`),
@@ -115,7 +116,8 @@ narrower load, a load across them, a precompile's operand — the contract
 leaves undefined:
 
 > **Precondition I.** The program reads the 8 bytes at `INPUT_ADDR` only by
-> an 8-byte load of `INPUT_ADDR`.
+> an 8-byte load of `INPUT_ADDR`: no other load, and no ZisK call (§§ 7–8)
+> whose operation reads them.
 
 ## 3. The start
 
@@ -203,7 +205,8 @@ not have. So the contract leaves them out:
 
 > **Precondition C.** The program accesses no CSR but in the forms of
 > §§ 7–8, by reading `marchid`, and by writing a read-only CSR (a
-> failure); and it stores nothing to `marchid`'s cell.
+> failure); and nothing it does — a store, an AMO, a call's operation —
+> changes `marchid`'s cell.
 
 `marchid` is the one the runtime needs: `ziskos` reads it to tell ZisK from
 QEMU, which decides where it writes the public outputs and how it exits
@@ -301,9 +304,10 @@ and precondition R keeps programs off them.
 
 A program is in the contract when it is in the instruction set of § 1 and
 meets **E** (no `ecall` but exit), **C** (no CSR access but the ZisK calls
-of §§ 7–8, reading `marchid` and writing a read-only CSR, no store to
-`marchid`'s cell), **I** (the
-free input's 8 bytes read only as the free input), **Z** (no zkvmcall) and
+of §§ 7–8, reading `marchid` and writing a read-only CSR, `marchid`'s cell
+left as it is), **I** (the
+free input's 8 bytes read only as the free input, by no other load nor
+call), **Z** (no zkvmcall) and
 **L** (no `lr` reading its own instruction word), **A** (no AMO across
 a 16-byte boundary), **M** (the atomics on the RAM), **J** (the pc in
 the code), **R** (no access to the registers' slots) and **F** (no float
@@ -311,3 +315,50 @@ instruction). Everything else
 it may do — touch memory outside § 2, write a read-only CSR, misuse a
 precompile — has a defined outcome above: a failure, which ZisK does not
 prove, and which the theorem must show both sides agree on.
+
+## The theorem
+
+`lean/Equiv/TotalityMain.lean` proves it, `zisk_total`. Its program is a
+list of code segments, at distinct 4-aligned addresses of the ROM, whose
+last words change no translation (`tailOk`, which `make transpiler-check`
+evaluates on each program), and its ZisK program is the BIOS with the
+transpiler's translation of those segments, as `lean/Transpiler/Spec.lean`
+gives it (`zromOf`; `make transpiler-check` compares it with the Rust's).
+The machine starts as § 3 says, on memory as the ELF loader writes it, the
+code's words in it; sail-zisk starts at the ROM's entry, its BIOS first, on
+the same memory, every byte of its regions defined, the free input the
+machine's.
+Then one of four holds:
+
+1. the run never stops: for every N, the machine takes N steps or more and
+   sail-zisk keeps pace, its registers, pc and memory the machine's;
+2. both exit with the same code c: the machine's run ends in `exit c`, and
+   sail-zisk's, BIOS included, in success with the same memory but for the
+   free input's 8 bytes — so the same output — when c is 0, in error with
+   code c otherwise (§ 4: the exit system call, or the return to the
+   initial `ra`, c = 0);
+3. both fail (§ 4: a failing exit aside, an access fault, a halt, a jump
+   to an address 2 mod 4, a call that fails, a sequence the transpiler
+   refuses);
+4. the program breaks a precondition, at a step all of whose predecessors
+   were the machine's and sail-zisk's in step.
+
+Where the machine cannot take a step at all (its own error), that stands
+for its exit or failure.
+
+The preconditions are stated on the run, at the step that breaks them:
+**J** as the pc out of the code; **E**, **F**, **C**, **Z**, **R**,
+**A**, **M**, **L** and **I** for a load, by the word at pc and the
+registers; **I** for a call as the call's operation, run on the memory
+without the free input's 8 bytes, reading one of them; and `marchid`'s
+cell, of **C**, as a step after which the cell no longer holds the ID.
+What the program does with a word outside § 1 is proved, not assumed: a
+16-bit parcel, a word RISC-V rejects, `ebreak`, a vector or SYSTEM word
+outside the profile are halts on both sides; `csrs ID, x0` a step that does
+nothing; the float opcodes alone are left to **F**.
+
+The proof rests on Lean's axioms, on `bv_decide`'s (it trusts its compiled
+checker), and on the primitives sail-riscv's Lean leaves undefined
+(softfloat, which **F** keeps from running, the reservations of `lr` and
+`sc`, which the machine replaces (§ 1), the platform hooks), which the
+proofs never look into.
