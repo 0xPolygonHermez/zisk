@@ -134,24 +134,23 @@ static void finalize(uint64_t out_pointer) {
 #endif
     uint8_t delayed_acc[32],seq_acc[32],packed[96];
     memcpy(delayed_acc,delayed_before,32);memcpy(seq_acc,seq_before,32);
-    uint64_t delayed_end=delayed_start,seq_end=seq_start;int consumed_delayed=0;
-    for(uint32_t i=0;i<delayed_count;++i)if(delayed[i].used) {
-        if(delayed[i].number!=delayed_end)runtime_trap();delayed_end=increment(delayed_end);consumed_delayed=1;
-        memcpy(packed,delayed_acc,32);memcpy(packed+32,delayed[i].hash,32);runtime_keccak(packed,64,delayed_acc);
-    }
-    uint64_t snapshot_count=consumed_delayed?delayed_end:delayed_start;
-    const uint8_t *snapshot=consumed_delayed?delayed_acc:delayed_before;
-    int has_delayed_snapshot=0;
-    /* shortcut: one delayed checkpoint per replay, extend with authenticated snapshots for multi-checkpoint ranges. */
+    uint64_t delayed_end=delayed_start,seq_end=seq_start;
+    uint32_t delayed_index=0;
     for(uint32_t i=0;i<seq_count;++i)if(sequencer[i].used) {
         Message *m=&sequencer[i];if(m->number!=seq_end)runtime_trap();seq_end=increment(seq_end);
+        if(m->after_delayed<delayed_end)runtime_trap();
+        while(delayed_end<m->after_delayed) {
+            while(delayed_index<delayed_count && !delayed[delayed_index].used)++delayed_index;
+            if(delayed_index==delayed_count || delayed[delayed_index].number!=delayed_end)runtime_trap();
+            memcpy(packed,delayed_acc,32);memcpy(packed+32,delayed[delayed_index].hash,32);
+            runtime_keccak(packed,64,delayed_acc);delayed_end=increment(delayed_end);++delayed_index;
+        }
         memcpy(packed,seq_acc,32);memcpy(packed+32,m->hash,32);
-        if(m->after_delayed) {
-            if(m->after_delayed!=snapshot_count)runtime_trap();has_delayed_snapshot=1;memcpy(packed+64,snapshot,32);
-        } else memset(packed+64,0,32);
+        if(m->after_delayed)memcpy(packed+64,delayed_acc,32);else memset(packed+64,0,32);
         runtime_keccak(packed,96,seq_acc);
     }
-    if(consumed_delayed && !has_delayed_snapshot)runtime_trap();
+    /* Every consumed delayed message must be covered by a sequencer checkpoint. */
+    for(;delayed_index<delayed_count;++delayed_index)if(delayed[delayed_index].used)runtime_trap();
     uint8_t *out=(uint8_t *)(uintptr_t)out_pointer;
     memcpy(out,replay_hash,32);memcpy(out+32,start_state,80);memcpy(out+112,end_state,80);
     claim(out+192,"ARBZSEQ1",seq_before,seq_acc,seq_start,seq_end);
@@ -162,6 +161,8 @@ uint64_t runtime_state(uint64_t op,const uint64_t args[8],uint64_t mem_end) {
     if(op==0) {initialize(a0,a1,a2);return 0;}
     if(!initialized || finalized)runtime_trap();
     if(op==1) {finalize(a0);return 0;}
+    /* shortcut: certificate validity needs authenticated CustomDA proofs; enable only once those checks exist. */
+    if(op==17)runtime_trap();
     if(op>=10 && op<=13) {
         if(a0>1)runtime_trap();
         if(op==10)memcpy(runtime_checked_range(a1,32,mem_end),end_state+a0*32,32);
@@ -176,10 +177,9 @@ uint64_t runtime_state(uint64_t op,const uint64_t args[8],uint64_t mem_end) {
         uint32_t remaining=copy_chunk(m->bytes,m->len,(uint32_t)a1,32,a2,mem_end);
         return remaining<32?remaining:32;
     }
-    if(op==16 || op==17 || op==18) {
-        if((op!=17 && a2>UINT32_MAX) || (op==18 && a3>UINT32_MAX))runtime_trap();
+    if(op==16 || op==18) {
+        if(a2>UINT32_MAX || (op==18 && a3>UINT32_MAX))runtime_trap();
         const uint8_t *key=runtime_checked_range(a1,32,mem_end);Preimage *p=find_preimage((uint8_t)a0,key);
-        if(op==17)return p?1:0;
         if(!p || (op==16 && a2%32))runtime_trap();
         uint32_t remaining=copy_chunk(p->bytes,p->len,(uint32_t)a2,op==18?(uint32_t)a3:32,op==18?a4:a3,mem_end);
         return op==18?remaining:remaining<32?remaining:32;

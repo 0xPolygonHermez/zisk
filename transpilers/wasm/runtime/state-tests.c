@@ -82,6 +82,57 @@ static void fixture_check(const char *input_path,const char *expected_path) {
     call(1,(uintptr_t)actual,0,0,0,0);assert(memcmp(actual,expected,256)==0);free(framed);
     puts("recorded fixture witness and claim crosscheck passed");
 }
+static void inbox_checkpoints(void) {
+    size_t len=empty();
+    memset(witness+8,0x11,32);memset(witness+40,0x22,32);
+    put64(witness+72,10);put64(witness+80,3);
+    memset(witness+88,0x55,32);memset(witness+120,0x66,32);
+    put64(witness+152,10);put64(witness+160,7);
+    put32(witness+172,4);put32(witness+176,2);
+    const unsigned char checkpoints[4]={7,8,8,9};
+    for(unsigned i=0;i<4;++i) {
+        unsigned char seq[45];memset(seq,10+i,32);memset(seq+32,0,8);
+        seq[39]=checkpoints[i];memcpy(seq+40,"batch",5);len=add_message(len,10+i,seq,sizeof(seq));
+    }
+    for(unsigned i=0;i<2;++i) {
+        unsigned char delayed[120];memset(delayed,7+i,113);memcpy(delayed+113,"delayed",7);
+        len=add_message(len,7+i,delayed,sizeof(delayed));
+    }
+    init(len);hash_calls=0;
+    assert(call(14,13,32,64,0,0)==13);assert(call(15,8,96,64,0,0)==24);
+    call(14,10,0,64,0,0);call(15,7,0,64,0,0);call(14,12,0,64,0,0);call(14,11,0,64,0,0);
+    call(15,8,0,64,0,0);call(14,13,0,64,0,0);call(15,7,32,64,0,0);
+    call(13,0,14,0,0,0);call(13,1,0,0,0,0);
+    unsigned char actual[256],expected[256];call(1,(uintptr_t)actual,0,0,0,0);
+    /* Four sequencer hashes, two delayed hashes each, one fold each and two claims. */
+    assert(hash_calls==16);
+    memcpy(expected,replay_hash,32);memcpy(expected+32,witness+8,80);memcpy(expected+112,witness+8,80);
+    put64(expected+176,14);put64(expected+184,0);
+    /* Fixed vectors from the independent Python Keccak oracle; also checked in the real VM. */
+    const char *claims="4b2844598ca14e3045e4f9831051ea86eae89d37cea5740b3ae74bb1f329319a"
+                       "ae88c07bb601f53c3b9d256d777f461804fc623ffdb2d121d32f14450aef84e3";
+    for(unsigned i=0;i<64;++i) {unsigned byte;assert(sscanf(claims+2*i,"%2x",&byte)==1);expected[192+i]=(unsigned char)byte;}
+    assert(memcmp(actual,expected,256)==0);
+    unsigned char seq[40]={0},delayed[114]={0};
+    /* Zero cannot name a snapshot before the opening count. */
+    len=empty();put64(witness+160,7);put32(witness+172,1);len=add_message(len,0,seq,40);
+    init(len);call(14,0,0,64,0,0);MUST_TRAP(call(1,(uintptr_t)actual,0,0,0,0));
+    /* A later batch cannot move the checkpoint backwards, including to zero. */
+    len=empty();put32(witness+172,2);put32(witness+176,1);seq[39]=1;
+    len=add_message(len,0,seq,40);seq[39]=0;len=add_message(len,1,seq,40);
+    len=add_message(len,0,delayed,114);init(len);
+    call(14,0,0,64,0,0);call(14,1,0,64,0,0);call(15,0,0,64,0,0);
+    MUST_TRAP(call(1,(uintptr_t)actual,0,0,0,0));
+    /* Reaching an intermediate checkpoint does not cover the consumed delayed end. */
+    len=empty();put32(witness+172,1);put32(witness+176,2);seq[39]=1;
+    len=add_message(len,0,seq,40);len=add_message(len,0,delayed,114);len=add_message(len,1,delayed,114);
+    init(len);call(14,0,0,64,0,0);call(15,0,0,64,0,0);call(15,1,0,64,0,0);
+    MUST_TRAP(call(1,(uintptr_t)actual,0,0,0,0));
+    len=empty();put64(witness+160,UINT64_MAX);put32(witness+172,1);put32(witness+176,1);
+    memset(seq+32,0xff,8);len=add_message(len,0,seq,40);len=add_message(len,UINT64_MAX,delayed,114);
+    init(len);call(14,0,0,64,0,0);call(15,UINT64_MAX,0,64,0,0);
+    MUST_TRAP(call(1,(uintptr_t)actual,0,0,0,0));
+}
 int main(int argc,char **argv) {
     unsigned char hash[32]; runtime_keccak("",0,hash);
     static const unsigned char empty_hash[32]={0xc5,0xd2,0x46,0x01,0x86,0xf7,0x23,0x3c,0x92,0x7e,0x7d,0xb2,0xdc,0xc7,0x03,0xc0,0xe5,0x00,0xb6,0x53,0xca,0x82,0x27,0x3b,0x7b,0xfa,0xd8,0x04,0x5d,0x85,0xa4,0x70};
@@ -94,15 +145,20 @@ int main(int argc,char **argv) {
     len=empty();init(len);MUST_TRAP(call(10,2,0,0,0,0));MUST_TRAP(call(10,0,4090,0,0,0));
     call(13,1,UINT64_MAX,0,0,0);assert(call(12,1,0,0,0,0)==UINT64_MAX);
     memset(memory+64,0x76,32);call(11,1,64,0,0,0);call(10,1,96,0,0,0);assert(memcmp(memory+64,memory+96,32)==0);
-    MUST_TRAP(call(14,0,0,0,0,0));MUST_TRAP(call(16,0,0,0,32,0));assert(call(17,0,0,0,0,0)==0);assert(call(17,0,0,UINT64_MAX,UINT64_MAX,UINT64_MAX)==0);
+    MUST_TRAP(call(14,0,0,0,0,0));MUST_TRAP(call(16,0,0,0,32,0));
+    /* Omission must not turn unsupported CustomDA authentication into an empty batch. */
+    MUST_TRAP(call(17,3,0,0,0,0));
+    for(unsigned type=0;type<4;++type)MUST_TRAP(call(17,type,0,0,0,0));
+    MUST_TRAP(call(17,0,0,UINT64_MAX,UINT64_MAX,UINT64_MAX));
     runtime_keccak("abc",3,hash);memcpy(memory,hash,32);len=empty();put32(witness+168,1);len=add_preimage(len,0,hash,"abc",3);init(len);hash_calls=0;
-    assert(call(16,0,0,0,32,0)==3);assert(memcmp(memory+32,"abc",3)==0);assert(hash_calls==1);assert(call(17,0,0,0,0,0)==1);assert(hash_calls==1);assert(call(17,256,0,0,0,0)==1);assert(call(17,0,0,UINT64_MAX,UINT64_MAX,UINT64_MAX)==1);
+    assert(call(16,0,0,0,32,0)==3);assert(memcmp(memory+32,"abc",3)==0);assert(hash_calls==1);
+    MUST_TRAP(call(17,0,0,0,0,0));assert(hash_calls==1);MUST_TRAP(call(17,256,0,0,0,0));MUST_TRAP(call(17,0,0,UINT64_MAX,UINT64_MAX,UINT64_MAX));
     MUST_TRAP(call(16,0,0,1,32,0));assert(call(16,0,0,32,32,0)==0);
     assert(call(18,0,0,1,1,64)==2);assert(memory[64]=='b');
     witness[len-1]^=1;init(len);MUST_TRAP(call(16,0,0,0,32,0));
     len=empty();put32(witness+168,2);len=add_preimage(len,0,hash,"abc",3);len=add_preimage(len,0,hash,"abc",3);MUST_TRAP(init(len));
-    len=empty();put32(witness+168,1);len=add_preimage(len,2,hash,"abc",3);init(len);MUST_TRAP(call(17,2,0,0,0,0));
-    len=empty();put32(witness+168,1);runtime_sha256("abc",3,hash);memcpy(memory,hash,32);len=add_preimage(len,1,hash,"abc",3);init(len);assert(call(16,1,0,0,32,0)==3);assert(call(17,257,0,0,0,0)==1);
+    for(unsigned type=2;type<=3;++type){len=empty();put32(witness+168,1);len=add_preimage(len,type,hash,"abc",3);init(len);MUST_TRAP(call(17,type,0,0,0,0));}
+    len=empty();put32(witness+168,1);runtime_sha256("abc",3,hash);memcpy(memory,hash,32);len=add_preimage(len,1,hash,"abc",3);init(len);assert(call(16,1,0,0,32,0)==3);MUST_TRAP(call(17,257,0,0,0,0));
     unsigned char seq[40]={0},delayed[114]={0},output[256];
     len=empty();put32(witness+172,1);len=add_message(len,1,seq,sizeof(seq));init(len);assert(call(14,1,0,0,0,0)==32);MUST_TRAP(call(1,(uintptr_t)output,0,0,0,0));
     len=empty();put32(witness+172,2);len=add_message(len,0,seq,sizeof(seq));len=add_message(len,0,seq,sizeof(seq));MUST_TRAP(init(len));
@@ -131,5 +187,6 @@ int main(int argc,char **argv) {
     len=empty();put32(witness+172,1);len=add_message(len,9,seq,40);init(len);call(1,(uintptr_t)output,0,0,0,0);
     len=empty();init(len);MUST_TRAP(call(10,0,UINT64_C(0x100000000),0,0,0));
     MUST_TRAP(init(UINT64_MAX));MUST_TRAP(call(12,0,0,0,0,0));
+    inbox_checkpoints();
     puts("state runtime tests passed");if(argc==3)fixture_check(argv[1],argv[2]);else assert(argc==1);return 0;
 }

@@ -138,3 +138,42 @@ fn nonzero_proc_exit_rejects_instead_of_finalizing_claim() {
     let error = execute(&module(0, 1), &witness(Some(b"abc"), Some(b"abc"))).unwrap_err();
     assert!(error.to_lowercase().contains("trap"), "{error}");
 }
+
+fn certificate_module(kind: u32) -> Vec<u8> {
+    wat::parse_str(format!(
+        r#"(module
+          (import "wavmio" "validateCertificate" (func $certificate (param i32 i32) (result i32)))
+          (import "wavmio" "setGlobalStateU64" (func $set (param i32 i64)))
+          (memory 1)
+          (data (i32.const 128) "{}")
+          (func (export "_start")
+            (if (i32.eqz (call $certificate (i32.const {kind}) (i32.const 128)))
+              (then (call $set (i32.const 0) (i64.const 5))))))"#,
+        wat_bytes(&hex(if kind as u8 == 1 { SHA256_ABC } else { KECCAK_ABC }))
+    ))
+    .unwrap()
+}
+
+#[test]
+#[ignore = "requires built native runtime ELF and float feature"]
+fn missing_custom_da_certificate_cannot_finalize_an_empty_batch() {
+    // Nitro's CustomDA reader treats false as an empty payload without an error.
+    let error = execute(&certificate_module(3), &witness(None, None)).unwrap_err();
+    assert!(error.to_lowercase().contains("trap"), "{error}");
+}
+
+#[test]
+#[ignore = "requires built native runtime ELF and float feature"]
+fn certificate_validation_traps_for_present_and_absent_witnesses() {
+    for kind in [0, 1, 2, 3, 255, 257, 259] {
+        let wasm = certificate_module(kind);
+        let mut present =
+            if kind as u8 == 1 { witness(None, Some(b"abc")) } else { witness(Some(b"abc"), None) };
+        // The sole entry starts after the framing word and 180-byte header.
+        present[8 + 180] = kind as u8;
+        for input in [&present, &witness(None, None)] {
+            let error = execute(&wasm, input).unwrap_err();
+            assert!(error.to_lowercase().contains("trap"), "type {kind}: {error}");
+        }
+    }
+}

@@ -39,20 +39,24 @@ copying them. Increase these explicit bounds only when a required witness
 exceeds them and the runtime's shared RAM budget has been checked.
 
 A requested type-0 preimage is checked with Keccak-256; type 1 with SHA-256.
-Other present requested types trap because their authentication is unsupported.
-Successful checks alone populate the cache. Missing required data traps;
-`validateCertificate` returns zero for a missing entry, including an unknown
-type with no matching entry. A present certificate is authenticated before
-returning one.
+Other requested preimage types trap because their authentication is unsupported.
+Successful checks alone populate the cache. Missing required data traps.
+`validateCertificate` always traps, regardless of type or witness presence:
+certificate validity requires authentication that this runtime does not yet
+implement. A prover-controlled omission cannot establish certificate invalidity
+and must never let Nitro silently substitute an empty batch.
 
 Inbox hashing, delayed header packing, domains, and claim packing match
 `arb-zisk/acc-core/src/lib.rs` and `guest/src/env.rs`. Every used inbox number
 must be contiguous from its count-start anchor, regardless of request order.
-Repeated partial reads fold a message once. Count overflow traps. Every nonzero
-sequencer `afterDelayed` must equal the delayed count snapshot: the starting
-count if no delayed message was consumed, otherwise the ending count. A consumed
-delayed message requires a nonzero sequencer snapshot. Multiple different delayed
-checkpoints are unsupported and trap. Sequencer/delayed headers shorter than
+Repeated partial reads fold a message once. Count overflow traps. Sequencer
+`afterDelayed` checkpoints must be nondecreasing and lie between the delayed
+starting count and consumed ending count. Each checkpoint uses the accumulator
+derived from exactly that consumed delayed prefix; equal checkpoints reuse it.
+The last consumed sequencer checkpoint must cover every consumed delayed message.
+Count zero uses the zero accumulator and is valid only when the starting count
+is also zero. Missing, gapped, unread or out-of-range prefixes trap; unused
+supplied messages do not contribute. Sequencer/delayed headers shorter than
 40/113 bytes respectively trap when requested.
 
 ## Native call ABI
@@ -75,7 +79,7 @@ reference adapter. Memory accesses also reject out-of-range pointers.
 | 14 | sequencer number, message offset, output offset | bytes copied, at most 32 |
 | 15 | delayed number, message offset, output offset | bytes copied, at most 32 |
 | 16 | preimage type, key offset, preimage offset, output offset | bytes copied, at most 32 |
-| 17 | preimage type, key offset | 0 or 1 |
+| 17 | preimage type, key offset | always traps until certificate authentication is implemented |
 | 18 | preimage type, key offset, preimage offset, available, output offset | full remaining length |
 
 Operation 16 requires a 32-byte-aligned preimage offset. Operation 18 permits
@@ -106,7 +110,8 @@ independent test-only Keccak implementation checked against the empty digest.
 They check both final claim byte layouts independently and cover malformed
 witnesses, forged/missing/unsupported preimages, verified caching, memory bounds,
 state writes, inbox deduplication, header lengths, contiguous counts, count
-overflow, missing/mismatched/multiple delayed snapshots, and lifecycle failures.
+overflow, multiple delayed snapshots, missing/decreasing/out-of-range
+checkpoints, certificate rejection, and lifecycle failures.
 
 ```sh
 mkdir -p target/nitro-runtime-state

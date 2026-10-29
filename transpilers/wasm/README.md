@@ -406,13 +406,14 @@ Console writes remain visible but do not occupy the public claim. Both normal `_
 and `proc_exit(0)` publish exactly 256 bytes: replay SHA-256, start state, computed end state,
 sequencer claim and delayed claim. Expected end state is never passed to the VM.
 
-The recorded non-Stylus transfer executes 894,975,514 VM instructions and matches all 256
+The recorded non-Stylus transfer executes 894,969,877 VM instructions and matches all 256
 independently prepared expected bytes. See the [runtime guide](runtime/README.md) for build,
 witness preparation, execution commands and artifact identities.
 
-This is bounded replay support: Stylus calls, nonzero Brotli dictionaries, unsupported preimage
-authentication and recovery IDs 2/3 trap. The runtime has an 8 MiB codec arena, a 64 MiB witness
-bound, and supports one delayed-count checkpoint per consumed inbox window. Before-accumulator
+This is bounded replay support: Stylus calls, nonzero Brotli dictionaries, all certificate
+validation calls, unsupported preimage authentication and recovery IDs 2/3 trap. The runtime
+has an 8 MiB codec arena and a 64 MiB witness bound. Multiple delayed-count checkpoints are
+derived from contiguous consumed messages, with regressions and missing prefixes rejected. Before-accumulator
 anchors still need external L1/binder authentication. The trusted helper ELF is part of the
 program identity; the public Wasm hash alone does not identify it. Assembly execution and
 proof generation/verification remain unverified.
@@ -639,6 +640,7 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 | `emulator/tests/native_crypto_failure.rs` | Forged inverse, square-root, GLV and parity hints must trap; optional Assembly source export control. |
 | `emulator/tests/wasm_nitro_runtime.rs` | Native runtime initialization, computed state and separation of console/public output. |
 | `emulator/tests/wasm_nitro_state.rs` | Actual VM preimage authentication/rejection, all 256 claim bytes and successful/failed `proc_exit`. |
+| `emulator/tests/wasm_nitro_inbox.rs` | Multiple delayed checkpoints, complete claim vectors, repeated/reordered reads, consumed-window gaps and overflow rejection. |
 | `emulator/tests/wasm_nitro_brotli.rs` | Pinned codec bytes, aliases, failure preservation, bounds, large reserved capacity and streaming scratch growth. |
 | `emulator/tests/wasm_example.rs` | Builds [`examples/wasm-fibonacci`](../../examples/wasm-fibonacci) for `wasm32-wasip1` and runs it end to end. Skipped with a notice when the target is not installed. |
 

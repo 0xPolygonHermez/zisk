@@ -98,24 +98,28 @@ Validated artifact SHA-256 values (LLVM 23.1.4):
 | Artifact | SHA-256 |
 | --- | --- |
 | Replay Wasm | `15a1bfa995d941d4ec2edc5d9dc3acbe0bab839499144029058944e1f0833521` |
-| Runtime ELF | `7e6568c440d7569af308244fd0ee1b189944e16ba0928688f9a2d7c60e13385b` |
+| Runtime ELF | `8eadb8f0b42d11d33ed9e2ab4277c4d2e99fb3e13e6ae3826760212e7946ea47` |
+| Exported linked program ELF | `32fd4ccb51d130fda0b63cc922aded4d67bf3ff63691e0fd4f3ec2927adfd241` |
 | Framed witness | `eac529c2a6701f0998dcf15b5850e22f67c252837d2d01b18465acc928bf1ea2` |
 | Expected and actual 256-byte claim | `438636f44cce44870bf9ba300cec05cf2c9911d3faa4bf722a1ebce39f049754` |
 
-The linked ROM contains 20,806,583 instructions. The transfer executes
-894,975,514 steps and computes block hash
+The linked ROM contains 20,806,554 instructions. The transfer executes
+894,969,877 steps and computes block hash
 `a67bfee73eec54ea031ebe065a14f2a34f7a783a4e9cf57d1060eb730cfb76bc`, zero send
-root, batch 5, position 0. The local run took 20.48 seconds including compilation
-and cleanup, with 15.15 GiB peak sampled RSS. These are emulator measurements,
+root, batch 5, position 0. The local run took 19.76 seconds for compilation and
+execution, or 25.96 seconds including ELF export and cleanup, with 11.86 GiB
+peak sampled RSS. The 410,954,510-byte linked ELF also reloads through `ziskemu`
+and matches all 256 bytes in 894,969,877 steps. These are emulator measurements,
 not proving costs. Corrupting preimage bytes, removing preimages, and changing
 the sequencer count-start anchor each trap before a claim is returned.
 
 Native host controls use sanitizers; the following tests execute the real helper
-and production hashes inside the VM (13 tests, approximately 40 seconds):
+and production hashes inside the VM (22 tests):
 
 ```sh
 cargo test --locked --release -p ziskemu --features float \
   --test wasm_nitro_brotli --test wasm_nitro_state --test wasm_nitro_runtime \
+  --test wasm_nitro_inbox \
   -- --ignored --test-threads=1
 ```
 
@@ -135,10 +139,17 @@ its assembler rejects the required GNU options, and Docker is unavailable.
 The next step is to build this branch on Linux x86-64, validate the small control,
 then generate and verify the recorded transfer proof under the new program key.
 
-Wider Nitro support still requires Stylus and its dictionary, blob/KZG
-authentication, recovery IDs 2/3, multiple delayed-count checkpoints and broader
-recording coverage. Current unsupported operations trap. Witness limits are
+Wider Nitro support still requires Stylus and its dictionary, blob/KZG and
+CustomDA certificate authentication, recovery IDs 2/3 and broader recording
+coverage. Multiple delayed-count checkpoints are derived from the consumed
+delayed-message prefix; decreasing counts and unavailable prefixes trap. The
+last sequencer checkpoint must cover all consumed delayed messages. Current
+unsupported operations trap. Witness limits are
 8,192 preimages, 1,024 messages per inbox and 64 MiB payload; codec memory is
 bounded as described above. Existing L1/binder logic has not been connected to
 this new program identity. The witness's before-accumulator anchors are private
 openings committed by the claim and require that external authentication.
+
+Every certificate-validation request traps until CustomDA validity can be
+authenticated. Returning false for an omitted witness would let Nitro treat
+the batch as empty, so absence is never used as a validity decision.

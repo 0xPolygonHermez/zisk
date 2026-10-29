@@ -17,8 +17,10 @@ construction succeeds under the existing layout bounds. That diagnostic emits
 20,596,298 instructions for the defined bodies alone; the final integration
 check reaches about 16.2 GiB sampled peak RSS. That initial diagnostic established compiler
 compatibility. The subsequent native-runtime implementation now executes the recorded
-transfer in 894,975,514 steps, matching all 256 expected public bytes with approximately
-15.15 GiB peak sampled RSS. Assembly execution and proof generation remain unverified.
+transfer in 894,969,877 steps, matching all 256 expected public bytes with approximately
+11.86 GiB peak sampled RSS in the latest compile/execute/export run. The exported
+linked ELF also reloads and reproduces the complete claim. Assembly execution and
+proof generation remain unverified.
 
 The historical replay has SHA-256
 `15a1bfa995d941d4ec2edc5d9dc3acbe0bab839499144029058944e1f0833521` and imports
@@ -134,6 +136,12 @@ The subsequent implementation and measured replay are recorded in
 `../plans/2026-10-29-nitro-wasm-replay.md`. The authenticated single-transfer
 execution milestone is implemented; proof, L1/binder integration and wider
 coverage in milestone 3 remain separate work.
+
+The follow-up `../plans/2026-10-29-nitro-certificates-inbox.md` rejects all
+certificate-validation calls until CustomDA validity can be authenticated and
+extends inbox accounting to multiple derived delayed-count checkpoints. This
+closes the missing-certificate empty-batch path without claiming CustomDA
+support. Starting anchors, witness format and public output layout are unchanged.
 
 ## Trust boundary
 
