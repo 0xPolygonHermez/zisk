@@ -20,9 +20,10 @@ theorem decode_rem (s : RVState) (w : BitVec 32) (u : Bool)
   cases u <;> simp only [Bool.false_eq_true, if_false, if_true] at hf3 h12 <;>
   · unfold ext_decode
     delta encdec_backwards
+    repeat skip_p
+    try dsimp only
     rw [interp_bind, run_bind']
-    dsimp only
-    repeat peel
+    try dsimp only
     m_tail
 
 end Equiv.Riscv

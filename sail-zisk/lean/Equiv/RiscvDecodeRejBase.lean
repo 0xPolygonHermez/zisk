@@ -165,4 +165,16 @@ macro "peel_r" : tactic => `(tactic| first
   | (rw [ite_none_run]; rotate_left; focus (intro; body_none; done); try dsimp only)
   | (dsimp only))
 
+macro_rules | `(tactic| known) => `(tactic| rw [ce_zicfilp _ (by assumption) _ (by assumption)])
+
+/-- One clause of the decoder's chain that decodes nothing: its guard
+    refuted, or its body none. -/
+macro "skip_r" : tactic => `(tactic| first
+  | (refine (skip_ite _ _ _ _ ?h).trans ?_
+     case h => intro hc; exfalso; revert hc; first | guard_false_i | funct_false)
+  | (refine (skip_ite _ _ _ _ ?h).trans ?_
+     case h => intro _; body_none; done)
+  | (refine (skip_none _ _ _ ?h).trans ?_
+     case h => body_none; done))
+
 end Equiv.Riscv

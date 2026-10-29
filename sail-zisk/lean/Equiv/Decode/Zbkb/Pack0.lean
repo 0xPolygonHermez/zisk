@@ -20,9 +20,10 @@ theorem decode_zbkb_pack0 (s : RVState) (w : BitVec 32) (hop : w.extractLsb 6 0 
           .PACK)) s := by
   unfold ext_decode
   delta encdec_backwards
+  repeat skip_i
+  try dsimp only
   rw [interp_bind, run_bind']
-  dsimp only
-  repeat peel_i
+  try dsimp only
   -- zext.h's RV32 clause: its fields match, its guard (xlen = 32) not
   rw [if_pos]; rotate_left
   · simp only [Sail.BitVec.extractLsb, Bool.and_eq_true, beq_iff_eq]

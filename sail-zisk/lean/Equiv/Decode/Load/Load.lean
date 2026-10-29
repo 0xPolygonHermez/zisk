@@ -19,9 +19,10 @@ theorem decode_load (s : RVState) (w : BitVec 32)
           bool_bit_backwards (w.extractLsb 14 14), width_enc_backwards (w.extractLsb 13 12))) s := by
   unfold ext_decode
   delta encdec_backwards
+  repeat skip_m
+  try dsimp only
   rw [interp_bind, run_bind']
-  dsimp only
-  repeat peel_m
+  try dsimp only
   rw [if_pos]; rotate_left
   · simp only [Sail.BitVec.extractLsb, Bool.and_eq_true, beq_iff_eq]
     simp [encdec_reg_backwards_matches, width_enc_backwards_matches, bool_bit_backwards_matches,

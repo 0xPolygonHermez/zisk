@@ -22,8 +22,7 @@ theorem decode_rej_amocas2 (s : RVState) (w : BitVec 32) (hop : w.extractLsb 6 0
     rw [h5]; rfl
   unfold ext_decode
   delta encdec_backwards
-  rw [interp_bind, run_bind']
-  dsimp only
-  repeat peel_r
+  repeat skip_r
+  rfl
 
 end Equiv.Riscv

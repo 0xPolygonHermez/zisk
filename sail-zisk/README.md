@@ -210,24 +210,23 @@ transpilation.
   program and names those it fails, outside the theorems, as
   `test/transpiler/csr_forms.S`, which ends on a call sequence on purpose).
 - **The decode lemmas' checking time:** each decode lemma is in its own
-  module (`lean/Equiv/Decode/`, `lean/Equiv/DecodeZbs/`, `lean/Equiv/Decode/Zbb/`, `lean/Equiv/Decode/Zbkb/`; the
+  module (`lean/Equiv/Decode/`, `lean/Equiv/DecodeZbs/`; the
   `lean/Equiv/RiscvDecode*.lean` modules are their bases and aggregators),
-  so Lake checks them in parallel: the whole `Equiv` package, every decode
-  lemma rechecked, builds in about 27 minutes on a 128-core machine (some
-  11 cores busy on average), where one after another they took about two
-  and a half hours. Each lemma still steps through sail-riscv's decoder one
-  clause at a time (the `peel` macros), each guard refuted by `bv_decide`,
-  and the slowest — a family split by cases, the ten R-type ops — bound the
-  time; splitting those per op would cut it further. A faster way past the
-  clauses that cannot match — a lemma per opcode that skips them together,
-  say, or the decoder's clauses grouped by opcode once — would cut the work
-  itself. Measured (Lean's profiler on `decode_ld`): `bv_decide` is not the
-  cost; each `dsimp` the `peel` macros run after a step takes about 2 s,
-  traversing the whole remaining decoder, and each `rw` 0.3–0.5 s. Dropping
-  the `dsimp` after a bind step, where there is nothing to reduce, takes
-  `decode_ld` from 2m22s to 1m46s; rewriting with match-reduction lemmas
-  instead of `dsimp` was slower (higher-order patterns). A larger gain
-  needs the decoder's term not traversed at every step.
+  so Lake checks them in parallel. Each lemma steps through sail-riscv's
+  decoder a clause at a time. The `peel` macros did it by `rw` and `dsimp`,
+  which traverse the whole rest of the decoder at every clause, a cost
+  quadratic in the clauses (measured on `decode_rej_jalr`: 143 s of tactics,
+  53 s of `dsimp`, of 3 min 56 s). The `skip` macros (`skip_p`, `skip_i`,
+  `skip_m`, `skip_r`; `skip_ite`, `skip_none` in
+  `lean/Equiv/RiscvDecodeBase.lean`) instead apply, by `Eq.trans`, an
+  equation whose left side unification matches against the term's head
+  alone: a clause that decodes nothing, its guard refuted or its body run
+  to none; the chain goes on. `decode_rej_jalr` takes 59 s, `decode_rtype`
+  105 s (was 1259 s), the M ops' 90 s (was ~700 s); the whole `Equiv`
+  package, rebuilt from scratch, 15 minutes on a 128-core machine (was
+  27). The slowest left are vector classes (`V77_2`, 13 min) and
+  `Zbkb.Pack0`; the modules where the matching clause is one of several in
+  a shared clause (`Ctl.Utype`, `Sys.Ebreak`, `Fence.Fence`) keep `peel`.
 - **The transpiler in the proof, long term (option D), not now:** rewrite
   the transpiler in Lean and ship it, so that the transpiler that runs is the
   one proved.

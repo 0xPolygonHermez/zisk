@@ -14,9 +14,10 @@ theorem decode_fence_tso (s : RVState)
     (interpretSailEffects (ext_decode 0x8330000F#32)).run s = .ok (.FENCE_TSO ()) s := by
   unfold ext_decode
   delta encdec_backwards
+  repeat skip_i
+  try dsimp only
   rw [interp_bind, run_bind']
-  dsimp only
-  repeat peel_i
+  try dsimp only
   rw [if_pos (by decide)]
   rfl
 

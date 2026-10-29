@@ -29,4 +29,12 @@ macro "peel_m" : tactic => `(tactic| first
   | (rw [ce_zicfilp _ (by assumption) _ (by assumption)]; try dsimp only)
   | (rw [interp_bind, run_bind']; try dsimp only))
 
+/-- `peel_m`'s steps, a clause at a time by its head: a clause whose guard
+    `guard_false_m` refutes, or whose body `peel_m` runs to none. -/
+macro "skip_m" : tactic => `(tactic| first
+  | (refine (skip_ite _ _ _ _ ?h).trans ?_
+     case h => intro hc; exfalso; revert hc; guard_false_m)
+  | (refine (skip_none _ _ _ ?h).trans ?_
+     case h => (try dsimp only); (repeat peel_m); first | done | rfl))
+
 end Equiv.Riscv

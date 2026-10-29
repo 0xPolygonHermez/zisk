@@ -16,9 +16,10 @@ theorem decode_itype (s : RVState) (w : BitVec 32) (op : iop)
       = .ok (.ITYPE (w.extractLsb 31 20, .Regidx (w.extractLsb 19 15), .Regidx (w.extractLsb 11 7), op)) s := by
   unfold ext_decode
   delta encdec_backwards
+  repeat skip_i
+  try dsimp only
   rw [interp_bind, run_bind']
-  dsimp only
-  repeat peel_i
+  try dsimp only
   have hf3' : Sail.BitVec.extractLsb w 14 12 = itypeF3 op := hf3
   rw [if_pos]; rotate_left
   · simp only [hf3', iop_matches, Bool.and_true, Bool.true_and]

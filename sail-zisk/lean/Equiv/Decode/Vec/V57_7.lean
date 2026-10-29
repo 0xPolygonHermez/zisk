@@ -19,8 +19,7 @@ theorem decode_vec57_7 (s : RVState) (w : BitVec 32) (hop : w.extractLsb 6 0 = 0
   have hf : Sail.BitVec.extractLsb w 14 12 = 7#3 := by simp only [Sail.BitVec.extractLsb]; bv_decide
   unfold ext_decode
   delta encdec_backwards
-  rw [interp_bind, run_bind']
-  dsimp only
-  repeat peel_r
+  repeat skip_r
+  rfl
 
 end Equiv.Riscv

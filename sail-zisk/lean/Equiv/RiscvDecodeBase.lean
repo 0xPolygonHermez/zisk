@@ -74,4 +74,35 @@ theorem enum_sopw (x : sopw) (h0 : x ≠ .SLLIW) (h1 : x ≠ .SRLIW) : x = .SRAI
 theorem enum_brop_zbs (x : brop_zbs) (h0 : x ≠ .BCLR) (h1 : x ≠ .BEXT) (h2 : x ≠ .BINV) : x = .BSET := by bv_decide
 theorem enum_biop_zbs (x : biop_zbs) (h0 : x ≠ .BCLRI) (h1 : x ≠ .BEXTI) (h2 : x ≠ .BINVI) : x = .BSETI := by bv_decide
 
+/-! ## The chain, a clause at a time, by its head
+
+`peel_r` rewrites (`rw`, `dsimp`) through the whole rest of the decoder at
+every clause, a cost quadratic in the clauses. `skip_r` instead applies, by
+`Eq.trans`, an equation whose left side unification matches against the
+term's head alone: a clause that decodes nothing, and the chain goes on. -/
+
+/-- A clause of the decoder's chain that decodes nothing: its guard false,
+    or its body none; the chain goes on, the state as it was. -/
+theorem skip_ite {α β : Type} (c : Bool) (A : SailM (Option α)) (k : Option α → SailM β) (s : RVState)
+    (h : c = true → (interpretSailEffects A).run s = .ok none s) :
+    (interpretSailEffects ((if c = true then A else pure none) >>= k)).run s =
+      (interpretSailEffects (k none)).run s := by
+  cases c
+  · rfl
+  · simp only [interp_bind, run_bind', if_true, h rfl]
+
+/-- A clause of any shape that decodes nothing. -/
+theorem skip_none {α β : Type} (m : SailM (Option α)) (k : Option α → SailM β) (s : RVState)
+    (h : (interpretSailEffects m).run s = .ok none s) :
+    (interpretSailEffects (m >>= k)).run s = (interpretSailEffects (k none)).run s := by
+  rw [interp_bind, run_bind', h]
+
+/-- `peel`'s steps, a clause at a time by its head: a clause whose guard
+    `guard_false` refutes, or whose body `peel` runs to none. -/
+macro "skip_p" : tactic => `(tactic| first
+  | (refine (skip_ite _ _ _ _ ?h).trans ?_
+     case h => intro hc; exfalso; revert hc; guard_false)
+  | (refine (skip_none _ _ _ ?h).trans ?_
+     case h => (try dsimp only); (repeat peel); first | done | rfl))
+
 end Equiv.Riscv

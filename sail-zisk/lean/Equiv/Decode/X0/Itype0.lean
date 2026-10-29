@@ -17,9 +17,10 @@ theorem decode_itype0 (s : RVState) (w : BitVec 32) (op : iop)
       = .ok (.ITYPE (w.extractLsb 31 20, .Regidx (w.extractLsb 19 15), .Regidx (w.extractLsb 11 7), op)) s := by
   unfold ext_decode
   delta encdec_backwards
+  repeat skip_i
+  try dsimp only
   rw [interp_bind, run_bind']
-  dsimp only
-  repeat peel_i
+  try dsimp only
   -- Zicbop's prefetch.{i,r,w}: ori x0, rs1, imm with imm[4:0] in {0, 1, 3}; its
   -- clause, Zicbop off, yields nothing.
   by_cases hg : (encdec_cbop_zicbop_backwards_matches (Sail.BitVec.extractLsb w 24 20) &&

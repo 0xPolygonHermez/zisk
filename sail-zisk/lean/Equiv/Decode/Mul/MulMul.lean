@@ -17,9 +17,10 @@ theorem decode_mul_mul (s : RVState) (w : BitVec 32)
           MulSel.mul.op)) s := by
   unfold ext_decode
   delta encdec_backwards
+  repeat skip_p
+  try dsimp only
   rw [interp_bind, run_bind']
-  dsimp only
-  repeat peel
+  try dsimp only
   m_tail
 
 end Equiv.Riscv

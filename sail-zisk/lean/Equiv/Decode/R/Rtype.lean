@@ -18,9 +18,10 @@ theorem decode_rtype (s : RVState) (w : BitVec 32) (op : rop)
   cases op <;> simp only [rtypeF3, rtypeF7] at hf3 hf7 <;>
   · unfold ext_decode
     delta encdec_backwards
+    repeat skip_p
+    try dsimp only
     rw [interp_bind, run_bind']
-    dsimp only
-    repeat peel
+    try dsimp only
     rw [if_pos]; rotate_left
     · simp only [Sail.BitVec.extractLsb, Bool.and_eq_true, beq_iff_eq]
       simp [encdec_reg_backwards_matches, Functions.base_E_enabled, LeanZiskRV.not, hop, hf3, hf7]

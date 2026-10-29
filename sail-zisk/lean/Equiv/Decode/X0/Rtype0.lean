@@ -20,9 +20,10 @@ theorem decode_rtype0 (s : RVState) (w : BitVec 32) (op : rop)
   case ADD =>
     unfold ext_decode
     delta encdec_backwards
+    repeat skip_p
+    try dsimp only
     rw [interp_bind, run_bind']
-    dsimp only
-    repeat peel
+    try dsimp only
     -- Zihintntl's ntl.*: add x0, x0, rs2 for rs2 in x2..x5; its clause,
     -- Zihintntl off, yields nothing.
     by_cases hg : (encdec_ntl_backwards_matches (Sail.BitVec.extractLsb w 24 20) &&
@@ -49,9 +50,10 @@ theorem decode_rtype0 (s : RVState) (w : BitVec 32) (op : rop)
   all_goals
     unfold ext_decode
     delta encdec_backwards
+    repeat skip_p
+    try dsimp only
     rw [interp_bind, run_bind']
-    dsimp only
-    repeat peel
+    try dsimp only
     rw [if_pos]; rotate_left
     · simp only [Sail.BitVec.extractLsb, Bool.and_eq_true, beq_iff_eq]
       simp [encdec_reg_backwards_matches, Functions.base_E_enabled, LeanZiskRV.not, hop, hf3, hf7]

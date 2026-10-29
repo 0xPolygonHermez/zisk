@@ -18,9 +18,10 @@ theorem decode_csrrw (s : RVState) (w : BitVec 32) (hop : w.extractLsb 6 0 = 0x7
   have h14 : w.extractLsb 14 14 = 0#1 := by bv_decide
   unfold ext_decode
   delta encdec_backwards
+  repeat skip_i
+  try dsimp only
   rw [interp_bind, run_bind']
-  dsimp only
-  repeat peel_i
+  try dsimp only
   rw [if_pos]; rotate_left
   · simp only [Sail.BitVec.extractLsb, Bool.and_eq_true, beq_iff_eq]
     simp [encdec_reg_backwards_matches, encdec_csrop_backwards_matches, Functions.base_E_enabled,

@@ -16,9 +16,10 @@ theorem decode_mulw (s : RVState) (w : BitVec 32)
       = .ok (.MULW (.Regidx (w.extractLsb 24 20), .Regidx (w.extractLsb 19 15), .Regidx (w.extractLsb 11 7))) s := by
   unfold ext_decode
   delta encdec_backwards
+  repeat skip_p
+  try dsimp only
   rw [interp_bind, run_bind']
-  dsimp only
-  repeat peel
+  try dsimp only
   m_tail
 
 end Equiv.Riscv

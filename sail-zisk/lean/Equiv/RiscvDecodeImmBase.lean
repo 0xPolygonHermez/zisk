@@ -46,4 +46,12 @@ def shiftF3 : sop → BitVec 3
 def shiftF6 : sop → BitVec 6
   | .SRAI => 0x10 | _ => 0
 
+/-- `peel_i`'s steps, a clause at a time by its head: a clause whose guard
+    `guard_false_i` refutes, or whose body `peel_i` runs to none. -/
+macro "skip_i" : tactic => `(tactic| first
+  | (refine (skip_ite _ _ _ _ ?h).trans ?_
+     case h => intro hc; exfalso; revert hc; guard_false_i)
+  | (refine (skip_none _ _ _ ?h).trans ?_
+     case h => (try dsimp only); (repeat peel_i); first | done | rfl))
+
 end Equiv.Riscv

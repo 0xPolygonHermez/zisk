@@ -14,8 +14,7 @@ theorem decode_op7B (s : RVState) (w : BitVec 32) (hop : w.extractLsb 6 0 = 0x7B
     (interpretSailEffects (ext_decode w)).run s = .ok (.ILLEGAL w) s := by
   unfold ext_decode
   delta encdec_backwards
-  rw [interp_bind, run_bind']
-  dsimp only
-  repeat peel_i
+  repeat skip_i
+  rfl
 
 end Equiv.Riscv

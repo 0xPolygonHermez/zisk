@@ -20,8 +20,7 @@ theorem decode_rej_amo1 (s : RVState) (w : BitVec 32) (hop : w.extractLsb 6 0 = 
     rw [hf]; rfl
   unfold ext_decode
   delta encdec_backwards
-  rw [interp_bind, run_bind']
-  dsimp only
-  repeat peel_r
+  repeat skip_r
+  rfl
 
 end Equiv.Riscv

@@ -19,9 +19,10 @@ theorem decode_sb (s : RVState) (w : BitVec 32)
   have h13 : w.extractLsb 13 12 = 0#2 := by bv_decide
   unfold ext_decode
   delta encdec_backwards
+  repeat skip_m
+  try dsimp only
   rw [interp_bind, run_bind']
-  dsimp only
-  repeat peel_m
+  try dsimp only
   rw [if_pos]; rotate_left
   · simp only [Sail.BitVec.extractLsb, Bool.and_eq_true, beq_iff_eq] at h14 h13 ⊢
     simp [encdec_reg_backwards_matches, width_enc_backwards_matches, Functions.base_E_enabled,
