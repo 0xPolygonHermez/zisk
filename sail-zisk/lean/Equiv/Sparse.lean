@@ -585,7 +585,8 @@ theorem exit_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : Bi
     (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
     (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
-    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat) (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0)
+    (hmir : Equiv.memRead m0 8 Equiv.IN_LO = some fc.freeInput) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat) (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0)
     (hin : RunInM C k ⟨s0, fc⟩ 0)
     (pc : BitVec 64) (hpc : ((sIter 0 k ⟨s0, fc⟩).rv).regs.get? Register.PC = some pc) (hpx : ExecAt rs pc) (hpcc : C pc)
     (hw : ZiskRiscv.readWord ((sIter 0 k ⟨s0, fc⟩).rv).mem pc.toNat = some ECALL)
@@ -599,10 +600,10 @@ theorem exit_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : Bi
     ∃ z', ZEnds zrom z0 z' ∧
       (c = 0 → z'.regs.get? .Zerror = some false ∧ Equiv.normIn z'.mem = Equiv.normIn ((sIter 0 k ⟨s0, fc⟩).rv).mem) ∧
       (c ≠ 0 → z'.regs.get? .Zerror = some true ∧ z'.regs.get? .Zerror_code = some c) := by
-  refine ⟨?_, (exit_end zrom entry hb rs hx ht C hnx hni m0 hfull hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun
+  refine ⟨?_, (exit_end zrom entry hb rs hx ht C hnx hni m0 hfull hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun
     hin pc hpc hpx hpcc hw h17 c h10).2⟩
   obtain ⟨-, -, -, -, -, -, -, hm⟩ :=
-    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
+    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin
   generalize sIter 0 k ⟨s0, fc⟩ = T at *
   have hmr := hm (PcOk.of_exec ht hpc hpx)
   rcases runs_sparse hmr ⟨s0', fc⟩ ⟨hsp, rfl⟩ hcode with ⟨Sk, hsk, hg, hgo⟩ | ⟨msg, hmsg⟩
@@ -634,7 +635,8 @@ theorem return_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : 
     (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
     (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
-    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat) (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0)
+    (hmir : Equiv.memRead m0 8 Equiv.IN_LO = some fc.freeInput) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat) (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0)
     (hin : RunInM C k ⟨s0, fc⟩ 0)
     (hpc : ((sIter 0 k ⟨s0, fc⟩).rv).regs.get? Register.PC = some Transpiler.OUTPUT_BLOCK)
     (s0' : RVState) (hsp : Ext zeroFill s0' s0)
@@ -644,10 +646,10 @@ theorem return_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : 
         ZiskRiscv.output Sk = ZiskRiscv.output (sIter 0 k ⟨s0, fc⟩)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some false ∧ Equiv.normIn z'.mem = Equiv.normIn ((sIter 0 k ⟨s0, fc⟩).rv).mem := by
-  refine ⟨?_, (return_end zrom entry hb rs hx ht C hnx hni m0 hfull hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k
+  refine ⟨?_, (return_end zrom entry hb rs hx ht C hnx hni m0 hfull hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k
     hrun hin hpc).2⟩
   obtain ⟨-, -, -, -, -, -, -, hm⟩ :=
-    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
+    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin
   generalize sIter 0 k ⟨s0, fc⟩ = T at *
   have hmr := hm ⟨_, hpc, by decide⟩
   rcases runs_sparse hmr ⟨s0', fc⟩ ⟨hsp, rfl⟩ hcode with ⟨Sk, hsk, -, hgo⟩ | ⟨msg, hmsg⟩
@@ -669,7 +671,8 @@ theorem fail_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : Bi
     (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
     (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
-    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0)
+    (hmir : Equiv.memRead m0 8 Equiv.IN_LO = some fc.freeInput) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
     (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
     (pc : BitVec 64) (hpc : (sIter 0 k ⟨s0, fc⟩).rv.regs.get? Register.PC = some pc) (hpx : ExecAt rs pc) (hpcc : C pc)
     (w : BitVec 32) (hrw : ZiskRiscv.readWord (sIter 0 k ⟨s0, fc⟩).rv.mem pc.toNat = some w)
@@ -682,10 +685,10 @@ theorem fail_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : Bi
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ n z1 e z', ZRun zrom n z0 z1 ∧ (zstep zrom).run z1 = .error e z' := by
-  refine ⟨?_, (fail_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun
+  refine ⟨?_, (fail_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun
     hin pc hpc hpx hpcc w hrw h4 h8 c hd hfail).2⟩
   obtain ⟨z1, -, -, hrel, hfr, hspr, -, hm⟩ :=
-    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
+    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin
   generalize sIter 0 k ⟨s0, fc⟩ = T at *
   have hmr := hm (PcOk.of_exec ht hpc hpx)
   have htr := hspr pc w hpcc hrw ⟨0, _, convert_call3 hd 0⟩
@@ -732,17 +735,18 @@ theorem fault_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : B
     (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
     (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
-    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0)
+    (hmir : Equiv.memRead m0 8 Equiv.IN_LO = some fc.freeInput) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
     (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
     (hfa : FaultAt rs zrom (sIter 0 k ⟨s0, fc⟩).rv)
     (s0' : RVState) (hsp : Ext zeroFill s0' s0) (hcode : ∀ pc, C pc → ∃ w, ZiskRiscv.readWord s0'.mem pc.toNat = some w) :
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ n z1 e z', ZRun zrom n z0 z1 ∧ (zstep zrom).run z1 = .error e z' := by
-  refine ⟨?_, (fault_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun
+  refine ⟨?_, (fault_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun
     hin hfa).2⟩
   obtain ⟨z1, -, -, hrel, -, -, -, hm⟩ :=
-    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
+    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin
   generalize sIter 0 k ⟨s0, fc⟩ = T at *
   obtain ⟨pc, hpc, hw, ⟨s', hrun', hpc'⟩, -⟩ := fault_step T.rv z1 rs hrel zrom hfa 0
   have hmr := hm (PcOk.of_exec ht hpc hw.1)
@@ -772,17 +776,18 @@ theorem misjump_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry :
     (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
     (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
-    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0)
+    (hmir : Equiv.memRead m0 8 Equiv.IN_LO = some fc.freeInput) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
     (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
     (hmj : MisJumpAt rs zrom (sIter 0 k ⟨s0, fc⟩).rv) (hmh : HaltMis zrom)
     (s0' : RVState) (hsp : Ext zeroFill s0' s0) (hcode : ∀ pc, C pc → ∃ w, ZiskRiscv.readWord s0'.mem pc.toNat = some w) :
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some true := by
-  refine ⟨?_, (misjump_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k
+  refine ⟨?_, (misjump_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k
     hrun hin hmj hmh).2⟩
   obtain ⟨z1, -, -, hrel, -, -, -, hm⟩ :=
-    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
+    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin
   generalize sIter 0 k ⟨s0, fc⟩ = T at *
   obtain ⟨pc, -, hpc, hw, -, -, ⟨s', hrun', hpc'⟩, -⟩ := misjump_step T.rv z1 rs hrel zrom hmj 0
   have hmr := hm (PcOk.of_exec ht hpc hw.1)
@@ -811,7 +816,8 @@ theorem fusedmis_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry 
     (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
     (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
-    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat) (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0)
+    (hmir : Equiv.memRead m0 8 Equiv.IN_LO = some fc.freeInput) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat) (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
     (pc : BitVec 64) (hpc : (sIter 0 k ⟨s0, fc⟩).rv.regs.get? Register.PC = some pc) (i : FInstr)
     (hi : FtAtM (sIter 0 k ⟨s0, fc⟩).rv rs pc zrom i) (htg : (i.T pc)[0] = false ∧ (i.T pc)[1] = true)
     (hmh : HaltMis zrom)
@@ -819,10 +825,10 @@ theorem fusedmis_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry 
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 2 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k + 1)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 2 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some true := by
-  refine ⟨?_, (fusedmis_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k
+  refine ⟨?_, (fusedmis_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k
     hrun hin pc hpc i hi htg hmh).2⟩
   obtain ⟨z1, -, -, hrel, -, -, -, hm⟩ :=
-    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
+    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin
   generalize sIter 0 k ⟨s0, fc⟩ = T at *
   obtain ⟨s1, hrun1, hr1, hpc1, hw1, hw2, ⟨s2, hrun2, hpc2⟩, -⟩ := fusedmis_step T.rv z1 rs hrel pc hpc zrom i hi htg 0
   have hmr := hm (PcOk.of_exec ht hpc hi.x1)
@@ -853,17 +859,18 @@ theorem halt_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : Bi
     (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
     (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
-    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0)
+    (hmir : Equiv.memRead m0 8 Equiv.IN_LO = some fc.freeInput) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
     (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
     (hha : HaltAt rs zrom (sIter 0 k ⟨s0, fc⟩).rv)
     (s0' : RVState) (hsp : Ext zeroFill s0' s0) (hcode : ∀ pc, C pc → ∃ w, ZiskRiscv.readWord s0'.mem pc.toNat = some w) :
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some true := by
-  refine ⟨?_, (halt_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun
+  refine ⟨?_, (halt_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun
     hin hha).2⟩
   obtain ⟨z1, -, -, hrel, -, -, -, hm⟩ :=
-    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
+    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin
   generalize sIter 0 k ⟨s0, fc⟩ = T at *
   obtain ⟨pc, e, hpc, he, hi⟩ := hha
   obtain ⟨⟨s', hrun', hpc'⟩, -⟩ := halt_step T.rv z1 rs hrel pc hpc zrom _ e he hi 0
@@ -926,7 +933,8 @@ theorem malformed_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry
     (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
     (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
-    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0)
+    (hmir : Equiv.memRead m0 8 Equiv.IN_LO = some fc.freeInput) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
     (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
     (pc : BitVec 64) (hpc : (sIter 0 k ⟨s0, fc⟩).rv.regs.get? Register.PC = some pc) (hpx : ExecAt rs pc) (hpcc : C pc)
     (w : BitVec 32) (hrw : ZiskRiscv.readWord (sIter 0 k ⟨s0, fc⟩).rv.mem pc.toNat = some w)
@@ -940,10 +948,10 @@ theorem malformed_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some true := by
-  refine ⟨?_, (malformed_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k
+  refine ⟨?_, (malformed_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k
     hrun hin pc hpc hpx hpcc w hrw h4 h8 why hd hdesc).2⟩
   obtain ⟨-, -, -, -, -, -, -, hm⟩ :=
-    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
+    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin
   generalize sIter 0 k ⟨s0, fc⟩ = T at *
   have hmr := hm (PcOk.of_exec ht hpc hpx)
   have hg : model.getPC T.rv = pc := by simp [model, hpc]

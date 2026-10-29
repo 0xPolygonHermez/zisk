@@ -9,6 +9,7 @@
 -/
 import Equiv.CallRun
 import Equiv.SpecRom
+import Equiv.FreeInputSim
 
 namespace Equiv.Sim
 
@@ -100,10 +101,54 @@ def CallAt (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (
     ZiskRiscv.decode (Transpiler.fetch3 pc w (nextWord S.rv pc) (nextWord2 S.rv pc)) pc.toNat = .call c ∧
     (c.len ≠ 1 → C (pc + 4)) ∧ (c.len = 3 → C (pc + 8)) ∧ CallOk S c
 
-/-- What one step of the machine needs: as `OneOkT`, or a ZisK call. -/
+/-- The 8 bytes at INPUT_ADDR hold the machine's free input: its mirror,
+    which every call writes (contract § 2). -/
+def Mirror (S : ZiskRiscv.State model) : Prop :=
+  Equiv.memRead S.rv.mem 8 Equiv.IN_LO = some S.fcall.freeInput
+
+/-- An `ld` of the free input at pc: an 8-byte load of INPUT_ADDR, in a
+    region that reads it. -/
+def FreeLdAt (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (S : ZiskRiscv.State model) :
+    Prop :=
+  ∃ pc i, S.rv.regs.get? Register.PC = some pc ∧ LdtAt S.rv rs pc zrom i (nextWord S.rv pc) ∧
+    ∃ v1, getX S.rv i.rs1.toNat = some v1 ∧ v1 + i.imm.signExtend 64 = _root_.Zisk.Functions.INPUT_ADDR ∧
+      ∃ r, matching_pma_region rs (.Physaddr (v1 + i.imm.signExtend 64)) 8 = some r ∧
+        r.attributes.readable = true ∧ SplitOk r (v1 + i.imm.signExtend 64) 8
+
+/-- What one step of the machine needs: as `OneOkT`, a ZisK call, or an
+    `ld` of the free input. -/
 def OneOkM (rs : List PMA_Region) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (C : BitVec 64 → Prop)
     (S : ZiskRiscv.State model) : Prop :=
-  OneOkT rs zrom S.rv ∨ CallAt rs zrom C S
+  OneOkT rs zrom S.rv ∨ CallAt rs zrom C S ∨ FreeLdAt rs zrom S
+
+/-- Memory that changed only in the RAM keeps the free input's mirror. -/
+theorem mirror_ramOnly {m m' : Equiv.Mem} (h : RamOnly m m') :
+    Equiv.memRead m' 8 Equiv.IN_LO = Equiv.memRead m 8 Equiv.IN_LO :=
+  memRead_frame m m' 8 _ (fun k h1 h2 => h k (by simp only [Equiv.IN_LO] at h1 h2; left; omega))
+
+/-- A call writes the free input's mirror. -/
+theorem call_mirror {S S' : ZiskRiscv.State model} {c : ZiskRiscv.Call} (h : ZiskRiscv.call S c = .ok S') :
+    Mirror S' := by
+  cases hr : ZiskRiscv.runOp c.op (S.argValue c.a) (S.argValue c.b) c.ext (callMem S c) S.fcall with
+  | error e => rw [call_err S c e hr] at h; cases h
+  | ok r =>
+    obtain ⟨cval, m', f'⟩ := r
+    rw [call_run S c cval m' f' hr] at h
+    cases h
+    have hm : ∀ (rv : RVState), ZiskRiscv.writeDword m' ZiskRiscv.INPUT_ADDR f'.freeInput = rv.mem →
+        Equiv.memRead rv.mem 8 Equiv.IN_LO = some f'.freeInput := by
+      intro rv e; rw [← e]
+      apply Equiv.memRead_of_get
+      intro i hi
+      have : Equiv.IN_LO = ZiskRiscv.INPUT_ADDR := rfl
+      rw [this]
+      rcases (by omega : i = 0 ∨ i = 1 ∨ i = 2 ∨ i = 3 ∨ i = 4 ∨ i = 5 ∨ i = 6 ∨ i = 7) with
+        rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+        simp [ZiskRiscv.writeDword, List.range, List.range.loop, List.foldl, Std.ExtHashMap.get?_eq_getElem?,
+          Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem_insert, ZiskRiscv.INPUT_ADDR, beq_iff_eq]
+    show Equiv.memRead _ 8 Equiv.IN_LO = some f'.freeInput
+    apply hm
+    split <;> simp only [model] <;> (try simp only [Equiv.Riscv.setX]) <;> (try split) <;> rfl
 
 /-- For the next k steps of the machine, from the state it reaches: each one
     covered as `OneOkM` says, or, two at a time, a fused auipc-jalr pair. -/
@@ -130,9 +175,10 @@ theorem RunInM.tail {C : BitVec 64 → Prop} {k : Nat} {S : ZiskRiscv.State mode
 theorem OneOkM.exec {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {S : ZiskRiscv.State model} (h : OneOkM rs zrom C S) :
     ∃ pc, S.rv.regs.get? Register.PC = some pc ∧ ExecAt rs pc := by
-  rcases h with h | ⟨pc, w, c, hpc, hx, -⟩
+  rcases h with h | ⟨pc, w, c, hpc, hx, -⟩ | ⟨pc, i, hpc, hi, -⟩
   · exact OneOkT.exec h
   · exact ⟨pc, hpc, hx⟩
+  · exact ⟨pc, hpc, hi.x1⟩
 
 theorem RunOkM.exec {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {S : ZiskRiscv.State model} {n : Nat} :
@@ -144,31 +190,52 @@ theorem RunOkM.exec {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zis
 theorem OneOkM.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {rs : List PMA_Region} {S : ZiskRiscv.State model} (hs : SpecRom zrom C S.rv.mem)
     (hc : ∀ pc, S.rv.regs.get? Register.PC = some pc → C pc) (h : OneOkM rs zr C S) : OneOkM rs zrom C S := by
-  rcases h with h | ⟨pc, w, c, hpc, hx, hrw, ⟨ia, l, hl, -⟩, rest⟩
+  rcases h with h | ⟨pc, w, c, hpc, hx, hrw, ⟨ia, l, hl, -⟩, rest⟩ | ⟨pc, i, hpc, hi, rest⟩
   · exact .inl (OneOkT.retarget hs hc h)
-  · exact .inr ⟨pc, w, c, hpc, hx, hrw, hs pc w (hc pc hpc) hrw ⟨ia, l, hl⟩, rest⟩
+  · exact .inr (.inl ⟨pc, w, c, hpc, hx, hrw, hs pc w (hc pc hpc) hrw ⟨ia, l, hl⟩, rest⟩)
+  · exact .inr (.inr ⟨pc, i, hpc, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩)
 
 /-! ## The simulation -/
 
 /-- One step of the machine, covered: ZisK's steps from related states to
     related states, the fcall relation kept; the step recorded. -/
 theorem one_stepM (C : BitVec 64 → Prop) (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState)
-    (rs : List PMA_Region) (hrel : Rel S.rv z rs) (hf : Equiv.Zisk.FcallRel S.fcall z)
+    (rs : List PMA_Region) (hrel : Rel S.rv z rs) (hf : Equiv.Zisk.FcallRel S.fcall z) (hmir : Mirror S)
     (hx : ¬ ExecAt rs EXIT_ADDR) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (h : OneOkM rs zrom C S)
     (hC : ∀ pc, S.rv.regs.get? Register.PC = some pc → C pc) (n : Nat) :
     ∃ z' k', ZRun zrom k' z z' ∧ Rel (sNext n S).rv z' rs ∧ Equiv.Zisk.FcallRel (sNext n S).fcall z' ∧
-      RamOnlyX S.rv.mem (sNext n S).rv.mem ∧ Grows S.rv.mem (sNext n S).rv.mem ∧
+      RamOnlyX S.rv.mem (sNext n S).rv.mem ∧ Grows S.rv.mem (sNext n S).rv.mem ∧ Mirror (sNext n S) ∧
       ∀ m S'', PcOk (sNext n S).rv → MRunR C m (sNext n S) S'' → MRunR C (m + 1) S S'' := by
-  rcases h with ho | ⟨pc, w, c, hpc, hex, hrw, htr, h4, h8, hd, hC4, hC8, hok⟩
+  rcases h with ho | ⟨pc, w, c, hpc, hex, hrw, htr, h4, h8, hd, hC4, hC8, hok⟩ |
+    ⟨pc, i, hpc, hi, v1, hv1, hva, r, hm, hrb, hal⟩
   · obtain ⟨s', z', k', hm, hzr, hrel', hro, hk⟩ := one_stepT S.rv z rs hrel zrom ho n
     obtain ⟨pc, hpc, hex⟩ := OneOkT.exec ho
     rw [hm.snext_eq]
     exact ⟨z', k', hzr, hrel', fun r hr => (hk r hr).trans (hf r hr), (RamOnlyX.of hro), hm.grows,
+      (mirror_ramOnly hro).trans hmir,
       fun m S'' hp hrest => hm.toRun hrel.ready hpc hex (hC pc hpc) hx hp hrest⟩
   · obtain ⟨S', z', k', hcs, hzr, hrel', hf', hmem, hg⟩ :=
       callstep_m C S z rs hrel hf hx pc hpc zrom w hex hrw htr h4 h8 c hd (hC pc hpc) hC4 hC8 hok
     rw [hcs.snext_eq n]
-    exact ⟨z', k', hzr, hrel', hf', hmem, hg, fun m S'' _ hrest => .call hcs hrest⟩
+    obtain ⟨c', hcall, -⟩ := hcs.2.2
+    exact ⟨z', k', hzr, hrel', hf', hmem, hg, call_mirror hcall, fun m S'' _ hrest => .call hcs hrest⟩
+  · -- the free input: the mirror in memory, ZisK's register the machine's
+    have hbytes : Equiv.memRead S.rv.mem 8 (v1 + i.imm.signExtend 64).toNat = some S.fcall.freeInput := by
+      rw [hva]; exact hmir
+    have hzf : z.regs.get? _root_.Zisk.Register.FreeInput = some S.fcall.freeInput := hf _ rfl
+    obtain ⟨s', z', h1, h2, h3, -, h5, hk⟩ :=
+      ldfree_rel S.rv z rs hrel pc hpc zrom i _ hi v1 hv1 hva r hm hrb hal _ hbytes hzf n
+    have hms : MStep rs n S.rv s' :=
+      .plain pc _ hpc (readWord_of hi.h0 hi.h1 hi.h2 hi.h3) (notSys_ld i).plain h1
+    rw [hms.snext_eq]
+    refine ⟨z', 1, .step h2 (.done _), h3, fun r hr => (hk r hr).trans (hf r hr), ?_, ?_, ?_,
+      fun m S'' hp hrest => hms.toRun hrel.ready hpc hi.x1 (hC pc hpc) hx hp hrest⟩
+    · show RamOnlyX S.rv.mem s'.mem
+      rw [h5]; exact RamOnlyX.refl _
+    · show Grows S.rv.mem s'.mem
+      rw [h5]; exact Grows.refl _
+    · show Equiv.memRead s'.mem 8 Equiv.IN_LO = some S.fcall.freeInput
+      rw [h5]; exact hmir
 
 set_option maxHeartbeats 1000000 in
 /-- The simulation over whole runs of the machine, ZisK calls among their
@@ -182,27 +249,27 @@ set_option maxHeartbeats 1000000 in
 theorem prog_romM (zr zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA_Region) (C : BitVec 64 → Prop)
     (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC) (hnx : NoCodeRam C) (hni : NoCodeIn C) :
     ∀ (k : Nat) (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState) (n : Nat),
-      Rel S.rv z rs → Equiv.Zisk.FcallRel S.fcall z → RunOkM rs zr C k S n → RunInM C k S n →
+      Rel S.rv z rs → Equiv.Zisk.FcallRel S.fcall z → Mirror S → RunOkM rs zr C k S n → RunInM C k S n →
       SpecRom zrom C S.rv.mem →
       ∃ z' k', ZRun zrom k' z z' ∧ Rel (sIter n k S).rv z' rs ∧ Equiv.Zisk.FcallRel (sIter n k S).fcall z' ∧
-        RamOnlyX S.rv.mem (sIter n k S).rv.mem ∧ Grows S.rv.mem (sIter n k S).rv.mem ∧
+        RamOnlyX S.rv.mem (sIter n k S).rv.mem ∧ Grows S.rv.mem (sIter n k S).rv.mem ∧ Mirror (sIter n k S) ∧
         (PcOk (sIter n k S).rv → MRunR C k S (sIter n k S))
-  | 0, S, z, n, hrel, hf, _, _, _ =>
-    ⟨z, 0, .done z, hrel, hf, RamOnlyX.refl _, Grows.refl _, fun _ => .done _⟩
-  | 1, S, z, n, hrel, hf, ho, hin, hs => by
-    obtain ⟨z1, k1, hzr, hrel1, hf1, hm1, hg1, hmr⟩ := one_stepM C S z rs hrel hf hx zrom
+  | 0, S, z, n, hrel, hf, hmir, _, _, _ =>
+    ⟨z, 0, .done z, hrel, hf, RamOnlyX.refl _, Grows.refl _, hmir, fun _ => .done _⟩
+  | 1, S, z, n, hrel, hf, hmir, ho, hin, hs => by
+    obtain ⟨z1, k1, hzr, hrel1, hf1, hm1, hg1, hmir1, hmr⟩ := one_stepM C S z rs hrel hf hmir hx zrom
       (OneOkM.retarget hs (fun _ h => hin.head h) ho) (fun _ h => hin.head h) n
-    exact ⟨z1, k1, hzr, hrel1, hf1, hm1, hg1, fun hp => hmr 0 _ hp (.done _)⟩
-  | k + 2, S, z, n, hrel, hf, .inl ⟨ho, hrest⟩, hin, hs => by
-    obtain ⟨z1, k1, hzr, hrel1, hf1, hm1, hg1, hmr⟩ := one_stepM C S z rs hrel hf hx zrom
+    exact ⟨z1, k1, hzr, hrel1, hf1, hm1, hg1, hmir1, fun hp => hmr 0 _ hp (.done _)⟩
+  | k + 2, S, z, n, hrel, hf, hmir, .inl ⟨ho, hrest⟩, hin, hs => by
+    obtain ⟨z1, k1, hzr, hrel1, hf1, hm1, hg1, hmir1, hmr⟩ := one_stepM C S z rs hrel hf hmir hx zrom
       (OneOkM.retarget hs (fun _ h => hin.head h) ho) (fun _ h => hin.head h) n
     obtain ⟨p1, hp1, hx1⟩ := RunOkM.exec hrest
-    obtain ⟨z2, k2, hzr2, hrel2, hf2, hm2, hg2, hmr2⟩ :=
-      prog_romM zr zrom rs C hx ht hnx hni (k + 1) (sNext n S) z1 (n + 1) hrel1 hf1 hrest hin.tail
+    obtain ⟨z2, k2, hzr2, hrel2, hf2, hm2, hg2, hmir2, hmr2⟩ :=
+      prog_romM zr zrom rs C hx ht hnx hni (k + 1) (sNext n S) z1 (n + 1) hrel1 hf1 hmir1 hrest hin.tail
         (hs.keepX hm1 hnx hni)
-    exact ⟨z2, k1 + k2, ZRun.append hzr hzr2, hrel2, hf2, hm1.trans hm2, hg1.trans hg2,
+    exact ⟨z2, k1 + k2, ZRun.append hzr hzr2, hrel2, hf2, hm1.trans hm2, hg1.trans hg2, hmir2,
       fun hp => hmr _ _ (PcOk.of_exec ht hp1 hx1) (hmr2 hp)⟩
-  | k + 2, S, z, n, hrel, hf, .inr ⟨⟨pc, i, hpc, hi⟩, hrest⟩, hin, hs => by
+  | k + 2, S, z, n, hrel, hf, hmir, .inr ⟨⟨pc, i, hpc, hi⟩, hrest⟩, hin, hs => by
     have hi' := FtAt.retarget hs (hin.head hpc) hi
     obtain ⟨s2, z1, hrun, hzrun, hrel1, -, hr1, hpc1, hmem1, hmem2, hk⟩ :=
       fused_rel S.rv z rs hrel pc hpc zrom i hi'.toFAt n
@@ -215,14 +282,15 @@ theorem prog_romM (zr zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA
     have hin2 := hin.tail.tail
     rw [q1, q2] at hrest hin2
     have hm : RamOnly S.rv.mem s2.mem := RamOnly.of_eq hmem2
-    obtain ⟨z3, k3, hzrun3, hrel3, hf3, hm3, hg3, hmr3⟩ :=
+    have hmir2 : Mirror { S with rv := s2 } := (mirror_ramOnly hm).trans hmir
+    obtain ⟨z3, k3, hzrun3, hrel3, hf3, hm3, hg3, hmir3, hmr3⟩ :=
       prog_romM zr zrom rs C hx ht hnx hni k { S with rv := s2 } z1 (n + 2) hrel1
-        (fun r hr => (hk r hr).trans (hf r hr)) hrest hin2 (hs.keepX (RamOnlyX.of hm) hnx hni)
+        (fun r hr => (hk r hr).trans (hf r hr)) hmir2 hrest hin2 (hs.keepX (RamOnlyX.of hm) hnx hni)
     have e : sIter n (k + 2) S = sIter (n + 2) k { S with rv := s2 } := by
       simp only [sIter, q1, q2]
     rw [e]
     refine ⟨z3, 1 + k3, ZRun.append hzrun hzrun3, hrel3, hf3, (RamOnlyX.of hm).trans hm3,
-      (m1.grows.trans m2.grows).trans hg3, fun hp => ?_⟩
+      (m1.grows.trans m2.grows).trans hg3, hmir3, fun hp => ?_⟩
     have hp2 : PcOk s2 := by
       cases k with
       | zero => exact hp

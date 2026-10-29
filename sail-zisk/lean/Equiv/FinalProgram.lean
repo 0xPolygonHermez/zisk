@@ -21,6 +21,7 @@ theorem zisk_exit_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
     (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
     (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0)
+    (hmir : Equiv.memRead m0 8 Equiv.IN_LO = some fc.freeInput)
     (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
     (hrun : RunOkM ziskRegions zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
     (pc : BitVec 64) (hpc : ((sIter 0 k ⟨s0, fc⟩).rv).regs.get? Register.PC = some pc)
@@ -36,7 +37,7 @@ theorem zisk_exit_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
     ∃ z', ZEnds (zromOf segs entry) z0 z' ∧
       (c = 0 → z'.regs.get? .Zerror = some false ∧ Equiv.normIn z'.mem = Equiv.normIn ((sIter 0 k ⟨s0, fc⟩).rv).mem) ∧
       (c ≠ 0 → z'.regs.get? .Zerror = some true ∧ z'.regs.get? .Zerror_code = some c) :=
-  zisk_exit (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 hfull (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin pc hpc hpcc hw h17 c h10 s0' hsp hcode hw0
+  zisk_exit (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 hfull (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin pc hpc hpcc hw h17 c h10 s0' hsp hcode hw0
 
 /-- The return to the initial ra. -/
 theorem zisk_return_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
@@ -47,6 +48,7 @@ theorem zisk_return_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
     (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
     (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0)
+    (hmir : Equiv.memRead m0 8 Equiv.IN_LO = some fc.freeInput)
     (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
     (hrun : RunOkM ziskRegions zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
     (hpc : ((sIter 0 k ⟨s0, fc⟩).rv).regs.get? Register.PC = some Transpiler.OUTPUT_BLOCK) (s0' : RVState)
@@ -56,7 +58,7 @@ theorem zisk_return_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
         ZiskRiscv.output Sk = ZiskRiscv.output (sIter 0 k ⟨s0, fc⟩)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ z', ZEnds (zromOf segs entry) z0 z' ∧ z'.regs.get? .Zerror = some false ∧ Equiv.normIn z'.mem = Equiv.normIn ((sIter 0 k ⟨s0, fc⟩).rv).mem :=
-  zisk_return (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 hfull (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin hpc s0' hsp hcode
+  zisk_return (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 hfull (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin hpc s0' hsp hcode
 
 /-- A ZisK call whose operation fails (by reading a byte that is not there
     only outside ZisK's regions): the machine's run ends in failure or in its own error, and
@@ -68,7 +70,8 @@ theorem zisk_fail_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
     (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0)) (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY)
     (hzst : ∃ st, z0.regs.get? .Step = some st) (hze : z0.regs.get? .Zerror = some false)
     (hzm : z0.mem = m0) (fc : ZiskRiscv.Fcall)
-    (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst)
+    (hzf : Equiv.Zisk.FcallRel fc z0)
+    (hmir : Equiv.memRead m0 8 Equiv.IN_LO = some fc.freeInput) (zr : BitVec 64 → _root_.Zisk.zisk_inst)
     (k : Nat) (hrun : RunOkM ziskRegions zr C k ⟨s0, fc⟩ 0)
     (hin : RunInM C k ⟨s0, fc⟩ 0) (pc : BitVec 64)
     (hpc : (sIter 0 k ⟨s0, fc⟩).rv.regs.get? Register.PC = some pc) (hpcc : C pc)
@@ -81,7 +84,7 @@ theorem zisk_fail_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ n z1 e z', ZRun (zromOf segs entry) n z0 z1 ∧ (zstep (zromOf segs entry)).run z1 = .error e z' :=
-  zisk_fail (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin pc hpc hpcc w hrw c hd hC4 hC8 hfail s0' hsp hcode
+  zisk_fail (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin pc hpc hpcc w hrw c hd hC4 hC8 hfail s0' hsp hcode
 
 /-- A load or a store at an address none of ZisK's regions permits: the
     machine's run ends in failure, or in its own error; sail-zisk's reaches
@@ -93,7 +96,8 @@ theorem zisk_fault_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
     (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0)) (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY)
     (hzst : ∃ st, z0.regs.get? .Step = some st) (hze : z0.regs.get? .Zerror = some false)
     (hzm : z0.mem = m0) (fc : ZiskRiscv.Fcall)
-    (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst)
+    (hzf : Equiv.Zisk.FcallRel fc z0)
+    (hmir : Equiv.memRead m0 8 Equiv.IN_LO = some fc.freeInput) (zr : BitVec 64 → _root_.Zisk.zisk_inst)
     (k : Nat) (hrun : RunOkM ziskRegions zr C k ⟨s0, fc⟩ 0)
     (hin : RunInM C k ⟨s0, fc⟩ 0) (hfa : FaultAtR (zromOf segs entry) (sIter 0 k ⟨s0, fc⟩).rv)
     (s0' : RVState) (hsp : Ext zeroFill s0' s0)
@@ -101,7 +105,7 @@ theorem zisk_fault_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ n z1 e z', ZRun (zromOf segs entry) n z0 z1 ∧ (zstep (zromOf segs entry)).run z1 = .error e z' :=
-  zisk_fault (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin hfa s0' hsp hcode
+  zisk_fault (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin hfa s0' hsp hcode
 
 /-- A jump to a target 2 mod 4: the machine's run ends in failure, or in
     its own error; sail-zisk's takes the jump, to an address with no
@@ -113,7 +117,8 @@ theorem zisk_misjump_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
     (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0)) (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY)
     (hzst : ∃ st, z0.regs.get? .Step = some st) (hze : z0.regs.get? .Zerror = some false)
     (hzm : z0.mem = m0) (fc : ZiskRiscv.Fcall)
-    (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst)
+    (hzf : Equiv.Zisk.FcallRel fc z0)
+    (hmir : Equiv.memRead m0 8 Equiv.IN_LO = some fc.freeInput) (zr : BitVec 64 → _root_.Zisk.zisk_inst)
     (k : Nat) (hrun : RunOkM ziskRegions zr C k ⟨s0, fc⟩ 0)
     (hin : RunInM C k ⟨s0, fc⟩ 0) (hmj : MisJumpAt ziskRegions (zromOf segs entry) (sIter 0 k ⟨s0, fc⟩).rv)
     (s0' : RVState) (hsp : Ext zeroFill s0' s0)
@@ -121,7 +126,7 @@ theorem zisk_misjump_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ z', ZEnds (zromOf segs entry) z0 z' ∧ z'.regs.get? .Zerror = some true :=
-  zisk_misjump (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin hmj (hp.rom entry).2.2 s0' hsp hcode
+  zisk_misjump (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin hmj (hp.rom entry).2.2 s0' hsp hcode
 
 /-- The fused auipc-jalr pair to a target 2 mod 4: the machine's run ends
     in failure a step later, or in its own error; sail-zisk's takes the
@@ -134,7 +139,8 @@ theorem zisk_fusedmis_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
     (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0)) (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY)
     (hzst : ∃ st, z0.regs.get? .Step = some st) (hze : z0.regs.get? .Zerror = some false)
     (hzm : z0.mem = m0) (fc : ZiskRiscv.Fcall)
-    (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst)
+    (hzf : Equiv.Zisk.FcallRel fc z0)
+    (hmir : Equiv.memRead m0 8 Equiv.IN_LO = some fc.freeInput) (zr : BitVec 64 → _root_.Zisk.zisk_inst)
     (k : Nat) (hrun : RunOkM ziskRegions zr C k ⟨s0, fc⟩ 0)
     (hin : RunInM C k ⟨s0, fc⟩ 0) (pc : BitVec 64)
     (hpc : (sIter 0 k ⟨s0, fc⟩).rv.regs.get? Register.PC = some pc) (i : FInstr)
@@ -144,7 +150,7 @@ theorem zisk_fusedmis_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 2 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k + 1)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 2 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ z', ZEnds (zromOf segs entry) z0 z' ∧ z'.regs.get? .Zerror = some true :=
-  zisk_fusedmis (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin pc hpc i hi htg (hp.rom entry).2.2 s0' hsp hcode
+  zisk_fusedmis (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin pc hpc i hi htg (hp.rom entry).2.2 s0' hsp hcode
 
 /-- `ebreak`, a write to a read-only CSR, or a word RISC-V rejects: the
     machine's run ends in failure, or in its own error; sail-zisk's ends in
@@ -156,7 +162,8 @@ theorem zisk_halt_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
     (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0)) (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY)
     (hzst : ∃ st, z0.regs.get? .Step = some st) (hze : z0.regs.get? .Zerror = some false)
     (hzm : z0.mem = m0) (fc : ZiskRiscv.Fcall)
-    (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst)
+    (hzf : Equiv.Zisk.FcallRel fc z0)
+    (hmir : Equiv.memRead m0 8 Equiv.IN_LO = some fc.freeInput) (zr : BitVec 64 → _root_.Zisk.zisk_inst)
     (k : Nat) (hrun : RunOkM ziskRegions zr C k ⟨s0, fc⟩ 0)
     (hin : RunInM C k ⟨s0, fc⟩ 0) (hha : HaltAt ziskRegions (zromOf segs entry) (sIter 0 k ⟨s0, fc⟩).rv)
     (s0' : RVState) (hsp : Ext zeroFill s0' s0)
@@ -164,7 +171,7 @@ theorem zisk_halt_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ z', ZEnds (zromOf segs entry) z0 z' ∧ z'.regs.get? .Zerror = some true :=
-  zisk_halt (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin hha s0' hsp hcode
+  zisk_halt (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin hha s0' hsp hcode
 
 /-- A ZisK call sequence the transpiler refuses, or a SYSTEM word of
     funct3 0 but `ecall` and `ebreak` (`mret`, `wfi`, ...), at a code address, the
@@ -177,7 +184,8 @@ theorem zisk_malformed_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
     (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0)) (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY)
     (hzst : ∃ st, z0.regs.get? .Step = some st) (hze : z0.regs.get? .Zerror = some false)
     (hzm : z0.mem = m0) (fc : ZiskRiscv.Fcall)
-    (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst)
+    (hzf : Equiv.Zisk.FcallRel fc z0)
+    (hmir : Equiv.memRead m0 8 Equiv.IN_LO = some fc.freeInput) (zr : BitVec 64 → _root_.Zisk.zisk_inst)
     (k : Nat) (hrun : RunOkM ziskRegions zr C k ⟨s0, fc⟩ 0)
     (hin : RunInM C k ⟨s0, fc⟩ 0) (pc : BitVec 64)
     (hpc : (sIter 0 k ⟨s0, fc⟩).rv.regs.get? Register.PC = some pc) (hpcc : C pc)
@@ -192,6 +200,6 @@ theorem zisk_malformed_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ z', ZEnds (zromOf segs entry) z0 z' ∧ z'.regs.get? .Zerror = some true :=
-  zisk_malformed (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin pc hpc hpcc w hrw h4 h8 why hd hdesc hC4 hC8 s0' hsp hcode
+  zisk_malformed (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin pc hpc hpcc w hrw h4 h8 why hd hdesc hC4 hC8 s0' hsp hcode
 
 end Equiv.Final
