@@ -803,6 +803,47 @@ theorem misjump_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry :
       simp only [ZiskRiscv.run]; rw [show k + 1 + fuel = k + (fuel + 1) by omega]; exact hmsg _ 0⟩
 
 open Equiv.Top in
+/-- `fusedmis_end` on sparse memory, as `exit_end_sparse`: the machine's
+    run ends in failure, or stops with its own error. -/
+theorem fusedmis_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
+    (rs : List PMA_Region) (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC) (C : BitVec 64 → Prop) (hnx : NoCodeRam C) (hni : NoCodeIn C)
+    (m0 : Mem) (hspec : SpecRom zrom C m0) (s0 : RVState) (hs0 : Start s0 rs entry m0)
+    (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
+    (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
+    (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat) (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
+    (pc : BitVec 64) (hpc : (sIter 0 k ⟨s0, fc⟩).rv.regs.get? Register.PC = some pc) (i : FInstr)
+    (hi : FtAtM (sIter 0 k ⟨s0, fc⟩).rv rs pc zrom i) (htg : (i.T pc)[0] = false ∧ (i.T pc)[1] = true)
+    (s0' : RVState) (hsp : Ext zeroFill s0' s0) (hcode : ∀ pc, C pc → ∃ w, ZiskRiscv.readWord s0'.mem pc.toNat = some w) :
+    ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 2 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k + 1)) ∨
+      ∃ msg, ∀ fuel, ZiskRiscv.run (k + 2 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
+    ∃ n z1, ZRun zrom n z0 z1 ∧ z1.regs.get? .PC = some (i.T pc) := by
+  refine ⟨?_, (fusedmis_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k
+    hrun hin pc hpc i hi htg).2⟩
+  obtain ⟨z1, -, -, hrel, -, -, -, hm⟩ :=
+    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
+  generalize sIter 0 k ⟨s0, fc⟩ = T at *
+  obtain ⟨s1, hrun1, hr1, hpc1, hw1, hw2, ⟨s2, hrun2, hpc2⟩, -⟩ := fusedmis_step T.rv z1 rs hrel pc hpc zrom i hi htg 0
+  have hmr := hm (PcOk.of_exec ht hpc hi.x1)
+  have hR := mstepR T rs hrel.ready pc hpc hw1 hx hrun1 (PcOk.of_exec ht hpc1 hi.x3)
+  have hmr1 := hmr.append (.step hR (.done _))
+  have hT := mstep_trapT { T with rv := s1 } rs hr1 (pc + 4) hpc1 hw2 hx hrun2 hpc2
+  rcases runs_sparse hmr1 ⟨s0', fc⟩ ⟨hsp, rfl⟩ hcode with ⟨Sk, hsk, -, hgo⟩ | ⟨msg, hmsg⟩
+  · rcases go_sparse_trap hT 4096 Sk hsk with ⟨S', m, hs⟩ | ⟨msg, hs⟩
+    · refine .inl ⟨S', m, fun fuel => ?_⟩
+      have hs' : ZiskRiscv.step Sk = .ok (S', .failure m) := hs
+      simp only [ZiskRiscv.run]
+      rw [show k + 2 + fuel = (k + 1) + (fuel + 1) by omega, hgo, ZiskRiscv.run.go]
+      simp [hs', bind, Except.bind, pure, Except.pure]
+    · refine .inr ⟨msg, fun fuel => ?_⟩
+      have hs' : ZiskRiscv.step Sk = .error msg := hs
+      simp only [ZiskRiscv.run]
+      rw [show k + 2 + fuel = (k + 1) + (fuel + 1) by omega, hgo, ZiskRiscv.run.go]
+      simp [hs', bind, Except.bind]
+  · exact .inr ⟨msg, fun fuel => by
+      simp only [ZiskRiscv.run]; rw [show k + 2 + fuel = (k + 1) + (fuel + 1) by omega]; exact hmsg _ 0⟩
+
+open Equiv.Top in
 /-- `halt_end` on sparse memory, as `exit_end_sparse`. -/
 theorem halt_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
     (rs : List PMA_Region) (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC)

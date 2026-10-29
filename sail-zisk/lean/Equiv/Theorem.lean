@@ -253,11 +253,39 @@ theorem misjump_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec
   obtain ⟨z1, n1, hz1, hrel, -, -, -, hm⟩ :=
     covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
   generalize sIter 0 k ⟨s0, fc⟩ = T at *
-  obtain ⟨pc, tgt, hpc, hw, ht0, ht1, ⟨s', hrun', hpc'⟩, z', hz', hzt⟩ := misjump_step T.rv z1 rs hrel zrom hmj 0
+  obtain ⟨pc, tgt, hpc, hw, ht0, ht1, ⟨s', hrun', hpc'⟩, k', z', hz', hzt⟩ := misjump_step T.rv z1 rs hrel zrom hmj 0
   have hmr := hm (PcOk.of_exec ht hpc hw.1)
   obtain ⟨m, hs⟩ := mstep_trap T rs hrel.ready pc hpc hw hx hrun' hpc'
-  exact ⟨⟨_, m, fun fuel => run_of hmr.toMRun hs (by simp) fuel⟩, n1 + 1, z', tgt,
-    ZRun.append hz1 (.step hz' (.done _)), hzt, ht0, ht1⟩
+  exact ⟨⟨_, m, fun fuel => run_of hmr.toMRun hs (by simp) fuel⟩, n1 + k', z', tgt,
+    ZRun.append hz1 hz', hzt, ht0, ht1⟩
+
+/-- The fused auipc-jalr pair to a target 2 mod 4: the machine's run ends
+    in failure a step later (the auipc, then sail-riscv's trap on the
+    jalr); sail-zisk's takes its one instruction for the pair, to the
+    target, where it finds none. -/
+theorem fusedmis_end (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
+    (rs : List PMA_Region) (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC) (C : BitVec 64 → Prop) (hnx : NoCodeRam C) (hni : NoCodeIn C)
+    (m0 : Mem) (hspec : SpecRom zrom C m0) (s0 : RVState) (hs0 : Start s0 rs entry m0)
+    (z0 : Equiv.Zisk.ZState) (hzx : z0.regs.get? .Xs = some (Vector.replicate 40 0))
+    (hzpc : z0.regs.get? .PC = some Transpiler.ROM_ENTRY) (hzst : ∃ st, z0.regs.get? .Step = some st)
+    (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
+    (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat) (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
+    (pc : BitVec 64) (hpc : (sIter 0 k ⟨s0, fc⟩).rv.regs.get? Register.PC = some pc) (i : FInstr)
+    (hi : FtAtM (sIter 0 k ⟨s0, fc⟩).rv rs pc zrom i) (htg : (i.T pc)[0] = false ∧ (i.T pc)[1] = true) :
+    (∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 2 + fuel) (⟨s0, fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k + 1)) ∧
+    ∃ n z1, ZRun zrom n z0 z1 ∧ z1.regs.get? .PC = some (i.T pc) := by
+  obtain ⟨z1, n1, hz1, hrel, -, -, -, hm⟩ :=
+    covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
+  generalize sIter 0 k ⟨s0, fc⟩ = T at *
+  obtain ⟨s1, hrun1, hr1, hpc1, hw1, hw2, ⟨s2, hrun2, hpc2⟩, z', hz', hzt⟩ :=
+    fusedmis_step T.rv z1 rs hrel pc hpc zrom i hi htg 0
+  have hmr := hm (PcOk.of_exec ht hpc hi.x1)
+  have hR := mstepR T rs hrel.ready pc hpc hw1 hx hrun1 (PcOk.of_exec ht hpc1 hi.x3)
+  have hmr1 := hmr.append (.step hR (.done _))
+  obtain ⟨m, hs⟩ := mstep_trap { T with rv := s1 } rs hr1 (pc + 4) hpc1 hw2 hx hrun2 hpc2
+  exact ⟨⟨_, m, fun fuel => by
+      rw [show k + 2 + fuel = (k + 1) + 1 + fuel by omega]; exact run_of hmr1.toMRun hs (by simp) fuel⟩,
+    n1 + 1, z', ZRun.append hz1 (.step hz' (.done _)), hzt⟩
 
 /-! ## A word the transpiler halts on -/
 
