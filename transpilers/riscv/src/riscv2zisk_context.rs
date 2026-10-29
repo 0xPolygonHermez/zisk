@@ -742,7 +742,12 @@ impl<'a> Riscv2ZiskContext<'a> {
 
             // This instruction ends the emulation with an error and its opcode cannot be proven,
             // i.e. the proof generation would fail
+            // Without the `compressed` feature (IALIGN = 32) the interpreter walks the code a
+            // word at a time, so a CHalt stands for a whole 4-byte word.
+            #[cfg(feature = "compressed")]
             RiscvInstName::CHalt => self.halt_with_error(riscv_instruction, 2),
+            #[cfg(not(feature = "compressed"))]
+            RiscvInstName::CHalt => self.halt_with_error(riscv_instruction, 4),
             RiscvInstName::Reserved => self.halt_with_error(riscv_instruction, 4),
 
             // This arm is needed when some optional instruction subsets are disabled; when all are

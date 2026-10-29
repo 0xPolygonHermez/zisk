@@ -182,15 +182,19 @@ transpilation.
   calls, from what the machine's decoder makes of them, the sequences the
   transpiler refuses, `csrs ID, x0`, reading `marchid`; the memset
   sequence of three words given the two words after its first, `csr3`), and
-  `lean/Transpiler/Bios.lean` the BIOS around them; `make transpiler-check`
-  finds both equal to the Rust on every instruction they describe in the 129
-  compliance tests and `test/transpiler/csr_forms.S`, every CSR form of the
-  contract and the refused sequences, assembled when `RISCV_GCC` is there
-  (1 282 150 instructions, the BIOS's included), and the
-  fibonacci guest (11 409). Still to do: the rest of the instruction set;
-  wiring `make transpiler-check` and `make decoder-diff` into CI; and the
-  whole ZisK ROM of a program from the spec, internal addresses included,
-  for the top theorem (each step's ZisK instruction already follows from the
+  `lean/Transpiler/Bios.lean` the BIOS around them; and
+  `lean/Transpiler/Rom.lean` the program's whole ROM (`programRom`: every
+  word of the code, a word at a time, translated with the two after it,
+  internal addresses from the ROM's counter). `make transpiler-check` finds
+  that ROM and the BIOS equal to the Rust's, entry for entry, internal
+  addresses included, but at a word the spec does not describe, in the 129
+  compliance tests, `test/transpiler/csr_forms.S` (every CSR form of the
+  contract and the refused sequences) and `test/transpiler/word_walk.S`,
+  assembled when `RISCV_GCC` is there (1 283 054 instructions, the BIOS's
+  included), and the fibonacci guest (11 409). Still to do: the rest of the
+  instruction set; wiring `make transpiler-check` and `make decoder-diff`
+  into CI; and the top theorem taking `programRom` for its ROM, instead of a
+  hypothesis on it (each step's ZisK instruction already follows from the
   spec: `lean/Equiv/FromSpec.lean`).
 - **The decode lemmas' checking time:** each decode lemma is in its own
   module (`lean/Equiv/Decode/`, `lean/Equiv/DecodeZbs/`, `lean/Equiv/Decode/Zbb/`, `lean/Equiv/Decode/Zbkb/`; the

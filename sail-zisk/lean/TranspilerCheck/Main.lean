@@ -6,16 +6,16 @@
 
   Each listing is what `sail-difftest rom -e <elf>` writes: the ELF's code
   sections, and the ROM the Rust transpiler built from it, as ROM table
-  entries (sail-zisk/model/zisk_rom_table.sail). The code is walked as
-  RISC-V walks it, a word at every 4-byte boundary; for each 32-bit instruction the spec
-  describes, every ZisK instruction it gives must be in the ROM, at the same
-  address, field for field — the proofs' hypothesis `SpecRom`
-  (Equiv/SpecRom.lean), its code addresses the ones walked here and the
-  next word the four bytes after. The internal address a translation continues
-  at is the Rust ROM's (see the spec's header). And no instruction is at an
-  address 2 mod 4, where a misaligned jump lands. Exits 1 on any difference.
+  entries (sail-zisk/model/zisk_rom_table.sail). The spec builds the
+  program's ROM from the code (Transpiler/Rom.lean): every word at a 4-byte
+  boundary translated, with the two words after it, internal addresses from
+  the ROM's counter. That ROM and the Rust's must be the same, entry for
+  entry, field for field, but where a word is one the spec does not
+  describe; the BIOS too. And no instruction is at an address 2 mod 4,
+  where a misaligned jump lands. Exits 1 on any difference.
 -/
 import Transpiler.Spec
+import Transpiler.Rom
 import Transpiler.Bios
 
 open _root_.Zisk Transpiler
@@ -68,22 +68,6 @@ def parseListing (text : String) : Except String Listing := do
     | _ => throw s!"bad line: {line}"
   return l
 
-/-- The instructions of a code section, as RISC-V with IALIGN = 32 and
-    riscv_interpreter.rs (its `compressed` feature off) split it: a word at
-    every 4-byte boundary, with its 32-bit word, or none for what the
-    interpreter turns into a halt (a word that is no 32-bit instruction, the
-    word 0xffffffff). -/
-partial def parcels (base : Nat) (data : ByteArray) : Array (Nat × Option (BitVec 32)) :=
-  go 0 #[]
-where
-  half (k : Nat) : Nat := data[k]!.toNat + 256 * data[k + 1]!.toNat
-  go (k : Nat) (acc : Array (Nat × Option (BitVec 32))) : Array (Nat × Option (BitVec 32)) :=
-    if k + 4 > data.size then acc
-    else
-      let w := half k + 65536 * half (k + 2)
-      let insn := half k % 4 == 3 && w != 0xffffffff
-      go (k + 4) (acc.push (base + k, if insn then some (BitVec.ofNat 32 w) else none))
-
 def hex (n : Nat) : String := String.ofList (Nat.toDigits 16 n)
 
 structure Tally where
@@ -93,45 +77,46 @@ structure Tally where
 
 def check (name : String) (l : Listing) : IO Tally := do
   let mut t : Tally := {}
-  for (base, data) in l.code do
-    let ps := parcels base data
-    for k in [0:ps.size] do
-      let (pc, some w) := ps[k]! | continue
-      -- The next word as `SpecRom` (Equiv/SpecRom.lean) reads it: the four
-      -- bytes at pc + 4, whatever they are, when the section holds them.
-      let o := pc - base
-      let next : Option (BitVec 32) :=
-        if o + 8 ≤ data.size then
-          some (BitVec.ofNat 32 (data[o + 4]!.toNat + 256 * data[o + 5]!.toNat +
-            65536 * data[o + 6]!.toNat + 16777216 * data[o + 7]!.toNat))
-        else none
-      let next2 : Option (BitVec 32) :=
-        if o + 12 ≤ data.size then
-          some (BitVec.ofNat 32 (data[o + 8]!.toNat + 256 * data[o + 9]!.toNat +
-            65536 * data[o + 10]!.toNat + 16777216 * data[o + 11]!.toNat))
-        else none
-      -- The internal address the Rust's translation continues at, if any.
-      let ia : BitVec 64 := match l.rom.get? pc with
-        | some (some i) => BitVec.ofNat 64 pc + i.jmp_off1
-        | _ => BitVec.ofNat 64 (pc + 1)
-      match convert (BitVec.ofNat 64 pc) w next ia next2 with
-      | none => t := { t with undescribed := t.undescribed + 1 }
-      | some insts =>
+  -- The program's ROM from the spec (Transpiler/Rom.lean): every word of the
+  -- code translated, internal addresses from the counter, as the Rust
+  -- builds it.
+  let segs := l.code.toList.map fun (base, data) =>
+    (BitVec.ofNat 64 base, (Array.range (data.size / 4)).map fun k =>
+      BitVec.ofNat 32 (data[4 * k]!.toNat + 256 * data[4 * k + 1]!.toNat +
+        65536 * data[4 * k + 2]!.toNat + 16777216 * data[4 * k + 3]!.toNat))
+  -- The words the spec does not describe: they have no entry in it.
+  let mut undesc : Std.HashSet Nat := {}
+  for (base, ws) in segs do
+    for k in [0:ws.size] do
+      let pc := base + BitVec.ofNat 64 (4 * k)
+      if (convert pc ws[k]! ws[k + 1]? 0 ws[k + 2]?).isSome then
         t := { t with described := t.described + 1 }
-        for (a, i) in insts do
-          match l.rom.get? a.toNat with
-          | some (some r) =>
-            if r != i then
-              t := { t with differences := t.differences + 1 }
-              IO.println s!"{name}: {repr (decode w)} at {hex pc} \
-                ({hex w.toNat}), at {hex a.toNat}:\
-                \n  spec {repr i}\n  rust {repr r}"
-          | some none =>
-            t := { t with differences := t.differences + 1 }
-            IO.println s!"{name}: at {hex a.toNat}, the Rust's instruction is one the model does not describe"
-          | none =>
-            t := { t with differences := t.differences + 1 }
-            IO.println s!"{name}: at {hex a.toNat}, no instruction in the Rust's ROM"
+      else
+        t := { t with undescribed := t.undescribed + 1 }
+        undesc := undesc.insert pc.toNat
+  let mut seen : Std.HashSet Nat := {}
+  for (a, i) in programRom segs do
+    if seen.contains a.toNat then
+      t := { t with differences := t.differences + 1 }
+      IO.println s!"{name}: two instructions at {hex a.toNat} in the spec's ROM"
+    seen := seen.insert a.toNat
+    match l.rom.get? a.toNat with
+    | some (some r) =>
+      if r != i then
+        t := { t with differences := t.differences + 1 }
+        IO.println s!"{name}: at {hex a.toNat}:\n  spec {repr i}\n  rust {repr r}"
+    | some none =>
+      t := { t with differences := t.differences + 1 }
+      IO.println s!"{name}: at {hex a.toNat}, the Rust's instruction is one the model does not describe"
+    | none =>
+      t := { t with differences := t.differences + 1 }
+      IO.println s!"{name}: at {hex a.toNat}, no instruction in the Rust's ROM"
+  -- And the Rust's program ROM has nothing more, but at a word the spec
+  -- does not describe.
+  for (a, _) in l.rom do
+    if 0x9000_0000 ≤ a && a < 0x97E0_0000 && !seen.contains a && !undesc.contains a then
+      t := { t with differences := t.differences + 1 }
+      IO.println s!"{name}: at {hex a}, an instruction the spec's ROM has not"
   -- The BIOS, for the entry the Rust's BIOS calls.
   if let some (some call) := l.rom.get? 0x1018 then
     for (a, i) in bios call.b_imm do
