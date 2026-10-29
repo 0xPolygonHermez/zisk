@@ -6,6 +6,9 @@ use regex::Regex;
 use std::fs::File;
 use std::io::Result;
 
+use zisk_core::is_wasm_file;
+use zisk_transpiler_common::wasm_function_symbols;
+
 #[derive(Debug, Clone)]
 pub struct SymbolInfo {
     pub name: String,
@@ -39,6 +42,11 @@ impl ElfSymbolReader {
         let file = File::open(path)?;
         let mmap = unsafe { Mmap::map(&file)? };
 
+        if is_wasm_file(&mmap) {
+            self.parse_wasm_functions(&mmap)?;
+            return Ok(vec![0; symbols.len()]);
+        }
+
         match object::File::parse(&*mmap) {
             Ok(obj) => {
                 self.parse_symbols(&obj);
@@ -55,6 +63,11 @@ impl ElfSymbolReader {
     pub fn get_symbols_from_file(&mut self, path: &str, symbols: &[&str]) -> Result<Vec<u64>> {
         let file = File::open(path)?;
         let mmap = unsafe { Mmap::map(&file)? };
+
+        // A wasm module has none of the ELF data symbols (heap bounds) callers ask for
+        if is_wasm_file(&mmap) {
+            return Ok(vec![0; symbols.len()]);
+        }
 
         match object::File::parse(&*mmap) {
             Ok(obj) => Ok(self.get_symbols(&obj, symbols)),
@@ -88,6 +101,25 @@ impl ElfSymbolReader {
                 }
             }
         }
+    }
+
+    /// Loads the functions of a WebAssembly guest, at the ROM addresses the wasm transpiler gives
+    /// them, in place of an ELF symbol table
+    fn parse_wasm_functions(&mut self, wasm: &[u8]) -> Result<()> {
+        let functions = wasm_function_symbols(wasm)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+        for function in functions {
+            let name = self.demangle_name(&function.name);
+            let is_selected_roi =
+                self.roi_filter.as_ref().map(|re| re.is_match(&name)).unwrap_or(false);
+            self.functions.push(SymbolInfo {
+                name,
+                address: function.address,
+                size: function.size,
+                is_selected_roi,
+            });
+        }
+        Ok(())
     }
 
     fn parse_symbols(&mut self, obj: &object::File) {

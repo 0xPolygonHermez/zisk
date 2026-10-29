@@ -104,7 +104,7 @@ impl GuestProgram {
         };
 
         let elf_data = fs::read(path)
-            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", path, e))?;
+            .map_err(|e| anyhow::anyhow!("Error reading guest program file {}: {}", path, e))?;
 
         let name =
             Path::new(path).file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string();
@@ -208,9 +208,9 @@ impl GuestProgram {
         let seed = seed.map_or_else(RandomSeed::random, Ok)?;
         let transpiler = ZiskTranspiler::new(self.elf());
 
-        let zisk_rom = transpiler
-            .run()
-            .map_err(|e| anyhow::anyhow!("Failed to convert ELF to ZISK ROM: {e:?}"))?;
+        let zisk_rom = transpiler.run().map_err(|e| {
+            anyhow::anyhow!("Failed to transpile the guest program into a ZisK ROM: {e:?}")
+        })?;
 
         let callback = None::<Box<dyn Fn(zisk_common::EmuTrace)>>;
 

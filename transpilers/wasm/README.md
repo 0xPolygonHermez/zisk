@@ -244,9 +244,26 @@ for the per-instruction overhead are in [Cost model](#cost-model).
 | `wasm2zisk <in.wasm> <out.asm> --gen=N` | Transpile and save the ROM as x86-64 NASM, like `riscv2zisk`. `--gen=0` fast, `1` minimal traces, `2` ROM histogram, `7` memory ops. |
 | `zisk_transpiler_common::program2rom(bytes)` | Library entry point: detects the format and returns a `ZiskRom`. |
 | `zisk_transpiler_wasm::wasm2rom(bytes)` | Library entry point for wasm only. |
+| `zisk_transpiler_wasm::wasm_function_symbols(bytes)` | Each function's name and ROM range, as `wasm2rom` lays them out. |
 
 ```bash
 cargo run --release -p zisk-transpiler-wasm --bin wasm2zisk -- $WASM fib.asm --gen=0
+```
+
+Inside a Cargo project, the `cargo-zisk` commands find the guest without `-e`: they look for the
+ZisK ELF (`target/elf/...`) and then for the `wasm32-wasip1` module
+(`target/wasm32-wasip1/<profile>/<package>.wasm`).
+
+Profiling names the guest's functions, as it does for an ELF's symbols. Function names come from
+the module's `name` section (kept by default in Rust and Go builds), else from import and
+export names:
+
+```bash
+ziskemu -e $WASM -i input.bin -X -S --top-functions
+# TOP STEP FUNCTIONS (STEPS, % STEPS, CALLS, STEPS/CALL, FUNCTION)
+#      10,874,969  99.99%     1  10,874,969 _start
+#       6,786,453  62.40%     1   6,786,453 core::slice::sort::unstable::ipnsort::<u32, ...>
+# ...
 ```
 
 Floating point needs the `float` feature on whichever binary transpiles (`ziskemu`,

@@ -1354,6 +1354,22 @@ impl Stats {
                     self.call_return_reg = inst.store_offset as u8;
                     self.call_return_value = store_value;
                 }
+                // A WebAssembly call: `copyb` of the callee address with set_pc, linking through
+                // ra; the wasm transpiler marks it with meta_rd = ra, as for a RISC-V jal
+                ZiskOp::COPYB
+                    if inst.store_pc
+                        && inst.set_pc
+                        && inst.meta_rd == Some(REG_RA_IDX)
+                        && self.check_call_return(
+                            inst_ctx.c as i64 + inst.jmp_offset1,
+                            pc as i64 + inst.jmp_offset2,
+                            true,
+                        ) =>
+                {
+                    self.is_call = true;
+                    self.call_return_reg = inst.store_offset as u8;
+                    self.call_return_value = store_value;
+                }
                 ZiskOp::COPYB
                     if !inst.store_pc
                         && !inst.set_pc
@@ -1393,6 +1409,10 @@ impl Stats {
                             !inst.store_pc
                                 && inst.set_pc
                                 && self.check_call(inst_ctx.c as i64 + inst.jmp_offset2)
+                        }
+                        // A WebAssembly return: `copyb` of the return address with set_pc
+                        ZiskOp::COPYB if inst.set_pc => {
+                            !inst.store_pc && self.check_call(inst_ctx.c as i64 + inst.jmp_offset1)
                         }
                         ZiskOp::COPYB => {
                             !inst.store_pc

@@ -19,7 +19,7 @@ use zisk_rom_setup::{gen_assembly, rom_merkle_setup, HashMode};
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Setup guest program
 pub(crate) struct ProgramSetupCmd {
-    /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
+    /// Path to the guest program (RISC-V ELF or .wasm). If omitted, it is auto-detected from the current project
     #[arg(short = 'e', long)]
     elf: Option<PathBuf>,
 
@@ -52,7 +52,7 @@ impl ProgramSetupCmd {
             match detect_current_project_elf()? {
                 Some(elf) => self.elf = Some(elf),
                 None => {
-                    anyhow::bail!("No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf.");
+                    anyhow::bail!("No guest program provided, and could not detect one in the current project. Please pass a RISC-V ELF or .wasm file with --elf.");
                 }
             }
         }
@@ -61,7 +61,7 @@ impl ProgramSetupCmd {
         print_banner();
 
         print_banner_field("Command", "Rom Setup");
-        print_banner_field("Elf", self.elf.as_ref().unwrap().display());
+        print_banner_field("Program", self.elf.as_ref().unwrap().display());
         if self.hints {
             print_banner_field("Hints", "Enabled".yellow());
         }

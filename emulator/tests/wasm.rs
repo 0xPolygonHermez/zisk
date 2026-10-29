@@ -981,3 +981,47 @@ fn poll_oneoff_writes_well_formed_events() {
         assert_eq!(mem.read(ev + 24, 2), 0, "event {i} flags");
     }
 }
+
+#[test]
+fn function_symbols_name_the_rom_ranges_profiling_sees() {
+    let wasm = wat::parse_str(
+        r#"(module
+          (import "wasi_snapshot_preview1" "fd_write"
+            (func $fd_write (param i32 i32 i32 i32) (result i32)))
+          (memory 1)
+          (func $square (param $x i64) (result i64) (i64.mul (local.get $x) (local.get $x)))
+          (func (export "_start")
+            (i64.store (i32.const 16) (call $square (i64.const 7)))))"#,
+    )
+    .unwrap();
+    let symbols = zisk_transpiler_wasm::wasm_function_symbols(&wasm).expect("symbols");
+
+    // `wat` writes every `$name` into the name section, which takes precedence; the entry
+    // routine comes last.
+    let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, ["fd_write", "square", "_start", "wasm entry routine"]);
+
+    // Every symbol is a non-empty, 4-byte aligned range of the ROM, and they do not overlap.
+    let rom = wasm2rom(&wasm).expect("wasm2rom");
+    for pair in symbols.windows(2) {
+        assert!(pair[0].address + pair[0].size <= pair[1].address, "{pair:?} overlap");
+    }
+    for s in &symbols {
+        assert!(s.size > 0 && s.address % 4 == 0 && s.size % 4 == 0, "{s:?}");
+        assert!(rom.insts.contains_key(&s.address), "{s:?} starts outside the ROM");
+        assert!(rom.insts.contains_key(&(s.address + s.size - 4)), "{s:?} ends outside the ROM");
+    }
+
+    // The profiler's symbol reader takes a .wasm file in place of an ELF.
+    let path = std::env::temp_dir().join(format!("zisk_wasm_symbols_{}.wasm", std::process::id()));
+    std::fs::write(&path, &wasm).unwrap();
+    let mut reader = ziskemu::ElfSymbolReader::new();
+    let heap = reader.load_from_file(path.to_str().unwrap(), &["_heap_bottom"]).unwrap();
+    std::fs::remove_file(&path).unwrap();
+    assert_eq!(heap, [0], "a wasm module has no heap symbols");
+    let loaded: Vec<(String, u64)> =
+        reader.functions().map(|s| (s.name.clone(), s.address)).collect();
+    let expected: Vec<(String, u64)> =
+        symbols.iter().map(|s| (s.name.clone(), s.address)).collect();
+    assert_eq!(loaded, expected);
+}

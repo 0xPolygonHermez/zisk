@@ -349,6 +349,8 @@ impl Code {
         zib.op("copyb").unwrap();
         zib.set_pc();
         zib.j(0, 4);
+        // Profiling metadata: a return through `reg`, like a RISC-V `jalr x0, reg`
+        zib.set_meta_rs1_rd(reg as u8, 0);
 
         self.push(zib, Fixup::None);
     }

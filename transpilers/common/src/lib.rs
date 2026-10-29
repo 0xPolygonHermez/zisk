@@ -5,3 +5,4 @@
 pub mod transpiler;
 
 pub use transpiler::*;
+pub use zisk_transpiler_wasm::{wasm_function_symbols, WasmFunctionSymbol};

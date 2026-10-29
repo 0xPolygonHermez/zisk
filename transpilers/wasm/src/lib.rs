@@ -40,8 +40,28 @@ const PROGRAM_ROM_END: u64 = zisk_core::ROM_ADDR_MAX + 1;
 /// Reserve below `WASM_STACK_TOP` for the synthetic entry "frame" that calls `_start`.
 const ENTRY_FRAME_RESERVE: i64 = 64;
 
+/// A function of a transpiled module and the ROM range its code occupies; profiling uses these
+/// to name ROM addresses, as it uses an ELF's symbol table for a RISC-V guest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WasmFunctionSymbol {
+    pub name: String,
+    pub address: u64,
+    pub size: u64,
+}
+
 /// Transpiles a wasm module into a Zisk ROM.
 pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
+    Ok(transpile(bytes)?.0)
+}
+
+/// The functions of a wasm module as [`wasm2rom`] lays them out in the ROM, plus the entry
+/// routine. A function is named from the module's `name` section when present, otherwise from
+/// its import or export name, otherwise `wasm-function[<index>]`.
+pub fn wasm_function_symbols(bytes: &[u8]) -> Result<Vec<WasmFunctionSymbol>, Box<dyn Error>> {
+    Ok(transpile(bytes)?.1)
+}
+
+fn transpile(bytes: &[u8]) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn Error>> {
     let module = parse_module(bytes)?;
     reject_unsupported_layout(&module)?;
 
@@ -153,7 +173,45 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 
     rom.optimize_instruction_lookup()?;
 
-    Ok(rom)
+    let mut symbols: Vec<WasmFunctionSymbol> = codes
+        .iter()
+        .enumerate()
+        .map(|(i, code)| WasmFunctionSymbol {
+            name: function_name(&module, i as u32),
+            address: func_addr[i],
+            size: 4 * code.len() as u64,
+        })
+        .collect();
+    symbols.push(WasmFunctionSymbol {
+        name: "wasm entry routine".to_string(),
+        address: entry_base,
+        size: entry_end - entry_base,
+    });
+
+    Ok((rom, symbols))
+}
+
+/// The name of function `index`: from the `name` section, else `module.name` for an import,
+/// else its export name, else `wasm-function[<index>]`.
+fn function_name(module: &WasmModule, index: u32) -> String {
+    if let Some(name) = module.func_names.get(&index) {
+        return name.clone();
+    }
+    if let Some((import_module, name, _)) = module.imports.get(index as usize) {
+        return format!("{import_module}.{name}");
+    }
+    module
+        .exports
+        .iter()
+        .find(|(_, kind, i)| {
+            *i == index
+                && matches!(
+                    kind,
+                    wasmparser::ExternalKind::Func | wasmparser::ExternalKind::FuncExact
+                )
+        })
+        .map(|(name, _, _)| name.clone())
+        .unwrap_or_else(|| format!("wasm-function[{index}]"))
 }
 
 /// Fails if the module does not fit the machine's fixed runtime areas (see `layout.rs`):
@@ -344,6 +402,8 @@ fn emit_entry_call(code: &mut Code, func_index: u32) {
     zib.set_pc();
     zib.store_pc("reg", REG_RA as i64, false);
     zib.j(0, 4);
+    // Profiling metadata: a call linking through ra, like a RISC-V `jal ra`
+    zib.set_meta_rd(REG_RA as u8);
 
     // On return: publish output and halt.
     code.push_raw(zib, Fixup::FuncAddr(func_index));

@@ -15,7 +15,7 @@ use crate::ux::{print_banner, print_banner_command, print_banner_field};
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Generate the proving setup for a guest or aggregation program locally
 pub(crate) struct ZiskEmbeddedSetup {
-    /// Path to the guest ELF file. If omitted (and no `--aggregation`), the ELF
+    /// Path to the guest program (RISC-V ELF or .wasm). If omitted (and no `--aggregation`), it
     /// is auto-detected from the current project
     #[arg(short = 'e', long, conflicts_with = "aggregation")]
     elf: Option<PathBuf>,
@@ -89,7 +89,7 @@ impl ZiskEmbeddedSetup {
 
         print_banner();
         print_banner_command(format!("{} Setup", "EMBEDDED".bold()));
-        print_banner_field("Elf", elf.display());
+        print_banner_field("Program", elf.display());
         println!();
 
         setup_logger(VerboseMode::from(self.verbose));

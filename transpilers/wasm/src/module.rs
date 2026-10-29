@@ -9,12 +9,13 @@
 //! and floating point without the `float` feature) with a clear error, so the supported subset
 //! fails loudly rather than miscompiling.
 
+use std::collections::BTreeMap;
 use std::error::Error;
 
 use super::layout::WASM_MAX_PAGES;
 use wasmparser::{
-    DataKind, ElementItems, ElementKind, ExternalKind, Operator, Parser, Payload, TypeRef, ValType,
-    Validator, WasmFeatures,
+    DataKind, ElementItems, ElementKind, ExternalKind, KnownCustom, Name, Operator, Parser,
+    Payload, TypeRef, ValType, Validator, WasmFeatures,
 };
 
 const SUPPORTED_FEATURES: WasmFeatures = WasmFeatures::WASM1
@@ -107,6 +108,9 @@ pub struct WasmModule<'a> {
     max_num_locals: u32,
     pub start_func: Option<u32>,
     pub exports: Vec<(String, ExternalKind, u32)>,
+    /// Function names from the `name` custom section, by function index. Debug information
+    /// only: absent or malformed names are skipped, never an error.
+    pub func_names: BTreeMap<u32, String>,
 }
 
 impl<'a> WasmModule<'a> {
@@ -206,6 +210,7 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
     let mut has_table = false;
     let mut start_func: Option<u32> = None;
     let mut exports: Vec<(String, ExternalKind, u32)> = Vec::new();
+    let mut func_names: BTreeMap<u32, String> = BTreeMap::new();
 
     for payload in Parser::new(0).parse_all(bytes) {
         match payload? {
@@ -357,6 +362,17 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
             Payload::TagSection(_) => {
                 return Err("wasm: exception handling (tags) is not supported".into());
             }
+            Payload::CustomSection(reader) => {
+                if let KnownCustom::Name(names) = reader.as_known() {
+                    for name in names.into_iter().flatten() {
+                        if let Name::Function(map) = name {
+                            for naming in map.into_iter().flatten() {
+                                func_names.insert(naming.index, naming.name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -406,5 +422,6 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
         max_num_locals,
         start_func,
         exports,
+        func_names,
     })
 }

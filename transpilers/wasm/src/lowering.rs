@@ -188,6 +188,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         zib.op("copyb").unwrap();
         zib.set_pc();
         zib.j(0, 4);
+        // Profiling metadata: a return through t0, like a RISC-V `jalr x0, t0`
+        zib.set_meta_rs1_rd(REG_T0 as u8, 0);
 
         self.code.push_raw(zib, Fixup::None);
     }
@@ -1027,6 +1029,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         zib.set_pc();
         zib.store_pc("reg", REG_RA as i64, false);
         zib.j(0, 4);
+        // Profiling metadata: a call linking through ra, like a RISC-V `jal ra`
+        zib.set_meta_rd(REG_RA as u8);
 
         self.code.push_raw(zib, Fixup::FuncAddr(callee));
 
@@ -1114,6 +1118,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         zib.set_pc();
         zib.store_pc("reg", REG_RA as i64, false);
         zib.j(0, 4);
+        // Profiling metadata: a call linking through ra, like a RISC-V `jal ra`
+        zib.set_meta_rd(REG_RA as u8);
 
         self.code.push_raw(zib, Fixup::None);
 

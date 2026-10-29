@@ -71,7 +71,7 @@ pub(crate) fn print_job_banner(
 ) {
     print_banner();
     print_banner_command(command);
-    print_banner_field("Elf", elf.display());
+    print_banner_field("Program", elf.display());
     let inputs_str = inputs.map_or_else(|| "None".dimmed().to_string(), str::to_string);
     print_banner_field("Input", inputs_str);
     if let Some(hints) = hints {
