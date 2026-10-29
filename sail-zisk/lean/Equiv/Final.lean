@@ -226,7 +226,7 @@ theorem zisk_halt (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 6
 
 /-- A ZisK call sequence the transpiler refuses, or a SYSTEM word of
     funct3 0 but `ecall` and `ebreak` (`mret`, `wfi`, ...), at a code address, the
-    two words after it code too, that the spec describes: the machine's
+    two words after it code too (or the decoder reading the word alone), that the spec describes: the machine's
     run ends in failure, or in its own error; sail-zisk's ends in error. -/
 theorem zisk_malformed (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : BitVec 64) (hb : BiosAt zrom entry)
     (C : BitVec 64 → Prop) (hcx : ∀ pc, C pc → ExecAt ziskRegions pc)
@@ -244,13 +244,14 @@ theorem zisk_malformed (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry : Bit
       (nextWord2 (sIter 0 k ⟨s0, fc⟩).rv pc)) pc.toNat = .malformed why)
     (hdesc : ∃ ia l, Transpiler.convert pc w (nextWord (sIter 0 k ⟨s0, fc⟩).rv pc) ia
       (nextWord2 (sIter 0 k ⟨s0, fc⟩).rv pc) = some l)
-    (hC4 : C (pc + 4)) (hC8 : C (pc + 8))
+    (hC : (C (pc + 4) ∧ C (pc + 8)) ∨
+      ∀ fetch : Nat → Option (BitVec 32), fetch pc.toNat = some w → ZiskRiscv.decode fetch pc.toNat = .malformed why)
     (s0' : RVState) (hsp : Ext zeroFill s0' s0) (hcode : ∀ pc, C pc → ∃ w, ZiskRiscv.readWord s0'.mem pc.toNat = some w) :
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some true :=
   malformed_end_sparse zrom entry hb ziskRegions exit_not_exec trap_not_exec C (noCodeRam_of_exec hcx)
     (noCodeIn_of_exec hcx) m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin pc hpc (hcx pc hpcc) hpcc
-    w hrw h4 h8 why hd hdesc hC4 hC8 s0' hsp hcode
+    w hrw h4 h8 why hd hdesc hC s0' hsp hcode
 
 end Equiv.Final

@@ -310,7 +310,7 @@ theorem kind_csrw {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 �
       fun fetch hf => nop_any hD (by rw [hf, hf3])⟩)))
   | malformed why =>
     exact StepCase.ofEnd (.inr (.inr (.inr (.inr (.inl ⟨pc, w, why, hx.atPc, hx.code, hx.word, hD,
-      ⟨ia, l, hl⟩, hC4, hC8⟩)))))
+      ⟨ia, l, hl⟩, .inl ⟨hC4, hC8⟩⟩)))))
   | riscv =>
     have hl' := csr_riscv hd hD hl
     have hw := ctx_words hx ⟨ia, l, by simp only [convert, hd, Transpiler.csr3]; exact hl'⟩

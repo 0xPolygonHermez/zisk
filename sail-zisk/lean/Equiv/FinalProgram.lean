@@ -194,12 +194,14 @@ theorem zisk_malformed_prog (entry : BitVec 64) (C : BitVec 64 → Prop)
     (why : String) (hd : ZiskRiscv.decode (Transpiler.fetch3 pc w (nextWord (sIter 0 k ⟨s0, fc⟩).rv pc)
       (nextWord2 (sIter 0 k ⟨s0, fc⟩).rv pc)) pc.toNat = .malformed why)
     (hdesc : ∃ ia l, Transpiler.convert pc w (nextWord (sIter 0 k ⟨s0, fc⟩).rv pc) ia
-      (nextWord2 (sIter 0 k ⟨s0, fc⟩).rv pc) = some l) (hC4 : C (pc + 4))
-    (hC8 : C (pc + 8)) (s0' : RVState)
+      (nextWord2 (sIter 0 k ⟨s0, fc⟩).rv pc) = some l)
+    (hC : (C (pc + 4) ∧ C (pc + 8)) ∨
+      ∀ fetch : Nat → Option (BitVec 32), fetch pc.toNat = some w → ZiskRiscv.decode fetch pc.toNat = .malformed why)
+    (s0' : RVState)
     (hsp : Ext zeroFill s0' s0) (hcode : ∀ pc, C pc → ∃ w, ZiskRiscv.readWord s0'.mem pc.toNat = some w) :
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
     ∃ z', ZEnds (zromOf segs entry) z0 z' ∧ z'.regs.get? .Zerror = some true :=
-  zisk_malformed (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin pc hpc hpcc w hrw h4 h8 why hd hdesc hC4 hC8 s0' hsp hcode
+  zisk_malformed (zromOf segs entry) entry (hp.rom entry).1 C hcx m0 (hp.rom entry).2.1 s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf hmir zr k hrun hin pc hpc hpcc w hrw h4 h8 why hd hdesc hC s0' hsp hcode
 
 end Equiv.Final

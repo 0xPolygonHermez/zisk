@@ -133,7 +133,9 @@ def EndAt (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (C : BitVec 64 → Prop) 
   (∃ pc w why, S.rv.regs.get? Register.PC = some pc ∧ C pc ∧ ZiskRiscv.readWord S.rv.mem pc.toNat = some w ∧
       ZiskRiscv.decode (Transpiler.fetch3 pc w (nextWord S.rv pc) (nextWord2 S.rv pc)) pc.toNat = .malformed why ∧
       (∃ ia l, Transpiler.convert pc w (nextWord S.rv pc) ia (nextWord2 S.rv pc) = some l) ∧
-      C (pc + 4) ∧ C (pc + 8)) ∨
+      ((C (pc + 4) ∧ C (pc + 8)) ∨
+        ∀ fetch : Nat → Option (BitVec 32), fetch pc.toNat = some w →
+          ZiskRiscv.decode fetch pc.toNat = .malformed why)) ∨
   MisJumpAt ziskRegions zrom S.rv ∨
   (∃ pc i, S.rv.regs.get? Register.PC = some pc ∧ FtAtM S.rv ziskRegions pc zrom i ∧
       (i.T pc)[0] = false ∧ (i.T pc)[1] = true)

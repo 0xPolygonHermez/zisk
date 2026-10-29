@@ -17,6 +17,7 @@ import Equiv.RiscvDecodeVec
 import Equiv.Decode.Sys.Sys4
 import Equiv.MNext
 import Equiv.ZbkbSim
+import Equiv.RvcTrap
 
 namespace Equiv.Zisk
 
@@ -494,16 +495,66 @@ theorem sys_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (h
   rw [RejWord.word e]
   exact decode_sys4 t e he htp v hv b hb haA hbB
 
+/-- A word whose low two bits are not 11: a 16-bit parcel, the compressed
+    instructions off. -/
+def RvcWord (e : BitVec 32) : Prop := (byte e 0).extractLsb 1 0 ≠ 3#2
+
+theorem RvcWord.opcode {e : BitVec 32} (h : RvcWord e) : (Transpiler.opcode e).toNat % 4 ≠ 3 := by
+  have hb : (Transpiler.opcode e).extractLsb 1 0 ≠ 3#2 := by
+    simp only [RvcWord, byte] at h; simp only [Transpiler.opcode]; revert h; bv_decide
+  intro e3; apply hb
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.extractLsb, BitVec.extractLsb'_toNat, Nat.shiftRight_zero]; simpa using e3
+
+/-- The machine leaves it to sail-riscv. -/
+theorem RvcWord.plain {e : BitVec 32} (h : RvcWord e) : Equiv.Machine.Plain e := by
+  intro fetch a hf
+  have ho : (ZiskRiscv.fields e).opcode % 4 ≠ 3 := h.opcode
+  have hk : ZiskRiscv.kind (ZiskRiscv.fields e) = .other := by
+    unfold ZiskRiscv.kind
+    split <;> first | rfl | (exfalso; omega)
+  simp only [ZiskRiscv.decode, hf, hk]
+
+/-- The spec's translation: the halt. -/
+theorem RvcWord.spec {e : BitVec 32} (h : RvcWord e) (pc ia : BitVec 64) (next next2 : Option (BitVec 32)) :
+    Transpiler.convert pc e next ia next2 = some [(pc, Transpiler.halt)] := by
+  have ho := h.opcode
+  have hd : Transpiler.decode e = none := by
+    unfold Transpiler.decode
+    split <;> first | rfl | (exfalso; omega)
+  simp only [Transpiler.convert, hd]
+
+set_option maxHeartbeats 4000000 in
+/-- A 16-bit parcel at pc, one step of each: sail-riscv's to the trap
+    vector (an illegal instruction, Zca off); sail-zisk's on the halt, the
+    run's end with Zerror set. -/
+theorem rvc_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hrel : Rel s z rs)
+    (pc : BitVec 64) (hpc : s.regs.get? Register.PC = some pc)
+    (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (e : BitVec 32) (he : RvcWord e) (next : Option (BitVec 32))
+    (hi : WordsAt s rs pc zrom e next) (n : Nat) :
+    (∃ s', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
+      s'.regs.get? Register.PC = some 0x4#64) ∧
+    ∃ z', (zstep zrom).run z = .ok true z' ∧ z'.regs.get? _root_.Zisk.Register.Zerror = some true := by
+  obtain ⟨hr, -, ⟨pc', hpc', hzpc⟩, ⟨st, hst, -⟩, -⟩ := hrel
+  have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
+  subst this
+  refine ⟨try_step_rvc s rs hr hr.mtvec pc' hpc hi.al hi.x1 _ _ hi.h0 hi.h1 he n, ?_⟩
+  have hrom : zrom pc' = Transpiler.halt := hi.tr.one fun ia => he.spec pc' ia _ _
+  rw [zstep_run zrom z pc' hzpc, hrom]
+  exact Equiv.Zisk.execute_halt0 z st hst
+
 /-- A word the transpiler halts on, and the simulation covers: `ebreak`, a
     write to a read-only CSR, or a word RISC-V rejects for its opcode or
-    within it, a vector word and a SYSTEM word of funct3 4 among them. -/
+    within it, a vector word and a SYSTEM word of funct3 4 among them, or a
+    16-bit parcel. -/
 def HaltWord (e : BitVec 32) : Prop :=
-  e = EBREAK ∨ (∃ i : RoInstr, i.encode = e) ∨ RejWord e ∨ RejField e ∨ VecWord e ∨ SysWord e
+  e = EBREAK ∨ (∃ i : RoInstr, i.encode = e) ∨ RejWord e ∨ RejField e ∨ VecWord e ∨ SysWord e ∨ RvcWord e
 
 theorem HaltWord.plain {e : BitVec 32} (h : HaltWord e) : Equiv.Machine.Plain e := by
-  rcases h with rfl | ⟨i, rfl⟩ | h | h | h | h
+  rcases h with rfl | ⟨i, rfl⟩ | h | h | h | h | h
   · exact ebreak_plain
   · exact i.plain
+  · exact h.plain
   · exact h.plain
   · exact h.plain
   · exact h.plain
@@ -516,13 +567,14 @@ theorem halt_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     (∃ s', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
       s'.regs.get? Register.PC = some 0x4#64) ∧
     ∃ z', (zstep zrom).run z = .ok true z' ∧ z'.regs.get? _root_.Zisk.Register.Zerror = some true := by
-  rcases he with rfl | ⟨i, rfl⟩ | he | he | he | he
+  rcases he with rfl | ⟨i, rfl⟩ | he | he | he | he | he
   · exact ebreak_step s z rs hrel pc hpc zrom next hi n
   · exact ro_step s z rs hrel pc hpc zrom i next hi n
   · exact rej_step s z rs hrel pc hpc zrom e he next hi n
   · exact rejf_step s z rs hrel pc hpc zrom e he next hi n
   · exact vec_step s z rs hrel pc hpc zrom e he next hi n
   · exact sys_step s z rs hrel pc hpc zrom e he next hi n
+  · exact rvc_step s z rs hrel pc hpc zrom e he next hi n
 
 end Equiv.Sim
 
