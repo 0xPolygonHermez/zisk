@@ -57,7 +57,15 @@ Zicond, the privileged instructions (`mret`, `wfi`, `sfence.vma`).
   > **Precondition A.** No AMO's bytes cross a 16-byte boundary.
 
   Compilers align atomics to their size, so an AMO of 4 or 8 bytes never
-  crosses one.
+  crosses one. And the atomics act on the RAM alone:
+
+  > **Precondition M.** Every AMO, `lr` and `sc` accesses the RAM,
+  > `[0xA000_0000, +512 MB)`.
+
+  Outside it, an atomic fails on both sides (RISC-V's PMA refuses it,
+  ZisK's translation reaches a load or a store its memory map refuses), but
+  at different steps, and the equivalence leaves that case out. Compiled
+  code keeps its atomics on the RAM: on the heap, the stack, its data.
 - The transpiler reads the code as RISC-V does with IALIGN = 32: a 32-bit
   word at every 4-byte boundary. A word that is no 32-bit instruction —
   data in the code, a 16-bit parcel — is a halt at its address, and the
@@ -297,8 +305,9 @@ of §§ 7–8, reading `marchid` and writing a read-only CSR, no store to
 `marchid`'s cell), **I** (the
 free input's 8 bytes read only as the free input), **Z** (no zkvmcall) and
 **L** (no `lr` reading its own instruction word), **A** (no AMO across
-a 16-byte boundary), **J** (the pc in the code), **R** (no access to
-the registers' slots) and **F** (no float instruction). Everything else
+a 16-byte boundary), **M** (the atomics on the RAM), **J** (the pc in
+the code), **R** (no access to the registers' slots) and **F** (no float
+instruction). Everything else
 it may do — touch memory outside § 2, write a read-only CSR, misuse a
 precompile — has a defined outcome above: a failure, which ZisK does not
 prove, and which the theorem must show both sides agree on.

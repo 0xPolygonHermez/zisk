@@ -87,6 +87,12 @@ def BreakI (s : RVState) (w : BitVec 32) : Prop :=
 def BreakA (s : RVState) (w : BitVec 32) : Prop :=
   ∃ a n, access s w = some (.amo, a, n) ∧ a.toNat / 16 ≠ (a.toNat + n - 1) / 16
 
+/-- M: an AMO, `lr` or `sc` off the RAM. -/
+def BreakM (s : RVState) (w : BitVec 32) : Prop :=
+  ((∃ op d, Transpiler.decode w = some (.amo op d)) ∨ (∃ d, Transpiler.decode w = some (.lr d)) ∨
+    (∃ d, Transpiler.decode w = some (.sc d))) ∧
+    ∃ k a n, access s w = some (k, a, n) ∧ ¬ (0xA000_0000 ≤ a.toNat ∧ a.toNat + n ≤ 0xC000_0000)
+
 /-- L: an `lr` whose bytes include its own instruction word. -/
 def BreakL (s : RVState) (pc : BitVec 64) (w : BitVec 32) : Prop :=
   (∃ d, Transpiler.decode w = some (.lr d)) ∧ ∃ a n, access s w = some (.load, a, n) ∧ Overlaps a n pc 4
@@ -98,7 +104,7 @@ def BreakMarchid (s : RVState) (w : BitVec 32) : Prop :=
 /-- A precondition broken at the step, the word w at pc. -/
 def Broken (s : RVState) (pc : BitVec 64) (w : BitVec 32) : Prop :=
   BreakE s w ∨ BreakF w ∨ BreakCsr pc w (nextWord s pc) (nextWord2 s pc) ∨ BreakR s w ∨
-    BreakI s w ∨ BreakA s w ∨ BreakL s pc w ∨ BreakMarchid s w
+    BreakI s w ∨ BreakA s w ∨ BreakM s w ∨ BreakL s pc w ∨ BreakMarchid s w
 
 /-! ## The ends the theorems prove, at a step -/
 
