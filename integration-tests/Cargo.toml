@@ -30,3 +30,4 @@ zisk-test-artifacts = { workspace = true }
 serial_test = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }
+wat = { workspace = true }

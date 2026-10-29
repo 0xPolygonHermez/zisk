@@ -2987,6 +2987,7 @@ dependencies = [
  "rayon",
  "serial_test",
  "tokio",
+ "wat",
  "zisk-common",
  "zisk-prover-backend",
  "zisk-sdk",
