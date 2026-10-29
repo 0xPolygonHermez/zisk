@@ -198,8 +198,20 @@ pub const DMA_LOOP_INPUTCPY: u8 = 3;
 
 /// Trait for gathering operation statistics
 pub trait OpStats {
+    /// Accounts `count` aligned 8-byte reads from `addr` on, both in the cost model and in the
+    /// occupancy analyses, i.e. a read the cost model and the proof agree on.
     fn mem_align_read(&mut self, addr: u64, count: usize);
+    /// Accounts `count` aligned 8-byte writes from `addr` on, both in the cost model and in the
+    /// occupancy analyses.
     fn mem_align_write(&mut self, addr: u64, count: usize);
+    /// Accounts `count` aligned 8-byte reads from `addr` on in the cost model only. Pairs with
+    /// [`Self::mem_proof_read`] when an operation's cost model does not issue the same memory
+    /// reads as its proof, so each side sees its own stream.
+    fn mem_cost_read(&mut self, addr: u64, count: usize);
+    /// Reports `count` aligned 8-byte reads from `addr` on to the occupancy analyses only: reads
+    /// exactly as the proof issues them, for an operation whose cost model goes through
+    /// [`Self::mem_cost_read`].
+    fn mem_proof_read(&mut self, addr: u64, count: usize);
     fn set_variable_cost(&mut self, cost: u64);
     /// Reports the 64-bit loop of one DMA operation, the part between the unaligned head and tail:
     /// `kind` is one of the `DMA_LOOP_*` constants, `loop_count` the number of whole 64-bit words

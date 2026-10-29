@@ -14,10 +14,9 @@
 //! The exact distribution of loop lengths is kept (one counter per length), so the rows a candidate
 //! width needs are computed exactly afterwards rather than estimated.
 //!
-//! The loop length comes from the same computation the cost model uses (the `ops_dma_*` functions
-//! of `zisk_core`). For a `memcmp` that found a difference and ends exactly on an 8-byte boundary
-//! the planner moves one word of the loop into the tail, which this does not model, so such calls
-//! are counted with one loop operation more than the planner would use.
+//! The loop length is reported by the `ops_dma_*` functions of `zisk_core`. For `memcmp` it is read
+//! from the DMA encoding the bus carries, so a call that found a difference and ends exactly on an
+//! 8-byte boundary loses the loop word the planner moves into the tail, as in the proof.
 
 use std::collections::HashMap;
 

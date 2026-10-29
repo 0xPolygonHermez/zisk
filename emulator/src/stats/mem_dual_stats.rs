@@ -12,12 +12,21 @@
 //! boundary did not exist, and `FULL LOST` the ones that had to open a new row because every dual
 //! slot of the open row was already taken (i.e. what a larger `D` would absorb).
 //!
+//! Within one step the reads are applied before the writes, whatever order they are reported in:
+//! the memory state machine orders the operations of a step by their memory step, and every read of
+//! a step (main's loads, a precompile's loads) comes before its writes. A DMA copy, for instance,
+//! reports the write of its head before the source reads of its loop, and the proof does the
+//! opposite.
+//!
 //! Registers are not tracked: they are proven by the main state machine, not by the memory one, so
-//! only the three memory zones proven as memory take part — input (128M addresses), ROM data (16M)
-//! and RAM (64M). The very first address of the input zone is the exception inside them: it is the
-//! free-input address, whose reads are marked `is_free_read` by the input-data state machine because
-//! each one yields a different value, so two of its operations can never share a row. Tracking state is one 8-byte entry per address, allocated in lazily zeroed pages
-//! of 2^`PAGE_BITS` addresses, so only the pages a program really touches are reserved.
+//! only the three memory zones proven as memory take part — input (256M addresses), ROM data (16M)
+//! and RAM (64M). Only RAM uses dual rows today; input and ROM data are proven one operation per
+//! row, so their figures, and the total that includes them, measure what enabling duals there would
+//! save. The report marks them as such. The very first address of the input zone is the exception
+//! inside them: it is the free-input address, whose reads are marked `is_free_read` by the
+//! input-data state machine because each one yields a different value, so two of its operations can
+//! never share a row. Tracking state is one 8-byte entry per address, allocated in lazily zeroed
+//! pages of 2^`PAGE_BITS` addresses, so only the pages a program really touches are reserved.
 
 use crate::StatsReport;
 use zisk_core::{
@@ -41,13 +50,23 @@ const WRITE_FLAG: u64 = 1 << 63;
 /// Largest number of duals per row a packed entry can count.
 pub const MEM_DUAL_MAX: u32 = USED_MASK as u32;
 
-/// The memory zones accounted separately, in report order: name, first address, size, and the one
-/// address of the zone that can never take part in a dual row (`u64::MAX` when it has none).
-const ZONES: [(&str, u64, u64, u64); 3] = [
-    ("INPUT", INPUT_ADDR, MAX_INPUT_SIZE, FREE_INPUT_ADDR),
-    ("ROM", ROM_ADDR, ROM_SIZE, u64::MAX),
-    ("RAM", RAM_ADDR, RAM_SIZE, u64::MAX),
+/// The memory zones accounted separately, in report order: name, first address, size, the one
+/// address of the zone that can never take part in a dual row (`u64::MAX` when it has none), and
+/// whether the zone uses dual rows today (only RAM does; the others are what-if figures).
+const ZONES: [(&str, u64, u64, u64, bool); 3] = [
+    ("INPUT", INPUT_ADDR, MAX_INPUT_SIZE, FREE_INPUT_ADDR, false),
+    ("ROM", ROM_ADDR, ROM_SIZE, u64::MAX, false),
+    ("RAM", RAM_ADDR, RAM_SIZE, u64::MAX, true),
 ];
+
+/// Report name of zone `z`, marked with `*` when the zone does not use dual rows today.
+fn zone_name(z: usize) -> String {
+    if ZONES[z].4 {
+        ZONES[z].0.to_string()
+    } else {
+        format!("{}*", ZONES[z].0)
+    }
+}
 
 /// Dual occupancy of one memory zone: the tracking state of every address of the zone plus its
 /// counters.
@@ -160,6 +179,11 @@ pub struct MemDualStats {
     /// A row cannot span two chunks of 2^`reset_bits` steps.
     reset_bits: u32,
     zones: [ZoneDuals; ZONES.len()],
+    /// Step whose writes are held in `pending_writes`.
+    pending_step: u64,
+    /// Writes of `pending_step`, as `(zone, word)`, applied once every read of that step has been:
+    /// the memory state machine orders a step's writes after its reads.
+    pending_writes: Vec<(usize, u64)>,
 }
 
 impl std::fmt::Debug for MemDualStats {
@@ -176,16 +200,40 @@ impl std::fmt::Debug for MemDualStats {
 }
 
 impl MemDualStats {
+    /// Largest reset period accepted, in bits: the largest shift a `u64` step allows.
+    pub const MAX_RESET_BITS: u32 = u64::BITS - 1;
+
     /// Creates the analysis for `duals` duals per row (clamped to [`MEM_DUAL_MAX`]) and a reset
-    /// period of 2^`reset_bits` steps.
+    /// period of 2^`reset_bits` steps (clamped to [`Self::MAX_RESET_BITS`]). Any period fits the
+    /// packed block field: the block index only gets smaller as the period grows.
     pub fn new(duals: u32, reset_bits: u32) -> Self {
         let duals = duals.min(MEM_DUAL_MAX);
         Self {
             duals,
-            reset_bits: reset_bits.min(47),
+            reset_bits: reset_bits.min(Self::MAX_RESET_BITS),
             zones: std::array::from_fn(|z| {
                 ZoneDuals::new(ZONES[z].1, ZONES[z].2, ZONES[z].3, duals)
             }),
+            pending_step: 0,
+            pending_writes: Vec::new(),
+        }
+    }
+
+    /// Reset block of `step`, stored as `block + 1` (0 is the empty marker of an entry).
+    #[inline]
+    fn block(&self, step: u64) -> u64 {
+        let block = (step >> self.reset_bits) + 1;
+        debug_assert!(block <= BLOCK_MASK, "step {step} overflows the reset block field");
+        block
+    }
+
+    /// Applies the writes held for the last step seen. Called automatically when a new step
+    /// starts; call it once more after the last access, before reading the counters.
+    pub fn flush(&mut self) {
+        let block = self.block(self.pending_step);
+        let Self { zones, pending_writes, duals, .. } = self;
+        for (zone, word) in pending_writes.drain(..) {
+            zones[zone].account(word, true, block, *duals);
         }
     }
 
@@ -196,28 +244,37 @@ impl MemDualStats {
     /// An aligned 8-byte access is a single memory operation. Any other access is resolved by the
     /// memory-align state machine, which reads every 8-byte address it touches (one, or two when
     /// the access crosses the boundary) and writes back the ones it modifies.
+    ///
+    /// Reads are accounted at once; writes are held until the step ends, so that they land after
+    /// every read of their step (see the module documentation).
     #[inline]
     pub fn on_access(&mut self, address: u64, width: u64, is_write: bool, step: u64) {
-        let Some(zone) = ZONES.iter().position(|&(_, base, size, _)| {
+        if step != self.pending_step {
+            self.flush();
+            self.pending_step = step;
+        }
+        let Some(zone) = ZONES.iter().position(|&(_, base, size, _, _)| {
             address >= base && address - base < size && address - base + width <= size
         }) else {
             return;
         };
         debug_assert!((1..=8).contains(&width));
 
-        let block = (step >> self.reset_bits) + 1;
-        debug_assert!(block <= BLOCK_MASK, "step {step} overflows the reset block field");
-        let zone = &mut self.zones[zone];
+        let block = self.block(step);
         let duals = self.duals;
 
         if width == 8 && (address & 0x7) == 0 {
-            zone.account(address >> 3, is_write, block, duals);
+            if is_write {
+                self.pending_writes.push((zone, address >> 3));
+            } else {
+                self.zones[zone].account(address >> 3, false, block, duals);
+            }
             return;
         }
         for word in (address >> 3)..=((address + width - 1) >> 3) {
-            zone.account(word, false, block, duals);
+            self.zones[zone].account(word, false, block, duals);
             if is_write {
-                zone.account(word, true, block, duals);
+                self.pending_writes.push((zone, word));
             }
         }
     }
@@ -257,7 +314,7 @@ impl MemDualStats {
             }
             report.add(&summary_row(
                 report,
-                ZONES[z].0,
+                &zone_name(z),
                 [
                     zone.ops,
                     zone.reads,
@@ -284,6 +341,12 @@ impl MemDualStats {
                 total(&|z| z.full_lost),
             ],
         ));
+        if self.zones.iter().zip(&ZONES).any(|(zone, z)| zone.ops > 0 && !z.4) {
+            report.add(
+                "* Not dual today: only RAM uses dual rows, so these zones, and the TOTAL that \
+                 includes them, show what enabling duals there would save.\n",
+            );
+        }
 
         self.report_distribution(report);
     }
@@ -307,9 +370,10 @@ impl MemDualStats {
                 continue;
             }
             report.add(&format!(
-                "\nMEM DUAL DISTRIBUTION {} ({} addresses touched)\n",
+                "\nMEM DUAL DISTRIBUTION {} ({} addresses touched{})\n",
                 ZONES[z].0,
                 report.format_number(zone.addresses),
+                if ZONES[z].4 { "" } else { ", not dual today" },
             ));
             report.add(&header);
             report.add(&format!("{}\n", "-".repeat(width)));
@@ -392,7 +456,9 @@ mod tests {
         duals.on_access(address, 8, is_write, step);
     }
 
-    fn ram(duals: &MemDualStats) -> &ZoneDuals {
+    /// The RAM zone, once the writes of the last step have been applied.
+    fn ram(duals: &mut MemDualStats) -> &ZoneDuals {
+        duals.flush();
         &duals.zones[2]
     }
 
@@ -404,7 +470,7 @@ mod tests {
         access(&mut duals, RAM_ADDR, false, 2); // no slot left: opens a row of its own
         access(&mut duals, RAM_ADDR, false, 3); // joins that one
 
-        let ram = ram(&duals);
+        let ram = ram(&mut duals);
         assert_eq!((ram.ops, ram.reads, ram.writes, ram.rows), (4, 3, 1, 2));
         assert_eq!((ram.reset_lost, ram.full_lost, ram.addresses), (0, 1, 1));
         // Both rows ended up full: one opened by a read, one opened by a write.
@@ -419,7 +485,7 @@ mod tests {
         access(&mut duals, RAM_ADDR, true, 1);
         access(&mut duals, RAM_ADDR, true, 2);
 
-        let ram = ram(&duals);
+        let ram = ram(&mut duals);
         assert_eq!((ram.ops, ram.rows, ram.full_lost), (3, 3, 0));
         // Three empty rows: the first opened by a read, the other two by a write.
         assert_eq!(ram.rows_by_duals, vec![[1, 2], [0, 0], [0, 0], [0, 0]]);
@@ -432,7 +498,7 @@ mod tests {
         access(&mut duals, RAM_ADDR, false, 16); // next block: that free slot is unreachable
         access(&mut duals, RAM_ADDR, false, 17); // joins the row opened at step 16
 
-        let ram = ram(&duals);
+        let ram = ram(&mut duals);
         assert_eq!((ram.ops, ram.rows), (3, 2));
         // Only the read at step 16 is lost to the boundary; the one at step 17 found a free slot.
         assert_eq!((ram.reset_lost, ram.full_lost), (1, 0));
@@ -445,7 +511,7 @@ mod tests {
         access(&mut duals, RAM_ADDR, false, 15); // fills the only dual slot of the row
         access(&mut duals, RAM_ADDR, false, 16); // next block, but the row was already full
 
-        let ram = ram(&duals);
+        let ram = ram(&mut duals);
         assert_eq!((ram.ops, ram.rows), (3, 2));
         assert_eq!((ram.reset_lost, ram.full_lost), (0, 0));
     }
@@ -456,7 +522,7 @@ mod tests {
         for step in 0..3 {
             access(&mut duals, RAM_ADDR, false, step);
         }
-        let ram = ram(&duals);
+        let ram = ram(&mut duals);
         assert_eq!((ram.ops, ram.rows), (3, 3));
         assert_eq!(ram.capacity(0), 3);
         // Nothing is lost to the reset boundary, and the two repeated reads report what a dual row
@@ -470,19 +536,19 @@ mod tests {
         // A 4-byte write inside one address: memory-align reads the address and writes it back.
         let mut duals = MemDualStats::new(1, 8);
         duals.on_access(RAM_ADDR + 1, 4, true, 0);
-        let zone = ram(&duals);
+        let zone = ram(&mut duals);
         assert_eq!((zone.ops, zone.reads, zone.writes, zone.rows, zone.addresses), (2, 1, 1, 2, 1));
 
         // The same write crossing the 8-byte boundary: both addresses are read and written.
         let mut duals = MemDualStats::new(1, 8);
         duals.on_access(RAM_ADDR + 6, 4, true, 0);
-        let zone = ram(&duals);
+        let zone = ram(&mut duals);
         assert_eq!((zone.ops, zone.reads, zone.writes, zone.rows, zone.addresses), (4, 2, 2, 4, 2));
 
         // An unaligned read crossing it is just two reads.
         let mut duals = MemDualStats::new(1, 8);
         duals.on_access(RAM_ADDR + 7, 2, false, 0);
-        let zone = ram(&duals);
+        let zone = ram(&mut duals);
         assert_eq!((zone.ops, zone.reads, zone.writes, zone.rows, zone.addresses), (2, 2, 0, 2, 2));
     }
 
@@ -511,6 +577,7 @@ mod tests {
         access(&mut duals, ROM_ADDR, false, 2);
         access(&mut duals, RAM_ADDR, true, 3);
         access(&mut duals, 0x1000, false, 4); // BIOS area: not proven as memory, ignored
+        duals.flush();
 
         let ops: Vec<u64> = duals.zones.iter().map(|z| z.ops).collect();
         let rows: Vec<u64> = duals.zones.iter().map(|z| z.rows).collect();
@@ -528,8 +595,42 @@ mod tests {
         access(&mut duals, RAM_ADDR, false, 2); // joins the row of its own address
         access(&mut duals, other, false, 3);
 
-        let ram = ram(&duals);
+        let ram = ram(&mut duals);
         assert_eq!((ram.ops, ram.rows, ram.addresses), (4, 2, 2));
         assert_eq!(ram.rows_by_duals, vec![[0, 0], [0, 2]]);
+    }
+
+    #[test]
+    fn the_writes_of_a_step_land_after_its_reads_whatever_the_report_order() {
+        // A full row on the address, then a step that reports a write before a read of it, as a
+        // DMA copy reports its head write before the source reads of its loop.
+        let mut duals = MemDualStats::new(1, 8);
+        access(&mut duals, RAM_ADDR, false, 0);
+        access(&mut duals, RAM_ADDR, false, 0); // the row is full now
+        access(&mut duals, RAM_ADDR, true, 1);
+        access(&mut duals, RAM_ADDR, false, 1);
+
+        // The proof reads first: the read finds the row full and opens its own, then the write
+        // opens a third. Applied in report order the read would join the write's row instead.
+        let ram = ram(&mut duals);
+        assert_eq!((ram.ops, ram.reads, ram.writes, ram.rows), (4, 3, 1, 3));
+        assert_eq!(ram.full_lost, 1);
+        assert_eq!(ram.rows_by_duals, vec![[1, 1], [1, 0]]);
+    }
+
+    #[test]
+    fn a_reset_period_beyond_the_block_field_is_kept_as_requested() {
+        // 48 bits and more only make the packed block index smaller, so they are not clamped.
+        for bits in [47, 48, 63] {
+            assert_eq!(MemDualStats::new(1, bits).reset_bits, bits);
+        }
+        assert_eq!(MemDualStats::new(1, 200).reset_bits, MemDualStats::MAX_RESET_BITS);
+
+        // A single block for the whole run: rows never reset.
+        let mut duals = MemDualStats::new(1, 63);
+        access(&mut duals, RAM_ADDR, true, 0);
+        access(&mut duals, RAM_ADDR, false, 1 << 40);
+        let ram = ram(&mut duals);
+        assert_eq!((ram.rows, ram.reset_lost), (1, 0));
     }
 }

@@ -247,13 +247,14 @@ pub struct EmuOptions {
     /// Takes the number of duals per row: 0 disables the mechanism (one operation per row), 1 is
     /// the standard dual, and larger values measure how much a wider row would buy. Reports, per
     /// memory zone (input, ROM data, RAM), the rows needed, their occupancy and the distribution of
-    /// the rows by the number of duals they hold. Defaults to 1 when the flag is given with no
-    /// value. Requires option: -X
+    /// the rows by the number of duals they hold. Only RAM uses dual rows today, so the input and
+    /// ROM data figures show what enabling them there would save. Defaults to 1 when the flag is
+    /// given with no value. Requires option: -X
     #[clap(long, value_name = "DUALS", num_args = 0..=1, default_missing_value = "1")]
     pub mem_duals: Option<u32>,
     /// Reset period, in bits, of the dual rows (`--mem-duals`): a row cannot span two chunks of
     /// 2^bits steps, since the count-and-plan phase works per chunk, so every 2^bits steps the open
-    /// rows are dropped. Default 18, i.e. the current chunk size of 262144 steps.
+    /// rows are dropped. Default 18, i.e. the current chunk size of 262144 steps; at most 63.
     /// Requires option: --mem-duals
     #[clap(long, value_name = "BITS", default_value = "18")]
     pub mem_dual_reset_bits: u32,

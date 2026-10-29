@@ -3,7 +3,7 @@ use std::mem;
 
 use crate::{
     parse_ops_x_row, ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, FailureReason,
-    ParEmuOptions, RegStepCheck, MEM_DUAL_MAX,
+    MemDualStats, ParEmuOptions, RegStepCheck, MEM_DUAL_MAX,
 };
 use proofman_fields::PrimeField64;
 use zisk_common::{
@@ -1823,6 +1823,12 @@ impl<'a> Emu<'a> {
             }
             if duals > MEM_DUAL_MAX {
                 panic!("--mem-duals: at most {MEM_DUAL_MAX} duals per row are supported");
+            }
+            if options.mem_dual_reset_bits > MemDualStats::MAX_RESET_BITS {
+                panic!(
+                    "--mem-dual-reset-bits: at most {} bits are supported",
+                    MemDualStats::MAX_RESET_BITS
+                );
             }
         }
 

@@ -552,12 +552,17 @@ impl Stats {
 
     /// Called every time some data is read from memory, if statistics are enabled
     pub fn on_memory_read(&mut self, address: u64, width: u64) {
-        let step = self.current_step;
+        if let Some(duals) = &mut self.mem_duals {
+            duals.on_access(address, width, false, self.current_step);
+        }
+        self.cost_memory_read(address, width);
+    }
+
+    /// The cost-model side of a memory read: everything [`Self::on_memory_read`] does except
+    /// feeding the occupancy analyses.
+    fn cost_memory_read(&mut self, address: u64, width: u64) {
         if self.collect_offsets && width == 1 {
             self.byte_reads[(address as usize) & 0x7] += 1;
-        }
-        if let Some(duals) = &mut self.mem_duals {
-            duals.on_access(address, width, false, step);
         }
         let status = self.costs.memory_read(address, width);
         self.handle_mem_status(status, false, address, width, 0);
@@ -3865,6 +3870,9 @@ impl Stats {
         }
     }
     pub fn on_finish(&mut self, inst_ctx: &InstContext) {
+        if let Some(duals) = &mut self.mem_duals {
+            duals.flush();
+        }
         self.ram_monitor.on_finish(inst_ctx);
         let ram_usage = self.ram_monitor.ram_used;
         if let Some(profiler) = &mut self.profiler {
@@ -3940,6 +3948,18 @@ impl OpStats for Stats {
     fn mem_align_write(&mut self, addr: u64, count: usize) {
         for index in 0..count {
             self.on_memory_write(addr + 8 * index as u64, 8, 0);
+        }
+    }
+    fn mem_cost_read(&mut self, addr: u64, count: usize) {
+        for index in 0..count {
+            self.cost_memory_read(addr + 8 * index as u64, 8);
+        }
+    }
+    fn mem_proof_read(&mut self, addr: u64, count: usize) {
+        if let Some(duals) = &mut self.mem_duals {
+            for index in 0..count {
+                duals.on_access(addr + 8 * index as u64, 8, false, self.current_step);
+            }
         }
     }
     fn set_variable_cost(&mut self, cost: u64) {

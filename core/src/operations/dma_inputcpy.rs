@@ -211,7 +211,8 @@ pub fn ops_dma_inputcpy(ctx: &InstContext, stats: &mut dyn OpStats) {
 
     let offset_a = addr_a & 0x07;
     let addr64_a = addr_a - offset_a;
-    let pre_count = (8 - offset_a) & 0x07;
+    // A copy shorter than the head ends inside it, as in `memset`.
+    let pre_count = std::cmp::min((8 - offset_a) & 0x07, count);
 
     if pre_count > 0 {
         stats.mem_align_read(addr64_a, 1);
