@@ -132,3 +132,4 @@ import Equiv.FinalProgram
 import Equiv.Totality
 import Equiv.TotalityPlain
 import Equiv.TotalityJump
+import Equiv.FreeInputSim
