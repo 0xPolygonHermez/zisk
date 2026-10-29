@@ -128,3 +128,4 @@ import Equiv.ZKeepAll
 import Equiv.ZStepKeep
 import Equiv.ProgramRom
 import Equiv.ProgramRomSpec
+import Equiv.FinalProgram
