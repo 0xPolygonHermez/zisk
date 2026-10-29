@@ -1834,7 +1834,9 @@ impl Coordinator {
         }
     }
 
-    /// Checks for computing workers with stale heartbeats and fails their jobs.
+    /// Fails the job of every computing worker with a stale heartbeat, then
+    /// disconnects every worker with a stale heartbeat, so a frozen `Ready`
+    /// worker is not given the next job.
     pub async fn check_stale_heartbeats(&self) {
         let threshold = chrono::Duration::seconds(
             (self.config.coordinator.heartbeat_interval_seconds
@@ -1854,6 +1856,11 @@ impl Coordinator {
             if let Err(e) = self.fail_job(job_id, &reason).await {
                 error!("Failed to abort job {} due to stale heartbeat: {}", job_id, e);
             }
+        }
+
+        // Failing the job parked its stale workers, so they are disconnected here too.
+        for worker_id in self.disconnect_stale_workers(threshold).await {
+            warn!("[Monitor] Worker {} missed heartbeats; disconnected", worker_id);
         }
     }
 
@@ -2291,6 +2298,38 @@ mod tests {
 
         let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
         assert_eq!(entry.read().await.state, JobState::Failed);
+        // The stale worker is dropped; the other stays parked for its recovery.
+        assert_eq!(
+            coordinator.workers_pool.worker_state(w0).await,
+            Some(WorkerState::Disconnected)
+        );
+        let w1 = &_workers[1].0;
+        assert_eq!(coordinator.workers_pool.worker_state(w1).await, Some(WorkerState::SettingUp));
+    }
+
+    /// A `Ready` worker that stopped heartbeating leaves the available capacity
+    /// before it can be given a job.
+    #[tokio::test]
+    async fn test_check_stale_heartbeats_disconnects_ready_worker() {
+        let coordinator = Coordinator::new(test_config_with(|c| {
+            c.coordinator.heartbeat_interval_seconds = 30;
+            c.coordinator.heartbeat_max_missed = 3;
+        }));
+        let (w0, _) = register_test_worker(&coordinator.workers_pool, "w0").await;
+        coordinator.workers_pool.mark_worker_with_state(&w0, WorkerState::Ready).await.unwrap();
+        coordinator
+            .workers_pool
+            .set_last_heartbeat(&w0, Utc::now() - chrono::Duration::seconds(100))
+            .await
+            .unwrap();
+
+        coordinator.check_stale_heartbeats().await;
+
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0).await,
+            Some(WorkerState::Disconnected)
+        );
+        assert_eq!(coordinator.workers_pool.capacity_snapshot().await.available, 0);
     }
 
     #[tokio::test]
@@ -3100,6 +3139,40 @@ mod tests {
             None,
             "stuck worker must be unregistered from the pool"
         );
+    }
+
+    /// A worker the sweep unregistered comes back on a new stream; when the drop
+    /// guard of its old stream fires, the new connection must survive. Reusing
+    /// the old connection's generation would fail the worker's next job and
+    /// leave it `Disconnected` while the new stream keeps heartbeating.
+    #[tokio::test]
+    async fn test_old_stream_guard_spares_worker_back_after_sweep() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |c| {
+                c.coordinator.stuck_recovery_threshold_seconds = 1;
+            })
+            .await;
+        let w0_id = workers[0].0.clone();
+        let old_generation = coordinator.workers_pool.connection_generation(&w0_id).await.unwrap();
+
+        coordinator.fail_job(&job_id, "intentional").await.unwrap();
+        {
+            let mut pending = coordinator.pending_recovery.write().await;
+            let entry = pending.get_mut(&w0_id).expect("worker in pending_recovery");
+            *entry = Utc::now() - chrono::Duration::seconds(60);
+        }
+        coordinator.cleanup_stuck_recovery_workers().await;
+        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, None);
+
+        let (sender, _msgs) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(w0_id.clone(), 1u32, Box::new(sender), WorkerState::Ready)
+            .await
+            .unwrap();
+
+        coordinator.disconnect_worker_if_generation(&w0_id, old_generation).await.unwrap();
+        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
     }
 
     /// Fresh entries in `pending_recovery` (within the threshold) survive the

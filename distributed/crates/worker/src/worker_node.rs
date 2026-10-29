@@ -514,14 +514,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     }
                 }
                 // Coordinator messages (task dispatch, cancellation, heartbeat, etc.)
-                Some(result) = response_stream.next() => {
+                result = response_stream.next() => {
                     // Put the handle back before processing (coordinator message handler
                     // may need it, e.g. cancel_current_computation).
                     if let Some(h) = computation_handle.take() {
                         self.worker.set_current_computation(h);
                     }
                     match result {
-                        Ok(message) => {
+                        Some(Ok(message)) => {
                             if let Err(e) = self.handle_coordinator_message(message, &message_sender, loop_tx).await {
                                 error!("Error handling coordinator message: {}", e);
                                 let reported = self.report_computation_error(&message_sender, &e.to_string()).await;
@@ -543,8 +543,16 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                 }
                             }
                         }
-                        Err(e) => {
+                        Some(Err(e)) => {
                             error!("Error receiving message from coordinator: {}", e);
+                            break;
+                        }
+                        // The coordinator ended the stream, as it does when it drops this
+                        // worker. Matched here rather than by a `Some(_)` pattern, which would
+                        // only disable the branch: the worker would then go on until a
+                        // heartbeat failed to send, up to a heartbeat period later.
+                        None => {
+                            info!("Stream closed, will reconnect");
                             break;
                         }
                     }
@@ -608,10 +616,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         error!("Error sending heartbeat: {}", e);
                         break;
                     }
-                }
-                else => {
-                    info!("Stream closed, will reconnect");
-                    break;
                 }
             }
 
