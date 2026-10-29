@@ -31,6 +31,8 @@ pub enum Fixup {
     JumpIfNotFlag(LabelId),
     /// Set the `b` immediate to the absolute ROM address of function `index` (for `call`).
     FuncAddr(u32),
+    /// Address of a supported production-library crypto entry point.
+    LibraryAddr(&'static str),
     /// Set the `b` immediate to the absolute ROM address of `label` within this function (used
     /// to hand a return address to an out-of-line runtime routine).
     LabelAddr(LabelId),
@@ -315,6 +317,29 @@ impl Code {
         zib.j(0, 4);
 
         self.push(zib, Fixup::None);
+    }
+
+    /// Calls a production crypto entry point with its native register arguments. Only
+    /// `ziskasm_zkvm_keccak256` and `ziskasm_zkvm_secp256k1_ecrecover` are supported.
+    ///
+    /// Preserves Wasm FP and memory end, uses the separate 4 MiB native stack, and leaves the
+    /// native status in r10. All other native registers are scratch, including RA. The import's
+    /// saved return PC must already be in its frame. Native code must never call back into Wasm:
+    /// the save cells and production crypto library state are non-reentrant.
+    pub fn call_library(&mut self, symbol: &'static str) {
+        self.store_reg_to_abs(WASM_NATIVE_FP_ADDR, REG_FP, 8);
+        self.store_reg_to_abs(WASM_NATIVE_MEM_END_ADDR, REG_MEM_END, 8);
+        self.load_imm_to_reg(REG_FP, zisk_core::STACK_ADDR + zisk_core::STACK_SIZE - 16);
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("imm", 0, false);
+        zib.src_b("imm", 0, false);
+        zib.op("copyb").unwrap();
+        zib.set_pc();
+        zib.store_pc("reg", REG_RA as i64, false);
+        zib.j(0, 4);
+        self.push(zib, Fixup::LibraryAddr(symbol));
+        self.load_abs_to_reg(REG_FP, WASM_NATIVE_FP_ADDR);
+        self.load_abs_to_reg(REG_MEM_END, WASM_NATIVE_MEM_END_ADDR);
     }
 
     /// `reg_dst = reg_src`.

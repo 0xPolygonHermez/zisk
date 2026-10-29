@@ -6,7 +6,7 @@
 //! indirect-call table, control cells, linear memory and the call/operand stack), and pick which
 //! of the 32 Zisk registers play which role.
 
-use zisk_core::{FLOAT_LIB_RAM_ADDR, OUTPUT_ADDR, OUTPUT_MAX_SIZE};
+use zisk_core::{OUTPUT_ADDR, OUTPUT_MAX_SIZE, ZISKLIB_RAM_ADDR};
 
 pub const WASM_PUBLIC_OUTPUT_BYTES: u64 = 32 * 8;
 
@@ -96,6 +96,14 @@ pub const WASM_RNG_STATE_ADDR: u64 = WASM_CTRL_ADDR + 32;
 /// Non-zero once the insecure-randomness warning has been printed.
 pub const WASM_RNG_WARNED_ADDR: u64 = WASM_CTRL_ADDR + 40;
 
+/// Saved Wasm registers while a native crypto routine owns r2 (SP instead of FP).
+pub const WASM_NATIVE_FP_ADDR: u64 = WASM_CTRL_ADDR + 48;
+pub const WASM_NATIVE_MEM_END_ADDR: u64 = WASM_CTRL_ADDR + 56;
+/// Aligned scratch for native typed crypto buffers, disjoint from guest-addressable memory.
+pub const WASM_CRYPTO_HASH_ADDR: u64 = WASM_CTRL_ADDR + 64;
+pub const WASM_CRYPTO_SIG_ADDR: u64 = WASM_CTRL_ADDR + 96;
+pub const WASM_CRYPTO_OUTPUT_ADDR: u64 = WASM_CTRL_ADDR + 160;
+
 /// Base of wasm linear memory: wasm address 0 maps here.
 pub const WASM_MEM_BASE: u64 = 0xa100_0000;
 /// Page size, per the wasm spec (64 KiB).
@@ -105,9 +113,8 @@ pub const WASM_MEM_LIMIT: u64 = 0xbf00_0000;
 /// Maximum number of linear-memory pages the runtime supports.
 pub const WASM_MAX_PAGES: u64 = (WASM_MEM_LIMIT - WASM_MEM_BASE) / WASM_PAGE_SIZE;
 
-/// Top of the call/operand stack; frames grow downward from here.  Kept below the float library
-/// RAM region so the two never collide (wasm never touches the float lib, but we stay clear).
-pub const WASM_STACK_TOP: u64 = FLOAT_LIB_RAM_ADDR - 0x10000; // 0xbffe0000
+/// Top of the call/operand stack; frames grow downward below both native libraries.
+pub const WASM_STACK_TOP: u64 = ZISKLIB_RAM_ADDR; // 0xbffc0000
 /// Lowest address a frame may occupy: the stack ends where linear memory can grow to.  Calls trap
 /// (stack exhaustion) instead of placing a frame below it.
 pub const WASM_STACK_LIMIT: u64 = WASM_MEM_LIMIT;

@@ -10,8 +10,13 @@ work and then start it. This is follow-up work in
 
 The unmodified float-enabled emulator builds. Integer/WASI and f64 controls
 execute with exact expected public bytes. The historical transfer replay and
-four archived replay binaries fail at custom import resolution. Their function
-bodies, peak memory, execution cost and proof generation remain untested.
+four archived replay binaries fail at custom import resolution by default.
+After explicitly registering diagnostic trapping imports, every one of the
+historical replay's 14,478 defined function bodies lowers, and complete ROM
+construction succeeds under the existing layout bounds. That diagnostic emits
+20,596,298 instructions for the defined bodies alone; the final integration
+check reaches about 16.2 GiB sampled peak RSS. This establishes compiler compatibility, not execution:
+Nitro runtime behavior, execution cost and proof generation remain untested.
 
 The historical replay has SHA-256
 `15a1bfa995d941d4ec2edc5d9dc3acbe0bab839499144029058944e1f0833521` and imports
@@ -101,6 +106,9 @@ steps, cost and memory. This milestone still requires a separate proof check.
 - Enable and verify Wasm Assembly setup/execution, starting with small controls.
   Inspect all program-loading paths; changing one ELF guard is insufficient.
 - Generate and verify a real transfer proof under the new program identity.
+- Make native crypto hint failures fail closed and test adversarial hints:
+  review found inherited secp256k1 failure paths using plain `end` without an
+  emulator error. Establish successful finalization before relying on proofs.
 - Connect existing L1 storage verification and binder logic; pin new keys and
   public layouts, test rejected mismatches, then demonstrate wrapping and the
   intended settlement verifier. Preserve the existing L1 finality assumptions.
@@ -111,6 +119,12 @@ steps, cost and memory. This milestone still requires a separate proof check.
 Each later milestone needs a concrete implementation plan after the previous
 one resolves its blockers. They remain project scope, not claimed deliverables
 of the initial import API change.
+
+The first runtime implementation is planned in
+`../plans/2026-10-29-nitro-wasm-crypto.md`: reuse the assembled ZisK library
+through a safe native call bridge, starting with Keccak and recovery IDs 0/1.
+Recovery IDs 2/3 require explicit traps until the native implementation supports
+them. These crypto services alone do not complete the single-transfer milestone.
 
 ## Trust boundary
 

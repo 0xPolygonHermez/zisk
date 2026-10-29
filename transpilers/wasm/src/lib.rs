@@ -18,11 +18,12 @@ mod imports;
 pub mod layout;
 pub mod lowering;
 pub mod module;
+pub mod nitro;
 pub mod wasi;
 
 pub use imports::Import;
 
-use std::error::Error;
+use std::{collections::HashMap, error::Error};
 
 use emit::{Code, Fixup};
 use layout::*;
@@ -128,16 +129,31 @@ pub fn wasm2rom_with_imports(
         codes.push(lowering::lower_function(&module, func_index)?);
     }
 
+    // Custom emitters request native code symbolically; ordinary Wasm ROMs stay library-free.
+    let library =
+        if codes.iter().any(|c| c.insts.iter().any(|i| matches!(i.fixup, Fixup::LibraryAddr(_)))) {
+            Some(ziskasm::assemble_zisk_library()?)
+        } else {
+            None
+        };
+    let no_symbols = HashMap::new();
+    let symbols = library.as_ref().map_or(&no_symbols, |lib| &lib.symbols);
+    let program_rom_end = if library.is_some() {
+        PROGRAM_ROM_END.min(zisk_core::ZISKLIB_ROM_ADDR)
+    } else {
+        PROGRAM_ROM_END
+    };
+
     // -- lay out functions in the program ROM area ---------------------------
     let mut func_addr = vec![0u64; n_funcs];
     let mut addr = ROM_ADDR;
     for (i, code) in codes.iter().enumerate() {
         func_addr[i] = addr;
         addr += 4 * code.len() as u64;
-        if addr > PROGRAM_ROM_END {
+        if addr > program_rom_end {
             return Err(format!(
                 "wasm: program too large ({addr:#x} exceeds the program ROM end \
-                 {PROGRAM_ROM_END:#x})"
+                 {program_rom_end:#x})"
             )
             .into());
         }
@@ -145,7 +161,7 @@ pub fn wasm2rom_with_imports(
 
     // -- resolve symbolic jumps/calls and insert into the ROM ----------------
     for (i, code) in codes.iter().enumerate() {
-        resolve_and_insert(&mut rom, code, func_addr[i], &func_addr);
+        resolve_and_insert(&mut rom, code, func_addr[i], &func_addr, symbols)?;
     }
 
     // -- emit the entry routine (init data + call _start + finalize) ---------
@@ -159,9 +175,12 @@ pub fn wasm2rom_with_imports(
         )
         .into());
     }
-    resolve_and_insert(&mut rom, &entry, entry_base, &func_addr);
+    resolve_and_insert(&mut rom, &entry, entry_base, &func_addr, symbols)?;
     rom.next_init_inst_addr = entry_end;
 
+    if let Some(library) = library {
+        zisk_riscv::merge_library(&mut rom, library)?;
+    }
     rom.optimize_instruction_lookup()?;
 
     Ok(rom)
@@ -257,7 +276,13 @@ fn reject_overlapping_segments(data: &[module::DataSeg]) -> Result<(), Box<dyn E
 
 /// Resolves the symbolic fixups of a [`Code`] laid out at `base` and inserts every instruction into
 /// `rom.insts` at its final address.
-fn resolve_and_insert(rom: &mut ZiskRom, code: &Code, base: u64, func_addr: &[u64]) {
+fn resolve_and_insert(
+    rom: &mut ZiskRom,
+    code: &Code,
+    base: u64,
+    func_addr: &[u64],
+    symbols: &HashMap<String, u64>,
+) -> Result<(), Box<dyn Error>> {
     for (j, pending) in code.insts.iter().enumerate() {
         let inst_addr = base + 4 * j as u64;
         let mut zib = pending.zib.clone();
@@ -282,12 +307,31 @@ fn resolve_and_insert(rom: &mut ZiskRom, code: &Code, base: u64, func_addr: &[u6
             Fixup::FuncAddr(index) => {
                 zib.src_b("imm", func_addr[*index as usize], false);
             }
+            Fixup::LibraryAddr(symbol) => {
+                let address = symbols
+                    .get(*symbol)
+                    .ok_or_else(|| format!("wasm: unknown native library symbol {symbol}"))?;
+                if !matches!(*symbol, "ziskasm_zkvm_keccak256" | "ziskasm_zkvm_secp256k1_ecrecover")
+                {
+                    return Err(
+                        format!("wasm: unsupported native library entry point {symbol}").into()
+                    );
+                }
+                let call =
+                    zisk_definitions::ZKVMCALLS
+                        .iter()
+                        .find(|call| call.target == *symbol)
+                        .ok_or_else(|| format!("wasm: missing zkvmcall definition for {symbol}"))?;
+                rom.zkvmcalls.insert(call.id);
+                zib.src_b("imm", *address, false);
+            }
             Fixup::LabelAddr(label) => {
                 zib.src_b("imm", base + 4 * code.label_target(*label) as u64, false);
             }
         }
         zib.build(rom);
     }
+    Ok(())
 }
 
 /// Builds the BIOS entry routine: initialize the runtime, call each of `entry_calls` in order
