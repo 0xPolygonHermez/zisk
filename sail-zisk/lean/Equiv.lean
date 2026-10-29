@@ -130,3 +130,4 @@ import Equiv.ProgramRom
 import Equiv.ProgramRomSpec
 import Equiv.FinalProgram
 import Equiv.Totality
+import Equiv.TotalityPlain

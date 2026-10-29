@@ -11,6 +11,7 @@
   proved in its own module, kind by kind.
 -/
 import Equiv.Final
+import Transpiler.Rom
 
 namespace Equiv.Final
 
@@ -142,7 +143,12 @@ structure Ctx (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (C : BitVec 64 → Pr
     (pc : BitVec 64) (w : BitVec 32) : Prop where
   atPc : S.rv.regs.get? Register.PC = some pc
   code : C pc
+  aligned : ∀ p, C p → p.toNat % 4 = 0
   word : ZiskRiscv.readWord S.rv.mem pc.toNat = some w
+  /-- A word whose translation reads the word after it has that word in
+      the code too, and the one after that if it reads that one. -/
+  next1 : Transpiler.usesNext w = true → C (pc + 4)
+  next2 : Transpiler.usesNext2 w = true → C (pc + 8)
   exec : ∀ p, C p → ExecAt ziskRegions p
   ready : StepReady S.rv ziskRegions
   spec : SpecRom zrom C S.rv.mem
