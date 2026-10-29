@@ -27,10 +27,7 @@ use module::{parse_module, WasmModule};
 use zisk_core::mem::DataSection;
 use zisk_core::rom_layout::{add_end_and_lib, normalize_rw_data_sections};
 use zisk_core::zisk_rom::DataSection64;
-use zisk_core::{
-    ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, MAX_ZISK_OS_ROM_ADDR, ROM_ADDR,
-    ROM_ENTRY,
-};
+use zisk_core::{ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, ROM_ADDR, ROM_ENTRY};
 
 /// One past the last program ROM address generated functions may occupy.  With the `float`
 /// feature the top of the program ROM window holds the soft-float library (linked by
@@ -77,7 +74,7 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 
     // Reuse the RISC-V BIOS prologue: it installs the end instruction (at ROM_EXIT), the float
     // handler (with the `float` feature), and the initial jump that lands at the first post-BIOS
-    // instruction (our entry routine).
+    // instruction (a jump to our entry routine).
     add_end_and_lib(&mut rom);
 
     // The soft-float library the float handler dispatches to lives in its own reserved ROM/RAM
@@ -133,18 +130,26 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     }
 
     // -- emit the entry routine (init data + call _start + finalize) ---------
+    // It goes in the program ROM window, after the functions, and the BIOS only jumps to it:
+    // `_start` returns to its caller through x1, and the assembly emulator resolves dynamic jumps
+    // into the BIOS window only in float builds.
     let entry = build_entry_routine(&module, &func_addr, &entry_calls);
-    let entry_base = rom.next_init_inst_addr;
+    let entry_base = addr;
     let entry_end = entry_base + 4 * entry.len() as u64;
-    if entry_end > MAX_ZISK_OS_ROM_ADDR + 1 {
+    if entry_end > PROGRAM_ROM_END {
         return Err(format!(
-            "wasm: entry routine too large ({entry_end:#x} exceeds the BIOS ROM end {:#x})",
-            MAX_ZISK_OS_ROM_ADDR + 1
+            "wasm: program too large ({entry_end:#x} exceeds the program ROM end \
+             {PROGRAM_ROM_END:#x})"
         )
         .into());
     }
     resolve_and_insert(&mut rom, &entry, entry_base, &func_addr);
-    rom.next_init_inst_addr = entry_end;
+
+    let mut bios_jump = Code::new();
+    bios_jump.jump_abs(entry_base);
+    let bios_jump_addr = rom.next_init_inst_addr;
+    resolve_and_insert(&mut rom, &bios_jump, bios_jump_addr, &func_addr);
+    rom.next_init_inst_addr = bios_jump_addr + 4 * bios_jump.len() as u64;
 
     rom.optimize_instruction_lookup()?;
 
@@ -274,7 +279,7 @@ fn resolve_and_insert(rom: &mut ZiskRom, code: &Code, base: u64, func_addr: &[u6
     }
 }
 
-/// Builds the BIOS entry routine: initialize the runtime, call each of `entry_calls` in order
+/// Builds the entry routine: initialize the runtime, call each of `entry_calls` in order
 /// (the start-section function, then `_start`), then publish output and halt.  Returned as a
 /// [`Code`] so its calls and internal jumps resolve through the same fixup machinery as ordinary
 /// functions.

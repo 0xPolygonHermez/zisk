@@ -190,7 +190,8 @@ ziskemu -e $RISCV -i input.bin
 # fib(90) = 2880067194370816120
 ```
 
-`cargo-zisk execute` (emulator backend) also accepts the `.wasm`:
+`cargo-zisk execute` also accepts the `.wasm`, with the emulator backend (default) or the ASM
+backend (`--asm`):
 
 ```bash
 cargo-zisk execute -e $WASM -i input.bin
@@ -238,7 +239,8 @@ for the per-instruction overhead are in [Cost model](#cost-model).
 | Tool | Use |
 |---|---|
 | `ziskemu -e guest.wasm -i input.bin` | Transpile and emulate. Accepts every `ziskemu` option (`-c`, `-X`, `-n`, ...). |
-| `cargo-zisk execute -e guest.wasm -i input.bin` | Execute with the emulator backend and print the execution plan. |
+| `cargo-zisk execute -e guest.wasm -i input.bin [--asm]` | Execute with the emulator backend, or the ASM backend with `--asm`, and print the execution plan. |
+| `cargo-zisk prove -e guest.wasm -i input.bin [--asm]` | Generate a proof. |
 | `wasm2zisk <in.wasm> <out.asm> --gen=N` | Transpile and save the ROM as x86-64 NASM, like `riscv2zisk`. `--gen=0` fast, `1` minimal traces, `2` ROM histogram, `7` memory ops. |
 | `zisk_transpiler_common::program2rom(bytes)` | Library entry point: detects the format and returns a `ZiskRom`. |
 | `zisk_transpiler_wasm::wasm2rom(bytes)` | Library entry point for wasm only. |
@@ -374,10 +376,12 @@ format the guest came from.
 6. **Lay out** the functions one after another from `ROM_ADDR`, 4 bytes per instruction.
 7. **Resolve fixups and insert** the instructions into the ROM at their final addresses
    (`resolve_and_insert`).
-8. **Emit the entry routine** in the BIOS window. It writes `marchid`, initializes the runtime
-   control cells, the globals and the indirect-call table, loads the memory bound and frame
-   pointer, calls the start function and `_start`, then publishes the output and jumps to
-   `ROM_EXIT`.
+8. **Emit the entry routine** after the functions, in the program ROM window, and a single jump
+   to it in the BIOS window. It writes `marchid`, initializes the runtime control cells, the
+   globals and the indirect-call table, loads the memory bound and frame pointer, calls the start
+   function and `_start`, then publishes the output and jumps to `ROM_EXIT`. It stays out of the
+   BIOS window because `_start` returns to it through `x1`, and the ASM backend resolves dynamic
+   jumps into the BIOS window only in `float` builds.
 
 ### Memory layout
 
@@ -489,11 +493,12 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 
 ## Current limitations
 
-- **Emulator backend only.** Proving works with the Rust emulator backend (the default): a wasm
-  guest verifies its constraints and produces a STARK proof bound to the module's program
-  verification key (see the integration tests below). The ASM backend (`cargo-zisk execute
-  --asm`, `rom-setup`, and so ASM-based proving) still requires an ELF:
-  `zisk_rom_setup::generate_assembly` fails with `ROM file is not a valid ELF file`.
+- **Large guests cannot use the ASM backend.** Both backends prove wasm guests (see the
+  integration tests below). The ASM backend links the ROM into a native binary whose code must
+  fit below its fixed memory region (about 255 MB), which holds roughly 750,000 ZisK
+  instructions, for RISC-V and wasm guests alike. Larger guests, up to the 4,194,304-instruction
+  ROM limit, need the emulator backend. A Rust `std` guest starts at about 73,000 instructions,
+  a Go guest at about 2,000,000.
 - **No floats in the prover.** The `float` feature exists only on the transpiler and emulator
   crates, so the prover binaries cannot load a guest that uses `f32`/`f64` (RISC-V or wasm).
 - **No precompiles, no hints.** There is no wasm equivalent of the `ziskos` precompile calls
@@ -510,8 +515,8 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 | `emulator/tests/wasm.rs` | Integer operators, control flow, calls, memory, WASI and traps, using hand-written WAT modules. |
 | `emulator/tests/wasm_float.rs` | `f32`/`f64` operators against the wasm spec (requires `float`). |
 | `emulator/tests/wasm_example.rs` | Builds [`examples/wasm-fibonacci`](../../examples/wasm-fibonacci) for `wasm32-wasip1` and runs it end to end. Skipped with a notice when the target is not installed. |
-| `integration-tests/tests/wasm_verify_constraints.rs` | Constraint verification on the emulator backend for five guests that together cover the lowering paths, WASI and the memory-layout limits, and rejection of guests that trap or exit with a nonzero status. Needs a proving key; ignored by default. |
-| `integration-tests/tests/wasm_prove.rs` | Proves `wasm-fibonacci` and verifies the proof under the module's program verification key (and not under any other). Needs a proving key; ignored by default. |
+| `integration-tests/tests/wasm_verify_constraints.rs` | Constraint verification on the emulator and (on Linux) ASM backends for five guests that together cover the lowering paths, WASI and the memory-layout limits, and rejection of guests that trap or exit with a nonzero status. Needs a proving key; ignored by default. |
+| `integration-tests/tests/wasm_prove.rs` | Proves `wasm-fibonacci` on the emulator and (on Linux) ASM backends and verifies the proof under the module's program verification key (and not under any other). Needs a proving key; ignored by default. |
 
 ```bash
 cargo test -p ziskemu --release --test wasm --test wasm_example

@@ -1,4 +1,5 @@
-//! Constraint verification for WebAssembly guests on the Emulator executor.
+//! Constraint verification for WebAssembly guests on the Emulator executor and, on Linux, the
+//! Assembly executor.
 //!
 //! `wasm2rom` produces an ordinary `ZiskRom`, so a wasm guest goes through the same witness
 //! computation and constraint checks as a RISC-V one. This test runs `verify_constraints` on a set
@@ -20,7 +21,7 @@
 //! Guests that trap (`unreachable`, an out-of-bounds load) or call `proc_exit` with a nonzero
 //! status must be rejected. They halt through the `halt` op, which no valid main trace can
 //! contain (for an internal op, main.pil forces `flag = 1` and `flag = 0` when `op = 0xFF`), so
-//! the executor refuses them before any constraint is checked.
+//! both executors refuse them before any constraint is checked.
 //!
 //! Ignored by default because `verify_constraints` requires a generated proving key on disk.
 //! Run with:
@@ -410,10 +411,21 @@ fn cases() -> Vec<Case> {
     ]
 }
 
+/// The executors every case runs on: the Rust emulator everywhere, and the assembly emulator on
+/// Linux (an Assembly-built client serves both).
+fn executors() -> Vec<ExecutorKind> {
+    let mut executors = vec![ExecutorKind::Emulator];
+    if cfg!(target_os = "linux") {
+        executors.push(ExecutorKind::Assembly);
+    }
+    executors
+}
+
 #[tokio::test]
 #[ignore = "requires a generated proving key; run with --ignored"]
-async fn wasm_guests_verify_constraints_on_emulator() {
-    let mut builder = EmbeddedClientBuilder::default().emulator().verify_constraints();
+async fn wasm_guests_verify_constraints() {
+    let mut builder = EmbeddedClientBuilder::default().verify_constraints();
+    builder = if cfg!(target_os = "linux") { builder.assembly() } else { builder.emulator() };
     if let Some(pk) = std::env::var_os("ZISK_TEST_PROVING_KEY").map(PathBuf::from) {
         eprintln!("[wasm_verify_constraints] using ZISK_TEST_PROVING_KEY={}", pk.display());
         builder = builder.proving_key(pk);
@@ -423,35 +435,41 @@ async fn wasm_guests_verify_constraints_on_emulator() {
     let mut failures = Vec::new();
     for case in cases() {
         let program = GuestProgram::from_bytes(case.name, case.wasm);
-        let result = async {
-            client.setup(&program).run()?.await?;
-            client
-                .verify_constraints(&program, ZiskStdin::from_bytes(case.stdin))
-                .executor(ExecutorKind::Emulator)
-                .run()?
-                .await
+        if let Err(e) = async { client.setup(&program).run()?.await }.await {
+            eprintln!("[wasm_verify_constraints] {}: setup FAILED: {e:#}", case.name);
+            failures.push(case.name.to_string());
+            continue;
         }
-        .await;
-        match result {
-            Ok(output) => {
-                let mut publics = [0u8; 256];
-                output.get_public_values_slice(&mut publics);
-                let mut expected = case.output;
-                expected.resize(publics.len(), 0);
-                if publics.as_slice() == expected {
-                    eprintln!("[wasm_verify_constraints] {}: constraints verified", case.name);
-                } else {
-                    eprintln!(
-                        "[wasm_verify_constraints] {}: constraints verified, but the public output \
-                         is {publics:02x?}, expected {expected:02x?}",
-                        case.name
-                    );
-                    failures.push(case.name);
-                }
+        let mut expected = case.output;
+        expected.resize(256, 0);
+        for executor in executors() {
+            let label = format!("{} ({executor:?})", case.name);
+            let result = async {
+                client
+                    .verify_constraints(&program, ZiskStdin::from_bytes(case.stdin.clone()))
+                    .executor(executor)
+                    .run()?
+                    .await
             }
-            Err(e) => {
-                eprintln!("[wasm_verify_constraints] {}: FAILED: {e:#}", case.name);
-                failures.push(case.name);
+            .await;
+            match result {
+                Ok(output) => {
+                    let mut publics = [0u8; 256];
+                    output.get_public_values_slice(&mut publics);
+                    if publics.as_slice() == expected {
+                        eprintln!("[wasm_verify_constraints] {label}: constraints verified");
+                    } else {
+                        eprintln!(
+                            "[wasm_verify_constraints] {label}: constraints verified, but the \
+                             public output is {publics:02x?}, expected {expected:02x?}"
+                        );
+                        failures.push(label);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[wasm_verify_constraints] {label}: FAILED: {e:#}");
+                    failures.push(label);
+                }
             }
         }
     }
@@ -462,26 +480,44 @@ async fn wasm_guests_verify_constraints_on_emulator() {
         ("exit_nonzero", "(call $proc_exit (i32.const 1))"),
     ] {
         let program = GuestProgram::from_bytes(name, failing_module(tail));
-        let result = async {
-            client.setup(&program).run()?.await?;
-            client
-                .verify_constraints(&program, ZiskStdin::new())
-                .executor(ExecutorKind::Emulator)
-                .run()?
-                .await
+        if let Err(e) = async { client.setup(&program).run()?.await }.await {
+            eprintln!("[wasm_verify_constraints] {name}: setup FAILED: {e:#}");
+            failures.push(name.to_string());
+            continue;
         }
-        .await;
-        match result {
-            Err(e) if format!("{e:#}").contains("Guest execution failed") => {
-                eprintln!("[wasm_verify_constraints] {name}: rejected as expected");
+        for executor in executors() {
+            let label = format!("{name} ({executor:?})");
+            let result = async {
+                client
+                    .verify_constraints(&program, ZiskStdin::new())
+                    .executor(executor)
+                    .run()?
+                    .await
             }
-            Err(e) => {
-                eprintln!("[wasm_verify_constraints] {name}: rejected for the wrong reason: {e:#}");
-                failures.push(name);
-            }
-            Ok(_) => {
-                eprintln!("[wasm_verify_constraints] {name}: FAILED: a failing guest verified");
-                failures.push(name);
+            .await;
+            // The emulator names the failure; the assembly emulator reports it as a non-zero
+            // result from its MT service, as it does for failing RISC-V guests.
+            let rejected = |msg: &str| {
+                msg.contains("Guest execution failed")
+                    || (executor == ExecutorKind::Assembly
+                        && msg.contains("service returned non-zero result"))
+            };
+            match result {
+                Err(e) if rejected(&format!("{e:#}")) => {
+                    eprintln!("[wasm_verify_constraints] {label}: rejected as expected");
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[wasm_verify_constraints] {label}: rejected for the wrong reason: {e:#}"
+                    );
+                    failures.push(label);
+                }
+                Ok(_) => {
+                    eprintln!(
+                        "[wasm_verify_constraints] {label}: FAILED: a failing guest verified"
+                    );
+                    failures.push(label);
+                }
             }
         }
     }
