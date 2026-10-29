@@ -48,7 +48,7 @@ EXPECT_FAULT ?=
 NAME  ?= $(if $(ELF),$(basename $(notdir $(ELF))),$(notdir $(firstword $(PROG))))
 DIFF_DIR = build/difftest/$(NAME)
 
-.PHONY: all check ops compliance transpiler-check decoder-diff lean lean-build riscv riscv-sim riscv-lean riscv-run zisk-riscv equiv emu difftest difftest-all constants optest opsdoc sail-version clean
+.PHONY: all check ops compliance transpiler-check decoder-diff lean lean-build riscv riscv-sim riscv-lean riscv-run zisk-riscv equiv proofs emu difftest difftest-all constants optest opsdoc sail-version clean
 
 all: check ops
 
@@ -162,6 +162,15 @@ zisk-riscv:
 ## `make lean` and `make riscv` first.
 equiv:
 	cd lean && $(LAKE) update && $(LAKE) build
+
+## The proofs: build lean/ (make equiv), then check the axioms the theorem,
+## zisk_total, rests on: Lean's, bv_decide's, and those sail-riscv's Lean
+## leaves undefined (lean/axioms.txt); no `sorry`. Run `make lean`, `make
+## riscv` and `make riscv-run` first. ~15 min on 128 cores.
+proofs: equiv
+	@mkdir -p build
+	printf 'import Equiv\n#print axioms Equiv.Final.zisk_total\n' | (cd lean && $(LAKE) env lean --stdin) > build/axioms.out
+	python3 lean/check_axioms.py lean/axioms.txt build/axioms.out
 
 ## Build the C emulator into build/c/zisk_emu.
 emu: $(EMU)

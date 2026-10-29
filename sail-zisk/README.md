@@ -201,7 +201,8 @@ transpilation.
   instruction set. CI (`.github/workflows/sail_zisk.yml`, its tools from
   `ci/setup.sh`) runs `make compliance` and `make transpiler-check` on pull
   requests that touch the transpiler, `core/src`, `tools/sail-difftest` or
-  sail-zisk, and nightly; `make decoder-diff` nightly. The top theorems hold with that ROM (`zisk_exit_prog`,
+  sail-zisk, and nightly, and `make proofs` on the same; `make decoder-diff`
+  nightly. The top theorems hold with that ROM (`zisk_exit_prog`,
   `zisk_return_prog`, ..., `lean/Equiv/FinalProgram.lean`): what they need
   of their ROM, `BiosAt`, `SpecRom` and `HaltMis`, holds of it (`ProgramOk.rom`,
   `lean/Equiv/ProgramRom.lean` and `lean/Equiv/ProgramRomSpec.lean`: the
@@ -443,7 +444,8 @@ make riscv-lean    # elaborate it (~15 min)
 make riscv-sim     # build its C emulator, for compliance's signatures (~15 min)
 make riscv-run     # build ZisK's RISC-V machine on its executable Lean, and zisk_riscv_run (~15 min)
 make zisk-riscv    # run ELF (prepared by make difftest) on that machine, and diff its end with sail-zisk's
-make equiv         # build lean/: both models side by side, and ZisK's RISC-V machine
+make equiv         # build lean/: both models side by side, ZisK's RISC-V machine, and the proofs
+make proofs        # make equiv, then check the axioms the theorem rests on (lean/axioms.txt): no sorry
 ```
 
 Every target that runs Sail first checks that the installed Sail is the
@@ -460,7 +462,7 @@ backend emits, which is how the Lean output leaves out the C emulator's main.
 
 > The run below checks the ZisK model — it typechecks, runs, and agrees
 > with ZisK op by op and step by step — builds both models' Lean side by
-> side, and, at step 8, checks the proofs: the theorem that a RISC-V program
+> side, and, at step 9, checks the proofs: the theorem that a RISC-V program
 > in the contract and its ZisK transpilation end the same way
 > (`zisk_total`).
 
@@ -527,7 +529,7 @@ flowchart TB
     i5a[/"build/riscv/zisk_rv64.json (step 7)"/]:::file --> c5a(["make riscv-sim"]):::cmd --> o5a[/"sail_riscv_sim"/]:::file
     i5b[/"riscv-arch-test, a RISC-V GCC, build/c/zisk_emu"/]:::file --> c5b(["make compliance"]):::cmd --> o5b[/"build/compliance/: results.txt, SUITE/*.elf"/]:::file
     o5a -.-> c5b
-    i5c[/"zisk_riscv_run (step 9)"/]:::file -.-> c5b
+    i5c[/"zisk_riscv_run (step 8)"/]:::file -.-> c5b
   end
 
   subgraph S6 ["6. The model's Lean"]
@@ -543,19 +545,19 @@ flowchart TB
     c7a --> o7c[/"build/riscv-lean/Lean_ZiskRV"/]:::file --> c7b(["make riscv-lean"]):::cmd --> o7d[/"Lean_ZiskRV, elaborated"/]:::file
   end
 
-  subgraph S8 ["8. Both models, and the proofs"]
+  subgraph S8 ["8. ZisK's RISC-V machine"]
     direction LR
-    i8[/"both models elaborated, lean/: Equiv, ZiskRiscv, Transpiler"/]:::file --> c8(["make equiv"]):::cmd --> o8[/"lean/.lake: the proofs, checked"/]:::file
+    i8a[/"sail-riscv, build/riscv/zisk_rv64.json"/]:::file --> c8a(["make riscv-run"]):::cmd
+    c8a --> o8a[/"build/riscv-lean/Lean_ZiskRV_executable, lean/ZiskRiscvRun/Registers.lean"/]:::file
+    c8a --> o8b[/"lean/.lake/build/bin/zisk_riscv_run"/]:::file
+    o8b --> c8b(["make zisk-riscv"]):::cmd
+    i8b[/"build/difftest/NAME/ (step 4)"/]:::file --> c8b
+    c8b --> o8c[/"build/difftest/NAME/riscv.end"/]:::file
   end
 
-  subgraph S9 ["9. ZisK's RISC-V machine"]
+  subgraph S9 ["9. Both models, and the proofs"]
     direction LR
-    i9a[/"sail-riscv, build/riscv/zisk_rv64.json"/]:::file --> c9a(["make riscv-run"]):::cmd
-    c9a --> o9a[/"build/riscv-lean/Lean_ZiskRV_executable, lean/ZiskRiscvRun/Registers.lean"/]:::file
-    c9a --> o9b[/"lean/.lake/build/bin/zisk_riscv_run"/]:::file
-    o9b --> c9b(["make zisk-riscv"]):::cmd
-    i9b[/"build/difftest/NAME/ (step 4)"/]:::file --> c9b
-    c9b --> o9c[/"build/difftest/NAME/riscv.end"/]:::file
+    i9[/"both models elaborated, lean/: Equiv, ZiskRiscv, Transpiler"/]:::file --> c9(["make proofs"]):::cmd --> o9[/"lean/.lake: the proofs, checked"/]:::file
   end
 
   S0 --> S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> S8 --> S9
@@ -688,7 +690,7 @@ A, B suites and of K's Zbkb tests is compiled for ZisK's memory map,
 transpiled as `ziskemu -e` transpiles it, and difftested; and, once
 `make riscv-sim` has built sail-riscv's C emulator (after `make riscv`; about
 15 minutes, once), run on sail-riscv too, whose signature must be the
-model's; and, once `make riscv-run` has built ZisK's RISC-V machine (step 9),
+model's; and, once `make riscv-run` has built ZisK's RISC-V machine (step 8),
 on that, which must end the test as the model does. Under a minute for all
 of them.
 
@@ -742,29 +744,7 @@ wrote build/riscv/zisk_rv64.json: RV64 A B M Zbkb Zicsr Zifencei, M-mode only
 Build completed successfully (141 jobs).
 ```
 
-**8. Build both models side by side, and check the proofs.**
-
-```sh
-make equiv
-```
-
-```
-info: Equiv/Models.lean:13:0: Zisk.Functions.zisk_execute : Zisk.zisk_inst → Zisk.SailM Bool
-info: Equiv/Models.lean:14:0: LeanZiskRV.Functions.execute : LeanZiskRV.instruction → LeanZiskRV.SailM LeanZiskRV.ExecutionResult
-Build completed successfully (508 jobs).
-```
-
-The models are already built: `lean/` reuses them and the one copy of
-Sail's Lean library they share. `lean/Equiv/Models.lean` imports both and
-names the two functions the equivalence relates,
-`Zisk.Functions.zisk_execute` and `LeanZiskRV.Functions.execute`; the
-proofs, next to it, take about 15 minutes on a 128-core machine, the
-theorem last (`lean/Equiv/TotalityMain.lean`, `zisk_total`). The build
-also checks ZisK's RISC-V machine (`lean/ZiskRiscv/Tests.lean`): its
-decoding of the contract's CSR sequences, and sail-zisk's keccak run on its
-memory.
-
-**9. Run programs on ZisK's RISC-V machine.** `make riscv-run` builds the
+**8. Run programs on ZisK's RISC-V machine.** `make riscv-run` builds the
 machine on sail-riscv's executable Lean (about 15 minutes, once), and
 `make zisk-riscv` runs a program `make difftest` has prepared on it, from the
 same memory, and diffs how it ends with sail-zisk's run of the
@@ -784,6 +764,34 @@ OK: ZisK's RISC-V machine ends as sail-zisk does: exit, output
 2 563 RISC-V steps against sail-zisk's 2 706 ZisK steps, the BIOS's
 included; on the way, the guest's 2 fcall parameters, 2 fcalls and 10
 memcpys run as sail-zisk's operations on the RISC-V memory.
+
+**9. Build both models side by side, and check the proofs.**
+
+```sh
+make proofs
+```
+
+```
+info: Equiv/Models.lean:13:0: Zisk.Functions.zisk_execute : Zisk.zisk_inst → Zisk.SailM Bool
+info: Equiv/Models.lean:14:0: LeanZiskRV.Functions.execute : LeanZiskRV.instruction → LeanZiskRV.SailM LeanZiskRV.ExecutionResult
+Build completed successfully (508 jobs).
+...
+Equiv.Final.zisk_total: 77 axioms of the allowlist, 27770 of bv_decide's
+```
+
+The models and the machine are already built: `lean/` reuses them and the one copy of
+Sail's Lean library they share. `lean/Equiv/Models.lean` imports both and
+names the two functions the equivalence relates,
+`Zisk.Functions.zisk_execute` and `LeanZiskRV.Functions.execute`; the
+proofs, next to it, take about 15 minutes on a 128-core machine, the
+theorem last (`lean/Equiv/TotalityMain.lean`, `zisk_total`). Then
+`lean/check_axioms.py` checks what the theorem rests on: Lean's axioms,
+`bv_decide`'s, and the ones sail-riscv's Lean leaves undefined, listed in
+`lean/axioms.txt` — so no `sorry`, which a build alone would only warn
+about. The build
+also checks ZisK's RISC-V machine (`lean/ZiskRiscv/Tests.lean`): its
+decoding of the contract's CSR sequences, and sail-zisk's keccak run on its
+memory.
 
 ### What a clean run establishes
 

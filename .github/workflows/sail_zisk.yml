@@ -5,6 +5,8 @@ name: sail-zisk checks
 # ZisK's RISC-V machine (make compliance): on pull requests that touch the
 # transpiler, the ROM layout, the difftest tool or sail-zisk, and nightly.
 # The transpiler's decoder against sail-riscv's (make decoder-diff): nightly.
+# The proofs, and the axioms the theorem rests on (make proofs): on the same
+# pull requests, and nightly.
 # See sail-zisk/README.md.
 
 on:
@@ -102,6 +104,80 @@ jobs:
       - name: Transpiler against its spec
         working-directory: sail-zisk
         run: make transpiler-check RISCV_GCC="$RISCV_GCC"
+
+  proofs:
+    name: Equivalence proofs
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository ||
+      contains(github.event.pull_request.labels.*.name, 'ci:full')
+    runs-on: rocket
+    timeout-minutes: 240
+    container:
+      image: ubuntu:22.04
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      SAIL_ZISK_TOOLS: /github/home/sail-zisk-tools
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Clean workspace
+        run: |
+          if [ -d "$GITHUB_WORKSPACE" ]; then
+            find "$GITHUB_WORKSPACE" -mindepth 1 -delete
+          fi
+
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./install_deps.sh
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Restore the tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.opam
+            ~/.elan
+            /github/home/sail-zisk-tools
+          key: sail-zisk-tools-${{ hashFiles('sail-zisk/ci/setup.sh', 'sail-zisk/lean/lean-toolchain') }}
+
+      - name: Install the tools
+        run: sail-zisk/ci/setup.sh
+
+      - name: Restore the generated models
+        uses: actions/cache@v4
+        with:
+          path: |
+            sail-zisk/build/sail-riscv
+            sail-zisk/build/riscv-lean
+            sail-zisk/build/riscv
+          key: sail-zisk-riscv-${{ hashFiles('sail-zisk/Makefile', 'sail-zisk/riscv/**') }}
+
+      # Lake rebuilds a module only when it or what it imports has changed, so
+      # the last build's .lake leaves a rerun the modules a change touches.
+      - name: Restore the proofs' last build
+        uses: actions/cache@v4
+        with:
+          path: sail-zisk/lean/.lake
+          key: sail-zisk-proofs-${{ hashFiles('sail-zisk/Makefile', 'sail-zisk/riscv/**', 'sail-zisk/model/**', 'sail-zisk/lean/**') }}
+          restore-keys: |
+            sail-zisk-proofs-
+
+      - name: Generate the models
+        working-directory: sail-zisk
+        run: |
+          make lean
+          make riscv
+          make riscv-run
+
+      - name: Proofs and their axioms
+        working-directory: sail-zisk
+        run: make proofs
 
   decoder-diff:
     name: Transpiler decoder against sail-riscv's
