@@ -8,11 +8,14 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 struct AggregationToml {
-    /// Optional leaf allow-list: guest program names the recurser accepts as
-    /// raw vadcop_final leaves. Order fixes each program's `programVKs[]` index.
-    /// Absent/empty = VK-agnostic (any valid leaf accepted).
+    /// Leaf allow-list: guest program names the recurser accepts as raw vadcop_final
+    /// leaves. Order fixes each program's `programVKs[]` index (`programIndex` with 2+).
+    /// Required unless `any-program = true`.
     #[serde(default)]
     programs: Vec<String>,
+    /// Explicit opt-in to accept leaves of any guest program (no allow-list).
+    #[serde(default)]
+    any_program: bool,
     /// `AggregatePublics` circom body, relative to this TOML.
     aggregate_publics: PathBuf,
     /// `NormalizePublics` circom body, relative to this TOML (optional).
@@ -32,8 +35,9 @@ struct AggregationToml {
 #[derive(Debug)]
 pub struct ResolvedAggregation {
     pub name: String,
-    /// Optional leaf allow-list (empty = VK-agnostic).
+    /// Leaf allow-list; empty only with `any_program`.
     pub programs: Vec<ResolvedProgram>,
+    pub any_program: bool,
     pub aggregate_publics_body: String,
     pub n_free: usize,
     pub n_publics_agg: usize,
@@ -115,6 +119,7 @@ fn process_definition(
 
 /// Source paths of the circuits a definition resolved to (for cargo
 /// rerun-if-changed and codegen `include_str!`).
+#[derive(Debug)]
 pub struct ResolvedCircuitPaths {
     pub aggregate: PathBuf,
     pub normalize: Option<PathBuf>,
@@ -189,6 +194,18 @@ pub fn resolve_aggregation(
             .with_context(|| format!("Failed to read {}", toml_path.display()))?,
     )?;
 
+    match (def.programs.is_empty(), def.any_program) {
+        (true, false) => bail!(
+            "{}: no `programs` allow-list; list the accepted guests, or accept leaves of any \
+             program explicitly with `any-program = true`",
+            toml_path.display()
+        ),
+        (false, true) => {
+            bail!("{}: `programs` and `any-program` are exclusive", toml_path.display())
+        }
+        _ => {}
+    }
+
     let base = toml_path.parent().unwrap_or_else(|| Path::new("."));
     let read_circuit = |rel: &Path| -> Result<(PathBuf, String)> {
         let path = if rel.is_absolute() { rel.to_path_buf() } else { base.join(rel) };
@@ -262,6 +279,7 @@ pub fn resolve_aggregation(
         ResolvedAggregation {
             name,
             programs,
+            any_program: def.any_program,
             aggregate_publics_body,
             n_free: def.free_inputs,
             n_publics_agg: def.n_publics_agg,
@@ -336,6 +354,9 @@ fn codegen(
             (0..resolved.programs.len()).map(|i| format!("&__ZISK_AGG_PROGRAMS[{i}]")).collect();
         let _ = writeln!(out, "    .programs(&[{}])", refs.join(", "));
     }
+    if resolved.any_program {
+        let _ = writeln!(out, "    .any_program()");
+    }
     if let (Some(path), Some(_norm)) = (normalize_path, &resolved.normalize) {
         let _ = writeln!(out, "    .normalize(");
         let _ = writeln!(
@@ -348,4 +369,48 @@ fn codegen(
     }
     let _ = writeln!(out, "}}");
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A definition directory holding one `AggregatePublics` circuit and the given TOML body.
+    fn definition(tag: &str, toml: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("ziskbuild_agg_{tag}_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("aggregate.circom"), "template AggregatePublics(n) {}").unwrap();
+        let path = dir.join("agg.toml");
+        fs::write(
+            &path,
+            format!("aggregate-publics = \"aggregate.circom\"\nn-publics-agg = 4\n{toml}"),
+        )
+        .unwrap();
+        path
+    }
+
+    /// An empty allow-list accepts leaves of any program, so it must be asked for.
+    #[test]
+    fn a_definition_needs_programs_or_any_program() {
+        let err = resolve_aggregation(&definition("none", ""), None).unwrap_err();
+        assert!(format!("{err:#}").contains("any-program"), "{err:#}");
+    }
+
+    #[test]
+    fn any_program_resolves_without_an_allowlist() {
+        let (resolved, _) =
+            resolve_aggregation(&definition("any", "any-program = true\n"), None).unwrap();
+        assert!(resolved.any_program && resolved.programs.is_empty());
+    }
+
+    #[test]
+    fn any_program_and_programs_are_exclusive() {
+        let err = resolve_aggregation(
+            &definition("both", "any-program = true\nprograms = [\"g\"]\n"),
+            None,
+        )
+        .unwrap_err();
+        assert!(format!("{err:#}").contains("any-program"), "{err:#}");
+    }
 }

@@ -1,0 +1,86 @@
+; ============================================================================
+; logical.zisk - diagnostic for the ZisK bitwise logical instructions.
+;
+; Covers (all 64-bit, bitwise):
+;   and  or  xor  andn(a & ~b)  orn(a | ~b)  xnor(~(a ^ b))
+;
+; Pure-constant style (see minmax.zisk): LOG_TABLE holds the expected result of
+; each op for each (a, b) pair. Beyond the logical ops it depends only on copyb,
+; add and eq. Expected values generated from core/src/ops_core.rs. The pairs are
+; bit-pattern corner cases (all-0, all-1, alternating, nibble, single-bit, ...).
+;
+; LOG_TABLE columns: a b and or xor andn orn xnor
+; First mismatch returns 0x04CC (01=and 02=or 03=xor 04=andn 05=orn 06=xnor).
+;
+; Registers: r5 row ptr  r6 row index  r7 a  r8 b  r12 expected  r13 result.
+; ============================================================================
+
+define ROWS      10
+define ROW_BYTES 64      ; 8 u64 columns * 8 bytes
+
+; a, b, and, or, xor, andn, orn, xnor
+const u64 LOG_TABLE =
+	0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0xffffffffffffffff, 0xffffffffffffffff,   ; 0 & 0
+	0x0000000000000000, 0xffffffffffffffff, 0x0000000000000000, 0xffffffffffffffff, 0xffffffffffffffff, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,   ; 0 & ones
+	0xffffffffffffffff, 0x0000000000000000, 0x0000000000000000, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0x0000000000000000,   ; ones & 0
+	0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0x0000000000000000, 0x0000000000000000, 0xffffffffffffffff, 0xffffffffffffffff,   ; ones & ones
+	0xaaaaaaaaaaaaaaaa, 0x5555555555555555, 0x0000000000000000, 0xffffffffffffffff, 0xffffffffffffffff, 0xaaaaaaaaaaaaaaaa, 0xaaaaaaaaaaaaaaaa, 0x0000000000000000,   ; alt & ~alt
+	0xaaaaaaaaaaaaaaaa, 0xaaaaaaaaaaaaaaaa, 0xaaaaaaaaaaaaaaaa, 0xaaaaaaaaaaaaaaaa, 0x0000000000000000, 0x0000000000000000, 0xffffffffffffffff, 0xffffffffffffffff,   ; alt & alt
+	0xf0f0f0f0f0f0f0f0, 0x0f0f0f0f0f0f0f0f, 0x0000000000000000, 0xffffffffffffffff, 0xffffffffffffffff, 0xf0f0f0f0f0f0f0f0, 0xf0f0f0f0f0f0f0f0, 0x0000000000000000,   ; nibbles
+	0x0000000000000001, 0x8000000000000000, 0x0000000000000000, 0x8000000000000001, 0x8000000000000001, 0x0000000000000001, 0x7fffffffffffffff, 0x7ffffffffffffffe,   ; bit0 & bit63
+	0x00000000ffffffff, 0xffffffff00000000, 0x0000000000000000, 0xffffffffffffffff, 0xffffffffffffffff, 0x00000000ffffffff, 0x00000000ffffffff, 0x0000000000000000,   ; low & high half
+	0x123456789abcdef0, 0x0fedcba987654321, 0x0224422882244220, 0x1ffddff99ffddff1, 0x1dd99dd11dd99dd1, 0x1010145018989cd0, 0xf236767efabefefe, 0xe226622ee226622e   ; arbitrary
+
+logical:
+	copyb(0, LOG_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+log_loop:
+	eq(r6, ROWS), j(log_ok)
+	copyb(r5, 8[a + 0]) -> r7      ; a
+	copyb(r5, 8[a + 8]) -> r8      ; b
+
+	copyb(r5, 8[a + 16]) -> r12
+	and(r7, r8) -> r13
+	eq(r13, r12), j(log_c1)
+	copyb(0, 0x0401) -> r10
+	ret
+log_c1:
+	copyb(r5, 8[a + 24]) -> r12
+	or(r7, r8) -> r13
+	eq(r13, r12), j(log_c2)
+	copyb(0, 0x0402) -> r10
+	ret
+log_c2:
+	copyb(r5, 8[a + 32]) -> r12
+	xor(r7, r8) -> r13
+	eq(r13, r12), j(log_c3)
+	copyb(0, 0x0403) -> r10
+	ret
+log_c3:
+	copyb(r5, 8[a + 40]) -> r12
+	andn(r7, r8) -> r13
+	eq(r13, r12), j(log_c4)
+	copyb(0, 0x0404) -> r10
+	ret
+log_c4:
+	copyb(r5, 8[a + 48]) -> r12
+	orn(r7, r8) -> r13
+	eq(r13, r12), j(log_c5)
+	copyb(0, 0x0405) -> r10
+	ret
+log_c5:
+	copyb(r5, 8[a + 56]) -> r12
+	xnor(r7, r8) -> r13
+	eq(r13, r12), j(log_next)
+	copyb(0, 0x0406) -> r10
+	ret
+
+log_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(log_loop)
+
+log_ok:
+	copyb(0, 0) -> r10
+	ret

@@ -370,7 +370,10 @@ async fn test_reconnect_idle_no_directive() {
     let (sender, _msgs) = MockMessageSender::new();
     let req = WorkerRegisterRequestDto {
         worker_id: WorkerId::from("w1".to_string()),
+        aggregation_arity: 2,
+        snark_protocol: None,
         compute_capacity: ComputeCapacity::from(1u32),
+        previous_exit: None,
     };
     let (accepted, _msg, _setup) =
         coordinator.handle_stream_registration(req, Box::new(sender)).await;
@@ -392,6 +395,8 @@ async fn test_reconnect_unknown_job_gets_cancel() {
     let (sender, _msgs) = MockMessageSender::new();
     let req = WorkerReconnectRequestDto {
         worker_id: w0_id.clone(),
+        aggregation_arity: 2,
+        snark_protocol: None,
         compute_capacity: ComputeCapacity::from(1u32),
         last_known_job_id: Some(JobId::from("nonexistent-job".to_string())),
     };
@@ -419,6 +424,8 @@ async fn test_reconnect_terminal_job_gets_cancel() {
     let (sender, _msgs) = MockMessageSender::new();
     let req = WorkerReconnectRequestDto {
         worker_id: w0_id.clone(),
+        aggregation_arity: 2,
+        snark_protocol: None,
         compute_capacity: ComputeCapacity::from(1u32),
         last_known_job_id: Some(s.job_id.clone()),
     };
@@ -452,6 +459,8 @@ async fn test_reconnect_active_job_resumes() {
     let (sender, _msgs) = MockMessageSender::new();
     let req = WorkerReconnectRequestDto {
         worker_id: w0_id.clone(),
+        aggregation_arity: 2,
+        snark_protocol: None,
         compute_capacity: ComputeCapacity::from(1u32),
         last_known_job_id: Some(s.job_id.clone()),
     };
@@ -476,6 +485,8 @@ async fn test_reconnect_no_stale_job_no_directive() {
     let (sender, _msgs) = MockMessageSender::new();
     let req = WorkerReconnectRequestDto {
         worker_id: w0_id.clone(),
+        aggregation_arity: 2,
+        snark_protocol: None,
         compute_capacity: ComputeCapacity::from(1u32),
         last_known_job_id: None,
     };

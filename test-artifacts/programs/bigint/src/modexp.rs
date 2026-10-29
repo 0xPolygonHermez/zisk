@@ -1,4 +1,37 @@
-use ziskos::zisklib::{modexp, U256};
+use ziskos::zisklib::U256;
+
+// The bump allocator's next free address (ziskos `alloc/alloc.rs`). It only ever grows: the
+// guest heap is never freed.
+unsafe extern "C" {
+    static ZISK_BUMP_HEAP_POS: usize;
+}
+
+fn heap_pos() -> usize {
+    unsafe { core::ptr::read_volatile(&raw const ZISK_BUMP_HEAP_POS) }
+}
+
+// ---- backend selection --------------------------------------------------
+// Default: the Rust zisklib `modexp`, compiled into the guest and run as RISC-V.
+#[cfg(not(feature = "ziskasm"))]
+use ziskos::zisklib::modexp;
+
+// `ziskasm`: call the flat `zisklib::modexp_u64` binding, a zkvmcall to the
+// hand-written `.zisk` routine. This
+// glue adapts the flat (ptr,len) ABI to the rich `&[U256] -> Vec<U256>`
+// signature so every test body below is identical for both backends.
+#[cfg(feature = "ziskasm")]
+fn modexp(base: &[U256], exp: &[u64], modulus: &[U256]) -> Vec<U256> {
+    // Result fits in `modulus.len()` U256 limbs; give the callee that much room.
+    let mut out = vec![0u64; modulus.len() * 4];
+    let n = zisklib::modexp_u64(
+        U256::slice_to_flat(base),
+        exp,
+        U256::slice_to_flat(modulus),
+        &mut out,
+    );
+    U256::flat_to_slice(&out[..n]).to_vec()
+}
+// -------------------------------------------------------------------------
 
 pub fn modexp_tests() {
     println!("Starting Modexp tests...");
@@ -2516,6 +2549,29 @@ pub fn modexp_tests() {
     );
     // ============================
     println!("  - 8192-bits exponent tests passed.");
+
+    // Heap use
+    // ============================
+    // The heap is never freed, so the long path must not allocate on every square or multiply.
+    // The only buffers that grow with an exponent of n words are its bit decomposition (64·n
+    // words) and its recomposition (n words).
+    let base = [U256::from_u64(3)];
+    let modulus = [U256::from_u64(0xa9), U256::ONE];
+    let heap_used = |exp: &[u64]| {
+        let before = heap_pos();
+        modexp(&base, exp, &modulus);
+        heap_pos() - before
+    };
+    let short = heap_used(&[u64::MAX]);
+    let long = heap_used(&[u64::MAX; 16]);
+    let allowed = 15 * 65 * 8;
+    assert!(
+        long - short <= allowed,
+        "15 more exponent words took {} more heap bytes, {allowed} allowed",
+        long - short
+    );
+    // ============================
+    println!("  - Heap use tests passed.");
 
     println!("Modexp tests passed");
 }

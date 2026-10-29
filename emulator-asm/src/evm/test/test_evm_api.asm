@@ -26,7 +26,7 @@
 
     mov     r12, rcx                  # trace base
     mov     r13, 1                    # slot 0 holds the entry count
-    mov     r14, 1024                 # steps remaining, read only by the realloc path
+    mov     r14, 1024                 # steps remaining: the step field of the records, and the realloc path
     call    \asm_call
 
     dec     r13

@@ -141,12 +141,12 @@ jobs:
           .github/scripts/docker_exec.sh \
             -- bash -c 'rustup default stable'
 
-      - name: Install PLONK setup
+      - name: Install pilfflonk setup
         run: |
           .github/scripts/docker_exec.sh \
             -- bash -c '
               if ! ziskup setup_snark; then
-                echo "❌ Install PLONK setup failed"
+                echo "❌ Install pilfflonk setup failed"
                 exit 1
               fi
             '

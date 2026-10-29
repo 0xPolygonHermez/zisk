@@ -7,15 +7,16 @@
 
 use proofman_fields::Goldilocks;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fs::File,
     io::{BufWriter, IsTerminal, Write},
 };
 use zisk_core::{
     zisk_ops::{OpStats, OpType, ZiskOp},
     InstContext, ZiskInst, ZiskOperationType, ZiskRom, RAM_ADDR, REGS_IN_MAIN_TOTAL_NUMBER,
-    ROM_ADDR, ROM_ENTRY, ROM_ENTRY_SIZE, ROM_EXIT, ROM_SIZE, STORE_NONE, SYS_ADDR,
+    ROM_ADDR, ROM_ENTRY, ROM_ENTRY_SIZE, ROM_EXIT, ROM_SIZE, SRC_IMM, STORE_NONE, SYS_ADDR,
 };
+use zisk_core::{FLOAT_LIB_ROM_ADDR, ZISKLIB_ROM_ADDR, ZISK_COSTS_VERSION};
 use zisk_pil::RomRomTrace;
 use zisk_riscv::RiscVRegisters;
 use zisk_sm_arith::{ArithFrops, ArithLegacyFrops};
@@ -1332,7 +1333,12 @@ impl Stats {
             false
         };
         let non_rd = if let Some(rd) = inst.meta_rd { rd == 0 } else { false };
-        if !non_rd {
+        if let Some(target) = Self::zisklib_jump_target(inst) {
+            // A zkvmcall's tail-jump into its ZisK library routine (see `emit_zkvmcall_jump`),
+            // or a `jump()` between library functions: ra is untouched and the routine's `ret`
+            // returns to the caller, so it is a tail call when it leaves the ROI.
+            self.is_tail_call = self.check_call(target as i64);
+        } else if !non_rd {
             // CALL path
             match inst.op {
                 ZiskOp::AND
@@ -2559,6 +2565,7 @@ impl Stats {
         };
 
         let mut s = String::new();
+        s += &format!("COSTS_VERSION;{ZISK_COSTS_VERSION}\n");
         s += &format!("STEPS;{steps}\n\n");
 
         s += "COST;COST DISTRIBUTION;COST;%\n";
@@ -2680,7 +2687,7 @@ impl Stats {
         report.use_thousands_sep = self.use_thousands_sep;
         report.sdk_width = self.sdk_width;
 
-        report.sdk_report_header("REPORT SUMMARY");
+        report.sdk_report_header(&format!("REPORT SUMMARY (cost version {ZISK_COSTS_VERSION})"));
         report.sdk_report_summary_line("STEPS", self.costs.steps);
         report.sdk_report_summary_line("COST", total_cost);
         report.sdk_report_summary_data_line(
@@ -2851,7 +2858,7 @@ impl Stats {
 
         report.set_total_cost(total_cost);
         report.set_steps(total_steps);
-        report.title_cost("REPORT", "");
+        report.title_cost(&format!("REPORT (cost version {ZISK_COSTS_VERSION})"), "");
         report.add_cost("STEPS", total_steps);
 
         report.title_cost_perc("COST DISTRIBUTION", "COST");
@@ -2874,6 +2881,16 @@ impl Stats {
             self.inst_count + self.rom_init_count.div_ceil(4) + self.ram_init_count.div_ceil(4);
         let rom_size = RomRomTrace::<Goldilocks>::NUM_ROWS;
         report.add_perc("ROM USAGE", rom_used_rows as u64, rom_size as u64);
+
+        // Executed instructions by ROM address range
+        report.title_cost_perc("ROM REGIONS", "STEPS");
+        let regions = self.steps_by_rom_region();
+        let region_steps: u64 = regions.iter().map(|(_, n)| n).sum();
+        for (label, steps) in regions {
+            if steps > 0 || label != "OTHER" {
+                report.add_perc(label, steps, region_steps.max(1));
+            }
+        }
 
         if self.mem_stats || self.mem_full_stats {
             report.title_count_cost_perc2("MEM COST BY TYPE", "COUNT", "COST", "");
@@ -3241,11 +3258,186 @@ impl Stats {
         report.output
     }
 
+    /// Executed instructions (the PC histogram) by ROM address range: below the ROM (the
+    /// BIOS entry and exit code), the program, the ZisK library and the float library.
+    pub fn steps_by_rom_region(&self) -> [(&'static str, u64); 5] {
+        let mut steps = [0u64; 5];
+        for (&pc, &count) in &self.pc_histogram {
+            let region = if pc < ROM_ADDR {
+                0
+            } else if pc < ZISKLIB_ROM_ADDR {
+                1
+            } else if pc < FLOAT_LIB_ROM_ADDR {
+                2
+            } else if pc < ROM_ADDR + ROM_SIZE {
+                3
+            } else {
+                4
+            };
+            steps[region] += count;
+        }
+        [
+            ("LOW (< ROM)", steps[0]),
+            ("PROGRAM ROM", steps[1]),
+            ("ZISKLIB ROM", steps[2]),
+            ("FLOAT ROM", steps[3]),
+            ("OTHER", steps[4]),
+        ]
+    }
+
     pub fn add_roi(&mut self, from_pc: u32, to_pc: u32, name: &str) {
         let roi = RegionsOfInterest::new(self.rois.len(), from_pc, to_pc, name, self.compact_cost);
         let index = self.rois.len() as u32;
         self.rois.push(roi);
         self.rois_by_pc.insert(from_pc, index);
+    }
+
+    /// Adds a ROI for each function of the ZisK library merged into the ROM, which has no
+    /// ELF symbols. The library labels (`ZiskLibrary::symbols`) don't tell functions from
+    /// local labels, so a function is an address the code enters as one: the target of a
+    /// `call`, or of a zkvmcall's jump from the guest (see `emit_zkvmcall_jump`). Its extent
+    /// is the code it reaches without calls (see `zisklib_reach`); entries whose extents
+    /// overlap are one ROI, so a subroutine placed inside a function's body (e.g. `zme_ld32`
+    /// in `ziskasm_zkvm_modexp`) stays part of it, and so do functions that share code
+    /// (e.g. `zbn_g1_encode` in bn254). Each ROI spans up to the next one and is named after
+    /// the labels in `symbols` (the library's, `ZiskLibrary::symbols`) of its first entry and
+    /// its other zkvmcall entries, joined by `|`. Returns the number of ROIs added.
+    pub fn add_zisklib_rois(&mut self, rom: &ZiskRom, symbols: &HashMap<String, u64>) -> usize {
+        let in_lib = |addr: u64| (ZISKLIB_ROM_ADDR..FLOAT_LIB_ROM_ADDR).contains(&addr);
+        let mut entries = BTreeSet::new();
+        let mut zkvmcall_entries = HashSet::new();
+        for (&addr, zib) in &rom.insts {
+            let inst = &zib.i;
+            let (target, zkvmcall) = if inst.op == ZiskOp::FLAG && inst.store_pc && !inst.set_pc {
+                // call: flag is 1, so it jumps to jmp_offset1
+                ((addr as i64 + inst.jmp_offset1) as u64, false)
+            } else if let Some(target) = Self::zisklib_jump_target(inst).filter(|_| !in_lib(addr)) {
+                // static jump into the library from outside it: a zkvmcall
+                (target, true)
+            } else {
+                continue;
+            };
+            if in_lib(target) && rom.insts.contains_key(&target) {
+                entries.insert(target);
+                if zkvmcall {
+                    zkvmcall_entries.insert(target);
+                }
+            }
+        }
+        if entries.is_empty() {
+            return 0;
+        }
+
+        // Extent [lo, hi] of each entry, merged with any it overlaps: (lo, hi, entries).
+        let mut extents: Vec<(u64, u64, u64)> = entries
+            .iter()
+            .map(|&entry| {
+                let (lo, hi) = Self::zisklib_reach(rom, entry, &entries);
+                (lo, hi, entry)
+            })
+            .collect();
+        extents.sort();
+        let mut groups: Vec<(u64, u64, Vec<u64>)> = Vec::new();
+        for (lo, hi, entry) in extents {
+            match groups.last_mut() {
+                Some(group) if lo <= group.1 => {
+                    group.1 = group.1.max(hi);
+                    group.2.push(entry);
+                }
+                _ => groups.push((lo, hi, vec![entry])),
+            }
+        }
+
+        // Label names by address; with several labels at one entry, take the shortest.
+        let mut names: HashMap<u64, &String> = HashMap::new();
+        for (name, addr) in symbols {
+            if entries.contains(addr) {
+                let best = names.entry(*addr).or_insert(name);
+                if (name.len(), name) < (best.len(), *best) {
+                    *best = name;
+                }
+            }
+        }
+
+        let last_pc = *rom.insts.range(ZISKLIB_ROM_ADDR..FLOAT_LIB_ROM_ADDR).next_back().unwrap().0;
+        for (i, (lo, _, group_entries)) in groups.iter().enumerate() {
+            let to_pc = groups.get(i + 1).map_or(last_pc + 3, |next| next.0 - 1);
+            let mut group_entries = group_entries.clone();
+            group_entries.sort();
+            let name = group_entries
+                .iter()
+                .enumerate()
+                .filter(|(k, entry)| *k == 0 || zkvmcall_entries.contains(*entry))
+                .map(|(_, entry)| {
+                    names
+                        .get(entry)
+                        .map_or_else(|| format!("zisklib@0x{entry:08x}"), |n| n.to_string())
+                })
+                .collect::<Vec<_>>()
+                .join("|");
+            self.add_roi(*lo as u32, to_pc as u32, &name);
+        }
+        groups.len()
+    }
+
+    /// Target of a static jump (`copyb` imm + `set_pc`): the next pc is c + jmp_offset1.
+    fn static_jump_target(inst: &ZiskInst) -> u64 {
+        ((inst.b_use_sp_imm1 << 32) | (inst.b_offset_imm0 & 0xffff_ffff))
+            .wrapping_add_signed(inst.jmp_offset1)
+    }
+
+    /// The target of a static jump (`copyb` imm + `set_pc`, no store) into the ZisK library:
+    /// a zkvmcall's jump (see `emit_zkvmcall_jump`) or a library `jump()`. The BIOS's own
+    /// static jumps (to `ROM_EXIT`, or into the float library) are not calls, so they are left
+    /// out.
+    fn zisklib_jump_target(inst: &ZiskInst) -> Option<u64> {
+        (inst.op == ZiskOp::COPYB
+            && inst.set_pc
+            && !inst.store_pc
+            && inst.store == STORE_NONE
+            && inst.b_src == SRC_IMM)
+            .then(|| Self::static_jump_target(inst))
+            .filter(|target| (ZISKLIB_ROM_ADDR..FLOAT_LIB_ROM_ADDR).contains(target))
+    }
+
+    /// The lowest and highest address of the library code reachable from `entry` within
+    /// its function: branches and static jumps are followed, except a jump to another
+    /// function (a tail call), a `call` continues at its return address, and a `ret` (or
+    /// any other dynamic jump) stops.
+    fn zisklib_reach(rom: &ZiskRom, entry: u64, entries: &BTreeSet<u64>) -> (u64, u64) {
+        let (mut lo, mut hi) = (entry, entry);
+        let mut visited = HashSet::new();
+        let mut pending = vec![entry];
+        while let Some(addr) = pending.pop() {
+            let Some(zib) = rom.insts.get(&addr) else {
+                continue;
+            };
+            let inst = &zib.i;
+            // An `end` (e.g. a panic block shared by several functions) never returns, so
+            // it does not extend the function.
+            if inst.end || !visited.insert(addr) {
+                continue;
+            }
+            (lo, hi) = (lo.min(addr), hi.max(addr));
+            let rel = |offset: i64| addr.wrapping_add_signed(offset);
+            if inst.set_pc {
+                if inst.b_src == SRC_IMM && !inst.store_pc {
+                    let target = Self::static_jump_target(inst);
+                    if !entries.contains(&target) {
+                        pending.push(target);
+                    }
+                }
+            } else if inst.op == ZiskOp::FLAG && inst.store_pc {
+                pending.push(rel(inst.jmp_offset2));
+            } else {
+                pending.push(rel(inst.jmp_offset2));
+                // A precompile's jmp_offset1 is a parameter: its flag is always 0.
+                if !inst.is_precompiled {
+                    pending.push(rel(inst.jmp_offset1));
+                }
+            }
+        }
+        (lo, hi)
     }
     pub fn update_roi_internal_pc_range(
         &mut self,
@@ -3494,9 +3686,10 @@ impl Stats {
             // In-place operands read directly from `ctx.b`.
             ZiskOp::Keccak => &[Direct { words: 25 }][..],
             ZiskOp::Poseidon1 | ZiskOp::Poseidon2 => &[Direct { words: 16 }][..],
-            ZiskOp::Secp256k1Dbl | ZiskOp::Secp256r1Dbl | ZiskOp::Bn254CurveDbl => {
-                &[Direct { words: 8 }][..]
-            }
+            ZiskOp::Secp256k1Dbl
+            | ZiskOp::Secp256r1Dbl
+            | ZiskOp::Bn254CurveDbl
+            | ZiskOp::Poseidon2KoalaBear => &[Direct { words: 8 }][..],
             ZiskOp::Bls12_381CurveDbl => &[Direct { words: 12 }][..],
             // Indirected operands: `ctx.b` holds pointers to the operand buffers.
             ZiskOp::Sha256 => {
@@ -3529,6 +3722,7 @@ impl Stats {
             ZiskOp::Secp256k1Add
             | ZiskOp::Secp256r1Add
             | ZiskOp::BabyJubJubAdd
+            | ZiskOp::Ed25519Add
             | ZiskOp::Bn254CurveAdd
             | ZiskOp::Bn254ComplexAdd
             | ZiskOp::Bn254ComplexSub
@@ -4258,5 +4452,94 @@ mod tests {
         // A flush landing exactly on an access does not create a zero-length gap of its own.
         assert_eq!(Stats::flushed_distance(64, 100, 64), 36);
         assert_eq!(Stats::flushed_distance(50, 128, 64), 64);
+    }
+
+    /// A static jump (`copyb` imm + `set_pc`, no store) at `pc` to `target`, the shape of a
+    /// zkvmcall jump (`emit_zkvmcall_jump`), a library `jump()` and the BIOS's own jumps.
+    fn static_jump(rom: &mut ZiskRom, pc: u64, target: u64) {
+        let mut zib = zisk_core::ZiskInstBuilder::new(pc);
+        zib.src_a("imm", 0, false);
+        zib.src_b("imm", target, false);
+        zib.op("copyb").unwrap();
+        zib.set_pc();
+        zib.j(0, 4);
+        zib.build(rom);
+    }
+
+    #[test]
+    fn zisklib_jump_target_only_takes_jumps_into_the_library() {
+        let mut rom = ZiskRom::default();
+        static_jump(&mut rom, ROM_ADDR, ZISKLIB_ROM_ADDR + 8); // a zkvmcall
+        static_jump(&mut rom, ROM_ENTRY, ROM_EXIT); // BIOS: jump to end
+        static_jump(&mut rom, ROM_ENTRY + 4, FLOAT_LIB_ROM_ADDR); // BIOS: into the float library
+        static_jump(&mut rom, ROM_ADDR + 4, ROM_ADDR + 64); // a jump inside the program
+        let target = |pc: u64| Stats::zisklib_jump_target(&rom.insts[&pc].i);
+
+        assert_eq!(target(ROM_ADDR), Some(ZISKLIB_ROM_ADDR + 8));
+        assert_eq!(target(ROM_ENTRY), None);
+        assert_eq!(target(ROM_ENTRY + 4), None);
+        assert_eq!(target(ROM_ADDR + 4), None);
+    }
+
+    #[test]
+    fn zisklib_rois_follow_functions_not_labels() {
+        // lib_a..lib_d are zkvmcall targets, lib_helper and lib_a_sub are call targets:
+        //  - lib_a_sub sits inside lib_a's body, which carries on after it: one ROI.
+        //  - lib_a and lib_b both branch to the shared panic `end`: it doesn't merge them.
+        //  - lib_c and lib_d share lib_cd_tail: one ROI, named after both entries.
+        let src = "\
+lib_a:
+\tcall lib_helper
+\teq(r10, 0), j(lib_fail)
+\tcall lib_a_sub
+\tjump(lib_a_cont)
+lib_a_sub:
+\tret
+lib_a_cont:
+\tret
+lib_b:
+\teq(r10, 0), j(lib_fail)
+\tret
+lib_c:
+\teq(r10, 0), j(lib_cd_tail)
+\tret
+lib_cd_tail:
+\tcopyb(0, 1) -> r10
+\tret
+lib_d:
+\tjump(lib_cd_tail)
+lib_helper:
+\tret
+lib_fail:
+\tcopyb(0, 0) -> r10, end
+";
+        let program = ziskasm::parser::parse_program(src, "lib").expect("parse");
+        let library =
+            ziskasm::assemble_library(&program, ZISKLIB_ROM_ADDR, zisk_core::ZISKLIB_RAM_ADDR)
+                .expect("assemble");
+        let sym = |name: &str| library.symbols[name];
+
+        let mut rom = ZiskRom { insts: library.insts.clone(), ..Default::default() };
+        for (k, name) in ["lib_a", "lib_b", "lib_c", "lib_d"].iter().enumerate() {
+            static_jump(&mut rom, ROM_ADDR + 4 * k as u64, sym(name));
+        }
+        static_jump(&mut rom, ROM_ENTRY, ROM_EXIT); // not an entry
+
+        let mut stats = Stats::default();
+        let first = stats.rois.len();
+        assert_eq!(stats.add_zisklib_rois(&rom, &library.symbols), 4);
+        let rois: Vec<(u64, u64, &str)> = stats.rois[first..]
+            .iter()
+            .map(|roi| (roi.from_pc as u64, roi.to_pc as u64, roi.name.as_str()))
+            .collect();
+        assert_eq!(
+            rois,
+            [
+                (sym("lib_a"), sym("lib_b") - 1, "lib_a"),
+                (sym("lib_b"), sym("lib_c") - 1, "lib_b"),
+                (sym("lib_c"), sym("lib_helper") - 1, "lib_c|lib_d"),
+                (sym("lib_helper"), sym("lib_fail") + 3, "lib_helper"),
+            ]
+        );
     }
 }

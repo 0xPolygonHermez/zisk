@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <algorithm>
+#include <string.h>
 #include <stdint.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -147,5 +149,70 @@ uint64_t TestDmaMemMops::encode_aligned_block_read(uint32_t addr, uint32_t count
 uint64_t TestDmaMemMops::encode_aligned_block_write(uint32_t addr, uint32_t count) {
     return ((uint64_t) MOPS_ALIGNED_BLOCK_WRITE << 32) | ((uint64_t) count << (MOPS_BLOCK_COUNT_SBITS + 32)) | addr;
 
+}
+
+
+bool TestDmaMemMops::check_record(size_t &w, uint64_t expected, const char *tag) {
+    const uint64_t mode = (expected >> 32) & 0x0F;
+    const bool block = (mode == MOPS_BLOCK_READ) || (mode == MOPS_BLOCK_WRITE) ||
+                       (mode == MOPS_ALIGNED_BLOCK_READ) || (mode == MOPS_ALIGNED_BLOCK_WRITE);
+#ifdef MOPS_LIGHT
+    // Light form: one word per record, no step; a block record carries the no-payload bit.
+    const uint64_t header = expected | TAG | (block ? (1ull << MOPS_NO_PAYLOAD_BIT) : 0);
+    const bool ok = mtrace[w] == header;
+    const size_t len = 1;
+#else
+    const uint64_t header = (block ? expected : (expected | step_field(2))) | TAG;
+    const bool ok = mtrace[w] == header && (!block || mtrace[w + 1] == step_field(2));
+    const size_t len = block ? 2 : 1;
+#endif
+    if (!ok) {
+        printf("\nERROR: %s expected: 0x%016lX (%s) found: mtrace[%ld]:0x%016lX/0x%016lX (%s)\n", tag,
+               header, decode(expected).c_str(), w, mtrace[w], mtrace[w + 1], decode(mtrace[w] & ~TAG).c_str());
+        return false;
+    }
+    w += len;
+    return true;
+}
+
+bool TestDmaMemMops::check_write_records(size_t &w, uint64_t addr, size_t words, const char *tag) {
+#ifdef MOPS_LIGHT
+    // Light form: the block-write descriptor is the record, one word, no values.
+    const uint64_t header = addr | ((uint64_t)MOPS_ALIGNED_BLOCK_WRITE << 32) | ((uint64_t)words << 36)
+                            | (1ull << MOPS_NO_PAYLOAD_BIT) | TAG;
+    if (mtrace[w] != header) {
+        printf("\nERROR: %s block write at word %ld expected header 0x%016lX found 0x%016lX\n", tag, w, header, mtrace[w]);
+        return false;
+    }
+    w += 1;
+    return true;
+#endif
+    const uint64_t wstep = step_field(3) << 4;   // the value block keeps the step field at bit 42
+    size_t k = 0;
+    while (k < words) {
+        const size_t n = std::min<size_t>(63, words - k);
+        const uint64_t header = (addr + k * 8) | ((uint64_t)MOPS_BLOCK_VALUES << 32) | ((uint64_t)n << 36) | wstep | TAG;
+        if (mtrace[w] != header) {
+            printf("\nERROR: %s block at word %ld expected header 0x%016lX found 0x%016lX\n", tag, w, header, mtrace[w]);
+            return false;
+        }
+        uint64_t tops = 0;
+        for (size_t i = 0; i < n; ++i) {
+            uint64_t value;
+            memcpy(&value, (const void *)(addr + (k + i) * 8), sizeof(value));
+            tops |= (value >> 63) << i;
+            if (mtrace[w + 2 + i] != (value & ~TAG)) {
+                printf("\nERROR: %s word %ld expected value 0x%016lX found 0x%016lX\n", tag, k + i, value & ~TAG, mtrace[w + 2 + i]);
+                return false;
+            }
+        }
+        if (mtrace[w + 1] != tops) {
+            printf("\nERROR: %s block at word %ld expected top bits 0x%016lX found 0x%016lX\n", tag, w, tops, mtrace[w + 1]);
+            return false;
+        }
+        w += 2 + n;
+        k += n;
+    }
+    return true;
 }
 

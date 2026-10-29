@@ -18,6 +18,7 @@ path = "src/main.rs"
 [dependencies]
 zisk-coordinator-client = { workspace = true }
 zisk-coordinator-api = { workspace = true }
+zisk-common = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }

@@ -8,12 +8,18 @@
 #                                $OUTPUT_DIR, keyed by <platform>/<input-hash>.
 #   FORCE_SETUP_BUILD            Ignore a cache hit and rebuild the setup (the
 #                                fresh build then refreshes the cache entry).
+#   REMOTE_CACHE_SETUP           Cache roots ($OUTPUT_DIR) of other workers, as
+#                                [user@]host:/path, comma separated. A local cache
+#                                miss is looked up there first, in order, and
+#                                pulled over rsync/ssh. Only with USE_CACHE_SETUP=1.
 #   DISABLE_RECURSIVE_SETUP      Build without aggregation (setup without -r).
 #   INSTALL_SETUP                Install the provingKey into $HOME/.zisk, plus the
 #                                provingKeySnark when the build produced one.
 #   INCLUDE_SNARK                After the proving key, also build the snark setup
-#                                (provingKeySnark/). Needs state-machines/publics.json
-#                                and the powers-of-tau file (PTAU_PATH).
+#                                (provingKeySnark/), pilfflonk for both hash modes
+#                                (FINAL_SNARK overrides). Needs
+#                                state-machines/publics.json and the powers-of-tau
+#                                file (PTAU_PATH).
 #   DYLIB_INPUT_FILES            After the build, copy the inputs needed to compile
 #                                the macOS dylib files into build/dylib_input.
 #   RECURSIVE_JOBS / SETUP_JOBS  Setup pipeline concurrency.
@@ -53,24 +59,13 @@ main() {
 
     info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
-    load_env ZISK_REPO_DIR PIL2_COMPILER_BRANCH USE_CACHE_SETUP FORCE_SETUP_BUILD \
+    load_env ZISK_REPO_DIR PIL2_COMPILER_BRANCH USE_CACHE_SETUP FORCE_SETUP_BUILD REMOTE_CACHE_SETUP \
         DISABLE_RECURSIVE_SETUP INSTALL_SETUP HASH_MODE INCLUDE_SNARK DYLIB_INPUT_FILES \
         HASH_MODE PTAU_PATH RECURSIVE_JOBS SETUP_JOBS || return 1
 
     # Default the hash mode when neither the shell, .env, nor Cargo.toml set
     # it. Exported so the setup_build.sh child process inherits it.
     export HASH_MODE="${HASH_MODE:-blake3}"
-
-    # The BN128 wrap is poseidon-only, and HASH_MODE is what the STARK setup below will
-    # build the key with — so this pairing is already decided here, before any work. Checked
-    # at the top rather than beside the snark step so the run does not spend a full STARK
-    # setup to arrive at a conflict that was knowable in the first second.
-    if [[ "${INCLUDE_SNARK}" == "1" ]]; then
-        if [[ "$(printf '%s' "$HASH_MODE" | tr '[:upper:]' '[:lower:]')" == "blake3" ]]; then
-            err "INCLUDE_SNARK=1 needs a poseidon HASH_MODE; the BN128 wrap has no blake3 path (HASH_MODE=${HASH_MODE})"
-            return 1
-        fi
-    fi
 
     current_step=1
     total_steps=2   # clearing build/ + building setup
@@ -92,7 +87,13 @@ main() {
 
     build_flags=(--build-dir build --gen-exps --exps-arch major)
     [[ "${DISABLE_RECURSIVE_SETUP}" == "1" ]] && build_flags+=(--no-aggregation)
-    [[ "${USE_CACHE_SETUP}" == "1" ]] && build_flags+=(--cache-dir "${OUTPUT_DIR}")
+    if [[ "${USE_CACHE_SETUP}" == "1" ]]; then
+        build_flags+=(--cache-dir "${OUTPUT_DIR}")
+        local peer peers="${REMOTE_CACHE_SETUP:-}"
+        for peer in ${peers//,/ }; do
+            build_flags+=(--remote-cache-dir "$peer")
+        done
+    fi
 
     [[ -n "${PIL2_COMPILER_BRANCH}" ]] && build_flags+=(--pil2-compiler-branch "${PIL2_COMPILER_BRANCH}")
     # setup_build.sh (build / no-aggregation) emits the input hash as its final
@@ -111,7 +112,6 @@ main() {
     rm -f "$setup_log"
 
     if [[ "${INCLUDE_SNARK}" == "1" ]]; then
-        # The HASH_MODE/blake3 conflict was already rejected above, before the STARK setup ran.
         step "Building snark setup..."
         build_flags=(--build-dir build --snark)
         ensure "${SCRIPT_DIR}/setup_build.sh" "${build_flags[@]}" || return 1

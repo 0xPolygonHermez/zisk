@@ -1,0 +1,75 @@
+; ============================================================================
+; unal8.zisk - diagnostic for the ZisK `unal8` alignment predicate.
+;
+;   unal8(a, b) -> c = flag = 1 iff a or b is not a multiple of 8
+;
+; It is the guard of the fast paths that need 8-byte aligned addresses and
+; counts: `unal8(addr, count), j(slow_path)` jumps when either is misaligned.
+; Only the 3 low bits of a | b matter, whatever the rest of the values.
+;
+; Pure-constant style (see compare.zisk): UNAL8_TABLE holds the expected 0/1 for
+; each (a, b) pair. Both the stored result (c) and the flag (the jump) are checked.
+; Expected values generated from core/src/ops_core.rs.
+;
+; UNAL8_TABLE columns: a b unal8
+; Returns r10 = 0 on success, 0x3201 on a wrong result, 0x3202 on a wrong flag.
+;
+; Registers: r5 row ptr  r6 row index  r7 a  r8 b  r12 expected  r13 result.
+; ============================================================================
+
+define ROWS      16
+define ROW_BYTES 24      ; 3 u64 columns * 8 bytes
+
+; a, b, unal8
+const u64 UNAL8_TABLE =
+	0x0000000000000000, 0x0000000000000000, 0x0000000000000000,   ; 0 & 0
+	0x0000000000000008, 0x0000000000000010, 0x0000000000000000,   ; 8 & 16
+	0x0000000000000001, 0x0000000000000000, 0x0000000000000001,   ; bit 0 of a
+	0x0000000000000000, 0x0000000000000002, 0x0000000000000001,   ; bit 1 of b
+	0x0000000000000004, 0x0000000000000008, 0x0000000000000001,   ; bit 2 of a
+	0x0000000000000008, 0x0000000000000007, 0x0000000000000001,   ; b = 7
+	0x00000000a0001000, 0x0000000000000040, 0x0000000000000000,   ; aligned RAM address & count
+	0x00000000a0001004, 0x0000000000000040, 0x0000000000000001,   ; misaligned address
+	0x00000000a0001000, 0x0000000000000041, 0x0000000000000001,   ; misaligned count
+	0xfffffffffffffff8, 0xfffffffffffffff8, 0x0000000000000000,   ; -8 & -8
+	0xffffffffffffffff, 0x0000000000000000, 0x0000000000000001,   ; -1 & 0
+	0x0000000000000000, 0xffffffffffffffff, 0x0000000000000001,   ; 0 & -1
+	0x8000000000000000, 0x0000000100000000, 0x0000000000000000,   ; high bits only
+	0x0000000100000008, 0x0000000000000000, 0x0000000000000000,   ; high byte set, low aligned
+	0x00000000000000f8, 0x0000000000000f00, 0x0000000000000000,   ; low byte 0xf8 & 0xf00
+	0x00000000000000f8, 0x0000000000000f01, 0x0000000000000001    ; low byte 0xf8 & 0xf01
+
+unal8:
+	copyb(0, UNAL8_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+un_loop:
+	eq(r6, ROWS), j(un_ok)
+	copyb(r5, 8[a + 0]) -> r7      ; a
+	copyb(r5, 8[a + 8]) -> r8      ; b
+	copyb(r5, 8[a + 16]) -> r12    ; expected
+
+	; result stored in c
+	unal8(r7, r8) -> r13
+	eq(r13, r12), j(un_c1)
+	copyb(0, 0x3201) -> r10
+	ret
+un_c1:
+	; flag: the jump is taken iff misaligned
+	unal8(r7, r8), j(un_flag_set)
+	eq(r12, 0), j(un_next)         ; not taken: expected 0
+	copyb(0, 0x3202) -> r10
+	ret
+un_flag_set:
+	eq(r12, 1), j(un_next)         ; taken: expected 1
+	copyb(0, 0x3202) -> r10
+	ret
+
+un_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(un_loop)
+
+un_ok:
+	copyb(0, 0) -> r10
+	ret

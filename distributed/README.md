@@ -67,8 +67,11 @@ docker compose -f distributed/deploy/docker/compose.yaml build
 # Start the coordinator only
 docker compose -f distributed/deploy/docker/compose.yaml up coordinator
 
-# Start the full stack: coordinator + 4 workers + Prometheus
+# Start the full stack: coordinator + 4 workers + Prometheus + Grafana + node_exporter
 docker compose -f distributed/deploy/docker/compose.yaml up --scale worker=4
+
+# Also export the GPUs' metrics (needs the NVIDIA container toolkit)
+docker compose -f distributed/deploy/docker/compose.yaml --profile gpu up --scale worker=4
 
 # Build workers with GPU support
 docker compose -f distributed/deploy/docker/compose.yaml build --build-arg GPU=true worker
@@ -79,10 +82,14 @@ docker compose -f distributed/deploy/docker/compose.yaml up --scale worker=4
 
 | Port | Service |
 |------|---------|
-| `7000` | Public gRPC API (clients connect here) |
-| `9090` | Prometheus metrics (coordinator) |
-| `9091` | Prometheus UI (mapped from the prometheus container) |
-| `50051` | Internal worker port (workers connect here, not exposed externally by default) |
+| `7001` | Public gRPC API (clients connect here) |
+| `9091` | Coordinator metrics (`/metrics`, `/health`) |
+| `9090` | Prometheus UI |
+| `3000` | Grafana (the dashboards; see [Monitoring](../book/getting_started/distributed_execution.md#monitoring)) |
+| `50052` | Internal worker port (workers connect here, not exposed externally by default) |
+
+The compose stack's ports come from [`deploy/config/coordinator.toml`](deploy/config/coordinator.toml);
+outside docker, the coordinator's defaults are `7000`, `9090` and `50051`.
 
 **Volumes:**
 
@@ -253,7 +260,7 @@ Runs the program with the given inputs and returns execution statistics and publ
 
 #### `JobRequest` — Prove
 
-Runs the program and generates a proof. The `proof_dest` field controls the output format and generation method. At this moment the coordinator supports three proof types: STARK, STARK Minimal, and PLONK.
+Runs the program and generates a proof. The `proof_dest` field controls the output format and generation method. At this moment the coordinator supports three proof types: STARK, STARK Minimal, and SNARK (the final SNARK of the workers' SNARK proving key: PLONK or pilfflonk).
 
 **Input kinds:**
 
@@ -368,6 +375,14 @@ sudo systemctl enable --now zisk-worker@2
 - Check worker registration in coordinator logs (`RUST_LOG=debug`)
 - Verify the worker's `compute_capacity` is sufficient for queued jobs
 - Ensure no two workers share the same `worker_id`
+
+**Worker exits with status 75:**
+- A worker that cannot recover in-process aborts every one of its MPI ranks with status 75 (`EX_TEMPFAIL`), so that its service manager restarts it. That happens when a cancelled or failed job's recovery fails or does not complete within 300 s, which a rank left in another MPI collective causes, and on any panic in a worker of several ranks. The worker's log says why, followed by `aborting the worker so that it restarts`.
+- The provided systemd unit (`Restart=on-failure`) and launchd job (`KeepAlive`) restart it with no action needed; elsewhere, restart it yourself.
+
+**Stopping a worker:**
+- On SIGTERM, SIGINT or SIGUSR1, every rank cancels its job in flight (the coordinator reassigns it), kills its ASM services, unlinks their `/dev/shm` segments and semaphores, and exits with status 0 within seconds, without waiting on any other rank.
+- Under `mpirun`, signal `mpirun` with SIGUSR1, which it forwards to every rank, and run it with `--mca orte_allowed_exit_without_sync 1`, so that ranks ending without `MPI_Finalize` count as a normal end: `mpirun` then exits with status 0. On SIGTERM `mpirun` aborts the job instead, and exits with status 1 whatever the ranks do. The provided systemd unit does both (`KillMode=mixed`, `KillSignal=SIGUSR1`).
 
 **Debug logging:**
 

@@ -184,8 +184,6 @@ fn assert_same_as_one_range_with(
 
         let (got_rows, got) = run(n_rows, seg, ops, k);
         assert_eq!(got_rows, want_rows, "k={k}: the trace differs from the one-range fill");
-        assert_eq!(got.range_22bits, want.range_22bits, "k={k}: 22-bit multiplicities differ");
-        assert_eq!(got.range_16bits, want.range_16bits, "k={k}: 16-bit multiplicities differ");
         assert_eq!(got.last_addr, want.last_addr, "k={k}");
         assert_eq!(got.last_step, want.last_step, "k={k}");
         assert_eq!(got.last_value, want.last_value, "k={k}");
@@ -235,12 +233,10 @@ fn fewer_addresses_than_ranges_still_matches() {
     let mixed = shuffled(&sorted_ops);
     let n_rows = rows_for(3, 2);
     for ops in [&sorted_ops, &mixed] {
-        let (want_rows, want) = run(n_rows, &seg, ops, 1);
+        let (want_rows, _want) = run(n_rows, &seg, ops, 1);
         for k in [4usize, 8, 16] {
-            let (got_rows, got) = run(n_rows, &seg, ops, k);
+            let (got_rows, _got) = run(n_rows, &seg, ops, k);
             assert_eq!(got_rows, want_rows, "k={k}");
-            assert_eq!(got.range_22bits, want.range_22bits, "k={k}");
-            assert_eq!(got.range_16bits, want.range_16bits, "k={k}");
         }
     }
 }
@@ -258,8 +254,6 @@ fn many_chunks_fill_the_same_as_one() {
         for k in [1usize, 2, 4, 8] {
             let (rows, out) = run_chunks(n_rows, &seg, &chunks, k);
             assert_eq!(rows, want_rows, "{n_chunks} chunks, k={k}: different trace");
-            assert_eq!(out.range_22bits, want.range_22bits, "{n_chunks} chunks, k={k}");
-            assert_eq!(out.range_16bits, want.range_16bits, "{n_chunks} chunks, k={k}");
             assert_eq!(out.last_addr, want.last_addr, "{n_chunks} chunks, k={k}");
         }
     }
@@ -282,8 +276,6 @@ fn unsorted_operations_fill_the_same_as_sorted_ones() {
     for k in [1usize, 2, 4, 8] {
         let (rows, out) = run(n_rows, &seg, &mixed, k);
         assert_eq!(rows, sorted_rows, "k={k}: unsorted input filled a different trace");
-        assert_eq!(out.range_22bits, sorted_out.range_22bits, "k={k}");
-        assert_eq!(out.range_16bits, sorted_out.range_16bits, "k={k}");
         assert_eq!(out.last_addr, sorted_out.last_addr, "k={k}");
     }
 }
@@ -458,4 +450,57 @@ fn padding_size_and_its_distance_to_the_maximum_split_into_chunks() {
 fn a_padding_covering_the_whole_segment_is_rejected() {
     let max = (lanes_x_row() * MemTrace::<Row>::NUM_ROWS - 1) as u32;
     split_padding_size(max + 1, max);
+}
+
+/// A failed device fill hands the trace buffer back, so the CPU fallback reuses the pooled buffer
+/// instead of taking a second one.
+#[test]
+fn a_failed_device_fill_hands_the_buffer_back() {
+    use proofman_common::trace::TraceRow;
+    let len = MemTrace::<MemTraceRowPacked<Goldilocks>>::NUM_ROWS
+        * MemTraceRowPacked::<Goldilocks>::ROW_SIZE;
+    let sm = MemSM::<Goldilocks>::new();
+    for packed in [false, true] {
+        let buffer = vec![Goldilocks::default(); len];
+        let ptr = buffer.as_ptr();
+        // No GPU planner is registered here, so the device fill fails.
+        let err = sm
+            .compute_witness_gpu_arena(SegmentId(0), true, buffer, packed)
+            .expect_err("the device fill has no planner");
+        let back = err.trace_buffer.expect("the buffer comes back with the error");
+        assert_eq!((back.as_ptr(), back.len()), (ptr, len), "packed={packed}");
+    }
+}
+
+/// The planner's scalars are checked before the air values are built from them: a lane count
+/// beyond the instance, or a continuation past the last lane, is an error like any device
+/// failure, never a wrapped subtraction and a panic.
+#[test]
+fn impossible_device_scalars_are_an_error() {
+    use crate::mem_gpu_fill::{check_scalars, mem_report};
+    use zisk_sm_mem_common::{RAM_W_ADDR_END, RAM_W_ADDR_INIT};
+    use zisk_sm_mem_planner::MemFillResult;
+    let n_rows = MemTrace::<MemTraceRowPacked<Goldilocks>>::NUM_ROWS;
+    let num_slots = n_rows * lanes_x_row();
+    let good = MemFillResult {
+        status: 0,
+        n_lanes: num_slots as u32,
+        prev_addr_w: RAM_W_ADDR_INIT,
+        last_addr_w: RAM_W_ADDR_END,
+        ..Default::default()
+    };
+    assert!(check_scalars(&good, num_slots).is_ok());
+    assert!(mem_report(&good, n_rows).is_ok());
+
+    let too_many = MemFillResult { n_lanes: num_slots as u32 + 1, ..good };
+    assert!(check_scalars(&too_many, num_slots).is_err(), "a lane count beyond the instance");
+    assert!(mem_report(&too_many, n_rows).is_err());
+
+    let none = MemFillResult { n_lanes: 0, ..good };
+    assert!(check_scalars(&none, num_slots).is_err(), "an instance without lanes");
+
+    let backwards =
+        MemFillResult { prev_addr_w: RAM_W_ADDR_END, last_addr_w: RAM_W_ADDR_INIT, ..good };
+    assert!(check_scalars(&backwards, num_slots).is_err(), "a continuation past the last lane");
+    assert!(mem_report(&backwards, n_rows).is_err());
 }

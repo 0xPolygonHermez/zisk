@@ -10,7 +10,7 @@ use crate::save_dma_collectors;
 #[cfg(feature = "save_dma_inputs")]
 use crate::DmaInput;
 use crate::{DmaCheckPoint, DmaModule};
-use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_common::{ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::sync::Arc;
 use zisk_common::{
@@ -78,7 +78,7 @@ impl<F: PrimeField64> Instance<F> for DmaInstance<F> {
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
         packed: bool,
-    ) -> ProofmanResult<Option<AirInstance<F>>> {
+    ) -> zisk_common::WitnessResult<F> {
         #[cfg(feature = "save_dma_collectors")]
         let (debug, inputs): (Vec<_>, Vec<_>) = collectors
             .into_iter()

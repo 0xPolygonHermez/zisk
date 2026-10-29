@@ -49,6 +49,7 @@
 # - Updates trace_address_threshold after realloc
 
 .global check_dynamic_mtrace
+.global check_dynamic_mops
 
 .extern fast_dma_encode
 .extern trace_address_threshold
@@ -72,6 +73,17 @@
 #   R_MT_INDEX = current index into mtrace (qwords)
 #   R_STEP     = steps remaining until end of chunk
 #   R_COUNT    = bytes needed by current request
+
+# Memory-ops variant: a recorder is about to append up to 4 bytes of records per byte of R_COUNT
+# (a value block costs 8 bytes per word written, plus the reads) plus its fixed records. Grows the
+# trace when that would pass the threshold; the margin heuristic of the minimal trace does not
+# apply because the records are not bounded per step.
+check_dynamic_mops:
+    lea     R_AUX, [R_MT_ADDR + 8 * R_MT_INDEX]
+    lea     R_AUX, [R_AUX + R_COUNT * 4 + MAX_DMA_MOPS_MARGIN]
+    sub     R_AUX, [trace_address_threshold]
+    jnc     .L_call_realloc
+    ret
 
 check_dynamic_mtrace:
 
@@ -138,9 +150,14 @@ check_dynamic_mtrace:
     push    R_SRC                   # 1 cycle - save source address
     push    R_DST                   # 1 cycle - save destination address
 
-    # Allocate stack for XMM registers (16 registers x 16 bytes + 8 for alignment)
-    # Note: We're inside a call, so stack is unaligned to 16 bytes
-    sub     rsp, 16*16 + 8          # 1 cycle - allocate 264 bytes
+    # Align the stack for the movaps saves and for _realloc_trace's System V call. How it is
+    # aligned here depends on how deep the caller is: the DMA routines call this from inside
+    # their own call, one return address deeper than a call from the generated code. rbp is
+    # one of the generated code's registers, so it is kept.
+    push    rbp
+    mov     rbp, rsp
+    and     rsp, -16
+    sub     rsp, 16*16              # 1 cycle - the 16 XMM registers
 
     # Save all XMM registers (may be used by caller for optimized operations)
     movaps  [rsp + 0*16], xmm0      # 1 cycle - aligned 128-bit stores
@@ -180,7 +197,8 @@ check_dynamic_mtrace:
     movaps  xmm14, [rsp + 14*16]    # 1 cycle
     movaps  xmm15, [rsp + 15*16]    # 1 cycle
     
-    add     rsp, 16*16 +8           # 1 cycle - deallocate stack space
+    mov     rsp, rbp                # 1 cycle - drop the XMM area and the alignment
+    pop     rbp
 
     # Restore general purpose registers
     pop     R_DST                   # 1 cycle - restore destination address

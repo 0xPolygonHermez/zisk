@@ -4,7 +4,8 @@ use super::ArithEq384MemInputConfig;
 use crate::{executors::Bls12_381Complex, ARITH_EQ_384_U64S_DOUBLE};
 
 pub const BLS12_381_COMPLEX_ADD_MEM_CONFIG: ArithEq384MemInputConfig = ArithEq384MemInputConfig {
-    indirect_params: 2,
+    indirect_params: 0,
+    direct_ab: true,
     rewrite_params: true,
     read_params: 2,
     write_params: 1,
@@ -18,7 +19,7 @@ pub fn generate_bls12_381_complex_add_mem_inputs<P: MemProcessor>(
     only_counters: bool,
     mem_processors: &mut P,
 ) {
-    let mut pos_offset: usize = 7; // op,op_type,a,b,addr[2],...
+    let mut pos_offset: usize = 5; // op,op_type,a,b,step,p1[12],p2[12] (a = p1 address, b = p2 address)
     let f1: &[u64; ARITH_EQ_384_U64S_DOUBLE] =
         &data[pos_offset..(pos_offset + ARITH_EQ_384_U64S_DOUBLE)].try_into().unwrap();
     pos_offset += ARITH_EQ_384_U64S_DOUBLE;

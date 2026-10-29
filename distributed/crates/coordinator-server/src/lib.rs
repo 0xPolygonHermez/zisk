@@ -21,6 +21,8 @@
 pub mod backend;
 /// Server configuration.
 pub mod config;
+/// The API's open connections, counted per client.
+mod connections;
 /// API error and result types.
 pub mod errors;
 /// gRPC adapter wiring the service to a [`backend::BackendService`].

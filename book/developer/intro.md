@@ -315,8 +315,8 @@ This is the ZisK high-level address map:
 |From|To|Usage|
 |---|---|---|
 |0x1000|0x0FFFFFFF|ziskos ROM|
-|0x40000000|0x7FFFFFFF|Input data|
-|0x80000000|0x87FFFFFF|ROM|
+|0x10000000|0x8FFFFFFF|Input data|
+|0x90000000|0x97FFFFFF|ROM|
 |0xA0000000|0xBFFFFFFF|RAM|
 
 
@@ -329,16 +329,17 @@ ROM address map:
 |0x1000|ROM_ENTRY.  Initial execution address.  It simply jumps to the program launcher code.|
 |0x1004|ROM_EXIT. Final execution address.  It exits the program.|
 |0x1008|FLOAT_HANDLER_ADDR.  Saves RISC-V registers, calls the float library, and restores the saved registers.  Called when an F or D extension instruction is transpiled.|
-|0x1110|Program launcher code.  It writes initial values of ROM and RAM globals.  It saves some data and jumps to the first program instruction at 0x80000000.  Syscall trap handler, including the exit sequence to make output public and jump to the ROM_EXIT address.  This address corresponds to a float-enabled build; when ZisK is built without the `float` feature there is no float handler and the launcher starts at 0x1008 instead.|
-|0x80000000|Program code.  When done, a syscall is called to end the execution.|
-|0x87F00000|Float soft library code|
+|0x1110|Program launcher code.  It writes initial values of ROM and RAM globals.  It saves some data and jumps to the first program instruction at 0x90000000.  Syscall trap handler, including the exit sequence to make output public and jump to the ROM_EXIT address.  This address corresponds to a float-enabled build; when ZisK is built without the `float` feature there is no float handler and the launcher starts at 0x1008 instead.|
+|0x90000000|Program code.  When done, a syscall is called to end the execution.|
+|0x97E00000|ZisK library code|
+|0x97F00000|Float soft library code|
 
 RAM address map:
 
 |Address|Usage|
 |---|---|
 |0xA0000000|RAM_ADDR, also STACK_ADDR.  Program stack (4 MB).|
-|0xA0400000|SYS_ADDR.  ziskos system RAM (64 KB).  It holds the 32 memory-mapped RISC-V general registers at +0x0, the UART at +0x200, the float registers at +0x1000, and the CSRs at +0x8000.|
+|0xA0400000|SYS_ADDR.  ziskos system RAM (64 KB).  Its first 320 bytes, from +0x0, are the register file: the 32 RISC-V general registers followed by 8 extra registers (r32..r39) that only ZisK code uses. All of them except x0 are kept in the main trace, not in RAM. Next come the UART at +0x200, the float registers at +0x1000, and the CSRs at +0x8000.|
 |0xA0410000|OUTPUT_ADDR.  Program output RAM data (128 KB).|
 |0xA0430000|Program RAM: .data, .bss and heap.|
 |0xBFFF0000|Float soft library RAM (64 KB).|

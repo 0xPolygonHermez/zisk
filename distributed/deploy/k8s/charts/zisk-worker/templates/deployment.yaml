@@ -105,6 +105,7 @@ spec:
             - "--proving-key=/opt/zisk/provingKey"
             - "--coordinator-url={{ $coordinatorUrl }}"
             {{- if .Values.provingKey.snark.enabled }}
+            - "--snark"
             - "--proving-key-snark=/opt/zisk/provingKeySnark"
             {{- end }}
             {{- if .Values.worker.workerId }}
