@@ -9,6 +9,7 @@
 import Equiv.ProgramRom
 import Equiv.SpecRom
 import Equiv.BiosSim
+import Equiv.MisJumpSim
 
 namespace Equiv.Sim
 
@@ -58,10 +59,14 @@ theorem zromOf_bios (segs : List (BitVec 64 × Array (BitVec 32))) (entry : BitV
     addresses, 4-aligned, from ROM_ADDR on, and not so many that the
     internal addresses wrap. -/
 structure SegsOk (segs : List (BitVec 64 × Array (BitVec 32))) : Prop where
-  even : ∀ x ∈ codeWords segs, x.1.getLsbD 0 = false
+  aligned : ∀ x ∈ codeWords segs, x.1.toNat % 4 = 0
   nodup : ((codeWords segs).map (·.1)).Nodup
   high : ∀ x ∈ codeWords segs, ROM_ADDR.toNat ≤ x.1.toNat
   count : romCount (codeWords segs) 0 < 2 ^ 62
+
+theorem SegsOk.even {segs : List (BitVec 64 × Array (BitVec 32))} (hs : SegsOk segs) :
+    ∀ x ∈ codeWords segs, x.1.getLsbD 0 = false := by
+  intro x hx; have := hs.aligned x hx; rw [lsb_eq]; simp only [decide_eq_false_iff_not]; omega
 
 theorem programRom_high {segs : List (BitVec 64 × Array (BitVec 32))} (hs : SegsOk segs) :
     ∀ p ∈ programRom segs, 0x2000 ≤ p.1.toNat := by
@@ -81,6 +86,33 @@ theorem zromOf_program {segs : List (BitVec 64 × Array (BitVec 32))} (hs : Segs
     have h1 := bios_low entry q hq; have h2 := programRom_high hs p hp
     rw [e] at h1; omega
   simp only [zromOf, hb, romLookup_of_mem hn hp, Option.getD_some]
+
+/-- The ROM has the halt at every address 2 mod 4: the BIOS's addresses and
+    the code's are 4-aligned, the internal ones odd. -/
+theorem zromOf_haltMis {segs : List (BitVec 64 × Array (BitVec 32))} (hs : SegsOk segs) (entry : BitVec 64) :
+    HaltMis (zromOf segs entry) := by
+  intro a h0 h1
+  have ha : a.toNat % 4 = 2 := by
+    have e0 : a.toNat % 2 = 0 := by
+      have := lsb_eq a; rw [show a.getLsbD 0 = a[0] from rfl, h0] at this; simp at this; omega
+    have e1 : a.toNat / 2 % 2 = 1 := by
+      have : a.getLsbD 1 = true := h1
+      simp only [BitVec.getLsbD, Nat.testBit, Nat.shiftRight_eq_div_pow] at this
+      simp at this; omega
+    omega
+  have hb : romLookup (bios entry) a = none := by
+    apply romLookup_none; intro q hq e
+    have hm : q.1 ∈ (bios 0).map (·.1) := bios_addrs entry ▸ List.mem_map_of_mem hq
+    rw [bios_addrs0] at hm
+    simp only [List.mem_map, List.mem_range] at hm
+    obtain ⟨k, hk, ek⟩ := hm
+    rw [e] at ek; rw [← ek, BitVec.toNat_ofNat] at ha; omega
+  have hp : romLookup (programRom segs) a = none := by
+    apply romLookup_none; intro q hq e
+    rcases romFrom_addr _ 0 hs.even q hq with ⟨x, hx, ex⟩ | ⟨m, -, -, em⟩
+    · have := hs.aligned x hx; rw [← ex, e] at this; omega
+    · have := internalAddr_odd m; rw [← em, e, lsb_eq] at this; simp at this; omega
+  simp only [zromOf, hb, hp, Option.getD_none]
 
 /-- The program's ROM holds, at every code word the spec describes, its
     translation, given the words in memory and the words after a segment's
@@ -116,7 +148,7 @@ structure ProgramOk (segs : List (BitVec 64 × Array (BitVec 32))) (C : BitVec 6
 
 theorem ProgramOk.rom {segs : List (BitVec 64 × Array (BitVec 32))} {C : BitVec 64 → Prop} {m : Mem}
     (h : ProgramOk segs C m) (entry : BitVec 64) :
-    BiosAt (zromOf segs entry) entry ∧ SpecRom (zromOf segs entry) C m :=
-  ⟨zromOf_bios segs entry, zromOf_spec h.ok entry C m h.code h.words h.next⟩
+    BiosAt (zromOf segs entry) entry ∧ SpecRom (zromOf segs entry) C m ∧ HaltMis (zromOf segs entry) :=
+  ⟨zromOf_bios segs entry, zromOf_spec h.ok entry C m h.code h.words h.next, zromOf_haltMis h.ok entry⟩
 
 end Equiv.Sim

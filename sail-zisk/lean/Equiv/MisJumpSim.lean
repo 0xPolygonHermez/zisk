@@ -9,6 +9,7 @@
 -/
 import Equiv.FaultSim
 import Equiv.ProgSpec
+import Equiv.EbreakSim
 
 namespace Equiv.Riscv
 open LeanZiskRV LeanZiskRV.Functions Sail Sail.ArchSem
@@ -153,7 +154,7 @@ theorem misjump_stepR (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
     ∃ pc tgt, s.regs.get? Register.PC = some pc ∧ WordOk s.mem rs pc ∧ tgt[0] = false ∧ tgt[1] = true ∧
       (∃ s', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
         s'.regs.get? Register.PC = some 0x4#64) ∧
-      ∃ k z', ZRun zrom k z z' ∧ z'.regs.get? _root_.Zisk.Register.PC = some tgt := by
+      ∃ k z', ZRun zrom k z z' ∧ (∃ st, z'.regs.get? _root_.Zisk.Register.Step = some st) ∧ z'.regs.get? _root_.Zisk.Register.PC = some tgt := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   obtain ⟨pc, tgt, hpc, ht0, ht1, ⟨i, hi, rfl⟩ | ⟨i, hi, v1, hv1, rfl⟩ | ⟨i, hi, v1, v2, hv1, hv2, htk, rfl⟩ |
     ⟨i, next, hi, v1, v2, hv1, hv2, htk, rfl⟩ | ⟨i, ia, hi, v1, hv1, rfl⟩⟩ := h
@@ -173,7 +174,7 @@ theorem misjump_stepR (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
       exact execute_jal_mis t hwf hmr.priv i.rd i.imm pc' hpct ⟨ht0, ht1⟩
     · have hz := Equiv.Zisk.execute_jal z i.rd.toNat (i.imm.signExtend 64) ld xs pc' st hx hzpc hst
       rw [← hi.rom, ← zstep_run zrom z pc' hzpc] at hz
-      exact ⟨1, _, .step hz (.done _), by simp⟩
+      exact ⟨1, _, .step hz (.done _), ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert]⟩, by simp⟩
   · obtain ⟨hop, hf3, himm, hr1x, hrdx, hc⟩ := i.fields
     have hw : WordAt s rs pc' (byte i.encode 0) (byte i.encode 1) (byte i.encode 2) (byte i.encode 3) :=
       ⟨hi.al, hi.x1, hi.x2, hi.h0, hi.h1, hi.h2, hi.h3, hc⟩
@@ -193,7 +194,8 @@ theorem misjump_stepR (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
         ⟨ht0, ht1⟩
     · have hz := Equiv.Zisk.execute_jalr z i.rd.toNat i.rs1.toNat (i.imm.signExtend 64) ld l1 xs pc' st hx hzpc hst
       rw [← hi.rom, ← zstep_run zrom z pc' hzpc] at hz
-      exact ⟨1, _, .step hz (.done _), by simp [hxv, jalr_target v1 i.imm hi.even]⟩
+      exact ⟨1, _, .step hz (.done _), ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert]⟩,
+        by simp [hxv, jalr_target v1 i.imm hi.even]⟩
   · obtain ⟨hop, hf3, h12, h11, h10, h4, hr2x, hr1x, hc⟩ := i.fields
     have hw : WordAt s rs pc' (byte i.encode 0) (byte i.encode 1) (byte i.encode 2) (byte i.encode 3) :=
       ⟨hi.al, hi.x1, hi.x2, hi.h0, hi.h1, hi.h2, hi.h3, hc⟩
@@ -218,7 +220,8 @@ theorem misjump_stepR (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
       have hxv2' : xs[(i.rs2.toNat : Int)]! = v2 := by rw [getElem!_int]; exact hxv2
       have hz := Equiv.Zisk.execute_branch z (zbopOp i.op) (zbop_pure i.op) i.rs1.toNat i.rs2.toNat
         i.zjumps.1 i.zjumps.2 (by omega) (by omega) xs pc' st hx hzpc hst
-      refine ⟨1, _, .step (by rw [zstep_run zrom z pc' hzpc, hi.rom]; exact hz) (.done _), ?_⟩
+      refine ⟨1, _, .step (by rw [zstep_run zrom z pc' hzpc, hi.rom]; exact hz) (.done _),
+        ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert]⟩, ?_⟩
       simp only [Std.ExtDHashMap.get?_insert, beq_self_eq_true, dite_true, cast_eq, Option.some.injEq]
       have ht := zbop_flag i.op v1 v2
       rw [hxv1', hxv2']
@@ -245,7 +248,8 @@ theorem misjump_stepR (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
         (getX_of_agree he l2 hv2) pc' hpct htk ⟨ht0, ht1⟩
     · have hz := Equiv.Zisk.execute_mkj z _ _ _ (zbop_pure i.op) 0 (by omega) i.zjumps.1 i.zjumps.2 xs pc' st
         hx hzpc hst _ _ (Equiv.Zisk.srcA_ASrc xs _ l1) (Equiv.Zisk.srcB_BSrc xs _ l2)
-      refine ⟨1, _, .step (by rw [zstep_run zrom z pc' hzpc, i.zisk_of_spec hi.tr]; exact hz) (.done _), ?_⟩
+      refine ⟨1, _, .step (by rw [zstep_run zrom z pc' hzpc, i.zisk_of_spec hi.tr]; exact hz) (.done _),
+        ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert]⟩, ?_⟩
       simp only [Std.ExtDHashMap.get?_insert, beq_self_eq_true, dite_true, cast_eq, Option.some.injEq]
       have ht := zbop_flag i.op v1 v2
       rw [hr1, hr2]
@@ -282,7 +286,8 @@ theorem misjump_stepR (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
         (by simp [Std.ExtDHashMap.get?_insert, hx]) (by simp [eia])
         (by simp [Std.ExtDHashMap.get?_insert]) (by simp [Std.ExtDHashMap.get?_insert])
       rw [← hi.rom2, ← zstep_run zrom _ ia (by simp [eia])] at hz2
-      refine ⟨2, _, .step hz1 (.step hz2 (.done _)), ?_⟩
+      refine ⟨2, _, .step hz1 (.step hz2 (.done _)),
+        ⟨BitVec.addInt (BitVec.addInt st 1) 1, by simp [Std.ExtDHashMap.get?_insert]⟩, ?_⟩
       simp only [Std.ExtDHashMap.get?_insert, beq_self_eq_true, dite_true, cast_eq, Option.some.injEq]
       rw [hxv]
       simp only [Equiv.Zisk.JALR_MASK, jalrTarget, Sail.BitVec.update, Sail.BitVec.updateSubrange']
@@ -325,7 +330,7 @@ theorem misjump_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region
     ∃ pc tgt, s.regs.get? Register.PC = some pc ∧ WordOk s.mem rs pc ∧ tgt[0] = false ∧ tgt[1] = true ∧
       (∃ s', (interpretSailEffects (try_step n false)).run s = .ok false s' ∧
         s'.regs.get? Register.PC = some 0x4#64) ∧
-      ∃ k z', ZRun zrom k z z' ∧ z'.regs.get? _root_.Zisk.Register.PC = some tgt :=
+      ∃ k z', ZRun zrom k z z' ∧ (∃ st, z'.regs.get? _root_.Zisk.Register.Step = some st) ∧ z'.regs.get? _root_.Zisk.Register.PC = some tgt :=
   misjump_stepR s z rs hrel zrom h.toR n
 
 /-- The fused pair at pc, its target any, its ZisK instruction from the spec. -/
@@ -359,7 +364,8 @@ theorem fusedmis_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
       s1.regs.get? Register.PC = some (pc + 4) ∧ WordOk s.mem rs pc ∧ WordOk s1.mem rs (pc + 4) ∧
       (∃ s2, (interpretSailEffects (try_step (n + 1) false)).run s1 = .ok false s2 ∧
         s2.regs.get? Register.PC = some 0x4#64) ∧
-      ∃ z', (zstep zrom).run z = .ok false z' ∧ z'.regs.get? _root_.Zisk.Register.PC = some (i.T pc) := by
+      ∃ z', (zstep zrom).run z = .ok false z' ∧ (∃ st, z'.regs.get? _root_.Zisk.Register.Step = some st) ∧
+        z'.regs.get? _root_.Zisk.Register.PC = some (i.T pc) := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -393,8 +399,23 @@ theorem fusedmis_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
   rw [← i.rom_of_spec hi.rd hi.link hi.tr, ← zstep_run zrom z pc' hzpc] at hz
   refine ⟨s1, hrun1, hr1, hpc1, ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_u i.auipc).plain⟩,
     ⟨hi.x3, _, readWord_of (hmem1 ▸ hi.g0) (hmem1 ▸ hi.g1) (hmem1 ▸ hi.g2) (hmem1 ▸ hi.g3),
-      (notSys_jr i.jalr).plain⟩, htrap, _, hz, ?_⟩
+      (notSys_jr i.jalr).plain⟩, htrap, _, hz, ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert]⟩, ?_⟩
   simp only [Std.ExtDHashMap.get?_insert, beq_self_eq_true, dite_true, cast_eq, Option.some.injEq]
   generalize i.T pc' = y; bv_decide
+
+/-- A ROM with the halt at every address 2 mod 4, as the transpiler's,
+    which has no instruction there, is to the model: a jump there ends the
+    run in error. -/
+def HaltMis (zrom : BitVec 64 → _root_.Zisk.zisk_inst) : Prop :=
+  ∀ a : BitVec 64, a[0] = false → a[1] = true → zrom a = Transpiler.halt
+
+/-- At a target 2 mod 4 of a ROM with the halt there: the run's end, in error. -/
+theorem misjump_halt {zrom : BitVec 64 → _root_.Zisk.zisk_inst} (hm : HaltMis zrom) {z : Equiv.Zisk.ZState}
+    {tgt : BitVec 64} (ht0 : tgt[0] = false) (ht1 : tgt[1] = true)
+    (hpc : z.regs.get? _root_.Zisk.Register.PC = some tgt) (hst : ∃ st, z.regs.get? _root_.Zisk.Register.Step = some st) :
+    ∃ z', (zstep zrom).run z = .ok true z' ∧ z'.regs.get? _root_.Zisk.Register.Zerror = some true := by
+  obtain ⟨st, hst⟩ := hst
+  rw [zstep_run zrom z tgt hpc, hm tgt ht0 ht1]
+  exact Equiv.Zisk.execute_halt0 z st hst
 
 end Equiv.Sim

@@ -304,13 +304,14 @@ transpilation.
   all can fail alike: a jump to a target 2 mod 4 — jal, jalr (either
   offset), a taken branch, any registers (`MisJumpAt`), or the fused
   auipc-jalr pair (`FtAtM`; `fusedmis_end`, the machine failing a step
-  later) — traps on sail-riscv, writing nothing, and on ZisK goes there and finds no instruction (the transpiler walks the code a word
-  at a time, on 4-byte boundaries, and its internal instructions sit at odd
-  addresses; `make transpiler-check` checks no ROM entry is 2 mod 4), where
-  the model's rom_fetch asserts (`misjump_end`, `misjump_end_sparse`,
-  `zisk_misjump`; `lean/Equiv/MisJumpSim.lean`: sail-riscv's run ends in
-  failure, and sail-zisk's reaches the target, the proofs' ROM, a function,
-  having no empty address to say more); an access to ZisK's register
+  later) — traps on sail-riscv, writing nothing, and on ZisK goes there
+  and finds no instruction (the transpiler walks the code a word at a time,
+  on 4-byte boundaries, and its internal instructions sit at odd addresses;
+  `make transpiler-check` checks no ROM entry is 2 mod 4), where the
+  model's rom_fetch asserts: both runs fail (`misjump_end`,
+  `misjump_end_sparse`, `zisk_misjump`; `lean/Equiv/MisJumpSim.lean`; the
+  proofs' ROM, a function, has the halt there, `HaltMis`, as `zromOf`, the
+  program's ROM from the spec, does, `zromOf_haltMis`); an access to ZisK's register
   slots fails on ZisK and is RAM to sail-riscv; an access to the input's
   first 8 bytes is precondition I. A load or store at any alignment is
   covered: within its 16-byte granule, sail-riscv's PMA check passes it

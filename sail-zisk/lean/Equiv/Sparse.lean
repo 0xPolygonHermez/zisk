@@ -774,13 +774,13 @@ theorem misjump_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry :
     (hze : z0.regs.get? .Zerror = some false) (hzm : z0.mem = m0)
     (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat)
     (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
-    (hmj : MisJumpAt rs zrom (sIter 0 k ⟨s0, fc⟩).rv)
+    (hmj : MisJumpAt rs zrom (sIter 0 k ⟨s0, fc⟩).rv) (hmh : HaltMis zrom)
     (s0' : RVState) (hsp : Ext zeroFill s0' s0) (hcode : ∀ pc, C pc → ∃ w, ZiskRiscv.readWord s0'.mem pc.toNat = some w) :
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 1 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
-    ∃ n z1 tgt, ZRun zrom n z0 z1 ∧ z1.regs.get? .PC = some tgt ∧ tgt[0] = false ∧ tgt[1] = true := by
+    ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some true := by
   refine ⟨?_, (misjump_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k
-    hrun hin hmj).2⟩
+    hrun hin hmj hmh).2⟩
   obtain ⟨z1, -, -, hrel, -, -, -, hm⟩ :=
     covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
   generalize sIter 0 k ⟨s0, fc⟩ = T at *
@@ -814,12 +814,13 @@ theorem fusedmis_end_sparse (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (entry 
     (fc : ZiskRiscv.Fcall) (hzf : Equiv.Zisk.FcallRel fc z0) (zr : BitVec 64 → _root_.Zisk.zisk_inst) (k : Nat) (hrun : RunOkM rs zr C k ⟨s0, fc⟩ 0) (hin : RunInM C k ⟨s0, fc⟩ 0)
     (pc : BitVec 64) (hpc : (sIter 0 k ⟨s0, fc⟩).rv.regs.get? Register.PC = some pc) (i : FInstr)
     (hi : FtAtM (sIter 0 k ⟨s0, fc⟩).rv rs pc zrom i) (htg : (i.T pc)[0] = false ∧ (i.T pc)[1] = true)
+    (hmh : HaltMis zrom)
     (s0' : RVState) (hsp : Ext zeroFill s0' s0) (hcode : ∀ pc, C pc → ∃ w, ZiskRiscv.readWord s0'.mem pc.toNat = some w) :
     ((∃ Sk m, ∀ fuel, ZiskRiscv.run (k + 2 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .ok (Sk, .failure m, k + 1)) ∨
       ∃ msg, ∀ fuel, ZiskRiscv.run (k + 2 + fuel) (⟨s0', fc⟩ : ZiskRiscv.State model) = .error msg) ∧
-    ∃ n z1, ZRun zrom n z0 z1 ∧ z1.regs.get? .PC = some (i.T pc) := by
+    ∃ z', ZEnds zrom z0 z' ∧ z'.regs.get? .Zerror = some true := by
   refine ⟨?_, (fusedmis_end zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k
-    hrun hin pc hpc i hi htg).2⟩
+    hrun hin pc hpc i hi htg hmh).2⟩
   obtain ⟨z1, -, -, hrel, -, -, -, hm⟩ :=
     covered_run zrom entry hb rs hx ht C hnx hni m0 hspec s0 hs0 z0 hzx hzpc hzst hze hzm fc hzf zr k hrun hin
   generalize sIter 0 k ⟨s0, fc⟩ = T at *
