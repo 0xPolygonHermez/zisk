@@ -450,6 +450,9 @@ main() {
       rm -f "${ZISK_DIR}/setup_version"
 
       step "Installing ZisK ${ZISK_VERSION} version..."
+      # The bundle's pil2-proofman files: extracting over them would keep any the release dropped.
+      rm -rf "${ZISK_BIN_DIR}/setup" "${ZISK_BIN_DIR}/pil2-components" "${ZISK_BIN_DIR}/pil2-stark" \
+        "${ZISK_DIR}/zisk/pilfflonk-js"
       # --no-same-owner: tar(1) honors the archive's UID/GID when extractor is
       # root, which leaks the packager's identity into /opt/zisk if the tarball
       # was built on a dev machine. Force root-as-extractor; apply_ownership_and_perms
@@ -598,6 +601,13 @@ EOF
       # Add the ziskup directory to the path and ensure the old PATH variables remain.
       echo "Adding ZisK to your PATH..."
       echo >>"${PROFILE}" && echo "export PATH=\"\$PATH:${ZISK_BIN_DIR}\"" >>"${PROFILE}"
+  fi
+
+  # cargo-zisk verify runs pilfflonk's JS verifier, which the bundle ships.
+  PILFFLONK_JS_DIR="${ZISK_DIR}/zisk/pilfflonk-js"
+  if [[ -f "${PILFFLONK_JS_DIR}/bin/verify.js" ]] && ! grep -qs "PILFFLONK_JS=" "${PROFILE}"; then
+      echo "Adding PILFFLONK_JS to ${PROFILE}..."
+      echo >>"${PROFILE}" && echo "export PILFFLONK_JS=\"${PILFFLONK_JS_DIR}\"" >>"${PROFILE}"
   fi
 
   step "Done! ZisK version ${ZISK_VERSION} has been installed."
