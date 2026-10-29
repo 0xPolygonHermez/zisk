@@ -453,7 +453,7 @@ All RPC methods may return `ApiError`. Common error codes:
 |------|------|-------------|
 | 1001 | `JOB_NOT_FOUND` | Invalid `job_id` |
 | 1002 | `PROGRAM_NOT_FOUND` | Unknown `hash_id` |
-| 1003 | `PROGRAM_NOT_SETUP` | Program exists but setup not completed, or a proof was requested for a program set up for emulation only |
+| 1003 | `PROGRAM_NOT_SETUP` | Program exists but setup not completed, or a proof was requested for a program not set up in full in the job's hints mode (for example, set up for emulation only) |
 | 1004 | `INVALID_JOB_STATE` | Operation not valid for current job state (e.g., `PushJobInput` on non-input job) |
 | 1005 | `INVALID_PROOF_CONVERSION` | Unsupported `proof_dest` for given `proof_kind` |
 | 1006 | `CLIENT_RANDOM_SEED_NOT_ALLOWED` | Request provided a random seed and the coordinator does not allow client random seeds |

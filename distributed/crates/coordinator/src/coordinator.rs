@@ -1010,10 +1010,19 @@ impl Coordinator {
         if !self.is_set_up(&request.hash_id).await {
             return Err(CoordinatorError::ProgramNotSetup(request.hash_id.clone()));
         }
-        // An emulator-only setup skips what a proof needs: proven on one worker it may still
-        // verify, but split over several the aggregation fails.
-        if !request.execution_only && !self.is_set_up_to_prove(&request.hash_id).await {
-            return Err(CoordinatorError::ProgramSetUpForEmulationOnly(request.hash_id.clone()));
+        // A proof needs a full setup in its hints mode, the setup a worker picks for it. An
+        // emulator-only one skips what a proof needs: proven on one worker it may still verify,
+        // but split over several the aggregation fails.
+        if !request.execution_only {
+            let hash_id = &request.hash_id;
+            let with_hints = !matches!(request.hints_mode, HintsModeDto::HintsNone);
+            if !self.has_setup(hash_id, with_hints, false).await {
+                return Err(if self.has_setup(hash_id, with_hints, true).await {
+                    CoordinatorError::ProgramSetUpForEmulationOnly(hash_id.clone())
+                } else {
+                    CoordinatorError::ProgramNotSetup(hash_id.clone())
+                });
+            }
         }
         // The worker that aggregates wraps the SNARK, so one the workers cannot prove fails here.
         if request.proof_type == ProofKind::Snark {
@@ -1132,13 +1141,14 @@ impl Coordinator {
         self.active_setups.read().await.keys().any(|key| key.hash_id == hash_id)
     }
 
-    /// Whether `hash_id` has a full setup, not only an emulator-only one: what a proof needs.
-    async fn is_set_up_to_prove(&self, hash_id: &str) -> bool {
-        self.active_setups
-            .read()
-            .await
-            .keys()
-            .any(|key| key.hash_id == hash_id && !key.emulator_only)
+    /// Whether `hash_id` is set up in this hints mode, in full or for emulation only. A worker
+    /// runs a job on the setup of the job's hints mode, a full one before an emulator-only one.
+    async fn has_setup(&self, hash_id: &str, with_hints: bool, emulator_only: bool) -> bool {
+        self.active_setups.read().await.contains_key(&SetupKey::new(
+            hash_id,
+            with_hints,
+            emulator_only,
+        ))
     }
 
     /// Resolve the compute capacity for an incoming job request.
@@ -5619,6 +5629,50 @@ mod tests {
         let execution =
             LaunchProofRequestDto { execution_only: true, ..capacity_request(None, None) };
         coordinator.launch_proof(execution).await.expect("an execution runs on it");
+        assert_eq!(coordinator.jobs.read().await.len(), 1);
+    }
+
+    /// The setups of a program count per hints mode, as a worker picks a job's setup by it: a
+    /// full setup without hints does not make a proof with hints run on its emulator-only setup,
+    /// nor on no setup at all.
+    #[tokio::test]
+    async fn launch_proof_needs_a_full_setup_in_the_proofs_hints_mode() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
+        add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
+        let setup =
+            || ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() };
+        {
+            let mut setups = coordinator.active_setups.write().await;
+            setups.insert(SetupKey::new("hash", false, false), setup());
+            setups.insert(SetupKey::new("hash", true, true), setup());
+            setups.insert(SetupKey::new("other", false, false), setup());
+        }
+        let with_hints = |hash_id: &str| LaunchProofRequestDto {
+            hash_id: hash_id.to_string(),
+            hints_mode: HintsModeDto::HintsPath("hints.bin".to_string()),
+            ..capacity_request(None, None)
+        };
+        let w0 = WorkerId::from("w0".to_string());
+
+        let result = coordinator.launch_proof(with_hints("hash")).await;
+        assert!(
+            matches!(result, Err(CoordinatorError::ProgramSetUpForEmulationOnly(ref h)) if h == "hash"),
+            "{:?}",
+            result.err()
+        );
+        let result = coordinator.launch_proof(with_hints("other")).await;
+        assert!(
+            matches!(result, Err(CoordinatorError::ProgramNotSetup(ref h)) if h == "other"),
+            "{:?}",
+            result.err()
+        );
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(coordinator.jobs.read().await.is_empty());
+
+        coordinator
+            .launch_proof(capacity_request(None, None))
+            .await
+            .expect("a proof without hints");
         assert_eq!(coordinator.jobs.read().await.len(), 1);
     }
 
