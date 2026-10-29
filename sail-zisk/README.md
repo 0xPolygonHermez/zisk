@@ -203,7 +203,12 @@ transpilation.
   where neither has one; given the program's code words in memory, at
   distinct 4-aligned addresses from ROM_ADDR on, few enough that the
   internal addresses do not wrap, and the words after a segment's end
-  changing no translation, as the transpiler reads none there).
+  changing no translation, as the transpiler reads none there: what
+  `tailOk` ensures from the code alone, a segment's last word neither
+  `auipc` nor a CSR instruction and the one before it no CSR instruction,
+  `ProgramOk.of_tail`; `make transpiler-check` evaluates it on each
+  program and names those it fails, outside the theorems, as
+  `test/transpiler/csr_forms.S`, which ends on a call sequence on purpose).
 - **The decode lemmas' checking time:** each decode lemma is in its own
   module (`lean/Equiv/Decode/`, `lean/Equiv/DecodeZbs/`, `lean/Equiv/Decode/Zbb/`, `lean/Equiv/Decode/Zbkb/`; the
   `lean/Equiv/RiscvDecode*.lean` modules are their bases and aggregators),

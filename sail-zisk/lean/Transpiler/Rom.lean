@@ -73,4 +73,25 @@ def romFromImpl (ws : List (BitVec 64 × BitVec 32 × Option (BitVec 32) × Opti
 def programRom (segs : List (BitVec 64 × Array (BitVec 32))) : List (BitVec 64 × zisk_inst) :=
   romFrom (codeWords segs) 0
 
+/-- Whether a word's translation reads the word after it: auipc, to fuse
+    with a jalr; a CSR instruction, for a call's sequence. -/
+def usesNext (w : BitVec 32) : Bool :=
+  match decode w with
+  | some .auipc | some .csr => true
+  | _ => false
+
+/-- Whether a word's translation reads the word after the next one: a CSR
+    instruction, for memset's sequence of three words. -/
+def usesNext2 (w : BitVec 32) : Bool :=
+  match decode w with
+  | some .csr => true
+  | _ => false
+
+/-- No translation at a segment's end reads past it: its last word reads
+    no next word, the one before it no word after the next. The transpiler
+    reads none there; memory, which the proofs read, holds whatever follows. -/
+def tailOk (segs : List (BitVec 64 × Array (BitVec 32))) : Bool :=
+  segs.all fun (_, ws) => (List.range ws.size).all fun k =>
+    k + 2 < ws.size || (!usesNext2 ws[k]! && (k + 1 < ws.size || !usesNext ws[k]!))
+
 end Transpiler

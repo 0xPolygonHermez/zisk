@@ -132,6 +132,60 @@ theorem zromOf_spec {segs : List (BitVec 64 × Array (BitVec 32))} (hs : SegsOk 
   obtain ⟨n, l', hl', hmem⟩ := romFrom_mem _ 0 hx hl
   exact ⟨internalAddr n, l', by rw [hnext x hx]; exact hl', fun p hp => zromOf_program hs entry (hmem p hp)⟩
 
+/-! ## The words after a segment's end -/
+
+theorem convert_ignores_next2 {pc : BitVec 64} {w : BitVec 32} (h : usesNext2 w = false) (next : Option (BitVec 32))
+    (ia : BitVec 64) (n2 n2' : Option (BitVec 32)) : convert pc w next ia n2 = convert pc w next ia n2' := by
+  unfold usesNext2 at h
+  cases hd : decode w with
+  | none => simp [convert, hd]
+  | some i => cases i <;> simp_all [convert]
+
+theorem convert_ignores_next {pc : BitVec 64} {w : BitVec 32} (h : usesNext w = false) (n n' : Option (BitVec 32))
+    (ia : BitVec 64) (n2 n2' : Option (BitVec 32)) : convert pc w n ia n2 = convert pc w n' ia n2' := by
+  unfold usesNext at h
+  cases hd : decode w with
+  | none => simp [convert, hd]
+  | some i => cases i <;> simp_all [convert]
+
+theorem mem_codeWords {segs : List (BitVec 64 × Array (BitVec 32))} {x : CodeWord} :
+    x ∈ codeWords segs ↔ ∃ base ws, (base, ws) ∈ segs ∧ ∃ k < ws.size,
+      x = (base + BitVec.ofNat 64 (4 * k), ws[k]!, ws[k + 1]?, ws[k + 2]?) := by
+  simp [codeWords, eq_comm]
+
+/-- The words after a segment's end change no translation, when no
+    translation at its end reads them (`tailOk`). -/
+theorem next_of_tail {segs : List (BitVec 64 × Array (BitVec 32))} {m : Mem} (ht : tailOk segs = true)
+    (hw : ∀ x ∈ codeWords segs, ZiskRiscv.readWord m x.1.toNat = some x.2.1) :
+    ∀ x ∈ codeWords segs, ∀ ia,
+      convert x.1 x.2.1 (ZiskRiscv.readWord m (x.1 + 4).toNat) ia (ZiskRiscv.readWord m (x.1 + 8).toNat) =
+        convert x.1 x.2.1 x.2.2.1 ia x.2.2.2 := by
+  intro x hx ia
+  obtain ⟨base, ws, hseg, k, hk, rfl⟩ := mem_codeWords.1 hx
+  dsimp only
+  -- the word at an offset of j words in the segment, read from memory
+  have hmem : ∀ j, k + j < ws.size →
+      ZiskRiscv.readWord m (base + BitVec.ofNat 64 (4 * k) + BitVec.ofNat 64 (4 * j)).toNat = ws[k + j]? := by
+    intro j hj
+    have := hw _ (mem_codeWords.2 ⟨base, ws, hseg, k + j, hj, rfl⟩)
+    rw [show base + BitVec.ofNat 64 (4 * k) + BitVec.ofNat 64 (4 * j) = base + BitVec.ofNat 64 (4 * (k + j)) by
+      rw [BitVec.add_assoc]; congr 1; apply BitVec.eq_of_toNat_eq; simp; omega]
+    rw [this, getElem?_pos ws (k + j) hj]; simp [getElem!_pos ws (k + j) hj]
+  have e4 : base + BitVec.ofNat 64 (4 * k) + 4 = base + BitVec.ofNat 64 (4 * k) + BitVec.ofNat 64 (4 * 1) := rfl
+  have e8 : base + BitVec.ofNat 64 (4 * k) + 8 = base + BitVec.ofNat 64 (4 * k) + BitVec.ofNat 64 (4 * 2) := rfl
+  rw [e4, e8]
+  have ht' := ht
+  simp only [tailOk, List.all_eq_true, List.mem_range] at ht'
+  have hk' := ht' (base, ws) hseg k hk
+  simp only [Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true, Bool.not_eq_true'] at hk'
+  by_cases h2 : k + 2 < ws.size
+  · rw [hmem 1 (by omega), hmem 2 h2]
+  · rcases hk' with hk' | ⟨hn2, hk'⟩
+    · exact absurd hk' h2
+    · rcases hk' with hk' | hn
+      · rw [hmem 1 hk']; exact convert_ignores_next2 hn2 _ _ _ _
+      · exact convert_ignores_next hn _ _ _ _ _
+
 /-- A program, its code segments `segs` loaded in memory `m`, its code
     addresses C among their words: what the theorems need of the ROM
     (`BiosAt`, `SpecRom`) holds of the ROM the transpiler builds from it,
@@ -145,6 +199,14 @@ structure ProgramOk (segs : List (BitVec 64 × Array (BitVec 32))) (C : BitVec 6
   next : ∀ x ∈ codeWords segs, ∀ ia,
     convert x.1 x.2.1 (ZiskRiscv.readWord m (x.1 + 4).toNat) ia (ZiskRiscv.readWord m (x.1 + 8).toNat) =
       convert x.1 x.2.1 x.2.2.1 ia x.2.2.2
+
+/-- `ProgramOk`, the words after a segment's end checked on the code alone
+    (`tailOk`, which `make transpiler-check` evaluates). -/
+theorem ProgramOk.of_tail {segs : List (BitVec 64 × Array (BitVec 32))} {C : BitVec 64 → Prop} {m : Mem}
+    (hs : SegsOk segs) (hc : ∀ pc, C pc → ∃ x ∈ codeWords segs, x.1 = pc)
+    (hw : ∀ x ∈ codeWords segs, ZiskRiscv.readWord m x.1.toNat = some x.2.1) (ht : tailOk segs = true) :
+    ProgramOk segs C m :=
+  ⟨hs, hc, hw, next_of_tail ht hw⟩
 
 theorem ProgramOk.rom {segs : List (BitVec 64 × Array (BitVec 32))} {C : BitVec 64 → Prop} {m : Mem}
     (h : ProgramOk segs C m) (entry : BitVec 64) :

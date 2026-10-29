@@ -12,7 +12,10 @@
   the ROM's counter. That ROM and the Rust's must be the same, entry for
   entry, field for field, but where a word is one the spec does not
   describe; the BIOS too. And no instruction is at an address 2 mod 4,
-  where a misaligned jump lands. Exits 1 on any difference.
+  where a misaligned jump lands; and no word at a segment's end has a
+  translation that reads past it (`tailOk`, what the theorems ask of the
+  program; a program with such a word is reported, as outside the
+  theorems, but is no difference). Exits 1 on any difference.
 -/
 import Transpiler.Spec
 import Transpiler.Rom
@@ -74,6 +77,8 @@ structure Tally where
   described : Nat := 0
   undescribed : Nat := 0
   differences : Nat := 0
+  /-- Words at a segment's end whose translation reads past it (`tailOk`). -/
+  tails : Nat := 0
 
 def check (name : String) (l : Listing) : IO Tally := do
   let mut t : Tally := {}
@@ -129,6 +134,15 @@ def check (name : String) (l : Listing) : IO Tally := do
       | _ =>
         t := { t with differences := t.differences + 1 }
         IO.println s!"{name}: BIOS at {hex a.toNat}: no instruction in the Rust's ROM"
+  -- What the theorems ask of the segments' ends (`ProgramOk.of_tail`): no
+  -- translation there reads past the segment, where the transpiler reads
+  -- nothing and memory holds whatever follows.
+  for (base, ws) in segs do
+    for k in [0:ws.size] do
+      unless k + 2 < ws.size || (!usesNext2 ws[k]! && (k + 1 < ws.size || !usesNext ws[k]!)) do
+        t := { t with tails := t.tails + 1 }
+        IO.println s!"{name}: the word at {hex (base + BitVec.ofNat 64 (4 * k)).toNat}, at its segment's end, \
+          reads past it ({hex ws[k]!.toNat}): the theorems do not cover this program (tailOk)"
   -- No instruction at an address 2 mod 4: a jump there, which sail-riscv
   -- traps on, finds none on ZisK either (Equiv/MisJumpSim.lean).
   for (a, _) in l.rom do
@@ -148,7 +162,8 @@ def main (args : List String) : IO UInt32 := do
       | .error e => IO.eprintln s!"{file}: {e}"; return 2
     let t ← check file l
     total := { described := total.described + t.described, undescribed := total.undescribed + t.undescribed,
-               differences := total.differences + t.differences }
+               differences := total.differences + t.differences, tails := total.tails + t.tails }
   IO.println s!"{args.length} programs: {total.described} instructions the spec describes, \
-    {total.undescribed} it does not, {total.differences} differences"
+    {total.undescribed} it does not, {total.differences} differences, \
+    {total.tails} words at a segment's end that read past it (outside the theorems)"
   return if total.differences == 0 then 0 else 1
