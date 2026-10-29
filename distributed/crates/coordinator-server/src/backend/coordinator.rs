@@ -629,12 +629,18 @@ impl BackendService for CoordinatorBackend {
             return Err(internal(format!("job {} has no assigned workers", job_id)));
         }
 
+        // The job expects input while the stream is open, and fails if none comes for
+        // `input_idle_timeout_seconds`.
+        let activity = self.coordinator.input_activity(&job_id_internal).await;
+        activity.expect_input(true);
+
         // On error, fail_job fast — workers otherwise block on partial
         // input until the phase 1 timeout fires.
         let result: ApiResult<()> = async {
             while let Some(chunk_result) = chunks.next().await {
                 let chunk =
                     chunk_result.map_err(|e| internal(format!("input stream error: {e}")))?;
+                activity.progress();
                 admit_input_chunk(&mut received, chunk.data.len())?;
                 // Converted once so each worker's send is a refcount bump.
                 let payload = Bytes::from(chunk.data);
@@ -656,6 +662,9 @@ impl BackendService for CoordinatorBackend {
         }
         .await;
 
+        if result.is_ok() {
+            activity.expect_input(false);
+        }
         if let Err(ref e) = result {
             let reason = format!("Client input stream failed: {}", e);
             if let Err(fail_err) = self.coordinator.fail_job(&job_id_internal, &reason).await {
