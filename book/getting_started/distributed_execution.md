@@ -339,6 +339,15 @@ Edit `/etc/zisk/coordinator.toml`:
 | `port`        | `50051` | Worker gRPC port. CLI: `--cluster-port`, env: `ZISK_COORDINATOR_CLUSTER_PORT`. |
 | `config_file` | (none)  | Optional path to a coordinator-core tuning file.                            |
 
+This table takes only `port` and `config_file`. The coordinator's own tuning goes in the file `config_file` names, under its own `[coordinator]` table (see `distributed/crates/coordinator/config/prod.toml`): phase timeouts, heartbeats and job capacity. For job capacity:
+
+| Setting                 | Default | Notes                                                                                   |
+| ---                     | ---     | ---                                                                                     |
+| `default_compute_units` | `0`     | Compute units a job gets when its request names none. `0` uses all available capacity. |
+| `min_compute_units`     | `0`     | Fewest compute units a job may start with. `0` requires all available capacity.       |
+
+One of these in the server's `[coordinator]` table stops the server from starting, with an error that says where it goes.
+
 **`[metrics]`** — Prometheus endpoint.
 
 | Setting   | Default   | Notes                                                                     |
