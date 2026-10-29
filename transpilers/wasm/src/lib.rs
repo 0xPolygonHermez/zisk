@@ -14,12 +14,16 @@
 pub mod emit;
 #[cfg(feature = "float")]
 pub mod float;
+mod imports;
 pub mod layout;
 pub mod lowering;
 pub mod module;
+pub mod nitro;
 pub mod wasi;
 
-use std::error::Error;
+pub use imports::Import;
+
+use std::{collections::HashMap, error::Error};
 
 use emit::{Code, Fixup};
 use layout::*;
@@ -45,6 +49,27 @@ const ENTRY_FRAME_RESERVE: i64 = 64;
 
 /// Transpiles a wasm module into a Zisk ROM.
 pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
+    wasm2rom_with_imports(bytes, &[])
+}
+
+/// Transpiles a module with explicitly registered custom imports.
+///
+/// Registrations are trusted compiler extensions emitting ZisK instructions, not host callbacks
+/// during execution. Unknown imports and signature mismatches are errors. Built-in WASI imports
+/// cannot be overridden. See [`Import`] for the calling convention and program-identity contract.
+pub fn wasm2rom_with_imports(
+    bytes: &[u8],
+    imports: &[Import<'_>],
+) -> Result<ZiskRom, Box<dyn Error>> {
+    wasm2rom_impl(bytes, imports, None)
+}
+
+fn wasm2rom_impl(
+    bytes: &[u8],
+    imports: &[Import<'_>],
+    runtime: Option<&nitro::runtime::Runtime>,
+) -> Result<ZiskRom, Box<dyn Error>> {
+    imports::validate(imports)?;
     let module = parse_module(bytes)?;
     reject_unsupported_layout(&module)?;
 
@@ -100,16 +125,38 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         rom.rw_data_64.push(DataSection64 { addr: section.addr, data: data.collect() });
     }
 
-    // -- lower every function (imports become WASI stubs) --------------------
+    // -- lower every function (imports become registered or WASI routines) --
     let n_funcs = module.func_count() as usize;
     let n_imports = module.func_import_count as usize;
     let mut codes: Vec<Code> = Vec::with_capacity(n_funcs);
     for i in 0..n_imports {
-        codes.push(wasi::build_wasi_stub(&module, i)?);
+        codes.push(imports::build(&module, i, imports, runtime.is_some())?);
     }
     for d in 0..module.defined.len() {
         let func_index = (n_imports + d) as u32;
         codes.push(lowering::lower_function(&module, func_index)?);
+    }
+
+    // Custom emitters request native code symbolically; ordinary Wasm ROMs stay library-free.
+    let library = if runtime.is_some()
+        || codes.iter().any(|c| c.insts.iter().any(|i| matches!(i.fixup, Fixup::LibraryAddr(_))))
+    {
+        Some(ziskasm::assemble_zisk_library()?)
+    } else {
+        None
+    };
+    let no_symbols = HashMap::new();
+    let symbols = library.as_ref().map_or(&no_symbols, |lib| &lib.symbols);
+    let program_rom_end = if runtime.is_some() {
+        nitro::runtime::ROM_BASE
+    } else if library.is_some() {
+        PROGRAM_ROM_END.min(zisk_core::ZISKLIB_ROM_ADDR)
+    } else {
+        PROGRAM_ROM_END
+    };
+
+    if let Some(runtime) = runtime {
+        runtime.link(&mut rom, symbols)?;
     }
 
     // -- lay out functions in the program ROM area ---------------------------
@@ -118,10 +165,10 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     for (i, code) in codes.iter().enumerate() {
         func_addr[i] = addr;
         addr += 4 * code.len() as u64;
-        if addr > PROGRAM_ROM_END {
+        if addr > program_rom_end {
             return Err(format!(
                 "wasm: program too large ({addr:#x} exceeds the program ROM end \
-                 {PROGRAM_ROM_END:#x})"
+                 {program_rom_end:#x})"
             )
             .into());
         }
@@ -129,11 +176,18 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 
     // -- resolve symbolic jumps/calls and insert into the ROM ----------------
     for (i, code) in codes.iter().enumerate() {
-        resolve_and_insert(&mut rom, code, func_addr[i], &func_addr);
+        resolve_and_insert(
+            &mut rom,
+            code,
+            func_addr[i],
+            &func_addr,
+            symbols,
+            runtime.map(|r| r.entry),
+        )?;
     }
 
     // -- emit the entry routine (init data + call _start + finalize) ---------
-    let entry = build_entry_routine(&module, &func_addr, &entry_calls);
+    let entry = build_entry_routine(&module, &func_addr, &entry_calls, runtime);
     let entry_base = rom.next_init_inst_addr;
     let entry_end = entry_base + 4 * entry.len() as u64;
     if entry_end > MAX_ZISK_OS_ROM_ADDR + 1 {
@@ -143,9 +197,19 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         )
         .into());
     }
-    resolve_and_insert(&mut rom, &entry, entry_base, &func_addr);
+    resolve_and_insert(
+        &mut rom,
+        &entry,
+        entry_base,
+        &func_addr,
+        symbols,
+        runtime.map(|r| r.entry),
+    )?;
     rom.next_init_inst_addr = entry_end;
 
+    if let Some(library) = library {
+        zisk_riscv::merge_library(&mut rom, library)?;
+    }
     rom.optimize_instruction_lookup()?;
 
     Ok(rom)
@@ -241,7 +305,14 @@ fn reject_overlapping_segments(data: &[module::DataSeg]) -> Result<(), Box<dyn E
 
 /// Resolves the symbolic fixups of a [`Code`] laid out at `base` and inserts every instruction into
 /// `rom.insts` at its final address.
-fn resolve_and_insert(rom: &mut ZiskRom, code: &Code, base: u64, func_addr: &[u64]) {
+fn resolve_and_insert(
+    rom: &mut ZiskRom,
+    code: &Code,
+    base: u64,
+    func_addr: &[u64],
+    symbols: &HashMap<String, u64>,
+    runtime_entry: Option<u64>,
+) -> Result<(), Box<dyn Error>> {
     for (j, pending) in code.insts.iter().enumerate() {
         let inst_addr = base + 4 * j as u64;
         let mut zib = pending.zib.clone();
@@ -266,19 +337,46 @@ fn resolve_and_insert(rom: &mut ZiskRom, code: &Code, base: u64, func_addr: &[u6
             Fixup::FuncAddr(index) => {
                 zib.src_b("imm", func_addr[*index as usize], false);
             }
+            Fixup::LibraryAddr(symbol) => {
+                let address = symbols
+                    .get(*symbol)
+                    .ok_or_else(|| format!("wasm: unknown native library symbol {symbol}"))?;
+                if !matches!(*symbol, "ziskasm_zkvm_keccak256" | "ziskasm_zkvm_secp256k1_ecrecover")
+                {
+                    return Err(
+                        format!("wasm: unsupported native library entry point {symbol}").into()
+                    );
+                }
+                let call =
+                    zisk_definitions::ZKVMCALLS
+                        .iter()
+                        .find(|call| call.target == *symbol)
+                        .ok_or_else(|| format!("wasm: missing zkvmcall definition for {symbol}"))?;
+                rom.zkvmcalls.insert(call.id);
+                zib.src_b("imm", *address, false);
+            }
+            Fixup::RuntimeAddr => {
+                zib.src_b("imm", runtime_entry.ok_or("wasm: no native runtime linked")?, false);
+            }
             Fixup::LabelAddr(label) => {
                 zib.src_b("imm", base + 4 * code.label_target(*label) as u64, false);
             }
         }
         zib.build(rom);
     }
+    Ok(())
 }
 
 /// Builds the BIOS entry routine: initialize the runtime, call each of `entry_calls` in order
 /// (the start-section function, then `_start`), then publish output and halt.  Returned as a
 /// [`Code`] so its calls and internal jumps resolve through the same fixup machinery as ordinary
 /// functions.
-fn build_entry_routine(module: &WasmModule, func_addr: &[u64], entry_calls: &[u32]) -> Code {
+fn build_entry_routine(
+    module: &WasmModule,
+    func_addr: &[u64],
+    entry_calls: &[u32],
+    runtime: Option<&nitro::runtime::Runtime>,
+) -> Code {
     let mut code = Code::new();
 
     // marchid = Zisk (parity with the RISC-V path).
@@ -310,10 +408,16 @@ fn build_entry_routine(module: &WasmModule, func_addr: &[u64], entry_calls: &[u3
     code.load_imm_to_reg(REG_MEM_END, WASM_MEM_BASE + module.mem_initial_pages * WASM_PAGE_SIZE);
 
     code.load_imm_to_reg(REG_FP, WASM_STACK_TOP);
+    if let Some(runtime) = runtime {
+        runtime.initialize(&mut code);
+    }
     for &func_index in entry_calls {
         emit_entry_call(&mut code, func_index);
     }
 
+    if runtime.is_some() {
+        nitro::runtime::emit_finalize(&mut code);
+    }
     wasi::emit_pubout_exit(&mut code);
 
     code

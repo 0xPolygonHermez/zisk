@@ -242,6 +242,7 @@ for the per-instruction overhead are in [Cost model](#cost-model).
 | `wasm2zisk <in.wasm> <out.asm> --gen=N` | Transpile and save the ROM as x86-64 NASM, like `riscv2zisk`. `--gen=0` fast, `1` minimal traces, `2` ROM histogram, `7` memory ops. |
 | `zisk_transpiler_common::program2rom(bytes)` | Library entry point: detects the format and returns a `ZiskRom`. |
 | `zisk_transpiler_wasm::wasm2rom(bytes)` | Library entry point for wasm only. |
+| `zisk_transpiler_wasm::wasm2rom_with_imports(bytes, imports)` | Library entry point with explicitly registered custom imports emitted as ZisK instructions. |
 
 ```bash
 cargo run --release -p zisk-transpiler-wasm --bin wasm2zisk -- $WASM fib.asm --gen=0
@@ -288,11 +289,134 @@ runtimes to start:
 | `poll_oneoff` | Every subscription is reported as ready immediately. |
 | any other `wasi_snapshot_preview1` function | Accepted at transpile time, returns `ENOSYS` when called. |
 
-Imports from any module other than `wasi_snapshot_preview1` are rejected at transpile time.
+The default entry point and CLI reject imports from modules other than
+`wasi_snapshot_preview1`. Library callers can register implementations as described below.
 
 Every pointer a WASI call receives is checked against the current linear-memory size before the
 call reads or writes anything. A bad pointer makes the call return `EFAULT`, so a guest can never
 use a WASI call to reach ZisK memory outside its own pages.
+
+### Custom imports for library callers
+
+`wasm2rom_with_imports` accepts a slice of `Import` registrations. Each names a module and
+function, declares its exact Wasm signature, and emits the function body as ZisK instructions.
+Unknown imports, mismatched signatures, duplicate registrations and attempts to override
+`wasi_snapshot_preview1` are errors. Multiple declarations of the same import in a guest may
+share one registration.
+
+For example, a guest can import `example::add` with signature `(i64, i64) -> i64`:
+
+```rust
+use std::error::Error;
+use zisk_core::ZiskRom;
+use zisk_transpiler_wasm::{
+    emit::Code,
+    layout::{local_offset, REG_RET, REG_T0, REG_T1},
+    module::ValKind::I64,
+    wasm2rom_with_imports, Import,
+};
+
+fn emit_add(code: &mut Code) {
+    code.load_slot_to_reg(REG_T0, local_offset(0));
+    code.load_slot_to_reg(REG_T1, local_offset(1));
+    code.alu_rr("add", REG_RET, REG_T0, REG_T1);
+}
+
+fn transpile_guest(wasm: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
+    wasm2rom_with_imports(wasm, &[Import {
+        module: "example",
+        name: "add",
+        params: &[I64, I64],
+        results: &[I64],
+        emit: emit_add,
+    }])
+}
+```
+
+The transpiler supplies the normal function prologue/epilogue. Bodies read parameters from
+`local_offset(i)`, leave any result in `REG_RET`, and fall through to the generated return.
+An i32 result is sign-extended to the engine's canonical representation. Bodies must preserve
+`REG_FP`, `REG_MEM_END` and frame header slots, and bounds-check guest pointers before accessing
+memory. Unlike validated Wasm instructions, registered bodies are trusted compiler extensions
+with access to the ZisK memory map.
+
+The Rust emitter runs at **translation time**; the generated instructions run inside the ROM.
+It must be deterministic and independent of private witness data. It is not an execution-time
+host callback. Setup and execution must use the same implementations, and the verifier must
+pin the resulting ROM/program verification key: the Wasm hash alone does not identify the
+custom runtime.
+
+The standard CLI continues to use the default WASI-only entry point. Custom registrations do
+not separate public output from console logging or complete Wasm proving.
+
+### Nitro crypto for library callers
+
+A caller can explicitly install the crypto portion of Nitro's runtime:
+
+```rust,ignore
+use zisk_transpiler_wasm::{nitro::crypto_imports, wasm2rom_with_imports};
+let rom = wasm2rom_with_imports(wasm, &crypto_imports())?;
+```
+
+| Import | Wasm signature | Behavior |
+|---|---|---|
+| `arbcrypto.keccak256` | `(i32, i32, i32) -> ()` | Input pointer, unsigned byte length, output pointer; writes the 32-byte Keccak-256 digest. |
+| `arbcrypto.ecrecovery` | `(i32, i32, i32, i32, i32) -> i32` | Hash pointer/length, signature pointer/length, output pointer; recovers a 65-byte uncompressed public key (`04` followed by x and y). |
+
+Recovery requires a 32-byte hash and 65-byte signature (`r || s || recovery_id`). Statuses are
+0 success, 1 invalid hash length, 2 invalid signature length, 3 recovery ID greater than 3, and
+4 cryptographic recovery failure. Length errors return before reading any pointer. The output
+pointer is accessed only after successful recovery; failure leaves output untouched. **Recovery
+IDs 2/3 explicitly trap:** the pinned native library implements only IDs 0/1, so this remains an
+incomplete Nitro crypto implementation. Out-of-bounds accesses trap. Pointers and lengths use
+unsigned wasm32 ranges, including empty input; unaligned and overlapping buffers are supported.
+
+The emitter links `ziskasm::assemble_zisk_library()` only when a declared import emits a native
+call. The digest and recovered key are computed inside the ROM by the production library's
+constrained operations. No execution-time Rust import callback supplies a digest or recovered
+key; the library's existing field-arithmetic witness helpers retain their in-ROM checks. Program
+code must stop below the library ROM at `0x97e0_0000` when linked. `Code::call_library` accepts only these two crypto
+entry points; unknown symbols and other library entry points fail translation.
+
+The bridge saves the Wasm frame pointer and memory bound in control cells, switches r2 to the
+separate native stack (`0xa000_0000` through `0xa040_0000`, with the normal lower memory guard),
+then restores both registers before the import returns through its saved frame header. All
+other native registers are scratch, including the return address; the status is returned in
+r10. Recovery uses aligned control-area scratch buffers and copies output only on success.
+Native crypto state and bridge save cells are **non-reentrant**: native routines must never
+call back into Wasm. The Wasm stack is reserved below library RAM for all callers, reducing its
+previous capacity by 128 KiB to 15.75 MiB; the float library remains in its separate windows.
+
+These registrations provide crypto alone. Native secp256k1 inverse, square-root, GLV and
+lift-parity hint-check failures now trap; adversarial tests exercise those failure paths.
+The ROM and verification key must bind the chosen runtime registrations as described above.
+
+### Recorded Nitro replay
+
+The explicit Nitro entry point links a pinned, freestanding RISC-V runtime into the Wasm ROM:
+
+```rust,ignore
+let rom = zisk_transpiler_wasm::nitro::wasm2rom(wasm, runtime_elf)?;
+```
+
+This requires the `float` feature and the helper built by
+[`runtime/build.py`](runtime/build.py). It supplies bounded witness decoding, global state,
+Keccak/SHA-authenticated preimages, inbox accounting, Brotli, and successful-exit finalization.
+Console writes remain visible but do not occupy the public claim. Both normal `_start` return
+and `proc_exit(0)` publish exactly 256 bytes: replay SHA-256, start state, computed end state,
+sequencer claim and delayed claim. Expected end state is never passed to the VM.
+
+The recorded non-Stylus transfer executes 894,969,877 VM instructions and matches all 256
+independently prepared expected bytes. See the [runtime guide](runtime/README.md) for build,
+witness preparation, execution commands and artifact identities.
+
+This is bounded replay support: Stylus calls, nonzero Brotli dictionaries, all certificate
+validation calls, unsupported preimage authentication and recovery IDs 2/3 trap. The runtime
+has an 8 MiB codec arena and a 64 MiB witness bound. Multiple delayed-count checkpoints are
+derived from contiguous consumed messages, with regressions and missing prefixes rejected. Before-accumulator
+anchors still need external L1/binder authentication. The trusted helper ELF is part of the
+program identity; the public Wasm hash alone does not identify it. Assembly execution and
+proof generation/verification remain unverified.
 
 ## Supported WebAssembly
 
@@ -328,7 +452,7 @@ its MVP-shaped subset lowers (see the rejected list).
 | Globals | 8,192 |
 | Table entries | 65,536 |
 | Operand stack depth per function | 1,024 |
-| Call stack | about 16 MiB of frames, shared with nothing else |
+| Call stack | 15.75 MiB of frames |
 | Program code | the program ROM window (and must stay below the float library when `float` is on) |
 
 ## How it is implemented
@@ -391,8 +515,10 @@ The wasm machine lives inside the standard ZisK memory map ([layout.rs](src/layo
 | Indirect-call table | `0xa044_0000` | 16 bytes per entry: `{ zisk_pc, canonical_type_id }`. |
 | Control cells | `0xa054_0000` | Memory size in pages, stdin cursor, stdout length, clock, RNG state. |
 | Linear memory | `0xa100_0000` … `0xbf00_0000` | wasm address 0 maps to `WASM_MEM_BASE`. |
-| Call / operand stack | grows down from `0xbffe_0000` to `0xbf00_0000` | One frame per active call. |
-| Float library RAM | above the stack | Used only by the soft-float library. |
+| Native crypto stack | `0xa000_0000` … `0xa040_0000` | Used only during native crypto calls. |
+| Call / operand stack | grows down from `0xbffc_0000` to `0xbf00_0000` | One frame per active call. |
+| ZisK library RAM | `0xbffc_0000` … `0xbfff_0000` | Production native library state when linked. |
+| Float library RAM | `0xbfff_0000` … `0xc000_0000` | Used only by the soft-float library. |
 
 ### Registers and frames
 
@@ -489,15 +615,17 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 
 ## Current limitations
 
-- **Emulator backend only.** The ASM backend (`cargo-zisk execute --asm`, `rom-setup`, and so
-  ASM-based proving) still requires an ELF: `zisk_rom_setup::generate_assembly` fails with `ROM
-  file is not a valid ELF file`.
+- **Raw Wasm Assembly input is unsupported.** Assembly setup still requires an ELF. An exact
+  linked ROM can be exported as a ZisK binary ELF with `zisk_core::ziskbin::rom_to_elf`; a small
+  native-crypto control round-trips and generates all four Assembly source modes. Assembly
+  execution and proving still need validation on Linux x86-64.
 - **Proving is not verified.** The prover consumes the same `ZiskRom`, but end-to-end proof
   generation for a wasm guest has not been tested yet.
-- **No precompiles, no hints.** There is no wasm equivalent of the `ziskos` precompile calls
-  (Keccak, SHA-256, big-integer arithmetic, ...) or the hints stream. A wasm guest pays the full
-  software cost of its cryptography.
-- **Only 256 bytes of public output**, taken from the start of stdout/stderr.
+- **No general guest precompile or hints API.** Ordinary Wasm cryptography uses software.
+  Explicit library callers can register the Nitro crypto imports above; there is no general
+  `ziskos` syscall or hints-stream interface for Wasm guests.
+- **Only 256 bytes of public output**, taken from the start of stdout/stderr by default;
+  the explicit Nitro entry point instead publishes its structured claim.
 - **No filesystem, arguments or environment**, and the clock and randomness are deterministic
   stand-ins.
 
@@ -507,12 +635,19 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 |---|---|
 | `emulator/tests/wasm.rs` | Integer operators, control flow, calls, memory, WASI and traps, using hand-written WAT modules. |
 | `emulator/tests/wasm_float.rs` | `f32`/`f64` operators against the wasm spec (requires `float`). |
+| `emulator/tests/wasm_imports.rs` | Registered import execution, calling convention, signature checks, unknown imports, traps and reserved namespaces. |
+| `emulator/tests/wasm_nitro_crypto.rs` | Native crypto vectors, rate boundaries, alignment/aliasing, bounds, failure statuses, preserved frames, symbol validation and library layout. |
+| `emulator/tests/native_crypto_failure.rs` | Forged inverse, square-root, GLV and parity hints must trap; optional Assembly source export control. |
+| `emulator/tests/wasm_nitro_runtime.rs` | Native runtime initialization, computed state and separation of console/public output. |
+| `emulator/tests/wasm_nitro_state.rs` | Actual VM preimage authentication/rejection, all 256 claim bytes and successful/failed `proc_exit`. |
+| `emulator/tests/wasm_nitro_inbox.rs` | Multiple delayed checkpoints, complete claim vectors, repeated/reordered reads, consumed-window gaps and overflow rejection. |
+| `emulator/tests/wasm_nitro_brotli.rs` | Pinned codec bytes, aliases, failure preservation, bounds, large reserved capacity and streaming scratch growth. |
 | `emulator/tests/wasm_example.rs` | Builds [`examples/wasm-fibonacci`](../../examples/wasm-fibonacci) for `wasm32-wasip1` and runs it end to end. Skipped with a notice when the target is not installed. |
 
 ```bash
-cargo test -p ziskemu --release --test wasm --test wasm_example
+cargo test -p ziskemu --release --test wasm --test wasm_imports --test wasm_nitro_crypto --test wasm_example
 ZISK_CI_NO_DOCKER_REBUILD=1 \
-  cargo test -p ziskemu --release --features float --test wasm --test wasm_float --test wasm_example
+  cargo test -p ziskemu --release --features float --test wasm --test wasm_float --test wasm_imports --test wasm_nitro_crypto --test wasm_example
 ```
 
 See also [`examples/wasm-fibonacci`](../../examples/wasm-fibonacci) for a minimal standalone guest,

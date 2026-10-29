@@ -233,7 +233,7 @@ fp_inv_wrl:
 fp_inv_ret:
 	ret
 fp_inv_panic:
-	copyb(0, 0) -> r10, end
+	halt(0, 0), end
 
 ; u64 zisklib_sqrt_fp_secp256k1(const u64* x, u64 parity, u64* result)
 ;   [r10=x, r11=parity, r12=result] -> r10 = is_qr (1 if x is a QR, else 0).
@@ -343,4 +343,4 @@ fp_sqrt_ret:
 	copyb(0, r13) -> r10               ; return is_qr
 	ret
 fp_sqrt_panic:
-	copyb(0, 0) -> r10, end
+	halt(0, 0), end
