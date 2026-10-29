@@ -14,10 +14,13 @@
 pub mod emit;
 #[cfg(feature = "float")]
 pub mod float;
+mod imports;
 pub mod layout;
 pub mod lowering;
 pub mod module;
 pub mod wasi;
+
+pub use imports::Import;
 
 use std::error::Error;
 
@@ -45,6 +48,19 @@ const ENTRY_FRAME_RESERVE: i64 = 64;
 
 /// Transpiles a wasm module into a Zisk ROM.
 pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
+    wasm2rom_with_imports(bytes, &[])
+}
+
+/// Transpiles a module with explicitly registered custom imports.
+///
+/// Registrations are trusted compiler extensions emitting ZisK instructions, not host callbacks
+/// during execution. Unknown imports and signature mismatches are errors. Built-in WASI imports
+/// cannot be overridden. See [`Import`] for the calling convention and program-identity contract.
+pub fn wasm2rom_with_imports(
+    bytes: &[u8],
+    imports: &[Import<'_>],
+) -> Result<ZiskRom, Box<dyn Error>> {
+    imports::validate(imports)?;
     let module = parse_module(bytes)?;
     reject_unsupported_layout(&module)?;
 
@@ -100,12 +116,12 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         rom.rw_data_64.push(DataSection64 { addr: section.addr, data: data.collect() });
     }
 
-    // -- lower every function (imports become WASI stubs) --------------------
+    // -- lower every function (imports become registered or WASI routines) --
     let n_funcs = module.func_count() as usize;
     let n_imports = module.func_import_count as usize;
     let mut codes: Vec<Code> = Vec::with_capacity(n_funcs);
     for i in 0..n_imports {
-        codes.push(wasi::build_wasi_stub(&module, i)?);
+        codes.push(imports::build(&module, i, imports)?);
     }
     for d in 0..module.defined.len() {
         let func_index = (n_imports + d) as u32;

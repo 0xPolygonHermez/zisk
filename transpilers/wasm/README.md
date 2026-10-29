@@ -242,6 +242,7 @@ for the per-instruction overhead are in [Cost model](#cost-model).
 | `wasm2zisk <in.wasm> <out.asm> --gen=N` | Transpile and save the ROM as x86-64 NASM, like `riscv2zisk`. `--gen=0` fast, `1` minimal traces, `2` ROM histogram, `7` memory ops. |
 | `zisk_transpiler_common::program2rom(bytes)` | Library entry point: detects the format and returns a `ZiskRom`. |
 | `zisk_transpiler_wasm::wasm2rom(bytes)` | Library entry point for wasm only. |
+| `zisk_transpiler_wasm::wasm2rom_with_imports(bytes, imports)` | Library entry point with explicitly registered custom imports emitted as ZisK instructions. |
 
 ```bash
 cargo run --release -p zisk-transpiler-wasm --bin wasm2zisk -- $WASM fib.asm --gen=0
@@ -288,11 +289,66 @@ runtimes to start:
 | `poll_oneoff` | Every subscription is reported as ready immediately. |
 | any other `wasi_snapshot_preview1` function | Accepted at transpile time, returns `ENOSYS` when called. |
 
-Imports from any module other than `wasi_snapshot_preview1` are rejected at transpile time.
+The default entry point and CLI reject imports from modules other than
+`wasi_snapshot_preview1`. Library callers can register implementations as described below.
 
 Every pointer a WASI call receives is checked against the current linear-memory size before the
 call reads or writes anything. A bad pointer makes the call return `EFAULT`, so a guest can never
 use a WASI call to reach ZisK memory outside its own pages.
+
+### Custom imports for library callers
+
+`wasm2rom_with_imports` accepts a slice of `Import` registrations. Each names a module and
+function, declares its exact Wasm signature, and emits the function body as ZisK instructions.
+Unknown imports, mismatched signatures, duplicate registrations and attempts to override
+`wasi_snapshot_preview1` are errors. Multiple declarations of the same import in a guest may
+share one registration.
+
+For example, a guest can import `example::add` with signature `(i64, i64) -> i64`:
+
+```rust
+use std::error::Error;
+use zisk_core::ZiskRom;
+use zisk_transpiler_wasm::{
+    emit::Code,
+    layout::{local_offset, REG_RET, REG_T0, REG_T1},
+    module::ValKind::I64,
+    wasm2rom_with_imports, Import,
+};
+
+fn emit_add(code: &mut Code) {
+    code.load_slot_to_reg(REG_T0, local_offset(0));
+    code.load_slot_to_reg(REG_T1, local_offset(1));
+    code.alu_rr("add", REG_RET, REG_T0, REG_T1);
+}
+
+fn transpile_guest(wasm: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
+    wasm2rom_with_imports(wasm, &[Import {
+        module: "example",
+        name: "add",
+        params: &[I64, I64],
+        results: &[I64],
+        emit: emit_add,
+    }])
+}
+```
+
+The transpiler supplies the normal function prologue/epilogue. Bodies read parameters from
+`local_offset(i)`, leave any result in `REG_RET`, and fall through to the generated return.
+An i32 result is sign-extended to the engine's canonical representation. Bodies must preserve
+`REG_FP`, `REG_MEM_END` and frame header slots, and bounds-check guest pointers before accessing
+memory. Unlike validated Wasm instructions, registered bodies are trusted compiler extensions
+with access to the ZisK memory map.
+
+The Rust emitter runs at **translation time**; the generated instructions run inside the ROM.
+It must be deterministic and independent of private witness data. It is not an execution-time
+host callback. Setup and execution must use the same implementations, and the verifier must
+pin the resulting ROM/program verification key: the Wasm hash alone does not identify the
+custom runtime.
+
+This API does not install a Nitro adapter, add crypto/hint wrappers, separate public output
+from console logging, or complete Wasm proving. The standard CLI continues to use the default
+WASI-only entry point. An adapter-aware caller and actual implementations are still required.
 
 ## Supported WebAssembly
 
@@ -507,6 +563,7 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 |---|---|
 | `emulator/tests/wasm.rs` | Integer operators, control flow, calls, memory, WASI and traps, using hand-written WAT modules. |
 | `emulator/tests/wasm_float.rs` | `f32`/`f64` operators against the wasm spec (requires `float`). |
+| `emulator/tests/wasm_imports.rs` | Registered import execution, calling convention, signature checks, unknown imports, traps and reserved namespaces. |
 | `emulator/tests/wasm_example.rs` | Builds [`examples/wasm-fibonacci`](../../examples/wasm-fibonacci) for `wasm32-wasip1` and runs it end to end. Skipped with a notice when the target is not installed. |
 
 ```bash
