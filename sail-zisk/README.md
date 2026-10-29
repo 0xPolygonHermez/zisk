@@ -295,11 +295,8 @@ transpilation.
   on `bv_decide`'s (it trusts its compiled checker), and on the primitives
   sail-riscv's Lean leaves undefined (softfloat, reservations, platform
   hooks), which the proofs never look into. `make transpiler-check` checks
-  `SpecRom` of the Rust's ROM on its programs, for the code addresses it
-  walks (the last words of a section read with no next word or no second
-  one, where the machine would read whatever memory follows: it matters
-  only if that is a jalr after an auipc, or a memset sequence's last
-  words). A load or a store at an address none of ZisK's regions permits —
+  the Rust's whole ROM against the spec's (`programRom`), and `tailOk` of
+  each program: no translation at a segment's end reads past it. A load or a store at an address none of ZisK's regions permits —
   outside them, a store to the input or the ROM, an access straddling a
   region's end — is one of the run's ends (`FaultAt`; `fault_end`,
   `fault_end_sparse`, `zisk_fault`): sail-riscv's access fault traps, to
@@ -319,7 +316,8 @@ transpilation.
   `misjump_end_sparse`, `zisk_misjump`; `lean/Equiv/MisJumpSim.lean`; the
   proofs' ROM, a function, has the halt there, `HaltMis`, as `zromOf`, the
   program's ROM from the spec, does, `zromOf_haltMis`); an access to ZisK's register
-  slots fails on ZisK and is RAM to sail-riscv; an access to the input's
+  slots fails on ZisK and is RAM to sail-riscv: precondition R of the
+  contract (the theorems' access conditions, `zregs`, already ask it); an access to the input's
   first 8 bytes is precondition I. A load or store at any alignment is
   covered: within its 16-byte granule, sail-riscv's PMA check passes it
   whole (`AlignOk`, `alignOk_gran` for ZisK's regions); across one, its

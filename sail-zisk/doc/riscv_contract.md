@@ -26,7 +26,14 @@ Zicond, the privileged instructions (`mret`, `wfi`, `sfence.vma`).
 - `fence` and `fence.i` do nothing. A program that rewrites its own code is
   outside the contract: ZisK runs code from a read-only ROM.
 - `ebreak`, an instruction outside the set, and a reserved encoding end the
-  run in failure (§ 4). So does every SYSTEM word of funct3 0 but `ecall`
+  run in failure (§ 4). The float instructions are the exception: they fail
+  on both sides too (the transpiler halts, RISC-V's F and D are off), but
+  the equivalence leaves them out:
+
+  > **Precondition F.** The program executes no word of a float opcode:
+  > LOAD-FP (0x07), STORE-FP (0x27), the fused multiply-adds (0x43, 0x47,
+  > 0x4B, 0x4F), OP-FP (0x53).
+ So does every SYSTEM word of funct3 0 but `ecall`
   and `ebreak` — `mret`, `sret`, `wfi`, `sfence.vma` and the reserved ones
   — which the transpiler makes a halt. Here the contract departs from
   sail-riscv, which in machine mode runs `mret` (a jump to `mepc`), `wfi`
@@ -80,10 +87,18 @@ stack are in the RAM; its ELF segments are placed there and in the ROM, as
 `ziskbuild/zisk_linker_script.ld` lays them out.
 
 Part of the RAM is ZisK's: the registers' slots at `[0xA040_0000,
-0xA040_0140)`, which no access may touch (failure); the CSR cells (§ 6), at
+0xA040_0140)`, which ZisK lets no access touch, and RISC-V sees as RAM; the CSR cells (§ 6), at
 `CSR_ADDR = 0xA040_8000 + 8·csr`, which loads and stores reach too; the
 precompiles' parameter area at `EXTRA_PARAMS_ADDR = 0xA040_0F00`; and the
 output region at `OUTPUT_ADDR = 0xA041_0000`.
+
+> **Precondition R.** No load, store or AMO of the program touches a byte
+> of the registers' slots, `[0xA040_0000, 0xA040_0140)`.
+
+ZisK fails such an access, where RISC-V reads or writes the RAM there;
+compiled code never makes one (the slots are ZisK's, at no address a
+program is given). A precompile or DMA call that touches them fails on
+both sides alike: the machine runs ZisK's own operation (§ 7).
 
 The 8 bytes at `INPUT_ADDR = 0x1000_0000` are not memory: an 8-byte load
 there returns the free input (§ 8). The input follows, from `INPUT_ADDR + 8`;
@@ -271,7 +286,8 @@ RAM readable and writable — and there is no PMP. So an access outside § 2,
 against a region's permissions or straddling a region's end is an access
 fault in sail-riscv: a trap, and a failure, as on ZisK. One part of § 2 a
 PMA cannot state: the registers' slots, `[0xA040_0000, 0xA040_0140)`, which
-share a 4 KB page with the parameter area; to sail-riscv they are RAM.
+share a 4 KB page with the parameter area; to sail-riscv they are RAM,
+and precondition R keeps programs off them.
 
 ## Preconditions, together
 
@@ -281,7 +297,8 @@ of §§ 7–8, reading `marchid` and writing a read-only CSR, no store to
 `marchid`'s cell), **I** (the
 free input's 8 bytes read only as the free input), **Z** (no zkvmcall) and
 **L** (no `lr` reading its own instruction word), **A** (no AMO across
-a 16-byte boundary) and **J** (the pc in the code). Everything else
+a 16-byte boundary), **J** (the pc in the code), **R** (no access to
+the registers' slots) and **F** (no float instruction). Everything else
 it may do — touch memory outside § 2, write a read-only CSR, misuse a
 precompile — has a defined outcome above: a failure, which ZisK does not
 prove, and which the theorem must show both sides agree on.
