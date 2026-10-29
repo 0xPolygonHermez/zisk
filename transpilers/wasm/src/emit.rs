@@ -280,6 +280,18 @@ impl Code {
         self.push(zib, Fixup::None);
     }
 
+    /// `mem[abs_addr] |= imm` (absolute system address) in one instruction.
+    pub fn or_imm_to_abs(&mut self, abs_addr: u64, imm: u64) {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("mem", abs_addr, false);
+        zib.src_b("imm", imm, false);
+        zib.op("or").unwrap();
+        zib.store("mem", abs_addr as i64, false, false);
+        zib.j(4, 4);
+
+        self.push(zib, Fixup::None);
+    }
+
     /// `mem[abs_addr] = <absolute address of label>`: stores the ROM address `label` resolves to.
     pub fn store_label_addr_to_abs(&mut self, abs_addr: u64, label: LabelId) {
         let mut zib = ZiskInstBuilder::new(0);

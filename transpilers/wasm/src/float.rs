@@ -164,13 +164,13 @@ fn call_handler(code: &mut Code, inst: u32) {
     code.bind(ret);
 }
 
-/// `f<f> = mem[FP+slot]`, sign-extended from 32 bits for single precision (one instruction).
+/// `f<f> = mem[FP+slot]`. A single-precision value is NaN-boxed (upper 32 bits set to 1), as the
+/// RISC-V spec requires: the float library reads any other upper half as the canonical NaN.
 fn freg_from_slot(code: &mut Code, f: u32, slot: i64, prec: Prec) {
-    let op = match prec {
-        Prec::D => "copyb",
-        Prec::S => "signextend_w",
-    };
-    code.slot_to_abs(freg_addr(f), slot, op);
+    code.slot_to_abs(freg_addr(f), slot, "copyb");
+    if prec == Prec::S {
+        code.or_imm_to_abs(freg_addr(f), 0xFFFF_FFFF_0000_0000);
+    }
 }
 
 /// `mem[FP+slot] = f<f>` (one instruction).

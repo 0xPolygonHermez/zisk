@@ -446,7 +446,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             // F: Single-Precision Floating-Point
             /////////////////////////////////////
             #[cfg(feature = "float")]
-            RiscvInstName::Flw => self.load_op(riscv_instruction, "signextend_w", 4, 4),
+            RiscvInstName::Flw => self.flw(riscv_instruction),
             #[cfg(feature = "float")]
             RiscvInstName::Fsw => self.store_op(riscv_instruction, "signextend_w", 4, 4),
             #[cfg(feature = "float")]
@@ -1162,7 +1162,6 @@ impl<'a> Riscv2ZiskContext<'a> {
         zib.op(op).unwrap();
         #[cfg(feature = "float")]
         let reg_offset: i64 = if i.inst_name == RiscvInstName::Fld
-            || i.inst_name == RiscvInstName::Flw
             || i.inst_name == RiscvInstName::CFld
             || i.inst_name == RiscvInstName::CFldsp
         {
@@ -1177,6 +1176,43 @@ impl<'a> Riscv2ZiskContext<'a> {
         zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&format!("{} r{}, 0x{:x}(r{})", i.inst_name, i.rd, i.imm, i.rs1));
         zib.build(self.rom);
+    }
+
+    // flw rd, imm(rs1)
+    //    copyb_w([%rs1], [a + imm]) -> [%f_rd]
+    //    or([%f_rd], 0xFFFFFFFF00000000) -> [%f_rd]
+
+    /// Loads a single-precision value into a float register and NaN-boxes it: the RISC-V spec
+    /// requires the upper 32 bits of a narrower value in a 64-bit float register to be all 1s, and
+    /// the float library reads any other value as the canonical NaN
+    #[cfg(feature = "float")]
+    pub fn flw(&mut self, i: &RiscvInst) {
+        let freg = i.rd as u64 + ((FREG_F0 - REG_X0) >> 3);
+        let internal_address = self.rom.get_internal_address();
+        {
+            let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
+            zib.src_a("reg", i.rs1 as u64, false);
+            zib.ind_width(4);
+            zib.src_b("ind", i.imm as u64, false);
+            zib.op("copyb").unwrap();
+            zib.store("reg", freg as i64, false, false);
+            zib.set_next_internal_address(internal_address);
+            let jump_address = internal_address as i64 - i.rom_address as i64;
+            zib.j(jump_address, jump_address);
+            zib.verbose(&format!("{} f{}, 0x{:x}(r{})", i.inst_name, i.rd, i.imm, i.rs1));
+            zib.build(self.rom);
+        }
+        {
+            let mut zib = ZiskInstBuilder::new_internal(internal_address, i.rom_address);
+            zib.src_a("reg", freg, false);
+            zib.src_b("imm", 0xFFFF_FFFF_0000_0000, false);
+            zib.op("or").unwrap();
+            zib.store("reg", freg as i64, false, false);
+            let jump_address = i.rom_address as i64 + 4 - internal_address as i64;
+            zib.j(jump_address, jump_address);
+            zib.verbose(&format!("internal 1 flw: NaN-box f{}", i.rd));
+            zib.build(self.rom);
+        }
     }
 
     // sb rs2, imm(rs1)

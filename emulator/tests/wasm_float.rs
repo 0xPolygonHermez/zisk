@@ -199,6 +199,19 @@ fn promote_demote_and_reinterpret() {
 }
 
 #[test]
+fn promote_covers_signs_zeros_and_subnormals() {
+    // f32 operands reach the float library NaN-boxed; zeros, negatives and subnormals must convert
+    // exactly instead of reading as the canonical NaN.
+    for x in [0.0f32, -0.0, 1.5, -2.5, -1.0, 1e-40, -1e-40, f32::MIN_POSITIVE, f32::MAX, f32::MIN] {
+        let got = eval_f64(&format!("(f64.promote_f32 (f32.const {x:e}))"));
+        assert_eq!(got.to_bits(), (x as f64).to_bits(), "promote({x:e})");
+    }
+    assert_eq!(eval_f64("(f64.promote_f32 (f32.const inf))"), f64::INFINITY);
+    assert_eq!(eval_f64("(f64.promote_f32 (f32.const -inf))"), f64::NEG_INFINITY);
+    assert!(eval_f64("(f64.promote_f32 (f32.const nan))").is_nan());
+}
+
+#[test]
 fn float_memory_locals_and_globals() {
     let body = r#"
         (local $x f64) (local $y f32)
