@@ -336,4 +336,279 @@ theorem one_stepTX (s : RVState) (z : ZState) (rs : List PMA_Region) (hrel : Rel
       obtain ⟨σ', hs', h'⟩ := marchid_x hX hσ hzpc (i.spec hrd hi.tr) hs
       exact ⟨σ', .step hs' (.done _), h'⟩
 
+/-- A ZisK call's operation step, ZisK on its memory without X's bytes
+    alongside: as on the whole memory, or the operation, on the reference
+    memory without them, fails on one of them. -/
+theorem zcall_x {X : Nat → Bool} (hX : RomX X) (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) (hw : CallWF c)
+    {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {p j1 j2 : BitVec 64}
+    (hrom : zrom p = Transpiler.mk (Transpiler.argA c.a) (Transpiler.argB c.b) c.op (Transpiler.storeReg c.rd) j1 j2)
+    (hj1 : (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then j1 else 0) =
+      (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0))
+    (hok : CallOk S c) {τ σ τ' : ZState} {xs : Vector (BitVec 64) 40}
+    (hx : τ.regs.get? _root_.Zisk.Register.Xs = some xs) (agree : RegsAgree S.rv xs)
+    (hzpc : τ.regs.get? _root_.Zisk.Register.PC = some p) {st : BitVec 64}
+    (hzst : τ.regs.get? _root_.Zisk.Register.Step = some st)
+    (hzm : Equiv.normIn τ.mem = Equiv.normIn (callMem S c)) (hf : Equiv.Zisk.FcallRel S.fcall τ)
+    (h : FRX X σ τ) {b : Bool} (ht : (zstep zrom).run τ = .ok b τ') :
+    (∃ σ', (zstep zrom).run σ = .ok b σ' ∧ FRX X σ' τ') ∨
+      ∃ k σ', (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
+        (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run
+        (ZiskRiscv.ziskState (eraseX X (Equiv.normIn (callMem S c))) S.fcall) = .error (.OutOfMemoryRange k) σ' ∧
+        X k = true := by
+  rcases zstep_sub hX.offRam h ht with hs | ⟨k, σe, herr, -⟩
+  · exact .inl hs
+  have hxσ : σ.regs.get? _root_.Zisk.Register.Xs = some xs := by rw [h.regs]; exact hx
+  have hpcσ : σ.regs.get? _root_.Zisk.Register.PC = some p := by rw [h.regs]; exact hzpc
+  have hfσ : Equiv.Zisk.FcallRel S.fcall σ := fun r hr => by rw [h.regs]; exact hf r hr
+  have hsa := Equiv.Zisk.source_a_run σ (Transpiler.argA c.a) (Transpiler.argB c.b) c.op (Transpiler.storeReg c.rd)
+    j1 j2 xs hxσ _
+    (argA_src agree S.fcall c.a hw.a hw.afree)
+  have hsb := argB_src S.rv σ agree hxσ S.fcall hfσ c.b hw.b (Transpiler.argA c.a) c.op (Transpiler.storeReg c.rd) j1 j2
+    (S.argValue c.a)
+  have hFR1 : FR (ZiskRiscv.ziskState (eraseX X (Equiv.normIn (callMem S c))) S.fcall)
+      (ZiskRiscv.ziskState (Equiv.normIn (callMem S c)) S.fcall) := by
+    refine ⟨fun k v hk => ?_, fun r _ => rfl⟩
+    have hk' : (eraseX X (Equiv.normIn (callMem S c))).get? k = some v := hk
+    rw [eraseX_get] at hk'; split at hk'
+    · cases hk'
+    · exact hk'
+  have hFR2 : FR (ZiskRiscv.ziskState (eraseX X (Equiv.normIn (callMem S c))) S.fcall) σ := by
+    have hr := FR.ref_zisk hzm hf
+    refine ⟨fun k v hk => ?_, fun r hr' => by rw [h.regs]; exact hr.regs r hr'⟩
+    have hk' : (eraseX X (Equiv.normIn (callMem S c))).get? k = some v := hk
+    rw [eraseX_get] at hk'; split at hk'
+    · cases hk'
+    · next hxk => rw [h.mem k, if_neg hxk]; exact hr.mem k v hk'
+  obtain ⟨r0, σr, href⟩ := hok
+  cases hm : (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
+      (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run
+      (ZiskRiscv.ziskState (eraseX X (Equiv.normIn (callMem S c))) S.fcall) with
+  | error e σ'' =>
+    rcases ((Frame.exec_mem _ _ _ _).2 _ _ hFR1 e σ'' hm).1 with ⟨k', rfl, hk1, hk2⟩ | ⟨τr, hτr⟩
+    · refine .inr ⟨k', σ'', rfl, ?_⟩
+      cases e' : X k'
+      · exfalso
+        have a1 : (eraseX X (Equiv.normIn (callMem S c))).get? k' = none := hk1
+        have a2 : (Equiv.normIn (callMem S c)).get? k' ≠ none := hk2
+        rw [eraseX_get, e'] at a1; exact a2 (by simpa using a1)
+      · rfl
+    · rw [href] at hτr; cases hτr
+  | ok r1 σ1 =>
+    exfalso
+    obtain ⟨σ2, hσ2, -, hreg, -⟩ := (Frame.exec_mem _ _ _ _).1 _ _ hFR2 r1 σ1 hm
+    have hst : σ.regs.get? _root_.Zisk.Register.Step = some st := by rw [h.regs]; exact hzst
+    have hex := Equiv.Zisk.execute_zcall σ (Transpiler.argA c.a) (Transpiler.argB c.b) c.op c.rd
+      (by have := hw.rd; omega) j1 j2 xs p st (S.argValue c.a) (S.argValue c.b) hsa hsb hw.halt r1 σ2
+      (by rw [hj1]; exact hσ2) _ _ rfl (by rw [hreg _ rfl]; exact hxσ) (by rw [hreg _ rfl]; exact hpcσ)
+      (by rw [hreg _ rfl]; exact hst)
+    rw [zstep_run zrom σ p hpcσ, hrom, hex] at herr
+    cases herr
+
+set_option maxHeartbeats 4000000 in
+/-- A ZisK call's block, ZisK on its memory without X's bytes alongside: as
+    on the whole memory, or the call breaks X. -/
+theorem call_x {X : Nat → Bool} (hX : RomX X) (S : ZiskRiscv.State model) {z σ z' : ZState} {rs : List PMA_Region}
+    (hrel : Rel S.rv z rs) (hf : Equiv.Zisk.FcallRel S.fcall z) (h : FRX X σ z) {pc : BitVec 64} {w : BitVec 32}
+    {c : ZiskRiscv.Call} (hpc : S.rv.regs.get? Register.PC = some pc) (hrw : ZiskRiscv.readWord S.rv.mem pc.toNat = some w)
+    (hd : ZiskRiscv.decode (Transpiler.fetch3 pc w (nextWord S.rv pc) (nextWord2 S.rv pc)) pc.toNat = .call c)
+    (hok : CallOk S c) {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {ia : BitVec 64}
+    (hz : ∀ p ∈ Transpiler.callInsts c pc ia, zrom p.1 = p.2) {k : Nat}
+    (hk : k = (Transpiler.callInsts c pc ia).length) (ht : ZRun zrom k z z') :
+    (∃ σ', ZRun zrom k σ σ' ∧ FRX X σ' z') ∨ BreakXC X S := by
+  have hw := decode_call_wf hd
+  obtain ⟨-, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
+  rw [hpc] at hpc'; cases hpc'
+  cases hcn : c.count with
+  | none =>
+    simp only [Transpiler.callInsts, hcn, List.mem_singleton, forall_eq] at hz
+    simp only [Transpiler.callInsts, hcn, List.length_singleton] at hk
+    subst hk
+    cases ht with
+    | step ht1 hr =>
+    cases hr
+    have hcm : callMem S c = S.rv.mem := by simp [callMem, hcn, model]
+    have hj1 : (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then
+        (if Transpiler.fcallOp c.op then BitVec.ofNat 64 (4 * c.len) else c.ext) else 0) =
+        (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0) := by
+      cases hp : _root_.Zisk.Functions.zisk_op_is_precompiled c.op
+      · rfl
+      · simp [hw.pre hp]
+    rcases zcall_x hX S c hw hz hj1 hok hx agree hzpc hst (by rw [hcm]; exact hzm) hf h ht1 with
+      ⟨σ', hs, h'⟩ | ⟨k, σ', he, hk⟩
+    · exact .inl ⟨σ', .step hs (.done _), h'⟩
+    · exact .inr ⟨pc, w, c, hpc, hrw, hd, k, σ', he, hk⟩
+  | some rc =>
+    simp only [Transpiler.callInsts, hcn, List.mem_cons, List.not_mem_nil, or_false,
+      forall_eq_or_imp, forall_eq] at hz
+    simp only [Transpiler.callInsts, hcn, List.length_cons] at hk
+    subst hk
+    obtain ⟨lr, hext⟩ := hw.count rc hcn
+    cases ht with
+    | step ht1 hr =>
+    rename_i z1
+    cases hr with
+    | step ht2 hr2 =>
+    cases hr2
+    obtain ⟨z1', hs1, hx1, hp1, hst1, hze1, hf1, -, hm1⟩ :=
+      count_store S z rs hf c rc hcn lr xs hx agree pc hzpc st hst hze hzm zrom ia hz.1
+    rw [hs1] at ht1; cases ht1
+    have hn : NoReads (zrom pc) := by
+      rw [hz.1]
+      refine ⟨(by intro h; cases h), ?_, ?_, rfl⟩ <;> simp only [Transpiler.mk, Transpiler.srcB] <;> split <;>
+        (intro h; cases h)
+    obtain ⟨σ1, hσ1, h1⟩ := zstep_noreads hX.offRam h hzpc hn hs1
+    have hj1 : (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then (0 : BitVec 64) else 0) =
+        (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0) := by
+      rw [hext]
+    rcases zcall_x hX S c hw hz.2 hj1 hok hx1 agree hp1 hst1 hm1 hf1 h1 ht2 with
+      ⟨σ', hs, h'⟩ | ⟨k, σ', he, hk⟩
+    · exact .inl ⟨σ', .step hσ1 (.step hs (.done _)), h'⟩
+    · exact .inr ⟨pc, w, c, hpc, hrw, hd, k, σ', he, hk⟩
+
+/-- X broken at the machine's step: by the word at pc, or by a ZisK call. -/
+def BreakXS (X : Nat → Bool) (S : ZiskRiscv.State model) : Prop := BreakXAt X S.rv ∨ BreakXC X S
+
+set_option maxHeartbeats 4000000 in
+/-- `one_stepM`, ZisK on its memory without X's bytes alongside: its steps
+    there are its steps on the whole memory, or the step breaks X. -/
+theorem one_stepMX (C : BitVec 64 → Prop) (S : ZiskRiscv.State model) (z : ZState)
+    (rs : List PMA_Region) (hrel : Rel S.rv z rs) (hf : Equiv.Zisk.FcallRel S.fcall z) (hmir : Mirror S)
+    (hx : ¬ ExecAt rs EXIT_ADDR) (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (h : OneOkM rs zrom C S)
+    (hC : ∀ pc, S.rv.regs.get? Register.PC = some pc → C pc) (n : Nat) {X : Nat → Bool} (hX : RomX X) :
+    ∃ z' k', ZRun zrom k' z z' ∧ Rel (sNext n S).rv z' rs ∧ Equiv.Zisk.FcallRel (sNext n S).fcall z' ∧
+      RamOnlyX S.rv.mem (sNext n S).rv.mem ∧ Grows S.rv.mem (sNext n S).rv.mem ∧ Mirror (sNext n S) ∧
+      (∀ m S'', PcOk (sNext n S).rv → MRunR C m (sNext n S) S'' → MRunR C (m + 1) S S'') ∧
+      ∀ σ, FRX X σ z → (∃ σ', ZRun zrom k' σ σ' ∧ FRX X σ' z') ∨ BreakXS X S := by
+  rcases h with ho | ⟨pc, w, c, hpc, hex, hrw, htr, h4, h8, hd, hC4, hC8, hok⟩ |
+    ⟨pc, i, hpc, hi, v1, hv1, hva, r, hm, hrb, hal⟩ | ⟨pc, w, hpc, hex, hrw, htr, hd⟩
+  · obtain ⟨s', z', k', hm, hzr, hrel', hro, hk, hσ⟩ := one_stepTX S.rv z rs hrel zrom ho n hX
+    obtain ⟨pc, hpc, hex⟩ := OneOkT.exec ho
+    rw [hm.snext_eq]
+    exact ⟨z', k', hzr, hrel', fun r hr => (hk r hr).trans (hf r hr), (RamOnlyX.of hro), hm.grows,
+      (mirror_ramOnly hro).trans hmir,
+      fun m S'' hp hrest => hm.toRun hrel.ready hpc hex (hC pc hpc) hx hp hrest,
+      fun σ h => (hσ σ h).imp_right .inl⟩
+  · obtain ⟨S', z', k', hcs, hzr, hrel', hf', hmem, hg, ia, hz, hkl⟩ :=
+      callstep_m C S z rs hrel hf hx pc hpc zrom w hex hrw htr h4 h8 c hd (hC pc hpc) hC4 hC8 hok
+    rw [hcs.snext_eq n]
+    obtain ⟨c', hcall, -⟩ := hcs.2.2
+    exact ⟨z', k', hzr, hrel', hf', hmem, hg, call_mirror hcall, fun m S'' _ hrest => .call hcs hrest,
+      fun σ h => (call_x hX S hrel hf h hpc hrw hd hok hz hkl hzr).imp_right .inr⟩
+  · -- the free input: the mirror in memory, ZisK's register the machine's
+    have hbytes : Equiv.memRead S.rv.mem 8 (v1 + i.imm.signExtend 64).toNat = some S.fcall.freeInput := by
+      rw [hva]; exact hmir
+    have hzf : z.regs.get? _root_.Zisk.Register.FreeInput = some S.fcall.freeInput := hf _ rfl
+    obtain ⟨s', z', h1, h2, h3, -, h5, hk⟩ :=
+      ldfree_rel S.rv z rs hrel pc hpc zrom i _ hi v1 hv1 hva r hm hrb hal _ hbytes hzf n
+    have hms : MStep rs n S.rv s' :=
+      .plain pc _ hpc (readWord_of hi.h0 hi.h1 hi.h2 hi.h3) (notSys_ld i).plain h1
+    rw [hms.snext_eq]
+    refine ⟨z', 1, .step h2 (.done _), h3, fun r hr => (hk r hr).trans (hf r hr), ?_, ?_, ?_,
+      fun m S'' hp hrest => hms.toRun hrel.ready hpc hi.x1 (hC pc hpc) hx hp hrest, fun σ h => ?_⟩
+    · show RamOnlyX S.rv.mem s'.mem
+      rw [h5]; exact RamOnlyX.refl _
+    · show Grows S.rv.mem s'.mem
+      rw [h5]; exact Grows.refl _
+    · show Equiv.memRead s'.mem 8 Equiv.IN_LO = some S.fcall.freeInput
+      rw [h5]; exact hmir
+    · rcases plain_x hX hrel h hpc (readWord_of hi.h0 hi.h1 hi.h2 hi.h3) hi.tr (notSys_ld i).not_csr h2 with
+        ⟨σ', hs, h'⟩ | hb
+      · exact .inl ⟨σ', .step hs (.done _), h'⟩
+      · exact .inr (.inl hb)
+  · -- csrs ID, x0: pc on by 4, on both sides
+    obtain ⟨z', h2, hrel', hk⟩ := nop_rel S.rv z rs hrel pc hpc zrom (nop_rom htr hd)
+    have hg : model.getPC S.rv = pc := by simp [model, hpc]
+    have hns : NStep C S { S with rv := model.setPC S.rv (model.getPC S.rv + 4) } := by
+      refine ⟨?_, by rw [hg]; exact hC pc hpc, fun fetch hf => ?_, rfl⟩
+      · rw [hg]; intro e; have e' : pc = EXIT_ADDR := e; exact hx (e' ▸ hex)
+      · rw [hg] at hf ⊢; exact hd fetch (hf.trans hrw)
+    rw [hns.snext_eq n]
+    refine ⟨z', 1, .step h2 (.done _), ?_, fun r hr => (hk r hr).trans (hf r hr), RamOnlyX.refl _, Grows.refl _,
+      hmir, fun m S'' _ hrest => .nop hns hrest, fun σ h => .inl ?_⟩
+    · rw [hg]; exact hrel'
+    · have hzpc : z.regs.get? _root_.Zisk.Register.PC = some pc := by
+        obtain ⟨pc', hpc', hz'⟩ := hrel.pc; rw [hpc] at hpc'; cases hpc'; exact hz'
+      have hn : NoReads (zrom pc) := by
+        rw [nop_rom htr hd]; exact ⟨(by intro h; cases h), (by intro h; cases h), (by intro h; cases h), rfl⟩
+      obtain ⟨σ', hs, h'⟩ := zstep_noreads hX.offRam h hzpc hn h2
+      exact ⟨σ', .step hs (.done _), h'⟩
+
+set_option maxHeartbeats 4000000 in
+/-- `prog_romM`, ZisK on its memory without X's bytes alongside: its run
+    there is its run on the whole memory, or a step of the machine's run
+    breaks X. -/
+theorem prog_romMX (zr zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PMA_Region) (C : BitVec 64 → Prop)
+    (hx : ¬ ExecAt rs EXIT_ADDR) (ht : ¬ ExecAt rs TRAP_VEC) (hnx : NoCodeRam C) (hni : NoCodeIn C)
+    {X : Nat → Bool} (hX : RomX X) :
+    ∀ (k : Nat) (S : ZiskRiscv.State model) (z : ZState) (n : Nat),
+      Rel S.rv z rs → Equiv.Zisk.FcallRel S.fcall z → Mirror S → RunOkM rs zr C k S n → RunInM C k S n →
+      SpecRom zrom C S.rv.mem →
+      ∃ z' k', ZRun zrom k' z z' ∧ Rel (sIter n k S).rv z' rs ∧ Equiv.Zisk.FcallRel (sIter n k S).fcall z' ∧
+        RamOnlyX S.rv.mem (sIter n k S).rv.mem ∧ Grows S.rv.mem (sIter n k S).rv.mem ∧ Mirror (sIter n k S) ∧
+        (PcOk (sIter n k S).rv → MRunR C k S (sIter n k S)) ∧
+        ∀ σ, FRX X σ z → (∃ σ', ZRun zrom k' σ σ' ∧ FRX X σ' z') ∨ ∃ j, j < k ∧ BreakXS X (sIter n j S)
+  | 0, S, z, n, hrel, hf, hmir, _, _, _ =>
+    ⟨z, 0, .done z, hrel, hf, RamOnlyX.refl _, Grows.refl _, hmir, fun _ => .done _,
+      fun σ h => .inl ⟨σ, .done _, h⟩⟩
+  | 1, S, z, n, hrel, hf, hmir, ho, hin, hs => by
+    obtain ⟨z1, k1, hzr, hrel1, hf1, hm1, hg1, hmir1, hmr, hσ⟩ := one_stepMX C S z rs hrel hf hmir hx zrom
+      (OneOkM.retarget hs (fun _ h => hin.head h) ho) (fun _ h => hin.head h) n hX
+    exact ⟨z1, k1, hzr, hrel1, hf1, hm1, hg1, hmir1, fun hp => hmr 0 _ hp (.done _),
+      fun σ h => (hσ σ h).imp_right fun hb => ⟨0, by omega, hb⟩⟩
+  | k + 2, S, z, n, hrel, hf, hmir, .inl ⟨ho, hrest⟩, hin, hs => by
+    obtain ⟨z1, k1, hzr, hrel1, hf1, hm1, hg1, hmir1, hmr, hσ⟩ := one_stepMX C S z rs hrel hf hmir hx zrom
+      (OneOkM.retarget hs (fun _ h => hin.head h) ho) (fun _ h => hin.head h) n hX
+    obtain ⟨p1, hp1, hx1⟩ := RunOkM.exec hrest
+    obtain ⟨z2, k2, hzr2, hrel2, hf2, hm2, hg2, hmir2, hmr2, hσ2⟩ :=
+      prog_romMX zr zrom rs C hx ht hnx hni hX (k + 1) (sNext n S) z1 (n + 1) hrel1 hf1 hmir1 hrest hin.tail
+        (hs.keepX hm1 hnx hni)
+    refine ⟨z2, k1 + k2, ZRun.append hzr hzr2, hrel2, hf2, hm1.trans hm2, hg1.trans hg2, hmir2,
+      fun hp => hmr _ _ (PcOk.of_exec ht hp1 hx1) (hmr2 hp), fun σ h => ?_⟩
+    rcases hσ σ h with ⟨σ1, hr1, h1⟩ | hb
+    · rcases hσ2 σ1 h1 with ⟨σ', hr', h'⟩ | ⟨j, hj, hb⟩
+      · exact .inl ⟨σ', ZRun.append hr1 hr', h'⟩
+      · exact .inr ⟨j + 1, by omega, hb⟩
+    · exact .inr ⟨0, by omega, hb⟩
+  | k + 2, S, z, n, hrel, hf, hmir, .inr ⟨⟨pc, i, hpc, hi⟩, hrest⟩, hin, hs => by
+    have hi' := FtAt.retarget hs (hin.head hpc) hi
+    obtain ⟨s2, z1, hrun, hzrun, hrel1, -, hr1, hpc1, hmem1, hmem2, hk⟩ :=
+      fused_rel S.rv z rs hrel pc hpc zrom i hi'.toFAt n
+    obtain ⟨t1, h1, -, m1, m2, -, -⟩ := fused_mnext hpc hi hrun hpc1 hmem1
+    have q1 : sNext n S = { S with rv := t1 } := m1.snext_eq
+    have q2 : sNext (n + 1) { S with rv := t1 } = { S with rv := s2 } := m2.snext_eq (S := { S with rv := t1 })
+    rw [rvNext_of h1] at hr1 hpc1
+    have hc1 : C (pc + 4) := by
+      have := hin.tail.head (pc := pc + 4); rw [q1] at this; exact this hpc1
+    have hin2 := hin.tail.tail
+    rw [q1, q2] at hrest hin2
+    have hm : RamOnly S.rv.mem s2.mem := RamOnly.of_eq hmem2
+    have hmir2 : Mirror { S with rv := s2 } := (mirror_ramOnly hm).trans hmir
+    obtain ⟨z3, k3, hzrun3, hrel3, hf3, hm3, hg3, hmir3, hmr3, hσ3⟩ :=
+      prog_romMX zr zrom rs C hx ht hnx hni hX k { S with rv := s2 } z1 (n + 2) hrel1
+        (fun r hr => (hk r hr).trans (hf r hr)) hmir2 hrest hin2 (hs.keepX (RamOnlyX.of hm) hnx hni)
+    have e : sIter n (k + 2) S = sIter (n + 2) k { S with rv := s2 } := by
+      simp only [sIter, q1, q2]
+    have e' : ∀ j, sIter n (j + 2) S = sIter (n + 2) j { S with rv := s2 } := by
+      intro j; simp only [sIter, q1, q2]
+    rw [e]
+    refine ⟨z3, 1 + k3, ZRun.append hzrun hzrun3, hrel3, hf3, (RamOnlyX.of hm).trans hm3,
+      (m1.grows.trans m2.grows).trans hg3, hmir3, fun hp => ?_, fun σ h => ?_⟩
+    · have hp2 : PcOk s2 := by
+        cases k with
+        | zero => exact hp
+        | succ k => obtain ⟨p, hp', hx'⟩ := RunOkM.exec hrest; exact PcOk.of_exec ht hp' hx'
+      exact m1.toRun hrel.ready hpc hi.x1 (hin.head hpc) hx (PcOk.of_exec ht hpc1 hi.x3)
+        (m2.toRun (S := { S with rv := t1 }) hr1 hpc1 hi.x3 hc1 hx hp2 (hmr3 hp))
+    · have hzpc : z.regs.get? _root_.Zisk.Register.PC = some pc := by
+        obtain ⟨pc', hpc', hz'⟩ := hrel.pc; rw [hpc] at hpc'; cases hpc'; exact hz'
+      have hn : NoReads (zrom pc) := by
+        rw [hi'.toFAt.rom]; exact ⟨(by intro h; cases h), (by intro h; cases h), (by intro h; cases h), rfl⟩
+      cases hzrun with
+      | step hs1 hr0 =>
+      cases hr0
+      obtain ⟨σ1, hσ1, h1⟩ := zstep_noreads hX.offRam h hzpc hn hs1
+      rcases hσ3 σ1 h1 with ⟨σ', hr', h'⟩ | ⟨j, hj, hb⟩
+      · exact .inl ⟨σ', by rw [Nat.add_comm]; exact .step hσ1 hr', h'⟩
+      · exact .inr ⟨j + 2, by omega, by rw [e']; exact hb⟩
+
 end Equiv.Final
