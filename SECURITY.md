@@ -2,7 +2,7 @@
 
 ZisK is a zkVM: its job is to make sure that a valid proof can only be produced for a correct execution. We take reports of anything that undermines that guarantee seriously, and we appreciate the work of researchers who find and disclose such issues responsibly.
 
-ZisK is in alpha and is currently undergoing security and correctness audits.
+ZisK is in alpha and is currently undergoing security and correctness audits. What an accepting proof guarantees, and under which assumptions, is analyzed in [Security of ZisK](https://github.com/0xPolygonHermez/zisk-papers/releases), one of the [ZisK papers](https://github.com/0xPolygonHermez/zisk-papers).
 
 ## Supported Versions
 

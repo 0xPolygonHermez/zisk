@@ -18,6 +18,14 @@ To start using ZisK, follow the [Quickstart](https://0xpolygonhermez.github.io/z
 
 📚 Complete Documentation: [ZisK Docs](https://0xpolygonhermez.github.io/zisk-docs/)
 
+## Papers
+
+The [ZisK papers](https://github.com/0xPolygonHermez/zisk-papers) describe ZisK in depth; their published versions are on the [releases page](https://github.com/0xPolygonHermez/zisk-papers/releases):
+
+- **ZisK Whitepaper**: the specification of the ZisK zkVM.
+- **Security of ZisK**: the security analysis of ZisK's proof system.
+- **Secure Challenge Derivation in ZisK**: a short note on the multiset hash behind ZisK's distributed challenge derivation.
+
 ## License
 
 All crates in this monorepo are licensed under one of the following options:

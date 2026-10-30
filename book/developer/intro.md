@@ -2,7 +2,7 @@
 
 ## Overview
 
-ZisK is a zero-knowledge virtual machine (zkVM).  This section describes the high-level architecture of ZisK.
+ZisK is a zero-knowledge virtual machine (zkVM).  This section describes the high-level architecture of ZisK.  For the full specification, see the [ZisK Whitepaper](https://github.com/0xPolygonHermez/zisk-papers/releases), one of the [ZisK papers](https://github.com/0xPolygonHermez/zisk-papers).
 
 ## Guest program generation
 
