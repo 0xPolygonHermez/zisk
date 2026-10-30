@@ -1,3 +1,4 @@
+use crate::zisklib::unaligned_redirect;
 use crate::zisklib::{
     be_bytes_to_u64_4, eq, glv_double_scalar_mul_with_g_secp256k1, gt, is_zero, u64_4_to_be_bytes,
     ZERO_256,
@@ -193,6 +194,25 @@ pub unsafe extern "C" fn ecdsa_verify_secp256k1_c(
     s_ptr: *const u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [pk_ptr: 8, z_ptr: 4, r_ptr: 4, s_ptr: 4],
+        [],
+        |ins, _outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *const u64, *const u64) -> u8 =
+                ecdsa_verify_secp256k1_c;
+            core::hint::black_box(f)(ins[0], ins[1], ins[2], ins[3])
+        },
+        |ins, _outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *const u64,
+                *const u64,
+                &mut Vec<u64>,
+            ) -> u8 = ecdsa_verify_secp256k1_c;
+            core::hint::black_box(f)(ins[0], ins[1], ins[2], ins[3], &mut *hints)
+        }
+    );
     let pk = &*(pk_ptr as *const [u64; 8]);
     let z = &*(z_ptr as *const [u64; 4]);
     let r = &*(r_ptr as *const [u64; 4]);

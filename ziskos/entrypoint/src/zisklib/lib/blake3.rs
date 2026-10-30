@@ -1,5 +1,7 @@
 use crate::syscalls::syscall_blake3f;
 
+use super::Align8;
+
 /// BLAKE3 initialization vectors
 const IV: [u32; 8] = [
     0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
@@ -13,15 +15,28 @@ pub fn blake3_compress(
     flags: u32,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    // Initilize local state
-    let mut state = [
+    // Initialize local state. The precompile works on it as u64 words, so it must be
+    // 8-byte aligned, which a [u32; 16] alone is not.
+    let mut state = Align8([
         h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], IV[0], IV[1], IV[2], IV[3], t[0], t[1],
         len, flags,
-    ];
+    ]);
+    let state = &mut state.0;
 
     // Perform the cryptographic mixing
+    // SAFETY: Align8 places the state on an 8-byte boundary, and the sizes match.
     let state_u64: &mut [u64; 8] = unsafe { &mut *(state.as_mut_ptr() as *mut [u64; 8]) };
-    let input: &[u64; 8] = unsafe { &*(m.as_ptr() as *const [u64; 8]) };
+    // The message is only 4-byte aligned by type: use it in place when it happens to
+    // be 8-byte aligned, else an aligned copy.
+    let m_copy: [u64; 8];
+    let input: &[u64; 8] = if (m.as_ptr() as usize) & 0x7 == 0 {
+        // SAFETY: checked 8-byte aligned, and the sizes match.
+        unsafe { &*(m.as_ptr() as *const [u64; 8]) }
+    } else {
+        // SAFETY: 64 readable bytes; read_unaligned assumes no alignment.
+        m_copy = unsafe { (m.as_ptr() as *const [u64; 8]).read_unaligned() };
+        &m_copy
+    };
 
     syscall_blake3f(
         state_u64,

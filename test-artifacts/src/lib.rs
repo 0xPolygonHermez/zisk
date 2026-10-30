@@ -111,3 +111,5 @@ pub const ELF_SHA256: GuestProgram = load_program!("sha256");
 pub const ELF_TWISTED_EDWARDS: GuestProgram = load_program!("twisted_edwards");
 #[cfg(feature = "uint256")]
 pub const ELF_UINT256: GuestProgram = load_program!("uint256");
+#[cfg(feature = "unaligned_out")]
+pub const ELF_UNALIGNED_OUT: GuestProgram = load_program!("unaligned_out");

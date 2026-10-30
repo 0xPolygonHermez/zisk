@@ -2,6 +2,7 @@
 
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
+use crate::zisklib::unaligned_redirect;
 
 use crate::{
     syscalls::{syscall_bn254_curve_add, syscall_bn254_curve_dbl, SyscallPoint256},
@@ -440,19 +441,35 @@ pub unsafe extern "C" fn jacobian_to_affine_bn254_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [p_ptr: 12],
+        [result_ptr: 8],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64) -> u8 = jacobian_to_affine_bn254_c;
+            core::hint::black_box(f)(ins[0], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = jacobian_to_affine_bn254_c;
+            core::hint::black_box(f)(ins[0], outs[0], &mut *hints)
+        }
+    );
     let p = &*(p_ptr as *const [u64; 12]);
-    let result = &mut *(result_ptr as *mut [u64; 8]);
     match jacobian_to_affine_bn254(
         p,
         #[cfg(feature = "hints")]
         hints,
     ) {
         G1_IDENTITY => {
-            *result = G1_IDENTITY;
+            let result = G1_IDENTITY;
+            (result_ptr as *mut [u64; 8]).write(result);
             1
         }
         affine => {
-            *result = affine;
+            (result_ptr as *mut [u64; 8]).write(affine);
             0
         }
     }
@@ -469,6 +486,18 @@ pub unsafe extern "C" fn is_on_curve_bn254_c(
     p_ptr: *const u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [p_ptr: 8],
+        [],
+        |ins, _outs| {
+            let f: unsafe extern "C" fn(*const u64) -> u8 = is_on_curve_bn254_c;
+            core::hint::black_box(f)(ins[0])
+        },
+        |ins, _outs| {
+            let f: unsafe extern "C" fn(*const u64, &mut Vec<u64>) -> u8 = is_on_curve_bn254_c;
+            core::hint::black_box(f)(ins[0], &mut *hints)
+        }
+    );
     let p = &*(p_ptr as *const [u64; 8]);
     is_on_curve_bn254(
         p,
@@ -495,18 +524,35 @@ pub unsafe extern "C" fn add_bn254_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [p1_ptr: 8, p2_ptr: 8],
+        [result_ptr: 8],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) -> u8 = add_bn254_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = add_bn254_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let p1 = &*(p1_ptr as *const [u64; 8]);
     let p2 = &*(p2_ptr as *const [u64; 8]);
-    let result = &mut *(result_ptr as *mut [u64; 8]);
 
-    *result = add_bn254(
+    let result = add_bn254(
         p1,
         p2,
         #[cfg(feature = "hints")]
         hints,
     );
+    (result_ptr as *mut [u64; 8]).write(result);
 
-    if eq(result, &G1_IDENTITY) {
+    if eq(&result, &G1_IDENTITY) {
         G1_ADD_SUCCESS_INFINITY
     } else {
         G1_ADD_SUCCESS
@@ -579,9 +625,29 @@ pub unsafe extern "C" fn scalar_mul_bn254_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [p_ptr: 8, k_ptr: 4],
+        [result_ptr: 8],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+            ) -> u8 = scalar_mul_bn254_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = scalar_mul_bn254_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let p = &*(p_ptr as *const [u64; 8]);
     let k = &*(k_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 8]);
     match scalar_mul_bn254(
         p,
         k,
@@ -589,11 +655,12 @@ pub unsafe extern "C" fn scalar_mul_bn254_c(
         hints,
     ) {
         G1_IDENTITY => {
-            *result = G1_IDENTITY;
+            let result = G1_IDENTITY;
+            (result_ptr as *mut [u64; 8]).write(result);
             1
         }
         product => {
-            *result = product;
+            (result_ptr as *mut [u64; 8]).write(product);
             0
         }
     }
