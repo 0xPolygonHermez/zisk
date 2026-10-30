@@ -363,9 +363,16 @@ The start is not an empty hypothesis: for any entry and initial memory, a
 RISC-V state meets it (`start_exists`, `lean/Equiv/StartExists.lean`).
 
 `zisk_total` starts both sides on the same memory, the code's bytes in it.
-For a program whose code is execute-only, ZisK's memory lacks them; the
-theorem for that start, under precondition X, from the ELF as the
-transpiler loads it (`lean/ZiskRiscv/Elf.lean`), is in progress.
+For a program whose code is execute-only, ZisK's memory lacks them:
+`zisk_totalX` (`lean/Equiv/TotalityMainX.lean`) starts ZisK on that memory
+without them, its runs there its runs on the whole memory, or a step of the
+program breaks precondition X; and `zisk_elf` (`lean/Equiv/ElfLoad.lean`)
+states it of an ELF as the transpiler loads it (`lean/ZiskRiscv/Elf.lean`,
+its checks the Rust's): the code, both memories — RISC-V's every segment and
+the input, with 0 elsewhere in the regions; ZisK's that without the
+execute-only segments — and the starts, derived from the file. It asks the
+input to fit its region and `tailOk` of the code (which `make
+transpiler-check` evaluates), and trusts ELFSage's parse of the file.
 
 The preconditions are stated on the run, at the step that breaks them:
 **J** as the pc out of the code; **E**, **F**, **C**, **Z**, **R**,
