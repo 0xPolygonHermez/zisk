@@ -138,5 +138,6 @@ import Equiv.TotalityRej
 import Equiv.TotalityRun
 import Equiv.TotalityMain
 import Equiv.StartExists
+import Equiv.ZFrameStep
 import Equiv.FreeInputSim
 import Equiv.NopStep
