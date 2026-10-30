@@ -1881,6 +1881,7 @@ impl<'a> Emu<'a> {
         }
         if let Some(duals) = options.mem_duals {
             self.ctx.stats.set_mem_duals(duals, options.mem_dual_reset_bits);
+            self.ctx.stats.seed_mem_dual_init(self.rom);
         }
         self.ctx.stats.set_reg_step_distance(options.reg_step_distance);
         self.ctx.stats.set_reg_step_limit(options.reg_step_limit());

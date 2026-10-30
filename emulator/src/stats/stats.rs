@@ -3642,6 +3642,14 @@ impl Stats {
         self.mem_duals = Some(Box::new(MemDualStats::new(duals, reset_bits)));
     }
 
+    /// Feeds the memory dual-lane analysis, when enabled, with the initialization writes of the
+    /// data `sections`. Call it before execution starts.
+    pub fn seed_mem_dual_init(&mut self, sections: &dyn zisk_core::MemDataSection) {
+        if let Some(duals) = &mut self.mem_duals {
+            duals.seed_init_writes(sections);
+        }
+    }
+
     pub fn set_mem_stats(&mut self, value: bool) {
         self.mem_stats = value;
     }

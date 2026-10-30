@@ -18,7 +18,13 @@
 //! the memory state machine orders the operations of a step by their memory step, and every read of
 //! a step (main's loads, a precompile's loads) comes before its writes. A DMA copy, for instance,
 //! reports the write of its head before the source reads of its loop, and the proof does the
-//! opposite.
+//! opposite. The held writes are kept as runs of contiguous words, so a DMA call of any length
+//! takes a single entry.
+//!
+//! Before execution, the memory state machine also writes every word of the program's data
+//! sections once, at the start of the first chunk. Those initialization writes are accounted too
+//! (see [`MemDualStats::seed_init_writes`]): they open the first lane of each initialized word, and
+//! a word never accessed afterwards still takes its lane.
 //!
 //! Registers are not tracked: they are proven by the main state machine, not by the memory one, so
 //! only the three memory zones proven as memory take part — input (256M addresses), ROM data (16M)
@@ -32,9 +38,11 @@
 //! reserved.
 
 use crate::StatsReport;
+use zisk_core::MemDataSection;
 use zisk_core::{
     FREE_INPUT_ADDR, INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_SIZE,
 };
+use zisk_sm_mem_common::MEMORY_INIT_STEP;
 
 /// Addresses (8-byte words) per lazily allocated page: 2^18 addresses = 2 MiB of tracking state.
 const PAGE_BITS: u32 = 18;
@@ -61,6 +69,14 @@ const ZONES: [(&str, u64, u64, u64, bool); 3] = [
     ("ROM", ROM_ADDR, ROM_SIZE, u64::MAX, false),
     ("RAM", RAM_ADDR, RAM_SIZE, u64::MAX, true),
 ];
+
+/// Zone holding the `width` bytes at `address`, `None` outside every tracked zone.
+#[inline]
+fn zone_of(address: u64, width: u64) -> Option<usize> {
+    ZONES.iter().position(|&(_, base, size, _, _)| {
+        address >= base && address - base < size && address - base + width <= size
+    })
+}
 
 /// Report name of zone `z`, marked with `*` when the zone does not use dual lanes today.
 fn zone_name(z: usize) -> String {
@@ -184,9 +200,10 @@ pub struct MemDualStats {
     zones: [ZoneDuals; ZONES.len()],
     /// Step whose writes are held in `pending_writes`.
     pending_step: u64,
-    /// Writes of `pending_step`, as `(zone, word)`, applied once every read of that step has been:
-    /// the memory state machine orders a step's writes after its reads.
-    pending_writes: Vec<(usize, u64)>,
+    /// Writes of `pending_step`, as `(zone, first word, words)` runs of contiguous words, applied
+    /// once every read of that step has been: the memory state machine orders a step's writes after
+    /// its reads. A DMA call writes its words in order, so it takes a single run however long.
+    pending_writes: Vec<(usize, u64, u64)>,
 }
 
 impl std::fmt::Debug for MemDualStats {
@@ -235,8 +252,39 @@ impl MemDualStats {
     pub fn flush(&mut self) {
         let block = self.block(self.pending_step);
         let Self { zones, pending_writes, duals, .. } = self;
-        for (zone, word) in pending_writes.drain(..) {
-            zones[zone].account(word, true, block, *duals);
+        for (zone, first, words) in pending_writes.drain(..) {
+            for word in first..first + words {
+                zones[zone].account(word, true, block, *duals);
+            }
+        }
+    }
+
+    /// Holds a write of `word` until the step ends, extending the last run when it is contiguous.
+    #[inline]
+    fn hold_write(&mut self, zone: usize, word: u64) {
+        if let Some((last_zone, first, words)) = self.pending_writes.last_mut() {
+            if *last_zone == zone && *first + *words == word {
+                *words += 1;
+                return;
+            }
+        }
+        self.pending_writes.push((zone, word, 1));
+    }
+
+    /// Accounts the initialization writes the memory state machine adds before execution: one per
+    /// word of every data section, at `MEMORY_INIT_STEP`, so in the first reset block. Call it
+    /// once, before the first access. They reach this analysis only, since the cost model does not
+    /// count them as memory accesses.
+    pub fn seed_init_writes(&mut self, sections: &dyn MemDataSection) {
+        let block = self.block(MEMORY_INIT_STEP);
+        let duals = self.duals;
+        for section in sections.ro_sections().iter().chain(sections.rw_sections()) {
+            for index in 0..section.data.len() as u64 {
+                let address = section.addr + 8 * index;
+                if let Some(zone) = zone_of(address, 8) {
+                    self.zones[zone].account(address >> 3, true, block, duals);
+                }
+            }
         }
     }
 
@@ -256,9 +304,7 @@ impl MemDualStats {
             self.flush();
             self.pending_step = step;
         }
-        let Some(zone) = ZONES.iter().position(|&(_, base, size, _, _)| {
-            address >= base && address - base < size && address - base + width <= size
-        }) else {
+        let Some(zone) = zone_of(address, width) else {
             return;
         };
         debug_assert!((1..=8).contains(&width));
@@ -268,7 +314,7 @@ impl MemDualStats {
 
         if width == 8 && (address & 0x7) == 0 {
             if is_write {
-                self.pending_writes.push((zone, address >> 3));
+                self.hold_write(zone, address >> 3);
             } else {
                 self.zones[zone].account(address >> 3, false, block, duals);
             }
@@ -277,7 +323,7 @@ impl MemDualStats {
         for word in (address >> 3)..=((address + width - 1) >> 3) {
             self.zones[zone].account(word, false, block, duals);
             if is_write {
-                self.pending_writes.push((zone, word));
+                self.hold_write(zone, word);
             }
         }
     }
@@ -453,6 +499,7 @@ fn dist_row(cells: &[String; 7]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zisk_core::DataSection64;
 
     /// Aligned 8-byte access at `address`, the single-operation case.
     fn access(duals: &mut MemDualStats, address: u64, is_write: bool, step: u64) {
@@ -644,5 +691,56 @@ mod tests {
         access(&mut duals, RAM_ADDR, false, 1 << 40);
         let ram = ram(&mut duals);
         assert_eq!((ram.lanes, ram.reset_lost), (1, 0));
+    }
+
+    #[test]
+    fn a_long_run_of_contiguous_writes_is_held_as_one_entry() {
+        let mut duals = MemDualStats::new(1, 18);
+        // A DMA-like step: a thousand contiguous words written, then one apart.
+        for i in 0..1000 {
+            access(&mut duals, RAM_ADDR + 8 * i, true, 5);
+        }
+        access(&mut duals, RAM_ADDR + 8 * 2000, true, 5);
+        assert_eq!(
+            duals.pending_writes,
+            vec![(2, RAM_ADDR >> 3, 1000), (2, (RAM_ADDR >> 3) + 2000, 1)]
+        );
+
+        // Each held word still lands as a write of its own once the step ends.
+        let ram = ram(&mut duals);
+        assert_eq!((ram.ops, ram.writes, ram.lanes, ram.addresses), (1001, 1001, 1001, 1001));
+    }
+
+    /// Data sections as the ROM exposes them, for the initialization tests.
+    struct Sections {
+        ro: Vec<DataSection64>,
+        rw: Vec<DataSection64>,
+    }
+
+    impl MemDataSection for Sections {
+        fn ro_sections(&self) -> &[DataSection64] {
+            &self.ro
+        }
+        fn rw_sections(&self) -> &[DataSection64] {
+            &self.rw
+        }
+    }
+
+    #[test]
+    fn the_initialization_writes_open_the_lanes_of_the_data_sections() {
+        let mut duals = MemDualStats::new(1, 18);
+        let sections = Sections {
+            ro: vec![DataSection64 { addr: ROM_ADDR, data: vec![7] }],
+            rw: vec![DataSection64 { addr: RAM_ADDR, data: vec![1, 2, 3] }],
+        };
+        duals.seed_init_writes(&sections);
+        // A read of an initialized word joins the lane its initialization opened.
+        access(&mut duals, RAM_ADDR + 8, false, 10);
+
+        let ram = ram(&mut duals);
+        assert_eq!((ram.ops, ram.reads, ram.writes, ram.lanes), (4, 1, 3, 3));
+        assert_eq!(ram.lanes_by_duals, vec![[0, 2], [0, 1]]);
+        let rom = &duals.zones[1];
+        assert_eq!((rom.ops, rom.writes, rom.lanes), (1, 1, 1));
     }
 }

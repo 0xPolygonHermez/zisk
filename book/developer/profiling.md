@@ -746,7 +746,9 @@ The operations are the ones the proof issues, in the order the memory state mach
 within one step every read comes before every write, so a DMA copy whose head write shares a word
 with a later source read is counted as the proof counts it. For `memcpy` and `memcmp` the reads come
 from the same DMA encoding the bus carries, so each word is read exactly as often as the proof
-reads it.
+reads it. The proof also writes every word of the program's data sections once, at the start of the
+first chunk, so those initialization writes are counted as well: they open the first lane of each
+initialized word, even of a word the program never accesses.
 
 ### Occupancy (`--mem-duals`)
 
