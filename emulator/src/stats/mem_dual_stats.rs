@@ -1,16 +1,18 @@
-//! Memory dual-row occupancy analysis (`--mem-duals`).
+//! Memory dual-lane occupancy analysis (`--mem-duals`).
 //!
-//! A *dual* row of the memory state machine holds, in a single row, several memory operations that
-//! share the same address and the same value: one read or write followed by up to `D` reads (the
-//! `D` of `--mem-duals`; `D = 1` is the standard dual, `D = 0` disables the mechanism). Only the
-//! step of each operation differs, so a write — which changes the value — always opens a new row,
-//! while a read can join the row already open for its address as long as a dual slot is free.
+//! A *lane* is the unit of the sorted memory sequence the memory state machine proves; a physical
+//! row packs `lanes_x_row` of them (see `pil/zisk.pil`), so this analysis counts lanes, not rows.
+//! A *dual* lane holds several memory operations that share the same address and the same value:
+//! one read or write followed by up to `D` reads (the `D` of `--mem-duals`; `D = 1` is the standard
+//! dual, `D = 0` disables the mechanism). Only the step of each operation differs, so a write —
+//! which changes the value — always opens a new lane, while a read can join the lane already open
+//! for its address as long as a dual slot is free.
 //!
-//! Rows cannot span two chunks, because the count-and-plan phase works per chunk: every
-//! 2^`--mem-dual-reset-bits` steps the open rows are dropped and the next operation on an address
+//! Lanes cannot span two chunks, because the count-and-plan phase works per chunk: every
+//! 2^`--mem-dual-reset-bits` steps the open lanes are dropped and the next operation on an address
 //! has to open a new one. `RESET LOST` counts exactly the reads that would have been duals if that
-//! boundary did not exist, and `FULL LOST` the ones that had to open a new row because every dual
-//! slot of the open row was already taken (i.e. what a larger `D` would absorb).
+//! boundary did not exist, and `FULL LOST` the ones that had to open a new lane because every dual
+//! slot of the open lane was already taken (i.e. what a larger `D` would absorb).
 //!
 //! Within one step the reads are applied before the writes, whatever order they are reported in:
 //! the memory state machine orders the operations of a step by their memory step, and every read of
@@ -20,13 +22,14 @@
 //!
 //! Registers are not tracked: they are proven by the main state machine, not by the memory one, so
 //! only the three memory zones proven as memory take part — input (256M addresses), ROM data (16M)
-//! and RAM (64M). Only RAM uses dual rows today; input and ROM data are proven one operation per
-//! row, so their figures, and the total that includes them, measure what enabling duals there would
-//! save. The report marks them as such. The very first address of the input zone is the exception
-//! inside them: it is the free-input address, whose reads are marked `is_free_read` by the
-//! input-data state machine because each one yields a different value, so two of its operations can
-//! never share a row. Tracking state is one 8-byte entry per address, allocated in lazily zeroed
-//! pages of 2^`PAGE_BITS` addresses, so only the pages a program really touches are reserved.
+//! and RAM (64M). Only RAM uses dual lanes today; input and ROM data are proven one operation per
+//! lane, so their figures, and the total that includes them, measure what enabling duals there
+//! would save. The report marks them as such. The very first address of the input zone is the
+//! exception inside them: it is the free-input address, whose reads are marked `is_free_read` by
+//! the input-data state machine because each one yields a different value, so two of its operations
+//! can never share a lane. Tracking state is one 8-byte entry per address, allocated in lazily
+//! zeroed pages of 2^`PAGE_BITS` addresses, so only the pages a program really touches are
+//! reserved.
 
 use crate::StatsReport;
 use zisk_core::{
@@ -37,29 +40,29 @@ use zisk_core::{
 const PAGE_BITS: u32 = 18;
 const PAGE_WORDS: usize = 1 << PAGE_BITS;
 
-// Packed per-address entry. An all-zero entry means "no row open for this address", so a page can
+// Packed per-address entry. An all-zero entry means "no lane open for this address", so a page can
 // be allocated zeroed:
-//   bits  0..=47  reset block of the open row, stored as `block + 1` (0 is the empty marker).
-//   bits 48..=62  dual slots already consumed by the open row.
-//   bit  63       set when the operation that opened the row was a write.
+//   bits  0..=47  reset block of the open lane, stored as `block + 1` (0 is the empty marker).
+//   bits 48..=62  dual slots already consumed by the open lane.
+//   bit  63       set when the operation that opened the lane was a write.
 const BLOCK_MASK: u64 = (1 << 48) - 1;
 const USED_SHIFT: u32 = 48;
 const USED_MASK: u64 = 0x7FFF;
 const WRITE_FLAG: u64 = 1 << 63;
 
-/// Largest number of duals per row a packed entry can count.
+/// Largest number of duals per lane a packed entry can count.
 pub const MEM_DUAL_MAX: u32 = USED_MASK as u32;
 
 /// The memory zones accounted separately, in report order: name, first address, size, the one
-/// address of the zone that can never take part in a dual row (`u64::MAX` when it has none), and
-/// whether the zone uses dual rows today (only RAM does; the others are what-if figures).
+/// address of the zone that can never take part in a dual lane (`u64::MAX` when it has none), and
+/// whether the zone uses dual lanes today (only RAM does; the others are what-if figures).
 const ZONES: [(&str, u64, u64, u64, bool); 3] = [
     ("INPUT", INPUT_ADDR, MAX_INPUT_SIZE, FREE_INPUT_ADDR, false),
     ("ROM", ROM_ADDR, ROM_SIZE, u64::MAX, false),
     ("RAM", RAM_ADDR, RAM_SIZE, u64::MAX, true),
 ];
 
-/// Report name of zone `z`, marked with `*` when the zone does not use dual rows today.
+/// Report name of zone `z`, marked with `*` when the zone does not use dual lanes today.
 fn zone_name(z: usize) -> String {
     if ZONES[z].4 {
         ZONES[z].0.to_string()
@@ -73,26 +76,26 @@ fn zone_name(z: usize) -> String {
 struct ZoneDuals {
     /// First 8-byte address of the zone, the base of the page index.
     base_word: u64,
-    /// Address (8-byte word) of this zone that can never take part in a dual row, `u64::MAX` when
+    /// Address (8-byte word) of this zone that can never take part in a dual lane, `u64::MAX` when
     /// it has none. The free-input address is the only one: memory does not hold its value, the
-    /// input provides a different one on every read, so no two of its operations share a row.
+    /// input provides a different one on every read, so no two of its operations share a lane.
     no_dual_word: u64,
     /// One entry per address of the zone; a page is an empty vector until first touched.
     pages: Vec<Vec<u64>>,
-    /// Aligned memory operations accounted, i.e. `rows` + duals used.
+    /// Aligned memory operations accounted, i.e. `lanes` + duals used.
     ops: u64,
     reads: u64,
     writes: u64,
-    /// Memory rows used, i.e. operations that could not join an already open row.
-    rows: u64,
-    /// `rows_by_duals[k]` = rows currently holding `k` duals, split by the kind of the operation
+    /// Memory lanes used, i.e. operations that could not join an already open lane.
+    lanes: u64,
+    /// `lanes_by_duals[k]` = lanes currently holding `k` duals, split by the kind of the operation
     /// that opened them: `[0]` opened by a read, `[1]` opened by a write. Kept up to date on every
     /// operation, so it is exact at any point without a final flush.
-    rows_by_duals: Vec<[u64; 2]>,
-    /// Reads that opened a new row although the row open for their address still had free dual
-    /// slots, only because that row belonged to a previous reset block.
+    lanes_by_duals: Vec<[u64; 2]>,
+    /// Reads that opened a new lane although the lane open for their address still had free dual
+    /// slots, only because that lane belonged to a previous reset block.
     reset_lost: u64,
-    /// Reads that opened a new row because every dual slot of the open row was already taken.
+    /// Reads that opened a new lane because every dual slot of the open lane was already taken.
     full_lost: u64,
     /// Distinct addresses touched.
     addresses: u64,
@@ -108,8 +111,8 @@ impl ZoneDuals {
             ops: 0,
             reads: 0,
             writes: 0,
-            rows: 0,
-            rows_by_duals: vec![[0; 2]; duals as usize + 1],
+            lanes: 0,
+            lanes_by_duals: vec![[0; 2]; duals as usize + 1],
             reset_lost: 0,
             full_lost: 0,
             addresses: 0,
@@ -145,38 +148,38 @@ impl ZoneDuals {
             let used = ((entry >> USED_SHIFT) & USED_MASK) as u32;
             if used < duals {
                 if (entry & BLOCK_MASK) == block {
-                    // The read joins the row already open for this address: one operation more in
-                    // the same row, so it moves from the `used` bucket to the next one.
+                    // The read joins the lane already open for this address: one operation more in
+                    // the same lane, so it moves from the `used` bucket to the next one.
                     let kind = ((entry & WRITE_FLAG) != 0) as usize;
-                    self.rows_by_duals[used as usize][kind] -= 1;
-                    self.rows_by_duals[used as usize + 1][kind] += 1;
+                    self.lanes_by_duals[used as usize][kind] -= 1;
+                    self.lanes_by_duals[used as usize + 1][kind] += 1;
                     self.pages[page][offset] = entry + (1 << USED_SHIFT);
                     return;
                 }
-                // The open row had room, but the chunk boundary closed it.
+                // The open lane had room, but the chunk boundary closed it.
                 self.reset_lost += 1;
             } else if (entry & BLOCK_MASK) == block {
                 self.full_lost += 1;
             }
         }
 
-        // A new row: writes always open one, reads only when they cannot join the open row.
+        // A new lane: writes always open one, reads only when they cannot join the open lane.
         self.pages[page][offset] = block | if is_write { WRITE_FLAG } else { 0 };
-        self.rows += 1;
-        self.rows_by_duals[0][is_write as usize] += 1;
+        self.lanes += 1;
+        self.lanes_by_duals[0][is_write as usize] += 1;
     }
 
-    /// Dual slots offered by the rows used, i.e. `rows * (1 + D)`.
+    /// Dual slots offered by the lanes used, i.e. `lanes * (1 + D)`.
     fn capacity(&self, duals: u32) -> u64 {
-        self.rows * (1 + duals as u64)
+        self.lanes * (1 + duals as u64)
     }
 }
 
-/// Dual-row occupancy of the whole memory, one independent accounting per zone.
+/// Dual-lane occupancy of the whole memory, one independent accounting per zone.
 pub struct MemDualStats {
-    /// Duals allowed per row (`D`): 0 disables the mechanism, 1 is the standard dual.
+    /// Duals allowed per lane (`D`): 0 disables the mechanism, 1 is the standard dual.
     duals: u32,
-    /// A row cannot span two chunks of 2^`reset_bits` steps.
+    /// A lane cannot span two chunks of 2^`reset_bits` steps.
     reset_bits: u32,
     zones: [ZoneDuals; ZONES.len()],
     /// Step whose writes are held in `pending_writes`.
@@ -194,7 +197,7 @@ impl std::fmt::Debug for MemDualStats {
             .field("duals", &self.duals)
             .field("reset_bits", &self.reset_bits)
             .field("ops", &self.zones.iter().map(|z| z.ops).collect::<Vec<_>>())
-            .field("rows", &self.zones.iter().map(|z| z.rows).collect::<Vec<_>>())
+            .field("lanes", &self.zones.iter().map(|z| z.lanes).collect::<Vec<_>>())
             .finish_non_exhaustive()
     }
 }
@@ -203,7 +206,7 @@ impl MemDualStats {
     /// Largest reset period accepted, in bits: the largest shift a `u64` step allows.
     pub const MAX_RESET_BITS: u32 = u64::BITS - 1;
 
-    /// Creates the analysis for `duals` duals per row (clamped to [`MEM_DUAL_MAX`]) and a reset
+    /// Creates the analysis for `duals` duals per lane (clamped to [`MEM_DUAL_MAX`]) and a reset
     /// period of 2^`reset_bits` steps (clamped to [`Self::MAX_RESET_BITS`]). Any period fits the
     /// packed block field: the block index only gets smaller as the period grows.
     pub fn new(duals: u32, reset_bits: u32) -> Self {
@@ -279,9 +282,9 @@ impl MemDualStats {
         }
     }
 
-    /// Reports the dual occupancy: a per-zone summary of how many memory rows the operations needed
-    /// and how full those rows are, followed by the distribution of the rows by the number of duals
-    /// they ended up holding.
+    /// Reports the dual occupancy: a per-zone summary of how many memory lanes the operations
+    /// needed and how full those lanes are, followed by the distribution of the lanes by the number
+    /// of duals they ended up holding.
     pub fn report(&self, report: &mut StatsReport) {
         let duals = self.duals;
         let header = summary_row_str(&[
@@ -289,7 +292,7 @@ impl MemDualStats {
             "OPS".to_string(),
             "READS".to_string(),
             "WRITES".to_string(),
-            "ROWS".to_string(),
+            "LANES".to_string(),
             "OCCUP%".to_string(),
             "SAVED%".to_string(),
             "RESET LOST".to_string(),
@@ -298,7 +301,7 @@ impl MemDualStats {
         let width = header.trim_end().len();
 
         report.add(&format!(
-            "\nMEM DUAL OCCUPANCY ({} dual{} per row, {} ops per row, reset 2^{} = {} steps)\n",
+            "\nMEM DUAL OCCUPANCY ({} dual{} per lane, {} ops per lane, reset 2^{} = {} steps)\n",
             duals,
             if duals == 1 { "" } else { "s" },
             1 + duals,
@@ -319,7 +322,7 @@ impl MemDualStats {
                     zone.ops,
                     zone.reads,
                     zone.writes,
-                    zone.rows,
+                    zone.lanes,
                     zone.capacity(duals),
                     zone.reset_lost,
                     zone.full_lost,
@@ -335,7 +338,7 @@ impl MemDualStats {
                 total(&|z| z.ops),
                 total(&|z| z.reads),
                 total(&|z| z.writes),
-                total(&|z| z.rows),
+                total(&|z| z.lanes),
                 total(&|z| z.capacity(duals)),
                 total(&|z| z.reset_lost),
                 total(&|z| z.full_lost),
@@ -343,7 +346,7 @@ impl MemDualStats {
         ));
         if self.zones.iter().zip(&ZONES).any(|(zone, z)| zone.ops > 0 && !z.4) {
             report.add(
-                "* Not dual today: only RAM uses dual rows, so these zones, and the TOTAL that \
+                "* Not dual today: only RAM uses dual lanes, so these zones, and the TOTAL that \
                  includes them, show what enabling duals there would save.\n",
             );
         }
@@ -351,13 +354,13 @@ impl MemDualStats {
         self.report_distribution(report);
     }
 
-    /// Reports, per zone, how many rows ended up holding each number of duals, split by whether the
-    /// operation that opened the row was a read or a write.
+    /// Reports, per zone, how many lanes ended up holding each number of duals, split by whether
+    /// the operation that opened the lane was a read or a write.
     fn report_distribution(&self, report: &mut StatsReport) {
         let header = dist_row(&[
             "DUALS".to_string(),
-            "ROWS".to_string(),
-            "%ROWS".to_string(),
+            "LANES".to_string(),
+            "%LANES".to_string(),
             "READ FIRST".to_string(),
             "%".to_string(),
             "WRITE FIRST".to_string(),
@@ -378,11 +381,11 @@ impl MemDualStats {
             report.add(&header);
             report.add(&format!("{}\n", "-".repeat(width)));
             let (mut t_read, mut t_write) = (0u64, 0u64);
-            for (used, &[read, write]) in zone.rows_by_duals.iter().enumerate() {
+            for (used, &[read, write]) in zone.lanes_by_duals.iter().enumerate() {
                 report.add(&dist_row(&[
                     used.to_string(),
                     report.format_number(read + write),
-                    perc(read + write, zone.rows),
+                    perc(read + write, zone.lanes),
                     report.format_number(read),
                     perc(read, read + write),
                     report.format_number(write),
@@ -395,7 +398,7 @@ impl MemDualStats {
             report.add(&dist_row(&[
                 "TOTAL".to_string(),
                 report.format_number(t_read + t_write),
-                perc(t_read + t_write, zone.rows),
+                perc(t_read + t_write, zone.lanes),
                 report.format_number(t_read),
                 perc(t_read, t_read + t_write),
                 report.format_number(t_write),
@@ -422,18 +425,18 @@ fn summary_row_str(cells: &[String; 9]) -> String {
     )
 }
 
-/// One data row of the per-zone summary table: `values` are ops, reads, writes, rows, capacity,
+/// One data row of the per-zone summary table: `values` are ops, reads, writes, lanes, capacity,
 /// reset-lost and full-lost; the occupancy and saving percentages are derived from them.
 fn summary_row(report: &StatsReport, name: &str, values: [u64; 7]) -> String {
-    let [ops, reads, writes, rows, capacity, reset_lost, full_lost] = values;
+    let [ops, reads, writes, lanes, capacity, reset_lost, full_lost] = values;
     summary_row_str(&[
         name.to_string(),
         report.format_number(ops),
         report.format_number(reads),
         report.format_number(writes),
-        report.format_number(rows),
+        report.format_number(lanes),
         perc(ops, capacity),
-        perc(ops - rows, ops),
+        perc(ops - lanes, ops),
         report.format_number(reset_lost),
         report.format_number(full_lost),
     ])
@@ -463,43 +466,43 @@ mod tests {
     }
 
     #[test]
-    fn reads_join_the_open_row_until_its_dual_slots_are_taken() {
+    fn reads_join_the_open_lane_until_its_dual_slots_are_taken() {
         let mut duals = MemDualStats::new(1, 8);
-        access(&mut duals, RAM_ADDR, true, 0); // opens a row, first operation a write
+        access(&mut duals, RAM_ADDR, true, 0); // opens a lane, first operation a write
         access(&mut duals, RAM_ADDR, false, 1); // joins it as its only dual
-        access(&mut duals, RAM_ADDR, false, 2); // no slot left: opens a row of its own
+        access(&mut duals, RAM_ADDR, false, 2); // no slot left: opens a lane of its own
         access(&mut duals, RAM_ADDR, false, 3); // joins that one
 
         let ram = ram(&mut duals);
-        assert_eq!((ram.ops, ram.reads, ram.writes, ram.rows), (4, 3, 1, 2));
+        assert_eq!((ram.ops, ram.reads, ram.writes, ram.lanes), (4, 3, 1, 2));
         assert_eq!((ram.reset_lost, ram.full_lost, ram.addresses), (0, 1, 1));
-        // Both rows ended up full: one opened by a read, one opened by a write.
-        assert_eq!(ram.rows_by_duals, vec![[0, 0], [1, 1]]);
+        // Both lanes ended up full: one opened by a read, one opened by a write.
+        assert_eq!(ram.lanes_by_duals, vec![[0, 0], [1, 1]]);
         assert_eq!(ram.capacity(1), 4);
     }
 
     #[test]
-    fn a_write_always_opens_a_row_because_it_changes_the_value() {
+    fn a_write_always_opens_a_lane_because_it_changes_the_value() {
         let mut duals = MemDualStats::new(3, 8);
         access(&mut duals, RAM_ADDR, false, 0);
         access(&mut duals, RAM_ADDR, true, 1);
         access(&mut duals, RAM_ADDR, true, 2);
 
         let ram = ram(&mut duals);
-        assert_eq!((ram.ops, ram.rows, ram.full_lost), (3, 3, 0));
-        // Three empty rows: the first opened by a read, the other two by a write.
-        assert_eq!(ram.rows_by_duals, vec![[1, 2], [0, 0], [0, 0], [0, 0]]);
+        assert_eq!((ram.ops, ram.lanes, ram.full_lost), (3, 3, 0));
+        // Three empty lanes: the first opened by a read, the other two by a write.
+        assert_eq!(ram.lanes_by_duals, vec![[1, 2], [0, 0], [0, 0], [0, 0]]);
     }
 
     #[test]
-    fn a_row_does_not_span_two_reset_blocks() {
+    fn a_lane_does_not_span_two_reset_blocks() {
         let mut duals = MemDualStats::new(1, 4); // blocks of 16 steps
-        access(&mut duals, RAM_ADDR, true, 0); // opens a row with its dual slot free
+        access(&mut duals, RAM_ADDR, true, 0); // opens a lane with its dual slot free
         access(&mut duals, RAM_ADDR, false, 16); // next block: that free slot is unreachable
-        access(&mut duals, RAM_ADDR, false, 17); // joins the row opened at step 16
+        access(&mut duals, RAM_ADDR, false, 17); // joins the lane opened at step 16
 
         let ram = ram(&mut duals);
-        assert_eq!((ram.ops, ram.rows), (3, 2));
+        assert_eq!((ram.ops, ram.lanes), (3, 2));
         // Only the read at step 16 is lost to the boundary; the one at step 17 found a free slot.
         assert_eq!((ram.reset_lost, ram.full_lost), (1, 0));
     }
@@ -508,27 +511,27 @@ mod tests {
     fn a_read_that_would_not_have_fit_anyway_is_not_blamed_on_the_reset() {
         let mut duals = MemDualStats::new(1, 4);
         access(&mut duals, RAM_ADDR, true, 0);
-        access(&mut duals, RAM_ADDR, false, 15); // fills the only dual slot of the row
-        access(&mut duals, RAM_ADDR, false, 16); // next block, but the row was already full
+        access(&mut duals, RAM_ADDR, false, 15); // fills the only dual slot of the lane
+        access(&mut duals, RAM_ADDR, false, 16); // next block, but the lane was already full
 
         let ram = ram(&mut duals);
-        assert_eq!((ram.ops, ram.rows), (3, 2));
+        assert_eq!((ram.ops, ram.lanes), (3, 2));
         assert_eq!((ram.reset_lost, ram.full_lost), (0, 0));
     }
 
     #[test]
-    fn without_duals_every_operation_needs_its_own_row() {
+    fn without_duals_every_operation_needs_its_own_lane() {
         let mut duals = MemDualStats::new(0, 8);
         for step in 0..3 {
             access(&mut duals, RAM_ADDR, false, step);
         }
         let ram = ram(&mut duals);
-        assert_eq!((ram.ops, ram.rows), (3, 3));
+        assert_eq!((ram.ops, ram.lanes), (3, 3));
         assert_eq!(ram.capacity(0), 3);
-        // Nothing is lost to the reset boundary, and the two repeated reads report what a dual row
+        // Nothing is lost to the reset boundary, and the two repeated reads report what a dual lane
         // would have absorbed.
         assert_eq!((ram.reset_lost, ram.full_lost), (0, 2));
-        assert_eq!(ram.rows_by_duals, vec![[3, 0]]);
+        assert_eq!(ram.lanes_by_duals, vec![[3, 0]]);
     }
 
     #[test]
@@ -537,19 +540,28 @@ mod tests {
         let mut duals = MemDualStats::new(1, 8);
         duals.on_access(RAM_ADDR + 1, 4, true, 0);
         let zone = ram(&mut duals);
-        assert_eq!((zone.ops, zone.reads, zone.writes, zone.rows, zone.addresses), (2, 1, 1, 2, 1));
+        assert_eq!(
+            (zone.ops, zone.reads, zone.writes, zone.lanes, zone.addresses),
+            (2, 1, 1, 2, 1)
+        );
 
         // The same write crossing the 8-byte boundary: both addresses are read and written.
         let mut duals = MemDualStats::new(1, 8);
         duals.on_access(RAM_ADDR + 6, 4, true, 0);
         let zone = ram(&mut duals);
-        assert_eq!((zone.ops, zone.reads, zone.writes, zone.rows, zone.addresses), (4, 2, 2, 4, 2));
+        assert_eq!(
+            (zone.ops, zone.reads, zone.writes, zone.lanes, zone.addresses),
+            (4, 2, 2, 4, 2)
+        );
 
         // An unaligned read crossing it is just two reads.
         let mut duals = MemDualStats::new(1, 8);
         duals.on_access(RAM_ADDR + 7, 2, false, 0);
         let zone = ram(&mut duals);
-        assert_eq!((zone.ops, zone.reads, zone.writes, zone.rows, zone.addresses), (2, 2, 0, 2, 2));
+        assert_eq!(
+            (zone.ops, zone.reads, zone.writes, zone.lanes, zone.addresses),
+            (2, 2, 0, 2, 2)
+        );
     }
 
     #[test]
@@ -563,10 +575,10 @@ mod tests {
         access(&mut duals, FREE_INPUT_ADDR + 8, false, 5);
 
         let input = &duals.zones[0];
-        assert_eq!((input.ops, input.rows, input.addresses), (6, 5, 2));
-        // Nothing is reported as lost: no width of row could have packed those free reads.
+        assert_eq!((input.ops, input.lanes, input.addresses), (6, 5, 2));
+        // Nothing is reported as lost: no width of lane could have packed those free reads.
         assert_eq!((input.reset_lost, input.full_lost), (0, 0));
-        assert_eq!(input.rows_by_duals, vec![[4, 0], [1, 0]]);
+        assert_eq!(input.lanes_by_duals, vec![[4, 0], [1, 0]]);
     }
 
     #[test]
@@ -580,9 +592,9 @@ mod tests {
         duals.flush();
 
         let ops: Vec<u64> = duals.zones.iter().map(|z| z.ops).collect();
-        let rows: Vec<u64> = duals.zones.iter().map(|z| z.rows).collect();
+        let lanes: Vec<u64> = duals.zones.iter().map(|z| z.lanes).collect();
         assert_eq!(ops, vec![2, 1, 1]);
-        assert_eq!(rows, vec![1, 1, 1]);
+        assert_eq!(lanes, vec![1, 1, 1]);
     }
 
     #[test]
@@ -592,30 +604,30 @@ mod tests {
         let other = RAM_ADDR + (PAGE_WORDS as u64 + 1) * 8;
         access(&mut duals, RAM_ADDR, true, 0);
         access(&mut duals, other, true, 1);
-        access(&mut duals, RAM_ADDR, false, 2); // joins the row of its own address
+        access(&mut duals, RAM_ADDR, false, 2); // joins the lane of its own address
         access(&mut duals, other, false, 3);
 
         let ram = ram(&mut duals);
-        assert_eq!((ram.ops, ram.rows, ram.addresses), (4, 2, 2));
-        assert_eq!(ram.rows_by_duals, vec![[0, 0], [0, 2]]);
+        assert_eq!((ram.ops, ram.lanes, ram.addresses), (4, 2, 2));
+        assert_eq!(ram.lanes_by_duals, vec![[0, 0], [0, 2]]);
     }
 
     #[test]
     fn the_writes_of_a_step_land_after_its_reads_whatever_the_report_order() {
-        // A full row on the address, then a step that reports a write before a read of it, as a
+        // A full lane on the address, then a step that reports a write before a read of it, as a
         // DMA copy reports its head write before the source reads of its loop.
         let mut duals = MemDualStats::new(1, 8);
         access(&mut duals, RAM_ADDR, false, 0);
-        access(&mut duals, RAM_ADDR, false, 0); // the row is full now
+        access(&mut duals, RAM_ADDR, false, 0); // the lane is full now
         access(&mut duals, RAM_ADDR, true, 1);
         access(&mut duals, RAM_ADDR, false, 1);
 
-        // The proof reads first: the read finds the row full and opens its own, then the write
-        // opens a third. Applied in report order the read would join the write's row instead.
+        // The proof reads first: the read finds the lane full and opens its own, then the write
+        // opens a third. Applied in report order the read would join the write's lane instead.
         let ram = ram(&mut duals);
-        assert_eq!((ram.ops, ram.reads, ram.writes, ram.rows), (4, 3, 1, 3));
+        assert_eq!((ram.ops, ram.reads, ram.writes, ram.lanes), (4, 3, 1, 3));
         assert_eq!(ram.full_lost, 1);
-        assert_eq!(ram.rows_by_duals, vec![[1, 1], [1, 0]]);
+        assert_eq!(ram.lanes_by_duals, vec![[1, 1], [1, 0]]);
     }
 
     #[test]
@@ -626,11 +638,11 @@ mod tests {
         }
         assert_eq!(MemDualStats::new(1, 200).reset_bits, MemDualStats::MAX_RESET_BITS);
 
-        // A single block for the whole run: rows never reset.
+        // A single block for the whole run: lanes never reset.
         let mut duals = MemDualStats::new(1, 63);
         access(&mut duals, RAM_ADDR, true, 0);
         access(&mut duals, RAM_ADDR, false, 1 << 40);
         let ram = ram(&mut duals);
-        assert_eq!((ram.rows, ram.reset_lost), (1, 0));
+        assert_eq!((ram.lanes, ram.reset_lost), (1, 0));
     }
 }

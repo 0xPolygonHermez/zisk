@@ -257,7 +257,7 @@ pub struct Stats {
     /// Log every costly unaligned memory access (double 4B/8B, i.e. `MEM_ACCESS_MONITOR`) with its
     /// execution context. Off by default; enabled by `--log-costly-unaligned`.
     log_costly_unaligned: bool,
-    /// Memory dual-row occupancy analysis; `None` unless `--mem-duals` was given.
+    /// Memory dual-lane occupancy analysis; `None` unless `--mem-duals` was given.
     mem_duals: Option<Box<MemDualStats>>,
     /// DMA 64-bit loop occupancy analysis; `None` unless `--dma-stats` was given.
     dma_loops: Option<Box<DmaLoopStats>>,
@@ -3636,7 +3636,7 @@ impl Stats {
         self.dma_loops = Some(Box::new(DmaLoopStats::new(ops_x_row)));
     }
 
-    /// Enables the memory dual-row occupancy analysis (`--mem-duals`) for `duals` duals per row and
+    /// Enables the memory dual-lane occupancy analysis (`--mem-duals`) for `duals` duals per lane and
     /// a reset period of 2^`reset_bits` steps.
     pub fn set_mem_duals(&mut self, duals: u32, reset_bits: u32) {
         self.mem_duals = Some(Box::new(MemDualStats::new(duals, reset_bits)));

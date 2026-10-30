@@ -1,6 +1,6 @@
 //! Parity between the memory reads the proof issues for a `memcmp`, as generated here, and the ones
 //! the emulator reports to its occupancy analyses (`zisk_core::report_memcmp_proof_reads`). The
-//! dual-row analysis is only right if both see every word the same number of times.
+//! dual-lane analysis is only right if both see every word the same number of times.
 
 use super::generate_dma_memcmp_mem_inputs;
 use zisk_common::{A, B, DMA_ENCODED, DMA_MEMCMP_COUNT_BUS, OP, STEP};

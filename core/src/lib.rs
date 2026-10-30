@@ -59,8 +59,8 @@ pub mod helpers;
 pub mod inst_context;
 pub mod mem;
 mod operations;
-/// Exported for the parity test against the DMA memory-input generator.
-pub use operations::report_memcmp_proof_reads;
+/// Exported for the parity tests against the DMA memory-input generators.
+pub use operations::{report_memcmp_proof_reads, report_memcpy_proof_ops};
 pub mod ops_core;
 mod ops_core_context;
 pub mod rom_layout;

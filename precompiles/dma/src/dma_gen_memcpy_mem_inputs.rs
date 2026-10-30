@@ -206,3 +206,7 @@ pub fn skip_dma_memcpy_mem_inputs<P: MemProcessor>(data: &[u64], mem_processors:
         && mem_processors.skip_addr_range(dst64_from, dst64_to)
         && mem_processors.skip_addr_range(src64_from, src64_to)
 }
+
+#[cfg(test)]
+#[path = "tests/dma_memcpy_proof_ops_tests.rs"]
+mod tests;

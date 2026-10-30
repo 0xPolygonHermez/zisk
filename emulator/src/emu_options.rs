@@ -242,19 +242,20 @@ pub struct EmuOptions {
     /// latter as the baseline. Requires option: --dma-stats
     #[clap(long, value_name = "LIST", default_value = DEFAULT_DMA_OPS_X_ROW)]
     pub dma_ops_x_row: String,
-    /// Analyze the occupancy of the memory dual rows: a dual row holds, in a single memory row,
+    /// Analyze the occupancy of the memory dual lanes: a dual lane holds, in a single memory lane,
     /// one read/write plus up to N reads on the same address (same value, only the step differs).
-    /// Takes the number of duals per row: 0 disables the mechanism (one operation per row), 1 is
-    /// the standard dual, and larger values measure how much a wider row would buy. Reports, per
-    /// memory zone (input, ROM data, RAM), the rows needed, their occupancy and the distribution of
-    /// the rows by the number of duals they hold. Only RAM uses dual rows today, so the input and
-    /// ROM data figures show what enabling them there would save. Defaults to 1 when the flag is
-    /// given with no value. Requires option: -X
+    /// A lane is the unit of the sorted memory sequence; a physical row packs `lanes_x_row` lanes.
+    /// Takes the number of duals per lane: 0 disables the mechanism (one operation per lane), 1 is
+    /// the standard dual, and larger values measure how much a wider lane would buy. Reports, per
+    /// memory zone (input, ROM data, RAM), the lanes needed, their occupancy and the distribution
+    /// of the lanes by the number of duals they hold. Only RAM uses dual lanes today, so the input
+    /// and ROM data figures show what enabling them there would save. Defaults to 1 when the flag
+    /// is given with no value. Requires option: -X
     #[clap(long, value_name = "DUALS", num_args = 0..=1, default_missing_value = "1")]
     pub mem_duals: Option<u32>,
-    /// Reset period, in bits, of the dual rows (`--mem-duals`): a row cannot span two chunks of
+    /// Reset period, in bits, of the dual lanes (`--mem-duals`): a lane cannot span two chunks of
     /// 2^bits steps, since the count-and-plan phase works per chunk, so every 2^bits steps the open
-    /// rows are dropped. Default 18, i.e. the current chunk size of 262144 steps; at most 63.
+    /// lanes are dropped. Default 18, i.e. the current chunk size of 262144 steps; at most 63.
     /// Requires option: --mem-duals
     #[clap(long, value_name = "BITS", default_value = "18")]
     pub mem_dual_reset_bits: u32,

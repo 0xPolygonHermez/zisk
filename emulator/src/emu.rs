@@ -1822,7 +1822,7 @@ impl<'a> Emu<'a> {
                 panic!("Mem duals feature needs at least stats option");
             }
             if duals > MEM_DUAL_MAX {
-                panic!("--mem-duals: at most {MEM_DUAL_MAX} duals per row are supported");
+                panic!("--mem-duals: at most {MEM_DUAL_MAX} duals per lane are supported");
             }
             if options.mem_dual_reset_bits > MemDualStats::MAX_RESET_BITS {
                 panic!(

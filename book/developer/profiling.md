@@ -18,7 +18,7 @@ This guide walks you through ZiskEmu's profiling capabilities, progressing from 
 
 6. **Memory Statistics**: Breaking the memory cost down by region, alignment and access shape, and ranking functions by memory traffic
 
-7. **Memory Dual Occupancy**: Measuring how many memory operations share a row, to size the dual mechanism
+7. **Memory Dual Occupancy**: Measuring how many memory operations share a lane, to size the dual mechanism
 
 8. **DMA Loop Occupancy**: Measuring how many word operations share a DMA loop row, to size `ops_x_row`
 
@@ -712,12 +712,16 @@ where to look.
 
 ## Memory Dual Occupancy
 
-A **dual** row of the memory state machine packs several memory operations into a single row: they
-share the same address and the same value, only the step differs. The shape is one read or write
-followed by up to *D* reads — a write changes the value, so it always starts a new row, while a read
-can join the row already open for its address as long as a slot is free. *D* = 1 is the standard
-dual (two operations per row), but nothing forces it to be two: the trade-off is between the rows
-saved and the extra columns a wider row costs.
+The memory state machine proves the memory operations as one sorted sequence of **lanes**, and a
+physical row packs `lanes_x_row` of them (four for RAM, two for ROM data, one for input, see
+`pil/zisk.pil`). Everything in this section counts lanes, not physical rows.
+
+A **dual** lane packs several memory operations into a single lane: they share the same address and
+the same value, only the step differs. The shape is one read or write followed by up to *D* reads —
+a write changes the value, so it always starts a new lane, while a read can join the lane already
+open for its address as long as a slot is free. *D* = 1 is the standard dual (two operations per
+lane), but nothing forces it to be two: the trade-off is between the lanes saved and the extra
+columns a wider lane costs.
 
 `--mem-duals` measures that trade-off on a real program, so the choice of *D* can be made on
 numbers instead of intuition:
@@ -726,70 +730,81 @@ numbers instead of intuition:
 # Standard dual (D = 1) — the flag defaults to 1 with no value
 ziskemu -e <elf> -i <input> -X --mem-duals
 
-# No dual mechanism at all: one operation per row, the baseline
+# No dual mechanism at all: one operation per lane, the baseline
 ziskemu -e <elf> -i <input> -X --mem-duals 0
 
-# Would a wider row pay off?
+# Would a wider lane pay off?
 ziskemu -e <elf> -i <input> -X --mem-duals 4
 ```
 
-Rows cannot span two chunks, because the count-and-plan phase works per chunk: every
-2^`--mem-dual-reset-bits` steps (default 18, the current chunk size of 262,144 steps) the open rows
-are dropped and the next operation on an address has to open a new one. Raising that value shows
-what lifting the per-chunk limitation would buy.
+Lanes cannot span two chunks, because the count-and-plan phase works per chunk: every
+2^`--mem-dual-reset-bits` steps (default 18, the current chunk size of 262,144 steps) the open lanes
+are dropped and the next operation on an address has to open a new one. Raising that value, up to
+63, shows what lifting the per-chunk limitation would buy.
+
+The operations are the ones the proof issues, in the order the memory state machine sees them:
+within one step every read comes before every write, so a DMA copy whose head write shares a word
+with a later source read is counted as the proof counts it. For `memcpy` and `memcmp` the reads come
+from the same DMA encoding the bus carries, so each word is read exactly as often as the proof
+reads it.
 
 ### Occupancy (`--mem-duals`)
 
 ```
-MEM DUAL OCCUPANCY (1 dual per row, 2 ops per row, reset 2^18 = 262,144 steps)
-ZONE                 OPS           READS          WRITES            ROWS   OCCUP%   SAVED%      RESET LOST       FULL LOST
+MEM DUAL OCCUPANCY (1 dual per lane, 2 ops per lane, reset 2^18 = 262,144 steps)
+ZONE                 OPS           READS          WRITES           LANES   OCCUP%   SAVED%      RESET LOST       FULL LOST
 --------------------------------------------------------------------------------------------------------------------------
-INPUT          2,024,798       2,024,798               0       1,954,842   51.79%    3.45%         122,817          49,529
-ROM              353,612         353,612               0         178,367   99.12%   49.56%           2,883         172,526
+INPUT*         2,024,798       2,024,798               0       1,954,842   51.79%    3.45%         122,817          49,529
+ROM*             353,612         353,612               0         178,367   99.12%   49.56%           2,883         172,526
 RAM           50,222,491      26,917,863      23,304,628      32,552,454   77.14%   35.18%         896,558       7,972,912
 --------------------------------------------------------------------------------------------------------------------------
 TOTAL         52,600,901      29,296,273      23,304,628      34,685,663   75.83%   34.06%       1,022,258       8,194,967
+* Not dual today: only RAM uses dual lanes, so these zones, and the TOTAL that includes them, show what enabling duals there would save.
 ```
 
-One row per memory zone — **INPUT** (128M addresses), **ROM** data (16M) and **RAM** (64M) — each
-accounted independently, since each is proven by its own instances. Registers do not appear: they
-are proven by the main state machine, not by the memory one. Inside the input zone there is one
-address that never duals: the very first one, `0x40000000`, is the **free-input** address, and each
-read of it yields a different value — the input provides it, memory does not store it — so two of
-its operations can never share a row. Those reads are counted (they do need a row each) but they are
-not blamed on the reset or on the row width.
+One line per memory zone — **INPUT** (256M addresses), **ROM** data (16M) and **RAM** (64M) — each
+accounted independently, since each is proven by its own instances. Only **RAM** uses dual lanes
+today: input and ROM data are proven one operation per lane, so their lines are marked with `*` and
+show what enabling duals there would save, and so does the **TOTAL** that includes them. The real
+saving today is the RAM line. Registers do not appear: they are proven by the main state machine,
+not by the memory one. Inside the input zone there is one address that never duals: the very first
+one, `0x10000000`, is the **free-input** address, and each read of it yields a different value — the
+input provides it, memory does not store it — so two of its operations can never share a lane. Those
+reads are counted (they do need a lane each) but they are not blamed on the reset or on the lane
+width.
 
-- **OPS**: Aligned memory operations, the unit a row holds. An aligned 8-byte access is one
+- **OPS**: Aligned memory operations, the unit a lane holds. An aligned 8-byte access is one
   operation; any other access is resolved by the memory-align state machine, which reads every
   8-byte address it touches (one, or two when the access crosses the boundary) and writes back the
   ones it modifies — so an unaligned 4-byte write inside one address is two operations (a read and a
   write), and the same write crossing the boundary is four.
 - **READS** / **WRITES**: The same operations split by kind. Only reads can be duals.
-- **ROWS**: Memory rows actually used, i.e. the operations that could not join an open row.
-- **OCCUP%**: `OPS / (ROWS × (1 + D))` — how full the rows are. With `--mem-duals 0` it is 100% by
-  definition, since every row holds exactly one operation.
-- **SAVED%**: `(OPS − ROWS) / OPS` — the rows the mechanism saves against that one-per-row baseline.
-  This is the number to compare across values of *D*.
-- **RESET LOST**: Reads that had to open a new row although the row open for their address still had
-  a free slot, only because that row belonged to the previous chunk. This is the price of the
+- **LANES**: Memory lanes actually used, i.e. the operations that could not join an open lane.
+- **OCCUP%**: `OPS / (LANES × (1 + D))` — how full the lanes are. With `--mem-duals 0` it is 100% by
+  definition, since every lane holds exactly one operation.
+- **SAVED%**: `(OPS − LANES) / OPS` — the lanes the mechanism saves against that one-per-lane
+  baseline. This is the number to compare across values of *D*.
+- **RESET LOST**: Reads that had to open a new lane although the lane open for their address still
+  had a free slot, only because that lane belonged to the previous chunk. This is the price of the
   per-chunk reset: it is what a solution to that limitation would recover.
-- **FULL LOST**: Reads that had to open a new row because every slot of the open row was already
+- **FULL LOST**: Reads that had to open a new lane because every slot of the open lane was already
   taken. This is what a **larger** *D* would absorb — with `--mem-duals 0` it is the whole upside of
   introducing duals in the first place.
 
-In the example, ROM data reads are almost perfectly paired (99.12% occupancy, half the rows saved):
+In the example, ROM data reads are almost perfectly paired (99.12% occupancy, half the lanes saved):
 a handful of addresses read over and over. Input reads are the opposite (51.79%): they are streamed
-once each — plus the free-input reads, which can never pair — so most rows stay half empty. RAM sits
-in between, and its 7,972,912 `FULL LOST` reads say a wider row still has something to collect.
+once each — plus the free-input reads, which can never pair — so most lanes stay half empty. RAM
+sits in between, and its 7,972,912 `FULL LOST` reads say a wider lane still has something to
+collect.
 
 ### Distribution (`--mem-duals`)
 
-The occupancy table says how full the rows are on average; the distribution says how that average is
-made up, one table per zone:
+The occupancy table says how full the lanes are on average; the distribution says how that average
+is made up, one table per zone:
 
 ```
 MEM DUAL DISTRIBUTION RAM (9,584,394 addresses touched)
-DUALS               ROWS    %ROWS      READ FIRST        %     WRITE FIRST        %
+DUALS              LANES   %LANES      READ FIRST        %     WRITE FIRST        %
 -----------------------------------------------------------------------------------
 0             14,882,417   45.72%       4,500,878   30.24%      10,381,539   69.76%
 1             17,670,037   54.28%       4,746,948   26.86%      12,923,089   73.14%
@@ -797,15 +812,15 @@ DUALS               ROWS    %ROWS      READ FIRST        %     WRITE FIRST      
 TOTAL         32,552,454  100.00%       9,247,826   28.41%      23,304,628   71.59%
 ```
 
-- **DUALS**: How many duals the row ended up holding, from 0 (a lone operation, no dual) up to *D*
-  (a full row). With `--mem-duals 4` there are five lines, so you can see whether the rows that use
-  the extra width are a meaningful share or a long tail.
-- **ROWS** / **%ROWS**: Rows in that bucket, and their share of the zone's rows.
-- **READ FIRST** / **WRITE FIRST**: The same rows split by the kind of the operation that *opened*
-  them, each with its share of the bucket. A row opened by a write is a value that was stored and
+- **DUALS**: How many duals the lane ended up holding, from 0 (a lone operation, no dual) up to *D*
+  (a full lane). With `--mem-duals 4` there are five lines, so you can see whether the lanes that
+  use the extra width are a meaningful share or a long tail.
+- **LANES** / **%LANES**: Lanes in that bucket, and their share of the zone's lanes.
+- **READ FIRST** / **WRITE FIRST**: The same lanes split by the kind of the operation that *opened*
+  them, each with its share of the bucket. A lane opened by a write is a value that was stored and
   then read back; one opened by a read is a value read several times without being modified.
 
-Here 54.28% of the RAM rows carry their dual and 45.72% are half empty, and the paired rows are
+Here 54.28% of the RAM lanes carry their dual and 45.72% are half empty, and the paired lanes are
 mostly write-then-read (73.14%): the classic store-then-load pattern.
 
 **Cost.** The analysis keeps one 8-byte entry per address touched, in lazily allocated pages, so its

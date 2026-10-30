@@ -1,5 +1,6 @@
 use zisk_precomp_helpers::DmaInfo;
 
+use super::dma_proof_reads::report_dma_src_proof_reads;
 use crate::{
     zisk_ops::{OpStats, DMA_LOOP_MEMCMP},
     EmulationMode, InstContext, DMA_64_ALIGNED_MEMCMP_COST, DMA_64_ALIGNED_MEMCMP_DIVISOR,
@@ -220,29 +221,11 @@ fn ops_dma_memcmps(ctx: &InstContext, stats: &mut dyn OpStats, extended: bool) {
 /// The cost model keeps its own estimate: it reads the destination of the head and tail twice, as
 /// for a copy, and never moves a loop word to the tail.
 pub fn report_memcmp_proof_reads(dst: u64, src: u64, encoded: u64, stats: &mut dyn OpStats) {
+    report_dma_src_proof_reads(DMA_LOOP_MEMCMP, dst, src, encoded, stats);
+    // Unlike a copy, a compare also reads every destination word of the loop.
     let pre_count = DmaInfo::get_pre_count(encoded) as u64;
     let loop_count = DmaInfo::get_loop_count(encoded);
-    let post_count = DmaInfo::get_post_count(encoded) as u64;
-
-    if pre_count > 0 {
-        let double = DmaInfo::is_double_read_pre(encoded);
-        stats.mem_proof_read(src & !0x07, 1 + double as usize);
-        stats.mem_proof_read(dst & !0x07, 1);
-    }
-
     if loop_count > 0 {
-        let aligned = dst & 0x07 == src & 0x07;
-        stats.dma_loop(DMA_LOOP_MEMCMP, loop_count, aligned);
-        // An unaligned loop stitches every word from two source words, so it reads one more.
-        let loop_src = src + pre_count;
         stats.mem_proof_read((dst + pre_count) & !0x07, loop_count);
-        stats.mem_proof_read(loop_src & !0x07, loop_count + ((loop_src & 0x07) > 0) as usize);
-    }
-
-    if post_count > 0 {
-        let double = DmaInfo::is_double_read_post(encoded);
-        let offset = pre_count + loop_count as u64 * 8;
-        stats.mem_proof_read((src + offset) & !0x07, 1 + double as usize);
-        stats.mem_proof_read(dst + offset, 1);
     }
 }
