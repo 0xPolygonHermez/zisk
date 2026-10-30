@@ -145,5 +145,6 @@ import Equiv.TotalityX
 import Equiv.StepX
 import Equiv.RunX
 import Equiv.TotalityMainX
+import Equiv.ElfLoad
 import Equiv.FreeInputSim
 import Equiv.NopStep

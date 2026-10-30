@@ -40,57 +40,79 @@ structure Seg where
 
 def flag (flags bit : Nat) : Bool := flags / bit % 2 == 1
 
+/-- A loadable segment's checks, as the Rust makes them: no overflow, W^X,
+    aligned (4 bytes for code, 2 else), in the ROM or the RAM, disjoint from
+    the segments `loaded` before it, its file bytes no more than its size
+    and its body those bytes; code in the ROM, all file bytes, of even
+    length; writable data in the RAM. -/
+def segValid (loaded : List Seg) (start memsz filesz body : Nat) (exec write : Bool) : Bool :=
+  let stop := start + memsz
+  let inRom := ROM_ADDR ≤ start && stop ≤ ROM_ADDR + ROM_SIZE
+  let inRam := RAM_ADDR ≤ start && stop ≤ RAM_ADDR + RAM_SIZE
+  stop < 2 ^ 64 && !(write && exec) && start % (if exec then 4 else 2) == 0 && (inRom || inRam) &&
+    !loaded.any (fun o => start < o.base + o.memsz && o.base < stop) && filesz ≤ memsz && body == filesz &&
+    (!exec || (inRom && memsz == filesz && filesz % 2 == 0)) && (exec || !write || inRam)
+
+/-- Why a segment fails `segValid`: the Rust's message for its first failed
+    check. -/
+def segError (loaded : List Seg) (start memsz filesz body : Nat) (exec write : Bool) : String :=
+  let stop := start + memsz
+  let inRom := ROM_ADDR ≤ start && stop ≤ ROM_ADDR + ROM_SIZE
+  let inRam := RAM_ADDR ≤ start && stop ≤ RAM_ADDR + RAM_SIZE
+  if stop ≥ 2 ^ 64 then s!"PT_LOAD segment at {start} overflows the address space"
+  else if write && exec then s!"PT_LOAD segment at {start} is both writable and executable"
+  else if start % (if exec then 4 else 2) != 0 then s!"PT_LOAD segment address {start} is not aligned"
+  else if !inRom && !inRam then s!"PT_LOAD segment at {start} is outside ZisK's addressable space"
+  else if loaded.any (fun o => start < o.base + o.memsz && o.base < stop) then
+    s!"overlapping PT_LOAD segments at {start}"
+  else if filesz > memsz then s!"PT_LOAD segment at {start} has p_filesz greater than p_memsz"
+  else if body != filesz then s!"PT_LOAD segment at {start}: its body is not p_filesz bytes"
+  else if exec && !inRom then s!"executable PT_LOAD segment at {start} is outside the ROM"
+  else if exec && memsz != filesz then s!"executable PT_LOAD segment at {start} has a zero-fill tail"
+  else if exec && filesz % 2 != 0 then s!"executable PT_LOAD segment at {start} has an odd byte length"
+  else s!"writable PT_LOAD segment at {start} is outside RAM"
+
 /-- One program header, as the Rust checks it: none for a segment that is
     not `PT_LOAD` or is empty; an error for what the Rust rejects. `loaded`,
     the segments before it, for the overlap check. -/
 def checkSeg (loaded : List Seg) (ph : ELF64ProgramHeaderTableEntry) (seg : InterpretedSegment) :
-    Except String (Option Seg) := do
-  let pt := ProgramHeaderTableEntry.p_type ph
+    Except String (Option Seg) :=
   let flags := ProgramHeaderTableEntry.p_flags ph
   let start := ProgramHeaderTableEntry.p_vaddr ph
   let memsz := ProgramHeaderTableEntry.p_memsz ph
   let filesz := ProgramHeaderTableEntry.p_filesz ph
-  if pt != PT_LOAD then return none
-  if memsz == 0 && filesz == 0 then return none
   let exec := flag flags PF_X
   let write := flag flags PF_W
-  let read := flag flags PF_R
-  let stop := start + memsz
-  if stop ≥ 2 ^ 64 then throw s!"PT_LOAD segment at {start} overflows the address space"
-  if write && exec then throw s!"PT_LOAD segment at {start} is both writable and executable"
-  let align := if exec then 4 else 2
-  if start % align != 0 then throw s!"PT_LOAD segment address {start} is not {align}-byte aligned"
-  let inRom := ROM_ADDR ≤ start && stop ≤ ROM_ADDR + ROM_SIZE
-  let inRam := RAM_ADDR ≤ start && stop ≤ RAM_ADDR + RAM_SIZE
-  if !inRom && !inRam then throw s!"PT_LOAD segment at {start} is outside ZisK's addressable space"
-  if loaded.any (fun o => start < o.base + o.memsz && o.base < stop) then
-    throw s!"overlapping PT_LOAD segments at {start}"
-  if filesz > memsz then throw s!"PT_LOAD segment at {start} has p_filesz greater than p_memsz"
-  if exec then
-    if !inRom then throw s!"executable PT_LOAD segment at {start} is outside the ROM"
-    if memsz != filesz then throw s!"executable PT_LOAD segment at {start} has a zero-fill tail"
-    if filesz % 2 != 0 then throw s!"executable PT_LOAD segment at {start} has an odd byte length"
-  else if write then
-    if !inRam then throw s!"writable PT_LOAD segment at {start} is outside RAM"
-  return some { base := start, data := seg.segment_body, memsz, exec, read, write }
+  if ProgramHeaderTableEntry.p_type ph != PT_LOAD || (memsz == 0 && filesz == 0) then .ok none
+  else if segValid loaded start memsz filesz seg.segment_body.size exec write then
+    .ok (some { base := start, data := seg.segment_body, memsz, exec, read := flag flags PF_R, write })
+  else .error (segError loaded start memsz filesz seg.segment_body.size exec write)
+
+/-- Each program header, checked, the segments kept in order. -/
+def loadSegs : List (ELF64ProgramHeaderTableEntry × InterpretedSegment) → List Seg → Except String (List Seg)
+  | [], acc => .ok acc
+  | (ph, seg) :: rest, acc =>
+    match checkSeg acc ph seg with
+    | .error e => .error e
+    | .ok (some s) => loadSegs rest (acc ++ [s])
+    | .ok none => loadSegs rest acc
 
 /-- The ELF's loadable segments, checked: the header (a RISC-V executable,
     little-endian), each segment, and the entry, 4-aligned in an executable
     segment. -/
-def segments (elf : ELF64File) : Except String (List Seg) := do
+def segments (elf : ELF64File) : Except String (List Seg) :=
   let h := elf.file_header
-  if h.e_ident.bytes.get! 5 != 1 then throw "ELF is not little-endian"
-  if h.e_machine.toNat != EM_RISCV then throw "ELF machine is not EM_RISCV"
-  if h.e_type.toNat != ET_EXEC then throw "ELF type is not ET_EXEC"
-  let segs ← elf.interpreted_segments.foldlM (fun acc (ph, seg) => do
-    match ← checkSeg acc ph seg with
-    | some s => return acc ++ [s]
-    | none => return acc) []
   let entry := h.e_entry.toNat
-  if entry % 4 != 0 then throw s!"entry point {entry} is not 4-byte aligned"
-  if !segs.any (fun s => s.exec && s.base ≤ entry && entry < s.base + s.data.size) then
-    throw s!"entry point {entry} is in no executable segment"
-  return segs
+  if h.e_ident.bytes.get! 5 != 1 then .error "ELF is not little-endian"
+  else if h.e_machine.toNat != EM_RISCV then .error "ELF machine is not EM_RISCV"
+  else if h.e_type.toNat != ET_EXEC then .error "ELF type is not ET_EXEC"
+  else match loadSegs elf.interpreted_segments [] with
+    | .error e => .error e
+    | .ok segs =>
+      if entry % 4 != 0 then .error s!"entry point {entry} is not 4-byte aligned"
+      else if !segs.any (fun s => s.exec && s.base ≤ entry && entry < s.base + s.data.size) then
+        .error s!"entry point {entry} is in no executable segment"
+      else .ok segs
 
 /-- The code, as the transpiler reads it: each executable segment's 32-bit
     words, little-endian, a trailing 16-bit parcel left out. -/
