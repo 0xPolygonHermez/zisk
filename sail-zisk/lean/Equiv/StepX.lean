@@ -379,7 +379,7 @@ theorem zcall_x {X : Nat → Bool} (hX : RomX X) (S : ZiskRiscv.State model) (c 
     rw [eraseX_get] at hk'; split at hk'
     · cases hk'
     · next hxk => rw [h.mem k, if_neg hxk]; exact hr.mem k v hk'
-  obtain ⟨r0, σr, href⟩ := hok
+  obtain ⟨hch, r0, σr, href⟩ := hok
   cases hm : (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
       (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run
       (ZiskRiscv.ziskState (eraseX X (Equiv.normIn (callMem S c))) S.fcall) with
@@ -395,12 +395,19 @@ theorem zcall_x {X : Nat → Bool} (hX : RomX X) (S : ZiskRiscv.State model) (c 
     · rw [href] at hτr; cases hτr
   | ok r1 σ1 =>
     exfalso
-    obtain ⟨σ2, hσ2, -, hreg, -⟩ := (Frame.exec_mem _ _ _ _).1 _ _ hFR2 r1 σ1 hm
     have hst : σ.regs.get? _root_.Zisk.Register.Step = some st := by rw [h.regs]; exact hzst
+    -- the prelude (blake2b's chain), chain-free: the step recorded, nothing else
+    obtain ⟨σ0, hpre, hm0, hr0⟩ := Equiv.Zisk.prelude_exists c.op j1 σ st hst (fun hb => by
+      have hp : _root_.Zisk.Functions.zisk_op_is_precompiled c.op = true := by rw [hb]; rfl
+      simp only [hp, if_true] at hj1; rw [hj1]; exact hch hb)
+    have hFR3 : FR (ZiskRiscv.ziskState (eraseX X (Equiv.normIn (callMem S c))) S.fcall) σ0 :=
+      ⟨fun k v hk => by rw [hm0]; exact hFR2.mem k v hk,
+       fun r hr' => by rw [hr0 r (by intro e; subst e; cases hr')]; exact hFR2.regs r hr'⟩
+    obtain ⟨σ2, hσ2, -, hreg, -⟩ := (Frame.exec_mem _ _ _ _).1 _ _ hFR3 r1 σ1 hm
     have hex := Equiv.Zisk.execute_zcall σ (Transpiler.argA c.a) (Transpiler.argB c.b) c.op c.rd
-      (by have := hw.rd; omega) j1 j2 xs p st (S.argValue c.a) (S.argValue c.b) hsa hsb hw.halt r1 σ2
-      (by rw [hj1]; exact hσ2) _ _ rfl (by rw [hreg _ rfl]; exact hxσ) (by rw [hreg _ rfl]; exact hpcσ)
-      (by rw [hreg _ rfl]; exact hst)
+      (by have := hw.rd; omega) j1 j2 xs p st (S.argValue c.a) (S.argValue c.b) hsa hsb hw.halt σ0 hpre r1 σ2
+      (by rw [hj1]; exact hσ2) _ _ rfl (by rw [hreg _ rfl, hr0 _ (by decide)]; exact hxσ)
+      (by rw [hreg _ rfl, hr0 _ (by decide)]; exact hpcσ) (by rw [hreg _ rfl, hr0 _ (by decide)]; exact hst)
     rw [zstep_run zrom σ p hpcσ, hrom, hex] at herr
     cases herr
 

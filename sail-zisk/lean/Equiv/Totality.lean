@@ -101,15 +101,16 @@ def BreakL (s : RVState) (pc : BitVec 64) (w : BitVec 32) : Prop :=
 def BreakMarchid (s : RVState) (w : BitVec 32) : Prop :=
   ∃ k a n, access s w = some (k, a, n) ∧ k ≠ .load ∧ Overlaps a n MARCHID_CELL 8
 
-/-- I, on a ZisK call: the call at pc, its operation failing on one of the
-    free input's 8 bytes, which sail-zisk's memory does not hold. -/
+/-- I or B, on a ZisK call: the call at pc, its operation failing on one of
+    the free input's 8 bytes, which sail-zisk's memory does not hold (I); or
+    a blake2b call whose index is not chain-free (B). -/
 def BreakIC (S : ZiskRiscv.State model) : Prop :=
   ∃ pc w c, S.rv.regs.get? Register.PC = some pc ∧ ZiskRiscv.readWord S.rv.mem pc.toNat = some w ∧
     ZiskRiscv.decode (Transpiler.fetch3 pc w (nextWord S.rv pc) (nextWord2 S.rv pc)) pc.toNat = .call c ∧
-    ∃ k σ', (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
+    ((∃ k σ', (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
       (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run
       (ZiskRiscv.ziskState (Equiv.normIn (callMem S c)) S.fcall) = .error (.OutOfMemoryRange k) σ' ∧
-      Equiv.IN_LO ≤ k ∧ k < Equiv.IN_LO + 8
+      Equiv.IN_LO ≤ k ∧ k < Equiv.IN_LO + 8) ∨ ¬ ChainOk c)
 
 /-- A precondition broken at the step, the word w at pc. -/
 def Broken (s : RVState) (pc : BitVec 64) (w : BitVec 32) : Prop :=

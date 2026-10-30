@@ -261,6 +261,9 @@ difftest-all:
 	@for p in $(filter-out %/edges.zisk,$(wildcard test/programs/memmap/*.zisk)); do \
 	  $(MAKE) --no-print-directory difftest PROG=$$p NAME=memmap-$$(basename $$p .zisk) INPUT= EXPECT_FAULT=1 || exit 1; \
 	done
+	@for p in $(wildcard test/programs/blake2b/*.zisk); do \
+	  $(MAKE) --no-print-directory difftest PROG=$$p NAME=blake2b-$$(basename $$p .zisk) INPUT= EXPECT_FAULT=1 || exit 1; \
+	done
 	@mkdir -p build/precompiles
 	python3 test/gen_precompile_test.py build/precompiles/precompiles.zisk $(PRECOMP_VECTORS) $(PRECOMP_SEED)
 	$(MAKE) --no-print-directory difftest PROG=build/precompiles INPUT=

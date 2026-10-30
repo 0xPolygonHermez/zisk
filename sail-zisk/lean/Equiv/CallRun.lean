@@ -119,18 +119,18 @@ theorem callfail_m (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState)
       cases hp : _root_.Zisk.Functions.zisk_op_is_precompiled c.op
       · rfl
       · simp [hw.pre hp]
-    obtain ⟨e, z', hc, hze', hne⟩ := zcall_fail S c hw xs agree z hxs pc' hzpc (by rw [hcm]; exact hzm) hf zrom
+    obtain ⟨e, z', hc, hze', hne⟩ := zcall_fail S c hw xs agree z hxs pc' hzpc ⟨st, hst⟩ (by rw [hcm]; exact hzm) hf zrom
       _ _ hz hj1 hfail
     exact ⟨step_call_err S c hxm hdm e hc hne, ⟨0, z, e, z', .done _, hze'⟩, _, hc, ofSail_ne hne⟩
   | some rc =>
     simp only [Transpiler.callInsts, hcn, List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false,
       forall_eq_or_imp, forall_eq] at hz
     obtain ⟨lr, hce⟩ := hw.count rc hcn
-    obtain ⟨z1, hz1, hx1, hpc1, -, -, hf1, -, hzm1⟩ :=
+    obtain ⟨z1, hz1, hx1, hpc1, hst1, -, hf1, -, hzm1⟩ :=
       count_store S z rs hf c rc hcn lr xs hxs agree pc' hzpc st hst hze hzm zrom ia hz.1
     have hj1 : (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then (0 : BitVec 64) else 0) =
         (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0) := by rw [hce]
-    obtain ⟨e, z', hc, hze', hne⟩ := zcall_fail S c hw xs agree z1 hx1 ia hpc1 hzm1 hf1 zrom _ _ hz.2 hj1 hfail
+    obtain ⟨e, z', hc, hze', hne⟩ := zcall_fail S c hw xs agree z1 hx1 ia hpc1 ⟨_, hst1⟩ hzm1 hf1 zrom _ _ hz.2 hj1 hfail
     exact ⟨step_call_err S c hxm hdm e hc hne, ⟨1, z1, e, z', .step hz1 (.done _), hze'⟩, _, hc, ofSail_ne hne⟩
 
 end Equiv.Machine

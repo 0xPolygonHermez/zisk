@@ -190,40 +190,43 @@ theorem execute_miss (inst : zisk_inst) (σ : ZState) (k : Nat) (σ' : ZState)
         simp only [pure_bind]
         intro h
         refine (show NoMiss _ from ?_) σ2 k σ' h
-        refine MissIn.bind ?_ (fun _ => ?_)
-        · unfold Functions.store_c
+        refine MissIn.ite (MissIn.bind (by unfold Functions.precompiled_prelude Functions.blake2b_chain; nomiss)
+          (fun _ => ?_)) ?_
+        all_goals
           refine MissIn.bind ?_ (fun _ => ?_)
-          · unfold Functions.value_to_store
-            exact MissIn.ite (MissIn.bind (MissIn.readReg _ _) (fun _ => MissIn.pure _ _)) (MissIn.pure _ _)
+          · unfold Functions.store_c
+            refine MissIn.bind ?_ (fun _ => ?_)
+            · unfold Functions.value_to_store
+              exact MissIn.ite (MissIn.bind (MissIn.readReg _ _) (fun _ => MissIn.pure _ _)) (MissIn.pure _ _)
+            split
+            · exact MissIn.pure _ _
+            · unfold Functions.wX
+              exact MissIn.bind (MissIn.assert _ _ _) (fun _ => MissIn.bind (MissIn.assert _ _ _) (fun _ =>
+                MissIn.bind (MissIn.readReg _ _) (fun _ => MissIn.writeReg _ _ _)))
+            · exact MissIn.write_mem _ _ _ _
+            · exact MissIn.write_mem _ _ _ _
+          have hj : ∀ y : Unit, NoMiss (do
+              writeReg Register.Zc r.fst
+              writeReg Register.Zflag r.snd
+              let st ← readReg Register.Step
+              writeReg Register.Step (BitVec.addInt st 1)
+              if inst.is_end = true then pure true
+              else do
+                let p ← Functions.next_pc inst r.fst r.snd
+                writeReg Register.PC p
+                pure false) := by
+            intro _
+            refine MissIn.bind (MissIn.writeReg _ _ _) (fun _ => MissIn.bind (MissIn.writeReg _ _ _) (fun _ =>
+              MissIn.bind (MissIn.readReg _ _) (fun _ => MissIn.bind (MissIn.writeReg _ _ _) (fun _ =>
+                MissIn.ite (MissIn.pure _ _) ?_))))
+            unfold Functions.next_pc
+            refine MissIn.bind ?_ (fun _ => MissIn.bind (MissIn.writeReg _ _ _) (fun _ => MissIn.pure _ _))
+            exact MissIn.ite (MissIn.pure _ _) (MissIn.ite (MissIn.bind (MissIn.readReg _ _) (fun _ => MissIn.pure _ _))
+              (MissIn.bind (MissIn.readReg _ _) (fun _ => MissIn.pure _ _)))
+          try dsimp only
           split
-          · exact MissIn.pure _ _
-          · unfold Functions.wX
-            exact MissIn.bind (MissIn.assert _ _ _) (fun _ => MissIn.bind (MissIn.assert _ _ _) (fun _ =>
-              MissIn.bind (MissIn.readReg _ _) (fun _ => MissIn.writeReg _ _ _)))
-          · exact MissIn.write_mem _ _ _ _
-          · exact MissIn.write_mem _ _ _ _
-        have hj : ∀ y : Unit, NoMiss (do
-            writeReg Register.Zc r.fst
-            writeReg Register.Zflag r.snd
-            let st ← readReg Register.Step
-            writeReg Register.Step (BitVec.addInt st 1)
-            if inst.is_end = true then pure true
-            else do
-              let p ← Functions.next_pc inst r.fst r.snd
-              writeReg Register.PC p
-              pure false) := by
-          intro _
-          refine MissIn.bind (MissIn.writeReg _ _ _) (fun _ => MissIn.bind (MissIn.writeReg _ _ _) (fun _ =>
-            MissIn.bind (MissIn.readReg _ _) (fun _ => MissIn.bind (MissIn.writeReg _ _ _) (fun _ =>
-              MissIn.ite (MissIn.pure _ _) ?_))))
-          unfold Functions.next_pc
-          refine MissIn.bind ?_ (fun _ => MissIn.bind (MissIn.writeReg _ _ _) (fun _ => MissIn.pure _ _))
-          exact MissIn.ite (MissIn.pure _ _) (MissIn.ite (MissIn.bind (MissIn.readReg _ _) (fun _ => MissIn.pure _ _))
-            (MissIn.bind (MissIn.readReg _ _) (fun _ => MissIn.pure _ _)))
-        try dsimp only
-        split
-        · exact MissIn.bind (MissIn.bind (MissIn.writeReg _ _ _) (fun _ => MissIn.writeReg _ _ _)) hj
-        · exact hj ()
+          · exact MissIn.bind (MissIn.bind (MissIn.writeReg _ _ _) (fun _ => MissIn.writeReg _ _ _)) hj
+          · exact hj ()
       · exact .inr (.inr rfl)
 
 end Equiv.Zisk

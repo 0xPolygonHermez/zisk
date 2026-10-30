@@ -131,10 +131,15 @@ def main():
         p.code.append(f'\tposeidon2_koalabear(0, {lb}) -> r7')
         p.load(lb, 8)
 
-        # blake2b: the round index in the extended argument, mod 10.
+        # blake2b: the round in the extended argument's low 4 bits, mod 10;
+        # an unchained round (no gap), then two rounds chained, the second
+        # the step after the first (zisk_definitions BLAKE2B_*: bit 4 a
+        # chained read, bit 5 a chained write, the gap from bit 6).
         la = p.block([rng.getrandbits(64) for _ in range(16)])
         lb = p.block([rng.getrandbits(64) for _ in range(16)])
-        p.code.append(f'\tblake2b({la}, {lb}) -> r7, j({rng.randrange(100)}, 4)')
+        p.code.append(f'\tblake2b({la}, {lb}) -> r7, j({rng.randrange(16)}, 4)')
+        p.code.append(f'\tblake2b({la}, {lb}) -> r7, j({rng.randrange(16) | 0x20}, 4)')
+        p.code.append(f'\tblake2b({la}, {lb}) -> r7, j({rng.randrange(16) | 0x10 | 0x40}, 4)')
         p.load(la, 16)
 
         # add256: [x, y, cin, z]; c is the carry out.

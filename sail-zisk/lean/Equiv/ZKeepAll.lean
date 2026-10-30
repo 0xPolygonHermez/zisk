@@ -234,7 +234,13 @@ theorem Keep.execute (inst : zisk_inst) (h : writesF inst.op = false) : Keep (Fu
   unfold Functions.zisk_execute
   refine Keep.bind (by unfold Functions.source_a; keep) (fun a => ?_)
   refine Keep.bind (by unfold Functions.source_b; keep) (fun b => ?_)
-  refine Keep.bind (Keep.bind (Keep.exec_mem _ h _ _ _) (fun r => by keep)) (fun cf => ?_)
-  keep
+  dsimp only
+  split
+  · refine Keep.bind (by unfold Functions.precompiled_prelude Functions.blake2b_chain; keep) (fun _ => ?_)
+    refine Keep.bind (Keep.bind (Keep.exec_mem _ h _ _ _) (fun r => by keep)) (fun cf => ?_)
+    keep
+  · refine Keep.bind (Keep.pure _) (fun _ => ?_)
+    refine Keep.bind (Keep.bind (Keep.exec_mem _ h _ _ _) (fun r => by keep)) (fun cf => ?_)
+    keep
 
 end Equiv.Zisk

@@ -62,6 +62,7 @@ function main() = {
   FcallBase = zeros();
   FcallSize = zeros();
   FcallGot  = zeros();
+  Blake2bStep = zeros();
 
   var n : int = 0;
   var done : bool = false;

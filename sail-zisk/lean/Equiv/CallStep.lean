@@ -77,10 +77,15 @@ structure CallWF (c : ZiskRiscv.Call) : Prop where
   pre : _root_.Zisk.Functions.zisk_op_is_precompiled c.op = true → Transpiler.fcallOp c.op = false
   count : ∀ r, c.count = some r → r < 32 ∧ c.ext = 0
 
-/-- A call's condition: its operation runs on the memory it starts from,
-    without the input's first 8 bytes (precondition I). -/
+/-- B: a blake2b call's index chain-free (no chained read, no gap): ZisK's
+    chain check, on ZisK's steps, which the machine does not see, then only
+    records the step. -/
+def ChainOk (c : ZiskRiscv.Call) : Prop := c.op = .ZOP_BLAKE2B () → Equiv.Zisk.ChainFree c.ext
+
+/-- A call's condition: B, and its operation runs on the memory it starts
+    from, without the input's first 8 bytes (precondition I). -/
 def CallOk (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) : Prop :=
-  ∃ r σ', (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
+  ChainOk c ∧ ∃ r σ', (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
     (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run
     (ZiskRiscv.ziskState (Equiv.normIn (callMem S c)) S.fcall) = .ok r σ'
 
@@ -163,21 +168,29 @@ theorem zcall_step (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) (hw : CallWF
       Equiv.Zisk.FcallRel S'.fcall z' ∧
       (∀ a, Equiv.OffRam a → ¬ (Equiv.IN_LO ≤ a ∧ a < Equiv.IN_LO + 8) → S'.rv.mem.get? a = (callMem S c).get? a) ∧
       Equiv.Grows (callMem S c) S'.rv.mem := by
-  obtain ⟨r, σ', href⟩ := hok
+  obtain ⟨hch, r, σ', href⟩ := hok
+  -- the prelude (blake2b's chain): the step recorded, nothing else
+  obtain ⟨z0, hpre, hm0, hr0⟩ := Equiv.Zisk.prelude_exists c.op j1 z st hst (fun hb => by
+    have hp : _root_.Zisk.Functions.zisk_op_is_precompiled c.op = true := by rw [hb]; rfl
+    simp only [hp, if_true] at hj1; rw [hj1]; exact hch hb)
+  have hzm0 : Equiv.normIn z0.mem = Equiv.normIn (callMem S c) := by rw [hm0]; exact hzm
+  have hf0 : Equiv.Zisk.FcallRel S.fcall z0 := fun q hq => by
+    rw [hr0 q (by intro e; subst e; cases hq)]; exact hf q hq
   obtain ⟨m', f', z1, hrunOp, hz1, hnorm, hfr, hregs, hram1, hram2, hgrow⟩ :=
-    Equiv.Zisk.runOp_sim c.op (S.argValue c.a) (S.argValue c.b) c.ext (callMem S c) S.fcall z hzm hf r σ' href
+    Equiv.Zisk.runOp_sim c.op (S.argValue c.a) (S.argValue c.b) c.ext (callMem S c) S.fcall z0 hzm0 hf0 r σ' href
   -- the machine
   have hcall := call_run S c _ m' f' hrunOp
   rw [call_post_eq] at hcall
   -- ZisK
-  have hx1 : z1.regs.get? _root_.Zisk.Register.Xs = some xs := by rw [hregs _ rfl]; exact hx
-  have hpc1 : z1.regs.get? _root_.Zisk.Register.PC = some p := by rw [hregs _ rfl]; exact hzpc
-  have hst1 : z1.regs.get? _root_.Zisk.Register.Step = some st := by rw [hregs _ rfl]; exact hst
-  have hze1 : z1.regs.get? _root_.Zisk.Register.Zerror = some false := by rw [hregs _ rfl]; exact hze
+  have hx1 : z1.regs.get? _root_.Zisk.Register.Xs = some xs := by rw [hregs _ rfl, hr0 _ (by decide)]; exact hx
+  have hpc1 : z1.regs.get? _root_.Zisk.Register.PC = some p := by rw [hregs _ rfl, hr0 _ (by decide)]; exact hzpc
+  have hst1 : z1.regs.get? _root_.Zisk.Register.Step = some st := by rw [hregs _ rfl, hr0 _ (by decide)]; exact hst
+  have hze1 : z1.regs.get? _root_.Zisk.Register.Zerror = some false := by
+    rw [hregs _ rfl, hr0 _ (by decide)]; exact hze
   have hflag : (Equiv.Zisk.opResult c.op (S.argValue c.a) (S.argValue c.b) r).2 = false := by
     cases r with
     | none => exact hw.pflag _ _
-    | some p => exact Equiv.Zisk.exec_mem_flag c.op _ _ _ z p z1 hz1 p.1 p.2 rfl
+    | some p => exact Equiv.Zisk.exec_mem_flag c.op _ _ _ z0 p z1 hz1 p.1 p.2 rfl
   generalize hcf : Equiv.Zisk.opResult c.op (S.argValue c.a) (S.argValue c.b) r = cf at hflag hcall
   obtain ⟨cv, fl⟩ := cf
   simp only at hflag; subst hflag
@@ -185,7 +198,7 @@ theorem zcall_step (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) (hw : CallWF
     j1 j2 xs p st
     (S.argValue c.a) (S.argValue c.b)
     (Equiv.Zisk.source_a_run z _ _ _ _ _ _ xs hx _ (argA_src agree S.fcall c.a hw.a hw.afree))
-    (argB_src S.rv z agree hx S.fcall hf c.b hw.b _ _ _ _ _ _) hw.halt r z1 (by rw [hj1]; exact hz1)
+    (argB_src S.rv z agree hx S.fcall hf c.b hw.b _ _ _ _ _ _) hw.halt z0 hpre r z1 (by rw [hj1]; exact hz1)
     cv false hcf hx1 hpc1 hst1
   simp only [Bool.false_eq_true, if_false] at hex
   refine ⟨_, _, hcall, by rw [zstep_run zrom z p hzpc, hrom]; exact hex, ?_, ?_, ?_, ?_⟩
@@ -348,7 +361,7 @@ theorem callstep2 (S : ZiskRiscv.State model) (z : Equiv.Zisk.ZState) (rs : List
     without the input's first 8 bytes; by reading a byte that is not there
     only outside ZisK's regions and off those 8 bytes. -/
 def CallFail (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) : Prop :=
-  ∃ e σ', (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
+  ChainOk c ∧ ∃ e σ', (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
     (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run
     (ZiskRiscv.ziskState (Equiv.normIn (callMem S c)) S.fcall) = .error e σ' ∧
     ∀ k, e = .OutOfMemoryRange k → ¬ (Equiv.IN_LO ≤ k ∧ k < Equiv.IN_LO + 8) ∧ ZiskRiscv.inRegions k = false
@@ -360,6 +373,7 @@ theorem zcall_fail (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) (hw : CallWF
     (xs : Vector (BitVec 64) 40) (agree : RegsAgree S.rv xs)
     (z : Equiv.Zisk.ZState) (hx : z.regs.get? _root_.Zisk.Register.Xs = some xs) (p : BitVec 64)
     (hzpc : z.regs.get? _root_.Zisk.Register.PC = some p)
+    (hzst : ∃ st, z.regs.get? _root_.Zisk.Register.Step = some st)
     (hzm : Equiv.normIn z.mem = Equiv.normIn (callMem S c)) (hf : Equiv.Zisk.FcallRel S.fcall z)
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (j1 j2 : BitVec 64)
     (hrom : zrom p = Transpiler.mk (Transpiler.argA c.a) (Transpiler.argB c.b) c.op (Transpiler.storeReg c.rd) j1 j2)
@@ -368,7 +382,14 @@ theorem zcall_fail (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) (hw : CallWF
     (hfail : CallFail S c) :
     ∃ e z', ZiskRiscv.call S c = .error (.ofSail e) ∧ (zstep zrom).run z = .error e z' ∧
       ∀ k, e = .OutOfMemoryRange k → ZiskRiscv.inRegions k = false := by
-  obtain ⟨e, σ', href, hne⟩ := hfail
+  obtain ⟨hch, e, σ', href, hne⟩ := hfail
+  obtain ⟨st, hst⟩ := hzst
+  obtain ⟨z0, hpre, hm0, hr0⟩ := Equiv.Zisk.prelude_exists c.op j1 z st hst (fun hb => by
+    have hp : _root_.Zisk.Functions.zisk_op_is_precompiled c.op = true := by rw [hb]; rfl
+    simp only [hp, if_true] at hj1; rw [hj1]; exact hch hb)
+  have hzm0 : Equiv.normIn z0.mem = Equiv.normIn (callMem S c) := by rw [hm0]; exact hzm
+  have hf0 : Equiv.Zisk.FcallRel S.fcall z0 := fun q hq => by
+    rw [hr0 q (by intro e; subst e; cases hq)]; exact hf q hq
   have hm : ∃ τ, (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
       (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run
       (ZiskRiscv.ziskState (callMem S c) S.fcall) = .error e τ := by
@@ -380,13 +401,13 @@ theorem zcall_fail (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) (hw : CallWF
       exact absurd hk1' hk2
     · exact h
   have hz : ∃ τ, (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
-      (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run z = .error e τ := by
-    rcases (Equiv.Zisk.Frame.exec_mem _ _ _ _).2 _ _ (Equiv.Zisk.FR.ref_zisk hzm hf) e σ' href with
+      (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run z0 = .error e τ := by
+    rcases (Equiv.Zisk.Frame.exec_mem _ _ _ _).2 _ _ (Equiv.Zisk.FR.ref_zisk hzm0 hf0) e σ' href with
       ⟨k, rfl, hk1, hk2⟩ | h
     · have hin := (hne k rfl).1
       have hk1' : (Equiv.normIn (callMem S c)).get? k = none := hk1
       rw [Equiv.normIn_get, if_neg hin] at hk1'
-      rw [(Equiv.normIn_eq_iff _ _).1 hzm k hin] at hk2
+      rw [(Equiv.normIn_eq_iff _ _).1 hzm0 k hin] at hk2
       exact absurd hk1' hk2
     · exact h
   obtain ⟨τ, hτ⟩ := hm
@@ -395,7 +416,7 @@ theorem zcall_fail (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) (hw : CallWF
   rw [zstep_run zrom z p hzpc, hrom]
   exact Equiv.Zisk.execute_zcall_err z _ _ c.op c.rd j1 j2 _ _
     (Equiv.Zisk.source_a_run z _ _ _ _ _ _ xs hx _ (argA_src agree S.fcall c.a hw.a hw.afree))
-    (argB_src S.rv z agree hx S.fcall hf c.b hw.b _ _ _ _ _ _) e τz (by rw [hj1]; exact hτz)
+    (argB_src S.rv z agree hx S.fcall hf c.b hw.b _ _ _ _ _ _) z0 hpre e τz (by rw [hj1]; exact hτz)
 
 /-- A ZisK step on an instruction whose operation does not write the fcall
     registers leaves them, and so the fcall relation, as they are. -/

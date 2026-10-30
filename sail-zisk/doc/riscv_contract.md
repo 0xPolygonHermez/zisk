@@ -256,6 +256,19 @@ numbers — with `rd` ≠ `x0` where the table has none, say — is a cell acces
 | `csrs 0x815, _`; `add rd, dst, n` or `addi rd, dst, n` | `dma_inputcpy(a = dst, b = n)`, `rd` ← its `c` |
 | `csrs 0x81A, t`; `addi x0, x0, k` | `profile`: nothing |
 
+`blake2b`'s `k` is its round's index: its low 4 bits the round (mod 10),
+bit 4 a chained read, bit 5 a chained write, bits 63..6 a gap. A chained
+read takes the previous round's state from the one exactly `gap` ZisK steps
+earlier, which ZisK checks (and fails the run otherwise), counting ZisK's
+steps — which the RISC-V program does not see: one RISC-V instruction can
+be several ZisK steps. So the contract leaves chaining out, for now:
+
+> **Precondition B.** Every `blake2b` call's index has no chained read
+> and no gap (bit 4 clear, bits 63..6 zero).
+
+`ziskos`'s `syscall_blake2b_rounds_chain` chains its rounds, ten at a time,
+and so is outside the contract until chaining is.
+
 Where a sequence's later instruction names a destination `rd`, `rd` gets the
 operation's result, not that instruction's own; two older forms, flagged as
 deprecated by the transpiler, take `rd` from the `add`/`addi` of the
@@ -320,7 +333,8 @@ meets **E** (no `ecall` but exit), **C** (no CSR access but the ZisK calls
 of §§ 7–8, reading `marchid` and writing a read-only CSR, `marchid`'s cell
 left as it is), **I** (the
 free input's 8 bytes read only as the free input, by no other load nor
-call), **X** (no execute-only byte read), **Z** (no zkvmcall) and
+call), **X** (no execute-only byte read), **B** (no chained `blake2b`
+round), **Z** (no zkvmcall) and
 **L** (no `lr` reading its own instruction word), **A** (no AMO across
 a 16-byte boundary), **M** (the atomics on the RAM), **J** (the pc in
 the code), **R** (no access to the registers' slots) and **F** (no float

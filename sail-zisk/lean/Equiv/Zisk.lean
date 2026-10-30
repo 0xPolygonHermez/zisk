@@ -97,6 +97,63 @@ def regInst (op : zisk_op) (rd rs1 rs2 : Nat) : zisk_inst :=
     ind_width := 8, op, store := .ST_REG, store_off := .ofNat 64 rd,
     store_pc := false, set_pc := false, jmp_off1 := 4, jmp_off2 := 4, is_end := false }
 
+/-- What a precompile's step does before its operation (`precompiled_prelude`:
+    blake2b's chain), from s to s0; for any other op, nothing. -/
+def Prelude (op : zisk_op) (j1 : BitVec 64) (s s0 : ZState) : Prop :=
+  if zisk_op_is_precompiled op then (precompiled_prelude op j1).run s = .ok () s0 else s0 = s
+
+theorem prelude_bind {α : Type} {op : zisk_op} {j1 : BitVec 64} {s s0 : ZState} (h : Prelude op j1 s s0)
+    (X : SailM α) :
+    (if zisk_op_is_precompiled op = true then
+      (precompiled_prelude op (if zisk_op_is_precompiled op = true then j1 else 0) >>= fun _ => X) else X).run s =
+      X.run s0 := by
+  unfold Prelude at h
+  split
+  · next hp => rw [if_pos hp] at h; simp only [run_bind', h]
+  · next hp => rw [if_neg hp] at h; rw [h]
+
+/-- A blake2b index without a chained read and without a gap
+    (precondition B): its chain only records the step. -/
+def ChainFree (ext : BitVec 64) : Prop := ext.getLsbD 4 = false ∧ ext >>> 6 = 0
+
+/-- The prelude of a precompile other than blake2b: nothing. -/
+theorem prelude_other (op : zisk_op) (hb : ∀ u, op ≠ .ZOP_BLAKE2B u) (j1 : BitVec 64) (s : ZState) :
+    Prelude op j1 s s := by
+  unfold Prelude; split
+  · cases op <;> first | (exact absurd rfl (hb ())) | rfl
+  · rfl
+
+/-- blake2b's prelude, its index chain-free: the step recorded. -/
+theorem prelude_blake2b (j1 : BitVec 64) (hc : ChainFree j1) (s : ZState) (st : BitVec 64)
+    (hst : s.regs.get? Step = some st) :
+    Prelude (.ZOP_BLAKE2B ()) j1 s { s with regs := s.regs.insert Blake2bStep st } := by
+  obtain ⟨h4, h6⟩ := hc
+  have g : (Sail.BitVec.extractLsb j1 63 6) = 0#58 := by
+    simp only [Sail.BitVec.extractLsb]; apply BitVec.eq_of_toNat_eq
+    have := congrArg BitVec.toNat h6; simp [BitVec.toNat_ushiftRight] at this ⊢; omega
+  have a : BitVec.access j1 4 = 0#1 := by
+    have : BitVec.access j1 4 = BitVec.ofBool (j1.getLsbD 4) := by
+      apply BitVec.eq_of_toNat_eq; simp [BitVec.access, BitVec.getLsbD, BitVec.toNat_ofBool, BitVec.getElem_eq_testBit_toNat]
+    rw [this, h4]; rfl
+  simp only [Prelude, show zisk_op_is_precompiled (.ZOP_BLAKE2B ()) = true from rfl, if_true, precompiled_prelude,
+    blake2b_chain, g, a, show BitVec.toNatInt 0#58 = 0 from rfl]
+  simp [Sail.ConcurrencyInterfaceV1.PreSail.assert, run_bind', writeReg_run]
+  rw [readReg_run s Step st hst]
+
+/-- A precompile's prelude, its index chain-free if blake2b's: it runs,
+    and changes nothing but `Blake2bStep`. -/
+theorem prelude_exists (op : zisk_op) (j1 : BitVec 64) (s : ZState) (st : BitVec 64)
+    (hst : s.regs.get? Step = some st) (hc : op = .ZOP_BLAKE2B () → ChainFree j1) :
+    ∃ s0, Prelude op j1 s s0 ∧ s0.mem = s.mem ∧ ∀ r, r ≠ Blake2bStep → s0.regs.get? r = s.regs.get? r := by
+  by_cases hb : op = .ZOP_BLAKE2B ()
+  · subst hb
+    refine ⟨_, prelude_blake2b j1 (hc rfl) s st hst, rfl, fun r hr => ?_⟩
+    simp only [Std.ExtDHashMap.get?_insert]
+    split
+    · next e => simp at e; exact absurd e.symm hr
+    · rfl
+  · exact ⟨s, prelude_other op (fun u e => hb (by cases u; exact e)) j1 s, rfl, fun _ _ => rfl⟩
+
 /-- An op that is a pure function of a and b: not one of zisk_exec_mem's,
     not a precompile, not halt. -/
 structure PureOp (op : zisk_op) : Prop where

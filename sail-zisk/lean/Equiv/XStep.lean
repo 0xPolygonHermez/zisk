@@ -132,6 +132,27 @@ theorem KeepPC.store_c (inst : _root_.Zisk.zisk_inst) (a c : BitVec 64) :
   · exact (keepPC_of_frame (Frame.write_mem _ _ _))
   · exact (keepPC_of_frame (Frame.write_mem _ _ _))
 
+/-- Push `KeepPC` through code that writes no pc. -/
+syntax "keeppc" : tactic
+macro_rules
+  | `(tactic| keeppc) => `(tactic| first
+      | (refine KeepPC.bind ?_ (fun _ => ?_) <;> keeppc)
+      | (refine KeepPC.ite ?_ ?_ <;> keeppc)
+      | exact KeepPC.pure _
+      | exact KeepPC.readReg _
+      | exact KeepPC.assert _ _
+      | exact KeepPC.writeReg _ _ (by decide)
+      | (dsimp only; keeppc))
+
+/-- A precompile's prelude (blake2b's chain) keeps the pc. -/
+theorem keepPC_prelude (op : _root_.Zisk.zisk_op) (e : BitVec 64) :
+    KeepPC (_root_.Zisk.Functions.precompiled_prelude op e) := by
+  unfold _root_.Zisk.Functions.precompiled_prelude
+  split
+  · unfold _root_.Zisk.Functions.blake2b_chain
+    keeppc
+  · exact KeepPC.pure _
+
 theorem run_bind_ok {α β : Type} {P : _root_.Zisk.SailM α} {f : α → _root_.Zisk.SailM β} {σ σ' : ZState} {b : β}
     (h : (P >>= f).run σ = .ok b σ') : ∃ a σ1, P.run σ = .ok a σ1 ∧ (f a).run σ1 = .ok b σ' := by
   rw [run_bind'] at h
@@ -190,50 +211,61 @@ theorem execute_pc (inst : _root_.Zisk.zisk_inst) (hs : inst.set_pc = false) (he
   | ok bv σ2 =>
   rw [hb] at h; dsimp only at h
   have p2 := (KeepPC.source_b inst a σ1 bv σ2 hb).trans p1
-  rw [run_bind'] at h
+  -- the prelude (blake2b's chain, for a precompile), which keeps the pc
+  try dsimp only at h
   split at h
-  case h_2 => cases h
-  next r σ3 hc =>
-  have p3 : σ3.regs.get? _root_.Zisk.Register.PC = some p := by
-    refine (KeepPC.bind (keepPC_of_frame (Frame.exec_mem _ _ _ _)) (fun o => ?_) σ2 r σ3 hc).trans p2
-    split <;> exact KeepPC.pure _
-  rw [run_bind'] at h
-  cases hst : (_root_.Zisk.Functions.store_c inst a r.1).run σ3 with
-  | error e σ4 => rw [hst] at h; cases h
-  | ok u σ4 =>
-  rw [hst] at h; dsimp only at h
-  have p4 := (KeepPC.store_c inst a r.1 σ3 u σ4 hst).trans p3
-  have tail : ∀ (σ5 : ZState), σ5.regs.get? _root_.Zisk.Register.PC = some p →
-      (do
-        _root_.Zisk.writeReg _root_.Zisk.Register.Zc r.1
-        _root_.Zisk.writeReg _root_.Zisk.Register.Zflag r.2
-        let st ← _root_.Zisk.readReg _root_.Zisk.Register.Step
-        _root_.Zisk.writeReg _root_.Zisk.Register.Step (Sail.BitVec.addInt st 1)
-        if inst.is_end = true then pure true
-        else do
-          let x ← _root_.Zisk.Functions.next_pc inst r.1 r.2
-          _root_.Zisk.writeReg _root_.Zisk.Register.PC x
-          pure false : _root_.Zisk.SailM Bool).run σ5 = .ok b σ' →
-      b = false ∧ (σ'.regs.get? _root_.Zisk.Register.PC = some (p + inst.jmp_off1) ∨
-        σ'.regs.get? _root_.Zisk.Register.PC = some (p + inst.jmp_off2)) := by
-    intro σ5 hp5 h5
-    obtain ⟨_, σ6, h6, h7⟩ := run_bind_ok h5
-    obtain ⟨_, σ7, h8, h9⟩ := run_bind_ok h7
-    obtain ⟨st, σ8, h10, h11⟩ := run_bind_ok h9
-    obtain ⟨_, σ9, h12, h13⟩ := run_bind_ok h11
-    have q := (KeepPC.writeReg _ _ (by decide) σ8 _ σ9 h12).trans ((KeepPC.readReg _ σ7 st σ8 h10).trans
-      ((KeepPC.writeReg _ _ (by decide) σ6 _ σ7 h8).trans ((KeepPC.writeReg _ _ (by decide) σ5 _ σ6 h6).trans hp5)))
-    rw [he] at h13
-    simp only [Bool.false_eq_true, if_false] at h13
-    exact next_pc_tail inst hs r.1 r.2 σ9 p q h13
-  split at h
-  · obtain ⟨_, σ5, h5, h6⟩ := run_bind_ok h
-    obtain ⟨_, σ6, h7, h8⟩ := run_bind_ok h5
-    have q := (KeepPC.writeReg _ _ (by decide) σ6 _ σ5 h8).trans ((KeepPC.writeReg _ _ (by decide) σ4 _ σ6 h7).trans p4)
-    exact tail σ5 q h6
-  · obtain ⟨_, σ5, h5, h6⟩ := run_bind_ok h
-    rw [run_pure'] at h5; cases h5
-    exact tail σ4 p4 h6
+  all_goals rw [run_bind'] at h
+  all_goals split at h
+  all_goals (try (cases h; done))
+  all_goals rename_i u σq hq
+  all_goals have p2q : σq.regs.get? _root_.Zisk.Register.PC = some p := (by
+    first | exact (keepPC_prelude _ _ σ2 u σq hq).trans p2 | (rw [run_pure'] at hq; cases hq; exact p2))
+  all_goals clear p2 hb
+  all_goals
+    rw [run_bind'] at h
+    split at h
+    case h_2 => cases h
+    next r σ3 hc =>
+    have p3 : σ3.regs.get? _root_.Zisk.Register.PC = some p := by
+      refine (KeepPC.bind (keepPC_of_frame (Frame.exec_mem _ _ _ _)) (fun o => ?_) σq r σ3 hc).trans p2q
+      split <;> exact KeepPC.pure _
+    rw [run_bind'] at h
+    cases hst : (_root_.Zisk.Functions.store_c inst a r.1).run σ3 with
+    | error e σ4 => rw [hst] at h; cases h
+    | ok u σ4 =>
+    rw [hst] at h; dsimp only at h
+    have p4 := (KeepPC.store_c inst a r.1 σ3 u σ4 hst).trans p3
+    have tail : ∀ (σ5 : ZState), σ5.regs.get? _root_.Zisk.Register.PC = some p →
+        (do
+          _root_.Zisk.writeReg _root_.Zisk.Register.Zc r.1
+          _root_.Zisk.writeReg _root_.Zisk.Register.Zflag r.2
+          let st ← _root_.Zisk.readReg _root_.Zisk.Register.Step
+          _root_.Zisk.writeReg _root_.Zisk.Register.Step (Sail.BitVec.addInt st 1)
+          if inst.is_end = true then pure true
+          else do
+            let x ← _root_.Zisk.Functions.next_pc inst r.1 r.2
+            _root_.Zisk.writeReg _root_.Zisk.Register.PC x
+            pure false : _root_.Zisk.SailM Bool).run σ5 = .ok b σ' →
+        b = false ∧ (σ'.regs.get? _root_.Zisk.Register.PC = some (p + inst.jmp_off1) ∨
+          σ'.regs.get? _root_.Zisk.Register.PC = some (p + inst.jmp_off2)) := by
+      intro σ5 hp5 h5
+      obtain ⟨_, σ6, h6, h7⟩ := run_bind_ok h5
+      obtain ⟨_, σ7, h8, h9⟩ := run_bind_ok h7
+      obtain ⟨st, σ8, h10, h11⟩ := run_bind_ok h9
+      obtain ⟨_, σ9, h12, h13⟩ := run_bind_ok h11
+      have q := (KeepPC.writeReg _ _ (by decide) σ8 _ σ9 h12).trans ((KeepPC.readReg _ σ7 st σ8 h10).trans
+        ((KeepPC.writeReg _ _ (by decide) σ6 _ σ7 h8).trans ((KeepPC.writeReg _ _ (by decide) σ5 _ σ6 h6).trans hp5)))
+      rw [he] at h13
+      simp only [Bool.false_eq_true, if_false] at h13
+      exact next_pc_tail inst hs r.1 r.2 σ9 p q h13
+    split at h
+    · obtain ⟨_, σ5, h5, h6⟩ := run_bind_ok h
+      obtain ⟨_, σ6, h7, h8⟩ := run_bind_ok h5
+      have q := (KeepPC.writeReg _ _ (by decide) σ6 _ σ5 h8).trans ((KeepPC.writeReg _ _ (by decide) σ4 _ σ6 h7).trans p4)
+      exact tail σ5 q h6
+    · obtain ⟨_, σ5, h5, h6⟩ := run_bind_ok h
+      rw [run_pure'] at h5; cases h5
+      exact tail σ4 p4 h6
 
 /-- A ZisK step at p on an instruction that neither sets the pc from c nor
     ends, both offsets d: on to p + d. -/

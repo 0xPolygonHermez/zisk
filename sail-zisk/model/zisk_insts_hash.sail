@@ -225,9 +225,30 @@ function blake32_round(state, m, is_blake3, r) = {
   v
 }
 
-/* blake2b: BLAKE2b's round (the extended argument mod 10, of its low 32
- * bits) of the 16-word state at a with the 16-word block at b, over a;
- * c = 0. The round only: no initialisation, no feed-forward. */
+/* blake2b's chain (core/src/zisk_ops.rs, opc_blake2b; zisk_definitions
+ * BLAKE2B_*): the extended argument is the round's index, bits 3..0 the
+ * round, bit 4 a chained read (the previous round's state and block, which
+ * the prover passes on without memory), bit 5 a chained write, bits 63..6
+ * the gap, in steps, back to the round it chains from. A chained read needs
+ * that gap between 1 and 255, and a blake2b round exactly that many steps
+ * back; an unchained one, no gap. The step's bookkeeping, not the round's:
+ * zisk_execute runs it before the operation, as ZisK's blake2b does before
+ * it reads memory, so that the operation reads memory alone. The emulator's
+ * results are the same either way: the chain is the prover's, the state and
+ * block are read from memory. */
+val blake2b_chain : bits(64) -> unit
+function blake2b_chain(ext) = {
+  let gap = unsigned(ext[63 .. 6]);
+  let rd_chain = ext[4] == bitone;
+  assert(if rd_chain then 1 <= gap & gap <= 255 else gap == 0, "blake2b: gap not provable");
+  if rd_chain then
+    assert(Step - to_bits(64, gap) == Blake2bStep, "blake2b: chained round without a blake2b round gap steps back");
+  Blake2bStep = Step
+}
+
+/* blake2b: BLAKE2b's round (the extended argument's low 4 bits, mod 10) of
+ * the 16-word state at a with the 16-word block at b, over a; c = 0. The
+ * round only: no initialisation, no feed-forward; its chain, blake2b_chain. */
 union clause zisk_op = ZOP_BLAKE2B : unit
 function clause zisk_op_of_code (0xea) = Some(ZOP_BLAKE2B())
 function clause zisk_exec_mem (ZOP_BLAKE2B(), a, b, ext) = {
@@ -239,7 +260,7 @@ function clause zisk_exec_mem (ZOP_BLAKE2B(), a, b, ext) = {
     v[i] = read_mem(a + to_bits(64, 8 * i), 8);
     m[i] = read_mem(b + to_bits(64, 8 * i), 8)
   };
-  let r = blake2b_round(v, m, unsigned(ext[31 .. 0]) % 10);
+  let r = blake2b_round(v, m, unsigned(ext[3 .. 0]) % 10);
   foreach (i from 0 to 15) write_mem(a + to_bits(64, 8 * i), 8, r[i]);
   Some((zeros(), false))
 }

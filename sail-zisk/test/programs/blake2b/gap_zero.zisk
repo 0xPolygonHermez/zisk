@@ -1,0 +1,9 @@
+; A chained blake2b round with no gap: not provable.
+u64 S[16] =
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 M[16] =
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+main:
+	blake2b(S, M) -> r7, j(0x10, 4)
+	ret

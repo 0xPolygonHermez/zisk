@@ -53,3 +53,8 @@ register FcallNext  : bits(64)  /* the tape's next, unused answer          */
 register FcallBase  : bits(64)  /* the last fcall's result on the tape     */
 register FcallSize  : bits(64)  /* its length in words: result_size        */
 register FcallGot   : bits(64)  /* words consumed, plus one: result_got    */
+
+/* The step of the last blake2b round (InstContext::blake2b_step, 0 at the
+ * start): a chained round must come the gap its index gives after it
+ * (zisk_insts_hash.sail). */
+register Blake2bStep : bits(64)

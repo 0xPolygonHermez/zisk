@@ -34,21 +34,25 @@ theorem decode_ebreak {w : BitVec 32} (h : decode w = some .ebreak) : w = EBREAK
     one of the free input's 8 bytes (`Frame`: a failure on a missing byte
     is one memory lacks). -/
 theorem call_cases (S : ZiskRiscv.State model) (c : ZiskRiscv.Call) (hf : Equiv.Full S.rv.mem) :
-    CallOk S c ∨ CallFail S c ∨
+    ¬ ChainOk c ∨ CallOk S c ∨ CallFail S c ∨
       ∃ k σ', (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
         (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run
         (ZiskRiscv.ziskState (Equiv.normIn (callMem S c)) S.fcall) = .error (.OutOfMemoryRange k) σ' ∧
         Equiv.IN_LO ≤ k ∧ k < Equiv.IN_LO + 8 := by
+  by_cases hch : ChainOk c
+  rotate_left
+  · exact .inl hch
+  refine .inr ?_
   cases hr : (_root_.Zisk.Functions.zisk_exec_mem c.op (S.argValue c.a) (S.argValue c.b)
       (if _root_.Zisk.Functions.zisk_op_is_precompiled c.op then c.ext else 0)).run
       (ZiskRiscv.ziskState (Equiv.normIn (callMem S c)) S.fcall) with
-  | ok r σ' => exact .inl ⟨r, σ', hr⟩
+  | ok r σ' => exact .inl ⟨hch, r, σ', hr⟩
   | error e σ' =>
     have hab := ((Equiv.Zisk.Frame.exec_mem _ _ _ _).2 _ _ (Equiv.Zisk.FR.ref_machine _ _) e σ' hr).2
     by_cases hin : ∃ k, e = .OutOfMemoryRange k ∧ Equiv.IN_LO ≤ k ∧ k < Equiv.IN_LO + 8
     · obtain ⟨k, rfl, hk⟩ := hin
       exact .inr (.inr ⟨k, σ', rfl, hk⟩)
-    · refine .inr (.inl ⟨e, σ', hr, fun k hk => ⟨fun h => hin ⟨k, hk, h⟩, ?_⟩⟩)
+    · refine .inr (.inl ⟨hch, e, σ', hr, fun k hk => ⟨fun h => hin ⟨k, hk, h⟩, ?_⟩⟩)
       have hn : (Equiv.normIn (callMem S c)).get? k = none := hab k hk
       rw [Equiv.normIn_get, if_neg (fun h => hin ⟨k, hk, h⟩)] at hn
       have hfc : Equiv.Full (callMem S c) := by
@@ -300,11 +304,12 @@ theorem kind_csrw {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 �
   have hns := csr_not_ecall_subst hd hf3
   cases hD : ZiskRiscv.decode (Transpiler.fetch3 pc w (nextWord S.rv pc) (nextWord2 S.rv pc)) pc.toNat with
   | call c =>
-    rcases call_cases S c hx.full with hok | hfail | ⟨k, σ', hk, hin⟩
+    rcases call_cases S c hx.full with hch | hok | hfail | ⟨k, σ', hk, hin⟩
+    · exact .inr (.inr (.inr (.inr (.inr (.inr ⟨pc, w, c, hx.atPc, hx.word, hD, .inr hch⟩)))))
     · exact .inl (.inr (.inl ⟨pc, w, c, hx.atPc, hex, hx.word, htr, h4, h8, hD, fun _ => hC4, fun _ => hC8, hok⟩))
     · exact StepCase.ofEnd (.inr (.inl ⟨pc, w, c, hx.atPc, hx.code, hx.word, hD, fun _ => hC4, fun _ => hC8,
         hfail⟩))
-    · exact .inr (.inr (.inr (.inr (.inr (.inr ⟨pc, w, c, hx.atPc, hx.word, hD, k, σ', hk, hin⟩)))))
+    · exact .inr (.inr (.inr (.inr (.inr (.inr ⟨pc, w, c, hx.atPc, hx.word, hD, .inl ⟨k, σ', hk, hin⟩⟩)))))
   | nop =>
     exact .inl (.inr (.inr (.inr ⟨pc, w, hx.atPc, hex, hx.word, htr,
       fun fetch hf => nop_any hD (by rw [hf, hf3])⟩)))

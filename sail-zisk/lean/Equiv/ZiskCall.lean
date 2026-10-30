@@ -28,9 +28,9 @@ theorem execute_zcall (s : ZState) (ra : a_src × BitVec 64) (rb : b_src × BitV
     (xs : Vector (BitVec 64) 40) (pc st : BitVec 64) (va vb : BitVec 64)
     (hsa : (source_a (Transpiler.mk ra rb op (Transpiler.storeReg rd) j1 j2)).run s = .ok va s)
     (hsb : (source_b (Transpiler.mk ra rb op (Transpiler.storeReg rd) j1 j2) va).run s = .ok vb s)
-    (hh : ∀ u, op ≠ .ZOP_HALT u)
+    (hh : ∀ u, op ≠ .ZOP_HALT u) (s0 : ZState) (hpre : Prelude op j1 s s0)
     (r : Option ((BitVec 64) × Bool)) (s1 : ZState)
-    (hrun : (zisk_exec_mem op va vb (if zisk_op_is_precompiled op then j1 else 0)).run s = .ok r s1)
+    (hrun : (zisk_exec_mem op va vb (if zisk_op_is_precompiled op then j1 else 0)).run s0 = .ok r s1)
     (c : BitVec 64) (flag : Bool) (hcf : opResult op va vb r = (c, flag))
     (hx : s1.regs.get? Xs = some xs) (hpc : s1.regs.get? PC = some pc) (hst : s1.regs.get? Step = some st) :
     (zisk_execute (Transpiler.mk ra rb op (Transpiler.storeReg rd) j1 j2)).run s = .ok false
@@ -40,17 +40,23 @@ theorem execute_zcall (s : ZState) (ra : a_src × BitVec 64) (rb : b_src × BitV
   simp only [zisk_execute, run_bind', hsa, hsb]
   have hz : (zeros : BitVec 64) = 0 := rfl
   simp only [Transpiler.mk, hz]
-  rw [hrun]
-  dsimp only
   have hh' := hh ()
-  cases r <;> simp only [opResult] at hcf <;> (try subst hcf) <;> (try rw [hcf]) <;> simp only [run_pure'] <;>
-  by_cases h0 : rd = 0 <;>
-  · simp (disch := omega) [Transpiler.storeReg, h0, store_c, value_to_store, next_pc, linkRegs, writeReg_run,
-      ld, reg_index, rX, wX, Zisk.assert, Sail.ConcurrencyInterfaceV1.PreSail.assert, run_pure', *]
-    repeat (rw [readReg_run']; (try simp only [Std.ExtDHashMap.get?_insert]); simp [hst, hpc, hx, *])
-    all_goals
-      cases flag <;> simp only [if_true, if_false, Bool.false_eq_true, run_map'] <;>
-        rw [readReg_run'] <;> simp [Std.ExtDHashMap.get?_insert, hpc]
+  unfold Prelude at hpre
+  split at hpre
+  case' isTrue hp => simp only [hp, ↓reduceIte] at hrun ⊢; simp only [run_bind', hpre]
+  case' isFalse hp => subst hpre; simp only [hp, Bool.false_eq_true, ↓reduceIte, pure_bind] at hrun ⊢
+  all_goals
+    (try simp only [run_bind'])
+    rw [hrun]
+    dsimp only
+    cases r <;> simp only [opResult] at hcf <;> (try subst hcf) <;> (try rw [hcf]) <;> simp only [run_pure'] <;>
+    by_cases h0 : rd = 0 <;>
+    · simp (disch := omega) [Transpiler.storeReg, h0, store_c, value_to_store, next_pc, linkRegs, writeReg_run,
+        ld, reg_index, rX, wX, Zisk.assert, Sail.ConcurrencyInterfaceV1.PreSail.assert, run_pure', *]
+      repeat (rw [readReg_run']; (try simp only [Std.ExtDHashMap.get?_insert]); simp [hst, hpc, hx, *])
+      all_goals
+        cases flag <;> simp only [if_true, if_false, Bool.false_eq_true, run_map'] <;>
+          rw [readReg_run'] <;> simp [Std.ExtDHashMap.get?_insert, hpc]
 
 set_option maxHeartbeats 4000000 in
 /-- A ZisK call whose operation fails: the instruction fails the same way. -/
@@ -58,13 +64,17 @@ theorem execute_zcall_err (s : ZState) (ra : a_src × BitVec 64) (rb : b_src × 
     (rd : Nat) (j1 j2 : BitVec 64) (va vb : BitVec 64)
     (hsa : (source_a (Transpiler.mk ra rb op (Transpiler.storeReg rd) j1 j2)).run s = .ok va s)
     (hsb : (source_b (Transpiler.mk ra rb op (Transpiler.storeReg rd) j1 j2) va).run s = .ok vb s)
-    (e : Sail.Error exception) (s1 : ZState)
-    (hrun : (zisk_exec_mem op va vb (if zisk_op_is_precompiled op then j1 else 0)).run s = .error e s1) :
+    (s0 : ZState) (hpre : Prelude op j1 s s0) (e : Sail.Error exception) (s1 : ZState)
+    (hrun : (zisk_exec_mem op va vb (if zisk_op_is_precompiled op then j1 else 0)).run s0 = .error e s1) :
     (zisk_execute (Transpiler.mk ra rb op (Transpiler.storeReg rd) j1 j2)).run s = .error e s1 := by
   simp only [zisk_execute, run_bind', hsa, hsb]
   have hz : (zeros : BitVec 64) = 0 := rfl
   simp only [Transpiler.mk, hz]
-  rw [hrun]
+  unfold Prelude at hpre
+  split at hpre
+  · next hp => simp only [hp, ↓reduceIte] at hrun ⊢; simp only [run_bind', hpre, hrun]
+  · next hp => subst hpre; simp only [hp, Bool.false_eq_true, ↓reduceIte, pure_bind] at hrun ⊢
+               simp only [run_bind', hrun]
 
 set_option maxHeartbeats 4000000 in
 /-- The a source of a call instruction: an immediate, or a register 1..39. -/
