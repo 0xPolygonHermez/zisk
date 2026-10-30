@@ -549,7 +549,8 @@ fn bus_arg(hint: usize, h: &Hint) -> Option<BusArg> {
             _ => None,
         })
         .collect::<Option<Vec<_>>>()?;
-    let once = constant("deg_expr").as_deref() == Some("0") && constant("deg_sel").as_deref() == Some("0");
+    let once =
+        constant("deg_expr").as_deref() == Some("0") && constant("deg_sel").as_deref() == Some("0");
     Some(BusArg {
         hint,
         piop,
