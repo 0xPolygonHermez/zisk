@@ -9,6 +9,7 @@ homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
+publish = false
 
 [[bin]]
 name = "sail-difftest"
