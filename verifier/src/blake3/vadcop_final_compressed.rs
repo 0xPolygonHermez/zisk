@@ -2,7 +2,7 @@ use alloc::string::ToString;
 use alloc::vec;
 use proofman_fields::{Blake3Transcript, Blake3_8, CubicExtensionField, Field, Goldilocks};
 use proofman_verifier::VadcopFinalProof;
-use proofman_verifier::{stark_verify, Boundary, FriEvalGroup, FriEvalRef, VerifierInfo};
+use proofman_verifier::{Boundary, FriEvalGroup, FriEvalRef, StirParams, StirVerifierInfo};
 
 #[inline(never)]
 #[rustfmt::skip]
@@ -4194,22 +4194,20 @@ fn q_verify(challenges: &[CubicExtensionField<Goldilocks>], evals: &[CubicExtens
 }
 
 #[rustfmt::skip]
-fn verifier_info() -> VerifierInfo {
-    VerifierInfo {
+fn verifier_info() -> StirVerifierInfo {
+    StirVerifierInfo {
         n_stages: 2,
         n_constants: 43,
         n_evals: 649,
         n_bits: 18,
         n_bits_ext: 23,
-        arity: 2,
-        n_fri_queries: 41,
-        n_fri_steps: 5,
         n_challenges: 6,
-        n_challenges_total: 11,
-        fri_steps: vec![23, 19, 15, 11, 8],
-        hash_commits: true,
-        last_level_verification: 6,
-        pow_bits: 27,
+        n_challenges_total: 16,
+        num_vals: vec![128, 36, 21],
+        opening_points: vec![-55, -54, -53, -52, -51, -50, -49, -48, -47, -46, -45, -44, -43, -42, -41, -40, -39, -38, -37, -36, -35, -34, -33, -32, -31, -30, -29, -28, -27, -26, -25, -24, -23, -22, -21, -20, -19, -18, -17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 4, 8, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30],
+        boundaries: vec![Boundary { name: "everyRow".to_string(), offset_min: None, offset_max: None }],
+        q_deg: 7,
+        q_index: 554,
         fri_ev_groups: vec![
             FriEvalGroup { opening: 0, refs: vec![FriEvalRef::new(0, 23, 1, 0)] },
             FriEvalGroup { opening: 1, refs: vec![FriEvalRef::new(0, 23, 1, 0)] },
@@ -4281,32 +4279,40 @@ fn verifier_info() -> VerifierInfo {
             FriEvalGroup { opening: 67, refs: vec![FriEvalRef::new(1, 92, 1, 55), FriEvalRef::new(1, 93, 1, 56), FriEvalRef::new(1, 96, 1, 59), FriEvalRef::new(1, 97, 1, 60)] },
             FriEvalGroup { opening: 68, refs: vec![FriEvalRef::new(1, 108, 1, 40), FriEvalRef::new(1, 109, 1, 41), FriEvalRef::new(1, 112, 1, 44), FriEvalRef::new(1, 113, 1, 45)] }
         ],
-        num_vals: vec![128, 36, 21],
-        opening_points: vec![-55, -54, -53, -52, -51, -50, -49, -48, -47, -46, -45, -44, -43, -42, -41, -40, -39, -38, -37, -36, -35, -34, -33, -32, -31, -30, -29, -28, -27, -26, -25, -24, -23, -22, -21, -20, -19, -18, -17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 4, 8, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30],
-        boundaries: vec![Boundary { name: "everyRow".to_string(), offset_min: None, offset_max: None }],
-        q_deg: 7,
-        q_index: 554,
+        stir: StirParams {
+            folding_factors: vec![4, 3, 3],
+            log_degrees: vec![18, 14, 11, 8],
+            log_domain_sizes: vec![23, 22, 21, 20],
+            num_queries: vec![41, 26, 22],
+            grinding_bits_queries: vec![27, 26, 23],
+            arity: 2,
+            last_level_verification: 0,
+            hash_commits: true,
+        },
     }
 }
 
 pub fn verify(proof: &VadcopFinalProof, vk: &[u64]) -> bool {
-    stark_verify::<Blake3_8, Blake3_8, Blake3Transcript<Goldilocks>, Blake3_8>(
-        &proof.proof_with_publics(),
-        vk,
-        &verifier_info(),
-        q_verify,
-    )
+    verify_u64(&proof.proof_with_publics(), vk)
 }
 
 pub fn verify_u64(proof: &[u64], vk: &[u64]) -> bool {
-    stark_verify::<Blake3_8, Blake3_8, Blake3Transcript<Goldilocks>, Blake3_8>(
-        proof,
-        vk,
-        &verifier_info(),
-        q_verify,
-    )
+    let info = verifier_info();
+    proofman_verifier::verify_multiproof_stir::<
+        Blake3_8,
+        Blake3_8,
+        Blake3Transcript<Goldilocks>,
+        Blake3_8,
+    >(proof, vk, &info, q_verify)
 }
 
-pub fn expected_proof_bytes() -> usize {
-    proofman_verifier::expected_proof_size_bytes(&verifier_info())
+/// Upper bound: a multiproof never outgrows the flat proof by more than its tag.
+pub fn max_proof_bytes() -> usize {
+    proofman_verifier::expected_stir_proof_size_bytes(&verifier_info()) + 8
+}
+
+// Appended by `cargo-zisk-dev release-artifacts install`: the stage's proof length, from
+// whichever function the generator emits.
+pub fn proof_size() -> crate::ProofSize {
+    crate::ProofSize::AtMost(max_proof_bytes())
 }

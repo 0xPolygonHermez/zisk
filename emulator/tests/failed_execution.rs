@@ -3,6 +3,7 @@
 //! `elf-regressions/failed_execution/` fails one way: a trap (`unimp`, `ebreak`,
 //! `c.ebreak`), a write to a read-only CSR (register or immediate form), or a nonzero
 //! exit code; `exit_ok` is the control, which reads read-only CSRs and exits 0.
+//! `elf-regressions/abort/` holds a C guest that calls `abort` (draft eth-act PR #46).
 //!
 //! Both emulator entry points must reject a failed execution: `emulate` (ziskemu,
 //! `cargo-zisk execute`) and `compute_minimal_traces`, the first phase of proving, so
@@ -15,7 +16,8 @@ use zisk_transpiler_common::program2rom;
 use ziskemu::{EmuOptions, Emulator, FailureReason, ZiskEmulator, ZiskEmulatorErr};
 
 fn elf_path(name: &str) -> String {
-    format!("{}/../elf-regressions/failed_execution/{name}.elf", env!("CARGO_MANIFEST_DIR"))
+    let dir = if name.starts_with("abort") { "abort" } else { "failed_execution" };
+    format!("{}/../elf-regressions/{dir}/{name}.elf", env!("CARGO_MANIFEST_DIR"))
 }
 
 fn emulate(name: &str) -> Result<Vec<u8>, ZiskEmulatorErr> {
@@ -99,6 +101,21 @@ fn nonzero_exit_code_fails() {
     let (pc, traces_pc) = assert_fails("exit_code", FailureReason::ExitCode(42));
     assert!(pc < ROM_ADDR, "exit_code: must fail in the BIOS, got pc={pc:#x}");
     assert_eq!(pc, traces_pc);
+}
+
+#[test]
+fn abort_fails_with_its_exit_code() {
+    // abort exits through _start's exit dispatch with 134, skipping the destructors: the
+    // guest's destructor traps, so running it would fail as a trap instead
+    let (pc, traces_pc) = assert_fails("abort", FailureReason::ExitCode(134));
+    assert!(pc < ROM_ADDR, "abort: must fail in the BIOS, got pc={pc:#x}");
+    assert_eq!(pc, traces_pc);
+}
+
+#[test]
+fn abort_guest_destructor_runs_on_return() {
+    // The control: returning from main runs the destructor, whose trap ends the run
+    assert_fails("abort_control", FailureReason::Trap);
 }
 
 #[test]

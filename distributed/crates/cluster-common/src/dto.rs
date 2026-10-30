@@ -41,6 +41,7 @@ impl std::fmt::Debug for InputsModeDto {
 
 pub use zisk_common::AirInstanceCount;
 pub use zisk_common::ProofKind;
+pub use zisk_common::SnarkProtocol;
 pub use zisk_common::StatsCostPerType;
 
 /// How a job's precompile hints are supplied to the cluster.
@@ -90,6 +91,8 @@ pub struct LaunchProofRequestDto {
     pub execution_only: bool,
     /// The kind of proof requested.
     pub proof_type: ProofKind,
+    /// The protocol a final SNARK (`ProofKind::Snark`) must be of; `None` takes the workers'.
+    pub snark_protocol: Option<SnarkProtocol>,
     /// Host randomness seed provided by the client; `None` draws a fresh one. If the coordinator
     /// does not allow client random seeds, the job is rejected (`ClientRandomSeedNotAllowed`)
     /// rather than run with a different seed.
@@ -108,6 +111,8 @@ pub struct LaunchWrapRequestDto {
     pub proof_data: Vec<u8>,
     /// Target proof kind (a `ProofKind` value).
     pub proof_dest: i32,
+    /// The protocol a final SNARK (`ProofKind::Snark`) must be of; `None` takes the workers'.
+    pub snark_protocol: Option<SnarkProtocol>,
 }
 
 /// Request from a worker to register with the coordinator.
@@ -118,6 +123,25 @@ pub struct WorkerRegisterRequestDto {
     pub compute_capacity: ComputeCapacity,
     /// Aggregation arity of the worker's proving key.
     pub aggregation_arity: u32,
+    /// Protocol of the final SNARK the worker's SNARK proving key is set up for; `None` when it
+    /// has no SNARK proving key.
+    pub snark_protocol: Option<SnarkProtocol>,
+    /// How the worker's previous run ended, when it ended itself. Reported by the worker:
+    /// informational, unverified.
+    pub previous_exit: Option<WorkerExitDto>,
+}
+
+/// How a worker's previous run ended, when it ended itself.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct WorkerExitDto {
+    /// `panic`, `recovery_timeout` or `recovery_failed`.
+    pub reason: String,
+    /// A panic's source location, `file:line`.
+    pub location: String,
+    /// When it ended, in seconds since the unix epoch.
+    pub at_unix_seconds: i64,
+    /// The MPI rank that ended it.
+    pub rank: u32,
 }
 
 /// Request from a worker to reconnect after a disconnect.
@@ -130,6 +154,9 @@ pub struct WorkerReconnectRequestDto {
     pub last_known_job_id: Option<JobId>,
     /// Aggregation arity of the worker's proving key.
     pub aggregation_arity: u32,
+    /// Protocol of the final SNARK the worker's SNARK proving key is set up for; `None` when it
+    /// has no SNARK proving key.
+    pub snark_protocol: Option<SnarkProtocol>,
 }
 
 /// Reconciliation directive sent by the coordinator in the registration response.
@@ -351,7 +378,12 @@ pub struct ExecuteTaskRequestDto {
     pub job_id: JobId,
     /// The phase-specific parameters.
     pub params: ExecuteTaskRequestTypeDto,
-    /// Job-level metadata propagated to the worker.
+    /// Job-level metadata, once passed to the worker. No worker read it; the coordinator
+    /// now keeps it and leaves this `None`.
+    #[deprecated(
+        since = "1.4.0-alpha",
+        note = "job metadata stays on the coordinator; removed in the first non-alpha release"
+    )]
     pub metadata: Option<std::collections::BTreeMap<String, String>>,
 }
 
@@ -704,6 +736,71 @@ pub struct WrapResultDto {
 pub struct HeartbeatAckDto {
     /// The acking worker.
     pub worker_id: WorkerId,
+    /// The worker's host and process telemetry, unless its operator turned it off.
+    pub telemetry: Option<WorkerTelemetryDto>,
+}
+
+/// What a worker reports about its host and processes. Reported by the worker: informational,
+/// unverified, to be bounded before it is exposed.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct WorkerTelemetryDto {
+    /// Seconds since the worker process started.
+    pub uptime_seconds: f64,
+    /// Seconds from the worker's start to its first accepted registration; 0 until then.
+    pub start_to_registration_seconds: f64,
+    /// Seconds from the worker's start to its first program set up; 0 until then.
+    pub start_to_ready_seconds: f64,
+    /// The memory of the worker's processes, summed by role.
+    pub processes: Vec<ProcessMemoryDto>,
+    /// The ZisK shared memory on the worker's host, by kind and owner liveness.
+    pub shared_memory: Vec<SharedMemoryDto>,
+    /// The worker's cgroup, when it runs in one.
+    pub cgroup: Option<CgroupUsageDto>,
+}
+
+/// The memory of a worker's processes of one role.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ProcessMemoryDto {
+    /// `rankN`, `asm-<service>-rankN`, `mpirun` or `other`.
+    pub role: String,
+    /// Resident set size.
+    pub rss_bytes: u64,
+    /// Resident anonymous memory.
+    pub anon_bytes: u64,
+    /// Resident file-backed memory.
+    pub file_bytes: u64,
+    /// Resident shared memory.
+    pub shmem_bytes: u64,
+}
+
+/// ZisK shared memory segments of one kind on a worker's host.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SharedMemoryDto {
+    /// The segments' kind (`control_input`, `rom`, `semaphore`, …).
+    pub kind: String,
+    /// Whether the process that created them still runs.
+    pub owner_alive: bool,
+    /// Their size in bytes.
+    pub bytes: u64,
+    /// How many there are.
+    pub segments: u32,
+}
+
+/// A worker's cgroup memory and CPU usage.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CgroupUsageDto {
+    /// `memory.current`.
+    pub memory_current_bytes: u64,
+    /// `memory.peak`.
+    pub memory_peak_bytes: u64,
+    /// `memory.stat` anon.
+    pub anon_bytes: u64,
+    /// `memory.stat` file.
+    pub file_bytes: u64,
+    /// `memory.stat` shmem.
+    pub shmem_bytes: u64,
+    /// `cpu.stat` usage, in seconds.
+    pub cpu_seconds: f64,
 }
 
 /// Worker → coordinator ack for a guest-program setup.
@@ -743,6 +840,10 @@ pub struct WebhookErrorDto {
     pub message: String,
 }
 
+/// `WebhookPayloadDto::proof_format` of a `Proof::to_bytes_without_seed_trailer` proof. Bincode-encoded proofs
+/// from earlier coordinators carry no format field.
+pub const WEBHOOK_PROOF_FORMAT: &str = "zisk-proof-v1";
+
 /// Webhook payload for job completion notifications
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebhookPayloadDto {
@@ -758,12 +859,17 @@ pub struct WebhookPayloadDto {
     pub timestamp: String,
     /// Error details, present on failure.
     pub error: Option<WebhookErrorDto>,
-    /// The proof bytes, when included.
+    /// The proof, when included, as `Proof::to_bytes_without_seed_trailer`: ZisK's flat layout
+    /// for a Vadcop proof, which guests verify as is (the seed is `random_seed`), or a
+    /// `ZISKPLNK`-headed SNARK proof (PLONK or pilfflonk).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proof_data: Option<Vec<u8>>,
     /// The job's host randomness seed (hex), to replay it. Absent for jobs that run no execution.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub random_seed: Option<String>,
+    /// [`WEBHOOK_PROOF_FORMAT`] when `proof_data` is present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof_format: Option<String>,
 }
 
 impl WebhookPayloadDto {
@@ -781,6 +887,7 @@ impl WebhookPayloadDto {
             executed_steps,
             timestamp: chrono::Utc::now().to_rfc3339(),
             error: None,
+            proof_format: proof_data.as_ref().map(|_| WEBHOOK_PROOF_FORMAT.to_string()),
             proof_data,
             random_seed: None,
         }
@@ -797,6 +904,7 @@ impl WebhookPayloadDto {
             error: Some(error),
             proof_data: None,
             random_seed: None,
+            proof_format: None,
         }
     }
 }

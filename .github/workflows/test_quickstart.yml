@@ -1,7 +1,7 @@
 name: Test ZisK Quickstart
 
 # Checks that the branch this workflow is launched from passes the steps of the
-# quickstart guide: ZisK and its setup (proving key + PLONK setup) are built
+# quickstart guide: ZisK and its setup (proving key + pilfflonk setup) are built
 # from the checked-out sources and the quickstart test is run against them.
 #
 # Sibling of test_install_bin.yml, which runs that same test against the

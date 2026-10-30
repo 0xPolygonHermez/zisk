@@ -102,11 +102,14 @@ enum State<T> {
 impl<T> State<T> {
     /// Joins any parked producer and drops everything this round left behind.
     /// Joining a thread that has already returned does not block.
-    fn clear(&mut self) {
+    fn clear(&mut self, label: &'static str) {
         // The value is discarded: a handle still parked here belongs to a round
-        // nobody consumed.
+        // nobody consumed. Its failure would be discarded with it, and nobody else
+        // will ever see it, so it is logged.
         if let Self::Parked(handle) = std::mem::replace(self, Self::Empty) {
-            let _ = handle.join();
+            if let Err(failure) = join_producer(label, handle) {
+                tracing::warn!("{label} failed, and no one read it: {failure}");
+            }
         }
     }
 
@@ -175,7 +178,7 @@ impl<T> LateValue<T> {
     /// block in practice because it finished long ago.
     pub fn park(&self, handle: LateJoinHandle<T>) {
         let mut state = self.lock();
-        state.clear();
+        state.clear(self.label);
         *state = State::Parked(handle);
     }
 
@@ -215,7 +218,7 @@ impl<T> LateValue<T> {
     /// before a new round begins: it guarantees the producer has finished, and
     /// releases the value it delivered.
     pub fn drain(&self) {
-        self.lock().clear();
+        self.lock().clear(self.label);
     }
 
     /// A poisoned lock carries no broken invariant here — the value is either

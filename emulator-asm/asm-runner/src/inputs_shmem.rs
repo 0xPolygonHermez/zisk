@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use named_sem::NamedSemaphore;
@@ -11,9 +12,14 @@ use crate::{
 
 use anyhow::Result;
 
+/// Bytes of the length header that precedes the input in its segment.
+const HEADER_BYTES: usize = 8;
+
 /// This struct manages the shared memory for writing inputs to the C++ side.
 pub struct InputsShmemWriter {
     writer: Mutex<ShmemWriter>,
+    /// The end of the furthest input byte written since the last reset.
+    written_end: AtomicUsize,
     control_writer: Arc<ControlShmem>,
     sem_avails: Mutex<Option<Vec<NamedSemaphore>>>,
 }
@@ -26,7 +32,8 @@ unsafe impl Send for InputsShmemWriter {}
 unsafe impl Sync for InputsShmemWriter {}
 
 impl InputsShmemWriter {
-    /// Create writers mapping the per-service input shmem segments.
+    /// Create the writer over the process's input segment, which every program
+    /// in a hints mode shares.
     /// Semaphores are not opened here — call `bind_semaphores` before first use.
     pub fn new(
         shm_prefix: &str,
@@ -39,13 +46,31 @@ impl InputsShmemWriter {
         writer.reset();
         writer.append_input(&0u64.to_le_bytes())?;
 
-        Ok(Self { writer: Mutex::new(writer), control_writer, sem_avails: Mutex::new(None) })
+        Ok(Self {
+            writer: Mutex::new(writer),
+            written_end: AtomicUsize::new(HEADER_BYTES),
+            control_writer,
+            sem_avails: Mutex::new(None),
+        })
     }
 
     /// Open the per-service input-availability semaphores for a given program.
     /// Replaces any previously bound semaphores.
+    ///
+    /// Binding also sweeps each semaphore to zero, and the two are one operation
+    /// on purpose: `sem_open` ignores the initial value for a name that already
+    /// exists, so fresh handles alone would inherit whatever count was left on
+    /// the name. Taking ownership of this program's notification channel means
+    /// both, and splitting them leaves a caller able to do half of it.
+    ///
+    /// A leftover count is normal, not a fault. `write_input` posts once per
+    /// service, but the C side only waits when it needs more input bytes, so a
+    /// run whose input was written up front never consumes its post — and it
+    /// purges the semaphore before waiting anyway (`wait_for_input_avail` in
+    /// `c_provided.c`), so it treats the post as a poke rather than a count.
+    /// Sweeping here just keeps the names tidy across program switches.
     pub fn bind_semaphores(&self, sem_prefix: &str) -> Result<()> {
-        let sems = AsmServices::SERVICES
+        let mut sems = AsmServices::SERVICES
             .iter()
             .map(|service| {
                 let name = sem_input_avail_name(sem_prefix, *service);
@@ -53,13 +78,15 @@ impl InputsShmemWriter {
                     .map_err(|e| anyhow::anyhow!("Failed to create semaphore '{}': {}", name, e))
             })
             .collect::<Result<Vec<_>>>()?;
+
+        let swept: u64 = sems.iter_mut().map(crate::drain_semaphore).sum();
+        if swept != 0 {
+            // Expected on a program switch: see this method's docs. Not a warning.
+            tracing::debug!("Swept {swept} unconsumed input_avail post(s) on '{sem_prefix}'");
+        }
+
         *self.sem_avails.lock().unwrap() = Some(sems);
         Ok(())
-    }
-
-    /// Drop the semaphore handles (does not unlink — the binary owns the names).
-    pub fn unbind_semaphores(&self) {
-        *self.sem_avails.lock().unwrap() = None;
     }
 
     /// Writes inputs to the shared memory and updates the control shared memory.
@@ -68,7 +95,13 @@ impl InputsShmemWriter {
             return Ok(());
         }
 
-        self.writer.lock().unwrap().write_at(8, inputs)?;
+        {
+            // Recorded under the lock, as `reset` reads it, so that a reset sees every write
+            // made before it.
+            let writer = self.writer.lock().unwrap();
+            writer.write_at(HEADER_BYTES, inputs)?;
+            self.written_end.fetch_max(HEADER_BYTES + inputs.len(), Ordering::Relaxed);
+        }
         self.control_writer.inc_inputs_size(inputs.len())?;
         self.notify_all_services()?;
         Ok(())
@@ -76,7 +109,11 @@ impl InputsShmemWriter {
 
     /// Appends inputs to the shared memory and updates the control shared memory.
     pub fn append_input(&self, inputs: &[u8]) -> Result<()> {
-        self.writer.lock().unwrap().append_input(inputs)?;
+        {
+            let mut writer = self.writer.lock().unwrap();
+            writer.append_input(inputs)?;
+            self.written_end.fetch_max(writer.offset(), Ordering::Relaxed);
+        }
         self.control_writer.inc_inputs_size(inputs.len())?;
         self.notify_all_services()?;
         Ok(())
@@ -101,15 +138,32 @@ impl InputsShmemWriter {
     /// the correct order: flag first, then post. A child that wakes from a
     /// post with `flag == 0` goes back to sleep and would never see a later
     /// `set_reset_flag()`, so the two steps must always run together.
-    /// Cleared by the next job's `reset()`.
+    /// Cleared by the job's end (`reset()`), and again as the next job begins
+    /// (`clear_reset()`).
     pub fn signal_reset(&self) -> Result<()> {
         self.control_writer.set_reset_flag()?;
         self.notify_all_services()
     }
 
+    /// Clears the C-side `ResetFlag` alone. A cancel that lands after a job's end
+    /// sets it again, and the next job must not begin with it: its first wait for
+    /// input or hints would abort the emulation.
+    pub fn clear_reset(&self) -> Result<()> {
+        self.control_writer.clear_reset_flag()
+    }
+
     /// Resets the shared memory and control flags, and drains any stale semaphore posts.
+    ///
+    /// The bytes the input wrote are zeroed. A run reads input addresses past the end of its
+    /// input, among them the BIOS's read every 128 MB of the input region, and the prover takes
+    /// them as zeros: what a larger previous input left there failed every later proof at its
+    /// global constraints.
     pub fn reset(&self) {
         let mut writer = self.writer.lock().unwrap();
+        let written_end = self.written_end.swap(HEADER_BYTES, Ordering::Relaxed);
+        if let Err(e) = writer.zero_range(HEADER_BYTES, written_end) {
+            tracing::error!("InputsShmemWriter::reset: zeroing the previous input failed: {e}");
+        }
         writer.reset();
         writer
             .append_input(&0u64.to_le_bytes())
@@ -120,7 +174,7 @@ impl InputsShmemWriter {
         }
         if let Some(sems) = self.sem_avails.lock().unwrap().as_mut() {
             for sem in sems.iter_mut() {
-                while sem.try_wait().is_ok() {}
+                crate::drain_semaphore(sem);
             }
         }
     }
@@ -175,6 +229,46 @@ mod tests {
         unsafe { libc::shm_unlink(c.as_ptr()) };
     }
 
+    /// Binding leaves no post from an earlier run on the names it takes over.
+    ///
+    /// The C side purges before it waits, so a leftover post would only be a
+    /// spurious wake; this pins that the names start clean anyway.
+    #[test]
+    fn bind_semaphores_sweeps_a_stale_post_from_a_previous_run() {
+        let prefix = format!("ZISK_unittest_stale_{}", std::process::id());
+        let input_seg = shmem_input_name(&prefix);
+        let control_seg = shmem_control_input_name(&prefix);
+        create_segment(&input_seg, MAX_INPUT_SIZE as usize);
+        create_segment(&control_seg, ControlShmem::CONTROL_WRITER_SIZE as usize);
+
+        let control = std::sync::Arc::new(ControlShmem::new(&prefix, true).unwrap());
+        let writer = InputsShmemWriter::new(&prefix, true, control).unwrap();
+
+        let sem_prefix = format!("{prefix}_sems");
+        writer.bind_semaphores(&sem_prefix).unwrap();
+
+        // Stand in for a run aborted between posting an input and its wait.
+        writer.write_input(&[9u8; 8]).unwrap();
+
+        // Re-activation of the same program re-binds the same names.
+        writer.bind_semaphores(&sem_prefix).unwrap();
+
+        // Every service's semaphore must now be at zero.
+        for service in AsmServices::SERVICES.iter() {
+            let name = sem_input_avail_name(&sem_prefix, *service);
+            let mut sem = NamedSemaphore::create(&name, 0).unwrap();
+            assert!(
+                sem.try_wait().is_err(),
+                "{service}: bind_semaphores left a stale input_avail post behind"
+            );
+            let c = CString::new(name).unwrap();
+            unsafe { libc::sem_unlink(c.as_ptr()) };
+        }
+
+        unlink_segment(&input_seg);
+        unlink_segment(&control_seg);
+    }
+
     #[test]
     fn write_input_places_bytes_after_header_and_tracks_size() {
         let prefix = format!("ZISK_unittest_inputs_{}", std::process::id());
@@ -207,6 +301,39 @@ mod tests {
 
         drop(r);
         drop(cr);
+        unlink_segment(&input_seg);
+        unlink_segment(&control_seg);
+    }
+
+    /// A run reads input addresses past the end of its input (the BIOS reads one every 128 MB of
+    /// the region), which the prover takes as zeros: a reset leaves nothing of the previous
+    /// input, whether it was written whole or appended.
+    #[test]
+    fn reset_zeroes_what_the_previous_input_wrote() {
+        let prefix = format!("ZISK_unittest_zeroed_{}", std::process::id());
+        let input_seg = shmem_input_name(&prefix);
+        let control_seg = shmem_control_input_name(&prefix);
+        create_segment(&input_seg, MAX_INPUT_SIZE as usize);
+        create_segment(&control_seg, ControlShmem::CONTROL_WRITER_SIZE as usize);
+
+        let control = std::sync::Arc::new(ControlShmem::new(&prefix, true).unwrap());
+        let writer = InputsShmemWriter::new(&prefix, true, control).unwrap();
+        let r = ShmemReader::new(&input_seg, 3 * 4096).unwrap();
+
+        // Two pages written whole, then one appended over the first: each reset must clear what
+        // the input before it reached past the next one.
+        writer.write_input(&[0xAB; 2 * 4096]).unwrap();
+        writer.reset();
+        writer.append_input(&[0xCD; 4096]).unwrap();
+        writer.reset();
+        writer.write_input(&[7u8; 8]).unwrap();
+
+        assert_eq!(r.read_u64_at(HEADER_BYTES), u64::from_le_bytes([7; 8]));
+        for offset in (2 * HEADER_BYTES..HEADER_BYTES + 2 * 4096).step_by(8) {
+            assert_eq!(r.read_u64_at(offset), 0, "a stale byte at offset {offset}");
+        }
+
+        drop(r);
         unlink_segment(&input_seg);
         unlink_segment(&control_seg);
     }

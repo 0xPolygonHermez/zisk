@@ -7,8 +7,9 @@
  *
  * Pattern mirrors the ZisK SDK (ziskos/entrypoint/src/lib.rs).
  *
- * This file also defines the DMA-accelerated memcpy/memmove/memcmp/memset (end of
- * file). They live in the same object as _start on purpose, see the note there.
+ * This file also defines abort (after _start) and the DMA-accelerated
+ * memcpy/memmove/memcmp/memset (end of file). They live in the same object as
+ * _start on purpose, see the note there.
  */
 .section .text.init,"ax",@progbits
 .global _start
@@ -59,7 +60,9 @@ _start:
     j    6b
 7:  mv   a0, s2                    /* restore it for the exit paths below */
 
-    /* Exit dispatch: marchid == 0xFFFEEEE only on real ZisK hardware. */
+    /* Exit dispatch, with the exit code in a0 (abort jumps here too): marchid ==
+       0xFFFEEEE only on real ZisK hardware. */
+.Lexit:
     csrr t0, marchid
     li   t1, 0xFFFEEEE
     beq  t0, t1, 1f
@@ -87,6 +90,30 @@ _start:
 
 2:  /* Spin if the halt above somehow falls through. */
     j    2b
+.size _start, .-_start
+
+/* _Noreturn void abort(void): a failed termination, as if main had returned
+   ABORT_EXIT_CODE (EF termination standard, draft eth-act PR #46). 134 is
+   128 + SIGABRT, what a shell reports for an aborted process, so it is told apart
+   from main returning 1. Like C's abort it runs no destructors or atexit
+   handlers: it goes straight to the exit dispatch, which halts the run as a
+   failed execution that is never proven.
+
+   It is defined here, not in its own archive member, for the reason given for
+   mem* below. With this archive before the libc on the command line (the gcc
+   driver adds -lc last), this object is linked before the libc is searched, so
+   the libc's abort (newlib's raises SIGABRT through stubs that never reach the
+   ZisK termination) is never pulled. With the libc first, a guest that calls
+   abort gets the libc's, and the link then fails with a multiple-definition
+   error. It never silently keeps the libc's abort, which an abort in its own
+   member would do. */
+.equ ABORT_EXIT_CODE, 134
+.globl abort
+.type  abort, @function
+abort:
+    li   a0, ABORT_EXIT_CODE
+    j    .Lexit
+.size abort, .-abort
 
 /* ---------------------------------------------------------------------------
  * DMA-accelerated memcpy / memmove / memcmp / memset (EF §2).

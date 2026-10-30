@@ -79,6 +79,7 @@ pub use frops::*;
 pub use helpers::*;
 pub use inst_context::*;
 pub use mem::*;
+pub use ops_core_context::opc_write_log;
 pub use rom_layout::*;
 pub use utils::*;
 pub use zisk_definitions::*;

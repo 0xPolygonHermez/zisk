@@ -50,6 +50,77 @@ pub fn syscall_blake2b_round_const<const INDEX: u64>(
     }
 }
 
+#[cfg(zisk_guest)]
+use zisk_definitions::{BLAKE2B_CHAIN_FIRST, BLAKE2B_CHAIN_LAST, BLAKE2B_CHAIN_MID};
+
+/// Executes `rounds` rounds of the compression function. Runs of consecutive rounds are chained
+/// (state and message pass to the next round without going through memory); each run is one asm
+/// block, so the rounds are back to back, as the chain's step distance of 1 requires.
+#[allow(unused_variables)]
+pub fn syscall_blake2b_rounds_chain(
+    rounds: u32,
+    state: &mut [u64; 16],
+    input: &[u64; 16],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    macro_rules! round {
+        ($i:literal) => {
+            syscall_blake2b_round_const::<$i>(
+                state,
+                input,
+                #[cfg(feature = "hints")]
+                hints,
+            )
+        };
+    }
+    macro_rules! chain {
+        (@pair $index:literal) => {
+            "csrs {port}, {a}\naddi x0, {b}, {}"
+        };
+        ($first:literal $(, $mid:literal)*; $last:literal) => {{
+            #[cfg(zisk_guest)]
+            unsafe {
+                core::arch::asm!(
+                    chain!(@pair $first),
+                    $( chain!(@pair $mid), )*
+                    chain!(@pair $last),
+                    const $first | BLAKE2B_CHAIN_FIRST,
+                    $( const $mid | BLAKE2B_CHAIN_MID, )*
+                    const $last | BLAKE2B_CHAIN_LAST,
+                    port = const zisk_definitions::SYSCALL_BLAKE2B_ROUND_ID,
+                    a = in(reg) state,
+                    b = in(reg) input,
+                    options(nostack)
+                );
+            }
+            #[cfg(not(zisk_guest))]
+            {
+                round!($first);
+                $( round!($mid); )*
+                round!($last);
+            }
+        }};
+    }
+
+    let mut done = 0;
+    while rounds - done >= 10 {
+        chain!(0, 1, 2, 3, 4, 5, 6, 7, 8; 9);
+        done += 10;
+    }
+    match rounds - done {
+        0 => {}
+        1 => round!(0),
+        2 => chain!(0; 1),
+        3 => chain!(0, 1; 2),
+        4 => chain!(0, 1, 2; 3),
+        5 => chain!(0, 1, 2, 3; 4),
+        6 => chain!(0, 1, 2, 3, 4; 5),
+        7 => chain!(0, 1, 2, 3, 4, 5; 6),
+        8 => chain!(0, 1, 2, 3, 4, 5, 6; 7),
+        _ => chain!(0, 1, 2, 3, 4, 5, 6, 7; 8),
+    }
+}
+
 /// Executes the `Blake2bRound` operation, performing one round of the Blake2b compression function.
 ///
 /// `Blake2bRound` operates on arrays of sixteen `u64` elements. It takes three parameters: `index`, `state`, and

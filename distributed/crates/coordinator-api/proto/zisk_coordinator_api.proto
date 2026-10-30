@@ -105,6 +105,13 @@ enum ProofKind {
   PROOF_KIND_PLONK        = 3;
 }
 
+// Protocol of the final SNARK (PROOF_KIND_PLONK), which the workers' SNARK proving key sets up.
+enum SnarkProtocol {
+  SNARK_PROTOCOL_UNSPECIFIED = 0; // any: the workers'
+  SNARK_PROTOCOL_PLONK       = 1;
+  SNARK_PROTOCOL_PILFFLONK   = 2;
+}
+
 enum JobPhase {
   JOB_PHASE_UNSPECIFIED   = 0;
   JOB_PHASE_CONTRIBUTIONS = 1; // witness generation and partial contributions
@@ -225,6 +232,12 @@ message RegisterAggregationProgramResponse {
 
 message JobRequestMessage {
   JobKind job_kind = 1;
+  // Caller-defined key/value labels for the job; empty means none. At most 32
+  // keys, each up to 128 bytes, with values up to 1024 bytes. Accepted for
+  // prove, execute, wrap and aggregate_proofs jobs; setup and
+  // setup_aggregation_program reject any with INVALID_ARGUMENT. A coordinator
+  // that does not allow job metadata rejects it with JOB_METADATA_NOT_ALLOWED.
+  map<string, string> metadata = 2;
 }
 
 message JobResponse {
@@ -267,6 +280,8 @@ message ProveRequest {
   // Uses this 32-byte host randomness seed instead of drawing a fresh one. Rejected unless the
   // coordinator is configured to allow client random seeds.
   optional bytes            random_seed   = 6;
+  // For a PROOF_KIND_PLONK proof: the job is refused unless the workers' SNARK is of it.
+  optional SnarkProtocol    snark_protocol = 7;
 }
 
 message ProveResponse {
@@ -278,6 +293,8 @@ message WrapRequest {
   Proof                     proof        = 1;
   ProofKind                 proof_dest   = 2;
   optional google.protobuf.Timestamp wrap_timeout = 3;
+  // For a PROOF_KIND_PLONK proof_dest: the job is refused unless the workers' SNARK is of it.
+  optional SnarkProtocol    snark_protocol = 4;
 }
 
 message WrapResponse {

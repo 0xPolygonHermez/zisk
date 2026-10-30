@@ -13,6 +13,9 @@ use crate::{
     REGS_IN_MAIN_TO, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
     STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR, ZISKLIB_ROM_ADDR,
 };
+use crate::{
+    zisk_ops::blake2b_gap_is_provable, BLAKE2B_RD_CHAIN, BLAKE2B_ROUND_MASK, BLAKE2B_WR_CHAIN,
+};
 
 /// Last register held in the main trace; the asm keeps a `reg_N` slot for r0..=LAST_REG.
 const LAST_REG: u64 = REGS_IN_MAIN_TO as u64;
@@ -680,6 +683,7 @@ impl ZiskRom2Asm {
         *code += ".comm MEM_MOPS_BASE, 8, 8\n";
         *code += ".comm MEM_CHUNK_ADDRESS, 8, 8\n";
         *code += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
+        *code += ".comm MEM_BLAKE2B_CHAIN, 8, 8\n";
         *code += ".comm MEM_RSP, 8, 8\n";
         *code += ".comm MEM_FREE_INPUT, 8, 8\n";
         if ctx.precompile_results() {
@@ -5285,21 +5289,49 @@ impl ZiskRom2Asm {
                     ctx.b.string_value,
                     ctx.comment_str("rsi = b = input address")
                 );
-                *code += &format!(
-                    "\tmov rdx, {} {}\n",
+                // The Rust path asserts this per execution; generated code would run it unchecked
+                assert!(
+                    blake2b_gap_is_provable(inst.jmp_offset1 as u64),
+                    "[blake2b] static argument 0x{:x} has an unprovable gap at PC:0x{:08X}",
                     inst.jmp_offset1,
-                    ctx.comment(format!("rdx = index = {}", inst.jmp_offset1))
+                    ctx.pc
                 );
+                let round = inst.jmp_offset1 as u64 & BLAKE2B_ROUND_MASK;
+                *code += &format!(
+                    "\tmov rdx, {round} {}\n",
+                    ctx.comment(format!("rdx = index = {round}"))
+                );
+
+                // A chained round neither reads nor writes its state and m (they come from the
+                // previous round and go to the next one); the minimal trace logs its input only
+                // until the chunk has it, i.e. until a round that hands its state on
+                let rd_chain = inst.jmp_offset1 as u64 & BLAKE2B_RD_CHAIN != 0;
+                let wr_chain = inst.jmp_offset1 as u64 & BLAKE2B_WR_CHAIN != 0;
 
                 // Save data into mem_reads: the index first, then the state and the input
                 if ctx.minimal_trace() {
+                    let logged = format!("pc_{:x}_blake2b_chain_cached", ctx.pc);
+                    if rd_chain {
+                        *code += "\tcmp qword ptr [MEM_BLAKE2B_CHAIN], 0\n";
+                        *code += &format!("\tjne {logged}\n");
+                    }
                     Self::precompiled_save_static_arg_mem_reads(ctx, code, inst.jmp_offset1);
                     Self::precompiled_save_ab_mem_reads(ctx, code, 16, 16);
+                    if rd_chain {
+                        *code += &format!("{logged}:\n");
+                    }
+                    if wr_chain {
+                        *code += "\tmov qword ptr [MEM_BLAKE2B_CHAIN], 1\n";
+                    }
                 }
 
                 // Save memory operations into mem_reads
-                if ctx.mem_op() {
-                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 16, 16, 16);
+                if ctx.mem_op() && !rd_chain {
+                    Self::mem_op_array(ctx, code, "rdi", false, 16);
+                    Self::mem_op_array(ctx, code, "rsi", false, 16);
+                }
+                if ctx.mem_op() && !wr_chain {
+                    Self::mem_op_array(ctx, code, "rdi", true, 16);
                 }
 
                 // Get result from precompile results data
@@ -8682,6 +8714,7 @@ impl ZiskRom2Asm {
 
         if ctx.minimal_trace() {
             *code += &ctx.full_line_comment("Write chunk start data".to_string());
+            *code += "\tmov qword ptr [MEM_BLAKE2B_CHAIN], 0\n"; // the chunk has no chained state
 
             // Write chunk.start.pc
             *code += &format!(

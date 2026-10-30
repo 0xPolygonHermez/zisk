@@ -52,7 +52,7 @@ pub struct ServiceConfig {
 ///
 /// | Job phase                              | Config field                    | Default |
 /// |----------------------------------------|---------------------------------|---------|
-/// | `Execution`                            | `execution_timeout_seconds`     | 300 s   |
+/// | An execution-only job                  | `execution_timeout_seconds`     | 300 s   |
 /// | `Contributions` / `ContributionsInputsStream` / `ContributionsHintsStream` | `phase1_timeout_seconds` | 300 s |
 /// | `Prove`                                | `phase2_timeout_seconds`        | 600 s   |
 /// | `Aggregate`                            | `phase3_timeout_seconds`        | 100 s   |
@@ -84,7 +84,8 @@ pub struct CoordinatorConfig {
     pub max_workers_per_job: u32,
     /// Maximum number of workers the coordinator will accept (across all jobs).
     pub max_total_workers: u32,
-    /// Timeout for the Execution phase. Default: 300s.
+    /// Timeout for an execution-only job, which runs in the Contributions phase.
+    /// Default: 300s.
     pub execution_timeout_seconds: u64,
     /// Timeout for Phase 1: Contributions. Default: 300s.
     pub phase1_timeout_seconds: u64,
@@ -130,6 +131,10 @@ pub struct CoordinatorConfig {
     /// craft worst-case inputs (e.g. hash collisions). Keep it off when clients are not trusted;
     /// jobs that carry a seed are then rejected. Default: false.
     pub allow_client_random_seed: bool,
+    /// Accept caller-defined metadata (key/value labels) on job requests. Turn it off on
+    /// installations that must not take it; jobs that carry metadata are then rejected.
+    /// Default: true.
+    pub allow_job_metadata: bool,
 }
 
 impl Config {
@@ -172,7 +177,8 @@ impl Config {
             .set_default("coordinator.default_compute_units", 0)?
             .set_default("coordinator.min_compute_units", 0)?
             .set_default("coordinator.reconnect_grace_period_ms", 500_u64)?
-            .set_default("coordinator.allow_client_random_seed", false)?;
+            .set_default("coordinator.allow_client_random_seed", false)?
+            .set_default("coordinator.allow_job_metadata", true)?;
 
         if let Some(path) = config_file {
             builder = builder.add_source(config::File::with_name(&path));

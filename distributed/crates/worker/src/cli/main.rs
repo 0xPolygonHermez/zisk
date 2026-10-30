@@ -25,6 +25,10 @@ struct Cli {
     #[arg(long)]
     compute_capacity: Option<u32>,
 
+    /// Do not report host and process telemetry to the coordinator (overrides config file)
+    #[arg(long)]
+    no_telemetry: bool,
+
     /// Path to configuration file
     #[arg(
         long,
@@ -98,15 +102,19 @@ struct Cli {
     #[clap(long, default_value_t = false)]
     pub cpu_mops: bool,
 
-    #[clap(short = 'p', long, default_value_t = false)]
-    pub plonk: bool,
+    /// Prove final SNARKs, of whichever protocol the SNARK proving key is set up for
+    #[clap(short = 'p', long, alias = "plonk", default_value_t = false)]
+    pub snark: bool,
 
-    #[clap(short = 'P', long, default_value_t = false)]
-    pub preload_plonk: bool,
+    /// Load the SNARK proving key at startup. Only with --snark
+    #[clap(short = 'P', long, alias = "preload-plonk", default_value_t = false)]
+    pub preload_snark: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    zisk_worker::telemetry::mark_process_start();
+    zisk_worker::stop::stop_on_signals()?;
     let cli = Cli::parse();
 
     let worker_config = WorkerServiceConfig::load(
@@ -114,6 +122,7 @@ async fn main() -> Result<()> {
         cli.coordinator_url,
         cli.worker_id,
         cli.compute_capacity,
+        cli.no_telemetry,
     )
     .await?;
 
@@ -143,10 +152,10 @@ async fn main() -> Result<()> {
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,
         minimal_memory: cli.minimal_memory,
-        preload_plonk: cli.preload_plonk,
+        preload_snark: cli.preload_snark,
         gpu,
         cpu_mops,
-        plonk: cli.plonk,
+        snark: cli.snark,
     };
 
     let prover_config = ProverConfig::load(prover_config_dto)?;
@@ -155,26 +164,10 @@ async fn main() -> Result<()> {
 
     if prover_config.emulator {
         let mut worker = WorkerNode::<Emu>::new_emu(worker_config, prover_config).await?;
-        run_with_signals(worker.run()).await
+        worker.run().await
     } else {
         let mut worker = WorkerNode::<Asm>::new_asm(worker_config, prover_config).await?;
-        run_with_signals(worker.run()).await
-    }
-}
-
-async fn run_with_signals(fut: impl std::future::Future<Output = Result<()>>) -> Result<()> {
-    use tokio::signal::unix::{signal, SignalKind};
-    let mut sigterm = signal(SignalKind::terminate())?;
-    tokio::select! {
-        res = fut => res,
-        _ = tokio::signal::ctrl_c() => {
-            tracing::info!("Received SIGINT, shutting down gracefully");
-            Ok(())
-        }
-        _ = sigterm.recv() => {
-            tracing::info!("Received SIGTERM, shutting down gracefully");
-            Ok(())
-        }
+        worker.run().await
     }
 }
 

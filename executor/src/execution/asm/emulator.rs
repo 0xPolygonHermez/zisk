@@ -151,7 +151,11 @@ impl EmulatorAsm {
 
         stats_end!(stats, &_write_scope);
 
-        // Spawn the MO + RH runner threads. RH only on the rank 0, the one that computes the ROM histogram.
+        // Spawn the MO + RH runner threads. RH only on the rank 0, the one that computes the
+        // ROM histogram, and only when its service is fed the hints: one that is not never
+        // finishes, so its runner could not be joined. Its service goes unfed only on a
+        // process that computes no witness, which never reads the histogram.
+        let has_rom_sm = has_rom_sm && asm_resources.rom_histogram_is_fed();
         let supervisor =
             AsmRunnerSupervisor::spawn_on(&asm_resources, self.chunk_size, has_rom_sm, stats);
 

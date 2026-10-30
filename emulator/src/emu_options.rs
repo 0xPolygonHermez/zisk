@@ -297,6 +297,10 @@ pub struct EmuOptions {
     /// traces).
     #[clap(skip)]
     pub random_seed: Option<RandomSeed>,
+    /// Print the guest's diagnostic text (`write_log`, zkvm_io.h) to stdout. Without it the
+    /// text is not printed; the execution is the same either way.
+    #[clap(long, default_value = "false")]
+    pub write_log: bool,
     /// In mode fast, without stats, show coverage steps consumed without stats.
     #[clap(long, default_value = "false")]
     pub steps: bool,
@@ -404,6 +408,7 @@ impl Default for EmuOptions {
             disasm: None,
             max_input_mem: MAX_INPUT_SIZE,
             random_seed: None,
+            write_log: false,
             steps: false,
             with_progress: false,
             legacy_inputs: None,
@@ -429,6 +434,7 @@ impl fmt::Display for EmuOptions {
         writeln!(f, "OUTPUT: {:?}", self.output)?;
         writeln!(f, "LOG_OUTPUT: {:?}", self.log_output)?;
         writeln!(f, "LOG_OUTPUT_RISCOF: {:?}", self.log_output_riscof)?;
+        writeln!(f, "WRITE_LOG: {:?}", self.write_log)?;
         writeln!(f, "VERBOSE: {}", self.verbose)?;
         writeln!(f, "CHUNK_SIZE: {:?}", self.chunk_size)?;
         writeln!(f, "METRICS: {:?}", self.log_metrics)?;

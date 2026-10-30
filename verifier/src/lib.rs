@@ -6,8 +6,9 @@
 //! application's publics into q_verify: a verifier generated for a different
 //! application rejects valid ZisK proofs.
 //!
-//! Regenerate from `<key>/zisk/<stage>/<stage>.verifier.rs`, rewriting the
-//! `crate::` references the generator emits to `proofman_verifier::`.
+//! Regenerate with `tools/release-artifacts/regen.sh`, which installs each family's
+//! `<key>/zisk/<stage>/<stage>.verifier.rs` with the generator's `crate::` paths pointing
+//! at `proofman_verifier::`, and its keys with them.
 
 // The generated verifiers allocate and this crate is no_std.
 extern crate alloc;
@@ -27,6 +28,11 @@ pub mod poseidon2 {
     pub mod vadcop_final_compressed;
 }
 
+mod decode;
+pub mod keys;
 mod verifier;
 
+pub use decode::*;
+pub use keys::*;
+pub use proofman_verifier::VadcopFinalProof;
 pub use verifier::*;

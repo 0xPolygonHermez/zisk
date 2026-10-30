@@ -15,8 +15,9 @@ use crate::{
     ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck, InputStreamData,
     JobCancelled, NormalizeCircuit, ProgramVk, ProofList, ProofStark, ProveParams,
     ReconnectionAction, ReconnectionDirective, RunAggregateProofs, SetupAggregationProgram,
-    SetupProgram, Shutdown, StreamData, StreamPayload, StreamType, TaskType, WorkerError,
-    WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse,
+    SetupProgram, Shutdown, SnarkProtocol as GrpcSnarkProtocol, StreamData, StreamPayload,
+    StreamType, TaskType, WorkerError, WorkerExit, WorkerReconnectRequest, WorkerRegisterRequest,
+    WorkerRegisterResponse, WorkerTelemetry,
 };
 use zisk_cluster_common::*;
 
@@ -78,12 +79,45 @@ impl From<ProofStark> for AggProofData {
     }
 }
 
+impl From<Option<SnarkProtocol>> for GrpcSnarkProtocol {
+    fn from(protocol: Option<SnarkProtocol>) -> Self {
+        match protocol {
+            None => GrpcSnarkProtocol::None,
+            Some(SnarkProtocol::Plonk) => GrpcSnarkProtocol::Plonk,
+            Some(SnarkProtocol::Pilfflonk) => GrpcSnarkProtocol::Pilfflonk,
+        }
+    }
+}
+
+/// The SNARK protocol a worker reports. A value this build does not know, of a newer worker, is
+/// a protocol the coordinator cannot ask for: as no SNARK proving key.
+fn snark_protocol_from_proto(value: i32) -> Option<SnarkProtocol> {
+    match GrpcSnarkProtocol::try_from(value) {
+        Ok(GrpcSnarkProtocol::Plonk) => Some(SnarkProtocol::Plonk),
+        Ok(GrpcSnarkProtocol::Pilfflonk) => Some(SnarkProtocol::Pilfflonk),
+        Ok(GrpcSnarkProtocol::None) | Err(_) => None,
+    }
+}
+
 impl From<WorkerRegisterRequest> for WorkerRegisterRequestDto {
     fn from(req: WorkerRegisterRequest) -> Self {
         WorkerRegisterRequestDto {
             worker_id: req.worker_id.into(),
             compute_capacity: ComputeCapacity::from(req.compute_capacity.unwrap()),
             aggregation_arity: req.aggregation_arity,
+            snark_protocol: snark_protocol_from_proto(req.snark_protocol),
+            previous_exit: req.previous_exit.map(Into::into),
+        }
+    }
+}
+
+impl From<WorkerExit> for WorkerExitDto {
+    fn from(exit: WorkerExit) -> Self {
+        WorkerExitDto {
+            reason: exit.reason,
+            location: exit.location,
+            at_unix_seconds: exit.at_unix_seconds,
+            rank: exit.rank,
         }
     }
 }
@@ -95,6 +129,7 @@ impl From<WorkerReconnectRequest> for WorkerReconnectRequestDto {
             compute_capacity: ComputeCapacity::from(req.compute_capacity.unwrap()),
             last_known_job_id: req.last_known_job_id.map(JobId::from),
             aggregation_arity: req.aggregation_arity,
+            snark_protocol: snark_protocol_from_proto(req.snark_protocol),
         }
     }
 }
@@ -308,8 +343,8 @@ impl From<ExecuteTaskRequestDto> for ExecuteTaskRequest {
             job_id: dto.job_id.into(),
             task_type: task_type as i32,
             params: Some(params),
-            // Domain's ordered map into the proto `map<string, string>` (a HashMap);
-            // absence (`None`) collapses to an empty map on the wire.
+            // Deprecated on both sides; the coordinator leaves it empty.
+            #[allow(deprecated)]
             metadata: dto.metadata.unwrap_or_default().into_iter().collect(),
         }
     }
@@ -516,7 +551,49 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
 
 impl From<HeartbeatAck> for HeartbeatAckDto {
     fn from(message: HeartbeatAck) -> Self {
-        HeartbeatAckDto { worker_id: WorkerId::from(message.worker_id) }
+        HeartbeatAckDto {
+            worker_id: WorkerId::from(message.worker_id),
+            telemetry: message.telemetry.map(Into::into),
+        }
+    }
+}
+
+impl From<WorkerTelemetry> for WorkerTelemetryDto {
+    fn from(t: WorkerTelemetry) -> Self {
+        WorkerTelemetryDto {
+            uptime_seconds: t.uptime_seconds,
+            start_to_registration_seconds: t.start_to_registration_seconds,
+            start_to_ready_seconds: t.start_to_ready_seconds,
+            processes: t
+                .processes
+                .into_iter()
+                .map(|p| ProcessMemoryDto {
+                    role: p.role,
+                    rss_bytes: p.rss_bytes,
+                    anon_bytes: p.anon_bytes,
+                    file_bytes: p.file_bytes,
+                    shmem_bytes: p.shmem_bytes,
+                })
+                .collect(),
+            shared_memory: t
+                .shared_memory
+                .into_iter()
+                .map(|m| SharedMemoryDto {
+                    kind: m.kind,
+                    owner_alive: m.owner_alive,
+                    bytes: m.bytes,
+                    segments: m.segments,
+                })
+                .collect(),
+            cgroup: t.cgroup.map(|c| CgroupUsageDto {
+                memory_current_bytes: c.memory_current_bytes,
+                memory_peak_bytes: c.memory_peak_bytes,
+                anon_bytes: c.anon_bytes,
+                file_bytes: c.file_bytes,
+                shmem_bytes: c.shmem_bytes,
+                cpu_seconds: c.cpu_seconds,
+            }),
+        }
     }
 }
 
@@ -581,5 +658,47 @@ impl From<WorkerError> for WorkerErrorDto {
             job_id: JobId::from(error.job_id),
             error_message: error.error_message,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PROTOCOLS: [Option<SnarkProtocol>; 3] =
+        [None, Some(SnarkProtocol::Plonk), Some(SnarkProtocol::Pilfflonk)];
+
+    fn register(snark_protocol: i32) -> WorkerRegisterRequest {
+        WorkerRegisterRequest {
+            worker_id: "w0".to_string(),
+            compute_capacity: Some(GrpcComputeCapacity { compute_units: 1 }),
+            aggregation_arity: 2,
+            previous_exit: None,
+            snark_protocol,
+        }
+    }
+
+    fn reconnect(snark_protocol: i32) -> WorkerReconnectRequest {
+        WorkerReconnectRequest {
+            worker_id: "w0".to_string(),
+            compute_capacity: Some(GrpcComputeCapacity { compute_units: 1 }),
+            last_known_job_id: None,
+            aggregation_arity: 2,
+            snark_protocol,
+        }
+    }
+
+    #[test]
+    fn a_worker_snark_protocol_round_trips() {
+        for protocol in PROTOCOLS {
+            let wire = i32::from(GrpcSnarkProtocol::from(protocol));
+            assert_eq!(WorkerRegisterRequestDto::from(register(wire)).snark_protocol, protocol);
+            assert_eq!(WorkerReconnectRequestDto::from(reconnect(wire)).snark_protocol, protocol);
+        }
+    }
+
+    #[test]
+    fn an_unknown_snark_protocol_is_none() {
+        assert_eq!(WorkerRegisterRequestDto::from(register(99)).snark_protocol, None);
     }
 }

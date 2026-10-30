@@ -3,10 +3,11 @@ use std::path::PathBuf;
 use anyhow::Result;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::{Proof, ProofKind};
+use zisk_common::Proof;
 use zisk_prover_backend::{BackendProverOpts, ProverClientBuilder};
 
 use crate::common::resolve_output_path;
+use crate::proof::{ensure_snark_key, select_wrap_kind, wrap_kind_label, SnarkArgs};
 use crate::ux::{print_banner, print_banner_command};
 
 #[derive(clap::Args)]
@@ -22,16 +23,15 @@ pub(crate) struct WrapCmd {
     proving_key: Option<PathBuf>,
 
     /// Path to a precomputed SNARK proving key
-    #[arg(short = 'w', long)]
-    proving_key_plonk: Option<PathBuf>,
+    #[arg(short = 'w', long, alias = "proving-key-plonk")]
+    proving_key_snark: Option<PathBuf>,
 
-    /// Smaller STARK proof with reduced size. Mutually exclusive with --plonk
-    #[arg(short = 'c', long, conflicts_with = "plonk")]
+    /// Smaller STARK proof with reduced size. Mutually exclusive with --plonk and --pilfflonk
+    #[arg(short = 'c', long, conflicts_with_all = ["plonk", "pilfflonk"])]
     minimal: bool,
 
-    /// SNARK proof, of the protocol of the proving key (pilfflonk, or PLONK). Mutually exclusive with --minimal. Only a PLONK proof can be exported for the on-chain EVM verifier for now
-    #[arg(long, conflicts_with = "minimal")]
-    plonk: bool,
+    #[command(flatten)]
+    snark: SnarkArgs,
 
     /// Output file path
     #[arg(short = 'o', long)]
@@ -57,15 +57,20 @@ impl WrapCmd {
             anyhow::anyhow!("Failed to load Proof from file {}: {}", self.proof.display(), e)
         })?;
 
+        let proof_kind = select_wrap_kind(self.snark.protocol(), self.minimal)?;
+        if let Some(protocol) = self.snark.protocol() {
+            ensure_snark_key(protocol, self.proving_key_snark.as_ref())?;
+        }
+
         let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
-        if self.plonk {
-            prover_options = prover_options.plonk(true);
+        if self.snark.protocol().is_some() {
+            prover_options = prover_options.snark(true);
         }
         if let Some(ref path) = self.proving_key {
             prover_options = prover_options.proving_key(path.clone());
         }
-        if let Some(ref path) = self.proving_key_plonk {
-            prover_options = prover_options.proving_key_plonk(path.clone());
+        if let Some(ref path) = self.proving_key_snark {
+            prover_options = prover_options.proving_key_snark(path.clone());
         }
         #[cfg(not(feature = "cpu-only"))]
         if self.gpu {
@@ -75,14 +80,6 @@ impl WrapCmd {
         let prover =
             ProverClientBuilder::new().emu().with_prover_options(prover_options).build()?;
 
-        let proof_kind = if self.plonk {
-            ProofKind::Plonk
-        } else if self.minimal {
-            ProofKind::VadcopFinalMinimal
-        } else {
-            anyhow::bail!("Either --plonk or --minimal must be specified.");
-        };
-
         let result = prover.wrap_proof(&zisk_proof, proof_kind).run()?;
 
         let output_file = resolve_output_path(self.output.clone(), None::<&str>);
@@ -90,8 +87,7 @@ impl WrapCmd {
             anyhow::anyhow!("Failed to save proof to {}: {}", output_file.display(), e)
         })?;
 
-        let kind_label = if self.plonk { "SNARK" } else { "minimal" };
-        info!("Final {} proof generated.", kind_label);
+        info!("Final {} proof generated.", wrap_kind_label(proof_kind));
 
         Ok(())
     }

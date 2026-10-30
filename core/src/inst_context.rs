@@ -130,6 +130,12 @@ pub struct InstContext {
     /// this context, i.e. as long as the execution it belongs to
     pub keccakf_cache: KeccakfCache,
 
+    /// Output state and m of the last blake2b round handed to the chain, valid once cached in the
+    /// current minimal-trace chunk, and the step of the last blake2b round
+    pub blake2b_chain: [u64; 32],
+    pub blake2b_chain_cached: bool,
+    pub blake2b_step: u64,
+
     /// DataExt 64 bytes size. With this information it is possible to specify which variable part of the minimal trace
     /// is associated with the current instruction. Used by DMA precompile.
     pub data_ext_len: usize,
@@ -145,6 +151,10 @@ pub struct InstContext {
     /// Host randomness seed (256 bits, as little-endian words), returned by the
     /// FCALL_RANDOM_SEED_ID fcall. Provided with each execution; `None` makes that fcall fail
     pub random_seed: Option<[u64; RANDOM_SEED_WORDS]>,
+
+    /// Print the text of every write_log call site (see `opc_write_log`). Only for a run that
+    /// holds the memory, which the text is read from
+    pub write_log: bool,
 }
 
 /// RisK instruction context implementation
@@ -170,11 +180,15 @@ impl InstContext {
             precompiled: PrecompiledInstContext::default(),
             fcall: FcallInstContext::default(),
             keccakf_cache: KeccakfCache::default(),
+            blake2b_chain: [0; 32],
+            blake2b_chain_cached: false,
+            blake2b_step: 0,
             data_ext_len: 0,
             extended_arg: 0,
             stats_hint: 0,
             input_len: 0,
             random_seed: None,
+            write_log: false,
         }
     }
 

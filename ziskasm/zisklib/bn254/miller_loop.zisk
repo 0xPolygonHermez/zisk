@@ -44,22 +44,7 @@ u64 ML_ILQ2[1] = 0
 zisklib_ml_dbl_coeffs_bn254:
 	fcall_param(16, r10)
 	fcall(FCALL_BN254_TWIST_DBL_LINE_COEFFS, 0)
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 8]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 16]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 24]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 32]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 40]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 48]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 56]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 64]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 72]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 80]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 88]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 96]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 104]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 112]
-	copyb(0, [FREE_INPUT]) -> [ML_LAMMU + 120]
+	dma_inputcpy(ML_LAMMU, 128) -> r5
 	ret
 
 ; void zisklib_ml_add_coeffs_bn254(const u64* r, const u64* qp)  [r10,r11] -> ML_LAMMU
@@ -67,22 +52,7 @@ zisklib_ml_add_coeffs_bn254:
 	fcall_param(16, r10)
 	fcall_param(16, r11)
 	fcall(FCALL_BN254_TWIST_ADD_LINE_COEFFS, 0)
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 8]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 16]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 24]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 32]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 40]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 48]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 56]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 64]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 72]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 80]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 88]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 96]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 104]
-	fcall_get(0, [FREE_INPUT]) -> [ML_LAMMU + 112]
-	copyb(0, [FREE_INPUT]) -> [ML_LAMMU + 120]
+	dma_inputcpy(ML_LAMMU, 128) -> r5
 	ret
 
 ; void zisklib_ml_line_eval_bn254()  uses ML_LAMMU, ML_XPP, ML_NEGYPP -> ML_L
@@ -429,9 +399,6 @@ zisklib_ml_batch_push_bn254:
 	copyb(0, r10) -> [MLB_SP]
 	copyb(0, r11) -> [MLB_SQ]
 	copyb(0, [MLB_N]) -> r6
-	eq(r6, 8), j(mlb_push_full)
-mlb_push_add:
-	copyb(0, [MLB_N]) -> r6
 	sll(r6, 3) -> r6
 	copyb(0, MLB_BP) -> r7
 	add(r7, r6) -> r7
@@ -444,11 +411,14 @@ mlb_push_add:
 	copyb(0, [MLB_N]) -> r6
 	add(r6, 1) -> r6
 	copyb(0, r6) -> [MLB_N]
+	; fold as soon as 8 pairs are pending, so slot [MLB_N] is always free to reuse
+	eq(r6, 8), j(mlb_push_full)
 	pop r1
 	ret
 mlb_push_full:
 	call mlb_fold
-	jump(mlb_push_add)
+	pop r1
+	ret
 
 ; void zisklib_ml_batch_finish_bn254(u64* dst)  [r10=dst]
 zisklib_ml_batch_finish_bn254:

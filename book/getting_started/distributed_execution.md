@@ -458,6 +458,14 @@ Edit `/etc/zisk/worker.toml`:
 **`[logging]`** — same shape as the coordinator's `[logging]`
 table.
 
+**`[telemetry]`** — what the worker tells the coordinator about its host
+(see [Monitoring](#monitoring)).
+
+| Setting            | Default | Notes                                                                                 |
+| ---                | ---     | ---                                                                                   |
+| `enabled`          | `true`  | Report host and process telemetry with the heartbeat. CLI: `--no-telemetry` turns it off. |
+| `interval_seconds` | `10`    | Seconds between two reports. The heartbeat goes this often too (at most every 30 s).  |
+
 After editing:
 
 * In Linux:
@@ -509,4 +517,90 @@ to their advertised capacity.
    ││worker ││││worker ││││worker ││
    │└───────┘││└───────┘││└───────┘│
    └─────────┘└─────────┘└─────────┘
+```
+
+## Monitoring
+
+The coordinator serves everything a dashboard needs on its metrics port
+(`9090` by default), at `/metrics`, in the Prometheus text format:
+
+- **Jobs and proofs:** jobs by kind and outcome, each proof's phases,
+  steps, costs and input size, the executor's breakdown, the time it took
+  each worker, and the last jobs, events and failures.
+- **Workers:** each worker's state, registrations, disconnections,
+  recoveries, program setups, and the runs that ended themselves (with
+  where a panic happened).
+- **Worker hosts:** what each worker reports about its host with its
+  heartbeat: its processes' memory by MPI rank and assembly service, the
+  ZisK shared memory on the host, its cgroup's memory and CPU time, and
+  its start-up times.
+
+The coordinator records them as things happen, outside the workers'
+proving, and reads the rest from its state when scraped. The full list,
+with labels, is at the top of
+[`coordinator-server/src/metrics.rs`](https://github.com/0xPolygonHermez/zisk/blob/main/distributed/crates/coordinator-server/src/metrics.rs).
+
+Some series carry one sample per proof, with the time the proof ended,
+and each scrape takes the next one: point a single Prometheus at a
+coordinator, or two would split them.
+
+### Worker telemetry
+
+A worker reports its host only to the coordinator it registers with, so
+the coordinator's `/metrics` covers every worker, including those on hosts
+you cannot reach. A thread samples `/proc`, `/sys/fs/cgroup` and
+`/dev/shm` every `telemetry.interval_seconds` (Linux only; elsewhere the
+worker reports its start-up times alone). The coordinator keeps what it
+receives within fixed bounds, shows it only while the worker is
+connected, and never acts on it.
+
+To report nothing, start the worker with `--no-telemetry`, or set:
+
+```toml
+[telemetry]
+enabled = false
+```
+
+### Dashboards
+
+[`distributed/deploy/`](https://github.com/0xPolygonHermez/zisk/tree/main/distributed/deploy)
+holds a Prometheus configuration, its recording rules, and six Grafana
+dashboards:
+
+| Dashboard               | Shows                                                                                              |
+| ---                     | ---                                                                                                |
+| **Live**                | The cluster now: each worker's state, the running job, proof-time statistics, the last jobs, failures and events, the coordinator's host. |
+| **Executions & proofs** | Totals, throughput, each proof's phases, the executor's breakdown, costs, proof time against input size and steps, each worker's phases, program setups. |
+| **Recovery**            | Cancellations, recoveries and how long they took, worker start-up times, exits and panics.          |
+| **Resources**           | Each worker's memory by process and by type, the ZisK shared memory, CPU, the host's memory.       |
+| **GPUs**                | Each GPU's use, memory, power, temperature, clocks and throttling.                                 |
+| **Host**                | One host: CPU (per CPU and per socket), memory and NUMA, pressure, disks, network, hardware health. |
+
+The host and GPU panels read
+[node_exporter](https://github.com/prometheus/node_exporter) and
+[nvidia_gpu_exporter](https://github.com/utkuozdemir/nvidia_gpu_exporter),
+which run on each host next to the worker. Give every scrape target a
+`cluster` label and a `host` label: the dashboards' selectors filter on
+them. The Host dashboard's per-socket and NUMA panels need node_exporter's
+`--collector.cpu.info` and `--collector.meminfo_numa`, and its failed-units
+panels `--collector.systemd`.
+
+The docker-compose stack starts all of it:
+
+```bash
+docker compose -f distributed/deploy/docker/compose.yaml up --scale worker=4
+# with the GPU exporter (needs the NVIDIA container toolkit)
+docker compose -f distributed/deploy/docker/compose.yaml --profile gpu up --scale worker=4
+```
+
+Grafana is then at `http://localhost:3000` and Prometheus at
+`http://localhost:9090`.
+
+The dashboards are generated by
+`distributed/deploy/grafana/generator/zisk_dashboards.py`, together with
+the recording rules. To change a dashboard, change the script and run it
+again:
+
+```bash
+python3 distributed/deploy/grafana/generator/zisk_dashboards.py
 ```

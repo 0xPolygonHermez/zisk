@@ -45,6 +45,7 @@
 //! # }
 //! ```
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use crate::Result;
@@ -132,14 +133,15 @@ impl Client for ZiskClient {
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ProveResult>> {
         match &self.inner {
-            Inner::Embedded(c) => {
-                c.run_prove(program, stdin, hints, seed, executor, proof_kind, timeout, subs)
-            }
-            Inner::Remote(c) => {
-                c.run_prove(program, stdin, hints, seed, executor, proof_kind, timeout, subs)
-            }
+            Inner::Embedded(c) => c.run_prove(
+                program, stdin, hints, seed, executor, proof_kind, timeout, subs, metadata,
+            ),
+            Inner::Remote(c) => c.run_prove(
+                program, stdin, hints, seed, executor, proof_kind, timeout, subs, metadata,
+            ),
         }
     }
 
@@ -152,12 +154,15 @@ impl Client for ZiskClient {
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ExecuteResult>> {
         match &self.inner {
             Inner::Embedded(c) => {
-                c.run_execute(program, stdin, hints, seed, executor, timeout, subs)
+                c.run_execute(program, stdin, hints, seed, executor, timeout, subs, metadata)
             }
-            Inner::Remote(c) => c.run_execute(program, stdin, hints, seed, executor, timeout, subs),
+            Inner::Remote(c) => {
+                c.run_execute(program, stdin, hints, seed, executor, timeout, subs, metadata)
+            }
         }
     }
 
@@ -169,14 +174,27 @@ impl Client for ZiskClient {
         override_program_vk: Option<ProgramVK>,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ProveResult>> {
         match &self.inner {
-            Inner::Embedded(c) => {
-                c.run_wrap(proof, proof_kind, override_publics, override_program_vk, timeout, subs)
-            }
-            Inner::Remote(c) => {
-                c.run_wrap(proof, proof_kind, override_publics, override_program_vk, timeout, subs)
-            }
+            Inner::Embedded(c) => c.run_wrap(
+                proof,
+                proof_kind,
+                override_publics,
+                override_program_vk,
+                timeout,
+                subs,
+                metadata,
+            ),
+            Inner::Remote(c) => c.run_wrap(
+                proof,
+                proof_kind,
+                override_publics,
+                override_program_vk,
+                timeout,
+                subs,
+                metadata,
+            ),
         }
     }
 
@@ -209,6 +227,7 @@ impl Client for ZiskClient {
         root_c_recurser_agg: Option<[u64; 4]>,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ProveResult>> {
         match &self.inner {
             Inner::Embedded(c) => c.run_aggregate_proofs(
@@ -220,6 +239,7 @@ impl Client for ZiskClient {
                 root_c_recurser_agg,
                 timeout,
                 subs,
+                metadata,
             ),
             Inner::Remote(c) => c.run_aggregate_proofs(
                 agg,
@@ -230,6 +250,7 @@ impl Client for ZiskClient {
                 root_c_recurser_agg,
                 timeout,
                 subs,
+                metadata,
             ),
         }
     }
@@ -318,6 +339,9 @@ impl ZiskClient {
     }
 
     /// Submit a wrap/convert proof request.
+    ///
+    /// A wrapped aggregate verifies only under its recurser's verkey, which the caller passes
+    /// with [`ProveResult::with_setup_vk`]: the one the proof carries is not trusted.
     #[must_use]
     pub fn wrap_proof<'a>(
         &'a self,

@@ -80,8 +80,6 @@ impl EmbeddedClient {
             was_setup_with_hints,
         )?;
 
-        prover.begin_job()?;
-
         // Inputs are validated above; the dispatch only routes valid requests.
         let output = match (prover.as_ref(), executor) {
             (EmbeddedProver::Emu(p), ExecutorKind::Emulator) => {
@@ -93,19 +91,21 @@ impl EmbeddedClient {
                 p.execute_emulator(program, s.into_inner(), seed).map_err(SdkError::backend)?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => {
+                // The streams go on the job, so they are set up while it holds the shared memory.
+                let job = p.begin_job(program).map_err(SdkError::backend)?;
                 if let Some(hints) = hints {
                     match hints {
                         HintsSource::Hints(h) => {
-                            p.register_hints_stream(h.into_inner()).map_err(SdkError::backend)?;
+                            job.register_hints_stream(h.into_inner()).map_err(SdkError::backend)?;
                         }
                         HintsSource::Stream(stream) => {
                             stream.start()?;
                             let uri = stream.uri().to_string();
                             let source = StreamSource::from_uri(&uri).map_err(SdkError::backend)?;
-                            p.register_hints_stream(source).map_err(SdkError::backend)?;
+                            job.register_hints_stream(source).map_err(SdkError::backend)?;
                         }
                     }
-                    p.execute(program, zisk_common::io::ZiskStdin::new(), seed)
+                    job.execute(zisk_common::io::ZiskStdin::new(), seed)
                         .map_err(SdkError::backend)?
                 } else {
                     match stdin {
@@ -113,12 +113,12 @@ impl EmbeddedClient {
                             stream.start()?;
                             let uri = stream.uri().to_string();
                             let source = StreamSource::from_uri(&uri).map_err(SdkError::backend)?;
-                            p.register_inputs_stream(source).map_err(SdkError::backend)?;
-                            p.execute(program, zisk_common::io::ZiskStdin::new(), seed)
+                            job.register_inputs_stream(source).map_err(SdkError::backend)?;
+                            job.execute(zisk_common::io::ZiskStdin::new(), seed)
                                 .map_err(SdkError::backend)?
                         }
                         InputSource::Stdin(s) => {
-                            p.execute(program, s.into_inner(), seed).map_err(SdkError::backend)?
+                            job.execute(s.into_inner(), seed).map_err(SdkError::backend)?
                         }
                     }
                 }

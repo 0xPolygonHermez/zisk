@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let stream = ZiskStream::unix();
     stream.write(&(input.len() as u64));
 
-    // One-time preprocessing: generates the program setup and the program vertification key
+    // One-time preprocessing: generates the program setup and the program verification key
     client.setup(&PROGRAM).run_sync()?;
 
     // Launch the guest execution to begin generating the ZK proof

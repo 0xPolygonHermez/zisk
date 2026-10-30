@@ -91,8 +91,8 @@ template Main(nPublics) {
     var programVKs[{{ n_programs }}][4] = [{% for vk in program_vks %}[{{ vk[0] }},{{ vk[1] }},{{ vk[2] }},{{ vk[3] }}]{% if not loop.last %},{% endif %}{% endfor %}];
 
     // Membership: isRegistered = 1 - ∏(1 - eq[k]). Product form (not Σ eq[k])
-    // preserves circom 2.1's {binary} tag (addition strips it). Soundness
-    // assumes programVKs[] has no duplicates (enforced upstream).
+    // preserves circom 2.1's {binary} tag (addition strips it). Correct with
+    // duplicates; only the allow-list index below needs unique entries (validate()).
     signal {binary} eqA[{{ n_programs }}];
     signal {binary} eqB[{{ n_programs }}];
     signal {binary} noMatchA[{{ n_programs }}];
@@ -113,6 +113,19 @@ template Main(nPublics) {
     // Claimed leaf must be registered (else unsatisfiable).
     isFinalA * (1 - isRegisteredProgramA) === 0;
     isFinalB * (1 - isRegisteredProgramB) === 0;
+{% if program_index %}
+
+    // -- Allow-list position of each leaf's program, for NormalizePublics (VKs are unique); 0 on
+    //    an aggregate, whose programVK is its recursion domain, not a listed program.
+    var indexA = 0;
+    var indexB = 0;
+    for (var k = 1; k < {{ n_programs }}; k++) {
+        indexA += k * eqA[k];
+        indexB += k * eqB[k];
+    }
+    signal programIndexA <== isFinalA * indexA;
+    signal programIndexB <== isFinalB * indexB;
+{% endif %}
 {% endif %}
 
 {{ assign_stark_inputs_a }}
@@ -138,14 +151,26 @@ template Main(nPublics) {
     component normACmp = NormalizePublics({{ n_free }});
     normACmp.publics <== aPublics;
     normACmp.free_inputs <== freeInputsA;
-    signal normA[nPublics] <== normACmp.recurser_publics;
+{% if program_index %}    normACmp.programIndex <== programIndexA;
+{% endif %}    signal normA[nPublics] <== normACmp.recurser_publics;
     signal normFreeOutA[{{ n_free }}] <== normACmp.free_outputs;
 
     component normBCmp = NormalizePublics({{ n_free }});
     normBCmp.publics <== bPublics;
     normBCmp.free_inputs <== freeInputsB;
-    signal normB[nPublics] <== normBCmp.recurser_publics;
+{% if program_index %}    normBCmp.programIndex <== programIndexB;
+{% endif %}    signal normB[nPublics] <== normBCmp.recurser_publics;
     signal normFreeOutB[{{ n_free }}] <== normBCmp.free_outputs;
+{% elif program_index %}
+    component normACmp = NormalizePublics();
+    normACmp.publics <== aPublics;
+    normACmp.programIndex <== programIndexA;
+    signal normA[nPublics] <== normACmp.recurser_publics;
+
+    component normBCmp = NormalizePublics();
+    normBCmp.publics <== bPublics;
+    normBCmp.programIndex <== programIndexB;
+    signal normB[nPublics] <== normBCmp.recurser_publics;
 {% else %}
     signal normA[nPublics] <== NormalizePublics()(aPublics);
     signal normB[nPublics] <== NormalizePublics()(bPublics);

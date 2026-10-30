@@ -206,14 +206,7 @@ zubdiv_go:
 	fcall_param(4, ZUB_A0)              ; hint q, r = a / b, a % b
 	fcall_param(4, ZUB_B0)
 	fcall(FCALL_UINT256_DIV, 0)
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q0]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q1]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q2]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q3]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R0]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R1]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R2]
-	copyb(0, [FREE_INPUT]) -> [ZUBD_R3]
+	dma_inputcpy(ZUBD_Q0, 64) -> r5
 	arith256(0, ZUBD_HA)                ; dl:dh = q * b + r
 	eq([ZUB_A0], [ZUBD_DL0]), j(zubdiv_dl0)
 	jump(zubd_panic)
@@ -320,14 +313,7 @@ zubdivmod_go:
 	fcall_param(4, ZUB_A0)              ; hint q, r = a / b, a % b
 	fcall_param(4, ZUB_B0)
 	fcall(FCALL_UINT256_DIV, 0)
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q0]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q1]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q2]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q3]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R0]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R1]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R2]
-	copyb(0, [FREE_INPUT]) -> [ZUBD_R3]
+	dma_inputcpy(ZUBD_Q0, 64) -> r5
 	arith256(0, ZUBD_HA)                ; dl:dh = q * b + r
 	eq([ZUB_A0], [ZUBD_DL0]), j(zubdivmod_dl0)
 	jump(zubd_panic)
@@ -857,14 +843,7 @@ zubsdiv_core:
 	fcall_param(4, ZUB_A0)              ; hint q, r = a / b, a % b
 	fcall_param(4, ZUB_B0)
 	fcall(FCALL_UINT256_DIV, 0)
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q0]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q1]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q2]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q3]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R0]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R1]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R2]
-	copyb(0, [FREE_INPUT]) -> [ZUBD_R3]
+	dma_inputcpy(ZUBD_Q0, 64) -> r5
 	arith256(0, ZUBD_HA)                ; dl:dh = q * b + r
 	eq([ZUB_A0], [ZUBD_DL0]), j(zubsdiv_dl0)
 	jump(zubd_panic)
@@ -1064,14 +1043,7 @@ zubsdivmod_core:
 	fcall_param(4, ZUB_A0)              ; hint q, r = a / b, a % b
 	fcall_param(4, ZUB_B0)
 	fcall(FCALL_UINT256_DIV, 0)
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q0]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q1]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q2]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q3]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R0]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R1]
-	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R2]
-	copyb(0, [FREE_INPUT]) -> [ZUBD_R3]
+	dma_inputcpy(ZUBD_Q0, 64) -> r5
 	arith256(0, ZUBD_HA)                ; dl:dh = q * b + r
 	eq([ZUB_A0], [ZUBD_DL0]), j(zubsdivmod_dl0)
 	jump(zubd_panic)

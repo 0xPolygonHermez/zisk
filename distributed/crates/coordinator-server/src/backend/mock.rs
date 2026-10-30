@@ -58,7 +58,7 @@ struct MockState {
     received_chunks: HashMap<Uuid, Vec<Vec<u8>>>,
     /// Chunks received via `push_job_hints_input`, keyed by job_id. For test assertions.
     received_hints_chunks: HashMap<Uuid, Vec<Vec<u8>>>,
-    /// Metadata recorded at job submission (base or extended), keyed by job_id.
+    /// Metadata recorded at job submission, keyed by job_id.
     /// For test assertions.
     submit_metadata: HashMap<Uuid, std::collections::BTreeMap<String, String>>,
 }
@@ -100,8 +100,8 @@ impl MockBackend {
         self.state.lock().await.received_hints_chunks.get(&job_id).cloned().unwrap_or_default()
     }
 
-    /// Return the metadata recorded at submission for `job_id` (empty for a
-    /// base job, the supplied map for an extended one). For test assertions.
+    /// Return the metadata recorded at submission for `job_id` (empty when the
+    /// job carried none). For test assertions.
     pub async fn submit_metadata(
         &self,
         job_id: Uuid,
@@ -360,7 +360,7 @@ impl BackendService for MockBackend {
         Ok(recurser_id) // echoes id back without storing
     }
 
-    async fn submit_job_with_metadata(
+    async fn submit_job(
         &self,
         kind: DomainJobKind,
         metadata: Option<std::collections::BTreeMap<String, String>>,
@@ -754,12 +754,15 @@ mod tests {
         let b = MockBackend::default();
         let hash_id = b.register_guest_program(vec![0u8; 8]).await.unwrap();
         let job_id = b
-            .submit_job(DomainJobKind::Setup(DomainSetupRequest {
-                hash_id: hash_id.clone(),
-                program_name: hash_id,
-                with_hints: false,
-                emulator_only: false,
-            }))
+            .submit_job(
+                DomainJobKind::Setup(DomainSetupRequest {
+                    hash_id: hash_id.clone(),
+                    program_name: hash_id,
+                    with_hints: false,
+                    emulator_only: false,
+                }),
+                None,
+            )
             .await
             .unwrap()
             .job_id;
@@ -773,14 +776,18 @@ mod tests {
         let b = MockBackend::default();
         let hash_id = b.register_guest_program(vec![0u8; 8]).await.unwrap();
         let job_id = b
-            .submit_job(DomainJobKind::Prove(DomainProveRequest {
-                hash_id,
-                input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
-                hints: None,
-                random_seed: None,
-                proof_timeout: None,
-                proof_dest: DomainProofKind::Stark,
-            }))
+            .submit_job(
+                DomainJobKind::Prove(DomainProveRequest {
+                    hash_id,
+                    input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
+                    hints: None,
+                    random_seed: None,
+                    proof_timeout: None,
+                    proof_dest: DomainProofKind::Stark,
+                    snark_protocol: None,
+                }),
+                None,
+            )
             .await
             .unwrap()
             .job_id;
@@ -799,13 +806,16 @@ mod tests {
         let b = MockBackend::default();
         let hash_id = b.register_guest_program(vec![0u8; 8]).await.unwrap();
         let job_id = b
-            .submit_job(DomainJobKind::Execute(DomainExecuteRequest {
-                hash_id,
-                input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
-                hints: None,
-                random_seed: None,
-                execute_timeout: None,
-            }))
+            .submit_job(
+                DomainJobKind::Execute(DomainExecuteRequest {
+                    hash_id,
+                    input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
+                    hints: None,
+                    random_seed: None,
+                    execute_timeout: None,
+                }),
+                None,
+            )
             .await
             .unwrap()
             .job_id;
@@ -821,12 +831,15 @@ mod tests {
     async fn program_not_found_error() {
         let b = MockBackend::default();
         let err = b
-            .submit_job(DomainJobKind::Setup(DomainSetupRequest {
-                hash_id: "nonexistent".into(),
-                program_name: "nonexistent".into(),
-                with_hints: false,
-                emulator_only: false,
-            }))
+            .submit_job(
+                DomainJobKind::Setup(DomainSetupRequest {
+                    hash_id: "nonexistent".into(),
+                    program_name: "nonexistent".into(),
+                    with_hints: false,
+                    emulator_only: false,
+                }),
+                None,
+            )
             .await
             .unwrap_err();
         assert!(matches!(err, ApiError::ProgramNotFound(_)));
@@ -856,11 +869,15 @@ mod tests {
             random_seed: None,
         };
         let job_id = b
-            .submit_job(DomainJobKind::Wrap(DomainWrapRequest {
-                proof: src_proof,
-                proof_dest: DomainProofKind::Plonk,
-                wrap_timeout: None,
-            }))
+            .submit_job(
+                DomainJobKind::Wrap(DomainWrapRequest {
+                    proof: src_proof,
+                    proof_dest: DomainProofKind::Snark,
+                    snark_protocol: None,
+                    wrap_timeout: None,
+                }),
+                None,
+            )
             .await
             .unwrap()
             .job_id;

@@ -15,12 +15,9 @@ impl ToRequestPayload for ShutdownRequest {
 pub(crate) struct ShutdownResponse;
 
 impl FromResponsePayload for ShutdownResponse {
-    fn from_response_payload(payload: ResponseData) -> Self {
-        assert!(
-            payload[0] == CMD_SHUTDOWN_RESPONSE_ID,
-            "Expected CMD_SHUTDOWN_RESPONSE_ID but got {}",
-            payload[0]
-        );
+    const RESPONSE_ID: u64 = CMD_SHUTDOWN_RESPONSE_ID;
+
+    fn from_response_payload(_payload: ResponseData) -> Self {
         ShutdownResponse {}
     }
 }

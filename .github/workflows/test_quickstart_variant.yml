@@ -1,8 +1,8 @@
 name: Test ZisK Quickstart (variant)
 
-# Reusable workflow that builds ZisK, its proving key and the pilfflonk setup from
-# the checked-out sources on the ZisK runner container, and runs the quickstart
-# test against them. It is called once per variant (CPU and GPU) by
+# Reusable workflow that builds ZisK, its blake3 proving key and the pilfflonk setup
+# on top of it from the checked-out sources on the ZisK runner
+# container, and runs the quickstart test against them. It is called once per variant (CPU and GPU) by
 # test_quickstart.yml.
 
 on:
@@ -114,6 +114,10 @@ jobs:
           sudo chmod -R u+rwX "$GITHUB_WORKSPACE"
 
       - name: Start test container
+        # SETUP_CACHE_WORKERS (repository variable): the workers of the group as
+        # name[=ip], comma separated. This runner pulls the setup cache from the others.
+        env:
+          SETUP_CACHE_WORKERS: ${{ vars.SETUP_CACHE_WORKERS }}
         run: .github/scripts/start_test_container.sh
 
       # HTTP/2 negotiation against github.com fails on this runner ("expected
@@ -146,15 +150,16 @@ jobs:
             '
 
       - name: Build setup
-        # INCLUDE_SNARK adds the pilfflonk setup the --plonk combinations need (the
-        # flag asks for the SNARK kind, and the key sets the protocol); unlike the
+        # INCLUDE_SNARK adds the pilfflonk setup the --pilfflonk combinations need (the
+        # key sets the protocol up, and the flag must name it); unlike the
         # proving key it is not cached, so it is rebuilt on every run. INSTALL_SETUP
-        # installs both into $HOME/.zisk. The hash mode is the blake3 default, which
-        # wraps with pilfflonk.
+        # installs both into $HOME/.zisk. build_setup.sh wraps with pilfflonk.
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e USE_CACHE_SETUP="1" \
+            -e RECURSIVE_JOBS="4" \
+            -e SETUP_JOBS="4" \
             -e INSTALL_SETUP="1" \
             -e INCLUDE_SNARK="1" \
             -e PTAU_PATH="${PTAU_CONTAINER_PATH}" \

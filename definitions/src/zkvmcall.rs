@@ -51,6 +51,8 @@ pub const ZKVMCALL_ARG_ADDR_END: u16 = 0x8E7;
 pub struct ZkvmCall {
     pub id: u16,
     pub name: &'static str,
+    /// The library routine; empty for a zkvmcall the transpiler implements itself
+    /// (`write_log`), which never needs the library.
     pub target: &'static str,
     /// 0 for a thunk; otherwise the call is inline and takes this many pointer
     /// arguments, one per `csrs` of its sequence.
@@ -63,6 +65,11 @@ const fn zc(id: u16, name: &'static str, target: &'static str) -> ZkvmCall {
 
 const fn zci(id: u16, name: &'static str, target: &'static str, args: u8) -> ZkvmCall {
     ZkvmCall { id, name, target, inline_args: args }
+}
+
+/// An inline zkvmcall with no library routine: the transpiler emits it itself
+const fn zcx(id: u16, name: &'static str, args: u8) -> ZkvmCall {
+    ZkvmCall { id, name, target: "", inline_args: args }
 }
 
 /// Every zkvmcall, in ID order. `zkvm_keccak_f1600` is not here: it is a single
@@ -175,6 +182,10 @@ pub const ZKVMCALLS: &[ZkvmCall] = &[
     zc(0x8B2, "zkvm_zisklib_modexp_u64_c", "zisklib_modexp_u64_c"),
     // EF host randomness (zkvm_random.h)
     zc(0x8B3, "zkvm_random_u64", "ziskasm_zkvm_random_u64"),
+    // EF diagnostic log (zkvm_io.h, draft eth-act PR #27). Each call site becomes one
+    // `flag` that reads the text's pointer and length and jumps past it, the same in
+    // every ROM; ziskemu prints the text only when asked to (see `add_zisk_code`)
+    zcx(0x8B4, "write_log", 2),
 ];
 
 /// Returns the zkvmcall with CSR number `id`, if any.

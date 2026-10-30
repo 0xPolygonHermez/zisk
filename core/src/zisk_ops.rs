@@ -15,13 +15,15 @@ use ziskos::zisklib::fcall_proxy;
 use crate::{
     blake2br, blake2sf, blake3f, operations::*, sha256f, EmulationMode, InstContext, Mem,
     ZiskOperationType, ZiskRequiredOperation, ADD256_COST, ADD_U_W_COST, ARITHA32_COST,
-    ARITHAM32_COST, ARITH_EQ_384_COST, ARITH_EQ_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST,
-    BLAKE2B_COST, BLAKE2S_COST, BLAKE3_COST, DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST,
-    DMA_MEMCMP_COST, DMA_MEMCPY_COST, DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST,
-    EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64,
-    MAX_INPUT_SIZE, POSEIDON2_KOALABEAR_COST, POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST,
-    SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR, TWISTED_EDWARDS_COST,
+    ARITHAM32_COST, ARITH_256_COST, ARITH_BN254_COST, ARITH_EQ_384_COST, ARITH_EQ_COST,
+    ARITH_SECP256K1_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST, BLAKE2B_COST, BLAKE2S_COST,
+    BLAKE3_COST, DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST,
+    DMA_MEMCPY_COST, DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR,
+    FCALL_COST, INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64, MAX_INPUT_SIZE,
+    POSEIDON2_KOALABEAR_COST, POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST,
+    SLL_U_W_COST, SYS_ADDR, TWISTED_EDWARDS_COST,
 };
+use crate::{BLAKE2B_GAP_SHIFT, BLAKE2B_RD_CHAIN, BLAKE2B_WR_CHAIN};
 use paste::paste;
 use proofman_fields::{
     poseidon1_hash, poseidon2_hash, Goldilocks, Poseidon1_16, Poseidon2_16, PrimeField64,
@@ -573,11 +575,11 @@ define_ops! {
     (Add256, "add256", BigInt, ADD256_COST, 0xf0, 104, 32, opc_add256, op_add256, ops_add256),
     (BabyJubJubAdd, "babyjubjub_add", TwistedEdwards, TWISTED_EDWARDS_COST, 0xed, 128, 64, opc_babyjubjub_add, op_babyjubjub_add, ops_babyjubjub_add),
     (Ed25519Add, "ed25519_add", TwistedEdwards, TWISTED_EDWARDS_COST, 0xe1, 128, 64, opc_ed25519_add, op_ed25519_add, ops_ed25519_add),
-    (Keccak, "keccak", Keccak, KECCAK_COST, 0xf1, 200, 200, opc_keccak, op_keccak, ops_none),
-    (Arith256, "arith256", ArithEq, ARITH_EQ_COST, 0xf2, 136, 64, opc_arith256, op_arith256, ops_arith256),
-    (Arith256Mod, "arith256_mod", ArithEq, ARITH_EQ_COST, 0xf3, 168, 32, opc_arith256_mod, op_arith256_mod, ops_arith256_mod),
-    (Secp256k1Add, "secp256k1_add", ArithEq, ARITH_EQ_COST, 0xf4, 128, 64, opc_secp256k1_add, op_secp256k1_add, ops_secp256k1_add),
-    (Secp256k1Dbl, "secp256k1_dbl", ArithEq, ARITH_EQ_COST, 0xf5, 64, 64, opc_secp256k1_dbl, op_secp256k1_dbl, ops_secp256k1_dbl),
+    (Keccak, "keccak", Keccak, KECCAK_COST, 0xf1, 200, 200, opc_keccak, op_keccak, ops_keccak),
+    (Arith256, "arith256", ArithEq, ARITH_256_COST, 0xf2, 136, 64, opc_arith256, op_arith256, ops_arith256),
+    (Arith256Mod, "arith256_mod", ArithEq, ARITH_256_COST, 0xf3, 168, 32, opc_arith256_mod, op_arith256_mod, ops_arith256_mod),
+    (Secp256k1Add, "secp256k1_add", ArithEq, ARITH_SECP256K1_COST, 0xf4, 128, 64, opc_secp256k1_add, op_secp256k1_add, ops_secp256k1_add),
+    (Secp256k1Dbl, "secp256k1_dbl", ArithEq, ARITH_SECP256K1_COST, 0xf5, 64, 64, opc_secp256k1_dbl, op_secp256k1_dbl, ops_secp256k1_dbl),
     (Secp256r1Add, "secp256r1_add", ArithEq, ARITH_EQ_COST, 0xe8, 128, 64, opc_secp256r1_add, op_secp256r1_add, ops_secp256r1_add),
     (Secp256r1Dbl, "secp256r1_dbl", ArithEq, ARITH_EQ_COST, 0xe9, 64, 64, opc_secp256r1_dbl, op_secp256r1_dbl, ops_secp256r1_dbl),
     (Blake2b, "blake2b", Blake2b, BLAKE2B_COST, 0xea, 264, 128, opc_blake2b, op_blake2b, ops_blake2b),
@@ -587,11 +589,11 @@ define_ops! {
     (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, 0, opc_fcall, op_fcall, ops_none),
     (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, 0, opc_fcall_get, op_fcall_get, ops_none),
     (Sha256, "sha256", Sha256, SHA256_COST, 0xf9, 96, 112, opc_sha256, op_sha256, ops_sha256),
-    (Bn254CurveAdd, "bn254_curve_add", ArithEq, ARITH_EQ_COST, 0xfa, 128, 64, opc_bn254_curve_add, op_bn254_curve_add, ops_bn254_curve_add),
-    (Bn254CurveDbl, "bn254_curve_dbl", ArithEq, ARITH_EQ_COST, 0xfb, 64, 64, opc_bn254_curve_dbl, op_bn254_curve_dbl, ops_bn254_curve_dbl),
-    (Bn254ComplexAdd, "bn254_complex_add", ArithEq, ARITH_EQ_COST, 0xfc, 128, 64, opc_bn254_complex_add, op_bn254_complex_add, ops_bn254_complex_add),
-    (Bn254ComplexSub, "bn254_complex_sub", ArithEq, ARITH_EQ_COST, 0xfd, 128, 64, opc_bn254_complex_sub, op_bn254_complex_sub, ops_bn254_complex_sub),
-    (Bn254ComplexMul, "bn254_complex_mul", ArithEq, ARITH_EQ_COST, 0xfe, 128, 64, opc_bn254_complex_mul, op_bn254_complex_mul, ops_bn254_complex_mul),
+    (Bn254CurveAdd, "bn254_curve_add", ArithEq, ARITH_BN254_COST, 0xfa, 128, 64, opc_bn254_curve_add, op_bn254_curve_add, ops_bn254_curve_add),
+    (Bn254CurveDbl, "bn254_curve_dbl", ArithEq, ARITH_BN254_COST, 0xfb, 64, 64, opc_bn254_curve_dbl, op_bn254_curve_dbl, ops_bn254_curve_dbl),
+    (Bn254ComplexAdd, "bn254_complex_add", ArithEq, ARITH_BN254_COST, 0xfc, 128, 64, opc_bn254_complex_add, op_bn254_complex_add, ops_bn254_complex_add),
+    (Bn254ComplexSub, "bn254_complex_sub", ArithEq, ARITH_BN254_COST, 0xfd, 128, 64, opc_bn254_complex_sub, op_bn254_complex_sub, ops_bn254_complex_sub),
+    (Bn254ComplexMul, "bn254_complex_mul", ArithEq, ARITH_BN254_COST, 0xfe, 128, 64, opc_bn254_complex_mul, op_bn254_complex_mul, ops_bn254_complex_mul),
     // halt reads no memory: input_size 0, so it is not a precompile and the minimal
     // trace replay of a failed execution consumes no memory reads for it
     (Halt, "halt", Internal, INTERNAL_COST, 0xff, 0, 0, opc_halt, op_halt, ops_none),
@@ -990,16 +992,58 @@ pub fn ops_poseidon1(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_direct_data(ctx, stats, 16, 16);
 }
 
+/// Whether Blake2br can prove a blake2b round's static argument: no gap unless it reads its state
+/// from a chain, and then a gap in [1, 255] (the trace's `gap` is a byte).
+pub fn blake2b_gap_is_provable(index: u64) -> bool {
+    let gap = index >> BLAKE2B_GAP_SHIFT;
+    if index & BLAKE2B_RD_CHAIN != 0 {
+        (1..=u8::MAX as u64).contains(&gap)
+    } else {
+        gap == 0
+    }
+}
+
 #[inline(always)]
 pub fn opc_blake2b(ctx: &mut InstContext) {
     const WORDS: usize = 1 + 2 * 16; // index (static argument), state[16] (at a), input[16] (at b)
     let mut data = [0u64; WORDS];
 
-    // The round index travels as the static argument of the instruction
+    // The round index and chain mode travel as the static argument of the instruction
     let index = ctx.extended_arg as u64;
-    precompiled_load_abx_data(ctx, &[index], 16, 16, &mut data, "blake2b");
+    let rd_chain = index & BLAKE2B_RD_CHAIN != 0;
+    let wr_chain = index & BLAKE2B_WR_CHAIN != 0;
+    let replay = ctx.emulation_mode == EmulationMode::ConsumeMemReads;
+    let gap = index >> BLAKE2B_GAP_SHIFT;
+    assert!(
+        blake2b_gap_is_provable(index),
+        "[blake2b] gap {gap} not provable (rd_chain: {rd_chain}) at PC:0x{:08X} STEP:{}",
+        ctx.pc,
+        ctx.step
+    );
+    if rd_chain && !replay && ctx.step.wrapping_sub(gap) != ctx.blake2b_step {
+        panic!(
+            "[blake2b] chained round without a blake2b round {gap} steps back at PC:0x{:08X} STEP:{}",
+            ctx.pc,
+            ctx.step
+        );
+    }
+    ctx.blake2b_step = ctx.step;
 
-    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+    // A chained round logs its input only if the chunk does not have it yet (see min_trace_words)
+    let cached = rd_chain && ctx.blake2b_chain_cached;
+    if cached && replay {
+        data[0] = index;
+        data[1..].copy_from_slice(&ctx.blake2b_chain);
+        ctx.precompiled.input_data.clear();
+        ctx.precompiled.input_data.extend_from_slice(&data);
+    } else {
+        precompiled_load_abx_data(ctx, &[index], 16, 16, &mut data, "blake2b");
+        if cached {
+            ctx.precompiled.input_data.clear();
+        }
+    }
+
+    if !replay || wr_chain {
         // Get the state and input slices (data[0] is the index)
         let (_, rest) = data.split_at_mut(1);
         let (state_slice, input_slice) = rest.split_at_mut(16);
@@ -1009,9 +1053,17 @@ pub fn opc_blake2b(ctx: &mut InstContext) {
         // Compute the blake2br output with the fastest implementation available
         blake2br(index, state, input);
 
+        if wr_chain {
+            ctx.blake2b_chain[..16].copy_from_slice(state);
+            ctx.blake2b_chain[16..].copy_from_slice(input);
+            ctx.blake2b_chain_cached = true;
+        }
+
         // the new state overwrites the old one (address a)
-        for (i, d) in state.iter().enumerate() {
-            ctx.mem.write(ctx.a + (8 * i as u64), *d, 8);
+        if !replay {
+            for (i, d) in state.iter().enumerate() {
+                ctx.mem.write(ctx.a + (8 * i as u64), *d, 8);
+            }
         }
     }
 
@@ -1113,8 +1165,10 @@ pub fn ops_blake2s(ctx: &InstContext, stats: &mut dyn OpStats) {
 #[inline(always)]
 pub fn ops_blake2b(ctx: &InstContext, stats: &mut dyn OpStats) {
     // State (at a) is read and written back (16 words), input (at b) is read only (16 words); the
-    // round index is a static argument and touches no memory.
-    precompiled_stats_ab_data(ctx, stats, 16, 16, 16);
+    // round index is a static argument and touches no memory, nor does a chained state.
+    let rd = if ctx.extended_arg as u64 & BLAKE2B_RD_CHAIN != 0 { 0 } else { 16 };
+    let wr = if ctx.extended_arg as u64 & BLAKE2B_WR_CHAIN != 0 { 0 } else { 16 };
+    precompiled_stats_ab_data(ctx, stats, rd, rd, wr);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2409,4 +2463,21 @@ pub fn opc_halt(ctx: &mut InstContext) {
     ctx.error_code = ctx.a;
     ctx.c = 0;
     ctx.flag = false;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_blake2b_gap_is_provable_only_on_a_chain_read_and_in_a_byte() {
+        let gap = |g: u64| g << BLAKE2B_GAP_SHIFT;
+        assert!(blake2b_gap_is_provable(3));
+        assert!(blake2b_gap_is_provable(3 | BLAKE2B_WR_CHAIN));
+        assert!(!blake2b_gap_is_provable(3 | gap(1)));
+        assert!(!blake2b_gap_is_provable(BLAKE2B_RD_CHAIN));
+        assert!(blake2b_gap_is_provable(BLAKE2B_RD_CHAIN | gap(1)));
+        assert!(blake2b_gap_is_provable(BLAKE2B_RD_CHAIN | gap(255)));
+        assert!(!blake2b_gap_is_provable(BLAKE2B_RD_CHAIN | gap(256)));
+    }
 }

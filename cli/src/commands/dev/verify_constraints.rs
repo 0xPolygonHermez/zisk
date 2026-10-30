@@ -239,14 +239,10 @@ impl VerifyConstraintsCmd {
             prover.setup(&guest_program).run()?;
         }
 
+        let job = prover.begin_job(&guest_program)?;
         if let Some(hints_stream) = hints_stream {
-            prover.register_hints_stream(hints_stream)?;
+            job.register_hints_stream(hints_stream)?;
         }
-        prover.verify_constraints(
-            &guest_program,
-            stdin,
-            self.random_seed.provided(),
-            self.debug.clone(),
-        )
+        job.verify_constraints(stdin, self.random_seed.provided(), self.debug.clone())
     }
 }

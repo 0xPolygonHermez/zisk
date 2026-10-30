@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Building the client builder with multiple configurations based on flags.
     // The embedded executor runs entirely in-process; asm/gpu layers add acceleration.
-    let mut builder = ProverClient::embedded().plonk();
+    let mut builder = ProverClient::embedded().pilfflonk();
     if asm {
         builder = builder.assembly();
     }
@@ -37,11 +37,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     stdin.write(&input.0);
     stdin.write(&input.1);
 
-    // One-time preprocessing: generates the program setup and the program vertification key
+    // One-time preprocessing: generates the program setup and the program verification key
     client.setup(&PROGRAM).run_sync()?;
 
-    // Execute guest and generate the ZK proof and wrap it into a constant-size, on-chain-verifiable proof.
-    let proof = client.prove(&PROGRAM, stdin).wrap(ProofKind::Plonk).run_sync()?;
+    // Execute guest and generate the ZK proof and wrap it into a constant-size pilfflonk SNARK proof.
+    let proof = client.prove(&PROGRAM, stdin).wrap(ProofKind::Snark).run_sync()?;
 
     // Cryptographic verification of the proof
     if proof.with_program_vk(&PROGRAM.vk()?).verify().is_ok() {

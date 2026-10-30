@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
-use zisk_common::RandomSeed;
+use zisk_common::{RandomSeed, SnarkProtocol};
 
 /// Convert a [`Duration`] into a future deadline.
 ///
@@ -82,8 +82,8 @@ pub enum DomainProofKind {
     Stark,
     /// Minimal STARK proof.
     StarkMinimal,
-    /// PLONK/SNARK proof.
-    Plonk,
+    /// Final SNARK proof, of the protocol of the workers' SNARK proving key.
+    Snark,
 }
 
 impl From<zisk_common::ProofKind> for DomainProofKind {
@@ -91,7 +91,7 @@ impl From<zisk_common::ProofKind> for DomainProofKind {
         match pk {
             zisk_common::ProofKind::VadcopFinal => DomainProofKind::Stark,
             zisk_common::ProofKind::VadcopFinalMinimal => DomainProofKind::StarkMinimal,
-            zisk_common::ProofKind::Plonk => DomainProofKind::Plonk,
+            zisk_common::ProofKind::Snark => DomainProofKind::Snark,
         }
     }
 }
@@ -203,6 +203,8 @@ pub struct DomainProveRequest {
     pub proof_timeout: Option<DateTime<Utc>>,
     /// The desired output proof kind.
     pub proof_dest: DomainProofKind,
+    /// The protocol a [`DomainProofKind::Snark`] proof must be of; `None` takes the workers'.
+    pub snark_protocol: Option<SnarkProtocol>,
 }
 
 /// Request to wrap an existing proof into another kind.
@@ -212,6 +214,8 @@ pub struct DomainWrapRequest {
     pub proof: DomainProof,
     /// The desired output proof kind.
     pub proof_dest: DomainProofKind,
+    /// The protocol a [`DomainProofKind::Snark`] proof must be of; `None` takes the workers'.
+    pub snark_protocol: Option<SnarkProtocol>,
     /// Optional deadline for the wrap.
     pub wrap_timeout: Option<DateTime<Utc>>,
 }

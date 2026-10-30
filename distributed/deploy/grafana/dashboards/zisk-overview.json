@@ -6,6 +6,15 @@
   "timezone": "browser",
   "refresh": "5s",
   "time": { "from": "now-30m", "to": "now" },
+  "links": [
+    {"title": "🔴 LIVE", "type": "link", "url": "/d/zisk-live", "icon": "dashboard", "keepTime": true, "includeVars": true, "targetBlank": false, "tooltip": "", "asDropdown": false, "tags": []},
+    {"title": "Overview", "type": "link", "url": "/d/zisk-overview", "icon": "dashboard", "keepTime": true, "includeVars": true, "targetBlank": false, "tooltip": "", "asDropdown": false, "tags": []},
+    {"title": "Executions & proofs", "type": "link", "url": "/d/zisk-proofs", "icon": "dashboard", "keepTime": true, "includeVars": true, "targetBlank": false, "tooltip": "", "asDropdown": false, "tags": []},
+    {"title": "Cancellations & recovery", "type": "link", "url": "/d/zisk-recovery", "icon": "dashboard", "keepTime": true, "includeVars": true, "targetBlank": false, "tooltip": "", "asDropdown": false, "tags": []},
+    {"title": "Worker resources", "type": "link", "url": "/d/zisk-resources", "icon": "dashboard", "keepTime": true, "includeVars": true, "targetBlank": false, "tooltip": "", "asDropdown": false, "tags": []},
+    {"title": "GPUs", "type": "link", "url": "/d/zisk-gpus", "icon": "dashboard", "keepTime": true, "includeVars": true, "targetBlank": false, "tooltip": "", "asDropdown": false, "tags": []},
+    {"title": "Host", "type": "link", "url": "/d/zisk-host", "icon": "dashboard", "keepTime": true, "includeVars": true, "targetBlank": false, "tooltip": "", "asDropdown": false, "tags": []}
+  ],
   "panels": [
     {
       "id": 1,

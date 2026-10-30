@@ -5,6 +5,7 @@ use crate::{
 };
 use anyhow::Result;
 use colored::Colorize;
+use mpi::traits::{Communicator, Destination, MatchedReceiveVec, Source};
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
@@ -12,6 +13,7 @@ use proofman::{
 };
 use proofman_common::{ProofCtx, ProofOptions, RowInfo};
 use proofman_fields::Goldilocks;
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use proofman_verifier::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -26,7 +28,7 @@ use zisk_common::{
     program_publics, HashMode, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind,
     PublicValues, VadcopKind, PROGRAM_VK_LEN,
 };
-use zisk_executor::{AsmResources, EmulatorAsm, ZiskExecutor};
+use zisk_executor::{AsmJob, AsmResources, EmulatorAsm, ZiskExecutor};
 use zisk_precomp_hints::HintsProcessor;
 use zisk_recurser::prove::{
     prove_recurser_aggregator, register_recurser_setup, ProveRecurserAggregatorOptions,
@@ -43,6 +45,9 @@ pub(crate) struct ProverBackend {
     /// A recurser must be registered (via [`register_recurser`]) before it can
     /// prove — the same register-then-prove lifecycle as a regular program.
     registered_recursers: std::sync::Mutex<HashMap<String, RegisteredRecurser>>,
+    /// The program [`Self::register_program`] last registered, as its ROM path and
+    /// hints mode, so that registering it again is skipped.
+    registered_program: std::sync::Mutex<Option<(PathBuf, bool)>>,
 }
 
 impl ProverBackend {
@@ -60,6 +65,7 @@ impl ProverBackend {
             proving_key_path,
             proving_key_snark_path,
             registered_recursers: std::sync::Mutex::new(HashMap::new()),
+            registered_program: std::sync::Mutex::new(None),
         }
     }
 
@@ -149,14 +155,28 @@ impl ProverBackend {
         Ok(())
     }
 
-    /// Retires the previous job's ASM state.
-    ///
-    /// Goes through the executor rather than straight to the ASM emulator: the executor
-    /// owns the producers still reading that shared memory, so only it can retire them
-    /// before the rewind. `ZiskExecutor::reset_for_new_job` documents the ordering
-    /// callers must respect.
+    /// Retires what the previous run left, for a run on the Rust emulator, which begins
+    /// no assembly job; see `ZiskExecutor::reset_for_new_job`.
     pub(crate) fn reset(&self) -> Result<()> {
         self.executor.reset_for_new_job().map_err(Into::into)
+    }
+
+    /// Builds now what proofman otherwise builds in the first job's reset and keeps for the
+    /// rest of the process: on the GPU, the multiplicity state in the late region and the
+    /// streaming-commit programs and tables. Every proving entry point resets anyway, so
+    /// this only moves the work. Call it before any job; a failure is left to the first
+    /// job, whose reset repeats it.
+    pub(crate) fn warm_up(&self) {
+        timer_start_info!(WARMING_UP_PROOFMAN);
+        if let Err(e) = self.proofman.reset() {
+            tracing::warn!("Proofman warm-up failed, the first job will retry it: {e}");
+        }
+        timer_stop_and_log_info!(WARMING_UP_PROOFMAN);
+    }
+
+    /// Begins a job on the assembly backend; see `ZiskExecutor::begin_asm_job`.
+    pub(crate) fn begin_asm_job(&self, resources: Arc<AsmResources>) -> Result<AsmJob> {
+        self.executor.begin_asm_job(resources).map_err(Into::into)
     }
 
     pub(crate) fn cancel(&self) {
@@ -192,12 +212,23 @@ impl ProverBackend {
         })
     }
 
+    /// Registers a program's ROM with the executor and proofman, unless it is the
+    /// program last registered and nothing has been set up since: building its
+    /// instruction table is not free, and consecutive jobs often run one program.
     pub fn register_program(
         &self,
         zisk_rom: Arc<zisk_core::ZiskRom>,
         rom_bin_path: &std::path::Path,
         with_hints: bool,
     ) -> Result<()> {
+        let key = (rom_bin_path.to_path_buf(), with_hints);
+        let mut registered =
+            self.registered_program.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if registered.as_ref() == Some(&key) {
+            return Ok(());
+        }
+        // Cleared first, so that a registration failing part way is never trusted.
+        *registered = None;
         // Indexed Main: register this program's table before `set_rom` moves the Arc, on the
         // same gate the executor uses to pick the compact row.
         if self.executor.is_packed() {
@@ -226,7 +257,15 @@ impl ProverBackend {
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path.to_path_buf())]);
         self.proofman
             .register_custom_commits(custom_commits_map)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        *registered = Some(key);
+        Ok(())
+    }
+
+    /// Makes the next [`Self::register_program`] register in full. Called by every
+    /// setup and recurser registration, which may change what proofman holds.
+    pub(crate) fn forget_registered_program(&self) {
+        *self.registered_program.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     }
 
     pub fn set_stdin_and_random_seed(&self, stdin: ZiskStdin, seed: RandomSeed) -> Result<()> {
@@ -368,7 +407,7 @@ impl ProverBackend {
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
-        if proof_kind == ProofKind::Plonk && self.snark_wrapper.is_none() {
+        if proof_kind == ProofKind::Snark && self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(
                 "Snark wrapper is not initialized. Cannot generate snark proof."
             ));
@@ -415,50 +454,62 @@ impl ProverBackend {
         self.proofman.set_barrier();
 
         match (proof_kind, proof) {
-            (ProofKind::Plonk, Some(vadcop_proof)) => {
+            (ProofKind::Snark, Some(vadcop_proof)) => {
                 let vadcop_vk_u64 = self.get_vadcop_vk(minimal)?;
 
                 // Freshly proven vadcop_final proof — stamp the default
                 // vadcop_final verkey (no override).
-                let snark_proof = self
-                    .snark_wrapper
-                    .as_ref()
-                    .unwrap()
-                    .generate_final_snark_proof(&vadcop_proof, None)?;
+                let snark_proof = self.final_snark_proof(&vadcop_proof, None)?;
 
                 let program_vk = ProgramVK::new_from_publics_with_mode(
                     &vadcop_proof.public_values,
                     self.hash_mode()?,
                 );
-                let body =
-                    self.snark_proof_body(snark_proof, &vadcop_proof.public_values, vadcop_vk_u64)?;
+                let body = self.snark_proof_body(
+                    snark_proof,
+                    &vadcop_proof.public_values,
+                    vadcop_vk_u64.clone(),
+                )?;
                 Ok(ProveOutput::new(
                     execution_result,
                     start.elapsed(),
                     Proof::new(body, program_vk),
-                ))
+                )
+                .with_produced_under(Some(vadcop_vk_u64))
+                .with_produced_snark_vkey())
             }
-            (_, Some(p)) => Ok(ProveOutput::new(
-                execution_result,
-                start.elapsed(),
-                Proof::new(
-                    ProofBody::Vadcop {
-                        proof: p.proof,
-                        zisk_vk: self.get_vadcop_vk(minimal)?,
-                        // A freshly proven leaf is a raw vadcop_final proof
-                        // (Final, flag=1) or its compressed form (Minimal).
-                        // Recurser (aggregated) proofs come from the fold path.
-                        kind: if minimal { VadcopKind::Minimal } else { VadcopKind::Final },
-                        hash: self.hash()?,
-                        // Store the canonical flag-free view; proofman's raw
-                        // publics carry the is_vadcop_final_proof flag at index 0
-                        // for non-minimal proofs (captured in `kind` above).
-                        publics_full: program_publics(&p.public_values).to_vec(),
-                    },
-                    ProgramVK::new_from_publics_with_mode(&p.public_values, self.hash_mode()?),
-                ),
-            )),
-            (_, None) => Ok(ProveOutput::new_null(execution_result, start.elapsed())),
+            (_, Some(p)) => {
+                let zisk_vk = self.get_vadcop_vk(minimal)?;
+                Ok(ProveOutput::new(
+                    execution_result,
+                    start.elapsed(),
+                    Proof::new(
+                        ProofBody::Vadcop {
+                            proof: p.proof,
+                            zisk_vk: zisk_vk.clone(),
+                            // A freshly proven leaf is a raw vadcop_final proof
+                            // (Final, flag=1) or its compressed form (Minimal).
+                            // Recurser (aggregated) proofs come from the fold path.
+                            kind: if minimal { VadcopKind::Minimal } else { VadcopKind::Final },
+                            hash: self.hash()?,
+                            // Store the canonical flag-free view; proofman's raw
+                            // publics carry the is_vadcop_final_proof flag at index 0
+                            // for non-minimal proofs (captured in `kind` above).
+                            publics_full: program_publics(&p.public_values).to_vec(),
+                        },
+                        ProgramVK::new_from_publics_with_mode(&p.public_values, self.hash_mode()?),
+                    ),
+                )
+                .with_produced_under(Some(zisk_vk)))
+            }
+            // proofman returns a final proof only when aggregating, and then on rank 0 only;
+            // elsewhere there is none to return.
+            (_, None)
+                if !prover_options.aggregation || self.proofman.get_rank_info().world_rank != 0 =>
+            {
+                Ok(ProveOutput::new_null(execution_result, start.elapsed()))
+            }
+            (_, None) => Err(anyhow::anyhow!("proving finished without a final proof on rank 0")),
         }
     }
 
@@ -511,12 +562,13 @@ impl ProverBackend {
 
         let time = start.elapsed();
 
+        let zisk_vk = self.get_vadcop_vk(true)?;
         let program_vk =
             ProgramVK::new_from_publics_with_mode(&minimal_proof.public_values, self.hash_mode()?);
         let proof = Proof::new(
             ProofBody::Vadcop {
                 proof: minimal_proof.proof.clone(),
-                zisk_vk: self.get_vadcop_vk(true)?,
+                zisk_vk: zisk_vk.clone(),
                 kind: VadcopKind::Minimal,
                 hash,
                 publics_full: minimal_proof.public_values,
@@ -526,12 +578,14 @@ impl ProverBackend {
 
         // No guest runs here; the result keeps the seed of the execution the source proof
         // attests to.
-        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof).with_random_seed(seed))
+        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof)
+            .with_random_seed(seed)
+            .with_produced_under(Some(zisk_vk)))
     }
 
     /// SNARK-wrap a vadcop_final proof. `source_kind` supplies the flag `RecursiveF`
     /// expects, and selects the verification root (see below).
-    pub(crate) fn plonk(
+    pub(crate) fn snark(
         &self,
         proof: &[u64],
         publics_full: &[u64],
@@ -565,17 +619,19 @@ impl ProverBackend {
         // default vadcop_final setup verkey (as the fresh prove+wrap path stamps),
         // an aggregate the recurser verkey the aggregator writes into its output VK
         // slots. Reading those slots for a leaf would pick up its ROM root instead.
-        let rootc: Vec<u64> = match source_kind {
-            VadcopKind::Recurser => program_publics(publics_full)[..PROGRAM_VK_LEN].to_vec(),
-            _ => self.get_vadcop_vk(false)?,
+        // An aggregate's rootc comes from its input, so it is not this setup's key.
+        let (rootc, produced_under) = match source_kind {
+            VadcopKind::Recurser => {
+                (program_publics(publics_full)[..PROGRAM_VK_LEN].to_vec(), None)
+            }
+            _ => {
+                let vk = self.get_vadcop_vk(false)?;
+                (vk.clone(), Some(vk))
+            }
         };
-        let verkey_override = matches!(source_kind, VadcopKind::Recurser).then(|| rootc.as_slice());
+        let verkey_override = produced_under.is_none().then_some(rootc.as_slice());
 
-        let snark_proof = self
-            .snark_wrapper
-            .as_ref()
-            .unwrap()
-            .generate_final_snark_proof(&vadcop_final_proof, verkey_override)?;
+        let snark_proof = self.final_snark_proof(&vadcop_final_proof, verkey_override)?;
 
         let time = start.elapsed();
 
@@ -590,7 +646,10 @@ impl ProverBackend {
 
         // No guest runs here; the result keeps the seed of the execution the source proof
         // attests to.
-        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof).with_random_seed(seed))
+        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof)
+            .with_random_seed(seed)
+            .with_produced_under(produced_under)
+            .with_produced_snark_vkey())
     }
 
     /// The proof body of a final SNARK proof, by the protocol that proved it: the key sets the
@@ -704,6 +763,7 @@ impl ProverBackend {
         if self.registered_recursers.lock().unwrap().contains_key(recurser_id) {
             return Ok(());
         }
+        self.forget_registered_program();
         let registered = register_recurser_setup(&self.proofman, output_dir, recurser_id)
             .map_err(|e| anyhow::anyhow!("recurser registration failed: {e:#}"))?;
         self.registered_recursers.lock().unwrap().insert(recurser_id.to_string(), registered);
@@ -721,6 +781,7 @@ impl ProverBackend {
         free_b: &[u64],
         root_c_recurser_agg: Option<[u64; 4]>,
     ) -> Result<VadcopFinalProof> {
+        self.forget_registered_program();
         let registered =
             self.registered_recursers.lock().unwrap().get(recurser_id).cloned().ok_or_else(
                 || {
@@ -742,6 +803,23 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!("recurser proof generation failed: {e:#}"))
     }
 
+    /// The final SNARK of a vadcop_final proof. It goes through `ProofMan`, not the wrapper
+    /// directly: a blake3 key's wrapper takes a recursivef proof, which `ProofMan` proves first.
+    fn final_snark_proof(
+        &self,
+        vadcop_final_proof: &VadcopFinalProof,
+        verkey_override: Option<&[u64]>,
+    ) -> Result<SnarkProof> {
+        let snark_wrapper = self.snark_wrapper.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Snark wrapper is not initialized. Cannot generate snark proof.")
+        })?;
+        Ok(self.proofman.generate_final_snark_proof(
+            snark_wrapper,
+            vadcop_final_proof,
+            verkey_override,
+        )?)
+    }
+
     pub(crate) fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         Ok(get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)?)
     }
@@ -757,6 +835,34 @@ impl ProverBackend {
 
     pub(crate) fn cluster_barrier(&self) {
         self.proofman.set_barrier();
+    }
+
+    /// Whether every rank succeeded, from each one's `ok`: a collective, which
+    /// every rank must call.
+    pub(crate) fn cluster_all_ok(&self, ok: bool) -> bool {
+        self.proofman.get_wcm().get_pctx().mpi_ctx.all_finished_ok(ok)
+    }
+
+    /// Send `data` to MPI rank `dest`, tagged `tag`.
+    pub(crate) fn mpi_send(&self, dest: i32, tag: i32, data: &[u8]) {
+        let pctx = self.proofman.get_wcm().get_pctx();
+        pctx.mpi_ctx.world.process_at_rank(dest).send_with_tag(data, tag);
+    }
+
+    /// A message tagged `tag` from any rank, if one has arrived: its source rank and
+    /// its data.
+    pub(crate) fn mpi_try_receive(&self, tag: i32) -> Option<(i32, Vec<u8>)> {
+        let pctx = self.proofman.get_wcm().get_pctx();
+        let (message, status) =
+            pctx.mpi_ctx.world.any_process().immediate_matched_probe_with_tag(tag)?;
+        let source = status.source_rank();
+        let (data, _) = (message, status).matched_receive_vec::<u8>();
+        Some((source, data))
+    }
+
+    /// End every rank of the MPI job, this one included, with exit `code`.
+    pub(crate) fn abort_cluster(&self, code: i32) -> ! {
+        self.proofman.get_wcm().get_pctx().mpi_ctx.world.abort(code)
     }
 }
 

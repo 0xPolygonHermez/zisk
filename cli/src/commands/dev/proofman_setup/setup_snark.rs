@@ -34,7 +34,7 @@ pub(crate) struct ZiskProofmanSetupSnark {
 
     /// CUDA arch spec of the Q kernels (.exps.so), pilfflonk's wrap's and a blake3 key's recursivef's
     /// when setup-snark sets it up: auto | major | "89,120" | sm_120. No kernel without nvcc.
-    #[arg(long, default_value = "auto")]
+    #[arg(long, default_value = "major")]
     exps_arch: String,
 
     /// Verbosity (-v, -vv)

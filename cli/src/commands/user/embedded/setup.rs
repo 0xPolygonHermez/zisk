@@ -26,7 +26,7 @@ pub(crate) struct ZiskEmbeddedSetup {
     /// SDK-managed `~/.zisk/recurser/<recurser-id>`.
     #[arg(
         long,
-        conflicts_with_all = ["bin", "asm", "hints", "proving_key_plonk", "unlock_mapped_memory"]
+        conflicts_with_all = ["bin", "asm", "hints", "proving_key_snark", "unlock_mapped_memory"]
     )]
     aggregation: Option<PathBuf>,
 
@@ -46,8 +46,8 @@ pub(crate) struct ZiskEmbeddedSetup {
     proving_key: Option<PathBuf>,
 
     /// Path to a precomputed SNARK proving key
-    #[arg(short = 'w', long)]
-    proving_key_plonk: Option<PathBuf>,
+    #[arg(short = 'w', long, alias = "proving-key-plonk")]
+    proving_key_snark: Option<PathBuf>,
 
     /// Unlock the memory map for the ROM file. Only applies with `--asm`.
     #[arg(short = 'u', long, requires = "asm")]
@@ -103,8 +103,8 @@ impl ZiskEmbeddedSetup {
         if let Some(pk) = &self.proving_key {
             builder = builder.proving_key(pk.clone());
         }
-        if let Some(pk) = &self.proving_key_plonk {
-            builder = builder.proving_key_plonk(pk.clone());
+        if let Some(pk) = &self.proving_key_snark {
+            builder = builder.proving_key_snark(pk.clone());
         }
         // `--unlock-mapped-memory` requires `--asm` (clap-enforced), so the
         // Assembly executor is set above and `asm_options` won't panic at build.

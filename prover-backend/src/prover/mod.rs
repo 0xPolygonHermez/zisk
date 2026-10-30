@@ -29,6 +29,7 @@ use zisk_common::{
     StatsCostPerType, VadcopKind, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
+use zisk_executor::AsmJob;
 use zisk_precomp_hints::HintsProcessor;
 
 use crate::{ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
@@ -99,8 +100,8 @@ pub struct BackendProverOpts {
     pub(crate) proving_key: Option<PathBuf>,
     pub(crate) proving_key_snark: Option<PathBuf>,
 
-    pub(crate) plonk: bool, // Whether to generate PLONK/SNARK proofs are allowed
-    pub(crate) preload_plonk: bool, // Whether to preload PLONK/SNARK proving keys
+    pub(crate) snark: bool,         // Whether final SNARK proofs are allowed
+    pub(crate) preload_snark: bool, // Whether to preload the SNARK proving key
 
     // ProofmanOptions fields (flattened)
     pub(crate) gpu: bool,
@@ -126,8 +127,8 @@ impl Default for BackendProverOpts {
             verbose: 0,
             proving_key: None,
             proving_key_snark: None,
-            preload_plonk: false,
-            plonk: false,
+            preload_snark: false,
+            snark: false,
             gpu: false,
             cpu_mops: false,
             packed: false,
@@ -209,8 +210,10 @@ impl BackendProverOpts {
 
         // The plonk wrapper borrows the GPU unified buffer; proofman pads the arena to the
         // snark floor only when told a final snark will run.
-        if self.plonk {
-            options.final_snark();
+        if self.snark {
+            options.final_snark(zisk_common::ZiskPaths::get_proving_key_snark(
+                self.proving_key_snark.as_ref(),
+            ));
         }
 
         if !self.aggregation || self.verify_constraints {
@@ -244,9 +247,15 @@ impl BackendProverOpts {
         self.proving_key_snark.as_ref()
     }
 
-    /// Whether PLONK/SNARK proving keys are preloaded.
+    /// Whether the SNARK proving key is preloaded.
+    pub fn preload_snark(&self) -> bool {
+        self.preload_snark
+    }
+
+    /// Whether the SNARK proving key is preloaded.
+    #[deprecated(note = "the key may be of any final SNARK: use `preload_snark`")]
     pub fn preload_plonk(&self) -> bool {
-        self.preload_plonk
+        self.preload_snark()
     }
 
     /// Whether the CPU minimal-ops path is enabled.
@@ -298,19 +307,31 @@ impl BackendProverOpts {
         self
     }
 
-    /// Set the PLONK/SNARK proving-key path.
-    pub fn proving_key_plonk(mut self, path: PathBuf) -> Self {
+    /// Set the SNARK proving-key path.
+    pub fn proving_key_snark(mut self, path: PathBuf) -> Self {
         self.proving_key_snark = Some(path);
         self
     }
 
-    /// Enable PLONK/SNARK proof generation, optionally preloading its keys.
-    pub fn plonk(mut self, preload: bool) -> Self {
-        self.plonk = true;
+    /// Set the SNARK proving-key path.
+    #[deprecated(note = "the key may be of any final SNARK: use `proving_key_snark`")]
+    pub fn proving_key_plonk(self, path: PathBuf) -> Self {
+        self.proving_key_snark(path)
+    }
+
+    /// Enable final SNARK proof generation, optionally preloading its key.
+    pub fn snark(mut self, preload: bool) -> Self {
+        self.snark = true;
         if preload {
-            self.preload_plonk = true;
+            self.preload_snark = true;
         }
         self
+    }
+
+    /// Enable final SNARK proof generation, optionally preloading its key.
+    #[deprecated(note = "the key may be of any final SNARK: use `snark`")]
+    pub fn plonk(self, preload: bool) -> Self {
+        self.snark(preload)
     }
 
     /// Use the GPU proving path.
@@ -411,8 +432,8 @@ pub trait ProverEngine {
     /// Set the standard input and seed for the next execution or proof.
     fn set_stdin_and_random_seed(&self, stdin: ZiskStdin, seed: RandomSeed) -> Result<()>;
 
-    /// Register a previously set-up program as the active one.
-    fn register_program(&self, program_id: &ProgramId, with_hints: bool) -> Result<()>;
+    /// Begin a job running `program_id`, set up with `with_hints`. See [`ProverJob`].
+    fn begin_job_for(&self, program_id: &ProgramId, with_hints: bool) -> Result<ProverJob>;
 
     /// Number of steps executed by the last execution or proof run.
     fn executed_steps(&self) -> u64;
@@ -447,19 +468,19 @@ pub trait ProverEngine {
         offset: Option<usize>,
     ) -> Result<Vec<RowInfo>>;
 
-    /// Run the program without proving and return its output.
-    fn execute(
-        &self,
-        program: &GuestProgram,
-        stdin: ZiskStdin,
-        seed: RandomSeed,
-    ) -> Result<ExecuteOutput>;
+    /// Begin a job running `program`, in the hints mode of the prover's last setup or job.
+    /// See [`ProverJob`].
+    fn begin_job(&self, program: &GuestProgram) -> Result<ProverJob>;
+
+    /// Run the job's program without proving and return its output.
+    fn execute(&self, job: &ProverJob, stdin: ZiskStdin, seed: RandomSeed)
+        -> Result<ExecuteOutput>;
 
     /// Collect execution statistics (optionally with debug info); returns the
     /// world/local ranks and an optional stats handle.
     fn stats(
         &self,
-        program: &GuestProgram,
+        job: &ProverJob,
         stdin: ZiskStdin,
         seed: RandomSeed,
         debug_info: Option<Option<String>>,
@@ -467,19 +488,19 @@ pub trait ProverEngine {
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)>;
 
-    /// Run the program and check its constraints without producing a proof.
+    /// Run the job's program and check its constraints without producing a proof.
     fn verify_constraints(
         &self,
-        program: &GuestProgram,
+        job: &ProverJob,
         stdin: ZiskStdin,
         seed: RandomSeed,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput>;
 
-    /// Run the program and generate a proof of the requested kind.
+    /// Run the job's program and generate a proof of the requested kind.
     fn prove(
         &self,
-        program: &GuestProgram,
+        job: &ProverJob,
         stdin: ZiskStdin,
         seed: RandomSeed,
         proof_kind: ProofKind,
@@ -574,7 +595,7 @@ pub trait ProverEngine {
     // These are meaningful only for the ASM backend (distributed worker path).
     // Data operations (submit_hint, submit_input, register_hints_stream) return Err by
     // default because calling them on a non-ASM backend is always a caller bug.
-    // State operations (set_active_services, reset) default to no-ops because
+    // State operations (set_active_services) default to no-ops because
     // they are safe to skip when there are no ASM resources to manage.
 
     /// Submit a precompile-hint blob (ASM only; errors on other backends).
@@ -610,11 +631,6 @@ pub trait ProverEngine {
         Ok(())
     }
 
-    /// Reset per-job backend state (ASM only; no-op elsewhere).
-    fn reset(&self) -> Result<()> {
-        Ok(())
-    }
-
     /// Notify the backend that the cluster job was cancelled (no-op by default).
     fn notify_cluster_cancellation(&self) {}
 
@@ -636,6 +652,83 @@ pub trait ProverEngine {
     /// Block until any in-flight proofman entry point has returned. Called
     /// in recovery before advertising `Ready`. Default no-op.
     fn wait_until_proofman_ready(&self) {}
+
+    /// End every rank of the cluster, this one included, with exit `code`: the way
+    /// out once ranks may be in different MPI collectives, which nothing resumes.
+    /// The default, for an engine without MPI, exits this process.
+    fn abort_cluster(&self, code: i32) -> ! {
+        std::process::exit(code)
+    }
+
+    /// Whether every rank succeeded, from each one's `ok`. A collective MPI
+    /// operation: every rank must call it. The default, without MPI, is `ok`.
+    fn cluster_all_ok(&self, ok: bool) -> bool {
+        ok
+    }
+
+    /// Send `data` to MPI rank `dest`, tagged `tag`. A no-op without MPI.
+    fn mpi_send(&self, _dest: i32, _tag: i32, _data: &[u8]) {}
+
+    /// A message tagged `tag` from any rank, if one has arrived: its source rank
+    /// and its data. Never one without MPI.
+    fn mpi_try_receive(&self, _tag: i32) -> Option<(i32, Vec<u8>)> {
+        None
+    }
+}
+
+/// One job on a prover: one operation (execute, stats, verify_constraints or prove)
+/// on one program, from [`ProverEngine::begin_job`] until dropped.
+///
+/// On the assembly backend it holds, for the job's whole length, the shared memory every
+/// program the process sets up on its rank in its hints mode uses (see [`AsmJob`]):
+/// register the job's streams after beginning it, so that they are set up under that
+/// hold. On the emulator it holds nothing.
+///
+/// Beginning one waits for the job before it on that memory, and ending one waits for
+/// what the job left running; neither belongs on an async event loop. The hold is not
+/// reentrant: never begin another job, nor set up a program, on a thread that holds one,
+/// or it waits for ever.
+#[must_use = "dropping the job ends it"]
+#[derive(Debug)]
+pub struct ProverJob {
+    program: ProgramId,
+    /// Set up for the Rust emulator only, so it cannot be proved or verified.
+    emulator_only: bool,
+    /// Set once the job has run its execution, which a job runs once: nothing rewinds the
+    /// input between two.
+    executed: std::sync::atomic::AtomicBool,
+    _asm: Option<AsmJob>,
+}
+
+impl ProverJob {
+    pub(crate) fn new(program: ProgramId, emulator_only: bool, asm: Option<AsmJob>) -> Self {
+        Self { program, emulator_only, executed: Default::default(), _asm: asm }
+    }
+
+    /// Fails if the job has already run its execution.
+    fn begin_execution(&self) -> Result<()> {
+        if self.executed.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return Err(anyhow!("job for '{}' has already executed", self.program.name));
+        }
+        Ok(())
+    }
+
+    /// The program the job runs.
+    pub fn program(&self) -> &ProgramId {
+        &self.program
+    }
+
+    /// Fails if the job's program was set up for the Rust emulator only, which cannot
+    /// run `operation`.
+    pub(crate) fn require_full_setup(&self, operation: &str) -> Result<()> {
+        if self.emulator_only {
+            return Err(anyhow!(
+                "Program '{}' was set up emulator_only — {operation} not supported. Re-run setup without --emulator-only.",
+                self.program.name
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Marker trait tying a backend to its [`ProverEngine`] implementation.
@@ -704,9 +797,23 @@ impl<C: ZiskBackend> ZiskProver<C> {
         Ok(RandomSeed::try_from(bytes.as_slice())?)
     }
 
-    /// Make a previously set-up program the active one for the next run.
-    pub fn register_program(&self, program_id: &ProgramId, with_hints: bool) -> Result<()> {
-        self.prover.register_program(program_id, with_hints)
+    /// Begin a job split across calls, as the distributed worker's phases are: keep
+    /// the returned job until the job's last call has returned. See [`ProverJob`].
+    pub fn begin_job_for(&self, program_id: &ProgramId, with_hints: bool) -> Result<ProverJob> {
+        self.prover.begin_job_for(program_id, with_hints)
+    }
+
+    /// Execute within `job`, a job split across calls begun by
+    /// [`Self::begin_job_for`]. A job executes once. `seed` must already be the one every rank
+    /// and worker of the job shares.
+    pub fn execute_in(
+        &self,
+        job: &ProverJob,
+        stdin: ZiskStdin,
+        seed: RandomSeed,
+    ) -> Result<ExecuteOutput> {
+        job.begin_execution()?;
+        self.prover.execute(job, stdin, seed)
     }
 
     /// Get the world rank of the prover. The world rank is the rank of the prover in the global MPI context.
@@ -751,6 +858,16 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.get_execution_info()
     }
 
+    /// Begin a job running `program`, which must have been set up: register its
+    /// streams through the returned [`ZiskJob`], then run one operation on it.
+    ///
+    /// `execute`, `stats`, `verify_constraints` and `prove` each begin a job of their
+    /// own; begin one here only to register streams for it first. Never while this
+    /// thread holds another job; see [`ProverJob`].
+    pub fn begin_job(&self, program: &GuestProgram) -> Result<ZiskJob<'_, C>> {
+        Ok(ZiskJob { zisk_prover: self, job: self.prover.begin_job(program)? })
+    }
+
     /// Execute the prover with the given standard input and output path.
     /// It only runs the execution without generating a proof.
     /// A `None` seed draws a fresh one on rank 0 and broadcasts it to every MPI rank.
@@ -761,8 +878,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         stdin: ZiskStdin,
         seed: Option<RandomSeed>,
     ) -> Result<ExecuteOutput> {
-        let seed = self.resolve_random_seed(seed)?;
-        self.prover.execute(program, stdin, seed)
+        self.begin_job(program)?.execute(stdin, seed)
     }
 
     /// Get the execution statistics with the given standard input and debug information.
@@ -780,10 +896,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>, RandomSeed)> {
-        let seed = self.resolve_random_seed(seed)?;
-        let (world_rank, n_processes, stats) =
-            self.prover.stats(program, stdin, seed, debug_info, minimal_memory, mpi_node)?;
-        Ok((world_rank, n_processes, stats, seed))
+        self.begin_job(program)?.stats(stdin, seed, debug_info, minimal_memory, mpi_node)
     }
 
     /// Get the instance trace for a given instance ID and row range.
@@ -823,8 +936,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         seed: Option<RandomSeed>,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
-        let seed = self.resolve_random_seed(seed)?;
-        self.prover.verify_constraints(program, stdin, seed, debug_info)
+        self.begin_job(program)?.verify_constraints(stdin, seed, debug_info)
     }
 
     /// Generate a proof with the given standard input.
@@ -836,7 +948,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// let result = prover.prove(&program, stdin)?.minimal().run()?;
     /// ```
     pub fn prove<'a>(&'a self, program: &'a GuestProgram, stdin: ZiskStdin) -> ProveBuilder<'a, C> {
-        ProveBuilder::new(&self.prover, self, program, stdin)
+        ProveBuilder::new(self, ProveJob::Begin(program), stdin)
     }
 
     /// Wrap an existing proof to a different format (minimal or PLONK/SNARK).
@@ -965,13 +1077,15 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.append_raw_input(bytes)
     }
 
-    /// Register a hints stream source (ASM backend only).
-    pub fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
+    /// Read `job`'s precompile hints from `stream` (ASM backend only), for a job split
+    /// across calls. A job run as one operation registers it on its [`ZiskJob`].
+    pub fn register_hints_stream(&self, _job: &ProverJob, stream: StreamSource) -> Result<()> {
         self.prover.register_hints_stream(stream)
     }
 
-    /// Register an inputs stream source (ASM backend only).
-    pub fn register_inputs_stream(&self, stream: StreamSource) -> Result<()> {
+    /// Read `job`'s input from `stream` (ASM backend only), for a job split across
+    /// calls. A job run as one operation registers it on its [`ZiskJob`].
+    pub fn register_inputs_stream(&self, _job: &ProverJob, stream: StreamSource) -> Result<()> {
         self.prover.register_inputs_stream(stream)
     }
 
@@ -983,11 +1097,6 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Activate the backend's out-of-process services (ASM backend only).
     pub fn set_active_services(&self, is_first_process: bool) -> Result<()> {
         self.prover.set_active_services(is_first_process)
-    }
-
-    /// Reset per-job backend state.
-    pub fn reset(&self) -> Result<()> {
-        self.prover.reset()
     }
 
     /// Notify the backend that the cluster job was cancelled.
@@ -1008,6 +1117,29 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Block until any in-flight proofman entry point has returned.
     pub fn wait_until_proofman_ready(&self) {
         self.prover.wait_until_proofman_ready()
+    }
+
+    /// End every MPI rank of the prover, this one included, with exit `code`. See
+    /// [`ProverEngine::abort_cluster`].
+    pub fn abort_cluster(&self, code: i32) -> ! {
+        self.prover.abort_cluster(code)
+    }
+
+    /// Whether every MPI rank succeeded, from each one's `ok`. A collective: every
+    /// rank must call it.
+    pub fn cluster_all_ok(&self, ok: bool) -> bool {
+        self.prover.cluster_all_ok(ok)
+    }
+
+    /// Send `data` to MPI rank `dest`, tagged `tag`.
+    pub fn mpi_send(&self, dest: i32, tag: i32, data: &[u8]) {
+        self.prover.mpi_send(dest, tag, data)
+    }
+
+    /// A message tagged `tag` from any MPI rank, if one has arrived: its source
+    /// rank and its data.
+    pub fn mpi_try_receive(&self, tag: i32) -> Option<(i32, Vec<u8>)> {
+        self.prover.mpi_try_receive(tag)
     }
 }
 
@@ -1093,6 +1225,69 @@ impl ZiskProver<Emu> {
     }
 }
 
+/// A job begun by [`ZiskProver::begin_job`]: register its streams, then run one
+/// operation on it, which ends it. See [`ProverJob`].
+#[must_use = "dropping the job ends it"]
+pub struct ZiskJob<'a, C: ZiskBackend> {
+    zisk_prover: &'a ZiskProver<C>,
+    job: ProverJob,
+}
+
+impl<'a, C: ZiskBackend> ZiskJob<'a, C> {
+    /// Read the job's precompile hints from `stream`.
+    pub fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
+        self.zisk_prover.register_hints_stream(&self.job, stream)
+    }
+
+    /// Read the job's input from `stream`.
+    pub fn register_inputs_stream(&self, stream: StreamSource) -> Result<()> {
+        self.zisk_prover.register_inputs_stream(&self.job, stream)
+    }
+
+    /// See [`ZiskProver::execute`].
+    pub fn execute(self, stdin: ZiskStdin, seed: Option<RandomSeed>) -> Result<ExecuteOutput> {
+        let seed = self.zisk_prover.resolve_random_seed(seed)?;
+        self.zisk_prover.prover.execute(&self.job, stdin, seed)
+    }
+
+    /// See [`ZiskProver::stats`].
+    pub fn stats(
+        self,
+        stdin: ZiskStdin,
+        seed: Option<RandomSeed>,
+        debug_info: Option<Option<String>>,
+        minimal_memory: bool,
+        mpi_node: Option<u32>,
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>, RandomSeed)> {
+        let seed = self.zisk_prover.resolve_random_seed(seed)?;
+        let (world_rank, n_processes, stats) = self.zisk_prover.prover.stats(
+            &self.job,
+            stdin,
+            seed,
+            debug_info,
+            minimal_memory,
+            mpi_node,
+        )?;
+        Ok((world_rank, n_processes, stats, seed))
+    }
+
+    /// See [`ZiskProver::verify_constraints`].
+    pub fn verify_constraints(
+        self,
+        stdin: ZiskStdin,
+        seed: Option<RandomSeed>,
+        debug_info: Option<Option<String>>,
+    ) -> Result<VerifyConstraintsOutput> {
+        let seed = self.zisk_prover.resolve_random_seed(seed)?;
+        self.zisk_prover.prover.verify_constraints(&self.job, stdin, seed, debug_info)
+    }
+
+    /// See [`ZiskProver::prove`].
+    pub fn prove(self, stdin: ZiskStdin) -> ProveBuilder<'a, C> {
+        ProveBuilder::new(self.zisk_prover, ProveJob::Begun(self.job), stdin)
+    }
+}
+
 /// Builder for configuring and running a proof.
 ///
 /// This struct provides a fluent API for setting the proof mode
@@ -1103,29 +1298,24 @@ impl ZiskProver<Emu> {
 /// let result = prover.prove(stdin).minimal().run()?;
 /// ```
 pub struct ProveBuilder<'a, C: ZiskBackend> {
-    prover: &'a C::Prover,
     zisk_prover: &'a ZiskProver<C>,
-    guest_program: &'a GuestProgram,
+    job: ProveJob<'a>,
     stdin: ZiskStdin,
     random_seed: Option<RandomSeed>,
     proof_kind: ProofKind,
 }
 
+/// The job a [`ProveBuilder`] proves in.
+enum ProveJob<'a> {
+    /// One begun when the builder runs, for this program.
+    Begin(&'a GuestProgram),
+    /// One already begun, with its streams registered.
+    Begun(ProverJob),
+}
+
 impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
-    fn new(
-        prover: &'a C::Prover,
-        zisk_prover: &'a ZiskProver<C>,
-        guest_program: &'a GuestProgram,
-        stdin: ZiskStdin,
-    ) -> Self {
-        Self {
-            prover,
-            zisk_prover,
-            guest_program,
-            stdin,
-            random_seed: None,
-            proof_kind: ProofKind::VadcopFinal,
-        }
+    fn new(zisk_prover: &'a ZiskProver<C>, job: ProveJob<'a>, stdin: ZiskStdin) -> Self {
+        Self { zisk_prover, job, stdin, random_seed: None, proof_kind: ProofKind::VadcopFinal }
     }
 
     /// Use this host randomness seed instead of drawing a fresh one. Takes an `Option` too, so
@@ -1138,7 +1328,7 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
     /// Enable minimal/compressed/SNARK proof generation.
     pub fn wrap_proof(mut self, proof_kind: ProofKind) -> Self {
         assert!(
-            matches!(proof_kind, ProofKind::VadcopFinalMinimal | ProofKind::Plonk),
+            matches!(proof_kind, ProofKind::VadcopFinalMinimal | ProofKind::Snark),
             "Invalid proof mode for ProveBuilder: {:?}",
             proof_kind
         );
@@ -1148,9 +1338,14 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
 
     /// Execute the proof generation with the configured options.
     pub fn run(self) -> Result<ProveOutput> {
+        let prover = &self.zisk_prover.prover;
+        let job = match self.job {
+            ProveJob::Begin(program) => prover.begin_job(program)?,
+            ProveJob::Begun(job) => job,
+        };
         let seed = self.zisk_prover.resolve_random_seed(self.random_seed)?;
-        self.prover.prove(
-            self.guest_program,
+        prover.prove(
+            &job,
             self.stdin,
             seed,
             self.proof_kind,

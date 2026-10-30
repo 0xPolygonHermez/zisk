@@ -5,18 +5,19 @@
 #![warn(rustdoc::all)]
 #![deny(rustdoc::missing_crate_level_docs)]
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use tracing::info;
-use zisk_common::{RandomSeed, RandomSeedArgs};
+use tracing::{error, info, warn};
+use zisk_common::{JobMetadataArgs, Proof, RandomSeed, RandomSeedArgs, SnarkProtocol};
 use zisk_coordinator_api::dto::{
     deadline_from_now, DomainExecuteRequest, DomainInputChunk, DomainInputKind, DomainJobKind,
     DomainJobKindResponse, DomainProofKind, DomainProveRequest, DomainSetupRequest, TerminalStatus,
 };
-use zisk_coordinator_client::CoordinatorClient;
+use zisk_coordinator_client::{CoordinatorClient, Job};
 
 #[derive(Parser)]
 #[command(name = "zisk-prove-client", about = "Submit jobs to the ZisK coordinator")]
@@ -76,9 +77,10 @@ enum Commands {
         #[arg(long, conflicts_with = "input")]
         hints: Option<PathBuf>,
 
-        /// Proof type to generate
+        /// Proof type to generate: stark, stark-minimal, snark (the workers' SNARK), plonk or
+        /// pilfflonk (a SNARK of that protocol only)
         #[arg(long, default_value = "stark", value_parser = parse_proof_kind)]
-        proof: DomainProofKind,
+        proof: (DomainProofKind, Option<SnarkProtocol>),
 
         /// Save the proof bytes to this file
         #[arg(short, long)]
@@ -86,6 +88,9 @@ enum Commands {
 
         #[command(flatten)]
         random_seed: RandomSeedArgs,
+
+        #[command(flatten)]
+        metadata: JobMetadataArgs,
 
         /// Proof timeout in seconds (0 = no timeout)
         #[arg(long, default_value_t = 0)]
@@ -113,6 +118,9 @@ enum Commands {
         #[command(flatten)]
         random_seed: RandomSeedArgs,
 
+        #[command(flatten)]
+        metadata: JobMetadataArgs,
+
         /// Execute timeout in seconds (0 = no timeout)
         #[arg(long, default_value_t = 0)]
         timeout: u64,
@@ -126,12 +134,16 @@ enum Commands {
     },
 }
 
-fn parse_proof_kind(s: &str) -> Result<DomainProofKind, String> {
+fn parse_proof_kind(s: &str) -> Result<(DomainProofKind, Option<SnarkProtocol>), String> {
     match s.to_lowercase().as_str() {
-        "stark" => Ok(DomainProofKind::Stark),
-        "stark-minimal" | "stark_minimal" | "minimal" => Ok(DomainProofKind::StarkMinimal),
-        "plonk" => Ok(DomainProofKind::Plonk),
-        other => Err(format!("unknown proof kind '{other}'; use stark, stark-minimal, or plonk")),
+        "stark" => Ok((DomainProofKind::Stark, None)),
+        "stark-minimal" | "stark_minimal" | "minimal" => Ok((DomainProofKind::StarkMinimal, None)),
+        "snark" => Ok((DomainProofKind::Snark, None)),
+        "plonk" => Ok((DomainProofKind::Snark, Some(SnarkProtocol::Plonk))),
+        "pilfflonk" => Ok((DomainProofKind::Snark, Some(SnarkProtocol::Pilfflonk))),
+        other => Err(format!(
+            "unknown proof kind '{other}'; use stark, stark-minimal, snark, plonk or pilfflonk"
+        )),
     }
 }
 
@@ -157,6 +169,32 @@ fn register_elf(client: &CoordinatorClient, elf_path: &PathBuf) -> Result<(Strin
     Ok((hash_id, program_name))
 }
 
+/// Wait for `job` to end, and cancel it on Ctrl-C, or once `timeout` seconds (`0`:
+/// none) have passed: it would otherwise go on running after the client gave up.
+fn wait_or_cancel(job: &Job, timeout: u64) -> Result<TerminalStatus> {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(async {
+            let expired = async {
+                match timeout {
+                    0 => std::future::pending().await,
+                    secs => tokio::time::sleep(Duration::from_secs(secs)).await,
+                }
+            };
+            let why = tokio::select! {
+                status = job.wait_async(None) => return status,
+                _ = tokio::signal::ctrl_c() => "interrupted".to_string(),
+                () = expired => format!("timed out after {timeout}s"),
+            };
+            match job.cancel_async().await {
+                Ok(true) => warn!("Job {why}; cancelled it"),
+                Ok(false) => warn!("Job {why}; it had already ended"),
+                Err(e) => error!("Job {why}; cancelling it failed: {e}"),
+            }
+            anyhow::bail!("job {why}")
+        })
+    })
+}
+
 fn run_setup(
     client: &CoordinatorClient,
     hash_id: &str,
@@ -174,7 +212,7 @@ fn run_setup(
         emulator_only,
     }))?;
     info!("Setup job submitted. job_id = {}", job.job_id());
-    match job.wait(None)? {
+    match wait_or_cancel(&job, 0)? {
         TerminalStatus::Completed(_) => {
             info!("Setup completed successfully.");
             Ok(())
@@ -226,9 +264,10 @@ fn run_prove(
     hash_id: &str,
     input: Option<&PathBuf>,
     hints: Option<&PathBuf>,
-    proof: &DomainProofKind,
+    proof: &(DomainProofKind, Option<SnarkProtocol>),
     output: Option<&PathBuf>,
     seed: Option<RandomSeed>,
+    metadata: BTreeMap<String, String>,
     timeout: u64,
 ) -> Result<()> {
     let input_kind = match input {
@@ -244,22 +283,27 @@ fn run_prove(
     };
     let timeout_opt = (timeout != 0).then(|| deadline_from_now(Duration::from_secs(timeout)));
 
+    let (proof, snark_protocol) = proof;
     info!("Submitting prove job (proof_dest = {proof:?}) …");
-    let job = client.submit_job(DomainJobKind::Prove(DomainProveRequest {
-        hash_id: hash_id.to_string(),
-        input: input_kind,
-        hints: hints_kind,
-        random_seed: seed,
-        proof_dest: proof.clone(),
-        proof_timeout: timeout_opt,
-    }))?;
+    let job = client.submit_job_with_metadata(
+        DomainJobKind::Prove(DomainProveRequest {
+            hash_id: hash_id.to_string(),
+            input: input_kind,
+            hints: hints_kind,
+            random_seed: seed,
+            proof_dest: proof.clone(),
+            snark_protocol: *snark_protocol,
+            proof_timeout: timeout_opt,
+        }),
+        metadata,
+    )?;
     let job_id = job.job_id();
     info!("Prove job submitted. job_id = {job_id}");
 
     let _watch = spawn_watch(&job);
 
     info!("Waiting for proof …");
-    match job.wait(None)? {
+    match wait_or_cancel(&job, timeout)? {
         TerminalStatus::Completed(DomainJobKindResponse::Prove { proof: p, stats }) => {
             info!(
                 steps = stats.steps,
@@ -273,7 +317,12 @@ fn run_prove(
 
             let out_path =
                 output.cloned().unwrap_or_else(|| PathBuf::from(format!("{job_id}.proof.bin")));
-            std::fs::write(&out_path, &p.data)
+            // The coordinator sends `Proof::to_bincode`; save it as the file `cargo-zisk`
+            // writes and `verify`/`wrap`/`aggregate` read.
+            let proof =
+                Proof::from_bincode(&p.data).context("Cannot decode the coordinator's proof")?;
+            proof
+                .save(&out_path)
                 .with_context(|| format!("Cannot write proof to {}", out_path.display()))?;
             println!("Proof saved to {}", out_path.display());
 
@@ -295,6 +344,7 @@ fn run_prove(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_execute(
     client: &CoordinatorClient,
     hash_id: &str,
@@ -302,6 +352,7 @@ fn run_execute(
     hints: Option<&PathBuf>,
     output: Option<&PathBuf>,
     seed: Option<RandomSeed>,
+    metadata: BTreeMap<String, String>,
     timeout: u64,
 ) -> Result<()> {
     let input_kind = match input {
@@ -318,20 +369,23 @@ fn run_execute(
     let timeout_opt = (timeout != 0).then(|| deadline_from_now(Duration::from_secs(timeout)));
 
     info!("Submitting execute job …");
-    let job = client.submit_job(DomainJobKind::Execute(DomainExecuteRequest {
-        hash_id: hash_id.to_string(),
-        input: input_kind,
-        hints: hints_kind,
-        random_seed: seed,
-        execute_timeout: timeout_opt,
-    }))?;
+    let job = client.submit_job_with_metadata(
+        DomainJobKind::Execute(DomainExecuteRequest {
+            hash_id: hash_id.to_string(),
+            input: input_kind,
+            hints: hints_kind,
+            random_seed: seed,
+            execute_timeout: timeout_opt,
+        }),
+        metadata,
+    )?;
     let job_id = job.job_id();
     info!("Execute job submitted. job_id = {job_id}");
 
     let _watch = spawn_watch(&job);
 
     info!("Waiting for execution …");
-    match job.wait(None)? {
+    match wait_or_cancel(&job, timeout)? {
         TerminalStatus::Completed(DomainJobKindResponse::Execute {
             stats,
             public_outputs,
@@ -390,7 +444,16 @@ async fn main() -> Result<()> {
             println!("Setup completed for Hash ID: {hash_id}");
         }
 
-        Commands::Prove { hash_id, input, hints, proof, output, random_seed: seed, timeout } => {
+        Commands::Prove {
+            hash_id,
+            input,
+            hints,
+            proof,
+            output,
+            random_seed: seed,
+            metadata,
+            timeout,
+        } => {
             run_prove(
                 &client,
                 hash_id,
@@ -399,11 +462,20 @@ async fn main() -> Result<()> {
                 proof,
                 output.as_ref(),
                 seed.provided(),
+                metadata.to_map(),
                 *timeout,
             )?;
         }
 
-        Commands::Execute { hash_id, input, hints, output, random_seed: seed, timeout } => {
+        Commands::Execute {
+            hash_id,
+            input,
+            hints,
+            output,
+            random_seed: seed,
+            metadata,
+            timeout,
+        } => {
             run_execute(
                 &client,
                 hash_id,
@@ -411,6 +483,7 @@ async fn main() -> Result<()> {
                 hints.as_ref(),
                 output.as_ref(),
                 seed.provided(),
+                metadata.to_map(),
                 *timeout,
             )?;
         }

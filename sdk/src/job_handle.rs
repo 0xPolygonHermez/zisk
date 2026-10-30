@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::future::IntoFuture;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use crate::{Result, SdkError};
@@ -9,7 +9,7 @@ use zisk_coordinator_api::dto::{
     DomainExecutionStats, DomainJobEvent, DomainJobFailure, DomainJobKindResponse, DomainJobPhase,
     TerminalStatus,
 };
-use zisk_coordinator_client::{Job, WatchHandle};
+use zisk_coordinator_client::{InputSender, Job, WatchHandle};
 
 use crate::input_stream::ZiskStream;
 use crate::prove::JobEvent;
@@ -103,6 +103,50 @@ pub(crate) trait FromWaitResult: Sized + Send + 'static {
     fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self>;
 }
 
+/// The pushes of a remote job's data over the inline limit, which run in the background once the
+/// job exists, so that the caller gets the job's handle at once: the first error a push meets,
+/// which also cancelled the job, and the tasks, to stop once the job is over.
+#[derive(Default)]
+pub(crate) struct InputPushes {
+    failure: Arc<OnceLock<String>>,
+    tasks: Vec<tokio::task::JoinHandle<()>>,
+}
+
+impl InputPushes {
+    /// Pushes `data` through `sender` in the background. A push that fails cancels `job`, which
+    /// would otherwise wait for the rest of its data until its phase times out, and its error,
+    /// naming the data `what`, becomes the job's.
+    pub(crate) fn spawn(&mut self, sender: InputSender, data: Vec<u8>, job: Job, what: &str) {
+        let failure = Arc::clone(&self.failure);
+        let what = what.to_string();
+        self.tasks.push(tokio::runtime::Handle::current().spawn(async move {
+            let pushed = async {
+                sender.send(data).await?;
+                sender.close().await
+            }
+            .await;
+            if let Err(e) = pushed {
+                // Kept before the cancel, so that the job's end finds it.
+                let _ = failure.set(format!("pushing the job's {what} failed: {e}"));
+                let _ = job.cancel_async().await;
+            }
+        }));
+    }
+
+    /// Whether a push is still sending its data.
+    fn running(&self) -> bool {
+        self.tasks.iter().any(|task| !task.is_finished())
+    }
+
+    /// Stops the pushes still going, the job being over, and returns the error one met.
+    fn finish(self) -> Option<String> {
+        for task in &self.tasks {
+            task.abort();
+        }
+        self.failure.get().cloned()
+    }
+}
+
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum JobHandleInner<T> {
     Embedded(tokio::task::JoinHandle<Result<T>>),
@@ -124,6 +168,8 @@ pub struct JobHandle<T> {
     stream: Option<ZiskStream>,
     /// Hints stream to finish automatically when the handle is awaited.
     hints_stream: Option<ZiskStream>,
+    /// Data over the inline limit, pushed in the background.
+    input_pushes: Option<InputPushes>,
 }
 
 impl<T> JobHandle<T> {
@@ -139,6 +185,7 @@ impl<T> JobHandle<T> {
             pre_process: None,
             stream: None,
             hints_stream: None,
+            input_pushes: None,
         }
     }
 
@@ -159,7 +206,14 @@ impl<T> JobHandle<T> {
             pre_process: None,
             stream,
             hints_stream,
+            input_pushes: None,
         }
+    }
+
+    /// Hands the handle the job's background pushes: awaiting it stops them once the job is over,
+    /// and a push's error is the job's.
+    pub(crate) fn set_input_pushes(&mut self, pushes: InputPushes) {
+        self.input_pushes = Some(pushes);
     }
 
     pub(crate) fn set_pre_process(
@@ -207,7 +261,31 @@ impl<T> JobHandle<T> {
     }
 }
 
+/// Cancels a remote job while its [`JobHandle`] is awaited, which consumes the
+/// handle. Obtained from [`JobHandle::canceller`].
+#[derive(Clone)]
+pub struct JobCanceller(Job);
+
+impl JobCanceller {
+    /// Cancel the job. Returns `true` if the coordinator cancelled it, `false` if
+    /// it had already reached a terminal state.
+    pub async fn cancel(&self) -> Result<bool> {
+        self.0.cancel_async().await.map_err(SdkError::backend)
+    }
+}
+
 impl<T> JobHandle<T> {
+    /// A [`JobCanceller`] for this job, to cancel it while the handle is awaited.
+    /// `None` for an embedded job, which cannot be cancelled yet.
+    pub fn canceller(&self) -> Option<JobCanceller> {
+        match &self.inner {
+            Some(JobHandleInner::Remote { remote_job, .. }) => {
+                Some(JobCanceller(remote_job.clone()))
+            }
+            _ => None,
+        }
+    }
+
     /// Cancel the in-flight job.
     ///
     /// - Embedded: aborts the blocking task (the thread runs to completion but the
@@ -250,9 +328,18 @@ impl<T: FromWaitResult> JobHandle<T> {
         timeout: Option<Duration>,
         subscribers: SubscriberList,
         pre_process: Option<PreProcessHook>,
+        input_pushes: Option<InputPushes>,
     ) -> Result<T> {
         let job_id = JobId(remote_job.job_id().to_string());
-        let terminal = remote_job.wait_async(timeout).await.map_err(SdkError::backend)?;
+        let terminal = remote_job.wait_async(timeout).await;
+        // A wait that ends without the job's end (its timeout, a failed wait) leaves the job running
+        // in the coordinator, which does not time it out: once its push stops, it would run on part
+        // of its input. So it is cancelled first, as a failed push cancels it.
+        if terminal.is_err() && input_pushes.as_ref().is_some_and(InputPushes::running) {
+            let _ = remote_job.cancel_async().await;
+        }
+        let push_failure = input_pushes.and_then(InputPushes::finish);
+        let terminal = terminal.map_err(SdkError::backend)?;
 
         // Fire terminal event from the authoritative WaitJobResult response.
         match &terminal {
@@ -263,6 +350,13 @@ impl<T: FromWaitResult> JobHandle<T> {
             TerminalStatus::Cancelled => {
                 fire_event(&subscribers, JobEvent::Failed(CANCELLED.to_string()));
             }
+        }
+
+        // A push that failed cancelled the job: its error, not the cancellation, is the job's.
+        if let Some(failure) =
+            push_failure.filter(|_| !matches!(terminal, TerminalStatus::Completed(_)))
+        {
+            return Err(SdkError::backend(failure));
         }
 
         if let Some(hook) = pre_process {
@@ -284,13 +378,15 @@ impl<T: Send + 'static + FromWaitResult> IntoFuture for JobHandle<T> {
         let pre_process = self.pre_process.take();
         let stream = self.stream.take();
         let hints_stream = self.hints_stream.take();
+        let input_pushes = self.input_pushes.take();
         Box::pin(async move {
             let result = match inner {
                 JobHandleInner::Embedded(handle) => Self::await_embedded(handle, timeout).await,
                 JobHandleInner::Remote { remote_job, _watch_handle } => {
                     // _watch_handle is kept alive until await_remote completes,
                     // then dropped (aborting the watch task).
-                    Self::await_remote(remote_job, timeout, subscribers, pre_process).await
+                    Self::await_remote(remote_job, timeout, subscribers, pre_process, input_pushes)
+                        .await
                 }
             };
             // Automatically close streams so any flush() before the next
@@ -397,7 +493,7 @@ impl FromWaitResult for crate::prove::ProveResult {
     fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self> {
         match status {
             TerminalStatus::Completed(DomainJobKindResponse::Prove { proof, stats }) => {
-                let proof_with_pv = zisk_common::Proof::from_bytes(&proof.data).map_err(|e| {
+                let proof_with_pv = zisk_common::Proof::from_bincode(&proof.data).map_err(|e| {
                     SdkError::Serialization(format!("failed to deserialize proof: {e}"))
                 })?;
                 let output = zisk_prover_backend::ProveOutput::from_remote(
@@ -410,7 +506,7 @@ impl FromWaitResult for crate::prove::ProveResult {
             }
             TerminalStatus::Completed(DomainJobKindResponse::Wrap(proof))
             | TerminalStatus::Completed(DomainJobKindResponse::AggregateProofs(proof)) => {
-                let proof_with_pv = zisk_common::Proof::from_bytes(&proof.data).map_err(|e| {
+                let proof_with_pv = zisk_common::Proof::from_bincode(&proof.data).map_err(|e| {
                     SdkError::Serialization(format!("failed to deserialize remote proof: {e}"))
                 })?;
                 let output = zisk_prover_backend::ProveOutput::from_remote(
@@ -467,5 +563,28 @@ impl FromWaitResult for crate::execute::ExecuteResult {
             TerminalStatus::Failed(f) => Err(SdkError::JobFailed(format_failure(&f))),
             TerminalStatus::Cancelled => Err(SdkError::Cancelled),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Only a push still sending its data makes an unfinished wait cancel the job.
+    #[tokio::test]
+    async fn a_push_runs_until_its_task_ends() {
+        let mut pushes = InputPushes::default();
+        assert!(!pushes.running());
+
+        let done = tokio::spawn(async {});
+        while !done.is_finished() {
+            tokio::task::yield_now().await;
+        }
+        pushes.tasks.push(done);
+        assert!(!pushes.running());
+
+        pushes.tasks.push(tokio::spawn(std::future::pending::<()>()));
+        assert!(pushes.running());
+        assert_eq!(pushes.finish(), None);
     }
 }

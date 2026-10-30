@@ -186,11 +186,12 @@ constexpr uint32_t MASK_WORDS            = (MAX_INSTANCES + 31) / 32;
 constexpr uint32_t MAX_CHUNKS            = MEM_GPU_MAX_META_CHUNKS; // 16384
 // A chunk is processed in pieces of whole records, each with at most MAX_POT_PER_PIECE potentials
 // and MAX_WORDS_PER_PIECE stream words, so the per-stream buffers are sized for one piece and a
-// chunk of any size fits. The RAM pairing state crosses pieces as one bit per address, which
-// enters the next piece's sort as a carry entry (MAX_SORT_PER_PIECE).
+// chunk of any size fits. The RAM pairing state crosses the pieces of a chunk as one byte per RAM
+// word (d_pair_state_, N_ADDR_RAM bytes per stream, cleared at the chunk's start): a chunk may
+// touch any number of distinct words.
 constexpr uint32_t MAX_POT_PER_PIECE   = 1u << 20;
 constexpr uint32_t MAX_WORDS_PER_PIECE = MAX_POT_PER_PIECE + 128;
-constexpr uint32_t MAX_SORT_PER_PIECE  = 2 * MAX_POT_PER_PIECE;
+constexpr uint32_t MAX_SORT_PER_PIECE  = MAX_POT_PER_PIECE;
 // Accesses the fills can retain per block: the arrival index of a sort key (mem_fill.cu).
 constexpr uint64_t MAX_RETAINED_ACCESSES = 1ull << 30;
 
@@ -339,7 +340,7 @@ private:
     uint32_t*      d_pages_dense_            = nullptr;
     uint32_t*      d_present_counters_       = nullptr;
     uint32_t*      d_page_meta_starts_       = nullptr;
-    uint32_t*      d_pages_dense_starts_     = nullptr;
+    struct PageBatchEntry* d_page_batch_      = nullptr;   // the compaction batch's (instance, page range) entries
     uint32_t*      h_present_counters_       = nullptr;
 
     // ─── Per-stream device buffers (parallel arrays) ──────────────────
@@ -368,9 +369,7 @@ private:
     void*          d_cub_temp_[N_STREAMS]          = {nullptr};
     size_t         cub_temp_bytes_                 = 0;
     uint32_t*      h_n_emits_[N_STREAMS]           = {nullptr};
-    uint64_t*      d_carry_[N_STREAMS]             = {nullptr};   // pairing state per address, as sort keys
-    uint32_t*      d_carry_rank_[N_STREAMS]        = {nullptr};   // sorted position -> real entries before it
-    uint32_t*      h_n_carry_[N_STREAMS]           = {nullptr};
+    uint8_t*       d_pair_state_[N_STREAMS]        = {nullptr};   // RAM pairing state per word across a chunk's pieces
     uint32_t*      h_pot_piece_[N_STREAMS]         = {nullptr};   // a piece's device potential count
 
     // ─── Ops pool (bump-allocated by add_chunk) ──────────────────────
@@ -398,6 +397,7 @@ private:
     std::mutex          ram_runs_mtx_;
     uint32_t            piece_potentials_ = MAX_POT_PER_PIECE;  // cut threshold (ZISK_MEM_TEST_PIECE_POTENTIALS lowers it)
     uint64_t            retained_cap_ = MAX_RETAINED_ACCESSES;  // ZISK_MEM_TEST_RETENTION lowers it
+    uint32_t            test_pages_window_ = 0;              // ZISK_MEM_TEST_PAGES_WINDOW caps the offset-pages window
 #ifdef ZISK_MEM_TEST
     int64_t             test_chunk_reject_ = -1;                // ZISK_MEM_TEST_CHUNK_REJECT: the chunk add_chunk rejects
     int64_t             test_pool_cross_   = -1;                // ZISK_MEM_TEST_POOL_CROSS: the chunk whose pool reservation meets the records
@@ -539,16 +539,14 @@ private:
 
     uint32_t*      h_n_emits_all_              = nullptr;
     uint32_t*      h_pot_device_               = nullptr;   // per chunk: the device's potential count
-    // Pinned destinations for the compacted paged-offsets output.
-    //   - h_page_starts_buf_ / h_page_single_buf_ are sized in pages
-    //     (1 entry per page); cumulative across the active instances.
-    //   - h_pages_dense_buf_ is sized in slots (MEM_OFFSETS_PAGE_SIZE per
-    //     present page); bounded above by total_addrs (every page present).
+    // Pinned destinations for the compacted paged-offsets output, max_total_pages_ pages each:
+    //   - h_page_starts_buf_ / h_page_single_buf_: one entry per page, cumulative across the
+    //     active instances (as are d_page_starts_ / d_page_single_).
+    //   - h_pages_dense_buf_: MEM_OFFSETS_PAGE_SIZE slots per page (every page present).
+    size_t         max_total_pages_            = 0;
     uint32_t*      h_page_starts_buf_          = nullptr;
     uint32_t*      h_page_single_buf_           = nullptr;
-    size_t         h_page_meta_buf_size_       = 0;       // bytes (covers both)
     uint32_t*      h_pages_dense_buf_          = nullptr;
-    size_t         h_pages_dense_buf_size_     = 0;
     uint32_t*      h_result_nops_              = nullptr;
     uint32_t*      h_meta_scalars_             = nullptr;
     ChunkCounters* h_chunk_counters_per_chunk_ = nullptr;  // pinned, MAX_CHUNKS slots
@@ -624,7 +622,7 @@ private:
 
     bool   add_chunk_core_(const uint64_t* words, uint32_t n_words, uint32_t c);
     bool   add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int s, uint32_t pot, uint32_t ram,
-                      uint32_t* d_out, uint32_t n_carry, bool carry_out, uint32_t* h_emits, uint32_t* h_pot);
+                      uint32_t* d_out, bool cross_pieces, uint32_t* h_emits, uint32_t* h_pot);
     void   pool_start_();
     void   pool_stop_();
     void   pool_thread_loop_(int s);

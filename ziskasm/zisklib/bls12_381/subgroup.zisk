@@ -22,7 +22,6 @@ u64 BLS_SG2_XB[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 BLS_SG2_YA[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 BLS_SG2_YB[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 BLS_SG2_R[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-u64 BLS_SG2_R2[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 BLS_SG2_U1[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 BLS_SG2_U2[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 BLS_SG2_U3[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
@@ -1304,27 +1303,20 @@ lsg_ax_go:
 	copyb(0, 24) -> r12
 	copyb(0, 1) -> r13
 lsg_ax_loop:
+	; R = 2R (+ P), in place: the twist dbl/add copy their inputs before writing
 	eq(r13, 64), j(lsg_ax_done)
 	copyb(0, BLS_SG2_R) -> r10
-	copyb(0, BLS_SG2_R2) -> r11
+	copyb(0, BLS_SG2_R) -> r11
 	call zisklib_dbl_complete_twist_bls12_381
-	dma_xmemcpy(BLS_SG2_R, BLS_SG2_R2) -> r5, j(192, 4)
 	sll(r13, 3) -> r6
 	copyb(0, BLS_XABS_BE) -> r5
 	add(r5, r6) -> r5
 	copyb(r5, 8[a + 0]) -> r6
-	copyb(0, BLS_SG2_R2) -> r10
-	copyb(0, BLS_SG2_R) -> r11
-	copyb(0, 24) -> r12
 	eq(r6, 0), j(lsg_ax_next)
 	copyb(0, BLS_SG2_R) -> r10
 	copyb(0, [BLS_SGP]) -> r11
-	copyb(0, BLS_SG2_R2) -> r12
+	copyb(0, BLS_SG2_R) -> r12
 	call zisklib_add_complete_twist_bls12_381
-	dma_xmemcpy(BLS_SG2_R, BLS_SG2_R2) -> r5, j(192, 4)
-	copyb(0, BLS_SG2_R2) -> r10
-	copyb(0, BLS_SG2_R) -> r11
-	copyb(0, 24) -> r12
 lsg_ax_next:
 	add(r13, 1) -> r13
 	jump(lsg_ax_loop)
