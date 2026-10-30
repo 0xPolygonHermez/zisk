@@ -9,21 +9,23 @@ name: sail-zisk checks
 # pull requests, and nightly.
 # See sail-zisk/README.md.
 
+# Disabled for now: runs only by hand. To re-enable, uncomment the
+# pull_request and schedule triggers.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, labeled]
-    branches:
-      - develop
-      - main
-      - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
-    paths:
-      - 'sail-zisk/**'
-      - 'transpilers/riscv/**'
-      - 'core/src/**'
-      - 'tools/sail-difftest/**'
-      - '.github/workflows/sail_zisk.yml'
-  schedule:
-    - cron: '30 2 * * *'
+  # pull_request:
+  #   types: [opened, synchronize, reopened, labeled]
+  #   branches:
+  #     - develop
+  #     - main
+  #     - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
+  #   paths:
+  #     - 'sail-zisk/**'
+  #     - 'transpilers/riscv/**'
+  #     - 'core/src/**'
+  #     - 'tools/sail-difftest/**'
+  #     - '.github/workflows/sail_zisk.yml'
+  # schedule:
+  #   - cron: '30 2 * * *'
   workflow_dispatch:
 
 concurrency:
