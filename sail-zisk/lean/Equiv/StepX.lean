@@ -533,6 +533,13 @@ theorem one_stepMX (C : BitVec 64 → Prop) (S : ZiskRiscv.State model) (z : ZSt
       obtain ⟨σ', hs, h'⟩ := zstep_noreads hX.offRam h hzpc hn h2
       exact ⟨σ', .step hs (.done _), h'⟩
 
+/-- A covered step, then a covered run: a covered run. -/
+theorem runOk_succ {rs : List PMA_Region} {zr : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
+    {S : ZiskRiscv.State model} {n : Nat} (ho : OneOkM rs zr C S) :
+    ∀ {j : Nat}, RunOkM rs zr C j (sNext n S) (n + 1) → RunOkM rs zr C (j + 1) S n
+  | 0, _ => ho
+  | _ + 1, h => .inl ⟨ho, h⟩
+
 set_option maxHeartbeats 4000000 in
 /-- `prog_romM`, ZisK on its memory without X's bytes alongside: its run
     there is its run on the whole memory, or a step of the machine's run
@@ -546,7 +553,8 @@ theorem prog_romMX (zr zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PM
       ∃ z' k', ZRun zrom k' z z' ∧ Rel (sIter n k S).rv z' rs ∧ Equiv.Zisk.FcallRel (sIter n k S).fcall z' ∧
         RamOnlyX S.rv.mem (sIter n k S).rv.mem ∧ Grows S.rv.mem (sIter n k S).rv.mem ∧ Mirror (sIter n k S) ∧
         (PcOk (sIter n k S).rv → MRunR C k S (sIter n k S)) ∧
-        ∀ σ, FRX X σ z → (∃ σ', ZRun zrom k' σ σ' ∧ FRX X σ' z') ∨ ∃ j, j < k ∧ BreakXS X (sIter n j S)
+        ∀ σ, FRX X σ z → (∃ σ', ZRun zrom k' σ σ' ∧ FRX X σ' z') ∨
+          ∃ j, j < k ∧ RunOkM rs zr C j S n ∧ BreakXS X (sIter n j S)
   | 0, S, z, n, hrel, hf, hmir, _, _, _ =>
     ⟨z, 0, .done z, hrel, hf, RamOnlyX.refl _, Grows.refl _, hmir, fun _ => .done _,
       fun σ h => .inl ⟨σ, .done _, h⟩⟩
@@ -554,7 +562,7 @@ theorem prog_romMX (zr zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PM
     obtain ⟨z1, k1, hzr, hrel1, hf1, hm1, hg1, hmir1, hmr, hσ⟩ := one_stepMX C S z rs hrel hf hmir hx zrom
       (OneOkM.retarget hs (fun _ h => hin.head h) ho) (fun _ h => hin.head h) n hX
     exact ⟨z1, k1, hzr, hrel1, hf1, hm1, hg1, hmir1, fun hp => hmr 0 _ hp (.done _),
-      fun σ h => (hσ σ h).imp_right fun hb => ⟨0, by omega, hb⟩⟩
+      fun σ h => (hσ σ h).imp_right fun hb => ⟨0, by omega, trivial, hb⟩⟩
   | k + 2, S, z, n, hrel, hf, hmir, .inl ⟨ho, hrest⟩, hin, hs => by
     obtain ⟨z1, k1, hzr, hrel1, hf1, hm1, hg1, hmir1, hmr, hσ⟩ := one_stepMX C S z rs hrel hf hmir hx zrom
       (OneOkM.retarget hs (fun _ h => hin.head h) ho) (fun _ h => hin.head h) n hX
@@ -567,8 +575,8 @@ theorem prog_romMX (zr zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PM
     rcases hσ σ h with ⟨σ1, hr1, h1⟩ | hb
     · rcases hσ2 σ1 h1 with ⟨σ', hr', h'⟩ | ⟨j, hj, hb⟩
       · exact .inl ⟨σ', ZRun.append hr1 hr', h'⟩
-      · exact .inr ⟨j + 1, by omega, hb⟩
-    · exact .inr ⟨0, by omega, hb⟩
+      · exact .inr ⟨j + 1, by omega, runOk_succ ho hb.1, hb.2⟩
+    · exact .inr ⟨0, by omega, trivial, hb⟩
   | k + 2, S, z, n, hrel, hf, hmir, .inr ⟨⟨pc, i, hpc, hi⟩, hrest⟩, hin, hs => by
     have hi' := FtAt.retarget hs (hin.head hpc) hi
     obtain ⟨s2, z1, hrun, hzrun, hrel1, -, hr1, hpc1, hmem1, hmem2, hk⟩ :=
@@ -609,6 +617,6 @@ theorem prog_romMX (zr zrom : BitVec 64 → _root_.Zisk.zisk_inst) (rs : List PM
       obtain ⟨σ1, hσ1, h1⟩ := zstep_noreads hX.offRam h hzpc hn hs1
       rcases hσ3 σ1 h1 with ⟨σ', hr', h'⟩ | ⟨j, hj, hb⟩
       · exact .inl ⟨σ', by rw [Nat.add_comm]; exact .step hσ1 hr', h'⟩
-      · exact .inr ⟨j + 2, by omega, by rw [e']; exact hb⟩
+      · exact .inr ⟨j + 2, by omega, .inr ⟨⟨pc, i, hpc, hi⟩, by rw [q1, q2]; exact hb.1⟩, by rw [e']; exact hb.2⟩
 
 end Equiv.Final

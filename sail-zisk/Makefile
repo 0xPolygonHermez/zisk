@@ -163,14 +163,13 @@ zisk-riscv:
 equiv:
 	cd lean && $(LAKE) update && $(LAKE) build
 
-## The proofs: build lean/ (make equiv), then check the axioms the theorem,
-## zisk_total, rests on: Lean's, bv_decide's, and those sail-riscv's Lean
+## The proofs: build lean/ (make equiv), then check the axioms the theorems,
+## zisk_total and zisk_totalX, rest on: Lean's, bv_decide's, and those sail-riscv's Lean
 ## leaves undefined (lean/axioms.txt); no `sorry`. Run `make lean`, `make
 ## riscv` and `make riscv-run` first. ~15 min on 128 cores.
 proofs: equiv
 	@mkdir -p build
-	printf 'import Equiv\n#print axioms Equiv.Final.zisk_total\n' | (cd lean && $(LAKE) env lean --stdin) > build/axioms.out
-	python3 lean/check_axioms.py lean/axioms.txt build/axioms.out
+	for t in zisk_total zisk_totalX; do printf 'import Equiv\n#print axioms Equiv.Final.%s\n' $$t | (cd lean && $(LAKE) env lean --stdin) > build/axioms-$$t.out && python3 lean/check_axioms.py lean/axioms.txt build/axioms-$$t.out || exit 1; done
 
 ## Build the C emulator into build/c/zisk_emu.
 emu: $(EMU)
