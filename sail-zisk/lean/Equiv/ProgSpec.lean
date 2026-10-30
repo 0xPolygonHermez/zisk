@@ -532,11 +532,12 @@ theorem one_stepT (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
   · obtain ⟨s', z', h1, h2, h3, -, hm, hk⟩ := uwstep_rel s z rs hrel pc hpc zrom i _ hi n
     exact ⟨s', z', 2, .plain pc _ hpc (readWord_of hi.h0 hi.h1 hi.h2 hi.h3) (notSys_uw i).plain h1, h2, h3,
       RamOnly.of_eq hm, hk⟩
-  · obtain ⟨s', z', k, h1, h2, h3, -, hm, hk⟩ := amostep_rel s z rs hrel pc hpc zrom i _ hi v1 hv1 hok n
+  · obtain ⟨s', z', k, h1, h2, h3, -, hm, hk, -⟩ := amostep_rel s z rs hrel pc hpc zrom i _ hi v1 hv1 hok n
     exact ⟨s', z', k, .plain pc _ hpc (readWord_of hi.h0 hi.h1 hi.h2 hi.h3) (notSys_amo i).plain h1, h2, h3, hm, hk⟩
   · obtain ⟨s', z', h1, h2, h3, h4, hk⟩ := lrstep_m s z rs hrel pc hpc zrom i _ hi v1 hv1 hok n
     exact ⟨s', z', 1, h1, h2, h3, h4, hk⟩
-  · exact scstep_m s z rs hrel pc hpc zrom i _ hi v1 v2 hv1 hv2 hok n
+  · obtain ⟨s', z', k, h1, h2, h3, h4, hk, -⟩ := scstep_m s z rs hrel pc hpc zrom i _ hi v1 v2 hv1 hv2 hok n
+    exact ⟨s', z', k, h1, h2, h3, h4, hk⟩
   · obtain ⟨s', z', h1, h2, h3, h4, hk⟩ := marchidstep_m s z rs hrel pc hpc zrom i hrd _ hi hcell n
     exact ⟨s', z', 1, h1, h2, h3, h4, hk⟩
 

@@ -31,7 +31,8 @@ theorem callstep_m (C : BitVec 64 → Prop) (S : ZiskRiscv.State model) (z : Equ
     (hC : C pc) (hC4 : c.len ≠ 1 → C (pc + 4)) (hC8 : c.len = 3 → C (pc + 8)) (hok : CallOk S c) :
     ∃ S' z' k', CStep C S S' ∧ ZRun zrom k' z z' ∧ Rel S'.rv z' rs ∧ Equiv.Zisk.FcallRel S'.fcall z' ∧
       (∀ a, Equiv.OffRam a → ¬ (Equiv.IN_LO ≤ a ∧ a < Equiv.IN_LO + 8) → S'.rv.mem.get? a = S.rv.mem.get? a) ∧
-      Grows S.rv.mem S'.rv.mem := by
+      Grows S.rv.mem S'.rv.mem ∧
+      ∃ ia, (∀ p ∈ Transpiler.callInsts c pc ia, zrom p.1 = p.2) ∧ k' = (Transpiler.callInsts c pc ia).length := by
   have hw := decode_call_wf hd
   have hg : model.getPC S.rv = pc := by simp [model, hpc]
   have hcs : ∀ S', ZiskRiscv.call S c = .ok S' → CStep C S S' := by
@@ -44,16 +45,17 @@ theorem callstep_m (C : BitVec 64 → Prop) (S : ZiskRiscv.State model) (z : Equ
       · rw [f4 hl, nextWord, h4]; rfl
       · rw [f8 hl, nextWord2, h8]; rfl
   obtain ⟨ia, hz⟩ := transpiled_call3 htr hd
+  have hz0 := hz
   cases hcn : c.count with
   | none =>
     simp only [Transpiler.callInsts, hcn, List.mem_singleton, forall_eq] at hz
     obtain ⟨S', z', h1, h2, h3, h4', h5, h6⟩ := callstep1 S z rs hrel hf c hw hcn pc hpc zrom hz hok
-    exact ⟨S', z', 1, hcs S' h1, .step h2 (.done _), h3, h4', h5, h6⟩
+    exact ⟨S', z', 1, hcs S' h1, .step h2 (.done _), h3, h4', h5, h6, ia, hz0, by simp [Transpiler.callInsts, hcn]⟩
   | some rc =>
     simp only [Transpiler.callInsts, hcn, List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false,
       forall_eq_or_imp, forall_eq] at hz
     obtain ⟨S', z', h1, h2, h3, h4', h5, h6⟩ := callstep2 S z rs hrel hf c hw rc hcn pc hpc zrom ia hz.1 hz.2 hok
-    exact ⟨S', z', 2, hcs S' h1, h2, h3, h4', h5, h6⟩
+    exact ⟨S', z', 2, hcs S' h1, h2, h3, h4', h5, h6, ia, hz0, by simp [Transpiler.callInsts, hcn]⟩
 
 theorem ofSail_ne {e : Sail.Error _root_.Zisk.exception}
     (hne : ∀ k, e = .OutOfMemoryRange k → ZiskRiscv.inRegions k = false) (a : Nat) :

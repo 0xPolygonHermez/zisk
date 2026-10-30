@@ -233,7 +233,7 @@ theorem one_stepM (C : BitVec 64 → Prop) (S : ZiskRiscv.State model) (z : Equi
     exact ⟨z', k', hzr, hrel', fun r hr => (hk r hr).trans (hf r hr), (RamOnlyX.of hro), hm.grows,
       (mirror_ramOnly hro).trans hmir,
       fun m S'' hp hrest => hm.toRun hrel.ready hpc hex (hC pc hpc) hx hp hrest⟩
-  · obtain ⟨S', z', k', hcs, hzr, hrel', hf', hmem, hg⟩ :=
+  · obtain ⟨S', z', k', hcs, hzr, hrel', hf', hmem, hg, -⟩ :=
       callstep_m C S z rs hrel hf hx pc hpc zrom w hex hrw htr h4 h8 c hd (hC pc hpc) hC4 hC8 hok
     rw [hcs.snext_eq n]
     obtain ⟨c', hcall, -⟩ := hcs.2.2

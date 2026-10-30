@@ -471,7 +471,7 @@ theorem zisk_sc (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (z : Equiv.Zisk.ZSt
     (hwr : _root_.Zisk.Functions.writable (regv xs i.rs1.toNat + 0) (aW i.d) = true)
     (hnr : _root_.Zisk.Functions.hits_registers (regv xs i.rs1.toNat + 0) (aW i.d) = false)
     (hrom : ∀ p ∈ Transpiler.sc i.encode i.d pc ia, zrom p.1 = p.2) :
-    ∃ z' k, ZRun zrom k z z' ∧
+    ∃ z' k, ZRun zrom k z z' ∧ k = (Transpiler.sc i.encode i.d pc ia).length ∧
       z'.regs.get? _root_.Zisk.Register.Xs = some (Equiv.Zisk.xsUpd xs i.rd.toNat 0) ∧
       z'.regs.get? _root_.Zisk.Register.PC = some (pc + 4) ∧
       (∃ st, z'.regs.get? _root_.Zisk.Register.Step = some st ∧
@@ -488,7 +488,7 @@ theorem zisk_sc (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (z : Equiv.Zisk.ZSt
     have hz := Equiv.Zisk.execute_store_mkj z (Transpiler.srcA i.rs1.toNat) (Transpiler.srcB i.rs2.toNat) 0 (aW i.d) 4
       xs pc st hx hpc hst _ _ (Equiv.Zisk.srcA_ASrc xs _ l1) (Equiv.Zisk.srcB_BSrc xs _ l2) hwr hnr
     rw [← hrom, ← zstep_run zrom z pc hpc] at hz
-    refine ⟨_, 1, .step hz (.done _), ?_, ?_, ⟨BitVec.addInt st 1, ?_, ?_⟩, rfl,
+    refine ⟨_, 1, .step hz (.done _), by simp [Transpiler.sc, hrd, h0], ?_, ?_, ⟨BitVec.addInt st 1, ?_, ?_⟩, rfl,
       zstep_fkeep hpc (by rw [hrom]; rfl) hz⟩
     · simp [Std.ExtDHashMap.get?_insert, hx, h0, Equiv.Zisk.xsUpd]
     · simp [Std.ExtDHashMap.get?_insert]
@@ -517,7 +517,7 @@ theorem zisk_sc (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (z : Equiv.Zisk.ZSt
       (if i.d then 8 else 4)
     rw [← q2, ← zstep_run zrom z1 ia hpc1] at hz2
     simp only [ite_self, Equiv.Zisk.copyb_val] at hz2
-    refine ⟨_, 2, .step hz1 (.step hz2 (.done _)), ?_, ?_, ⟨BitVec.addInt (BitVec.addInt st 1) 1, ?_, ?_⟩, hm1,
+    refine ⟨_, 2, .step hz1 (.step hz2 (.done _)), by simp [Transpiler.sc, hrd, h0], ?_, ?_, ⟨BitVec.addInt (BitVec.addInt st 1) 1, ?_, ?_⟩, hm1,
       FKeep.trans (zstep_fkeep hpc (by rw [q1]; rfl) hz1) (zstep_fkeep hpc1 (by rw [q2]; rfl) hz2)⟩
     · simp only [Std.ExtDHashMap.get?_insert, beq_iff_eq, reduceCtorEq, dite_false]
       exact linkRegs_xs _ _ _ _ hx1
@@ -549,7 +549,9 @@ theorem scstep_m (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (h
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : ScInstr) (next : Option (BitVec 32))
     (hi : WordsAt s rs pc zrom i.encode next) (v1 v2 : BitVec 64) (hv1 : getX s i.rs1.toNat = some v1)
     (hv2 : getX s i.rs2.toNat = some v2) (hok : ScOk rs i pc v1) (n : Nat) :
-    ∃ s' z' k, MStep rs n s s' ∧ ZRun zrom k z z' ∧ Rel s' z' rs ∧ RamOnly s.mem s'.mem ∧ FKeep z z' := by
+    ∃ s' z' k, MStep rs n s s' ∧ ZRun zrom k z z' ∧ Rel s' z' rs ∧ RamOnly s.mem s'.mem ∧ FKeep z z' ∧
+      ∃ ia, (∀ p ∈ Transpiler.sc i.encode i.d pc ia, zrom p.1 = p.2) ∧
+        k = (Transpiler.sc i.encode i.d pc ia).length := by
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -571,7 +573,7 @@ theorem scstep_m (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (h
     sc_riscv s rs hr pc' hpc hi.al hi.x1 hi.x2 i v1 v2 hv1 hv2 hst' n
   -- ZisK
   obtain ⟨ia, hrom⟩ := i.rom_of_spec hi.tr
-  obtain ⟨z', k, hz, hx', hzpc', hst'', hzm', hk⟩ := zisk_sc zrom z i xs pc' st ia hx hzpc hst hze
+  obtain ⟨z', k, hz, hkl, hx', hzpc', hst'', hzm', hk⟩ := zisk_sc zrom z i xs pc' st ia hx hzpc hst hze
     (by rw [hr1]; simpa using hzw) (by rw [hr1]; simpa using hzn) hrom
   have hmw : ZiskRiscv.writeWord s1.mem pc'.toNat i.encode =
       Equiv.memWrite (n := aW i.d) s.mem v1.toNat (v2.setWidth (8 * aW i.d)) := by
@@ -580,7 +582,7 @@ theorem scstep_m (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (h
       Equiv.memWrite (n := aW i.d) s.mem v1.toNat (v2.setWidth (8 * aW i.d)) := by
     rw [← hmw]; simp only [mPost, setX]; split <;> rfl
   refine ⟨_, z', k, .subst pc' _ _ _ s1 hpc hw0 hd (hr.with_mem _) hrun rfl, hz, ?_,
-    by rw [hs2]; exact memWrite_ramOnly _ _ _ hzw, hk⟩
+    by rw [hs2]; exact memWrite_ramOnly _ _ _ hzw, hk, ia, hrom, hkl⟩
   have hready1 : StepReady s1 rs := (hr.with_mem _).keep hwf ho
   refine ⟨?_, ⟨_, hx', ?_⟩, ⟨pc' + 4, ?_, hzpc'⟩, hst'', ?_⟩
   · refine (hready1.with_mem (ZiskRiscv.writeWord s1.mem pc'.toNat i.encode)).keep

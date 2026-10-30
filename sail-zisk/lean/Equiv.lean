@@ -142,5 +142,6 @@ import Equiv.ZFrameStep
 import Equiv.ZMiss
 import Equiv.XStep
 import Equiv.TotalityX
+import Equiv.StepX
 import Equiv.FreeInputSim
 import Equiv.NopStep
