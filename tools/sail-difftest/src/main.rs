@@ -679,21 +679,26 @@ fn reference_trace(
         }
         let pc = emu.ctx.inst_ctx.pc;
         let before = emu.ctx.inst_ctx.regs;
-        let is_fcall = rom.get_instruction(pc).op == ZiskOp::Fcall.code();
-        // A step ZisK refuses — an access outside its memory map, say —
-        // panics. The trace ends there, with why: the model must stop at
-        // the same step.
-        if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            emu.step(&options, &None::<fn(EmuTrace)>)
-        })) {
-            let why = e
-                .downcast_ref::<String>()
-                .cloned()
-                .or_else(|| e.downcast_ref::<&str>().map(|m| m.to_string()))
-                .unwrap_or_default();
-            writeln!(s, "fault {}", why.lines().next().unwrap_or(""))?;
-            return Ok((s, n, tape));
-        }
+        // A step ZisK refuses — a pc with no instruction, or an access
+        // outside its memory map, say — panics. The trace ends there, with
+        // why: the model must stop at the same step.
+        let step = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let is_fcall = rom.get_instruction(pc).op == ZiskOp::Fcall.code();
+            emu.step(&options, &None::<fn(EmuTrace)>);
+            is_fcall
+        }));
+        let is_fcall = match step {
+            Ok(is_fcall) => is_fcall,
+            Err(e) => {
+                let why = e
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| e.downcast_ref::<&str>().map(|m| m.to_string()))
+                    .unwrap_or_default();
+                writeln!(s, "fault {}", why.lines().next().unwrap_or(""))?;
+                return Ok((s, n, tape));
+            }
+        };
         let ctx = &emu.ctx.inst_ctx;
         if is_fcall {
             let n = ctx.fcall.result_size as usize;
