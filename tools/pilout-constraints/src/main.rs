@@ -14,6 +14,7 @@ mod lean;
 mod print;
 mod text;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -135,6 +136,25 @@ fn render(args: &RenderArgs, format: Format) -> Result<()> {
 
     if selected.len() > 1 && args.out.is_none() {
         anyhow::bail!("{} AIRs selected: pass --out <dir> to write them", selected.len());
+    }
+
+    // A file is named after its AIR alone, so two AIRs of the same name in
+    // different airgroups would write the same file.
+    if let Some(dir) = &args.out {
+        let mut seen = HashMap::new();
+        for air_ref in &selected {
+            let path = output_path(dir, &args.module, air_ref, format);
+            if let Some(other) = seen.insert(path.clone(), air_ref) {
+                anyhow::bail!(
+                    "{}/{} and {}/{} would both be written to {}",
+                    other.airgroup,
+                    other.air,
+                    air_ref.airgroup,
+                    air_ref.air,
+                    path.display()
+                );
+            }
+        }
     }
 
     // The prelude is shared by every AIR, so it is written once.
