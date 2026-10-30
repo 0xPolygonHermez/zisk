@@ -124,12 +124,12 @@ pub fn schnorr_batch_verify_secp256k1(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
     let u = msgs.len();
+    if pk_xs.len() != u || sig_rs.len() != u || sig_ss.len() != u {
+        return false;
+    }
     if u == 0 {
         return true;
     }
-    debug_assert_eq!(pk_xs.len(), u, "Number of public keys must match number of messages");
-    debug_assert_eq!(sig_rs.len(), u, "Number of r values must match number of messages");
-    debug_assert_eq!(sig_ss.len(), u, "Number of s values must match number of messages");
 
     // For u=1, delegate to single verification
     if u == 1 {
