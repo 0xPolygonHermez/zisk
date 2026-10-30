@@ -119,6 +119,19 @@ leaves undefined:
 > an 8-byte load of `INPUT_ADDR`: no other load, and no ZisK call (§§ 7–8)
 > whose operation reads them.
 
+An executable segment that is not also readable — `PF_X` without `PF_R`,
+the layout the transpiler recommends — is code to ZisK and nothing in its
+memory: the transpiler copies a code segment's bytes into the ROM's data
+only when it is readable (`transpilers/riscv/src/elf_extraction.rs`).
+RISC-V's loader writes every segment, and the ROM region is readable, so a
+load there reads the instructions:
+
+> **Precondition X.** The program reads no byte of an execute-only
+> segment: no load, and no ZisK call whose operation reads one.
+
+Compiled code keeps its constants in `.rodata`, a segment of its own, and
+reads none of its instructions.
+
 ## 3. The start
 
 The program starts at its ELF entry, in machine mode, with
@@ -307,7 +320,7 @@ meets **E** (no `ecall` but exit), **C** (no CSR access but the ZisK calls
 of §§ 7–8, reading `marchid` and writing a read-only CSR, `marchid`'s cell
 left as it is), **I** (the
 free input's 8 bytes read only as the free input, by no other load nor
-call), **Z** (no zkvmcall) and
+call), **X** (no execute-only byte read), **Z** (no zkvmcall) and
 **L** (no `lr` reading its own instruction word), **A** (no AMO across
 a 16-byte boundary), **M** (the atomics on the RAM), **J** (the pc in
 the code), **R** (no access to the registers' slots) and **F** (no float
@@ -348,6 +361,11 @@ for its exit or failure.
 
 The start is not an empty hypothesis: for any entry and initial memory, a
 RISC-V state meets it (`start_exists`, `lean/Equiv/StartExists.lean`).
+
+`zisk_total` starts both sides on the same memory, the code's bytes in it.
+For a program whose code is execute-only, ZisK's memory lacks them; the
+theorem for that start, under precondition X, from the ELF as the
+transpiler loads it (`lean/ZiskRiscv/Elf.lean`), is in progress.
 
 The preconditions are stated on the run, at the step that breaks them:
 **J** as the pc out of the code; **E**, **F**, **C**, **Z**, **R**,
