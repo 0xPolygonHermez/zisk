@@ -279,6 +279,34 @@ GOOS=wasip1 GOARCH=wasm go build -o guest.wasm .
 ziskemu -e guest.wasm -i input.bin
 ```
 
+### Go guests: build with TinyGo
+
+The standard Go toolchain links a large runtime into every module, so Go guests built with it
+use a big share of the 4,194,304-instruction ROM, and modest programs already exceed it.
+[TinyGo](https://tinygo.org) builds the same programs far smaller, and they run faster too:
+
+```bash
+tinygo build -target=wasip1 -no-debug -opt=z -panic=trap -o guest.wasm .
+# add -scheduler=none when nothing in the program starts a goroutine
+```
+
+| Program | Standard Go 1.27.3 | TinyGo 0.44.0, flags above |
+|---|---|---|
+| Fibonacci with `fmt` | 1,922,973 instructions, 2,291,066 steps | 119,348 instructions, 113,958 steps (with `-scheduler=none`) |
+| `encoding/json`, `regexp`, `sort`, `crypto/sha256` | 4,340,528 instructions: rejected at setup | 1,024,690 instructions, 2,841,848 steps |
+
+Both TinyGo builds print the same output as the standard-Go ones and pass constraint
+verification on the emulator and ASM backends (`float` build). Other options:
+
+- TinyGo's default scheduler (asyncify) adds about 130,000 instructions. It also multiplied the
+  Fibonacci guest's steps by 11.
+- `-gc=leaking` never frees memory. It cut the json guest to 840,142 instructions and 680,922
+  steps, but a guest that allocates heavily reaches the memory limit sooner.
+
+TinyGo supports only part of the standard library and of reflection, so test each guest.
+`-panic=trap` drops the panic message, which makes no difference to proving: a guest that panics
+cannot be proven either way.
+
 ## Guest contract
 
 A guest is a `wasm32-wasip1` *command* module: it exports `_start: () -> ()` or has a start
@@ -513,10 +541,12 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 
 - **Large guests cannot use the ASM backend.** Both backends prove wasm guests (see the
   integration tests below). The ASM backend links the ROM into a native binary whose code must
-  fit below its fixed memory region (about 255 MB), which holds roughly 750,000 ZisK
-  instructions, for RISC-V and wasm guests alike. Larger guests, up to the 4,194,304-instruction
-  ROM limit, need the emulator backend. A Rust `std` guest starts at about 73,000 instructions,
-  a Go guest at about 2,000,000.
+  fit below its fixed memory region (about 255 MB). At about 150–160 bytes of native code per
+  ZisK instruction (measured on wasm guests), that holds roughly 1,600,000 instructions. Larger
+  guests, up to the 4,194,304-instruction ROM limit, need the emulator backend. A Rust `std`
+  guest starts at about 73,000 instructions. A Go guest starts at about 1,900,000 with the
+  standard toolchain and about 120,000 with TinyGo (see
+  [Go guests: build with TinyGo](#go-guests-build-with-tinygo)).
 - **The released prover cannot prove guests that use floats.** The `float` feature exists only
   on the transpiler and emulator crates (`zisk-transpiler-wasm`, `zisk-transpiler-common`,
   `ziskemu`); `cargo-zisk`, the SDK and the prover backend do not expose it, and release builds do
@@ -541,7 +571,8 @@ traffic and calls see a larger ratio than tight arithmetic loops.
   ```
 
   With that build, constraint verification passes for a Rust guest exercising `f32`/`f64`
-  arithmetic and conversions (emulator and ASM backends) and for a Go guest (emulator backend);
+  arithmetic and conversions (emulator and ASM backends), for a standard-Go guest (emulator
+  backend) and for two TinyGo guests (emulator and ASM backends);
   full proof generation of a float guest has not been tested yet. The ROM-setup cache is keyed by
   the guest's bytes, not its ROM, so switching between `float` and non-`float` builds reuses
   stale entries for a guest both can transpile; clear them with
