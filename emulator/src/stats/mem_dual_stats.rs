@@ -42,7 +42,7 @@ use zisk_core::MemDataSection;
 use zisk_core::{
     FREE_INPUT_ADDR, INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_SIZE,
 };
-use zisk_sm_mem_common::MEMORY_INIT_STEP;
+use zisk_sm_mem_common::{MemHelpers, MEMORY_INIT_STEP};
 
 /// Addresses (8-byte words) per lazily allocated page: 2^18 addresses = 2 MiB of tracking state.
 const PAGE_BITS: u32 = 18;
@@ -272,11 +272,11 @@ impl MemDualStats {
     }
 
     /// Accounts the initialization writes the memory state machine adds before execution: one per
-    /// word of every data section, at `MEMORY_INIT_STEP`, so in the first reset block. Call it
-    /// once, before the first access. They reach this analysis only, since the cost model does not
-    /// count them as memory accesses.
+    /// word of every data section, at `MEMORY_INIT_STEP`. That is a memory-bus step, which falls in
+    /// main step 0, so in the first reset block. Call it once, before the first access. They reach
+    /// this analysis only, since the cost model does not count them as memory accesses.
     pub fn seed_init_writes(&mut self, sections: &dyn MemDataSection) {
-        let block = self.block(MEMORY_INIT_STEP);
+        let block = self.block(MemHelpers::mem_step_to_main_step(MEMORY_INIT_STEP));
         let duals = self.duals;
         for section in sections.ro_sections().iter().chain(sections.rw_sections()) {
             for index in 0..section.data.len() as u64 {
@@ -742,5 +742,27 @@ mod tests {
         assert_eq!(ram.lanes_by_duals, vec![[0, 2], [0, 1]]);
         let rom = &duals.zones[1];
         assert_eq!((rom.ops, rom.writes, rom.lanes), (1, 1, 1));
+    }
+
+    #[test]
+    fn the_initialization_writes_belong_to_main_step_zero() {
+        let sections =
+            Sections { ro: vec![], rw: vec![DataSection64 { addr: RAM_ADDR, data: vec![1] }] };
+        // A read at the last step of the first reset block joins the initialization lane; a read at
+        // the first step of the next block is lost to the reset.
+        for bits in [0, 1] {
+            for (step, lanes, reset_lost) in [((1 << bits) - 1, 1, 0), (1 << bits, 2, 1)] {
+                let mut duals = MemDualStats::new(1, bits);
+                duals.seed_init_writes(&sections);
+                access(&mut duals, RAM_ADDR, false, step);
+
+                let ram = ram(&mut duals);
+                assert_eq!(
+                    (ram.lanes, ram.reset_lost),
+                    (lanes, reset_lost),
+                    "bits {bits} step {step}"
+                );
+            }
+        }
     }
 }
