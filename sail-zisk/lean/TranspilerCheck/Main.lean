@@ -15,11 +15,15 @@
   where a misaligned jump lands; and no word at a segment's end has a
   translation that reads past it (`tailOk`, what the theorems ask of the
   program; a program with such a word is reported, as outside the
-  theorems, but is no difference). Exits 1 on any difference.
+  theorems, but is no difference). And, given the listing's `elf <path>`
+  line (which `make transpiler-check` appends), the Lean loader
+  (ZiskRiscv/Elf.lean, what `zisk_elf` starts from) reads that ELF to the
+  same code segments as the Rust's. Exits 1 on any difference.
 -/
 import Transpiler.Spec
 import Transpiler.Rom
 import Transpiler.Bios
+import ZiskRiscv.Elf
 
 open _root_.Zisk Transpiler
 
@@ -46,6 +50,9 @@ def decodeEntry (ws : Array Nat) : Option zisk_inst := do
 structure Listing where
   code : Array (Nat × ByteArray) := #[]
   rom : Std.HashMap Nat (Option zisk_inst) := {}
+  /-- The ELF the listing is of, when given: its code as the Lean loader
+      reads it (ZiskRiscv/Elf.lean) checked against the Rust's. -/
+  elf : Option String := none
 
 def parseListing (text : String) : Except String Listing := do
   let mut l : Listing := {}
@@ -67,6 +74,7 @@ def parseListing (text : String) : Except String Listing := do
     | ["skip", pc] =>
       let some p := hexNat pc | throw s!"bad line: {line}"
       l := { l with rom := l.rom.insert p none }
+    | ["elf", path] => l := { l with elf := some path }
     | [""] => pure ()
     | _ => throw s!"bad line: {line}"
   return l
@@ -143,6 +151,25 @@ def check (name : String) (l : Listing) : IO Tally := do
         t := { t with tails := t.tails + 1 }
         IO.println s!"{name}: the word at {hex (base + BitVec.ofNat 64 (4 * k)).toNat}, at its segment's end, \
           reads past it ({hex ws[k]!.toNat}): the theorems do not cover this program (tailOk)"
+  -- The code as the Lean loader reads the ELF (what the theorem `zisk_elf`
+  -- takes): ELFSage's parse, the Rust's checks, the same executable segments
+  -- as the Rust's, byte for byte.
+  if let some path := l.elf then
+    match mkRawELFFile? (← IO.FS.readBinFile path) with
+    | .ok (.elf64 elf) =>
+      match ZiskRiscv.Elf.segments elf with
+      | .ok segs =>
+        let mine := (segs.filter (·.exec)).map fun s => (s.base, s.data.toList)
+        let rust := l.code.toList.map fun (a, d) => (a, d.toList)
+        if mine != rust then
+          t := { t with differences := t.differences + 1 }
+          IO.println s!"{name}: the Lean loader's code segments are not the Rust's"
+      | .error e =>
+        t := { t with differences := t.differences + 1 }
+        IO.println s!"{name}: the Lean loader rejects {path}: {e}"
+    | _ =>
+      t := { t with differences := t.differences + 1 }
+      IO.println s!"{name}: ELFSage does not read {path} as a 64-bit ELF"
   -- No instruction at an address 2 mod 4: a jump there, which sail-riscv
   -- traps on, finds none on ZisK either (Equiv/MisJumpSim.lean).
   for (a, _) in l.rom do

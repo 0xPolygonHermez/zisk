@@ -219,8 +219,9 @@ transpiler-check: $(TRANSPILER_TESTS)
 	@rm -rf build/transpiler-check && mkdir -p build/transpiler-check
 	@for e in $(TRANSPILER_ELFS); do \
 	  n=$$(basename $$(dirname $$e))-$$(basename $$e .elf); \
-	  ../target/release/sail-difftest rom -e $$e -o build/transpiler-check/$$n.rom > /dev/null 2>&1 \
-	    || echo "skip $$e: the transpiler rejects it"; \
+	  if ../target/release/sail-difftest rom -e $$e -o build/transpiler-check/$$n.rom > /dev/null 2>&1; then \
+	    echo "elf $$e" >> build/transpiler-check/$$n.rom; \
+	  else echo "skip $$e: the transpiler rejects it"; fi; \
 	done
 	lean/.lake/build/bin/transpiler_check build/transpiler-check/*.rom
 

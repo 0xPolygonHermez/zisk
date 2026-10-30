@@ -5,7 +5,8 @@
 
     zisk_riscv_run <elf> [-b <addr>,<file>]... [--dump <begin>,<end>] [--steps <n>]
 
-  Memory starts with the ELF's segments, then each `-b` file at its address:
+  Memory starts with the ELF's segments, as ZisK loads them
+  (ZiskRiscv/Elf.lean), then each `-b` file at its address:
   the same `-b` sections tools/sail-difftest writes for the C emulator
   (`mem.args`) — the input, the fcall tape — so both machines start from the
   same memory. It prints how the run ended, the output region and the dump
@@ -18,6 +19,7 @@
 import ELFSage
 import ZiskRiscvRun.Model
 import ZiskRiscvRun.Registers
+import ZiskRiscv.Elf
 
 open LeanZiskRVExecutable
 open LeanZiskRVExecutable.Functions
@@ -48,12 +50,6 @@ def loadBytes (m : Mem) (addr : Nat) (bytes : ByteArray) : Mem := Id.run do
     m := m.insert (addr + i) (bytes.get! i).toBitVec
   m
 
-/-- The ELF's loadable segments, as sail-riscv's Lean emulator loads them. -/
-def elfMemory (elf : ELF64File) : Mem :=
-  let m := elf.interpreted_segments.foldl (fun m (_, seg) =>
-    loadBytes m seg.segment_base seg.segment_body) {}
-  elf.bits_and_bobs.foldl (fun m (addr, data) => loadBytes m addr data) m
-
 structure Args where
   elf : String := ""
   sections : List (Nat × String) := []
@@ -82,7 +78,13 @@ def main (argv : List String) : IO UInt32 := do
   let elf ← match mkRawELFFile? (← IO.FS.readBinFile args.elf) with
     | .ok (.elf64 elf) => pure elf
     | _ => IO.eprintln "zisk_riscv_run: not a 64-bit ELF"; return 2
-  let mut mem := elfMemory elf
+  -- The ELF as ZisK loads it (ZiskRiscv/Elf.lean, what the theorem
+  -- `zisk_elf` starts from): its PT_LOAD segments, checked as the Rust
+  -- checks them, the .bss zero-filled; the input comes in the -b sections.
+  let segs ← match ZiskRiscv.Elf.segments elf with
+    | .ok segs => pure segs
+    | .error e => IO.eprintln s!"zisk_riscv_run: {e}"; return 2
+  let mut mem := ZiskRiscv.Elf.riscvMem segs ByteArray.empty
   for (addr, file) in args.sections do
     mem := loadBytes mem addr (← IO.FS.readBinFile file)
   -- The BIOS's CSR cells (§ 3), which loads reach too
