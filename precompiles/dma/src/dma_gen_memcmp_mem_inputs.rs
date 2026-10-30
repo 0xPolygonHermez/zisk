@@ -192,3 +192,7 @@ pub fn skip_dma_memcmp_mem_inputs<P: MemProcessor>(data: &[u64], mem_processors:
     // at mem input data generation.
     true
 }
+
+#[cfg(test)]
+#[path = "tests/dma_memcmp_proof_reads_tests.rs"]
+mod tests;

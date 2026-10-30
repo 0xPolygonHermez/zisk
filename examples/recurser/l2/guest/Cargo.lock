@@ -801,7 +801,8 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#5eb6d1acd0778390e2676fbb98697aff4c94a9e3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5437c76a4057e306207e86b3b541fe22b4bc09b38d1f31d476a6a71fb7c210fd"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -813,7 +814,8 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#5eb6d1acd0778390e2676fbb98697aff4c94a9e3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e010f8abe6954a7abebebbeae918684cdf602027983c549f594d34b72a317b4b"
 dependencies = [
  "num-traits",
  "proofman-fields",
@@ -1045,9 +1047,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.16.3"
+version = "1.16.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b3dc8af474f516a851ff4bd12db780f948b9250ad37211e4eec0bccea54e01b"
+checksum = "d0d5d4b1981b8bbbb7aed204cae5726d683d5d6ac7e74ec54122ea28f315e7c8"
 
 [[package]]
 name = "socket2"

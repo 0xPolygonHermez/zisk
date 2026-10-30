@@ -2,8 +2,8 @@ use std::borrow::Cow;
 use std::mem;
 
 use crate::{
-    ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, FailureReason, ParEmuOptions,
-    RegStepCheck,
+    parse_ops_x_row, ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, FailureReason,
+    MemDualStats, ParEmuOptions, RegStepCheck, MEM_DUAL_MAX,
 };
 use proofman_fields::PrimeField64;
 use zisk_common::{
@@ -1808,6 +1808,29 @@ impl<'a> Emu<'a> {
         if options.top_histogram > 0 && !options.stats {
             panic!("Top Histogram feature needs at least stats option");
         }
+        if options.dma_stats {
+            if !options.stats {
+                panic!("Dma stats feature needs at least stats option");
+            }
+            match parse_ops_x_row(&options.dma_ops_x_row) {
+                Ok(ops_x_row) => self.ctx.stats.set_dma_loops(&ops_x_row),
+                Err(e) => panic!("--dma-ops-x-row '{}': {e}", options.dma_ops_x_row),
+            }
+        }
+        if let Some(duals) = options.mem_duals {
+            if !options.stats {
+                panic!("Mem duals feature needs at least stats option");
+            }
+            if duals > MEM_DUAL_MAX {
+                panic!("--mem-duals: at most {MEM_DUAL_MAX} duals per lane are supported");
+            }
+            if options.mem_dual_reset_bits > MemDualStats::MAX_RESET_BITS {
+                panic!(
+                    "--mem-dual-reset-bits: at most {} bits are supported",
+                    MemDualStats::MAX_RESET_BITS
+                );
+            }
+        }
 
         self.ctx.stats.set_top_histogram(options.top_histogram);
         self.ctx.stats.set_coverage(options.coverage);
@@ -1855,6 +1878,10 @@ impl<'a> Emu<'a> {
                 }
             }
             self.ctx.stats.set_duplicates_ops(Some(set));
+        }
+        if let Some(duals) = options.mem_duals {
+            self.ctx.stats.set_mem_duals(duals, options.mem_dual_reset_bits);
+            self.ctx.stats.seed_mem_dual_init(self.rom);
         }
         self.ctx.stats.set_reg_step_distance(options.reg_step_distance);
         self.ctx.stats.set_reg_step_limit(options.reg_step_limit());
