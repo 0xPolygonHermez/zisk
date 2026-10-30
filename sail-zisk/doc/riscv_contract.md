@@ -346,6 +346,9 @@ Then one of four holds:
 Where the machine cannot take a step at all (its own error), that stands
 for its exit or failure.
 
+The start is not an empty hypothesis: for any entry and initial memory, a
+RISC-V state meets it (`start_exists`, `lean/Equiv/StartExists.lean`).
+
 The preconditions are stated on the run, at the step that breaks them:
 **J** as the pc out of the code; **E**, **F**, **C**, **Z**, **R**,
 **A**, **M**, **L** and **I** for a load, by the word at pc and the
