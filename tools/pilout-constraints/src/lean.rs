@@ -22,25 +22,30 @@ pub const PRELUDE: &str = r#"/-
   `Lean.Grind.CommRing`, and `grind` knows how to reason with it — so the
   generated AIRs need no Mathlib, and neither does a proof about them.
 
+  The ring also has the pilout's characteristic `p` (`Lean.Grind.IsCharP`).
+  The compiler writes `-k` as the field element `p - k`, and the generated
+  constraints print it back as `-k`; the two are the same element only in a
+  ring where `p = 0`.
+
   The ring is left abstract on purpose. A pil2 constraint is evaluated over the
   cubic extension, where the stage-2 columns and the challenges live, while
   stage-1 columns and constants are base field elements embedded in it. Stated
-  over any commutative ring, one definition covers both.
+  over any commutative ring of characteristic `p`, one definition covers both.
 
   Two consequences worth knowing before proving anything:
 
   - Facts that hold only in a field — that a nonzero element is invertible, or
     that 2 is not zero — are not available here. A proof needing one
-    instantiates `F` at the concrete field, whose characteristic each generated
-    AIR records as `basePrime`.
+    instantiates `F` at the concrete field.
   - A declared range wider than one bit, such as `bits(32)`, is not a
     constraint. It is a range-check lookup, one of the bus arguments each AIR
     lists in `busArgs`; what it means is up to whoever states the bus.
     (Main asserts the booleanity of its one-bit selectors as constraints.)
 -/
 
-/-- The ring a PIL constraint is evaluated in. -/
-abbrev PilField (F : Type) := Lean.Grind.CommRing F
+/-- The ring a PIL constraint is evaluated in: commutative, of characteristic
+`p`, the pilout's base field prime. -/
+class PilField (F : Type) (p : outParam Nat) extends Lean.Grind.CommRing F, Lean.Grind.IsCharP F p
 
 /-- The arguments the pil2 `std` library builds a bus from (`PIOP_NAME_*`). -/
 inductive Piop where
@@ -103,7 +108,7 @@ pub fn render(ir: &Ir, module: &str) -> String {
 
     let mut out = String::new();
     header(&mut out, ir, module);
-    structures(&mut out, &names);
+    structures(&mut out, ir, &names);
     definitions(&mut out, ir, &plan, &names, &leaves);
     constraints(&mut out, ir, &plan, &names, &leaves);
     aggregate(&mut out, ir, &names);
@@ -199,7 +204,7 @@ fn kind_counts(ir: &Ir) -> String {
 }
 
 /// `Row` holds everything that varies per row, `Ctx` everything that does not.
-fn structures(out: &mut String, names: &Names) {
+fn structures(out: &mut String, ir: &Ir, names: &Names) {
     let _ = writeln!(
         out,
         "/-- Every column of one row: the committed columns of each stage, plus the\n\
@@ -227,10 +232,11 @@ fn structures(out: &mut String, names: &Names) {
     let _ = write!(
         out,
         "\n/-- A trace: one row per index. -/\nabbrev Trace (F : Type) := Int → Row F\n\n\
-         variable {{F : Type}} [PilField F]\n\n\
+         variable {{F : Type}} [PilField F {}]\n\n\
          /-- The trace repeats with the AIR's row count, which is what makes a row\n\
          offset past either end well defined. -/\n\
-         def cyclic (t : Trace F) : Prop := ∀ i : Int, t (i + (numRows : Int)) = t i\n\n"
+         def cyclic (t : Trace F) : Prop := ∀ i : Int, t (i + (numRows : Int)) = t i\n\n",
+        ir.pilout.base_field
     );
 }
 
@@ -830,15 +836,17 @@ fn referenced(ir: &Ir) -> Vec<(String, bool)> {
 
 struct LeanLeaves<'a> {
     names: &'a Names,
-    /// Used to print `p - k` as `-k`, which is the same element and much easier
-    /// to read. `None` if the characteristic did not fit a u128.
+    /// Used to print `p - k` as `-k`, which is much easier to read, and the same
+    /// element as `F` has characteristic `p` (`PilField F p`). `None` if the
+    /// characteristic did not fit a u128.
     base_field: Option<u128>,
 }
 
 impl Leaves for LeanLeaves<'_> {
     fn constant(&self, value: &str) -> String {
         // The compiler folds subtraction into `p - k`. Printing that back as
-        // `-k` costs nothing (they are the same field element) and turns
+        // `-k` costs nothing (they are the same element of `F`, whose
+        // characteristic is `p`) and turns
         // `+ 18446744069414584320 * x` into `+ -x`.
         if let (Some(p), Ok(v)) = (self.base_field, value.parse::<u128>()) {
             if v > p / 2 && v < p {

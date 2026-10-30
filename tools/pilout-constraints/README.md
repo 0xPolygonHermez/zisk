@@ -86,13 +86,16 @@ line produces four constraints. Six decisions shape the output.
 **The ring is abstract, and is Lean's own.** A pil2 constraint is a polynomial
 identity, so what it needs is a commutative ring. Lean's core ships one —
 `Lean.Grind.CommRing` — with the laws attached and the `grind` tactic able to
-reason with it, so `Pil/Prelude.lean` is a one-line abbreviation over it and
-**no Mathlib is needed**, for the AIRs or for proofs about them.
+reason with it, so `Pil/Prelude.lean` declares `PilField F p` as that ring
+with characteristic `p` (`Lean.Grind.IsCharP`), and **no Mathlib is needed**,
+for the AIRs or for proofs about them. The characteristic is there because the
+compiler folds `-k` into the field element `p - k` and the output prints it
+back as `-k`, which is the same element only where `p = 0`.
 
 Leaving the ring abstract also sidesteps a question the pilout does not answer:
 stage-2 columns and the challenges are elements of the cubic extension, while
 stage-1 columns and constants are base field elements embedded in it. Stated
-over any commutative ring, one definition covers both.
+over any commutative ring of characteristic `p`, one definition covers both.
 
 **A row index is an `Int`, and the trace is asserted periodic.** Row offsets in
 the ZisK pilout run from `-50400` to `+1008`, and PIL offsets wrap around the
@@ -211,8 +214,10 @@ larger proof:
   hypothesis.
 - **Ring laws are not field laws.** Mutual exclusion of two selectors follows
   from the constraints only up to a factor of two, because dividing by two
-  needs `2 ≠ 0`. A proof needing that instantiates `F` at the concrete field;
-  every generated AIR records its characteristic as `basePrime`.
+  needs `2 ≠ 0`. A proof needing that instantiates `F` at the concrete field.
+  What the ring does carry is the pilout's characteristic (`PilField F p`), as
+  the generated constraints print the compiler's `p - k` as `-k`; every
+  generated AIR also records it as `basePrime`.
 
 ## The IR
 
