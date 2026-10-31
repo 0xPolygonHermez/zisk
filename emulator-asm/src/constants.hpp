@@ -100,6 +100,11 @@
 // an older binary must reject this one as unknown rather than take it for something else
 #define TYPE_RS_REQUEST 19 // Reset RAM and ROM, see main.c
 #define TYPE_RS_RESPONSE 20
+// TYPE_RS_REQUEST's modes, in request[1] and echoed in response[2]; see main.c. An older binary
+// ignores request[1], serves every reset as full and echoes 0
+#define RS_MODE_FULL 0
+#define RS_MODE_RELEASE 1
+#define RS_MODE_ACQUIRE 2
 #define TYPE_FA_REQUEST 13 // Fast mode, do not generate any trace
 #define TYPE_FA_RESPONSE 14
 #define TYPE_SD_REQUEST 1000000 // Shutdown
