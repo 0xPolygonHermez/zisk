@@ -40,12 +40,16 @@ not match the 64-bit value emitted by the executor/transpiler path and causes
 
 ## ROM setup check
 
-Run this helper to build the overflow fixture and demonstrate that ROM setup
-accepts it:
+Run this helper, from the repository root, to build the overflow fixture and
+demonstrate that ROM setup accepts it:
 
 ```
-./demo-auipc-rom-setup
+./elf-regressions/auipc_rv64_overflow/demo-auipc-rom-setup
 ```
+
+It uses the helpers next to it: `build-elf` assembles a `.s` file into an ELF,
+`rom-setup-elf` runs `cargo-zisk program-setup` on it, and `prove-elf` runs
+`cargo-zisk prove` on it and verifies the proof.
 
 The expected result is a zero exit with `ROM setup successfully completed`.
 This shows the failure is not caught while decoding/transpiling the ELF or
