@@ -7814,6 +7814,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-pilout-constraints"
+version = "1.4.0-alpha"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "clap",
+ "pil2-pilout",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "zisk-precomp-arith-eq"
 version = "1.4.0-alpha"
 dependencies = [
@@ -8186,6 +8198,20 @@ dependencies = [
  "zisk-pil",
  "zisk-sm-rom",
  "zisk-transpiler-common",
+]
+
+[[package]]
+name = "zisk-sail-difftest"
+version = "1.4.0-alpha"
+dependencies = [
+ "anyhow",
+ "clap",
+ "zisk-asm",
+ "zisk-common",
+ "zisk-core",
+ "zisk-riscv",
+ "zisk-transpiler-common",
+ "ziskemu",
 ]
 
 [[package]]

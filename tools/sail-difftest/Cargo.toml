@@ -1,0 +1,26 @@
+[package]
+name = "zisk-sail-difftest"
+description = "Export a ZisK program to the Sail model, and trace it on ziskemu for a step-by-step diff"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+publish = false
+
+[[bin]]
+name = "sail-difftest"
+path = "src/main.rs"
+
+[dependencies]
+zisk-common = { workspace = true }
+zisk-core = { workspace = true }
+ziskemu = { workspace = true }
+ziskasm = { workspace = true }
+zisk-transpiler-common = { workspace = true }
+zisk-riscv = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }

@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""Write model/zisk_poseidon_constants.sail: the constants of ZisK's Poseidon
+precompiles, from the sources the emulator computes them with.
+
+- poseidon2 and poseidon1, over Goldilocks at width 16: `Poseidon2_16` and
+  `Poseidon1_16` in proofman-fields (pil2-proofman's fields/src), at the
+  version Cargo.lock pins, found through `cargo metadata`;
+- poseidon2_koalabear: `POSEIDON2_KOALABEAR` in
+  precompiles/helpers/src/poseidon2/koalabear.rs.
+
+Each table is listed in its source's order; Sail indexes a vector literal
+from its last element (default Order dec), so the model reads each through a
+function that counts from the first (model/zisk_insts_poseidon.sail).
+
+Usage: gen_poseidon_constants.py   (`make constants`)
+"""
+
+import json
+import os
+import re
+import subprocess
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.join(HERE, '..')
+OUT = os.path.join(HERE, 'model', 'zisk_poseidon_constants.sail')
+
+
+def fields_src():
+    meta = json.loads(subprocess.run(
+        ['cargo', 'metadata', '--format-version', '1', '--manifest-path', os.path.join(ROOT, 'Cargo.toml')],
+        check=True, capture_output=True, text=True).stdout)
+    pkg = next(p for p in meta['packages'] if p['name'] == 'proofman-fields')
+    commit = pkg['source'].rsplit('#', 1)[-1][:9]
+    return os.path.dirname(pkg['manifest_path']), f"proofman-fields {pkg['version']}, pil2-proofman at {commit}"
+
+
+def read(path):
+    """A Rust source, its line comments removed: they hold numbers too."""
+    return re.sub(r'//[^\n]*', '', open(path).read())
+
+
+def block(src, start, end):
+    """The text of src from `start` to the next `end` after it."""
+    i = src.index(start)
+    return src[i + len(start):src.index(end, i + len(start))]
+
+
+def numbers(text):
+    return [int(t, 0) for t in re.findall(r'0x[0-9a-fA-F_]+|\b\d+\b', text.replace('_', ''))]
+
+
+def const(src, name):
+    return int(re.search(r'const %s: usize = (\d+);' % name, src).group(1))
+
+
+def table(name, elem, vals, per, fmt):
+    rows = ',\n'.join('  ' + ', '.join(fmt(v) for v in vals[i:i + per]) for i in range(0, len(vals), per))
+    n = len(vals)
+    acc = name.lower()
+    return (f'let {name} : vector({n}, {elem}) = [\n{rows}\n]\n\n'
+            f'val {acc} : range(0, {n - 1}) -> {elem}\n'
+            f'function {acc}(i) = {name}[{n - 1} - i]\n')
+
+
+def main():
+    src_dir, origin = fields_src()
+    p2 = read(os.path.join(src_dir, 'src', 'poseidon2_constants.rs'))
+    p2 = p2[p2.index('impl Poseidon2Constants<16> for Poseidon2_16'):]
+    p2 = p2[:p2.index('\nimpl ')] if '\nimpl ' in p2 else p2
+    p2_diag = numbers(block(p2, 'const DIAG: &\'static [u64] = &[', ']'))
+    p2_rc = numbers(block(p2, 'const RC: &\'static [u64] = &[', ']'))
+    p2_half, p2_partial = const(p2, 'HALF_ROUNDS'), const(p2, 'N_PARTIAL_ROUNDS')
+    assert len(p2_diag) == 16 and len(p2_rc) == 2 * p2_half * 16 + p2_partial, (len(p2_diag), len(p2_rc))
+
+    p1 = read(os.path.join(src_dir, 'src', 'poseidon1_constants.rs'))
+    impl = p1[p1.index('impl Poseidon1Constants<16> for Poseidon1_16'):]
+    p1_half, p1_partial = const(impl, 'HALF_FULL_ROUNDS'), const(impl, 'N_PARTIAL_ROUNDS')
+    p1_tables = {}
+    for t in 'CMPS':
+        arr = re.search(r'const %s: &\'static \[u64\] = &(\w+);' % t, impl).group(1)
+        p1_tables[t] = numbers(block(p1, f'const {arr}:', '];').split('= [', 1)[1])
+    assert len(p1_tables['M']) == 256 and len(p1_tables['P']) == 256
+    assert len(p1_tables['S']) == p1_partial * 31
+    assert len(p1_tables['C']) == (2 * p1_half) * 16 + p1_partial, len(p1_tables['C'])
+
+    kb = read(os.path.join(ROOT, 'precompiles', 'helpers', 'src', 'poseidon2', 'koalabear.rs'))
+    kb_p = int(re.search(r'const P: u32 = (\d+);', kb).group(1))
+    kb_m4 = numbers(block(kb, 'm4:', ']],') + ']]')
+    kb_scale = int(re.search(r'internal_scale: (\d+)', kb).group(1))
+    kb_io = int(re.search(r'io_scale: (\d+)', kb).group(1))
+    kb_sbox = int(re.search(r'sbox_degree: (\d+)', kb).group(1))
+    kb_diag = numbers(block(kb, 'internal_diag: [', ']'))
+    kb_begin = numbers(block(kb, 'rc_begin: &[', 'rc_partial'))
+    kb_partial = numbers(block(kb, 'rc_partial: &[', 'rc_end'))
+    kb_end = numbers(block(kb, 'rc_end: &[', 'io_scale'))
+    assert len(kb_m4) == 16 and len(kb_diag) == 16 and len(kb_begin) % 16 == 0 and len(kb_end) % 16 == 0
+    assert kb_sbox == 3, 'the model computes the KoalaBear S-box as x^3'
+    # The model's loops count rounds with literals, so that Sail can bound the
+    # table indices; the sources must still have those counts.
+    assert (p2_half, p2_partial) == (4, 22), 'the model assumes Poseidon2_16 has 4 + 22 + 4 rounds'
+    assert (p1_half, p1_partial) == (4, 22), 'the model assumes Poseidon1_16 has 4 + 22 + 4 rounds'
+    assert (len(kb_begin), len(kb_partial), len(kb_end)) == (64, 20, 64), \
+        'the model assumes POSEIDON2_KOALABEAR has 4 + 20 + 4 rounds'
+
+    h = lambda v: f'0x{v:016x}'
+    d = lambda v: str(v)
+    out = [f'''/* Generated by gen_poseidon_constants.py (`make constants`). Do not edit.
+ *
+ * The constants of the Poseidon precompiles (model/zisk_insts_poseidon.sail):
+ * Poseidon2_16 and Poseidon1_16 of {origin}, and
+ * POSEIDON2_KOALABEAR of precompiles/helpers/src/poseidon2/koalabear.rs.
+ */
+
+/* --- Poseidon2 over Goldilocks, width 16 ----------------------------- */
+
+/* {p2_half} full rounds, {p2_partial} partial rounds, {p2_half} full rounds. */
+
+''',
+        table('POSEIDON2_DIAG', 'bits(64)', p2_diag, 4, h), '\n',
+        table('POSEIDON2_RC', 'bits(64)', p2_rc, 4, h),
+        f'''
+/* --- Poseidon (Poseidon1) over Goldilocks, width 16 ------------------ */
+
+/* {p1_half} full rounds, {p1_partial} partial rounds, {p1_half} full rounds. */
+
+''',
+        table('POSEIDON1_C', 'bits(64)', p1_tables['C'], 4, h), '\n',
+        table('POSEIDON1_M', 'bits(64)', p1_tables['M'], 4, h), '\n',
+        table('POSEIDON1_P', 'bits(64)', p1_tables['P'], 4, h), '\n',
+        table('POSEIDON1_S', 'bits(64)', p1_tables['S'], 4, h),
+        f'''
+/* --- Poseidon2 over KoalaBear, width 16 ------------------------------ */
+
+let KOALABEAR_P : int = {kb_p}
+let KOALABEAR_INTERNAL_SCALE : int = {kb_scale}
+let KOALABEAR_IO_SCALE : int = {kb_io}
+/* {len(kb_begin) // 16} full rounds, {len(kb_partial)} partial rounds, {len(kb_end) // 16} full rounds;
+ * S-box x^{kb_sbox}. */
+
+''',
+        table('KOALABEAR_M4', 'int', kb_m4, 4, d), '\n',
+        table('KOALABEAR_DIAG', 'int', kb_diag, 8, d), '\n',
+        table('KOALABEAR_RC_BEGIN', 'int', kb_begin, 8, d), '\n',
+        table('KOALABEAR_RC_PARTIAL', 'int', kb_partial, 8, d), '\n',
+        table('KOALABEAR_RC_END', 'int', kb_end, 8, d),
+    ]
+    open(OUT, 'w').write(''.join(out))
+    print(f'wrote {os.path.relpath(OUT)}: Poseidon2_16, Poseidon1_16 and POSEIDON2_KOALABEAR')
+
+
+if __name__ == '__main__':
+    main()

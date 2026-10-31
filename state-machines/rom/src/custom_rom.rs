@@ -50,7 +50,9 @@ impl CustomRom {
     }
 
     /// Builds a trace with one row per ROM instruction, padding the tail with zeros.
-    fn build_trace<F: PrimeField64>(rom: &ZiskRom) -> RomResult<RomRomTrace<F>> {
+    /// The committed `rom` columns for a ROM. Public so that tools can check the
+    /// encoding against a model of it (`tools/sail-difftest`).
+    pub fn build_trace<F: PrimeField64>(rom: &ZiskRom) -> RomResult<RomRomTrace<F>> {
         let buffer = vec![F::ZERO; RomRomTrace::<F>::NUM_ROWS * RomRomTrace::<F>::ROW_SIZE];
         let mut trace = RomRomTrace::new_from_vec(buffer)
             .map_err(|e| RomError::TraceConstruction(e.to_string()))?;
