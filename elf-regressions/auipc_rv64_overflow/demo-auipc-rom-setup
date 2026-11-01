@@ -5,8 +5,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC="$ROOT/elf-regressions/auipc_rv64_overflow/test.s"
-ELF="$ROOT/elf-regressions/auipc_rv64_overflow/test.elf"
+SRC="$ROOT/test.s"
+ELF="$ROOT/test.elf"
 
 "$ROOT/build-elf" "$SRC" "$ELF"
 
