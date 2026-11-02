@@ -8371,7 +8371,9 @@ version = "1.4.0-alpha"
 dependencies = [
  "wasmparser 0.244.0",
  "wat",
+ "zisk-asm",
  "zisk-core",
+ "zisk-definitions",
  "zisk-riscv",
 ]
 

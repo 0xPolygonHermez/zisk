@@ -10,6 +10,7 @@
 //! * [`lowering`] — per-function lowering of the integer wasm subset.
 //! * [`float`] — f32/f64 operators, lowered onto the RISC-V soft-float library (`float` feature).
 //! * [`wasi`] — minimal `wasi_snapshot_preview1` runtime.
+//! * [`zkvm`] — the EF zkVM accelerators (`zkvm_accelerators.h`), imported from `env`.
 
 pub mod emit;
 #[cfg(feature = "float")]
@@ -18,7 +19,9 @@ pub mod layout;
 pub mod lowering;
 pub mod module;
 pub mod wasi;
+pub mod zkvm;
 
+use std::collections::HashMap;
 use std::error::Error;
 
 use emit::{Code, Fixup};
@@ -29,13 +32,12 @@ use zisk_core::rom_layout::{add_end_and_lib, normalize_rw_data_sections};
 use zisk_core::zisk_rom::DataSection64;
 use zisk_core::{ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, ROM_ADDR, ROM_ENTRY};
 
-/// One past the last program ROM address generated functions may occupy.  With the `float`
-/// feature the top of the program ROM window holds the soft-float library (linked by
-/// `float::link_float_lib`), so the program must stop below it.
-#[cfg(feature = "float")]
-const PROGRAM_ROM_END: u64 = zisk_core::FLOAT_LIB_ROM_ADDR;
-#[cfg(not(feature = "float"))]
-const PROGRAM_ROM_END: u64 = zisk_core::ROM_ADDR_MAX + 1;
+/// One past the last program ROM address generated functions may occupy.  The top of the program
+/// ROM window holds the ZisK library (merged when the module imports an accelerator, see
+/// [`zkvm`]) and, above it, the soft-float library (`float` feature), so the program stops below
+/// both.
+const PROGRAM_ROM_END: u64 = zisk_core::ZISKLIB_ROM_ADDR;
+const _: () = assert!(PROGRAM_ROM_END < zisk_core::FLOAT_LIB_ROM_ADDR);
 
 /// Reserve below `WASM_STACK_TOP` for the synthetic entry "frame" that calls `_start`.
 const ENTRY_FRAME_RESERVE: i64 = 64;
@@ -117,12 +119,44 @@ fn transpile(bytes: &[u8]) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn
         rom.rw_data_64.push(DataSection64 { addr: section.addr, data: data.collect() });
     }
 
-    // -- lower every function (imports become WASI stubs) --------------------
+    // -- the ZisK library, when the module imports an accelerator -------------
+    let accelerators: Vec<&str> = module
+        .imports
+        .iter()
+        .filter(|(m, name, _)| zkvm::is_accelerator_import(m, name))
+        .map(|(_, name, _)| name.as_str())
+        .collect();
+    let library = if accelerators.is_empty() {
+        None
+    } else {
+        Some(ziskasm::assemble_zisk_library().map_err(|e| format!("ZisK library: {e}"))?)
+    };
+    let mut routine_entry: HashMap<&str, u64> = HashMap::new();
+    if let Some(library) = &library {
+        for name in &accelerators {
+            let routine = zkvm::routine(name).unwrap();
+            let entry = *library
+                .symbols
+                .get(routine)
+                .ok_or_else(|| format!("ZisK library has no routine `{routine}` for {name}"))?;
+            routine_entry.insert(name, entry);
+        }
+    }
+    // The zkvmcalls the module uses, as a RISC-V guest's ROM records them: profiling names the
+    // library's code after them.
+    rom.zkvmcalls = accelerators.iter().filter_map(|name| zkvm::zkvmcall_id(name)).collect();
+
+    // -- lower every function (imports become WASI or accelerator stubs) ----
     let n_funcs = module.func_count() as usize;
     let n_imports = module.func_import_count as usize;
     let mut codes: Vec<Code> = Vec::with_capacity(n_funcs);
     for i in 0..n_imports {
-        codes.push(wasi::build_wasi_stub(&module, i)?);
+        let (import_module, name, _) = &module.imports[i];
+        codes.push(if zkvm::is_accelerator_import(import_module, name) {
+            zkvm::build_accelerator_stub(&module, i, routine_entry[name.as_str()])?
+        } else {
+            wasi::build_wasi_stub(&module, i)?
+        });
     }
     for d in 0..module.defined.len() {
         let func_index = (n_imports + d) as u32;
@@ -170,6 +204,11 @@ fn transpile(bytes: &[u8]) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn
     let bios_jump_addr = rom.next_init_inst_addr;
     resolve_and_insert(&mut rom, &bios_jump, bios_jump_addr, &func_addr);
     rom.next_init_inst_addr = bios_jump_addr + 4 * bios_jump.len() as u64;
+
+    // The library goes in after every guest instruction, which it is renumbered to follow.
+    if let Some(library) = library {
+        zisk_riscv::merge_library(&mut rom, library)?;
+    }
 
     rom.optimize_instruction_lookup()?;
 

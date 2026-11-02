@@ -6,7 +6,7 @@
 //! indirect-call table, control cells, linear memory and the call/operand stack), and pick which
 //! of the 32 Zisk registers play which role.
 
-use zisk_core::{FLOAT_LIB_RAM_ADDR, OUTPUT_ADDR, OUTPUT_MAX_SIZE};
+use zisk_core::{FLOAT_LIB_RAM_ADDR, OUTPUT_ADDR, OUTPUT_MAX_SIZE, ZISKLIB_RAM_ADDR};
 
 pub const WASM_PUBLIC_OUTPUT_BYTES: u64 = 32 * 8;
 
@@ -97,17 +97,26 @@ pub const WASM_RNG_STATE_ADDR: u64 = WASM_CTRL_ADDR + 32;
 pub const WASM_RNG_WARNED_ADDR: u64 = WASM_CTRL_ADDR + 40;
 
 /// Base of wasm linear memory: wasm address 0 maps here.
-pub const WASM_MEM_BASE: u64 = 0xa100_0000;
+/// It sits 192 KiB lower than the 0xa100_0000 it started at, so that reserving the ZisK library
+/// RAM above the call stack took that room from the gap after the control cells, not from the
+/// memory or the stack.
+pub const WASM_MEM_BASE: u64 = 0xa0fd_0000;
+const _: () = assert!(WASM_MEM_BASE >= WASM_CTRL_ADDR + 0x10000);
 /// Page size, per the wasm spec (64 KiB).
 pub const WASM_PAGE_SIZE: u64 = 0x10000;
-/// Upper bound for linear memory, leaving a margin below the call stack.
-pub const WASM_MEM_LIMIT: u64 = 0xbf00_0000;
+/// Upper bound for linear memory, where the call stack ends: 7,680 pages (480 MiB) above the base.
+pub const WASM_MEM_LIMIT: u64 = 0xbefd_0000;
 /// Maximum number of linear-memory pages the runtime supports.
 pub const WASM_MAX_PAGES: u64 = (WASM_MEM_LIMIT - WASM_MEM_BASE) / WASM_PAGE_SIZE;
 
-/// Top of the call/operand stack; frames grow downward from here.  Kept below the float library
-/// RAM region so the two never collide (wasm never touches the float lib, but we stay clear).
-pub const WASM_STACK_TOP: u64 = FLOAT_LIB_RAM_ADDR - 0x10000; // 0xbffe0000
+/// Top of the call/operand stack; frames grow downward from here.  Kept below the ZisK library
+/// RAM region (the accelerator routines' scratch, see `zkvm.rs`), which sits just below the float
+/// library RAM, so neither is ever overwritten by a frame.
+pub const WASM_STACK_TOP: u64 = ZISKLIB_RAM_ADDR - 0x10000; // 0xbffb0000
+const _: () = assert!(WASM_STACK_TOP < ZISKLIB_RAM_ADDR && ZISKLIB_RAM_ADDR < FLOAT_LIB_RAM_ADDR);
+// 7,680 pages of memory and a 0xfe_0000-byte stack (about 2,000 frames), as before the ZisK
+// library RAM was reserved.
+const _: () = assert!(WASM_MAX_PAGES == 7680 && WASM_STACK_TOP - WASM_STACK_LIMIT == 0xfe_0000);
 /// Lowest address a frame may occupy: the stack ends where linear memory can grow to.  Calls trap
 /// (stack exhaustion) instead of placing a frame below it.
 pub const WASM_STACK_LIMIT: u64 = WASM_MEM_LIMIT;

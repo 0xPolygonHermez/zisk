@@ -94,7 +94,7 @@ pub fn emit_pubout_exit(code: &mut Code) {
     code.push_raw(zib, super::emit::Fixup::None);
 }
 
-fn emit_console_str(code: &mut Code, text: &str) {
+pub(crate) fn emit_console_str(code: &mut Code, text: &str) {
     code.load_imm_to_reg(R_B, UART_ADDR);
     for &byte in text.as_bytes() {
         code.load_imm_to_reg(R_C, byte as u64);
@@ -153,7 +153,7 @@ fn emit_splitmix64(code: &mut Code, state: u64, out: u64, tmp: u64) {
     code.alu_rr("xor", out, out, tmp);
 }
 
-fn wrap_stub<F: FnOnce(&mut Code, LabelId, LabelId)>(body: F) -> Code {
+pub(crate) fn wrap_stub<F: FnOnce(&mut Code, LabelId, LabelId)>(body: F) -> Code {
     let mut code = Code::new();
     // Prologue: save the return address.
     code.store_reg_to_slot(FRAME_RET_PC_OFF, REG_RA);
@@ -473,7 +473,8 @@ pub fn build_wasi_stub(module: &WasmModule, import_index: usize) -> Result<Code,
     let (mod_name, name, _ty) = &module.imports[import_index];
     if mod_name != "wasi_snapshot_preview1" {
         return Err(format!(
-            "wasm: unsupported import module '{mod_name}' (only wasi_snapshot_preview1 is supported)"
+            "wasm: unsupported import {mod_name}::{name} (only wasi_snapshot_preview1 and the \
+             zkvm_accelerators.h functions from env are supported)"
         )
         .into());
     }

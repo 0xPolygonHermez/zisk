@@ -307,6 +307,10 @@ TinyGo supports only part of the standard library and of reflection, so test eac
 `-panic=trap` drops the panic message, which makes no difference to proving: a guest that panics
 cannot be proven either way.
 
+For Keccak, SHA-256, secp256k1, BN254, BLS12-381 and the other EF accelerators, a TinyGo guest
+imports the [`ziskasm/lang/tinygo`](../../ziskasm/lang/tinygo/) package, which calls them through
+the C header (see [Precompiles](#precompiles-the-ef-accelerators)).
+
 ## Guest contract
 
 A guest is a `wasm32-wasip1` *command* module: it exports `_start: () -> ()` or has a start
@@ -336,7 +340,37 @@ runtimes to start:
 | `poll_oneoff` | Every subscription is reported as ready immediately. |
 | any other `wasi_snapshot_preview1` function | Accepted at transpile time, returns `ENOSYS` when called. |
 
-Imports from any module other than `wasi_snapshot_preview1` are rejected at transpile time.
+Imports from any module other than `wasi_snapshot_preview1` are rejected at transpile time,
+except the accelerators below.
+
+### Precompiles: the EF accelerators
+
+A guest gets the Ethereum Foundation zkVM accelerators of
+[`zkvm_accelerators.h`](../../ziskasm/lang/c/include/zkvm_accelerators.h) by importing them from
+module `env`. That is what a compiler produces when a guest calls the header's functions without
+defining them: TinyGo through cgo (the [`ziskasm/lang/tinygo`](../../ziskasm/lang/tinygo/)
+package), C with clang, or Rust with an `extern "C"` block. The signature is the header's under
+the wasm32 C ABI. Pointers, `size_t`, `uint32_t`, `uint8_t` and the `zkvm_status` result are all
+`i32`, e.g. `env.zkvm_keccak256: (i32, i32, i32) -> i32`. All 20 functions are supported, from
+`zkvm_keccak256` to `zkvm_bls12_map_fp2_to_g2`. An import with a different signature, or another
+name from `env`, is rejected at transpile time.
+
+Each import becomes a stub ([`src/zkvm.rs`](src/zkvm.rs)) that:
+
+1. loads the arguments into `a0..a6`;
+2. rebases each pointer onto `WASM_MEM_BASE` and checks the whole range it covers against the
+   current memory. The range is a fixed size, or a length or count taken from another argument;
+   an empty range is not checked. An out-of-range pointer prints
+   `wasm: <name>: a pointer argument is out of bounds` and traps;
+3. calls the hand-written routine of the [ZisK library](../../ziskasm/zisklib/) that a RISC-V
+   guest reaches through the matching zkvmcall (`zkvm_keccak_f1600`, which RISC-V guests inline,
+   calls `ziskasm_zkvm_keccak_f1600`). The library is merged into the ROM only when the module
+   imports an accelerator. The routines keep their return addresses on a stack at `sp`, which is
+   the wasm frame pointer `r2`, so for the call `r2` points just below the stub's frame, with
+   4 KiB reserved for the routines.
+
+Buffers need no particular alignment. The routines' scratch lives in the reserved ZisK library
+RAM, which sits just above the call stack.
 
 Every pointer a WASI call receives is checked against the current linear-memory size before the
 call reads or writes anything. A bad pointer makes the call return `EFAULT`, so a guest can never
@@ -440,8 +474,8 @@ The wasm machine lives inside the standard ZisK memory map ([layout.rs](src/layo
 | Globals | `0xa043_0000` | 8 bytes per global. |
 | Indirect-call table | `0xa044_0000` | 16 bytes per entry: `{ zisk_pc, canonical_type_id }`. |
 | Control cells | `0xa054_0000` | Memory size in pages, stdin cursor, stdout length, clock, RNG state. |
-| Linear memory | `0xa100_0000` … `0xbf00_0000` | wasm address 0 maps to `WASM_MEM_BASE`. |
-| Call / operand stack | grows down from `0xbffe_0000` to `0xbf00_0000` | One frame per active call. |
+| Linear memory | `0xa0fd_0000` … `0xbefd_0000` | wasm address 0 maps to `WASM_MEM_BASE`. |
+| Call / operand stack | grows down from `0xbffb_0000` to `0xbefd_0000` | One frame per active call. Above it: the ZisK library RAM (`0xbffc_0000`, used by the accelerators) and the float library RAM. |
 | Float library RAM | above the stack | Used only by the soft-float library. |
 
 ### Registers and frames
@@ -577,9 +611,10 @@ traffic and calls see a larger ratio than tight arithmetic loops.
   the guest's bytes, not its ROM, so switching between `float` and non-`float` builds reuses
   stale entries for a guest both can transpile; clear them with
   `cargo-zisk utils clean-cache -e guest.wasm`.
-- **No precompiles, no hints.** There is no wasm equivalent of the `ziskos` precompile calls
-  (Keccak, SHA-256, big-integer arithmetic, ...) or the hints stream. A wasm guest pays the full
-  software cost of its cryptography.
+- **Only the EF accelerators, and no hints.** A guest reaches the functions of
+  `zkvm_accelerators.h` (see [Precompiles](#precompiles-the-ef-accelerators)). The other ZisK
+  library headers (`zkvm_u256.h`, `zkvm_zisklib.h`, ...) and the hints stream have no wasm
+  equivalent yet.
 - **Only 256 bytes of public output**, taken from the start of stdout/stderr.
 - **No filesystem, arguments or environment**, and the clock and randomness are deterministic
   stand-ins.
@@ -590,14 +625,15 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 |---|---|
 | `emulator/tests/wasm.rs` | Integer operators, control flow, calls, memory, WASI and traps, using hand-written WAT modules. |
 | `emulator/tests/wasm_float.rs` | `f32`/`f64` operators against the wasm spec (requires `float`). |
+| `emulator/tests/wasm_zkvm.rs` | The accelerator imports, using hand-written WAT modules: known digests through unaligned buffers, a failure status, bounds checks, a routine with nested calls, and signature checks. With `float`, it also runs the prebuilt [`ziskasm/lang/tinygo`](../../ziskasm/lang/tinygo/) example, which checks all 20 accelerators. |
 | `emulator/tests/wasm_example.rs` | Builds [`examples/wasm-fibonacci`](../../examples/wasm-fibonacci) for `wasm32-wasip1` and runs it end to end. Skipped with a notice when the target is not installed. |
 | `integration-tests/tests/wasm_verify_constraints.rs` | Constraint verification on the emulator and (on Linux) ASM backends for five guests that together cover the lowering paths, WASI and the memory-layout limits, and rejection of guests that trap or exit with a nonzero status. Needs a proving key; ignored by default. |
 | `integration-tests/tests/wasm_prove.rs` | Proves `wasm-fibonacci` on the emulator and (on Linux) ASM backends and verifies the proof under the module's program verification key (and not under any other). Needs a proving key; ignored by default. |
 
 ```bash
-cargo test -p ziskemu --release --test wasm --test wasm_example
+cargo test -p ziskemu --release --test wasm --test wasm_example --test wasm_zkvm
 ZISK_CI_NO_DOCKER_REBUILD=1 \
-  cargo test -p ziskemu --release --features float --test wasm --test wasm_float --test wasm_example
+  cargo test -p ziskemu --release --features float --test wasm --test wasm_float --test wasm_example --test wasm_zkvm
 cargo test --release -p integration-tests --test wasm_verify_constraints --test wasm_prove -- --ignored
 ```
 
