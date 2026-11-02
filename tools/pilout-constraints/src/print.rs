@@ -138,7 +138,9 @@ fn node(ir: &Ir, plan: &Plan, leaves: &dyn Leaves, idx: u32, min_prec: u8) -> (S
         Node::Sub { lhs, rhs } => (binary(ir, plan, leaves, lhs, "-", rhs, PREC_SUM), PREC_SUM),
         Node::Mul { lhs, rhs } => (binary(ir, plan, leaves, lhs, "*", rhs, PREC_PROD), PREC_PROD),
         Node::Neg { value } => {
-            let (inner, _) = operand(ir, plan, leaves, value, PREC_NEG);
+            // An atom or parenthesized: a nested negation as `-(-x)`, since
+            // `--x` starts a comment in Lean.
+            let (inner, _) = operand(ir, plan, leaves, value, PREC_ATOM);
             (format!("-{inner}"), PREC_NEG)
         }
     };
@@ -249,6 +251,16 @@ mod tests {
         assert_eq!(render(&ir, &plan, &Plain, 2), "a - (b + e0)");
         // Expression 3 is `a * e0`: a product of atoms needs none.
         assert_eq!(render(&ir, &plan, &Plain, 3), "a * e0");
+    }
+
+    #[test]
+    fn a_nested_negation_keeps_its_parentheses() {
+        let mut ir = sample();
+        // 5: -(-b), over the sample's expression 4, -b.
+        ir.expressions.push(Node::Neg { value: Operand::Expr { idx: 4, name: None } });
+        let plan = Plan::build(&ir, MAX_INLINE);
+        assert_eq!(render(&ir, &plan, &Plain, 4), "-b");
+        assert_eq!(render(&ir, &plan, &Plain, 5), "-(-b)");
     }
 
     #[test]
