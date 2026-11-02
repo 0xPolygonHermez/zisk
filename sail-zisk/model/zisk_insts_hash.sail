@@ -225,33 +225,10 @@ function blake32_round(state, m, is_blake3, r) = {
   v
 }
 
-/* blake2b's chain (core/src/zisk_ops.rs, opc_blake2b; zisk_definitions
- * BLAKE2B_*): the extended argument is the round's index, bits 3..0 the
- * round, bit 4 a chained read (the previous round's state and block, which
- * the prover passes on without memory), bit 5 a chained write, bits 63..6
- * the gap, in steps, back to the round it chains from. A chained read needs
- * that gap between 1 and 255, and a blake2b round exactly that many steps
- * back; an unchained one, no gap. The step's bookkeeping, not the round's:
- * zisk_execute runs it before the operation, as ZisK's blake2b does before
- * it reads memory, so that the operation reads memory alone. The emulator's
- * results are the same either way: the chain is the prover's, the state and
- * block are read from memory. */
-val blake2b_chain : bits(64) -> unit
-function blake2b_chain(ext) = {
-  let gap = unsigned(ext[63 .. 6]);
-  let rd_chain = ext[4] == bitone;
-  assert(if rd_chain then 1 <= gap & gap <= 255 else gap == 0, "blake2b: gap not provable");
-  if rd_chain then
-    assert(Step - to_bits(64, gap) == Blake2bStep, "blake2b: chained round without a blake2b round gap steps back");
-  Blake2bStep = Step
-}
-
-/* blake2b: BLAKE2b's round (the extended argument's low 4 bits, mod 10) of
- * the 16-word state at a with the 16-word block at b, over a; c = 0. The
- * round only: no initialisation, no feed-forward; its chain, blake2b_chain. */
-union clause zisk_op = ZOP_BLAKE2B : unit
-function clause zisk_op_of_code (0xea) = Some(ZOP_BLAKE2B())
-function clause zisk_exec_mem (ZOP_BLAKE2B(), a, b, ext) = {
+/* The 16-word state at a and block at b of a blake2b round, and its new
+ * state over a: the memory a round reads and writes when it does not chain. */
+val blake2b_load : (bits(64), bits(64)) -> (vector(16, bits(64)), vector(16, bits(64)))
+function blake2b_load(a, b) = {
   check_aligned(a, "blake2b");
   check_aligned(b, "blake2b");
   var v : vector(16, bits(64)) = undefined;
@@ -260,8 +237,81 @@ function clause zisk_exec_mem (ZOP_BLAKE2B(), a, b, ext) = {
     v[i] = read_mem(a + to_bits(64, 8 * i), 8);
     m[i] = read_mem(b + to_bits(64, 8 * i), 8)
   };
+  (v, m)
+}
+
+val blake2b_store : (bits(64), vector(16, bits(64))) -> unit
+function blake2b_store(a, v) =
+  foreach (i from 0 to 15) write_mem(a + to_bits(64, 8 * i), 8, v[i])
+
+/* A chained blake2b round (bit 4 or 5 of its index), as the prover runs it
+ * (precompiles/blake2/pil/blake2br.pil): a chained read takes the state and
+ * block from the chain, not memory, and needs the round it chains from to
+ * have written it, on the same a and b; a chained write puts the new state
+ * and the block on the chain, not the state in memory, and needs the next
+ * round to read it. The emulator reads and writes memory at every round
+ * (opc_blake2b), which comes to the same when nothing between the rounds
+ * touches a or b: a gap of 1, as ziskos chains them. */
+val blake2b_chained_round : (bits(64), bits(64), bits(64)) -> unit
+function blake2b_chained_round(ext, a, b) = {
+  let rd_chain = ext[4] == bitone;
+  let wr_chain = ext[5] == bitone;
+  let (v, m) : (vector(16, bits(64)), vector(16, bits(64))) =
+    if rd_chain then {
+      assert(Blake2bChained & Blake2bChainStep == Step - to_bits(64, unsigned(ext[63 .. 6])),
+             "blake2b: chained read without a chained write the gap steps back");
+      assert(Blake2bChainA == a & Blake2bChainB == b,
+             "blake2b: chained read on other blocks than the round it chains from");
+      (Blake2bChainV, Blake2bChainM)
+    } else {
+      assert(not_bool(Blake2bChained), "blake2b: a chained write the next round does not read");
+      blake2b_load(a, b)
+    };
   let r = blake2b_round(v, m, unsigned(ext[3 .. 0]) % 10);
-  foreach (i from 0 to 15) write_mem(a + to_bits(64, 8 * i), 8, r[i]);
+  Blake2bChained = wr_chain;
+  if wr_chain then {
+    Blake2bChainStep = Step;
+    Blake2bChainA = a;
+    Blake2bChainB = b;
+    Blake2bChainV = r;
+    Blake2bChainM = m
+  } else blake2b_store(a, r)
+}
+
+/* blake2b's chain (core/src/zisk_ops.rs, opc_blake2b; zisk_definitions
+ * BLAKE2B_*): the extended argument is the round's index, bits 3..0 the
+ * round, bit 4 a chained read (the previous round's state and block, which
+ * the prover passes on without memory), bit 5 a chained write, bits 63..6
+ * the gap, in steps, back to the round it chains from. A chained read needs
+ * that gap between 1 and 255, and a blake2b round exactly that many steps
+ * back; an unchained one, no gap. The step's bookkeeping, not the round's:
+ * zisk_execute runs it before the operation, as ZisK's blake2b does before
+ * it reads memory. A chained round is run here too (blake2b_chained_round),
+ * on the chain the prover keeps, and the operation then does nothing; an
+ * unchained one is the operation's, so that the operation reads memory
+ * alone. */
+val blake2b_chain : (bits(64), bits(64), bits(64)) -> unit
+function blake2b_chain(ext, a, b) = {
+  let gap = unsigned(ext[63 .. 6]);
+  let rd_chain = ext[4] == bitone;
+  assert(if rd_chain then 1 <= gap & gap <= 255 else gap == 0, "blake2b: gap not provable");
+  if rd_chain then
+    assert(Step - to_bits(64, gap) == Blake2bStep, "blake2b: chained round without a blake2b round gap steps back");
+  Blake2bStep = Step;
+  if rd_chain | ext[5] == bitone then blake2b_chained_round(ext, a, b)
+}
+
+/* blake2b: BLAKE2b's round (the extended argument's low 4 bits, mod 10) of
+ * the 16-word state at a with the 16-word block at b, over a; c = 0. The
+ * round only: no initialisation, no feed-forward. A chained round (bit 4 or
+ * 5) is blake2b_chain's, and does nothing here. */
+union clause zisk_op = ZOP_BLAKE2B : unit
+function clause zisk_op_of_code (0xea) = Some(ZOP_BLAKE2B())
+function clause zisk_exec_mem (ZOP_BLAKE2B(), a, b, ext) = {
+  if ext[4] == bitzero & ext[5] == bitzero then {
+    let (v, m) = blake2b_load(a, b);
+    blake2b_store(a, blake2b_round(v, m, unsigned(ext[3 .. 0]) % 10))
+  };
   Some((zeros(), false))
 }
 

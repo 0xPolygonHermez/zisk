@@ -142,14 +142,17 @@ macro_rules
       | exact KeepPC.readReg _
       | exact KeepPC.assert _ _
       | exact KeepPC.writeReg _ _ (by decide)
+      | exact keepPC_of_frame (Frame.blake2b_load _ _)
+      | exact keepPC_of_frame (Frame.blake2b_store _ _)
       | (dsimp only; keeppc))
 
+set_option maxHeartbeats 4000000 in
 /-- A precompile's prelude (blake2b's chain) keeps the pc. -/
-theorem keepPC_prelude (op : _root_.Zisk.zisk_op) (e : BitVec 64) :
-    KeepPC (_root_.Zisk.Functions.precompiled_prelude op e) := by
+theorem keepPC_prelude (op : _root_.Zisk.zisk_op) (a b e : BitVec 64) :
+    KeepPC (_root_.Zisk.Functions.precompiled_prelude op a b e) := by
   unfold _root_.Zisk.Functions.precompiled_prelude
   split
-  · unfold _root_.Zisk.Functions.blake2b_chain
+  · unfold _root_.Zisk.Functions.blake2b_chain _root_.Zisk.Functions.blake2b_chained_round
     keeppc
   · exact KeepPC.pure _
 
@@ -219,7 +222,7 @@ theorem execute_pc (inst : _root_.Zisk.zisk_inst) (hs : inst.set_pc = false) (he
   all_goals (try (cases h; done))
   all_goals rename_i u σq hq
   all_goals have p2q : σq.regs.get? _root_.Zisk.Register.PC = some p := (by
-    first | exact (keepPC_prelude _ _ σ2 u σq hq).trans p2 | (rw [run_pure'] at hq; cases hq; exact p2))
+    first | exact (keepPC_prelude _ _ _ _ σ2 u σq hq).trans p2 | (rw [run_pure'] at hq; cases hq; exact p2))
   all_goals clear p2 hb
   all_goals
     rw [run_bind'] at h

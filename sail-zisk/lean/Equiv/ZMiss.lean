@@ -159,6 +159,11 @@ theorem source_b_miss (inst : zisk_inst) (a : BitVec 64) : MissIn (bReads inst a
   · exact MissIn.pure _ _
   · next h => exact MissIn.bind ((MissIn.read_mem _ _).mono (fun k hk => .inr ⟨h, hk⟩)) (fun _ => MissIn.pure _ _)
 
+/-- The prelude of an op without a body: nothing (blake2b's has one). -/
+theorem prelude_pure (op : zisk_op) (h : memOp op = false) (a b e : BitVec 64) :
+    Functions.precompiled_prelude op a b e = pure () := by
+  cases op <;> first | (simp [memOp] at h; done) | rfl
+
 set_option maxHeartbeats 0 in
 set_option maxRecDepth 100000 in
 /-- Where an instruction fails on a missing byte: where its a source reads,
@@ -190,7 +195,7 @@ theorem execute_miss (inst : zisk_inst) (σ : ZState) (k : Nat) (σ' : ZState)
         simp only [pure_bind]
         intro h
         refine (show NoMiss _ from ?_) σ2 k σ' h
-        refine MissIn.ite (MissIn.bind (by unfold Functions.precompiled_prelude Functions.blake2b_chain; nomiss)
+        refine MissIn.ite (MissIn.bind (by rw [prelude_pure _ hm]; exact MissIn.pure _ _)
           (fun _ => ?_)) ?_
         all_goals
           refine MissIn.bind ?_ (fun _ => ?_)

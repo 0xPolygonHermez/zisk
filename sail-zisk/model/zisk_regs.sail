@@ -58,3 +58,14 @@ register FcallGot   : bits(64)  /* words consumed, plus one: result_got    */
  * start): a chained round must come the gap its index gives after it
  * (zisk_insts_hash.sail). */
 register Blake2bStep : bits(64)
+
+/* blake2b's chain, as the prover keeps it (precompiles/blake2/pil/blake2br.pil,
+ * BLAKE2B_CHAIN_ID), not memory: whether a chained write waits for the next
+ * round to read it, that round's step, its a and b, its new state and its
+ * block (zisk_insts_hash.sail). Only chained rounds touch them. */
+register Blake2bChained   : bool
+register Blake2bChainStep : bits(64)
+register Blake2bChainA    : bits(64)
+register Blake2bChainB    : bits(64)
+register Blake2bChainV    : vector(16, bits(64))
+register Blake2bChainM    : vector(16, bits(64))

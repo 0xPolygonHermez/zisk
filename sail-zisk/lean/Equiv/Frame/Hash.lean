@@ -13,6 +13,16 @@ theorem Frame.exec_keccak (a b ext : BitVec 64) : Frame (Functions.zisk_exec_mem
   frame
 
 set_option maxHeartbeats 0 in
+theorem Frame.blake2b_load (a b : BitVec 64) : Frame (Functions.blake2b_load a b) := by
+  unfold Functions.blake2b_load
+  frame
+
+set_option maxHeartbeats 0 in
+theorem Frame.blake2b_store (a : BitVec 64) (v : Vector (BitVec 64) 16) : Frame (Functions.blake2b_store a v) := by
+  unfold Functions.blake2b_store
+  frame
+
+set_option maxHeartbeats 0 in
 theorem Frame.exec_blake2b (a b ext : BitVec 64) : Frame (Functions.zisk_exec_mem (.ZOP_BLAKE2B ()) a b ext) := by
   simp only [Functions.zisk_exec_mem]
   frame

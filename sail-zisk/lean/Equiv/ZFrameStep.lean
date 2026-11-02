@@ -134,6 +134,8 @@ macro_rules
       | exact (Frame.assert _ _).sframe
       | exact (Frame.read_mem _ _).sframe
       | exact (Frame.write_mem _ _ _).sframe
+      | exact (Frame.blake2b_load _ _).sframe
+      | exact (Frame.blake2b_store _ _).sframe
       | exact (Frame.choose _).sframe
       | (refine (Frame.throw _ ?_).sframe; intro _ h; cases h)
       | exact SFrame.readReg _

@@ -261,10 +261,13 @@ bit 4 a chained read, bit 5 a chained write, bits 63..6 a gap. A chained
 read takes the previous round's state from the one exactly `gap` ZisK steps
 earlier, which ZisK checks (and fails the run otherwise), counting ZisK's
 steps — which the RISC-V program does not see: one RISC-V instruction can
-be several ZisK steps. So the contract leaves chaining out, for now:
+be several ZisK steps. A chained write leaves the new state off memory, for
+the next round to read, and a run whose chained write no round reads cannot
+be proved; so a lone chained write is out too. The contract leaves chaining
+out, for now:
 
-> **Precondition B.** Every `blake2b` call's index has no chained read
-> and no gap (bit 4 clear, bits 63..6 zero).
+> **Precondition B.** Every `blake2b` call's index has no chained read,
+> no chained write and no gap (bits 4 and 5 clear, bits 63..6 zero).
 
 `ziskos`'s `syscall_blake2b_rounds_chain` chains its rounds, ten at a time,
 and so is outside the contract until chaining is.

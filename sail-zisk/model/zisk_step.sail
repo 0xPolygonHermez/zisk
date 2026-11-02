@@ -52,11 +52,11 @@ function next_pc (inst : zisk_inst, c : bits(64), flag : bool) -> bits(64) =
  * the program has ended. Split from the fetch so that a proof can take
  * the instruction as an argument rather than fixing a ROM. */
 /* What a precompile's step does before its operation: blake2b's chain
- * (zisk_insts_hash.sail), the step's bookkeeping, kept out of the operation
- * so that it reads memory alone. */
-val precompiled_prelude : (zisk_op, bits(64)) -> unit
-function precompiled_prelude(op, ext) = match op {
-  ZOP_BLAKE2B() => blake2b_chain(ext),
+ * (zisk_insts_hash.sail), the step's bookkeeping and a chained round, kept
+ * out of the operation so that it reads memory alone. */
+val precompiled_prelude : (zisk_op, bits(64), bits(64), bits(64)) -> unit
+function precompiled_prelude(op, a, b, ext) = match op {
+  ZOP_BLAKE2B() => blake2b_chain(ext, a, b),
   _             => ()
 }
 
@@ -66,7 +66,7 @@ function zisk_execute (inst : zisk_inst) -> bool = {
   /* The extended argument: jmp_off1 for an op that reads memory as a
      precompile, else 0 (Emu::step). */
   let ext = if zisk_op_is_precompiled(inst.op) then inst.jmp_off1 else zeros();
-  if zisk_op_is_precompiled(inst.op) then precompiled_prelude(inst.op, ext);
+  if zisk_op_is_precompiled(inst.op) then precompiled_prelude(inst.op, a, b, ext);
   let (c, flag) : (bits(64), bool) = match zisk_exec_mem(inst.op, a, b, ext) {
     Some(r) => r,
     None()  => zisk_exec(inst.op, a, b)

@@ -63,6 +63,7 @@ function main() = {
   FcallSize = zeros();
   FcallGot  = zeros();
   Blake2bStep = zeros();
+  Blake2bChained = false;
 
   var n : int = 0;
   var done : bool = false;
@@ -74,6 +75,8 @@ function main() = {
     trace_step(n, pc, before);
     n = n + 1
   };
+  /* A chained write no round read: the prover's chain does not balance. */
+  assert(not_bool(Blake2bChained), "blake2b: the run ends on a chained write no round reads");
 
   print_endline(concat_str(concat_str("end ", flag_str(Zerror)), concat_str(" ", bits_str(Zerror_code))));
   foreach (k from 0 to 31) {

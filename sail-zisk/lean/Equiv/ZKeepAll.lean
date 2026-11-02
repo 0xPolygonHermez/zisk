@@ -236,7 +236,8 @@ theorem Keep.execute (inst : zisk_inst) (h : writesF inst.op = false) : Keep (Fu
   refine Keep.bind (by unfold Functions.source_b; keep) (fun b => ?_)
   dsimp only
   split
-  · refine Keep.bind (by unfold Functions.precompiled_prelude Functions.blake2b_chain; keep) (fun _ => ?_)
+  · refine Keep.bind (by unfold Functions.precompiled_prelude Functions.blake2b_chain Functions.blake2b_chained_round; keep)
+      (fun _ => ?_)
     refine Keep.bind (Keep.bind (Keep.exec_mem _ h _ _ _) (fun r => by keep)) (fun cf => ?_)
     keep
   · refine Keep.bind (Keep.pure _) (fun _ => ?_)
