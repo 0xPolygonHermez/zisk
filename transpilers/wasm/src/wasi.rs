@@ -40,15 +40,15 @@ const RNG_WARNING: &str = "WARNING: Using insecure random number generator.\n";
 
 // Scratch registers used by the longer stubs (must avoid REG_FP and the temporaries used by the
 // epilogue, REG_T0/REG_T2).
-const R_A: u64 = 14;
-const R_B: u64 = 15;
-const R_C: u64 = 16;
-const R_D: u64 = 17;
-const R_E: u64 = 18;
-const R_F: u64 = 19;
-const R_G: u64 = 20;
-const R_H: u64 = 21;
-const R_END: u64 = 25;
+pub(crate) const R_A: u64 = 14;
+pub(crate) const R_B: u64 = 15;
+pub(crate) const R_C: u64 = 16;
+pub(crate) const R_D: u64 = 17;
+pub(crate) const R_E: u64 = 18;
+pub(crate) const R_F: u64 = 19;
+pub(crate) const R_G: u64 = 20;
+pub(crate) const R_H: u64 = 21;
+pub(crate) const R_END: u64 = 25;
 
 /// Emits the public-output publication loop followed by a jump to `ROM_EXIT`.  Terminates the
 /// program.  Mirrors the finalization sequence of the RISC-V entry/exit code.
@@ -185,18 +185,18 @@ fn require_fd(code: &mut Code, allowed: &[u64], done: LabelId) {
 }
 
 #[derive(Clone, Copy)]
-enum Len {
+pub(crate) enum Len {
     Imm(u64),
     Reg(u64),
 }
 
 /// Loads wasm linear-memory absolute address `WASM_MEM_BASE + (reg & 0xffffffff)` into `reg`.
-fn to_linear(code: &mut Code, reg: u64) {
+pub(crate) fn to_linear(code: &mut Code, reg: u64) {
     code.alu_ri("and", reg, reg, 0xFFFF_FFFF);
     code.alu_ri("add", reg, reg, WASM_MEM_BASE as i64);
 }
 
-fn checked_linear(code: &mut Code, reg: u64, len: Len, fault: LabelId) {
+pub(crate) fn checked_linear(code: &mut Code, reg: u64, len: Len, fault: LabelId) {
     to_linear(code, reg);
     match len {
         Len::Imm(n) => code.alu_ri("add", R_END, reg, n as i64),
@@ -480,8 +480,8 @@ pub fn build_wasi_stub(module: &WasmModule, import_index: usize) -> Result<Code,
     }
     if mod_name != "wasi_snapshot_preview1" {
         return Err(format!(
-            "wasm: unsupported import {mod_name}::{name} (only wasi_snapshot_preview1 and the \
-             functions of the ZisK C headers from env are supported)"
+            "wasm: unsupported import {mod_name}::{name} (only wasi_snapshot_preview1 and, from \
+             env, the functions of the ZisK C headers and the ZisK precompiles are supported)"
         )
         .into());
     }

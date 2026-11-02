@@ -62,6 +62,9 @@ zisk-common = { workspace = true }
 zisk-core = { workspace = true }
 zisk-transpiler-wasm = { workspace = true }
 wat = { workspace = true }
+# Oracles for the wasm precompile tests
+tiny-keccak = { workspace = true, features = ["keccak"] }
+sha2 = { workspace = true }
 
 [[bench]]
 name = "benchmark"
