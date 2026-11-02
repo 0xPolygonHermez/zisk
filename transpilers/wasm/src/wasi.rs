@@ -471,10 +471,17 @@ fn check_signature(name: &str, declared: &FuncSig) -> Result<(), Box<dyn Error>>
 /// Builds the Zisk routine implementing imported function `import_index`.
 pub fn build_wasi_stub(module: &WasmModule, import_index: usize) -> Result<Code, Box<dyn Error>> {
     let (mod_name, name, _ty) = &module.imports[import_index];
+    if mod_name == "env" && (name == "read_input" || name == "write_output") {
+        return Err(format!(
+            "wasm: unsupported import env::{name}: a wasm guest reads its input from stdin and \
+             writes its public output to stdout (WASI fd_read / fd_write)"
+        )
+        .into());
+    }
     if mod_name != "wasi_snapshot_preview1" {
         return Err(format!(
             "wasm: unsupported import {mod_name}::{name} (only wasi_snapshot_preview1 and the \
-             zkvm_accelerators.h functions from env are supported)"
+             functions of the ZisK C headers from env are supported)"
         )
         .into());
     }

@@ -10,7 +10,8 @@
 //! * [`lowering`] — per-function lowering of the integer wasm subset.
 //! * [`float`] — f32/f64 operators, lowered onto the RISC-V soft-float library (`float` feature).
 //! * [`wasi`] — minimal `wasi_snapshot_preview1` runtime.
-//! * [`zkvm`] — the EF zkVM accelerators (`zkvm_accelerators.h`), imported from `env`.
+//! * [`zkvm`] — the ZisK guest C interface (the EF accelerators, U256 and more), imported from
+//!   `env`.
 
 pub mod emit;
 #[cfg(feature = "float")]
@@ -33,7 +34,7 @@ use zisk_core::zisk_rom::DataSection64;
 use zisk_core::{ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, ROM_ADDR, ROM_ENTRY};
 
 /// One past the last program ROM address generated functions may occupy.  The top of the program
-/// ROM window holds the ZisK library (merged when the module imports an accelerator, see
+/// ROM window holds the ZisK library (merged when the module calls one of its routines, see
 /// [`zkvm`]) and, above it, the soft-float library (`float` feature), so the program stops below
 /// both.
 const PROGRAM_ROM_END: u64 = zisk_core::ZISKLIB_ROM_ADDR;
@@ -119,22 +120,22 @@ fn transpile(bytes: &[u8]) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn
         rom.rw_data_64.push(DataSection64 { addr: section.addr, data: data.collect() });
     }
 
-    // -- the ZisK library, when the module imports an accelerator -------------
-    let accelerators: Vec<&str> = module
+    // -- the ZisK library, when the module calls one of its routines ----------
+    let zkvm_imports: Vec<&str> = module
         .imports
         .iter()
-        .filter(|(m, name, _)| zkvm::is_accelerator_import(m, name))
+        .filter(|(m, name, _)| zkvm::is_zkvm_import(m, name))
         .map(|(_, name, _)| name.as_str())
         .collect();
-    let library = if accelerators.is_empty() {
+    let library = if zkvm_imports.iter().all(|name| zkvm::routine(name).is_none()) {
         None
     } else {
         Some(ziskasm::assemble_zisk_library().map_err(|e| format!("ZisK library: {e}"))?)
     };
     let mut routine_entry: HashMap<&str, u64> = HashMap::new();
     if let Some(library) = &library {
-        for name in &accelerators {
-            let routine = zkvm::routine(name).unwrap();
+        for name in &zkvm_imports {
+            let Some(routine) = zkvm::routine(name) else { continue };
             let entry = *library
                 .symbols
                 .get(routine)
@@ -143,17 +144,17 @@ fn transpile(bytes: &[u8]) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn
         }
     }
     // The zkvmcalls the module uses, as a RISC-V guest's ROM records them: profiling names the
-    // library's code after them.
-    rom.zkvmcalls = accelerators.iter().filter_map(|name| zkvm::zkvmcall_id(name)).collect();
+    // library's code after them, and `zkvm_random_u64` marks a guest that needs a random seed.
+    rom.zkvmcalls = zkvm_imports.iter().filter_map(|name| zkvm::zkvmcall_id(name)).collect();
 
-    // -- lower every function (imports become WASI or accelerator stubs) ----
+    // -- lower every function (imports become WASI or ZisK stubs) -----------
     let n_funcs = module.func_count() as usize;
     let n_imports = module.func_import_count as usize;
     let mut codes: Vec<Code> = Vec::with_capacity(n_funcs);
     for i in 0..n_imports {
         let (import_module, name, _) = &module.imports[i];
-        codes.push(if zkvm::is_accelerator_import(import_module, name) {
-            zkvm::build_accelerator_stub(&module, i, routine_entry[name.as_str()])?
+        codes.push(if zkvm::is_zkvm_import(import_module, name) {
+            zkvm::build_zkvm_stub(&module, i, routine_entry.get(name.as_str()).copied())?
         } else {
             wasi::build_wasi_stub(&module, i)?
         });

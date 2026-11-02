@@ -1,7 +1,7 @@
-//! The EF zkVM accelerators (`zkvm_accelerators.h`) imported by a wasm guest from `env`, as the
-//! wasm32 C ABI emits them (see `transpilers/wasm/src/zkvm.rs`): each `.wat` module below calls
-//! them the way a C or TinyGo guest compiled against the header does, and the ZisK library
-//! routines run in their place.
+//! The functions of the ZisK C headers (the EF accelerators, U256, random, write_log, zisklib and
+//! fcalls) imported by a wasm guest from `env`, as the wasm32 C ABI emits them (see
+//! `transpilers/wasm/src/zkvm.rs`): each `.wat` module below calls them the way a C or TinyGo
+//! guest compiled against the headers does, and the ZisK library routines run in their place.
 //!
 //! Buffers sit at odd addresses on purpose: wasm offers no alignment guarantee, and the routines
 //! must not need one.
@@ -199,8 +199,8 @@ fn an_unknown_env_import_is_rejected() {
     assert!(err.contains("env::zkvm_unknown"), "{err}");
 }
 
-/// The TinyGo example of `ziskasm/lang/tinygo/example`, which checks every accelerator against a
-/// known answer through the Go binding. Prebuilt (`data/tinygo-zkvm-example.wasm`, with the
+/// The TinyGo example of `ziskasm/lang/tinygo/example`, which checks every function of the Go
+/// binding (accelerators, U256, zisklib, hints) against a known answer. Prebuilt (`data/tinygo-zkvm-example.wasm`, with the
 /// command in its `main.go`) so the test needs no TinyGo; the TinyGo runtime uses floats, hence
 /// the `float` feature.
 #[cfg(feature = "float")]
@@ -208,8 +208,162 @@ fn an_unknown_env_import_is_rejected() {
 fn tinygo_example_passes_every_check() {
     let wasm = include_bytes!("data/tinygo-zkvm-example.wasm");
     let out = run(wasm);
-    let expected = b"zkvm: 30 checks passed\n";
+    let expected = b"zkvm: 197 checks passed\n";
     assert_eq!(&out[..expected.len()], expected, "{}", String::from_utf8_lossy(&out));
+}
+
+#[test]
+fn u256_functions_compute_evm_words_in_both_byte_orders() {
+    // 2^255 + 1 plus 2^255 + 2 wraps to 3, and 7 / 2 = 3, in each byte order: big-endian bytes
+    // at odd addresses, little-endian limbs at 8-byte aligned ones. The inline functions (add)
+    // set no status of their own, the calls (div) do, and both must report ZKVM_EOK.
+    let imports = r#"
+      (import "env" "zkvm_u256_add" (func $add (param i32 i32 i32) (result i32)))
+      (import "env" "zkvm_u256_div" (func $div (param i32 i32 i32) (result i32)))
+      (import "env" "zkvm_u256_le_add" (func $add_le (param i32 i32 i32) (result i32)))
+      (import "env" "zkvm_u256_le_div" (func $div_le (param i32 i32 i32) (result i32)))"#;
+    let body = r#"
+      (i32.store8 (i32.const 101) (i32.const 0x80)) (i32.store8 (i32.const 132) (i32.const 1))
+      (i32.store8 (i32.const 133) (i32.const 0x80)) (i32.store8 (i32.const 164) (i32.const 2))
+      (i32.store8 (i32.const 229) (i32.const 7)) (i32.store8 (i32.const 261) (i32.const 2))
+      (i64.store (i32.const 512) (i64.const 1)) (i64.store (i32.const 536) (i64.const 0x8000000000000000))
+      (i64.store (i32.const 544) (i64.const 2)) (i64.store (i32.const 568) (i64.const 0x8000000000000000))
+      (i64.store (i32.const 576) (i64.const 7)) (i64.store (i32.const 608) (i64.const 2))
+      (i32.store (i32.const 1001)
+        (i32.or (i32.or (call $add (i32.const 101) (i32.const 133) (i32.const 1101))
+                        (call $div (i32.const 198) (i32.const 230) (i32.const 1133)))
+                (i32.or (call $add_le (i32.const 512) (i32.const 544) (i32.const 1168))
+                        (call $div_le (i32.const 576) (i32.const 608) (i32.const 1200)))))
+      (i32.store (i32.const 1232) (i32.load (i32.const 1001)))"#;
+    let out = run(&module(imports, body, 1101, 135));
+    let three_be = [[0u8; 31].as_slice(), &[3]].concat();
+    assert_eq!(out[0..32], three_be, "BE add");
+    assert_eq!(out[32..64], three_be, "BE div");
+    let three_le = [[3u8].as_slice(), &[0; 31]].concat();
+    assert_eq!(out[67..99], three_le, "LE add");
+    assert_eq!(out[99..131], three_le, "LE div");
+    assert_eq!(out[131..135], [0, 0, 0, 0], "every call returns ZKVM_EOK");
+}
+
+#[test]
+fn a_uint64_t_pointer_must_be_aligned() {
+    let imports = r#"
+      (import "env" "zkvm_u256_le_add" (func $add_le (param i32 i32 i32) (result i32)))"#;
+    let call = |a: u32| {
+        let body = format!("(drop (call $add_le (i32.const {a}) (i32.const 64) (i32.const 96)))");
+        module(imports, &body, 0, 0)
+    };
+    assert!(!traps(&call(32)));
+    assert!(traps(&call(36)), "a pointer 4 bytes off must trap");
+}
+
+#[test]
+fn random_u64_returns_the_seed_stream() {
+    // The first two words of SHAKE256 of the seed bytes 00 01 .. 1f (see tests/zkvm_random.rs).
+    let imports = r#"(import "env" "zkvm_random_u64" (func $random (result i64)))"#;
+    let body = r#"
+      (i64.store (i32.const 1000) (call $random))
+      (i64.store (i32.const 1008) (call $random))"#;
+    let rom = wasm2rom(&module(imports, body, 1000, 16)).expect("wasm2rom");
+    assert!(rom.uses_random_seed(), "the guest needs a seed, like a RISC-V one");
+    let seed = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+    let options = EmuOptions { random_seed: Some(seed.parse().unwrap()), ..Default::default() };
+    let out = ZiskEmulator::process_rom(&rom, &[], &options, None::<fn(EmuTrace)>).unwrap();
+    let word = |i: usize| u64::from_le_bytes(out[8 * i..8 * i + 8].try_into().unwrap());
+    assert_eq!([word(0), word(1)], [0x0280ce40887cf069, 0x5b3d2c883909b34d]);
+}
+
+#[test]
+fn write_log_leaves_the_output_alone() {
+    let imports = r#"(import "env" "write_log" (func $log (param i32 i32)))"#;
+    let body = "(call $log (i32.const 3) (i32.const 3))";
+    assert_eq!(run(&module(imports, body, 3, 3))[..3], *b"abc");
+    let body = "(call $log (i32.const 65535) (i32.const 2))";
+    assert!(traps(&module(imports, body, 0, 0)), "the text is bounds-checked");
+}
+
+#[test]
+fn zisklib_functions_take_and_return_64_bit_values() {
+    // uint64_t is an i64 in the wasm32 C ABI. modexp_u64_c: 3^2 mod 5 = 4, one limb each, and it
+    // returns the 4 limbs it wrote.
+    let imports = r#"
+      (import "env" "zkvm_zisklib_add" (func $add (param i64 i64) (result i64)))
+      (import "env" "zkvm_zisklib_modexp_u64_c"
+        (func $modexp (param i32 i32 i32 i32 i32 i32 i32) (result i32)))"#;
+    let body = r#"
+      (i64.store (i32.const 1000) (call $add (i64.const 0x10000000000) (i64.const 5)))
+      (i64.store (i32.const 1008) (i64.const 3))
+      (i64.store (i32.const 1016) (i64.const 2))
+      (i64.store (i32.const 1024) (i64.const 5))
+      (i32.store (i32.const 1032)
+        (call $modexp (i32.const 1008) (i32.const 1) (i32.const 1016) (i32.const 1)
+                      (i32.const 1024) (i32.const 1) (i32.const 1040)))"#;
+    let out = run(&module(imports, body, 1000, 48));
+    assert_eq!(u64::from_le_bytes(out[0..8].try_into().unwrap()), 0x100_0000_0005);
+    assert_eq!(out[32..36], [4, 0, 0, 0], "4 limbs written");
+    assert_eq!(u64::from_le_bytes(out[40..48].try_into().unwrap()), 4);
+}
+
+#[test]
+fn sizes_from_64_bit_and_limb_arguments_are_bounds_checked() {
+    // schnorr's msg_len is a uint64_t: 2^32 must trap, not wrap. modexp_u64_c's result holds
+    // at least 4 limbs (32 bytes), however short the modulus.
+    let schnorr = r#"(import "env" "zkvm_zisklib_schnorr_verify_secp256k1"
+                       (func $schnorr (param i32 i32 i32 i32 i64) (result i64)))"#;
+    let body = r#"(drop (call $schnorr (i32.const 0) (i32.const 32) (i32.const 64)
+                                       (i32.const 128) (i64.const 0x100000000)))"#;
+    assert!(traps(&module(schnorr, body, 0, 0)));
+    let modexp = r#"(import "env" "zkvm_zisklib_modexp_u64_c"
+                      (func $modexp (param i32 i32 i32 i32 i32 i32 i32) (result i32)))"#;
+    let call = |result: u32| {
+        let body = format!(
+            "(drop (call $modexp (i32.const 8) (i32.const 1) (i32.const 16) (i32.const 1)
+                                 (i32.const 24) (i32.const 1) (i32.const {result})))"
+        );
+        module(modexp, &body, 0, 0)
+    };
+    assert!(traps(&call(65536 - 24)), "a 4-limb result must fit");
+}
+
+#[test]
+fn fcalls_pass_parameters_and_read_results() {
+    // BN254_FP_INV of 2, read with zkvm_fcall_read; UINT256_DIV of 100 by 7, read with
+    // zkvm_fcall_get; then the rejected calls: ID 27 (the random seed), ID 0, and 387
+    // parameters. Each returns ZKVM_EFAIL, so the statuses OR to -1 and AND to -1.
+    let imports = r#"
+      (import "env" "zkvm_fcall" (func $fcall (param i32 i32 i32) (result i32)))
+      (import "env" "zkvm_fcall_get" (func $get (result i64)))
+      (import "env" "zkvm_fcall_read" (func $read (param i32 i32)))"#;
+    let body = r#"
+      (i64.store (i32.const 1000) (i64.const 2))
+      (i32.store (i32.const 3000) (call $fcall (i32.const 6) (i32.const 1000) (i32.const 4)))
+      (call $read (i32.const 3008) (i32.const 4))
+      (i64.store (i32.const 1000) (i64.const 100))
+      (i64.store (i32.const 1032) (i64.const 7))
+      (i32.store (i32.const 3004) (call $fcall (i32.const 19) (i32.const 1000) (i32.const 8)))
+      (i64.store (i32.const 3040) (call $get))
+      (drop (call $get)) (drop (call $get)) (drop (call $get))
+      (i64.store (i32.const 3048) (call $get))
+      (drop (call $get)) (drop (call $get)) (drop (call $get))
+      (i32.store (i32.const 3056)
+        (i32.and (call $fcall (i32.const 27) (i32.const 1000) (i32.const 0))
+          (i32.and (call $fcall (i32.const 0) (i32.const 1000) (i32.const 4))
+                   (call $fcall (i32.const 6) (i32.const 0) (i32.const 387)))))"#;
+    let out = run(&module(imports, body, 3000, 60));
+    let word = |i: usize| u64::from_le_bytes(out[i..i + 8].try_into().unwrap());
+    assert_eq!(out[0..8], [0u8; 8], "both hints were issued");
+    // (p + 1) / 2, the inverse of 2 mod the BN254 base field prime.
+    let inv2 = [0x9e10460b6c3e7ea4, 0xcbc0b548b438e546, 0xdc2822db40c0ac2e, 0x183227397098d014];
+    assert_eq!([word(8), word(16), word(24), word(32)], inv2);
+    assert_eq!([word(40), word(48)], [14, 2], "quotient and remainder");
+    assert_eq!(out[56..60], [0xFF; 4], "every rejected call returns ZKVM_EFAIL");
+}
+
+#[test]
+fn read_input_points_to_wasi() {
+    let imports = r#"(import "env" "read_input" (func $f (param i32 i32)))"#;
+    let err = wasm2rom(&module(imports, "", 0, 0)).expect_err("must be rejected").to_string();
+    assert!(err.contains("stdin"), "{err}");
 }
 
 #[test]

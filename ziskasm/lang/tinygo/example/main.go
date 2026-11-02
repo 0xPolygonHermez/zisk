@@ -1,6 +1,7 @@
-// A TinyGo guest that calls every accelerator of zkvm_accelerators.h through the
-// zkvm package and checks each result against a known answer (see vectors.go). It
-// prints "zkvm: N checks passed" and exits 0, or names each failed check and exits 1.
+// A TinyGo guest that calls every function of the zkvm package (the accelerators,
+// the U256 functions in both byte orders, the zisklib functions and the hints) and
+// checks each result against a known answer (see vectors.go). It prints
+// "zkvm: N checks passed" and exits 0, or names each failed check and exits 1.
 //
 // Build and run (see ../README.md):
 //
@@ -130,6 +131,10 @@ func main() {
 	check("kzg_point_eval valid", ok && err == nil)
 	ok, err = zkvm.KzgPointEval(&kzgC, &kzgZ, &kzgYB, &kzgP)
 	check("kzg_point_eval invalid", !ok)
+
+	checkU256()
+	checkZisklib()
+	checkHints()
 
 	if failed > 0 {
 		os.Stdout.WriteString("zkvm: " + strconv.Itoa(failed) + " checks failed\n")

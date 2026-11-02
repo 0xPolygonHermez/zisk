@@ -5,7 +5,8 @@
 #     (<zkvm_accelerators.h> / <zkvm_u256.h> / <zkvm_io.h>) and ZisK's extensions
 #     (<zkvm_u256_le.h> / <zkvm_zisklib.h>) as zkvmcall thunks (`src/zkvm_calls.s`),
 #     each a `csrs <id>, x0; ret` that the transpiler turns into a jump to the
-#     hand-written .zisk routine; <zkvm_mem.h> / <zkvm_evm.h> are header-only.
+#     hand-written .zisk routine; <zkvm_mem.h> / <zkvm_evm.h> are header-only, and
+#     <zkvm_fcall.h> (the hints) is `src/zkvm_fcall.s`.
 # A guest (e.g. ziskethone's cpp-guest) links it and calls them.
 #
 # Two ways to consume it.
@@ -34,7 +35,7 @@ project(zisklib_c C ASM)
 
 # _start.s is part of the shipped library, not sample code: the EF standard (§9)
 # requires the archive to provide the entry point alongside I/O and accelerators.
-add_library(zisklib_c STATIC src/_start.s src/zkvm_calls.s src/zkvm_mem.s)
+add_library(zisklib_c STATIC src/_start.s src/zkvm_calls.s src/zkvm_mem.s src/zkvm_fcall.s)
 target_include_directories(zisklib_c PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set_target_properties(zisklib_c PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
 # zkvm_calls.s puts each thunk in its own section, so --gc-sections drops the
