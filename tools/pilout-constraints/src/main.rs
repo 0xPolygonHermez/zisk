@@ -15,7 +15,7 @@ mod print;
 mod text;
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
@@ -143,7 +143,7 @@ fn render(args: &RenderArgs, format: Format) -> Result<()> {
     if let Some(dir) = &args.out {
         let mut seen = HashMap::new();
         for air_ref in &selected {
-            let path = output_path(dir, &args.module, air_ref, format);
+            let path = output_path(dir, &args.module, air_ref, format)?;
             if let Some(other) = seen.insert(path.clone(), air_ref) {
                 anyhow::bail!(
                     "{}/{} and {}/{} would both be written to {}",
@@ -176,7 +176,7 @@ fn render(args: &RenderArgs, format: Format) -> Result<()> {
         match &args.out {
             None => print!("{rendered}"),
             Some(dir) => {
-                let path = output_path(dir, &args.module, air_ref, format);
+                let path = output_path(dir, &args.module, air_ref, format)?;
                 write(&path, &rendered)?;
                 eprintln!("wrote {} ({} constraints)", path.display(), ir.constraints.len());
                 summarize(&ir);
@@ -218,11 +218,21 @@ fn write_lean_root(dir: &Path, module: &str) -> Result<PathBuf> {
 
 /// Lean output is a module tree (`<out>/<module>/<Air>.lean`) so that `lake`
 /// can pick it up; the other formats are flat files.
-fn output_path(dir: &Path, module: &str, air: &AirRef, format: Format) -> PathBuf {
-    let file = format!("{}.{}", air.air, format.extension());
-    match format {
+fn output_path(dir: &Path, module: &str, air: &AirRef, format: Format) -> Result<PathBuf> {
+    let file = format!("{}.{}", file_name(&air.air)?, format.extension());
+    Ok(match format {
         Format::Lean => dir.join(module).join(file),
         _ => dir.join(file),
+    })
+}
+
+/// An AIR's name, from the pilout, as a file name: one plain path component,
+/// so that no name (`../x`, `/x`, `a/b`) writes outside the output directory.
+fn file_name(air: &str) -> Result<&str> {
+    let mut parts = Path::new(air).components();
+    match (parts.next(), parts.next()) {
+        (Some(Component::Normal(part)), None) if part == air => Ok(air),
+        _ => anyhow::bail!("AIR name {air:?} is not a plain file name"),
     }
 }
 
@@ -246,4 +256,18 @@ fn summarize(ir: &Ir) {
 
 fn load(path: &Path) -> Result<Pilout> {
     Pilout::load(path.to_str().context("pilout path is not valid UTF-8")?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_name_takes_a_plain_name_only() {
+        assert_eq!(file_name("Main").unwrap(), "Main");
+        assert_eq!(file_name("Blake2br").unwrap(), "Blake2br");
+        for bad in ["", ".", "..", "../x", "a/b", "/x", "a/", "./a"] {
+            assert!(file_name(bad).is_err(), "{bad:?} accepted");
+        }
+    }
 }
