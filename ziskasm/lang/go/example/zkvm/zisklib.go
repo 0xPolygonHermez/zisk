@@ -3,7 +3,7 @@ package main
 import (
 	"slices"
 
-	"github.com/0xPolygonHermez/zisk/ziskasm/lang/tinygo"
+	"github.com/0xPolygonHermez/zisk/ziskasm/lang/go"
 )
 
 // checkZisklib calls every function of zkvm_zisklib.h, and a few of them on inputs

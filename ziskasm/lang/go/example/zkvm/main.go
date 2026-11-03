@@ -3,7 +3,7 @@
 // checks each result against a known answer (see vectors.go). It prints
 // "zkvm: N checks passed" and exits 0, or names each failed check and exits 1.
 //
-// Build and run (see ../README.md):
+// Build and run (see ../../README.md):
 //
 //	tinygo build -target=wasip1 -no-debug -opt=z -scheduler=none -panic=trap -o zkvm-example.wasm .
 //	ziskemu -e zkvm-example.wasm -c
@@ -17,7 +17,7 @@ import (
 	"strconv"
 	"unsafe"
 
-	"github.com/0xPolygonHermez/zisk/ziskasm/lang/tinygo"
+	"github.com/0xPolygonHermez/zisk/ziskasm/lang/go"
 )
 
 var passed, failed int

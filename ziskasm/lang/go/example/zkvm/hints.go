@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"slices"
 
-	"github.com/0xPolygonHermez/zisk/ziskasm/lang/tinygo"
+	"github.com/0xPolygonHermez/zisk/ziskasm/lang/go"
 )
 
 // checkHints issues every hint of zkvm_fcall.h and compares it with the value the

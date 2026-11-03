@@ -199,7 +199,7 @@ fn an_unknown_env_import_is_rejected() {
     assert!(err.contains("env::zkvm_unknown"), "{err}");
 }
 
-/// The TinyGo example of `ziskasm/lang/tinygo/example`, which checks every function of the Go
+/// The TinyGo example of `ziskasm/lang/go/example/zkvm`, which checks every function of the Go
 /// binding (accelerators, U256, zisklib, hints) against a known answer. Prebuilt (`data/tinygo-zkvm-example.wasm`, with the
 /// command in its `main.go`) so the test needs no TinyGo; the TinyGo runtime uses floats, hence
 /// the `float` feature.

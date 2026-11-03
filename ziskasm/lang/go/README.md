@@ -1,4 +1,4 @@
-# ziskasm/lang/tinygo — TinyGo bindings for the ZisK assembly library
+# ziskasm/lang/go — TinyGo bindings for the ZisK assembly library
 
 Go package `zkvm` for TinyGo guests compiled to WebAssembly (`-target=wasip1`). It
 exposes the functions of the ZisK C headers in [`../c/include`](../c/include/) and runs
@@ -36,7 +36,7 @@ in ZisK.
 ## Usage
 
 ```go
-import "github.com/0xPolygonHermez/zisk/ziskasm/lang/tinygo"
+import "github.com/0xPolygonHermez/zisk/ziskasm/lang/go"
 
 digest := zkvm.Keccak256(data)
 ok, err := zkvm.Secp256k1Verify(&msg, &sig, &pubkey)
@@ -104,7 +104,7 @@ ZisK built with the `float` feature. See the float limitation in
 
 ## Example
 
-[`example/`](example/) calls every function of the package, except `RandomU64`, and
+[`example/zkvm`](example/zkvm/) calls every function of the package, except `RandomU64`, and
 checks each result against a known answer:
 
 - the accelerators, against the vectors of the C example guests in
@@ -123,13 +123,13 @@ semantics, py_ecc, field arithmetic), not from the code under test. The example 
 values needs the host's seed and cannot run with hints; the `.wat` tests cover it.
 
 ```bash
-cd example
-python3 gen_vectors.py ../../c/example > vectors.go && gofmt -w vectors.go   # only to regenerate
+cd example/zkvm
+python3 gen_vectors.py ../../../c/example > vectors.go && gofmt -w vectors.go   # only to regenerate
 tinygo build -target=wasip1 -no-debug -opt=z -scheduler=none -panic=trap -o zkvm-example.wasm .
 ziskemu -e zkvm-example.wasm -c --write-log
 ```
 
-Tested with TinyGo 0.44.0 and Go 1.27.3. The example runs in about 3,650,000 steps, and
+Tested with TinyGo 0.44.0 and Go 1.26. The example runs in about 3,650,000 steps, and
 constraint verification passes on the emulator and ASM backends. The build is
 reproducible: the result is committed as
 [`emulator/tests/data/tinygo-zkvm-example.wasm`](../../../emulator/tests/data/tinygo-zkvm-example.wasm)
