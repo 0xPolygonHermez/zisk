@@ -199,14 +199,25 @@ fn an_unknown_env_import_is_rejected() {
     assert!(err.contains("env::zkvm_unknown"), "{err}");
 }
 
-/// The TinyGo example of `ziskasm/lang/tinygo/example`, which checks every function of the Go
-/// binding (accelerators, U256, zisklib, hints) against a known answer. Prebuilt (`data/tinygo-zkvm-example.wasm`, with the
-/// command in its `main.go`) so the test needs no TinyGo; the TinyGo runtime uses floats, hence
-/// the `float` feature.
+/// The example of `ziskasm/lang/go/example/zkvm`, which checks every function of the Go binding
+/// (accelerators, U256, zisklib, hints) against a known answer, built with TinyGo (cgo calls,
+/// `data/tinygo-zkvm-example.wasm`) and with standard Go (`//go:wasmimport` declarations,
+/// `data/go-zkvm-example.wasm`), with the commands in its `main.go`. Prebuilt so the test needs
+/// neither toolchain; both runtimes use floats, hence the `float` feature.
 #[cfg(feature = "float")]
 #[test]
 fn tinygo_example_passes_every_check() {
-    let wasm = include_bytes!("data/tinygo-zkvm-example.wasm");
+    example_passes_every_check(include_bytes!("data/tinygo-zkvm-example.wasm"));
+}
+
+#[cfg(feature = "float")]
+#[test]
+fn standard_go_example_passes_every_check() {
+    example_passes_every_check(include_bytes!("data/go-zkvm-example.wasm"));
+}
+
+#[cfg(feature = "float")]
+fn example_passes_every_check(wasm: &[u8]) {
     let out = run(wasm);
     let expected = b"zkvm: 197 checks passed\n";
     assert_eq!(&out[..expected.len()], expected, "{}", String::from_utf8_lossy(&out));

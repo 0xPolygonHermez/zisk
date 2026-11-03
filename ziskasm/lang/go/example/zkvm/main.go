@@ -1,14 +1,19 @@
-// A TinyGo guest that calls every function of the zkvm package (the accelerators,
-// the U256 functions in both byte orders, the zisklib functions and the hints) and
+// A guest that calls every function of the zkvm package (the accelerators, the
+// U256 functions in both byte orders, the zisklib functions and the hints) and
 // checks each result against a known answer (see vectors.go). It prints
 // "zkvm: N checks passed" and exits 0, or names each failed check and exits 1.
 //
-// Build and run (see ../README.md):
+// Build and run (see ../../README.md), with TinyGo:
 //
 //	tinygo build -target=wasip1 -no-debug -opt=z -scheduler=none -panic=trap -o zkvm-example.wasm .
 //	ziskemu -e zkvm-example.wasm -c
 //
-// It avoids fmt, whose float formatting would need a float build of ZisK.
+// or with standard Go (its runtime needs a ziskemu built with --features float):
+//
+//	GOOS=wasip1 GOARCH=wasm go build -ldflags='-s -w' -o zkvm-example.wasm .
+//
+// It avoids fmt, whose float formatting would need a float build of ZisK with
+// TinyGo too.
 package main
 
 import (
@@ -17,7 +22,7 @@ import (
 	"strconv"
 	"unsafe"
 
-	"github.com/0xPolygonHermez/zisk/ziskasm/lang/tinygo"
+	"github.com/0xPolygonHermez/zisk/ziskasm/lang/go"
 )
 
 var passed, failed int

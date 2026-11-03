@@ -4,7 +4,7 @@ py_ecc, modexp from pow, BLAKE2f from hashlib.blake2b), and the vectors of the U
 and hint checks, from independent Python models (EVM semantics, py_ecc, field arithmetic).
 Needs py_ecc.
 
-    python3 gen_vectors.py ../../c/example > vectors.go && gofmt -w vectors.go
+    python3 gen_vectors.py ../../../c/example > vectors.go && gofmt -w vectors.go
 """
 import re, sys, hashlib
 ex = sys.argv[1]

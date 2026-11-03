@@ -1,6 +1,6 @@
 package main
 
-import "github.com/0xPolygonHermez/zisk/ziskasm/lang/tinygo"
+import "github.com/0xPolygonHermez/zisk/ziskasm/lang/go"
 
 // u256Case is one U256 operation: its big-endian hex operands and results.
 type u256Case struct {

@@ -95,6 +95,11 @@ pub const WASM_CLOCK_ADDR: u64 = WASM_CTRL_ADDR + 24;
 pub const WASM_RNG_STATE_ADDR: u64 = WASM_CTRL_ADDR + 32;
 /// Non-zero once the insecure-randomness warning has been printed.
 pub const WASM_RNG_WARNED_ADDR: u64 = WASM_CTRL_ADDR + 40;
+/// Scratch parameter block for the precompiles that take their operands through a block of
+/// pointers (see `precompiles.rs`): the guest's wasm-address block is translated here, so the
+/// precompile dereferences absolute addresses.  Eight 8-byte slots; the largest block has five.
+pub const WASM_PRECOMPILE_BLOCK_ADDR: u64 = WASM_CTRL_ADDR + 64;
+pub const WASM_PRECOMPILE_BLOCK_SLOTS: u64 = 8;
 
 /// Base of wasm linear memory: wasm address 0 maps here.
 /// It sits 192 KiB lower than the 0xa100_0000 it started at, so that reserving the ZisK library

@@ -308,9 +308,10 @@ TinyGo supports only part of the standard library and of reflection, so test eac
 cannot be proven either way.
 
 For Keccak, SHA-256, secp256k1, BN254, BLS12-381 and the other EF accelerators, the EVM word
-arithmetic and the other ZisK library functions and hints, a TinyGo guest imports the
-[`ziskasm/lang/tinygo`](../../ziskasm/lang/tinygo/) package, which calls them through the C headers
-(see [Precompiles](#precompiles-the-zisk-c-headers)).
+arithmetic and the other ZisK library functions and hints, a Go guest (TinyGo or standard Go)
+imports the [`ziskasm/lang/go`](../../ziskasm/lang/go/) package, which calls them through the C
+headers (see [Precompiles](#precompiles-the-zisk-c-headers)); its `precompiles` subpackage has
+the bare instructions (see [the raw precompiles](#the-raw-precompiles-env-imports)).
 
 ## Guest contract
 
@@ -342,15 +343,16 @@ runtimes to start:
 | any other `wasi_snapshot_preview1` function | Accepted at transpile time, returns `ENOSYS` when called. |
 
 Imports from any module other than `wasi_snapshot_preview1` are rejected at transpile time,
-except the functions of the ZisK C headers below.
+except, from `env`, the functions of the ZisK C headers below and the raw precompiles after them.
 
 ### Precompiles: the ZisK C headers
 
 A guest calls the functions of the ZisK C headers in
 [`ziskasm/lang/c/include`](../../ziskasm/lang/c/include/) by importing them from module `env`.
 That is what a compiler produces when a guest calls a header's functions without defining them:
-TinyGo through cgo (the [`ziskasm/lang/tinygo`](../../ziskasm/lang/tinygo/) package), C with
-clang, or Rust with an `extern "C"` block. The signature is the header's under the wasm32 C ABI:
+TinyGo through cgo or standard Go through `//go:wasmimport` (both in the
+[`ziskasm/lang/go`](../../ziskasm/lang/go/) package), C with clang, or Rust with an
+`extern "C"` block. The signature is the header's under the wasm32 C ABI:
 pointers, `size_t`, `uint32_t`, `uint8_t` and the `zkvm_status` result are `i32`, and `uint64_t`
 is `i64`, e.g. `env.zkvm_keccak256: (i32, i32, i32) -> i32`. These are supported:
 
@@ -366,7 +368,7 @@ is `i64`, e.g. `env.zkvm_keccak256: (i32, i32, i32) -> i32`. These are supported
 
 `zkvm_mem.h` and `zkvm_evm.h` are not: wasm has its own bulk-memory operations, and the
 JUMPDEST analysis of `zkvm_evm.h` is not wired up. An import with a different signature, or another
-name from `env`, is rejected at transpile time.
+name from `env` that is not a raw precompile, is rejected at transpile time.
 
 Most imports become a stub ([`src/zkvm.rs`](src/zkvm.rs)) that:
 
@@ -394,10 +396,55 @@ than 386 parameters. A hint is not proven: the guest must check every result.
 The routines' scratch lives in the reserved ZisK library RAM, which sits just above the call
 stack. A guest that calls `zkvm_random_u64` needs the host's seed, like a RISC-V one, and cannot
 run with hints.
-
 Every pointer a WASI call receives is checked against the current linear-memory size before the
 call reads or writes anything. A bad pointer makes the call return `EFAULT`, so a guest can never
 use a WASI call to reach ZisK memory outside its own pages.
+
+### The raw precompiles (`env` imports)
+
+Below the C headers, the ZisK precompiles themselves are available as imports of the `env`
+module. Each import lowers to the precompile's own Zisk instruction — what a RISC-V guest's
+`ziskos` syscall becomes — so the emulator, the state machines and the prover handle it exactly
+as they do for RISC-V guests, and a guest can build its own protocols (a sponge, a scalar
+multiplication) on the bare operation. Names and operand layouts follow the `ziskos` `syscall_*`
+functions; pointers are `i32` wasm addresses, 8-byte aligned, to little-endian `u64` words:
+
+| Import | Signature | Operands |
+|---|---|---|
+| `keccak_f` | `(i32)` | 25 words, permuted in place |
+| `sha256_f` | `(i32, i32)` | state (4 words, h0 in the low half of word 0), block (8 words); the state is updated |
+| `blake3f`, `blake2sf` | `(i32, i32)` | state (8 words), block (8 words); the state is updated |
+| `poseidon1`, `poseidon2` | `(i32)` | 16 words in place |
+| `poseidon2_koalabear` | `(i32)` | 8 words in place |
+| `secp256k1_add`, `secp256r1_add`, `bn254_curve_add`, `babyjubjub_add`, `ed25519_add` | `(i32, i32)` | p1, p2: affine points as x then y, 4 words each; p1 receives the sum |
+| `bn254_complex_add`, `bn254_complex_sub`, `bn254_complex_mul` | `(i32, i32)` | 8 words each; the first receives the result |
+| `secp256k1_dbl`, `secp256r1_dbl`, `bn254_curve_dbl` | `(i32)` | a point, doubled in place |
+| `bls12_381_curve_add`, `bls12_381_complex_{add,sub,mul}` | `(i32, i32)` | 12 words each; the first receives the result |
+| `bls12_381_curve_dbl` | `(i32)` | 12 words in place |
+| `arith256` | `(i32)` | block `[a, b, c, dl, dh]`: `dl:dh = a * b + c`, 4 words each |
+| `arith256_mod` | `(i32)` | block `[a, b, c, module, d]`: `d = (a * b + c) mod module`, 4 words each |
+| `arith384_mod` | `(i32)` | as `arith256_mod` with 6-word operands |
+| `add256` | `(i32) -> i64` | block `[a, b, cin, c]`: `c = a + b + cin`, the carry-out is returned; `cin` is a direct value |
+
+A *block* is an array of 8-byte slots holding the wasm addresses of the operands (or, for `cin`,
+the value itself). Every address a precompile would touch is range- and alignment-checked before
+the instruction runs; a bad one traps. `blake2b_round` is not exposed (its chaining protocol
+lives in the instruction's static argument and is driven by `ziskos`), nor are the DMA ports.
+
+The [`ziskasm/lang/go/precompiles`](../../ziskasm/lang/go/) package declares them all for Go
+guests; a hash implementation needs only its permutation replaced, e.g. with a build tag so the
+pure-Go code stays the default:
+
+```go
+//go:build zisk
+
+import "github.com/0xPolygonHermez/zisk/ziskasm/lang/go/precompiles"
+
+func keccakF1600(a *[25]uint64) { precompiles.KeccakF(a) }
+```
+
+An `env` import that is neither a C-header function nor a precompile, or has the wrong signature,
+is rejected at transpile time.
 
 ## Supported WebAssembly
 
@@ -572,6 +619,16 @@ as a lowered wasm function: arguments arrive as locals, the errno comes back in 
 - At exit, the output words are published with `pubout`, as the RISC-V exit code does, and
   execution jumps to `ROM_EXIT`.
 
+### Precompiles
+
+Each `env` import becomes a routine in the same shape as the WASI ones
+([precompiles.rs](src/precompiles.rs)): the pointer arguments are translated to absolute
+addresses, range- and alignment-checked (a failure jumps to a trap), and then a single
+precompile instruction is emitted with `a`/`b` holding the operand addresses, exactly as
+`riscv2zisk` emits it for a `csrs` syscall. For the block-taking precompiles the guest's block of
+wasm addresses is first copied, translated, into a scratch block in the control cells
+(`WASM_PRECOMPILE_BLOCK_ADDR`), because the precompile dereferences the block's entries itself.
+
 ### Floating point
 
 ZisK has no native floating point. The RISC-V transpiler handles the F/D extensions by sending
@@ -647,16 +704,17 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 |---|---|
 | `emulator/tests/wasm.rs` | Integer operators, control flow, calls, memory, WASI and traps, using hand-written WAT modules. |
 | `emulator/tests/wasm_float.rs` | `f32`/`f64` operators against the wasm spec (requires `float`). |
-| `emulator/tests/wasm_zkvm.rs` | The `env` imports, using hand-written WAT modules: known digests through unaligned buffers, a failure status, bounds checks (including 64-bit lengths and the modexp result), a routine with nested calls, signature checks, U256 in both byte orders, the alignment check, `zkvm_random_u64`, `write_log`, 64-bit zisklib arguments and the fcalls. With `float`, it also runs the prebuilt [`ziskasm/lang/tinygo`](../../ziskasm/lang/tinygo/) example, which checks every function of the Go package (197 checks). |
+| `emulator/tests/wasm_zkvm.rs` | The `env` imports, using hand-written WAT modules: known digests through unaligned buffers, a failure status, bounds checks (including 64-bit lengths and the modexp result), a routine with nested calls, signature checks, U256 in both byte orders, the alignment check, `zkvm_random_u64`, `write_log`, 64-bit zisklib arguments and the fcalls. With `float`, it also runs the prebuilt [`ziskasm/lang/go`](../../ziskasm/lang/go/) example, built with TinyGo and with standard Go, which checks every function of the Go package (197 checks). |
 | `emulator/tests/zkvm_fcall.rs` | `zkvm_fcall.h` from a RISC-V C guest (`src/zkvm_fcall.s`). |
 | `emulator/tests/wasm_example.rs` | Builds [`examples/wasm-fibonacci`](../../examples/wasm-fibonacci) for `wasm32-wasip1` and runs it end to end. Skipped with a notice when the target is not installed. |
+| `emulator/tests/wasm_precompiles.rs` | The `env` precompile imports: keccak-f, sha256-f and secp256k1 against reference implementations, the block-taking big-int ops, bad-pointer traps and import-signature checks; and the `ziskasm/lang/go/precompiles` package on a prebuilt Go guest: Keccak-256/SHA-256 built on `KeccakF`/`Sha256F` against `tiny_keccak`/`sha2`. |
 | `integration-tests/tests/wasm_verify_constraints.rs` | Constraint verification on the emulator and (on Linux) ASM backends for five guests that together cover the lowering paths, WASI and the memory-layout limits, and rejection of guests that trap or exit with a nonzero status. Needs a proving key; ignored by default. |
 | `integration-tests/tests/wasm_prove.rs` | Proves `wasm-fibonacci` on the emulator and (on Linux) ASM backends and verifies the proof under the module's program verification key (and not under any other). Needs a proving key; ignored by default. |
 
 ```bash
-cargo test -p ziskemu --release --test wasm --test wasm_example --test wasm_zkvm --test zkvm_fcall
+cargo test -p ziskemu --release --test wasm --test wasm_example --test wasm_zkvm --test zkvm_fcall --test wasm_precompiles
 ZISK_CI_NO_DOCKER_REBUILD=1 \
-  cargo test -p ziskemu --release --features float --test wasm --test wasm_float --test wasm_example --test wasm_zkvm
+  cargo test -p ziskemu --release --features float --test wasm --test wasm_float --test wasm_example --test wasm_zkvm --test wasm_precompiles
 cargo test --release -p integration-tests --test wasm_verify_constraints --test wasm_prove -- --ignored
 ```
 

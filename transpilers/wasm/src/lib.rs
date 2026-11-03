@@ -12,6 +12,8 @@
 //! * [`wasi`] — minimal `wasi_snapshot_preview1` runtime.
 //! * [`zkvm`] — the ZisK guest C interface (the EF accelerators, U256 and more), imported from
 //!   `env`.
+//! * [`precompiles`] — the ZisK precompiles (keccak-f, sha256-f, curve and big-int arithmetic,
+//!   ...) as `env` host imports.
 
 pub mod emit;
 #[cfg(feature = "float")]
@@ -19,6 +21,7 @@ pub mod float;
 pub mod layout;
 pub mod lowering;
 pub mod module;
+pub mod precompiles;
 pub mod wasi;
 pub mod zkvm;
 
@@ -147,7 +150,7 @@ fn transpile(bytes: &[u8]) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn
     // library's code after them, and `zkvm_random_u64` marks a guest that needs a random seed.
     rom.zkvmcalls = zkvm_imports.iter().filter_map(|name| zkvm::zkvmcall_id(name)).collect();
 
-    // -- lower every function (imports become WASI or ZisK stubs) -----------
+    // -- lower every function (imports become WASI, ZisK C-interface or precompile stubs) ----
     let n_funcs = module.func_count() as usize;
     let n_imports = module.func_import_count as usize;
     let mut codes: Vec<Code> = Vec::with_capacity(n_funcs);
@@ -155,6 +158,8 @@ fn transpile(bytes: &[u8]) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn
         let (import_module, name, _) = &module.imports[i];
         codes.push(if zkvm::is_zkvm_import(import_module, name) {
             zkvm::build_zkvm_stub(&module, i, routine_entry.get(name.as_str()).copied())?
+        } else if precompiles::is_precompile_import(import_module, name) {
+            precompiles::build_stub(&module, i)?
         } else {
             wasi::build_wasi_stub(&module, i)?
         });

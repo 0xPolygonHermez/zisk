@@ -96,7 +96,7 @@ jobs:
           RUST_BACKTRACE: 1
 
       - name: Run the wasm guest tests with the float feature
-        run: cargo test -p ziskemu --release --features float --test wasm --test wasm_float --test wasm_example
+        run: cargo test -p ziskemu --release --features float --test wasm --test wasm_float --test wasm_example --test wasm_precompiles
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
