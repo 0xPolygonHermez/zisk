@@ -651,6 +651,12 @@ are a load, an ALU operation and a store. The slot-to-slot trick above removes m
 not all, and every linear-memory access adds a bounds check. Programs dominated by memory
 traffic and calls see a larger ratio than tight arithmetic loops.
 
+[`examples/wasm-vs-riscv`](../../examples/wasm-vs-riscv) measures this on ten workloads built
+from the same Rust code for both targets. In cost, wasm is about 1.5–3× RISC-V on
+register-bound code, 5–8× on typical code (sorting, maps, JSON) and about 1× when a precompile
+does the work. It reaches 10–30× where RISC-V has an instruction wasm lacks, such as rotations,
+a 64 × 64 → 128-bit multiply or the DMA `memcpy`.
+
 ## Current limitations
 
 - **Large guests cannot use the ASM backend.** Both backends prove wasm guests (see the
