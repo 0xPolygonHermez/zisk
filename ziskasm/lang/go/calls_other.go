@@ -1,4 +1,4 @@
-//go:build !(tinygo && wasip1)
+//go:build !wasip1
 
 package zkvm
 
@@ -9,7 +9,7 @@ package zkvm
 import "unsafe"
 
 func onlyOnZisk() int32 {
-	panic("zkvm: the ZisK functions only run on ZisK, in a TinyGo wasip1 guest")
+	panic("zkvm: the ZisK functions only run on ZisK, in a wasip1 guest")
 }
 
 func keccak256(unsafe.Pointer, uintptr, unsafe.Pointer) int32 { return onlyOnZisk() }

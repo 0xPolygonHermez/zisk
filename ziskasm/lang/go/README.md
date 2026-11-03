@@ -1,22 +1,28 @@
-# ziskasm/lang/go — TinyGo bindings for the ZisK assembly library
+# ziskasm/lang/go — Go bindings for the ZisK assembly library
 
-Go package `zkvm` for TinyGo guests compiled to WebAssembly (`-target=wasip1`). It
-exposes the functions of the ZisK C headers in [`../c/include`](../c/include/) and runs
-them with the hand-written `.zisk` routines under [`ziskasm/zisklib/`](../../zisklib/).
-It is the TinyGo sibling of [`ziskasm/lang/c`](../c/) and [`ziskasm/lang/rust`](../rust/):
-all three reach the same routines, and only the surface language differs.
+Go package `zkvm` for Go guests compiled to WebAssembly, with TinyGo (`-target=wasip1`)
+or standard Go (`GOOS=wasip1 GOARCH=wasm`). It exposes the functions of the ZisK C
+headers in [`../c/include`](../c/include/) and runs them with the hand-written `.zisk`
+routines under [`ziskasm/zisklib/`](../../zisklib/). It is the Go sibling of
+[`ziskasm/lang/c`](../c/) and [`ziskasm/lang/rust`](../rust/): all three reach the same
+routines, and only the surface language differs.
 
 ## How it works
 
-The package calls the C headers through cgo ([`calls_zisk.go`](calls_zisk.go)). TinyGo
-compiles the cgo part with its own clang and calls C functions directly, so each call
-costs what a Go function call costs. The functions stay undefined, and the wasm linker
-turns each one into an import from module `env`, with the header's signature lowered by
-the wasm32 C ABI (`uint64_t` is `i64`, everything else `i32`):
+Under TinyGo, the package calls the C headers through cgo ([`calls_zisk.go`](calls_zisk.go)).
+TinyGo compiles the cgo part with its own clang and calls C functions directly, so each
+call costs what a Go function call costs. The functions stay undefined, and the wasm
+linker turns each one into an import from module `env`, with the header's signature
+lowered by the wasm32 C ABI (`uint64_t` is `i64`, everything else `i32`):
 
 ```
 import env.zkvm_keccak256: (i32, i32, i32) -> i32
 ```
+
+Standard Go has no cgo on wasm, so there the same imports are declared directly with
+`//go:wasmimport env zkvm_keccak256` and the same signatures
+([`calls_go.go`](calls_go.go)); the two files define the same package-private functions,
+and the rest of the package does not know which toolchain built it.
 
 `wasm2rom` implements every such import (see
 [`transpilers/wasm/src/zkvm.rs`](../../../transpilers/wasm/src/zkvm.rs)):
@@ -85,8 +91,8 @@ a `StatusError`.
   the last one halts the executor. The typed `Hint*` functions do this for you.
 - **Randomness:** `RandomU64` draws from the seed the host provides with each run. A
   guest that calls it cannot run with hints.
-- **Other targets:** off TinyGo `wasip1`, the functions exist only so the package
-  compiles ([`calls_other.go`](calls_other.go)), and calling one panics.
+- **Other targets:** off `wasip1`, the functions exist only so the package compiles
+  ([`calls_other.go`](calls_other.go)), and calling one panics.
 
 A wasm guest reads its input from stdin and writes its public output to stdout (WASI),
 so `read_input` and `write_output` of `zkvm_io.h` are not wrapped.
@@ -94,13 +100,17 @@ so `read_input` and `write_output` of `zkvm_io.h` are not wrapped.
 Build a guest with:
 
 ```bash
-tinygo build -target=wasip1 -no-debug -opt=z -panic=trap -o guest.wasm .
+tinygo build -target=wasip1 -no-debug -opt=z -panic=trap -o guest.wasm .   # TinyGo
+GOOS=wasip1 GOARCH=wasm go build -ldflags='-s -w' -o guest.wasm .          # standard Go
 ```
 
-Add `-scheduler=none` when nothing in the program starts a goroutine. Every TinyGo
-module uses floating point, even an empty `main`, so running and proving it needs
-ZisK built with the `float` feature. See the float limitation in
+Add `-scheduler=none` to TinyGo when nothing in the program starts a goroutine. Both
+runtimes use floating point, even for an empty `main`, so running and proving a Go
+module needs ZisK built with the `float` feature. See the float limitation in
 [`transpilers/wasm/README.md`](../../../transpilers/wasm/README.md#current-limitations).
+Standard Go produces a much larger module (about 2.4 MB stripped against 100 KB, and
+about 9.5 M steps for the example below against 3.65 M), but needs no second
+toolchain and takes any package of the standard library.
 
 ## Example
 
@@ -134,8 +144,11 @@ constraint verification passes on the emulator and ASM backends. The build is
 reproducible: the result is committed as
 [`emulator/tests/data/tinygo-zkvm-example.wasm`](../../../emulator/tests/data/tinygo-zkvm-example.wasm)
 and run by `tinygo_example_passes_every_check` in
-[`emulator/tests/wasm_zkvm.rs`](../../../emulator/tests/wasm_zkvm.rs). Those tests also
-cover the import lowering without TinyGo, using hand-written `.wat` modules.
+[`emulator/tests/wasm_zkvm.rs`](../../../emulator/tests/wasm_zkvm.rs); the same example
+built with standard Go (`GOOS=wasip1 GOARCH=wasm go build -ldflags='-s -w'`, Go 1.26) is
+[`emulator/tests/data/go-zkvm-example.wasm`](../../../emulator/tests/data/go-zkvm-example.wasm),
+run by `standard_go_example_passes_every_check`. Those tests also cover the import
+lowering without either toolchain, using hand-written `.wat` modules.
 
 ## Notes
 

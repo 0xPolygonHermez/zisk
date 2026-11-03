@@ -308,9 +308,9 @@ TinyGo supports only part of the standard library and of reflection, so test eac
 cannot be proven either way.
 
 For Keccak, SHA-256, secp256k1, BN254, BLS12-381 and the other EF accelerators, the EVM word
-arithmetic and the other ZisK library functions and hints, a TinyGo guest imports the
-[`ziskasm/lang/go`](../../ziskasm/lang/go/) package, which calls them through the C headers
-(see [Precompiles](#precompiles-the-zisk-c-headers)).
+arithmetic and the other ZisK library functions and hints, a Go guest (TinyGo or standard Go)
+imports the [`ziskasm/lang/go`](../../ziskasm/lang/go/) package, which calls them through the C
+headers (see [Precompiles](#precompiles-the-zisk-c-headers)).
 
 ## Guest contract
 
@@ -349,8 +349,9 @@ except, from `env`, the functions of the ZisK C headers below and the raw precom
 A guest calls the functions of the ZisK C headers in
 [`ziskasm/lang/c/include`](../../ziskasm/lang/c/include/) by importing them from module `env`.
 That is what a compiler produces when a guest calls a header's functions without defining them:
-TinyGo through cgo (the [`ziskasm/lang/go`](../../ziskasm/lang/go/) package), C with
-clang, or Rust with an `extern "C"` block. The signature is the header's under the wasm32 C ABI:
+TinyGo through cgo or standard Go through `//go:wasmimport` (both in the
+[`ziskasm/lang/go`](../../ziskasm/lang/go/) package), C with clang, or Rust with an
+`extern "C"` block. The signature is the header's under the wasm32 C ABI:
 pointers, `size_t`, `uint32_t`, `uint8_t` and the `zkvm_status` result are `i32`, and `uint64_t`
 is `i64`, e.g. `env.zkvm_keccak256: (i32, i32, i32) -> i32`. These are supported:
 
@@ -702,7 +703,7 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 |---|---|
 | `emulator/tests/wasm.rs` | Integer operators, control flow, calls, memory, WASI and traps, using hand-written WAT modules. |
 | `emulator/tests/wasm_float.rs` | `f32`/`f64` operators against the wasm spec (requires `float`). |
-| `emulator/tests/wasm_zkvm.rs` | The `env` imports, using hand-written WAT modules: known digests through unaligned buffers, a failure status, bounds checks (including 64-bit lengths and the modexp result), a routine with nested calls, signature checks, U256 in both byte orders, the alignment check, `zkvm_random_u64`, `write_log`, 64-bit zisklib arguments and the fcalls. With `float`, it also runs the prebuilt [`ziskasm/lang/go`](../../ziskasm/lang/go/) example, which checks every function of the Go package (197 checks). |
+| `emulator/tests/wasm_zkvm.rs` | The `env` imports, using hand-written WAT modules: known digests through unaligned buffers, a failure status, bounds checks (including 64-bit lengths and the modexp result), a routine with nested calls, signature checks, U256 in both byte orders, the alignment check, `zkvm_random_u64`, `write_log`, 64-bit zisklib arguments and the fcalls. With `float`, it also runs the prebuilt [`ziskasm/lang/go`](../../ziskasm/lang/go/) example, built with TinyGo and with standard Go, which checks every function of the Go package (197 checks). |
 | `emulator/tests/zkvm_fcall.rs` | `zkvm_fcall.h` from a RISC-V C guest (`src/zkvm_fcall.s`). |
 | `emulator/tests/wasm_example.rs` | Builds [`examples/wasm-fibonacci`](../../examples/wasm-fibonacci) for `wasm32-wasip1` and runs it end to end. Skipped with a notice when the target is not installed. |
 | `emulator/tests/wasm_precompiles.rs` | The `env` precompile imports: keccak-f, sha256-f and secp256k1 against reference implementations, the block-taking big-int ops, bad-pointer traps and import-signature checks. |

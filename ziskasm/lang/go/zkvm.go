@@ -1,13 +1,15 @@
-// Package zkvm gives TinyGo guests compiled to wasm (-target=wasip1) the EF zkVM
-// accelerators of zkvm_accelerators.h, run by the ZisK library routines.
+// Package zkvm gives Go guests compiled to wasm, with TinyGo (-target=wasip1) or
+// standard Go (GOOS=wasip1 GOARCH=wasm), the EF zkVM accelerators of
+// zkvm_accelerators.h, run by the ZisK library routines.
 //
-// It is the TinyGo sibling of ziskasm/lang/c and ziskasm/lang/rust. The package
-// calls the standard C header through cgo; TinyGo leaves each function undefined,
-// so the wasm linker turns it into an import from module "env"
-// (env.zkvm_keccak256 and so on), and wasm2rom implements every such import with a
-// call to the hand-written .zisk routine a RISC-V guest reaches through the matching
-// zkvmcall (see transpilers/wasm/src/zkvm.rs). The guest therefore runs only under
-// ZisK; on any other target the functions panic.
+// It is the Go sibling of ziskasm/lang/c and ziskasm/lang/rust. Under TinyGo the
+// package calls the standard C header through cgo; TinyGo leaves each function
+// undefined, so the wasm linker turns it into an import from module "env"
+// (env.zkvm_keccak256 and so on). Under standard Go, which has no cgo on wasm, the
+// same imports are declared with //go:wasmimport. wasm2rom implements every such
+// import with a call to the hand-written .zisk routine a RISC-V guest reaches
+// through the matching zkvmcall (see transpilers/wasm/src/zkvm.rs). The guest
+// therefore runs only under ZisK; on any other target the functions panic.
 //
 // Buffers need no particular alignment. Every pointer range is bounds-checked
 // against the guest's linear memory, and an out-of-range one traps.
