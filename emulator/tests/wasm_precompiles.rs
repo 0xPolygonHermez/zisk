@@ -250,3 +250,48 @@ fn imports_are_checked_at_transpile_time() {
     let _ = ZiskEmulator::process_rom(&rom, &[], &EmuOptions::default(), None::<fn(EmuTrace)>)
         .expect("runs");
 }
+
+/// The Go package (`ziskasm/lang/go/precompiles`) on a real Go guest: `example/keccak`, prebuilt
+/// at `tests/data/wasm-go-keccak.wasm`, hashes its stdin with Keccak-256 and SHA-256 (Go sponges
+/// around `precompiles.KeccakF` and `precompiles.Sha256F`) and prints both digests in hex.
+/// Requires `float`: the Go runtime executes f64 arithmetic.
+#[cfg(feature = "float")]
+#[test]
+fn go_bindings_hash_through_the_precompiles() {
+    use sha2::Digest;
+    use tiny_keccak::Hasher;
+
+    let wasm =
+        std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/wasm-go-keccak.wasm"))
+            .expect("read the committed Go guest");
+    let rom = wasm2rom(&wasm).expect("wasm2rom");
+    // Empty, one short block, and inputs spanning several Keccak (136 B) and SHA (64 B) blocks
+    // with every padding shape.
+    for len in [0usize, 12, 55, 56, 63, 64, 135, 136, 137, 1000] {
+        let data: Vec<u8> = (0..len).map(|i| (i * 131 % 251) as u8).collect();
+        let mut input = Vec::new();
+        input.extend_from_slice(&(len as u64).to_le_bytes());
+        input.extend_from_slice(&data);
+        input.resize(input.len().div_ceil(8) * 8, 0);
+        let out =
+            ZiskEmulator::process_rom(&rom, &input, &EmuOptions::default(), None::<fn(EmuTrace)>)
+                .expect("emulation");
+        let end = out.iter().position(|&b| b == 0).unwrap_or(out.len());
+        let text = std::str::from_utf8(&out[..end]).expect("utf-8");
+        let mut keccak = tiny_keccak::Keccak::v256();
+        keccak.update(&data);
+        let mut expected_keccak = [0u8; 32];
+        keccak.finalize(&mut expected_keccak);
+        let expected_sha = sha2::Sha256::digest(&data);
+        assert_eq!(
+            text,
+            format!("{}\n{}\n", hex(&expected_keccak), hex(&expected_sha)),
+            "input of {len} bytes"
+        );
+    }
+}
+
+#[cfg(feature = "float")]
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}

@@ -17,7 +17,7 @@ to be kept current as the feature evolves.
 | [`bin/zisk2zisk.rs`](bin/zisk2zisk.rs) | Binary: `.zisk` → x86-64 NASM (mirroring `riscv2zisk`) or a ziskbin ELF (`--elf`). |
 | [`lib/`](lib/) | Hand-written ZisK-assembly library routines (`zisklib_*.zisk`), one file per family. |
 | [`lang/rust/`](lang/rust/) | Crate `zisklib`: Rust bindings (stubs + wrappers) guests call to reach `lib/` routines. |
-| [`lang/go/`](lang/go/) | Go package `zkvm` for wasm guests, TinyGo (cgo) or standard Go (`//go:wasmimport`): the ZisK C headers, reaching the `lib/` routines. |
+| [`lang/go/`](lang/go/) | Go package `zkvm` for wasm guests, TinyGo (cgo) or standard Go (`//go:wasmimport`): the ZisK C headers, reaching the `lib/` routines; subpackage `precompiles`: the raw precompile instructions. |
 | [`examples/doubler/`](examples/doubler/) | Worked example: `ziskos.zisk` (explicit launcher) + `doubler.zisk` (program) + `input.bin`. |
 | [`examples/doubler-min/`](examples/doubler-min/) | Same program as a single `main:` file — the assembler synthesizes the launcher. |
 | [`examples/sum/`](examples/sum/) | Data declarations: sums a `const` ROM array into a RAM accumulator. |

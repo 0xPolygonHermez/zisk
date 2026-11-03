@@ -310,7 +310,8 @@ cannot be proven either way.
 For Keccak, SHA-256, secp256k1, BN254, BLS12-381 and the other EF accelerators, the EVM word
 arithmetic and the other ZisK library functions and hints, a Go guest (TinyGo or standard Go)
 imports the [`ziskasm/lang/go`](../../ziskasm/lang/go/) package, which calls them through the C
-headers (see [Precompiles](#precompiles-the-zisk-c-headers)).
+headers (see [Precompiles](#precompiles-the-zisk-c-headers)); its `precompiles` subpackage has
+the bare instructions (see [the raw precompiles](#the-raw-precompiles-env-imports)).
 
 ## Guest contract
 
@@ -430,20 +431,20 @@ the value itself). Every address a precompile would touch is range- and alignmen
 the instruction runs; a bad one traps. `blake2b_round` is not exposed (its chaining protocol
 lives in the instruction's static argument and is driven by `ziskos`), nor are the DMA ports.
 
-From Go, with a build tag so the pure-Go code stays the default:
+The [`ziskasm/lang/go/precompiles`](../../ziskasm/lang/go/) package declares them all for Go
+guests; a hash implementation needs only its permutation replaced, e.g. with a build tag so the
+pure-Go code stays the default:
 
 ```go
 //go:build zisk
 
-//go:wasmimport env keccak_f
-//go:noescape
-func keccak_f(state unsafe.Pointer)   // state: *[25]uint64
+import "github.com/0xPolygonHermez/zisk/ziskasm/lang/go/precompiles"
 
-func keccakF1600(a *[25]uint64) { keccak_f(unsafe.Pointer(a)) }
+func keccakF1600(a *[25]uint64) { precompiles.KeccakF(a) }
 ```
 
-Imports from any module other than `wasi_snapshot_preview1` and `env` are rejected at transpile
-time; so is an `env` import that is not a precompile or has the wrong signature.
+An `env` import that is neither a C-header function nor a precompile, or has the wrong signature,
+is rejected at transpile time.
 
 ## Supported WebAssembly
 
@@ -706,7 +707,7 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 | `emulator/tests/wasm_zkvm.rs` | The `env` imports, using hand-written WAT modules: known digests through unaligned buffers, a failure status, bounds checks (including 64-bit lengths and the modexp result), a routine with nested calls, signature checks, U256 in both byte orders, the alignment check, `zkvm_random_u64`, `write_log`, 64-bit zisklib arguments and the fcalls. With `float`, it also runs the prebuilt [`ziskasm/lang/go`](../../ziskasm/lang/go/) example, built with TinyGo and with standard Go, which checks every function of the Go package (197 checks). |
 | `emulator/tests/zkvm_fcall.rs` | `zkvm_fcall.h` from a RISC-V C guest (`src/zkvm_fcall.s`). |
 | `emulator/tests/wasm_example.rs` | Builds [`examples/wasm-fibonacci`](../../examples/wasm-fibonacci) for `wasm32-wasip1` and runs it end to end. Skipped with a notice when the target is not installed. |
-| `emulator/tests/wasm_precompiles.rs` | The `env` precompile imports: keccak-f, sha256-f and secp256k1 against reference implementations, the block-taking big-int ops, bad-pointer traps and import-signature checks. |
+| `emulator/tests/wasm_precompiles.rs` | The `env` precompile imports: keccak-f, sha256-f and secp256k1 against reference implementations, the block-taking big-int ops, bad-pointer traps and import-signature checks; and the `ziskasm/lang/go/precompiles` package on a prebuilt Go guest: Keccak-256/SHA-256 built on `KeccakF`/`Sha256F` against `tiny_keccak`/`sha2`. |
 | `integration-tests/tests/wasm_verify_constraints.rs` | Constraint verification on the emulator and (on Linux) ASM backends for five guests that together cover the lowering paths, WASI and the memory-layout limits, and rejection of guests that trap or exit with a nonzero status. Needs a proving key; ignored by default. |
 | `integration-tests/tests/wasm_prove.rs` | Proves `wasm-fibonacci` on the emulator and (on Linux) ASM backends and verifies the proof under the module's program verification key (and not under any other). Needs a proving key; ignored by default. |
 

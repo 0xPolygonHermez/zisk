@@ -150,6 +150,62 @@ built with standard Go (`GOOS=wasip1 GOARCH=wasm go build -ldflags='-s -w'`, Go 
 run by `standard_go_example_passes_every_check`. Those tests also cover the import
 lowering without either toolchain, using hand-written `.wat` modules.
 
+## Package `precompiles`: the raw instructions
+
+[`precompiles`](precompiles/) is the lower binding: the ZisK precompile instructions
+themselves (Keccak-f, SHA-256's compression, the curve group laws, 256/384-bit modular
+arithmetic, ...), one function per instruction, named after the `ziskos` syscalls:
+`KeccakF(*[25]uint64)`, `Sha256F(state *[4]uint64, block *[8]uint64)`, `Blake3F`,
+`Blake2sF`, `Poseidon1`, `Poseidon2`, `Poseidon2Koalabear`, `Arith256(a, b, c, dl, dh)`,
+`Arith256Mod(a, b, c, m, d)`, `Arith384Mod`, `Add256(a, b, cin, c) carry`,
+`Secp256k1Add`/`Dbl`, `Secp256r1Add`/`Dbl`, `Bn254CurveAdd`/`Dbl`,
+`Bn254ComplexAdd`/`Sub`/`Mul`, `Bls12381CurveAdd`/`Dbl`, `Bls12381ComplexAdd`/`Sub`/`Mul`,
+`BabyjubjubAdd`, `Ed25519Add`. Each is an import of the `env` module (`env.keccak_f`,
+`env.secp256k1_add`, ...; see the transpiler
+[README](../../../transpilers/wasm/README.md#the-raw-precompiles-env-imports)) that lowers
+to the instruction, on `*[N]uint64` operands: little-endian limbs, updated in place,
+8-byte aligned (Go guarantees it for `uint64` arrays); every pointer is range- and
+alignment-checked before the instruction runs, and a bad one traps. See
+[`precompiles/doc.go`](precompiles/doc.go) for the layouts. It builds for `GOARCH=wasm`
+only, with `//go:wasmimport`, under either toolchain.
+
+| | `zkvm` (this package) | `precompiles` |
+|---|---|---|
+| what a call is | a function of the ZisK C headers, run by a library routine | one precompile instruction |
+| for | a guest that wants the result: a digest, a recovered key, an EVM word | a guest with its own protocol around the primitive: an existing hash implementation that only swaps its permutation, a custom group operation |
+
+A whole protocol built on the instructions, such as an ECDSA recovery from the group law,
+costs tens of times the library routine (the inverses alone are hundreds of
+`arith256_mod` where the library uses one hint), so reach for `zkvm` first. The
+permutation of an existing hash implementation is the typical use; go-ethereum's
+`crypto/keccak`, for instance, needs only:
+
+```go
+//go:build zisk
+
+package keccak
+
+import "github.com/0xPolygonHermez/zisk/ziskasm/lang/go/precompiles"
+
+func keccakF1600(a *[25]uint64) { precompiles.KeccakF(a) }
+```
+
+with its pure-Go `keccakF1600` excluded under the `zisk` tag.
+
+[`example/keccak`](example/keccak/) hashes its stdin with Keccak-256 and SHA-256, the
+sponge and the padding in Go around `KeccakF` and `Sha256F`:
+
+```bash
+cd example/keccak
+GOOS=wasip1 GOARCH=wasm go build -ldflags='-s -w' -o guest.wasm .
+ziskemu --elf guest.wasm -i input.bin     # input.bin: 8-byte LE length, data, padded to 8
+```
+
+The prebuilt module is committed as `emulator/tests/data/wasm-go-keccak.wasm` and checked
+against `tiny_keccak` and `sha2` on ten input lengths by
+`emulator/tests/wasm_precompiles.rs`; rebuild and refresh it after changing the example or
+the package.
+
 ## Notes
 
 - TinyGo's cgo does not expand `${SRCDIR}`, so `calls_zisk.go` uses
