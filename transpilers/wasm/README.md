@@ -708,6 +708,7 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 | `emulator/tests/zkvm_fcall.rs` | `zkvm_fcall.h` from a RISC-V C guest (`src/zkvm_fcall.s`). |
 | `emulator/tests/wasm_example.rs` | Builds [`examples/wasm-fibonacci`](../../examples/wasm-fibonacci) for `wasm32-wasip1` and runs it end to end. Skipped with a notice when the target is not installed. |
 | `emulator/tests/wasm_precompiles.rs` | The `env` precompile imports: keccak-f, sha256-f and secp256k1 against reference implementations, the block-taking big-int ops, bad-pointer traps and import-signature checks; and the `ziskasm/lang/go/precompiles` package on a prebuilt Go guest: Keccak-256/SHA-256 built on `KeccakF`/`Sha256F` against `tiny_keccak`/`sha2`. |
+| `emulator/tests/wasm_spec.rs` | The official [WebAssembly test suite](https://github.com/WebAssembly/testsuite) (core `.wast` scripts, pinned commit in the file): every module is transpiled and its `assert_return`, `assert_trap`, `assert_exhaustion`, `assert_invalid` and `assert_malformed` are checked on the emulator. Assertions outside the supported subset (SIMD, GC, memory64, table operations, ...) count as unsupported, and linking between modules and text-format errors are skipped. With `float`, 26,901 assertions pass and none fails (13,423 without `float`). Needs a checkout of the suite (`WASM_TESTSUITE`); ignored by default. |
 | `integration-tests/tests/wasm_verify_constraints.rs` | Constraint verification on the emulator and (on Linux) ASM backends for five guests that together cover the lowering paths, WASI and the memory-layout limits, and rejection of guests that trap or exit with a nonzero status. Needs a proving key; ignored by default. |
 | `integration-tests/tests/wasm_prove.rs` | Proves `wasm-fibonacci` on the emulator and (on Linux) ASM backends and verifies the proof under the module's program verification key (and not under any other). Needs a proving key; ignored by default. |
 
@@ -715,6 +716,8 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 cargo test -p ziskemu --release --test wasm --test wasm_example --test wasm_zkvm --test zkvm_fcall --test wasm_precompiles
 ZISK_CI_NO_DOCKER_REBUILD=1 \
   cargo test -p ziskemu --release --features float --test wasm --test wasm_float --test wasm_example --test wasm_zkvm --test wasm_precompiles
+WASM_TESTSUITE=/path/to/testsuite ZISK_CI_NO_DOCKER_REBUILD=1 \
+  cargo test -p ziskemu --release --features float --test wasm_spec -- --ignored --nocapture
 cargo test --release -p integration-tests --test wasm_verify_constraints --test wasm_prove -- --ignored
 ```
 

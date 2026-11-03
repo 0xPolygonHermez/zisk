@@ -8455,6 +8455,8 @@ dependencies = [
  "time",
  "tiny-keccak",
  "vergen-git2",
+ "wasmparser 0.244.0",
+ "wast",
  "wat",
  "zisk-asm",
  "zisk-common",

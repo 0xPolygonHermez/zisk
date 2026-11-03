@@ -101,6 +101,23 @@ jobs:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
 
+      # The official WebAssembly test suite, at the commit pinned in emulator/tests/wasm_spec.rs.
+      - name: Fetch the WebAssembly test suite
+        run: |
+          mkdir -p "$RUNNER_TEMP/wasm-testsuite"
+          cd "$RUNNER_TEMP/wasm-testsuite"
+          git init -q
+          git remote add origin https://github.com/WebAssembly/testsuite.git
+          git fetch -q --depth 1 origin 63908677d00585fdab4c4eccbf01f781d3a454d5
+          git checkout -q FETCH_HEAD
+
+      - name: Run the WebAssembly test suite with the float feature
+        run: cargo test -p ziskemu --release --features float --test wasm_spec -- --ignored --nocapture
+        env:
+          WASM_TESTSUITE: ${{ runner.temp }}/wasm-testsuite
+          RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
+          RUST_BACKTRACE: 1
+
       # The compressed (C) decoder is off by default; check its traps fail too.
       - name: Run the failed-execution tests with the compressed feature
         run: cargo test --release -p ziskemu --features compressed --test failed_execution
