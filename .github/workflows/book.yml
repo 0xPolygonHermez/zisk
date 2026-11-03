@@ -80,7 +80,8 @@ jobs:
       # Renders the ```mermaid blocks used across the book. Pinned: 0.17+ speaks a
       # newer preprocessor protocol and fails against mdbook 0.4.x with
       # "Unable to parse the input". The mermaid.min.js / mermaid-init.js assets
-      # referenced by book.toml are committed, so only the binary is needed here.
+      # referenced by book.toml are committed in book/theme, so only the binary is
+      # needed here.
       - name: Install mdbook-mermaid
         run: |
           mkdir mdbook-mermaid
