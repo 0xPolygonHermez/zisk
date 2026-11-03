@@ -113,6 +113,20 @@ fn rounding_to_integral() {
     assert!(eval_f64("(f64.nearest (f64.const nan))").is_nan());
     assert_eq!(eval_f32("(f32.ceil (f32.const 2.1))"), 3.0);
     assert_eq!(eval_f32("(f32.floor (f32.const -0.5))"), -1.0);
+    // A signaling NaN comes back quiet, keeping its sign and payload (wasm requires an
+    // arithmetic NaN; the spec suite's f32.wast and f64.wast check it).
+    for op in ["ceil", "floor", "trunc", "nearest"] {
+        assert_eq!(
+            eval_f64(&format!("(f64.{op} (f64.const -nan:0x4000000000000))")).to_bits(),
+            0xfffc_0000_0000_0000,
+            "f64.{op}"
+        );
+        assert_eq!(
+            eval_f32(&format!("(f32.{op} (f32.const nan:0x200000))")).to_bits(),
+            0x7fe0_0000,
+            "f32.{op}"
+        );
+    }
 }
 
 #[test]
