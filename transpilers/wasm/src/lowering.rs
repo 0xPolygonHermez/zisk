@@ -300,6 +300,11 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             I64Add => self.binop("add", false),
             I64Sub => self.binop("sub", false),
             I64Mul => self.binop("mul", false),
+            // wide arithmetic (128-bit values as two i64 halves, low half first)
+            I64MulWideU => self.mul_wide("muluh"),
+            I64MulWideS => self.mul_wide("mulh"),
+            I64Add128 => self.add_sub128(true),
+            I64Sub128 => self.add_sub128(false),
             I64And => self.binop("and", false),
             I64Or => self.binop("or", false),
             I64Xor => self.binop("xor", false),
@@ -479,6 +484,44 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     }
 
     // -- operator helpers ----------------------------------------------------
+
+    /// `i64.mul_wide_{u,s}`: [a, b] -> [low, high] of the 128-bit product, `high` from ZisK's
+    /// `muluh` (unsigned) or `mulh` (signed).
+    fn mul_wide(&mut self, high_op: &str) {
+        let a = self.slot(self.depth - 2);
+        let b = self.slot(self.depth - 1);
+        self.code.load_slot_to_reg(REG_T0, a);
+        self.code.load_slot_to_reg(REG_T1, b);
+        self.code.alu_rr("mul", REG_T2, REG_T0, REG_T1);
+        self.code.alu_rr(high_op, REG_T3, REG_T0, REG_T1);
+        self.code.store_reg_to_slot(a, REG_T2);
+        self.code.store_reg_to_slot(b, REG_T3);
+    }
+
+    /// `i64.add128` / `i64.sub128`: [a_lo, a_hi, b_lo, b_hi] -> [lo, hi], the carry (or borrow)
+    /// out of the low halves taken with `ltu`.
+    fn add_sub128(&mut self, add: bool) {
+        let a_lo = self.slot(self.depth - 4);
+        let a_hi = self.slot(self.depth - 3);
+        let b_lo = self.slot(self.depth - 2);
+        let b_hi = self.slot(self.depth - 1);
+        let op = if add { "add" } else { "sub" };
+        self.code.load_slot_to_reg(REG_T0, a_lo);
+        self.code.load_slot_to_reg(REG_T1, b_lo);
+        self.code.alu_rr(op, REG_T2, REG_T0, REG_T1);
+        if add {
+            self.code.alu_rr("ltu", REG_T3, REG_T2, REG_T0); // lo < a_lo: carry
+        } else {
+            self.code.alu_rr("ltu", REG_T3, REG_T0, REG_T1); // a_lo < b_lo: borrow
+        }
+        self.code.store_reg_to_slot(a_lo, REG_T2);
+        self.code.load_slot_to_reg(REG_T0, a_hi);
+        self.code.load_slot_to_reg(REG_T1, b_hi);
+        self.code.alu_rr(op, REG_T0, REG_T0, REG_T1);
+        self.code.alu_rr(op, REG_T0, REG_T0, REG_T3);
+        self.code.store_reg_to_slot(a_hi, REG_T0);
+        self.depth -= 2;
+    }
 
     fn binop(&mut self, op: &str, swap: bool) {
         let a = self.slot(self.depth - 2);

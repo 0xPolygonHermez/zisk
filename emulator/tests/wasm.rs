@@ -267,6 +267,143 @@ fn memory_fill_and_copy_run_on_the_dma_precompiles() {
 }
 
 #[test]
+fn wide_arithmetic_matches_128_bit_integers() {
+    // Each case leaves [lo, hi] on the stack; both halves are stored and printed (16 cases, the
+    // 256-byte output).
+    let run_cases = |cases: &[String]| -> Vec<u128> {
+        let body: String = cases
+            .iter()
+            .enumerate()
+            .map(|(i, case)| {
+                let at = 16 + 16 * i;
+                format!(
+                    "{case} (local.set $hi) (local.set $lo)
+                     (i64.store (i32.const {at}) (local.get $lo))
+                     (i64.store (i32.const {}) (local.get $hi))",
+                    at + 8
+                )
+            })
+            .collect();
+        let wat = format!(
+            r#"(module
+          (import "wasi_snapshot_preview1" "fd_write"
+            (func $fd_write (param i32 i32 i32 i32) (result i32)))
+          (memory 1)
+          (func (export "_start")
+            (local $lo i64) (local $hi i64)
+            {body}
+            (i32.store (i32.const 0) (i32.const 16))
+            (i32.store (i32.const 4) (i32.const {}))
+            (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 8)))))"#,
+            16 * cases.len()
+        );
+        let out = run(&wat::parse_str(wat).unwrap(), &[]);
+        out[..16 * cases.len()]
+            .chunks(16)
+            .map(|c| u128::from_le_bytes(c.try_into().unwrap()))
+            .collect()
+    };
+    let words =
+        [0u64, 1, 2, 0x7fff_ffff_ffff_ffff, 0x8000_0000_0000_0000, u64::MAX, 0x1234_5678_9abc_def0];
+    let pairs: Vec<(u64, u64)> =
+        words.iter().flat_map(|&a| words.iter().map(move |&b| (a, b))).collect();
+    let c = |v: u64| format!("(i64.const {})", v as i64);
+
+    for (op, model) in [
+        ("i64.mul_wide_u", (|a: u64, b: u64| a as u128 * b as u128) as fn(u64, u64) -> u128),
+        ("i64.mul_wide_s", |a, b| (a as i64 as i128 * b as i64 as i128) as u128),
+    ] {
+        for chunk in pairs.chunks(16) {
+            let cases: Vec<String> =
+                chunk.iter().map(|&(a, b)| format!("({op} {} {})", c(a), c(b))).collect();
+            let expected: Vec<u128> = chunk.iter().map(|&(a, b)| model(a, b)).collect();
+            assert_eq!(run_cases(&cases), expected, "{op}");
+        }
+    }
+
+    // 128-bit operands from pairs of words, so carries and borrows cross the halves.
+    let wide: Vec<u128> =
+        pairs.iter().map(|&(lo, hi)| lo as u128 | (hi as u128) << 64).step_by(3).collect();
+    let operands: Vec<(u128, u128)> =
+        wide.iter().zip(wide.iter().rev()).map(|(&a, &b)| (a, b)).collect();
+    for (op, model) in [
+        ("i64.add128", u128::wrapping_add as fn(u128, u128) -> u128),
+        ("i64.sub128", u128::wrapping_sub),
+    ] {
+        for chunk in operands.chunks(16) {
+            let cases: Vec<String> = chunk
+                .iter()
+                .map(|&(a, b)| {
+                    format!(
+                        "({op} {} {} {} {})",
+                        c(a as u64),
+                        c((a >> 64) as u64),
+                        c(b as u64),
+                        c((b >> 64) as u64)
+                    )
+                })
+                .collect();
+            let expected: Vec<u128> = chunk.iter().map(|&(a, b)| model(a, b)).collect();
+            assert_eq!(run_cases(&cases), expected, "{op}");
+        }
+    }
+}
+
+#[test]
+fn multi3_runs_natively() {
+    // A `__multi3` with compiler-rt's signature gets the transpiler's own body: this one stores
+    // zeros, so the right product proves it was replaced.
+    let module = |signature: &str, call: &str| {
+        format!(
+            r#"(module
+          (import "wasi_snapshot_preview1" "fd_write"
+            (func $fd_write (param i32 i32 i32 i32) (result i32)))
+          (memory 1)
+          (func $__multi3 {signature}
+            (i64.store (local.get 0) (i64.const 0))
+            (i64.store offset=8 (local.get 0) (i64.const 0)))
+          (func (export "_start")
+            {call}
+            (i32.store (i32.const 0) (i32.const 16))
+            (i32.store (i32.const 4) (i32.const 16))
+            (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#
+        )
+    };
+    let product = |a: u128, b: u128| {
+        let c = |v: u128| format!("(i64.const {})", v as u64 as i64);
+        let wat = module(
+            "(param i32 i64 i64 i64 i64)",
+            &format!(
+                "(call $__multi3 (i32.const 16) {} {} {} {})",
+                c(a),
+                c(a >> 64),
+                c(b),
+                c(b >> 64)
+            ),
+        );
+        let out = run(&wat::parse_str(wat).unwrap(), &[]);
+        u128::from_le_bytes(out[..16].try_into().unwrap())
+    };
+    for (a, b) in [
+        (u128::MAX, u128::MAX),
+        (0xffff_ffff_ffff_ffff, 0xffff_ffff_ffff_ffff),
+        (0x1234_5678_9abc_def0_0fed_cba9_8765_4321, 0x0011_2233_4455_6677_8899_aabb_ccdd_eeff),
+        (1u128 << 127, 3),
+        (0, u128::MAX),
+    ] {
+        assert_eq!(product(a, b), a.wrapping_mul(b), "{a:#x} * {b:#x}");
+    }
+
+    // Any other signature keeps its body.
+    let wat = module(
+        "(param i32 i64 i64 i64)",
+        "(call $__multi3 (i32.const 16) (i64.const 2) (i64.const 0) (i64.const 3))",
+    );
+    let out = run(&wat::parse_str(wat).unwrap(), &[]);
+    assert_eq!(&out[..16], &[0; 16]);
+}
+
+#[test]
 fn branch_to_function_body_returns() {
     // `br 1` from inside a block targets the function itself (Go emits this shape).
     let body = r#"(block (br 1 (i64.const 77))) (i64.const 1)"#;

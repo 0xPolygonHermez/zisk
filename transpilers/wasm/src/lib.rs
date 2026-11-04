@@ -68,7 +68,8 @@ pub fn wasm_function_symbols(bytes: &[u8]) -> Result<Vec<WasmFunctionSymbol>, Bo
 }
 
 fn transpile(bytes: &[u8]) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn Error>> {
-    let module = parse_module(bytes)?;
+    let mut module = parse_module(bytes)?;
+    module.use_native_multi3();
     reject_unsupported_layout(&module)?;
 
     // Resolve the program entry point.
