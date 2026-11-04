@@ -97,6 +97,16 @@ To install the SNARK proving key (provingKeySnark, pilfflonk, of the hash mode o
     ziskup setup_snark
     ```
 
+The proving keys are published in the `zisk-setup` bucket as `zisk-provingkey-<version>[-blake3].tar.gz`, each with sidecar files:
+
+| Sidecar   | Content                                                                                          |
+| ---       | ---                                                                                              |
+| `.md5`    | MD5 of the tarball.                                                                              |
+| `.hash`   | Hash of the sources the setup was built from (`setup_build.sh --print-hash`); it decides whether a new upload is needed. It is not the PIL's hash. |
+| `.pilout` | `PILOUT_HASH` of the PIL the key is for (`pil/src/pil_helpers/traces.rs`): a build only works with a key of the same `PILOUT_HASH`. |
+
+A pre-release key (`pre-<version>`) is republished under the same name whenever the PIL changes, so check its `.pilout` against the build it is for.
+
 
 ### Option 2: Building from Source
 
