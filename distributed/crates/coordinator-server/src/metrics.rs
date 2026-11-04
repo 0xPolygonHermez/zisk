@@ -38,6 +38,7 @@
 //! | `coordinator_last_worker_recovery_seconds` | Gauge | — | The last recovery |
 //! | `coordinator_worker_exits_total` | Counter | `reason` | Worker runs that ended themselves (`panic`, `recovery_timeout`, `recovery_failed`), as the worker reports when it registers again |
 //! | `coordinator_worker_panics_total` | Counter | `location` | Those panics by source location (the first 64 locations, then `other`) |
+//! | `coordinator_timed_samples_dropped_total` | Counter | `reason` | Timestamped samples dropped before any scrape took them: the queue was `full`, or they were `stale` |
 //!
 //! Read from the coordinator's state when scraped:
 //!
@@ -68,15 +69,20 @@
 //! acknowledgements), which are informational: bounded by the coordinator, never acted on, and
 //! absent for a worker whose operator turned telemetry off.
 //!
-//! The timestamped series take their next queued sample on each scrape: point a single
-//! Prometheus at a coordinator.
+//! The timestamped series hold a queue of samples, one per proof or job, and show one of them per
+//! scrape. A Prometheus scrape takes it, so the next scrape shows the next one: point a single
+//! Prometheus at a coordinator, or two would split the samples between them. Any other reader
+//! (`curl`, a browser) is shown the same sample and leaves it queued. Samples are queued for at
+//! most half an hour, past which Prometheus would reject them as too old.
 //!
 //! ## Scrape endpoint
 //!
 //! When metrics are enabled, a lightweight HTTP server is started on
 //! `metrics.host:metrics.port` (default `0.0.0.0:9090`).
 //!
-//! - `GET /metrics` → Prometheus text format
+//! - `GET /metrics` → Prometheus text format. A request whose `User-Agent` starts with
+//!   `Prometheus/` takes the timestamped series' samples; `?take=1` makes any other scraper take
+//!   them, and `?take=0` keeps a second Prometheus from taking them.
 //! - `GET /health`  → `200 OK` (liveness probe)
 
 use std::sync::{Arc, OnceLock};
@@ -298,6 +304,11 @@ fn register_descriptions() {
         "coordinator_worker_panics_total",
         "Worker runs that ended in a panic, by source location"
     );
+    metrics::describe_counter!(
+        "coordinator_timed_samples_dropped_total",
+        "Timestamped samples dropped before any scrape took them: the queue was full, or they were \
+         older than Prometheus accepts"
+    );
 }
 
 /// Record who this coordinator is: `coordinator_info{name, environment, version} 1`.
@@ -363,7 +374,7 @@ async fn serve_connection<B: BackendService>(mut stream: tokio::net::TcpStream, 
     let response = if first_line.starts_with("GET /metrics") {
         if let Some(handle) = PROMETHEUS_HANDLE.get() {
             // The backend's text first: it sets the gauges the recorder renders.
-            let state = backend.render_metrics().await;
+            let state = backend.render_metrics(takes_timed_samples(&request)).await;
             let mut body = handle.render();
             body.push_str(&state);
             prometheus_text::process_metrics(&mut body);
@@ -382,4 +393,61 @@ async fn serve_connection<B: BackendService>(mut stream: tokio::net::TcpStream, 
     };
 
     let _ = stream.write_all(response.as_bytes()).await;
+}
+
+/// Whether a `/metrics` request takes the timestamped series' samples (see the module
+/// documentation): `?take=1` or `?take=0` if the request says, else whether it is a Prometheus
+/// scrape, by its `User-Agent`. So a `curl` or a browser never takes samples from Prometheus.
+fn takes_timed_samples(request: &str) -> bool {
+    let mut lines = request.lines();
+    let target = lines.next().and_then(|line| line.split_whitespace().nth(1)).unwrap_or("");
+    let query = target.split_once('?').map_or("", |(_, query)| query);
+    for param in query.split('&') {
+        match param {
+            "take=1" | "take=true" => return true,
+            "take=0" | "take=false" => return false,
+            _ => {}
+        }
+    }
+    lines.take_while(|line| !line.is_empty()).any(|line| {
+        line.split_once(':').is_some_and(|(name, value)| {
+            name.trim().eq_ignore_ascii_case("user-agent")
+                && value.trim().starts_with("Prometheus/")
+        })
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::takes_timed_samples;
+
+    fn request(target: &str, user_agent: Option<&str>) -> String {
+        let agent = user_agent.map(|ua| format!("User-Agent: {ua}\r\n")).unwrap_or_default();
+        format!("GET {target} HTTP/1.1\r\nHost: coordinator:9090\r\n{agent}Accept: */*\r\n\r\n")
+    }
+
+    #[test]
+    fn only_a_prometheus_scrape_takes_samples() {
+        assert!(takes_timed_samples(&request("/metrics", Some("Prometheus/2.53.0"))));
+        assert!(!takes_timed_samples(&request("/metrics", Some("curl/8.5.0"))));
+        assert!(!takes_timed_samples(&request("/metrics", Some("Mozilla/5.0 (X11; Linux)"))));
+        assert!(!takes_timed_samples(&request("/metrics", None)));
+        // Header names are case-insensitive.
+        let lower = "GET /metrics HTTP/1.1\r\nuser-agent: Prometheus/3.0.0\r\n\r\n";
+        assert!(takes_timed_samples(lower));
+    }
+
+    #[test]
+    fn the_take_parameter_decides_over_the_user_agent() {
+        assert!(takes_timed_samples(&request("/metrics?take=1", Some("vmagent"))));
+        assert!(takes_timed_samples(&request("/metrics?x=y&take=true", None)));
+        assert!(!takes_timed_samples(&request("/metrics?take=0", Some("Prometheus/2.53.0"))));
+        assert!(!takes_timed_samples(&request("/metrics?take=false", Some("Prometheus/2.53.0"))));
+    }
+
+    #[test]
+    fn a_user_agent_in_the_body_does_not_count() {
+        let body = "GET /metrics HTTP/1.1\r\nHost: h\r\n\r\nUser-Agent: Prometheus/2.0.0\r\n";
+        assert!(!takes_timed_samples(body));
+    }
 }

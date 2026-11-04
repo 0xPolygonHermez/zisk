@@ -541,8 +541,13 @@ with labels, is at the top of
 [`coordinator-server/src/metrics.rs`](https://github.com/0xPolygonHermez/zisk/blob/main/distributed/crates/coordinator-server/src/metrics.rs).
 
 Some series carry one sample per proof, with the time the proof ended,
-and each scrape takes the next one: point a single Prometheus at a
-coordinator, or two would split them.
+and each Prometheus scrape takes the next one: point a single Prometheus
+at a coordinator, or two would split them. Other readers, such as `curl`
+or a browser, are shown the same sample and leave it for Prometheus; a
+scraper that is not Prometheus takes samples only when asked to with
+`/metrics?take=1`, and a second Prometheus can read without taking them
+with `?take=0` (`params: {take: ["0"]}` in its scrape config). Samples
+wait at most half an hour for a scrape, as Prometheus rejects older ones.
 
 ### Worker telemetry
 
