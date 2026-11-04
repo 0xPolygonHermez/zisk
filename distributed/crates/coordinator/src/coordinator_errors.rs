@@ -40,6 +40,10 @@ pub enum CoordinatorError {
     #[error("Program {0} is not set up on the workers; call setup() first")]
     ProgramNotSetup(String),
 
+    /// The program is set up for emulation only, which skips the setup a proof needs.
+    #[error("Program {0} is set up for emulation only; set it up in full to prove it")]
+    ProgramSetUpForEmulationOnly(String),
+
     /// The request provided a random seed but the coordinator does not accept client random seeds.
     #[error("Client-supplied random seeds are not allowed by this coordinator")]
     ClientRandomSeedNotAllowed,
@@ -93,6 +97,9 @@ impl From<CoordinatorError> for Status {
                 Code::FailedPrecondition,
                 format!("Program {hash_id} is not set up on the workers; call setup() first"),
             ),
+            CoordinatorError::ProgramSetUpForEmulationOnly(_) => {
+                Status::new(Code::FailedPrecondition, err.to_string())
+            }
             CoordinatorError::ClientRandomSeedNotAllowed => Status::new(
                 Code::PermissionDenied,
                 "Client-supplied random seeds are not allowed by this coordinator",
