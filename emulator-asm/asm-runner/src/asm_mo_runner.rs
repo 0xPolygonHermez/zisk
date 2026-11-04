@@ -369,6 +369,8 @@ impl AsmRunnerMO {
             );
         }
 
+        let data_waits = crate::DataWaits::open(asm_services.shm_prefix(), AsmService::MO);
+
         #[cfg(gpu)]
         let shm_prefix = asm_services.shm_prefix().to_string();
         // Capture parent id for thread
@@ -463,6 +465,7 @@ impl AsmRunnerMO {
             match crate::wait_for_chunk(
                 &mut sem_chunk_done,
                 || handle.is_finished(),
+                || data_waits.as_ref().is_some_and(crate::DataWaits::waiting),
                 SEM_CHUNK_DONE_WAIT_DURATION,
             ) {
                 Ok(()) => {
