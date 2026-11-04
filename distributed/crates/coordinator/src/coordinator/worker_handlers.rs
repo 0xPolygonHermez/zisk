@@ -808,6 +808,21 @@ impl Coordinator {
         Ok(())
     }
 
+    /// Disconnects the workers that stopped heartbeating, closing their streams
+    /// (see [`crate::workers_pool::WorkersPool::disconnect_stale_workers`]),
+    /// and drops the setups they owe. Returns the workers disconnected.
+    pub(crate) async fn disconnect_stale_workers(
+        &self,
+        threshold: chrono::Duration,
+    ) -> Vec<WorkerId> {
+        let disconnected = self.workers_pool.disconnect_stale_workers(threshold).await;
+        for worker_id in &disconnected {
+            self.prune_setup_pending_for_lost_worker(worker_id).await;
+            self.prune_recurser_setup_pending_for_lost_worker(worker_id).await;
+        }
+        disconnected
+    }
+
     /// Generation-aware disconnect for [`ConnectionDropGuard`].
     ///
     /// Checks if the worker's current connection generation matches the expected

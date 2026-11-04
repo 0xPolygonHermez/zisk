@@ -6,6 +6,7 @@
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 use zisk_cluster_common::{
@@ -34,6 +35,15 @@ pub struct CapacitySnapshot {
     pub idle_workers: usize,
 }
 
+/// Stands in for the message channel of a worker whose stream the pool closed.
+struct ClosedSender;
+
+impl MessageSender for ClosedSender {
+    fn send(&self, _msg: CoordinatorMessageDto) -> CoordinatorResult<()> {
+        Err(CoordinatorError::Internal("worker stream closed".to_string()))
+    }
+}
+
 /// Information about a connected worker
 pub struct WorkerInfo {
     /// The worker's unique id.
@@ -46,7 +56,7 @@ pub struct WorkerInfo {
     pub connected_at: DateTime<Utc>,
     /// Timestamp of the most recent heartbeat.
     pub last_heartbeat: DateTime<Utc>,
-    /// Increments each time the worker reconnects (to detect stale connections).
+    /// Unique to each connection for the pool's lifetime (to detect stale connections).
     pub connection_generation: u64,
     /// Channel used to push messages to this worker.
     pub msg_sender: Box<dyn MessageSender + Send + Sync>,
@@ -96,6 +106,10 @@ impl Display for WorkerInfo {
 pub struct WorkersPool {
     /// Map of worker_id to WorkerInfo
     workers: RwLock<HashMap<WorkerId, WorkerInfo>>,
+    /// Next connection generation. Pool-wide rather than per entry: a worker
+    /// that is unregistered and registers again must not get the generation of
+    /// its old connection, whose drop guard may still fire.
+    next_generation: AtomicU64,
 }
 
 impl Default for WorkersPool {
@@ -107,7 +121,7 @@ impl Default for WorkersPool {
 impl WorkersPool {
     /// Creates a new empty workers pool.
     pub fn new() -> Self {
-        Self { workers: RwLock::new(HashMap::new()) }
+        Self { workers: RwLock::new(HashMap::new()), next_generation: AtomicU64::new(0) }
     }
 
     /// Returns the worker's state and connection generation if present.
@@ -320,6 +334,7 @@ impl WorkersPool {
             initial_state.clone(),
         );
         let mut workers = self.workers.write().await;
+        let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
 
         let is_new_worker = if let Some(worker) = workers.get_mut(&worker_id) {
             // Allow re-register from Disconnected/Idle/Ready freely. Allow
@@ -349,12 +364,15 @@ impl WorkersPool {
             worker.state = initial_state;
             worker.compute_capacity = connection.compute_capacity;
             worker.msg_sender = connection.msg_sender;
-            worker.connection_generation += 1;
+            worker.connection_generation = generation;
             worker.update_last_heartbeat();
 
             false
         } else {
-            workers.insert(worker_id.clone(), connection);
+            workers.insert(
+                worker_id.clone(),
+                WorkerInfo { connection_generation: generation, ..connection },
+            );
 
             true
         };
@@ -702,6 +720,33 @@ impl WorkersPool {
                 None
             })
             .collect()
+    }
+
+    /// Disconnects every worker, other than a `Computing` one, whose last
+    /// heartbeat is older than `threshold`, and closes its stream by dropping
+    /// its message channel. A worker that is only stalled then sees its stream
+    /// end once it runs again and reconnects, rather than heartbeating on a
+    /// connection the pool no longer counts. `Computing` workers are the
+    /// caller's: their job is failed first. Returns the workers disconnected.
+    pub async fn disconnect_stale_workers(&self, threshold: chrono::Duration) -> Vec<WorkerId> {
+        let now = Utc::now();
+        let mut workers = self.workers.write().await;
+        let mut disconnected = Vec::new();
+        for (worker_id, w) in workers.iter_mut() {
+            if matches!(w.state, WorkerState::Disconnected | WorkerState::Computing(_))
+                || now.signed_duration_since(w.last_heartbeat) < threshold
+            {
+                continue;
+            }
+            w.state = WorkerState::Disconnected;
+            w.msg_sender = Box::new(ClosedSender);
+            disconnected.push(worker_id.clone());
+        }
+        drop(workers);
+        for worker_id in &disconnected {
+            self.log_disconnected(worker_id).await;
+        }
+        disconnected
     }
 
     /// Sends a message to a specific worker.
@@ -1245,6 +1290,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_disconnect_stale_workers_closes_stream() {
+        use crate::coordinator_grpc::GrpcMessageSender;
+        use tokio::sync::mpsc::{error::TryRecvError, unbounded_channel};
+
+        let pool = WorkersPool::new();
+        let (tx, mut rx) = unbounded_channel();
+        let ready = WorkerId::from("ready".to_string());
+        pool.register_worker(
+            ready.clone(),
+            1u32,
+            Box::new(GrpcMessageSender::new(tx)),
+            WorkerState::Ready,
+        )
+        .await
+        .unwrap();
+        let (fresh, _) = register_test_worker(&pool, "fresh").await;
+        let (computing, _) = register_test_worker(&pool, "computing").await;
+        let state = WorkerState::Computing((JobId::new(), JobPhase::Contributions));
+        pool.mark_worker_with_state(&computing, state).await.unwrap();
+        let old = Utc::now() - chrono::Duration::seconds(100);
+        pool.set_last_heartbeat(&ready, old).await.unwrap();
+        pool.set_last_heartbeat(&computing, old).await.unwrap();
+
+        let disconnected = pool.disconnect_stale_workers(chrono::Duration::seconds(90)).await;
+
+        assert_eq!(disconnected, vec![ready.clone()]);
+        assert_eq!(pool.worker_state(&ready).await, Some(WorkerState::Disconnected));
+        // Its channel's only sender is gone, which ends the worker's stream
+        assert!(matches!(rx.try_recv(), Err(TryRecvError::Disconnected)));
+        assert_eq!(pool.worker_state(&fresh).await, Some(WorkerState::Idle));
+        assert!(matches!(pool.worker_state(&computing).await, Some(WorkerState::Computing(_))));
+    }
+
+    #[tokio::test]
     async fn test_disconnect_if_generation_stale() {
         let pool = WorkersPool::new();
         let (w1, _) = register_test_worker(&pool, "w1").await;
@@ -1259,6 +1338,23 @@ mod tests {
         // Stale guard with gen 0 should be a no-op
         pool.disconnect_worker_if_generation(&w1, 0).await.unwrap();
         assert_eq!(pool.worker_state(&w1).await, Some(WorkerState::Idle));
+    }
+
+    #[tokio::test]
+    async fn test_disconnect_if_generation_stale_after_unregister() {
+        let pool = WorkersPool::new();
+        let (w1, _) = register_test_worker(&pool, "w1").await;
+        let old = pool.connection_generation(&w1).await.unwrap();
+
+        // Removed (stuck-recovery sweep), then registered again as a new entry
+        pool.unregister_worker(&w1).await.unwrap();
+        let (sender, _) = MockMessageSender::new();
+        pool.register_worker(w1.clone(), 1u32, Box::new(sender), WorkerState::Ready).await.unwrap();
+        assert_ne!(pool.connection_generation(&w1).await, Some(old));
+
+        // The old connection's guard must not disconnect the new one
+        pool.disconnect_worker_if_generation(&w1, old).await.unwrap();
+        assert_eq!(pool.worker_state(&w1).await, Some(WorkerState::Ready));
     }
 
     #[tokio::test]
