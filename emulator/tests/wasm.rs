@@ -220,6 +220,53 @@ fn memory_copy_overlapping_forward_and_backward() {
 }
 
 #[test]
+fn memory_fill_and_copy_run_on_the_dma_precompiles() {
+    // Fill 256 regions, region i with byte i (every entry of the memset table, at odd lengths and
+    // alignments), copy the whole area elsewhere and fold the copy into a checksum.
+    let wat = r#"(module
+      (import "wasi_snapshot_preview1" "fd_write"
+        (func $fd_write (param i32 i32 i32 i32) (result i32)))
+      (memory 1)
+      (func (export "_start")
+        (local $i i32) (local $acc i64)
+        (loop $fill
+          (memory.fill
+            (i32.add (i32.const 1024)
+              (i32.add (i32.mul (local.get $i) (i32.const 16)) (i32.rem_u (local.get $i) (i32.const 7))))
+            (local.get $i)
+            (i32.add (i32.const 1) (i32.rem_u (local.get $i) (i32.const 9))))
+          (local.set $i (i32.add (local.get $i) (i32.const 1)))
+          (br_if $fill (i32.lt_u (local.get $i) (i32.const 256))))
+        (memory.copy (i32.const 8192) (i32.const 1024) (i32.const 4096))
+        (local.set $i (i32.const 0))
+        (loop $sum
+          (local.set $acc
+            (i64.add (local.get $acc)
+              (i64.mul (i64.load8_u (i32.add (i32.const 8192) (local.get $i)))
+                       (i64.extend_i32_u (i32.add (local.get $i) (i32.const 1))))))
+          (local.set $i (i32.add (local.get $i) (i32.const 1)))
+          (br_if $sum (i32.lt_u (local.get $i) (i32.const 4096))))
+        (i64.store (i32.const 16) (local.get $acc))
+        (i32.store (i32.const 0) (i32.const 16))
+        (i32.store (i32.const 4) (i32.const 8))
+        (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#;
+    let wasm = wat::parse_str(wat).unwrap();
+
+    let mut mem = [0u8; 4096];
+    for i in 0..256usize {
+        let at = i * 16 + i % 7;
+        mem[at..at + 1 + i % 9].fill(i as u8);
+    }
+    let expected =
+        mem.iter().enumerate().fold(0u64, |acc, (k, &b)| acc + b as u64 * (k as u64 + 1));
+    assert_eq!(out_u64(&run(&wasm, &[])), expected);
+
+    let rom = wasm2rom(&wasm).unwrap();
+    let uses = |op: &str| rom.insts.values().any(|b| b.i.op_str == op);
+    assert!(uses("dma_xmemset") && uses("dma_memcpy"), "the DMA precompiles are not used");
+}
+
+#[test]
 fn branch_to_function_body_returns() {
     // `br 1` from inside a block targets the function itself (Go emits this shape).
     let body = r#"(block (br 1 (i64.const 77))) (i64.const 1)"#;

@@ -14,7 +14,7 @@ use super::emit::{Code, Fixup, LabelId};
 use super::layout::*;
 use super::module::{FuncSig, WasmModule};
 use wasmparser::{BlockType, Operator};
-use zisk_core::ZiskInstBuilder;
+use zisk_core::{ZiskInstBuilder, EXTRA_PARAMS_ADDR};
 
 /// Worst-case operand-stack depth a function may reach.  Frames reserve this many operand slots so
 /// callee frame placement is a compile-time constant (see `frame_size`).
@@ -741,6 +741,10 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.bind(done);
     }
 
+    /// `memory.fill` on the DMA `memset` precompile, as a RISC-V guest's `memset` does.  The
+    /// precompile takes the byte as a constant: zero, by far the common case, is one inline
+    /// instruction, and any other byte calls its entry of the module's table (see
+    /// [`build_memset_table`]).
     fn memory_fill(&mut self) {
         // stack: dst, val, len
         let dst = self.slot(self.depth - 3);
@@ -751,31 +755,26 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.load_slot_to_reg(REG_T1, val);
         self.compute_addr(REG_T0, dst, 0);
         self.check_bounds(REG_T0, Len::Reg(REG_T2), REG_T3);
-        // Replicate the byte into all eight lanes for the word loop.
         self.code.alu_ri("and", REG_T1, REG_T1, 0xFF);
-        self.code.alu_ri("mul", REG_T1, REG_T1, 0x0101_0101_0101_0101);
-        let words = self.code.new_label();
-        let bytes = self.code.new_label();
+        let nonzero = self.code.new_label();
         let end = self.code.new_label();
-        self.code.bind(words);
-        self.code.cmp_imm_branch("ltu", REG_T2, 8, bytes, true); // len < 8 -> byte tail
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T1, 8);
-        self.code.alu_ri("add", REG_T0, REG_T0, 8);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 8);
-        self.code.jump(words);
-        self.code.bind(bytes);
-        self.code.cmp_imm_branch("eq", REG_T2, 0, end, true);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T1, 1);
-        self.code.alu_ri("add", REG_T0, REG_T0, 1);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 1);
-        self.code.jump(bytes);
+        self.code.cmp_imm_branch("eq", REG_T1, 0, nonzero, false);
+        self.code.dma_xmemset(REG_T0, REG_T2, 0);
+        self.code.jump(end);
+        // Entry `byte` of the table is MEMSET_TABLE_ENTRY instructions in.
+        self.code.bind(nonzero);
+        self.code.load_func_addr_to_reg(REG_T3, self.module.func_count());
+        self.code.alu_ri("mul", REG_T1, REG_T1, 4 * MEMSET_TABLE_ENTRY as i64);
+        self.code.alu_rr("add", REG_T3, REG_T3, REG_T1);
+        self.code.call_reg(REG_T3);
+        self.code.uses_memset_table = true;
         self.code.bind(end);
         self.depth -= 3;
     }
 
-    /// `memory.copy` with memmove semantics: copies forward unless the destination starts inside
-    /// the source range, in which case it copies backward from the end.  Both directions move
-    /// whole words while at least 8 bytes remain.
+    /// `memory.copy` on the DMA `memcpy` precompile, as a RISC-V guest's `memmove` does: the
+    /// precompile has `memmove` semantics, so the ranges may overlap either way.  The length
+    /// goes through `EXTRA_PARAMS_ADDR`, where the precompile reads it.
     fn memory_copy(&mut self) {
         // stack: dst, src, len
         let dst = self.slot(self.depth - 3);
@@ -787,59 +786,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.compute_addr(REG_T0, dst, 0);
         self.check_bounds(REG_T1, Len::Reg(REG_T2), REG_T3);
         self.check_bounds(REG_T0, Len::Reg(REG_T2), REG_T3);
-        let forward = self.code.new_label();
-        let backward = self.code.new_label();
-        let end = self.code.new_label();
-        // dst <= src: forward is always safe.  Otherwise dst > src and forward is only safe when
-        // dst >= src + len, i.e. the ranges do not overlap.
-        self.code.cmp_reg_branch("leu", REG_T0, REG_T1, forward, true);
-        self.code.alu_rr("add", REG_T3, REG_T1, REG_T2); // src end
-        self.code.cmp_reg_branch("ltu", REG_T0, REG_T3, backward, true); // dst < src+len
-
-        // -- forward ------------------------------------------------------
-        self.code.bind(forward);
-        let fwords = self.code.new_label();
-        let fbytes = self.code.new_label();
-        self.code.bind(fwords);
-        self.code.cmp_imm_branch("ltu", REG_T2, 8, fbytes, true);
-        self.code.load_mem_to_reg("copyb", REG_T3, REG_T1, 0, 8);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T3, 8);
-        self.code.alu_ri("add", REG_T0, REG_T0, 8);
-        self.code.alu_ri("add", REG_T1, REG_T1, 8);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 8);
-        self.code.jump(fwords);
-        self.code.bind(fbytes);
-        self.code.cmp_imm_branch("eq", REG_T2, 0, end, true);
-        self.code.load_mem_to_reg("copyb", REG_T3, REG_T1, 0, 1);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T3, 1);
-        self.code.alu_ri("add", REG_T0, REG_T0, 1);
-        self.code.alu_ri("add", REG_T1, REG_T1, 1);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 1);
-        self.code.jump(fbytes);
-
-        // -- backward (pointers moved to the end, pre-decremented) ------------
-        self.code.bind(backward);
-        self.code.alu_rr("add", REG_T0, REG_T0, REG_T2);
-        self.code.alu_rr("add", REG_T1, REG_T1, REG_T2);
-        let bwords = self.code.new_label();
-        let bbytes = self.code.new_label();
-        self.code.bind(bwords);
-        self.code.cmp_imm_branch("ltu", REG_T2, 8, bbytes, true);
-        self.code.alu_ri("sub", REG_T0, REG_T0, 8);
-        self.code.alu_ri("sub", REG_T1, REG_T1, 8);
-        self.code.load_mem_to_reg("copyb", REG_T3, REG_T1, 0, 8);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T3, 8);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 8);
-        self.code.jump(bwords);
-        self.code.bind(bbytes);
-        self.code.cmp_imm_branch("eq", REG_T2, 0, end, true);
-        self.code.alu_ri("sub", REG_T0, REG_T0, 1);
-        self.code.alu_ri("sub", REG_T1, REG_T1, 1);
-        self.code.load_mem_to_reg("copyb", REG_T3, REG_T1, 0, 1);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T3, 1);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 1);
-        self.code.jump(bbytes);
-        self.code.bind(end);
+        self.code.store_reg_to_abs(EXTRA_PARAMS_ADDR, REG_T2, 8);
+        self.code.dma_memcpy(REG_T0, REG_T1);
         self.depth -= 3;
     }
 
@@ -1104,4 +1052,22 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         }
         Ok(())
     }
+}
+
+/// Instructions per entry of the `memory.fill` table.
+pub(crate) const MEMSET_TABLE_ENTRY: u64 = 2;
+
+/// The module's `memory.fill` table, laid out right after its functions (at function index
+/// `func_count`): entry `b` fills `REG_T2` bytes at `REG_T0` with byte `b` and returns through
+/// `REG_RA`.  The DMA `memset` precompile takes its byte as a constant, so a byte known only at
+/// run time selects its entry; RISC-V guests' `memset` uses the same table (`ziskos`'s
+/// `memset.s`).
+pub(crate) fn build_memset_table() -> Code {
+    let mut code = Code::new();
+    for byte in 0..=255u8 {
+        code.dma_xmemset(REG_T0, REG_T2, byte);
+        code.ret_reg(REG_RA);
+    }
+    debug_assert_eq!(code.len() as u64, 256 * MEMSET_TABLE_ENTRY);
+    code
 }
