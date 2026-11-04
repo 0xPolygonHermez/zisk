@@ -925,12 +925,12 @@ impl WorkersPool {
     /// `terminate_job`'s order so the two paths cannot deadlock against
     /// each other.
     ///
-    /// On success returns the IDs of workers that were transitioned to
-    /// `SettingUp` (callers feed them into `setup_pending`).
+    /// On success returns the workers that were transitioned to `SettingUp`
+    /// (callers feed them into `setup_pending`), each with the state it left.
     pub async fn try_reserve_all_for_setup<V>(
         &self,
         pending_recovery: &RwLock<HashMap<WorkerId, V>>,
-    ) -> CoordinatorResult<Vec<WorkerId>> {
+    ) -> CoordinatorResult<Vec<(WorkerId, WorkerState)>> {
         let mut workers = self.workers.write().await;
         if workers.values().any(|w| matches!(w.state, WorkerState::Computing(_))) {
             return Err(CoordinatorError::InvalidRequest(
@@ -946,8 +946,8 @@ impl WorkersPool {
         for (wid, info) in workers.iter_mut() {
             match info.state {
                 WorkerState::Idle | WorkerState::Ready | WorkerState::SettingUp => {
-                    info.state = WorkerState::SettingUp;
-                    reserved.push(wid.clone());
+                    let left = std::mem::replace(&mut info.state, WorkerState::SettingUp);
+                    reserved.push((wid.clone(), left));
                 }
                 // Disconnected: can't reach the worker; it'll re-fetch all
                 // known setups on reconnect via `read_all_setup_dtos`.

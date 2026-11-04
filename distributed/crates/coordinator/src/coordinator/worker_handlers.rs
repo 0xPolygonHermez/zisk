@@ -45,6 +45,11 @@ impl Coordinator {
                 "[Setup] Worker {} completed setup for job_id {} hash_id {}",
                 ack.worker_id, ack.job_id, ack.hash_id
             );
+        } else if ack.not_cached {
+            info!(
+                "[Setup] Worker {} has no setup of hash_id {} cached for its proving key (job_id {})",
+                ack.worker_id, ack.hash_id, ack.job_id
+            );
         } else {
             error!(
                 "[Setup] Worker {} failed setup for job_id {} hash_id {}: {}",
@@ -68,10 +73,23 @@ impl Coordinator {
         // lingering pending_recovery entry is stale (WRC will never arrive).
         // A failure proves the opposite — no artifacts for this program — so the
         // worker goes back to `Idle` (out of dispatch, still back-fillable) and
-        // keeps any pending_recovery entry.
+        // keeps any pending_recovery entry. A refused cached-only setup changed
+        // nothing on the worker, so it goes back to the state it left.
         let worker_id = ack.worker_id.clone();
+        let state_before = match ack.not_cached {
+            true => self
+                .setup_pending
+                .read()
+                .await
+                .get(&job_id)
+                .and_then(|state| state.state_before.get(&worker_id).cloned()),
+            false => None,
+        };
         if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp) {
-            if ack.success {
+            if let Some(state) = state_before {
+                info!("[Setup] Worker {} back to {:?}", ack.worker_id, state);
+                let _ = self.workers_pool.mark_worker_with_state(&worker_id, state).await;
+            } else if ack.success {
                 if self.pending_recovery.write().await.remove(&worker_id).is_some() {
                     warn!(
                         "[Recovery] Dropped stale pending_recovery for {} on SetupProgramAck",
@@ -106,8 +124,9 @@ impl Coordinator {
                     let key =
                         SetupKey::new(state.hash_id.clone(), state.with_hints, state.emulator_only);
                     let program_name = state.program_name.clone();
+                    let cached_only = state.cached_only;
                     pending.remove(&job_id);
-                    Some((vks, key, program_name))
+                    Some((vks, key, program_name, cached_only))
                 } else {
                     None
                 }
@@ -117,9 +136,19 @@ impl Coordinator {
             }
         };
 
-        if let Some((vks, key, program_name)) = outcome {
-            self.finalize_setup(&job_id, vks, key, program_name, /* backfill */ true).await;
-            info!("[Setup] All workers acknowledged setup for job_id {}", ack.job_id);
+        if let Some((vks, key, program_name, cached_only)) = outcome {
+            if cached_only && vks.is_empty() {
+                // Expected after a new proving key or an emptied cache: not a VK mismatch.
+                info!(
+                    "[Setup] No worker has hash_id {} cached for its proving key (job_id {})",
+                    key.hash_id, ack.job_id
+                );
+                let reason = "no worker has the program's setup cached for its proving key";
+                self.fire_job_event(&job_id, CoordinatorJobEvent::Failed(reason.into())).await;
+            } else {
+                self.finalize_setup(&job_id, vks, key, program_name, /* backfill */ true).await;
+                info!("[Setup] All workers acknowledged setup for job_id {}", ack.job_id);
+            }
         }
 
         Ok(())
