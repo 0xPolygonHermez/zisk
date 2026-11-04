@@ -584,47 +584,21 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.store_reg_to_slot(a, REG_T0);
     }
 
-    /// Rotate left/right for i32 (`is32`) or i64.  Implemented with shifts and an `or`.
+    /// Rotate left/right for i32 (`is32`) or i64: one ZisK `rol`/`ror` (`_w` for i32).  The
+    /// operation takes the count modulo the width itself, and the `_w` forms rotate the low 32
+    /// bits and sign-extend the result, which is the canonical i32 form.
     fn rotate(&mut self, left: bool, is32: bool) {
-        let width: i64 = if is32 { 32 } else { 64 };
-        let mask: i64 = if is32 { 0x1f } else { 0x3f };
-        let (shl, shr) = if is32 { ("sll_w", "srl_w") } else { ("sll", "srl") };
+        let op = match (left, is32) {
+            (true, false) => "rol",
+            (false, false) => "ror",
+            (true, true) => "rol_w",
+            (false, true) => "ror_w",
+        };
         let a = self.slot(self.depth - 2);
         let b = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a); // value
-        self.code.load_slot_to_reg(REG_T1, b); // count
-        self.code.alu_ri("and", REG_T1, REG_T1, mask); // n
-        if is32 {
-            // value must be treated as unsigned 32-bit for the right half.
-            self.code.alu_ri("and", REG_T0, REG_T0, 0xFFFF_FFFF);
-        }
-        // T2 = (width - n) & mask, so the complementary shift count is always in range
-        // (handles rotate-by-zero, where width-n would otherwise equal the bit width).
-        self.code.load_imm_to_reg(REG_T3, width as u64);
-        self.code.alu_rr("sub", REG_T2, REG_T3, REG_T1);
-        self.code.alu_ri("and", REG_T2, REG_T2, mask);
-        if left {
-            // (v << n) | (v >> (width-n))
-            self.code.alu_rr(shl, REG_T3, REG_T0, REG_T1);
-            self.code.alu_rr(shr, REG_T0, REG_T0, REG_T2);
-            self.code.alu_rr("or", REG_T0, REG_T3, REG_T0);
-        } else {
-            // (v >> n) | (v << (width-n))
-            self.code.alu_rr(shr, REG_T3, REG_T0, REG_T1);
-            self.code.alu_rr(shl, REG_T0, REG_T0, REG_T2);
-            self.code.alu_rr("or", REG_T0, REG_T3, REG_T0);
-        }
-        if is32 {
-            // re-canonicalize to sign-extended 32-bit
-            let mut zib = ZiskInstBuilder::new(0);
-            zib.src_a("imm", 0, false);
-            zib.src_b("reg", REG_T0, false);
-            zib.op("signextend_w").unwrap();
-            zib.store("reg", REG_T0 as i64, false, false);
-            zib.j(4, 4);
-
-            self.code.push_raw(zib, Fixup::None);
-        }
+        self.code.load_slot_to_reg(REG_T0, a);
+        self.code.load_slot_to_reg(REG_T1, b);
+        self.code.alu_rr(op, REG_T0, REG_T0, REG_T1);
         self.code.store_reg_to_slot(a, REG_T0);
         self.depth -= 1;
     }
