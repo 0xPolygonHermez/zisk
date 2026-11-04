@@ -278,6 +278,10 @@ when submitted with `InputKind::Inline` and `is_last: false` on the initial chun
 **Error cases:**
 - Calling `PushJobInput` on a job not in `WaitingForInput` returns an error
 - If the client stream closes before `is_last: true`, the job transitions to `Failed`
+- While the job still expects input or hints from the client (an open `PushJobInput` /
+  `PushJobHintsInput` stream, or a streamed input or hints source not yet ended), it transitions
+  to `Failed` if none arrives for `input_idle_timeout_seconds` (coordinator config, default 60 s;
+  `0` disables it)
 
 ```
 stream PushJobInputRequest → ()

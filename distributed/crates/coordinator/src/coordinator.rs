@@ -44,7 +44,7 @@ use crate::{
     coordinator_errors::{CoordinatorError, CoordinatorResult},
     hooks,
     job_events::{CoordinatorExecutionStats, CoordinatorJobEvent},
-    WorkersPool,
+    InputActivity, WorkersPool,
 };
 use chrono::{DateTime, Utc};
 use std::{
@@ -188,6 +188,10 @@ pub struct Coordinator {
     #[allow(clippy::type_complexity)]
     grpc_hints_senders: Arc<RwLock<HashMap<JobId, std::sync::mpsc::Sender<Option<Vec<u8>>>>>>,
 
+    /// Per-job record of the input and hints a job's client still has to stream, and when it
+    /// last sent any; see [`InputActivity`]. Dropped when the job ends.
+    input_activity: RwLock<HashMap<JobId, Arc<InputActivity>>>,
+
     /// Workers parked `SettingUp` while we wait for `WorkerRecoveryComplete`
     /// to confirm they've drained the cancelled job. Decoupled from
     /// `WorkerState` so the intent survives a stream drop + reconnect
@@ -322,6 +326,7 @@ impl Coordinator {
             recurser_setup_pending: RwLock::new(HashMap::new()),
             active_recurser_setups: RwLock::new(HashSet::new()),
             grpc_hints_senders: Arc::new(RwLock::new(HashMap::new())),
+            input_activity: RwLock::new(HashMap::new()),
             pending_recovery: RwLock::new(HashMap::new()),
             setups_sent: RwLock::new(HashMap::new()),
             worker_telemetry: RwLock::new(HashMap::new()),
@@ -396,6 +401,7 @@ impl Coordinator {
             }
             // Dropping the sender signals EOF to any running gRPC hints relay.
             self.grpc_hints_senders.write().await.remove(job_id);
+            self.input_activity.write().await.remove(job_id);
         } else if let Some(chan) = self.job_events.read().await.get(job_id) {
             let _ = chan.tx.send(event);
         }
@@ -1763,6 +1769,7 @@ impl Coordinator {
     /// and cleans up stale disconnected workers.
     pub async fn run_monitor_sweep(&self) {
         self.check_phase_timeouts().await;
+        self.check_input_idle().await;
         self.check_stale_heartbeats().await;
         self.cleanup_stuck_recovery_workers().await;
         self.cleanup_stale_disconnected_workers().await;
@@ -1813,6 +1820,73 @@ impl Coordinator {
             warn!("{}", reason);
             if let Err(e) = self.fail_job(&job_id, &reason).await {
                 error!("Failed to abort timed-out job {}: {}", job_id, e);
+            }
+        }
+    }
+
+    /// The input and hints record of `job_id`, made on first use: whoever brings the job data
+    /// from its client marks what it expects and every chunk on it.
+    pub async fn input_activity(&self, job_id: &JobId) -> Arc<InputActivity> {
+        if let Some(activity) = self.input_activity.read().await.get(job_id) {
+            return Arc::clone(activity);
+        }
+        Arc::clone(self.input_activity.write().await.entry(job_id.clone()).or_default())
+    }
+
+    /// Fails the jobs in phase 1 that still expect input or hints from their client and have
+    /// received none for `input_idle_timeout_seconds`.
+    pub async fn check_input_idle(&self) {
+        self.check_input_idle_at(Instant::now()).await;
+    }
+
+    /// [`Self::check_input_idle`] as of `now`.
+    pub(crate) async fn check_input_idle_at(&self, now: Instant) {
+        let timeout_secs = self.config.coordinator.input_idle_timeout_seconds;
+        if timeout_secs == 0 {
+            return;
+        }
+        let entries: Vec<_> = {
+            let activity = self.input_activity.read().await;
+            activity.iter().map(|(k, v)| (k.clone(), Arc::clone(v))).collect()
+        };
+
+        let mut idle: Vec<(JobId, String)> = Vec::new();
+        let mut gone: Vec<JobId> = Vec::new();
+        for (job_id, activity) in entries {
+            let Some((what, idle_for)) = activity.idle_at(now) else {
+                continue;
+            };
+            if idle_for < Duration::from_secs(timeout_secs) {
+                continue;
+            }
+            let Some(job_lock) = self.jobs.read().await.get(&job_id).cloned() else {
+                // A record made for a job that is gone.
+                gone.push(job_id);
+                continue;
+            };
+            let job = job_lock.read().await;
+            if job.state == JobState::Running(JobPhase::Contributions) {
+                let reason = format!(
+                    "[Monitor] No {} received for job {} in {}s (input_idle_timeout_seconds = {})",
+                    what,
+                    job.job_id,
+                    idle_for.as_secs(),
+                    timeout_secs
+                );
+                idle.push((job_id.clone(), reason));
+            }
+        }
+
+        if !gone.is_empty() {
+            let mut activity = self.input_activity.write().await;
+            for job_id in &gone {
+                activity.remove(job_id);
+            }
+        }
+        for (job_id, reason) in idle {
+            warn!("{}", reason);
+            if let Err(e) = self.fail_job(&job_id, &reason).await {
+                error!("Failed to abort idle job {}: {}", job_id, e);
             }
         }
     }
@@ -1992,6 +2066,12 @@ impl Coordinator {
             let mut senders = self.grpc_hints_senders.write().await;
             for id in &expired {
                 senders.remove(id);
+            }
+        }
+        {
+            let mut activity = self.input_activity.write().await;
+            for id in &expired {
+                activity.remove(id);
             }
         }
         {
@@ -6065,5 +6145,140 @@ mod tests {
         let err =
             coordinator.resolve_capacity(&capacity_request(None, Some(12))).await.unwrap_err();
         assert!(matches!(err, CoordinatorError::WorkersSettingUp), "got {err:?}");
+    }
+
+    /// A job dispatched with these input and hints modes (and a seed), as `launch_proof` does.
+    async fn dispatched_job(
+        inputs_mode: InputsModeDto,
+        hints_mode: HintsModeDto,
+        config_overrides: impl FnOnce(&mut Config),
+    ) -> (Arc<Coordinator>, JobId) {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, config_overrides).await;
+        let coordinator = Arc::new(coordinator);
+        coordinator.alloc_job_events(&job_id).await;
+        let job_entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        {
+            let mut job = job_entry.write().await;
+            job.random_seed = Some(CLIENT_RANDOM_SEED);
+            job.inputs_mode = inputs_mode;
+            job.hints_mode = hints_mode;
+        }
+        let worker_ids: Vec<_> = workers.iter().map(|(id, _)| id.clone()).collect();
+        let job = job_entry.read().await;
+        coordinator.dispatch_contributions_messages(&job, &worker_ids).await.unwrap();
+        drop(job);
+        (coordinator, job_id)
+    }
+
+    async fn job_state(coordinator: &Coordinator, job_id: &JobId) -> JobState {
+        coordinator.jobs.read().await.get(job_id).unwrap().read().await.state.clone()
+    }
+
+    fn pushed_input() -> InputsModeDto {
+        InputsModeDto::InputsStream("grpc://push".to_string())
+    }
+
+    const RUNNING: JobState = JobState::Running(JobPhase::Contributions);
+    const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+
+    /// A job whose client never sends the input it streams is failed after the idle timeout,
+    /// long before the phase-1 one, and its record goes with it.
+    #[tokio::test]
+    async fn a_job_whose_streamed_input_stops_is_failed_after_the_idle_timeout() {
+        let (coordinator, job_id) =
+            dispatched_job(pushed_input(), HintsModeDto::HintsNone, |_| {}).await;
+
+        coordinator.check_input_idle_at(Instant::now() + IDLE_TIMEOUT / 2).await;
+        assert_eq!(job_state(&coordinator, &job_id).await, RUNNING);
+
+        coordinator
+            .check_input_idle_at(Instant::now() + IDLE_TIMEOUT + Duration::from_secs(1))
+            .await;
+        assert_eq!(job_state(&coordinator, &job_id).await, JobState::Failed);
+        let terminal = coordinator.get_terminal_event(&job_id).await;
+        assert!(
+            matches!(terminal, Some(CoordinatorJobEvent::Failed(ref reason)) if reason.contains("No input received")),
+            "{terminal:?}"
+        );
+        assert!(coordinator.input_activity.read().await.is_empty(), "the record goes with the job");
+    }
+
+    /// Every chunk restarts the idle clock.
+    #[tokio::test]
+    async fn every_chunk_restarts_the_idle_clock() {
+        let (coordinator, job_id) = dispatched_job(pushed_input(), HintsModeDto::HintsNone, |c| {
+            c.coordinator.input_idle_timeout_seconds = 1
+        })
+        .await;
+        let activity = coordinator.input_activity(&job_id).await;
+
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        activity.progress();
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        // 1.2 s since the job started waiting, 0.6 s since its last chunk.
+        coordinator.check_input_idle_at(Instant::now()).await;
+        assert_eq!(job_state(&coordinator, &job_id).await, RUNNING);
+
+        coordinator.check_input_idle_at(Instant::now() + Duration::from_secs(1)).await;
+        assert_eq!(job_state(&coordinator, &job_id).await, JobState::Failed);
+    }
+
+    /// Once its stream has ended a job expects nothing more from its client.
+    #[tokio::test]
+    async fn a_job_whose_stream_has_ended_is_never_idle() {
+        let (coordinator, job_id) =
+            dispatched_job(pushed_input(), HintsModeDto::HintsNone, |_| {}).await;
+        coordinator.input_activity(&job_id).await.expect_input(false);
+
+        coordinator.check_input_idle_at(Instant::now() + 60 * IDLE_TIMEOUT).await;
+        assert_eq!(job_state(&coordinator, &job_id).await, RUNNING);
+    }
+
+    #[tokio::test]
+    async fn an_input_idle_timeout_of_zero_is_off() {
+        let (coordinator, job_id) = dispatched_job(pushed_input(), HintsModeDto::HintsNone, |c| {
+            c.coordinator.input_idle_timeout_seconds = 0
+        })
+        .await;
+
+        coordinator.check_input_idle_at(Instant::now() + 60 * IDLE_TIMEOUT).await;
+        assert_eq!(job_state(&coordinator, &job_id).await, RUNNING);
+    }
+
+    /// Input sent inline leaves nothing to wait for, until a `PushJobInput` stream appends to it:
+    /// the job then waits for that stream while it is open.
+    #[tokio::test]
+    async fn an_inline_input_job_waits_only_while_a_push_is_open() {
+        let inline = InputsModeDto::InputsData(vec![0u8; 8].into());
+        let (coordinator, job_id) = dispatched_job(inline, HintsModeDto::HintsNone, |_| {}).await;
+        assert!(coordinator.input_activity.read().await.is_empty());
+
+        coordinator.check_input_idle_at(Instant::now() + 60 * IDLE_TIMEOUT).await;
+        assert_eq!(job_state(&coordinator, &job_id).await, RUNNING);
+
+        coordinator.input_activity(&job_id).await.expect_input(true);
+        coordinator
+            .check_input_idle_at(Instant::now() + IDLE_TIMEOUT + Duration::from_secs(1))
+            .await;
+        assert_eq!(job_state(&coordinator, &job_id).await, JobState::Failed);
+    }
+
+    /// Streamed hints are waited for the same way.
+    #[tokio::test]
+    async fn a_job_whose_streamed_hints_stop_is_failed_after_the_idle_timeout() {
+        let inline = InputsModeDto::InputsData(vec![0u8; 8].into());
+        let hints = HintsModeDto::HintsStream("grpc://push".to_string());
+        let (coordinator, job_id) = dispatched_job(inline, hints, |_| {}).await;
+
+        coordinator
+            .check_input_idle_at(Instant::now() + IDLE_TIMEOUT + Duration::from_secs(1))
+            .await;
+        assert_eq!(job_state(&coordinator, &job_id).await, JobState::Failed);
+        let terminal = coordinator.get_terminal_event(&job_id).await;
+        assert!(
+            matches!(terminal, Some(CoordinatorJobEvent::Failed(ref reason)) if reason.contains("No hints received")),
+            "{terminal:?}"
+        );
     }
 }

@@ -16,6 +16,7 @@ mod coordinator_errors;
 mod coordinator_grpc;
 mod hints_relay;
 mod hooks;
+mod input_activity;
 /// Job lifecycle events emitted by the coordinator.
 pub mod job_events;
 mod metrics;
@@ -30,5 +31,6 @@ pub use coordinator::*;
 pub use coordinator_errors::*;
 pub use coordinator_grpc::*;
 pub use hints_relay::*;
+pub use input_activity::*;
 pub use shutdown::*;
 pub use workers_pool::*;
