@@ -68,7 +68,8 @@ pub fn wasm_function_symbols(bytes: &[u8]) -> Result<Vec<WasmFunctionSymbol>, Bo
 }
 
 fn transpile(bytes: &[u8]) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn Error>> {
-    let module = parse_module(bytes)?;
+    let mut module = parse_module(bytes)?;
+    module.use_native_multi3();
     reject_unsupported_layout(&module)?;
 
     // Resolve the program entry point.
@@ -168,9 +169,13 @@ fn transpile(bytes: &[u8]) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn
         let func_index = (n_imports + d) as u32;
         codes.push(lowering::lower_function(&module, func_index)?);
     }
+    // The `memory.fill` table goes right after the functions, as function index `n_funcs`.
+    if codes.iter().any(|code| code.uses_memset_table) {
+        codes.push(lowering::build_memset_table());
+    }
 
     // -- lay out functions in the program ROM area ---------------------------
-    let mut func_addr = vec![0u64; n_funcs];
+    let mut func_addr = vec![0u64; codes.len()];
     let mut addr = ROM_ADDR;
     for (i, code) in codes.iter().enumerate() {
         func_addr[i] = addr;
@@ -222,7 +227,11 @@ fn transpile(bytes: &[u8]) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn
         .iter()
         .enumerate()
         .map(|(i, code)| WasmFunctionSymbol {
-            name: function_name(&module, i as u32),
+            name: if i < n_funcs {
+                function_name(&module, i as u32)
+            } else {
+                "wasm memory.fill table".to_string()
+            },
             address: func_addr[i],
             size: 4 * code.len() as u64,
         })

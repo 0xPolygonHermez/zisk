@@ -14,7 +14,7 @@ use super::emit::{Code, Fixup, LabelId};
 use super::layout::*;
 use super::module::{FuncSig, WasmModule};
 use wasmparser::{BlockType, Operator};
-use zisk_core::ZiskInstBuilder;
+use zisk_core::{ZiskInstBuilder, EXTRA_PARAMS_ADDR};
 
 /// Worst-case operand-stack depth a function may reach.  Frames reserve this many operand slots so
 /// callee frame placement is a compile-time constant (see `frame_size`).
@@ -300,6 +300,11 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             I64Add => self.binop("add", false),
             I64Sub => self.binop("sub", false),
             I64Mul => self.binop("mul", false),
+            // wide arithmetic (128-bit values as two i64 halves, low half first)
+            I64MulWideU => self.mul_wide("muluh"),
+            I64MulWideS => self.mul_wide("mulh"),
+            I64Add128 => self.add_sub128(true),
+            I64Sub128 => self.add_sub128(false),
             I64And => self.binop("and", false),
             I64Or => self.binop("or", false),
             I64Xor => self.binop("xor", false),
@@ -480,6 +485,44 @@ impl<'a, 'b> FuncGen<'a, 'b> {
 
     // -- operator helpers ----------------------------------------------------
 
+    /// `i64.mul_wide_{u,s}`: [a, b] -> [low, high] of the 128-bit product, `high` from ZisK's
+    /// `muluh` (unsigned) or `mulh` (signed).
+    fn mul_wide(&mut self, high_op: &str) {
+        let a = self.slot(self.depth - 2);
+        let b = self.slot(self.depth - 1);
+        self.code.load_slot_to_reg(REG_T0, a);
+        self.code.load_slot_to_reg(REG_T1, b);
+        self.code.alu_rr("mul", REG_T2, REG_T0, REG_T1);
+        self.code.alu_rr(high_op, REG_T3, REG_T0, REG_T1);
+        self.code.store_reg_to_slot(a, REG_T2);
+        self.code.store_reg_to_slot(b, REG_T3);
+    }
+
+    /// `i64.add128` / `i64.sub128`: [a_lo, a_hi, b_lo, b_hi] -> [lo, hi], the carry (or borrow)
+    /// out of the low halves taken with `ltu`.
+    fn add_sub128(&mut self, add: bool) {
+        let a_lo = self.slot(self.depth - 4);
+        let a_hi = self.slot(self.depth - 3);
+        let b_lo = self.slot(self.depth - 2);
+        let b_hi = self.slot(self.depth - 1);
+        let op = if add { "add" } else { "sub" };
+        self.code.load_slot_to_reg(REG_T0, a_lo);
+        self.code.load_slot_to_reg(REG_T1, b_lo);
+        self.code.alu_rr(op, REG_T2, REG_T0, REG_T1);
+        if add {
+            self.code.alu_rr("ltu", REG_T3, REG_T2, REG_T0); // lo < a_lo: carry
+        } else {
+            self.code.alu_rr("ltu", REG_T3, REG_T0, REG_T1); // a_lo < b_lo: borrow
+        }
+        self.code.store_reg_to_slot(a_lo, REG_T2);
+        self.code.load_slot_to_reg(REG_T0, a_hi);
+        self.code.load_slot_to_reg(REG_T1, b_hi);
+        self.code.alu_rr(op, REG_T0, REG_T0, REG_T1);
+        self.code.alu_rr(op, REG_T0, REG_T0, REG_T3);
+        self.code.store_reg_to_slot(a_hi, REG_T0);
+        self.depth -= 2;
+    }
+
     fn binop(&mut self, op: &str, swap: bool) {
         let a = self.slot(self.depth - 2);
         let b = self.slot(self.depth - 1);
@@ -584,47 +627,21 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.store_reg_to_slot(a, REG_T0);
     }
 
-    /// Rotate left/right for i32 (`is32`) or i64.  Implemented with shifts and an `or`.
+    /// Rotate left/right for i32 (`is32`) or i64: one ZisK `rol`/`ror` (`_w` for i32).  The
+    /// operation takes the count modulo the width itself, and the `_w` forms rotate the low 32
+    /// bits and sign-extend the result, which is the canonical i32 form.
     fn rotate(&mut self, left: bool, is32: bool) {
-        let width: i64 = if is32 { 32 } else { 64 };
-        let mask: i64 = if is32 { 0x1f } else { 0x3f };
-        let (shl, shr) = if is32 { ("sll_w", "srl_w") } else { ("sll", "srl") };
+        let op = match (left, is32) {
+            (true, false) => "rol",
+            (false, false) => "ror",
+            (true, true) => "rol_w",
+            (false, true) => "ror_w",
+        };
         let a = self.slot(self.depth - 2);
         let b = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a); // value
-        self.code.load_slot_to_reg(REG_T1, b); // count
-        self.code.alu_ri("and", REG_T1, REG_T1, mask); // n
-        if is32 {
-            // value must be treated as unsigned 32-bit for the right half.
-            self.code.alu_ri("and", REG_T0, REG_T0, 0xFFFF_FFFF);
-        }
-        // T2 = (width - n) & mask, so the complementary shift count is always in range
-        // (handles rotate-by-zero, where width-n would otherwise equal the bit width).
-        self.code.load_imm_to_reg(REG_T3, width as u64);
-        self.code.alu_rr("sub", REG_T2, REG_T3, REG_T1);
-        self.code.alu_ri("and", REG_T2, REG_T2, mask);
-        if left {
-            // (v << n) | (v >> (width-n))
-            self.code.alu_rr(shl, REG_T3, REG_T0, REG_T1);
-            self.code.alu_rr(shr, REG_T0, REG_T0, REG_T2);
-            self.code.alu_rr("or", REG_T0, REG_T3, REG_T0);
-        } else {
-            // (v >> n) | (v << (width-n))
-            self.code.alu_rr(shr, REG_T3, REG_T0, REG_T1);
-            self.code.alu_rr(shl, REG_T0, REG_T0, REG_T2);
-            self.code.alu_rr("or", REG_T0, REG_T3, REG_T0);
-        }
-        if is32 {
-            // re-canonicalize to sign-extended 32-bit
-            let mut zib = ZiskInstBuilder::new(0);
-            zib.src_a("imm", 0, false);
-            zib.src_b("reg", REG_T0, false);
-            zib.op("signextend_w").unwrap();
-            zib.store("reg", REG_T0 as i64, false, false);
-            zib.j(4, 4);
-
-            self.code.push_raw(zib, Fixup::None);
-        }
+        self.code.load_slot_to_reg(REG_T0, a);
+        self.code.load_slot_to_reg(REG_T1, b);
+        self.code.alu_rr(op, REG_T0, REG_T0, REG_T1);
         self.code.store_reg_to_slot(a, REG_T0);
         self.depth -= 1;
     }
@@ -767,6 +784,10 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.bind(done);
     }
 
+    /// `memory.fill` on the DMA `memset` precompile, as a RISC-V guest's `memset` does.  The
+    /// precompile takes the byte as a constant: zero, by far the common case, is one inline
+    /// instruction, and any other byte calls its entry of the module's table (see
+    /// [`build_memset_table`]).
     fn memory_fill(&mut self) {
         // stack: dst, val, len
         let dst = self.slot(self.depth - 3);
@@ -777,31 +798,26 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.load_slot_to_reg(REG_T1, val);
         self.compute_addr(REG_T0, dst, 0);
         self.check_bounds(REG_T0, Len::Reg(REG_T2), REG_T3);
-        // Replicate the byte into all eight lanes for the word loop.
         self.code.alu_ri("and", REG_T1, REG_T1, 0xFF);
-        self.code.alu_ri("mul", REG_T1, REG_T1, 0x0101_0101_0101_0101);
-        let words = self.code.new_label();
-        let bytes = self.code.new_label();
+        let nonzero = self.code.new_label();
         let end = self.code.new_label();
-        self.code.bind(words);
-        self.code.cmp_imm_branch("ltu", REG_T2, 8, bytes, true); // len < 8 -> byte tail
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T1, 8);
-        self.code.alu_ri("add", REG_T0, REG_T0, 8);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 8);
-        self.code.jump(words);
-        self.code.bind(bytes);
-        self.code.cmp_imm_branch("eq", REG_T2, 0, end, true);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T1, 1);
-        self.code.alu_ri("add", REG_T0, REG_T0, 1);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 1);
-        self.code.jump(bytes);
+        self.code.cmp_imm_branch("eq", REG_T1, 0, nonzero, false);
+        self.code.dma_xmemset(REG_T0, REG_T2, 0);
+        self.code.jump(end);
+        // Entry `byte` of the table is MEMSET_TABLE_ENTRY instructions in.
+        self.code.bind(nonzero);
+        self.code.load_func_addr_to_reg(REG_T3, self.module.func_count());
+        self.code.alu_ri("mul", REG_T1, REG_T1, 4 * MEMSET_TABLE_ENTRY as i64);
+        self.code.alu_rr("add", REG_T3, REG_T3, REG_T1);
+        self.code.call_reg(REG_T3);
+        self.code.uses_memset_table = true;
         self.code.bind(end);
         self.depth -= 3;
     }
 
-    /// `memory.copy` with memmove semantics: copies forward unless the destination starts inside
-    /// the source range, in which case it copies backward from the end.  Both directions move
-    /// whole words while at least 8 bytes remain.
+    /// `memory.copy` on the DMA `memcpy` precompile, as a RISC-V guest's `memmove` does: the
+    /// precompile has `memmove` semantics, so the ranges may overlap either way.  The length
+    /// goes through `EXTRA_PARAMS_ADDR`, where the precompile reads it.
     fn memory_copy(&mut self) {
         // stack: dst, src, len
         let dst = self.slot(self.depth - 3);
@@ -813,59 +829,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.compute_addr(REG_T0, dst, 0);
         self.check_bounds(REG_T1, Len::Reg(REG_T2), REG_T3);
         self.check_bounds(REG_T0, Len::Reg(REG_T2), REG_T3);
-        let forward = self.code.new_label();
-        let backward = self.code.new_label();
-        let end = self.code.new_label();
-        // dst <= src: forward is always safe.  Otherwise dst > src and forward is only safe when
-        // dst >= src + len, i.e. the ranges do not overlap.
-        self.code.cmp_reg_branch("leu", REG_T0, REG_T1, forward, true);
-        self.code.alu_rr("add", REG_T3, REG_T1, REG_T2); // src end
-        self.code.cmp_reg_branch("ltu", REG_T0, REG_T3, backward, true); // dst < src+len
-
-        // -- forward ------------------------------------------------------
-        self.code.bind(forward);
-        let fwords = self.code.new_label();
-        let fbytes = self.code.new_label();
-        self.code.bind(fwords);
-        self.code.cmp_imm_branch("ltu", REG_T2, 8, fbytes, true);
-        self.code.load_mem_to_reg("copyb", REG_T3, REG_T1, 0, 8);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T3, 8);
-        self.code.alu_ri("add", REG_T0, REG_T0, 8);
-        self.code.alu_ri("add", REG_T1, REG_T1, 8);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 8);
-        self.code.jump(fwords);
-        self.code.bind(fbytes);
-        self.code.cmp_imm_branch("eq", REG_T2, 0, end, true);
-        self.code.load_mem_to_reg("copyb", REG_T3, REG_T1, 0, 1);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T3, 1);
-        self.code.alu_ri("add", REG_T0, REG_T0, 1);
-        self.code.alu_ri("add", REG_T1, REG_T1, 1);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 1);
-        self.code.jump(fbytes);
-
-        // -- backward (pointers moved to the end, pre-decremented) ------------
-        self.code.bind(backward);
-        self.code.alu_rr("add", REG_T0, REG_T0, REG_T2);
-        self.code.alu_rr("add", REG_T1, REG_T1, REG_T2);
-        let bwords = self.code.new_label();
-        let bbytes = self.code.new_label();
-        self.code.bind(bwords);
-        self.code.cmp_imm_branch("ltu", REG_T2, 8, bbytes, true);
-        self.code.alu_ri("sub", REG_T0, REG_T0, 8);
-        self.code.alu_ri("sub", REG_T1, REG_T1, 8);
-        self.code.load_mem_to_reg("copyb", REG_T3, REG_T1, 0, 8);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T3, 8);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 8);
-        self.code.jump(bwords);
-        self.code.bind(bbytes);
-        self.code.cmp_imm_branch("eq", REG_T2, 0, end, true);
-        self.code.alu_ri("sub", REG_T0, REG_T0, 1);
-        self.code.alu_ri("sub", REG_T1, REG_T1, 1);
-        self.code.load_mem_to_reg("copyb", REG_T3, REG_T1, 0, 1);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T3, 1);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 1);
-        self.code.jump(bbytes);
-        self.code.bind(end);
+        self.code.store_reg_to_abs(EXTRA_PARAMS_ADDR, REG_T2, 8);
+        self.code.dma_memcpy(REG_T0, REG_T1);
         self.depth -= 3;
     }
 
@@ -1130,4 +1095,22 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         }
         Ok(())
     }
+}
+
+/// Instructions per entry of the `memory.fill` table.
+pub(crate) const MEMSET_TABLE_ENTRY: u64 = 2;
+
+/// The module's `memory.fill` table, laid out right after its functions (at function index
+/// `func_count`): entry `b` fills `REG_T2` bytes at `REG_T0` with byte `b` and returns through
+/// `REG_RA`.  The DMA `memset` precompile takes its byte as a constant, so a byte known only at
+/// run time selects its entry; RISC-V guests' `memset` uses the same table (`ziskos`'s
+/// `memset.s`).
+pub(crate) fn build_memset_table() -> Code {
+    let mut code = Code::new();
+    for byte in 0..=255u8 {
+        code.dma_xmemset(REG_T0, REG_T2, byte);
+        code.ret_reg(REG_RA);
+    }
+    debug_assert_eq!(code.len() as u64, 256 * MEMSET_TABLE_ENTRY);
+    code
 }

@@ -458,6 +458,9 @@ outside it fails at transpile time with a clear `wasm: ...` error, never with wr
 - Sign-extension operators.
 - Bulk memory: `memory.copy`, `memory.fill`.
 - Non-trapping float-to-int conversions (`trunc_sat`).
+- Wide arithmetic: `i64.add128`, `i64.sub128`, `i64.mul_wide_s`, `i64.mul_wide_u` (Rust emits
+  them with `-C target-feature=+wide-arithmetic`, an unstable flag that stable Rust accepts with
+  a warning).
 - `f32`/`f64`, with the `float` feature.
 
 The multi-value proposal is enabled in the validator so that modules using it parse, but only
@@ -601,7 +604,12 @@ indirect store from the same base register, so with `a = FP` most slot-to-slot m
 
 Every load and store adds `WASM_MEM_BASE` to the 32-bit address plus the static offset, then
 checks the end of the access against `REG_MEM_END`, and traps if it is outside. `memory.copy` and
-`memory.fill` check the whole range before touching memory. `memory.grow` updates the page count
+`memory.fill` check the whole range before touching memory, then run on the DMA precompiles, as a
+RISC-V guest's `memmove` and `memset` do: `memory.copy` is one `dma_memcpy` (which has `memmove`
+semantics, so overlap in either direction is fine), and `memory.fill` is one `dma_xmemset`. That
+instruction carries its byte as a constant, so a zero fill is inline and any other byte calls its
+entry in a 256-entry table that the module gets when it uses `memory.fill`, the same table
+`ziskos`'s `memset` uses. `memory.grow` updates the page count
 and `REG_MEM_END`, and returns `-1` when the request goes past the module's declared maximum or
 `WASM_MAX_PAGES`, whichever is lower. Memory is never
 freed or moved, so growing is just a bound change.
@@ -643,6 +651,18 @@ instruction's RISC-V encoding. With the `float` feature, wasm reuses the same ma
 - Where wasm and RISC-V semantics differ, extra integer code fixes up the result: NaN handling in
   `min`/`max`, saturating conversions, and the rounding of `ceil`/`floor`/`trunc`/`nearest`.
 
+### Native helpers
+
+Rotations lower to ZisK's `rol`/`ror` (`_w` for `i32`), and the wide-arithmetic operators to
+`mul` plus `muluh`/`mulh`, or to an add or subtract with the carry taken by `ltu`.
+
+wasm32 has no 64 × 64 → 128-bit multiply, so without `wide-arithmetic` LLVM calls compiler-rt's
+`__multi3` for every `i128`/`u128` product, which computes it from four 32-bit products. When
+the module defines `__multi3` (by its name in the `name` section) with compiler-rt's signature,
+`(i32 ret, i64 a_lo, i64 a_hi, i64 b_lo, i64 b_hi) -> ()`, the transpiler replaces its body
+with one on `i64.mul_wide_u` ([module.rs](src/module.rs)). A module without the `name` section
+keeps its own body.
+
 ### Cost model
 
 The per-instruction overhead against RISC-V comes from the stack-machine design. A RISC-V guest
@@ -653,9 +673,10 @@ traffic and calls see a larger ratio than tight arithmetic loops.
 
 [`examples/wasm-vs-riscv`](../../examples/wasm-vs-riscv) measures this on ten workloads built
 from the same Rust code for both targets. In cost, wasm is about 1.5–3× RISC-V on
-register-bound code, 5–8× on typical code (sorting, maps, JSON) and about 1× when a precompile
-does the work. It reaches 10–30× where RISC-V has an instruction wasm lacks, such as rotations,
-a 64 × 64 → 128-bit multiply or the DMA `memcpy`.
+register-bound code, 5–8× on typical code (sorting, maps, JSON) and 1.1–1.3× when a precompile
+does the work (including bulk copies, on the DMA). The largest gaps, 10–15×, are in
+arithmetic-heavy code that keeps many values live (software Keccak, 256-bit multiplication) and in
+floating point, which goes through the float handler.
 
 ## Current limitations
 

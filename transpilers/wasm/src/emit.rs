@@ -48,11 +48,13 @@ pub struct Code {
     pub insts: Vec<PendingInst>,
     /// label id -> instruction index the label points at (the next instruction emitted after bind).
     labels: Vec<Option<usize>>,
+    /// Set when the code calls the module's `memory.fill` table (see `build_memset_table`).
+    pub uses_memset_table: bool,
 }
 
 impl Code {
     pub fn new() -> Self {
-        Code { insts: Vec::new(), labels: Vec::new() }
+        Code::default()
     }
 
     /// Number of instructions emitted so far (also the index of the next instruction).
@@ -351,6 +353,61 @@ impl Code {
         zib.j(0, 4);
         // Profiling metadata: a return through `reg`, like a RISC-V `jalr x0, reg`
         zib.set_meta_rs1_rd(reg as u8, 0);
+
+        self.push(zib, Fixup::None);
+    }
+
+    /// `reg = <absolute address of function index>`, resolved at layout time.
+    pub fn load_func_addr_to_reg(&mut self, reg: u64, index: u32) {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("imm", 0, false);
+        zib.src_b("imm", 0, false); // patched to the function address
+        zib.op("copyb").unwrap();
+        zib.store("reg", reg as i64, false, false);
+        zib.j(4, 4);
+
+        self.push(zib, Fixup::FuncAddr(index));
+    }
+
+    /// Calls the code at the address held in `reg`, leaving the return address in `REG_RA`.
+    pub fn call_reg(&mut self, reg: u64) {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("imm", 0, false);
+        zib.src_b("reg", reg, false);
+        zib.op("copyb").unwrap();
+        zib.set_pc();
+        zib.store_pc("reg", REG_RA as i64, false);
+        zib.j(0, 4);
+        // Profiling metadata: a call linking through ra, like a RISC-V `jal ra`
+        zib.set_meta_rd(REG_RA as u8);
+
+        self.push(zib, Fixup::None);
+    }
+
+    // -- DMA precompiles (what a RISC-V guest's `memcpy`/`memmove`/`memset` become) ---------
+
+    /// Copies `mem[EXTRA_PARAMS_ADDR]` bytes from the absolute address in `reg_src` to the one in
+    /// `reg_dst`, with `memmove` semantics (the ranges may overlap either way).
+    pub fn dma_memcpy(&mut self, reg_dst: u64, reg_src: u64) {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("reg", reg_dst, false);
+        zib.src_b("reg", reg_src, false);
+        zib.op("dma_memcpy").unwrap();
+        zib.store("none", 0, false, false);
+        zib.j(0, 4);
+
+        self.push(zib, Fixup::None);
+    }
+
+    /// Fills `reg_count` bytes at the absolute address in `reg_dst` with `byte`, which the
+    /// instruction carries as a constant.
+    pub fn dma_xmemset(&mut self, reg_dst: u64, reg_count: u64, byte: u8) {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("reg", reg_dst, false);
+        zib.src_b("reg", reg_count, false);
+        zib.op("dma_xmemset").unwrap();
+        zib.store("none", 0, false, false);
+        zib.j(byte as i64, 4);
 
         self.push(zib, Fixup::None);
     }
