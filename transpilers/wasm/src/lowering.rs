@@ -123,6 +123,7 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
     let sig = &module.sigs[func.type_index as usize];
 
     let num_locals = func.num_locals;
+    let leaf = calls_nothing(&func.body)?;
 
     let mut code = Code::new();
     let func_end = code.new_label();
@@ -140,10 +141,14 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
         vals: Vec::new(),
         ptrs: Vec::new(),
         next_ptr: 0,
+        leaf,
     };
 
-    // Prologue: save the return address and zero the non-parameter locals.
-    gen.code.store_reg_to_slot(FRAME_RET_PC_OFF, REG_RA);
+    // Prologue: save the return address (a leaf keeps it in `REG_RA`) and zero the
+    // non-parameter locals.
+    if !leaf {
+        gen.code.store_reg_to_slot(FRAME_RET_PC_OFF, REG_RA);
+    }
     for k in sig.params.len() as u32..num_locals {
         gen.code.store_imm_to_slot(local_offset(k), 0);
     }
@@ -164,13 +169,10 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
     // other path to `func_end` (explicit or implicit `return`) has already loaded `REG_RET`.
     if !gen.unreachable {
         gen.sync();
-        gen.flush();
+        gen.compute_cmp();
+        gen.result_to_ret();
     }
-    if !gen.unreachable && !sig.results.is_empty() {
-        let off = gen.slot(gen.depth - 1);
-        gen.code.load_slot_to_reg(REG_RET, off);
-    }
-    // Epilogue (bound at func_end): restore caller FP and return.
+    // Epilogue (bound at func_end): return.
     gen.code.bind(func_end);
     gen.emit_epilogue();
 
@@ -199,6 +201,8 @@ pub(crate) struct FuncGen<'a, 'b> {
     ptrs: Vec<Ptr>,
     /// The `REG_PTRS` register the next new address goes to.
     next_ptr: usize,
+    /// The function calls nothing (see [`calls_nothing`]), so `REG_RA` survives its body.
+    leaf: bool,
 }
 
 impl<'a, 'b> FuncGen<'a, 'b> {
@@ -420,6 +424,17 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             BrIf { relative_depth } => self.br_if(relative_depth),
             If { blockty } => self.if_(blockty)?,
             BrTable { ref targets } => self.br_table(targets)?,
+            Return => {
+                self.result_to_ret();
+                self.code.jump(self.func_end);
+                self.unreachable = true;
+            }
+            // The function's own end: what follows is the fallthrough return.
+            End if self.ctrl.is_empty() => {}
+
+            // -- calls ----------------------------------------------------------
+            Call { function_index } => self.call(function_index)?,
+            CallIndirect { type_index, .. } => self.call_indirect(type_index)?,
 
             _ => return Ok(false),
         }
@@ -609,30 +624,26 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         }
     }
 
+    /// Returns: a leaf through `REG_RA`, any other function through its saved return address.
+    /// The caller restores FP.
     fn emit_epilogue(&mut self) {
-        // Restore caller FP and jump to the saved return address.
-        self.code.load_slot_to_reg(REG_T0, FRAME_RET_PC_OFF);
-        self.code.load_slot_to_reg(REG_T2, FRAME_CALLER_FP_OFF);
-        // FP <- caller FP
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("imm", 0, false);
-        zib.src_b("reg", REG_T2, false);
-        zib.op("copyb").unwrap();
-        zib.store("reg", REG_FP as i64, false, false);
-        zib.j(4, 4);
+        if self.leaf {
+            self.code.ret_reg(REG_RA);
+        } else {
+            self.code.ret_via_slot(FRAME_RET_PC_OFF);
+        }
+    }
 
-        self.code.push_raw(zib, Fixup::None);
-        // pc <- saved return address
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("imm", 0, false);
-        zib.src_b("reg", REG_T0, false);
-        zib.op("copyb").unwrap();
-        zib.set_pc();
-        zib.j(0, 4);
-        // Profiling metadata: a return through t0, like a RISC-V `jalr x0, t0`
-        zib.set_meta_rs1_rd(REG_T0 as u8, 0);
-
-        self.code.push_raw(zib, Fixup::None);
+    /// Pops the function's result, if it has one, into `REG_RET`.
+    fn result_to_ret(&mut self) {
+        if self.sig.results.is_empty() {
+            return;
+        }
+        match self.pop() {
+            Opnd::Slot(off) => self.code.load_slot_to_reg(REG_RET, off),
+            Opnd::Const(c) => self.code.load_imm_to_reg(REG_RET, c as u64),
+            Opnd::Acc => {} // REG_ACC is REG_RET
+        }
     }
 
     fn lower_op(&mut self, op: Operator, func_end: LabelId) -> Result<(), Box<dyn Error>> {
@@ -778,12 +789,6 @@ impl<'a, 'b> FuncGen<'a, 'b> {
                 self.branch_to(relative_depth);
                 self.unreachable = true;
             }
-            Return => {
-                self.emit_return();
-                self.unreachable = true;
-            }
-            Call { function_index } => self.call(function_index)?,
-            CallIndirect { type_index, .. } => self.call_indirect(type_index)?,
 
             other => {
                 #[cfg(feature = "float")]
@@ -1245,91 +1250,81 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         Ok(())
     }
 
-    fn check_stack(&mut self, new_fp_reg: u64, callee_frame: i64, scratch: u64) {
-        self.code.alu_ri("add", scratch, new_fp_reg, -callee_frame);
+    /// The calling sequence shared by `call` and `call_indirect`: pops the `n_args` arguments
+    /// and writes each into the callee's parameter slot (one instruction, from wherever it is),
+    /// checks that a callee frame of `callee_frame` bytes fits on the stack, moves FP to the
+    /// callee's frame, calls `target` (`emit_call` emits the call instruction itself), moves FP
+    /// back and pushes the result, if any, which the callee left in `REG_RET`.
+    ///
+    /// Only the values below the arguments go to their slots first, as the callee may write any
+    /// register; nothing here writes the registers holding a `call_indirect` target.
+    fn emit_call_sequence(
+        &mut self,
+        n_args: u32,
+        n_res: u32,
+        callee_frame: i64,
+        scratch: u64,
+        emit_call: impl FnOnce(&mut Code),
+    ) {
+        let frame_sz = func_frame_size(self.num_locals);
+        let args = self.vals.split_off(self.vals.len() - n_args as usize);
+        self.depth -= n_args;
+        self.flush();
+        self.forget_ptrs();
+
+        // Trap unless the callee's frame, which ends `frame_sz + callee_frame` below FP, fits.
+        self.code.alu_ri("add", scratch, REG_FP, -(frame_sz + callee_frame));
         let ok = self.code.new_label();
         self.code.cmp_imm_branch("ltu", scratch, WASM_STACK_LIMIT as i64, ok, false);
         self.emit_trap();
         self.code.bind(ok);
+
+        // The callee's FP will be `FP - frame_sz`, so its parameter `i` is at a fixed offset
+        // from this FP.
+        for (i, v) in args.into_iter().enumerate() {
+            let dst = -frame_sz + local_offset(i as u32);
+            match self.opnd_at(v, self.depth + i as u32) {
+                Opnd::Slot(src) => self.code.copy_slot(dst, src),
+                Opnd::Const(c) => self.code.store_imm_to_slot(dst, c),
+                Opnd::Acc => self.code.store_reg_to_slot(dst, REG_ACC),
+            }
+        }
+        self.code.alu_ri("add", REG_FP, REG_FP, -frame_sz);
+        emit_call(&mut self.code);
+        self.code.alu_ri("add", REG_FP, REG_FP, frame_sz);
+        if n_res == 1 {
+            self.push_val(Val::Acc); // REG_ACC is REG_RET
+        }
     }
 
     fn call(&mut self, callee: u32) -> Result<(), Box<dyn Error>> {
-        let sig = self.module.func_sig(callee)?.clone();
-        let n_args = sig.params.len() as u32;
-        let n_res = sig.results.len() as u32;
-        let frame_sz = func_frame_size(self.num_locals);
-
-        // newFP = FP - frame_size(caller)
-        self.code.alu_ri("add", REG_T2, REG_FP, -frame_sz);
+        let sig = self.module.func_sig(callee)?;
+        let (n_args, n_res) = (sig.params.len() as u32, sig.results.len() as u32);
         let callee_frame = callee_frame_size(self.module, callee)?;
-        self.check_stack(REG_T2, callee_frame, REG_T3);
-        // Copy arguments into callee locals.
-        for i in 0..n_args {
-            let src = self.slot(self.depth - n_args + i);
-            self.code.load_slot_to_reg(REG_T0, src);
-            // mem[newFP + local_offset(i)] = REG_T0
+        self.emit_call_sequence(n_args, n_res, callee_frame, REG_T3, |code| {
+            // pc <- callee address (patched), RA <- return address (pc + 4)
             let mut zib = ZiskInstBuilder::new(0);
-            zib.src_a("reg", REG_T2, false);
-            zib.src_b("reg", REG_T0, false);
+            zib.src_a("imm", 0, false);
+            zib.src_b("imm", 0, false); // patched to callee address
             zib.op("copyb").unwrap();
-            zib.ind_width(8);
-            zib.store("ind", local_offset(i), false, false);
-            zib.j(4, 4);
-
-            self.code.push_raw(zib, Fixup::None);
-        }
-        // Save caller FP into callee header: mem[newFP - 16] = FP
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("reg", REG_T2, false);
-        zib.src_b("reg", REG_FP, false);
-        zib.op("copyb").unwrap();
-        zib.ind_width(8);
-        zib.store("ind", FRAME_CALLER_FP_OFF, false, false);
-        zib.j(4, 4);
-
-        self.code.push_raw(zib, Fixup::None);
-        // FP <- newFP
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("imm", 0, false);
-        zib.src_b("reg", REG_T2, false);
-        zib.op("copyb").unwrap();
-        zib.store("reg", REG_FP as i64, false, false);
-        zib.j(4, 4);
-
-        self.code.push_raw(zib, Fixup::None);
-        // CALL: pc <- callee_addr (patched), RA <- return addr (pc + 4)
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("imm", 0, false);
-        zib.src_b("imm", 0, false); // patched to callee address
-        zib.op("copyb").unwrap();
-        zib.set_pc();
-        zib.store_pc("reg", REG_RA as i64, false);
-        zib.j(0, 4);
-        // Profiling metadata: a call linking through ra, like a RISC-V `jal ra`
-        zib.set_meta_rd(REG_RA as u8);
-
-        self.code.push_raw(zib, Fixup::FuncAddr(callee));
-
-        // Pop arguments; push result.
-        self.depth -= n_args;
-        if n_res == 1 {
-            let dst = self.push();
-            self.code.store_reg_to_slot(dst, REG_RET);
-        }
+            zib.set_pc();
+            zib.store_pc("reg", REG_RA as i64, false);
+            zib.j(0, 4);
+            // Profiling metadata: a call linking through ra, like a RISC-V `jal ra`
+            zib.set_meta_rd(REG_RA as u8);
+            code.push_raw(zib, Fixup::FuncAddr(callee));
+        });
         Ok(())
     }
 
     fn call_indirect(&mut self, type_index: u32) -> Result<(), Box<dyn Error>> {
-        let sig = self.module.sigs[type_index as usize].clone();
-        let n_args = sig.params.len() as u32;
-        let n_res = sig.results.len() as u32;
-        let frame_sz = func_frame_size(self.num_locals);
+        let sig = &self.module.sigs[type_index as usize];
+        let (n_args, n_res) = (sig.params.len() as u32, sig.results.len() as u32);
 
-        // table index is on top of stack
-        let idx_slot = self.slot(self.depth - 1);
-        self.depth -= 1;
-        self.code.load_slot_to_reg(REG_T0, idx_slot);
-        self.code.alu_ri("and", REG_T0, REG_T0, 0xFFFF_FFFF);
+        // The table index is on top of the stack.
+        let idx = self.pop();
+        let idx = self.opnd_reg(idx, REG_T0);
+        self.code.alu_ri("and", REG_T0, idx, 0xFFFF_FFFF);
         let in_bounds = self.code.new_label();
         self.code.cmp_imm_branch("ltu", REG_T0, self.module.table_initial as i64, in_bounds, true);
         self.emit_trap();
@@ -1350,60 +1345,20 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.emit_trap();
         self.code.bind(ok);
 
-        // newFP = FP - frame_size
-        self.code.alu_ri("add", REG_T2, REG_FP, -frame_sz);
         let worst_frame = func_frame_size(self.module.max_num_locals());
-        self.check_stack(REG_T2, worst_frame, REG_T1);
-        for i in 0..n_args {
-            let src = self.slot(self.depth - n_args + i);
-            self.code.load_slot_to_reg(REG_T1, src);
+        self.emit_call_sequence(n_args, n_res, worst_frame, REG_T1, |code| {
+            // Call through the target pc in REG_T3.
             let mut zib = ZiskInstBuilder::new(0);
-            zib.src_a("reg", REG_T2, false);
-            zib.src_b("reg", REG_T1, false);
+            zib.src_a("imm", 0, false);
+            zib.src_b("reg", REG_T3, false);
             zib.op("copyb").unwrap();
-            zib.ind_width(8);
-            zib.store("ind", local_offset(i), false, false);
-            zib.j(4, 4);
-
-            self.code.push_raw(zib, Fixup::None);
-        }
-        // save caller FP
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("reg", REG_T2, false);
-        zib.src_b("reg", REG_FP, false);
-        zib.op("copyb").unwrap();
-        zib.ind_width(8);
-        zib.store("ind", FRAME_CALLER_FP_OFF, false, false);
-        zib.j(4, 4);
-
-        self.code.push_raw(zib, Fixup::None);
-        // FP <- newFP
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("imm", 0, false);
-        zib.src_b("reg", REG_T2, false);
-        zib.op("copyb").unwrap();
-        zib.store("reg", REG_FP as i64, false, false);
-        zib.j(4, 4);
-
-        self.code.push_raw(zib, Fixup::None);
-        // CALL via register (target pc in REG_T3)
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("imm", 0, false);
-        zib.src_b("reg", REG_T3, false);
-        zib.op("copyb").unwrap();
-        zib.set_pc();
-        zib.store_pc("reg", REG_RA as i64, false);
-        zib.j(0, 4);
-        // Profiling metadata: a call linking through ra, like a RISC-V `jal ra`
-        zib.set_meta_rd(REG_RA as u8);
-
-        self.code.push_raw(zib, Fixup::None);
-
-        self.depth -= n_args;
-        if n_res == 1 {
-            let dst = self.push();
-            self.code.store_reg_to_slot(dst, REG_RET);
-        }
+            zib.set_pc();
+            zib.store_pc("reg", REG_RA as i64, false);
+            zib.j(0, 4);
+            // Profiling metadata: a call linking through ra, like a RISC-V `jal ra`
+            zib.set_meta_rd(REG_RA as u8);
+            code.push_raw(zib, Fixup::None);
+        });
         Ok(())
     }
 }
@@ -1428,4 +1383,22 @@ pub(crate) fn build_memset_table() -> Code {
     }
     debug_assert_eq!(code.len() as u64, 256 * MEMSET_TABLE_ENTRY);
     code
+}
+
+/// Whether a function body leaves `REG_RA` alone: it has no call, and no `memory.fill` (which
+/// may call the fill table).  The float handler restores every register, so float operators
+/// are fine.
+fn calls_nothing(body: &wasmparser::FunctionBody) -> Result<bool, Box<dyn Error>> {
+    let mut ops = body.get_operators_reader()?;
+    while !ops.eof() {
+        if let Operator::Call { .. }
+        | Operator::CallIndirect { .. }
+        | Operator::ReturnCall { .. }
+        | Operator::ReturnCallIndirect { .. }
+        | Operator::MemoryFill { .. } = ops.read()?
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }

@@ -438,18 +438,8 @@ fn build_entry_routine(module: &WasmModule, func_addr: &[u64], entry_calls: &[u3
 }
 
 fn emit_entry_call(code: &mut Code, func_index: u32) {
-    code.load_imm_to_reg(REG_T2, (WASM_STACK_TOP as i64 - ENTRY_FRAME_RESERVE) as u64); // newFP
-                                                                                        // mem[newFP - 16] = caller FP
-    let mut zib = ZiskInstBuilder::new(0);
-    zib.src_a("reg", REG_T2, false);
-    zib.src_b("reg", REG_FP, false);
-    zib.op("copyb").unwrap();
-    zib.ind_width(8);
-    zib.store("ind", FRAME_CALLER_FP_OFF, false, false);
-    zib.j(4, 4);
-
-    code.push_raw(zib, Fixup::None);
-    code.mov_reg(REG_FP, REG_T2);
+    // The callee's frame pointer.  Nothing after the call needs the old one back.
+    code.load_imm_to_reg(REG_FP, (WASM_STACK_TOP as i64 - ENTRY_FRAME_RESERVE) as u64);
     let mut zib = ZiskInstBuilder::new(0);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", 0, false);

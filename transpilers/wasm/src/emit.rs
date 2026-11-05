@@ -364,6 +364,21 @@ impl Code {
         self.push(zib, Fixup::None);
     }
 
+    /// Returns to the address saved at `mem[FP + off]`, in one instruction.
+    pub fn ret_via_slot(&mut self, off: i64) {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("reg", REG_FP, false);
+        zib.src_b("ind", off as u64, false);
+        zib.op("copyb").unwrap();
+        zib.ind_width(8);
+        zib.set_pc();
+        zib.j(0, 4);
+        // Profiling metadata: a return, like a RISC-V `jalr x0, ra`
+        zib.set_meta_rs1_rd(REG_RA as u8, 0);
+
+        self.push(zib, Fixup::None);
+    }
+
     /// Jumps to `reg + <absolute address of label>` in one instruction: an entry of a jump table
     /// at `label`, `reg` holding the entry's byte offset.
     pub fn jump_reg_plus_label(&mut self, reg: u64, label: LabelId) {

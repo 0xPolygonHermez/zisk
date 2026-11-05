@@ -31,8 +31,10 @@ pub const REG_T3: u64 = 8;
 pub const REG_RET: u64 = 10;
 /// Holds the operand-stack value an operator just produced, so the next operator can use it
 /// without a store and a load (see `Val::Acc` in the lowering).  Only ever live inside
-/// straight-line code: every label, call and handler is preceded by a flush to the slots.
-pub const REG_ACC: u64 = 11;
+/// straight-line code: every label, call and handler is preceded by a flush to the slots.  It
+/// is the return register, so a call's result needs no move to get there, nor the value a
+/// function returns.
+pub const REG_ACC: u64 = REG_RET;
 /// One past the last valid absolute linear-memory address (`WASM_MEM_BASE + pages * 64 KiB`).
 /// Live for the whole run: set by the entry routine and only ever changed by `memory.grow`; every
 /// linear-memory access is bounds-checked against it.  WASI stubs and the float handler must
@@ -60,13 +62,13 @@ pub fn mem_limit_reg(width: u64) -> u64 {
 // Stack frame layout (grows downward from REG_FP)
 // ---------------------------------------------------------------------------
 
-/// Bytes reserved at the top of every frame for the header: `[FP-8]` = saved return PC,
-/// `[FP-16]` = saved caller FP, `[FP-24]` = padding (keeps locals 8-byte aligned and leaves room).
+/// Bytes reserved at the top of every frame for the header: `[FP-8]` = saved return PC (unused
+/// by a function that calls nothing: it returns through `REG_RA`), `[FP-16]` and `[FP-24]`
+/// unused.  The caller moves FP down by its own frame size before a call and back up after
+/// it, so a frame does not record its caller's FP.
 pub const FRAME_HEADER_BYTES: i64 = 24;
 /// Offset (from FP) of the saved return PC slot.
 pub const FRAME_RET_PC_OFF: i64 = -8;
-/// Offset (from FP) of the saved caller FP slot.
-pub const FRAME_CALLER_FP_OFF: i64 = -16;
 
 /// Offset (from FP) of wasm local `k` (locals include incoming parameters).
 #[inline]

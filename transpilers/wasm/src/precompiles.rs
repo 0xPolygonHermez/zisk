@@ -187,16 +187,13 @@ pub fn build_stub(module: &WasmModule, import_index: usize) -> Result<Code, Box<
             emit_precompile(&mut code, precompile.op, None, R_C, returns_c.then_some(REG_RET));
         }
     }
-    // Epilogue (shared with the WASI stubs' layout): restore the caller's FP and return.
+    // Epilogue (shared with the WASI stubs' layout): return; the caller restores FP.
     let done = code.new_label();
     code.jump(done);
     code.bind(fault);
     code.trap();
     code.bind(done);
-    code.load_slot_to_reg(REG_T0, FRAME_RET_PC_OFF);
-    code.load_slot_to_reg(REG_T2, FRAME_CALLER_FP_OFF);
-    code.mov_reg(REG_FP, REG_T2);
-    code.ret_reg(REG_T0);
+    code.ret_via_slot(FRAME_RET_PC_OFF);
     Ok(code)
 }
 

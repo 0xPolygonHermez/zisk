@@ -557,11 +557,10 @@ Only a few ZisK registers have a fixed role:
 
 | Register | Role |
 |---|---|
-| `x1` (`REG_RA`) | Return address, written by the call instruction (RISC-V `ra` convention). |
+| `x1` (`REG_RA`) | Return address, written by the call instruction (RISC-V `ra` convention). A function that calls nothing returns through it; any other saves it in its frame. |
 | `x2` (`REG_FP`) | Frame pointer. The only pointer that stays live between wasm instructions. |
 | `x9` (`REG_MEM_END`) | One past the last valid linear-memory address. Set at entry, changed only by `memory.grow`. |
-| `x10` (`REG_RET`) | Function result. |
-| `x11` (`REG_ACC`) | The value the last operator produced, until the next one uses it (see below). Dead at every label, call and handler. |
+| `x10` (`REG_RET`, `REG_ACC`) | Function result, and the value the last operator produced, until the next one uses it (see below). Being both, a call's result and a function's last value need no move. Dead at every label, call and handler. |
 | `x12`, `x13` (`REG_PTRS`) | Absolute addresses made from pointer locals, reused by later accesses in straight-line code (see [Linear memory](#linear-memory)). Dead at every label and call. |
 | `x27`–`x30` (`REG_MEM_LIMITS`) | `REG_MEM_END` minus 1, 2, 4 and 8: the last address an access of that width may start at. Set with `REG_MEM_END`, and recomputed after a ZisK library routine, for which they are RISC-V temporaries. |
 | `x5`–`x8` | Scratch, dead between wasm instructions. |
@@ -571,8 +570,8 @@ The lowering uses that: the operand stack is not a runtime stack but a set of fi
 frame, addressed as `FP - constant`. There is no stack pointer. A frame looks like this:
 
 ```text
-FP -  8   saved return PC
-FP - 16   saved caller FP
+FP -  8   saved return PC (unused by a function that calls nothing)
+FP - 16   unused
 FP - 24   local 0 (parameters first, then declared locals, zeroed in the prologue)
 FP - 32   local 1
 ...
@@ -584,30 +583,35 @@ Every value takes a 64-bit slot. `i32` values are kept sign-extended (the RISC-V
 convention), so `i32` operations map directly onto ZisK's `_w` opcodes. An `f32` uses the low 32
 bits of its slot.
 
-The frame size is a compile-time constant per function, so a call computes the callee's frame
-pointer with one subtraction. ZisK instructions can read one indirect source and write one
+The frame size is a compile-time constant per function, so the caller moves FP to the callee's
+frame with one subtraction before the call and back with one addition after it; a frame does not
+record its caller's FP. ZisK instructions can read one indirect source and write one
 indirect store from the same base register, so with `a = FP` most slot-to-slot moves (`local.get`,
 `local.set`, argument copies) are a single instruction ([emit.rs](src/emit.rs)).
 
 A value is only written to its operand slot when something needs it there. While lowering, each
 operand-stack entry records where its value is: in its slot, still in a local (`local.get`), still
-a constant, in `x11`, or a comparison not computed yet. Operators read their operands from
-wherever they are, a constant becomes the instruction's immediate, and the result stays in `x11`
+a constant, in `x10`, or a comparison not computed yet. Operators read their operands from
+wherever they are, a constant becomes the instruction's immediate, and the result stays in `x10`
 for the next operator. So `local.get a; local.get b; i32.add; local.set c` is two loads, the add
 and a store, not seven instructions. A comparison followed by `br_if` or `if` is one
 compare-and-branch on the flag, and an `eqz` in between only flips the branch. Branches, labels,
 calls and every operator outside this set first write all pending values to their slots, so the
-code at a label always finds every value in its slot and `x11` is never live across one.
+code at a label always finds every value in its slot and `x10` is never live across one.
 
 ### Control flow and calls
 
 - **Blocks, loops, `if`/`else`, `br`, `br_if`, `br_table`** become PC-relative jumps to labels.
   Labels are resolved per function in the second pass, using `Fixup::Jump`, `JumpIfFlag` and
-  `JumpIfNotFlag`.
-- **`call`** copies the arguments into the callee's local slots, saves the caller's FP in the
-  callee header, moves FP, and jumps to the callee. The callee's absolute address is filled in
-  once every function has been laid out (`Fixup::FuncAddr`). The callee saves `x1` in its header
-  and returns through it. A call that would put a frame below `WASM_STACK_LIMIT` traps.
+  `JumpIfNotFlag`. A `br_table` with 4 or more targets is a jump table: a bounds compare to the
+  default, a shift, and one `add` with `set_pc` into a block of jumps, 4 steps for any index;
+  a smaller one is a chain of compares.
+- **`call`** writes each argument into the callee's parameter slot in one instruction, from
+  wherever it is (a local, a constant, `x10`, a slot), checks that the callee's frame fits above
+  `WASM_STACK_LIMIT` (a trap otherwise), moves FP, and jumps to the callee, then moves FP back.
+  The callee's absolute address is filled in once every function has been laid out
+  (`Fixup::FuncAddr`). A callee that calls nothing keeps its return address in `x1` and returns
+  through it; any other saves `x1` in its frame and returns with one jump through that slot.
 - **`call_indirect`** checks the index against the table size, loads `{ zisk_pc, type_id }` from
   the table, compares the type id with the expected one (type ids are canonicalized, so
   structurally equal types match) and then calls `zisk_pc`. An out-of-range index, an empty entry
@@ -685,14 +689,14 @@ keeps its own body.
 
 The per-instruction overhead against RISC-V comes from the stack-machine design. A RISC-V guest
 keeps hot values in registers. Here locals and values that outlive one operator live in memory
-slots, so most operations still load their operands from memory, and every linear-memory access
-adds a bounds check. Programs dominated by memory traffic and calls see a larger ratio than
+slots, so most operations still load their operands from memory, a call writes its arguments to
+memory, and linear-memory accesses add bounds checks. Programs dominated by memory traffic and calls see a larger ratio than
 tight arithmetic loops.
 
 [`examples/wasm-vs-riscv`](../../examples/wasm-vs-riscv) measures this on ten workloads built
-from the same Rust code for both targets. In cost, wasm is about 0.7–1.7× RISC-V on
-register-bound code, 3–6× on typical code (sorting, maps, JSON) and 1.1–1.2× when a precompile
-does the work (including bulk copies, on the DMA). The largest gaps, 9–11×, are in
+from the same Rust code for both targets. In cost, wasm is about 0.7–1.3× RISC-V on
+register-bound code, 3–4.5× on typical code (sorting, maps, JSON) and 1.0–1.2× when a precompile
+does the work (including bulk copies, on the DMA). The largest gaps, 6–11×, are in
 arithmetic-heavy code that keeps many values live (software Keccak, 256-bit multiplication) and in
 floating point, which goes through the float handler.
 

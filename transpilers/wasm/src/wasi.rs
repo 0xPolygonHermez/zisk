@@ -163,12 +163,9 @@ pub(crate) fn wrap_stub<F: FnOnce(&mut Code, LabelId, LabelId)>(body: F) -> Code
     code.jump(done);
     code.bind(fault);
     code.load_imm_to_reg(REG_RET, ERRNO_FAULT);
-    // Epilogue: restore caller FP, return to saved address. (REG_RET set by the body.)
+    // Epilogue: return to the saved address (REG_RET set by the body; the caller restores FP).
     code.bind(done);
-    code.load_slot_to_reg(REG_T0, FRAME_RET_PC_OFF);
-    code.load_slot_to_reg(REG_T2, FRAME_CALLER_FP_OFF);
-    code.mov_reg(REG_FP, REG_T2);
-    code.ret_reg(REG_T0);
+    code.ret_via_slot(FRAME_RET_PC_OFF);
     code
 }
 
