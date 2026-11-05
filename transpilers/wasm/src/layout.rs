@@ -29,6 +29,10 @@ pub const REG_T2: u64 = 7;
 pub const REG_T3: u64 = 8;
 /// Function return value register.
 pub const REG_RET: u64 = 10;
+/// Holds the operand-stack value an operator just produced, so the next operator can use it
+/// without a store and a load (see `Val::Acc` in the lowering).  Only ever live inside
+/// straight-line code: every label, call and handler is preceded by a flush to the slots.
+pub const REG_ACC: u64 = 11;
 /// One past the last valid absolute linear-memory address (`WASM_MEM_BASE + pages * 64 KiB`).
 /// Live for the whole run: set by the entry routine and only ever changed by `memory.grow`; every
 /// linear-memory access is bounds-checked against it.  WASI stubs and the float handler must

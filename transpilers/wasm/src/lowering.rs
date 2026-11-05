@@ -65,6 +65,44 @@ struct CtrlFrame {
     result_arity: u32,
 }
 
+/// Where an operand-stack value is at compile time.  Values are only written to their operand
+/// slot when something needs them there (see [`FuncGen::flush`]): a `local.get` or a constant
+/// is read straight from the local or the instruction, and an operator's result stays in
+/// `REG_ACC` for the next operator.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Val {
+    /// In its own operand slot.
+    Slot,
+    /// The current value of local `k`, not copied yet.
+    Local(u32),
+    /// A constant, not stored yet.
+    Const(i64),
+    /// In `REG_ACC`.  At most one value is, counting the operands of a pending `Cmp`.
+    Acc,
+    /// A comparison not computed yet, so that `br_if` and `if` can branch on its flag.  Only
+    /// ever the top of the stack: any operator other than `br_if`, `if` and `eqz` computes it
+    /// first, so the locals it reads cannot change under it.
+    Cmp(Cmp),
+}
+
+/// A pending comparison: `op(a, b)`, negated when `invert`.
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Cmp {
+    op: &'static str,
+    a: Opnd,
+    b: Opnd,
+    invert: bool,
+}
+
+/// Where to read a popped operand.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Opnd {
+    /// A frame slot (an operand slot or a local), as an offset from FP.
+    Slot(i64),
+    Const(i64),
+    Acc,
+}
+
 /// Lowers `func_index` (which must be a defined function) into a [`Code`].
 pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<dyn Error>> {
     let defined_index = (func_index - module.func_import_count) as usize;
@@ -86,6 +124,7 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
         dead_nesting: 0,
         func_end,
         overflowed: false,
+        vals: Vec::new(),
     };
 
     // Prologue: save the return address and zero the non-parameter locals.
@@ -108,6 +147,10 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
 
     // Fallthrough off the end of the body: the result is on top of the operand stack.  Every
     // other path to `func_end` (explicit or implicit `return`) has already loaded `REG_RET`.
+    if !gen.unreachable {
+        gen.sync();
+        gen.flush();
+    }
     if !gen.unreachable && !sig.results.is_empty() {
         let off = gen.slot(gen.depth - 1);
         gen.code.load_slot_to_reg(REG_RET, off);
@@ -134,6 +177,9 @@ pub(crate) struct FuncGen<'a, 'b> {
     func_end: LabelId,
     /// Set by `push` when the operand stack outgrows the frame's reserved slots.
     overflowed: bool,
+    /// Where each operand-stack value is, bottom first.  Code that works on the slots directly
+    /// runs after [`FuncGen::flush`] and only moves `depth`; [`FuncGen::sync`] then catches up.
+    vals: Vec<Val>,
 }
 
 impl<'a, 'b> FuncGen<'a, 'b> {
@@ -149,6 +195,379 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             self.overflowed = true;
         }
         off
+    }
+
+    // -- the virtual operand stack ------------------------------------------------
+
+    /// Catches `vals` up with `depth` after code that works on the slots: such code runs after a
+    /// [`Self::flush`], so every value it leaves is in its slot.
+    pub(crate) fn sync(&mut self) {
+        self.vals.resize(self.depth as usize, Val::Slot);
+    }
+
+    fn push_val(&mut self, v: Val) {
+        self.push();
+        self.vals.push(v);
+    }
+
+    fn pop_val(&mut self) -> Val {
+        self.depth -= 1;
+        self.vals.pop().expect("wasm: operand stack underflow")
+    }
+
+    /// Where to read value `v`, which was at depth `d`.
+    fn opnd_at(&self, v: Val, d: u32) -> Opnd {
+        match v {
+            Val::Slot => Opnd::Slot(self.slot(d)),
+            Val::Local(k) => Opnd::Slot(local_offset(k)),
+            Val::Const(c) => Opnd::Const(c),
+            Val::Acc => Opnd::Acc,
+            Val::Cmp(_) => unreachable!("a comparison is computed before its value is read"),
+        }
+    }
+
+    fn pop(&mut self) -> Opnd {
+        let v = self.pop_val();
+        self.opnd_at(v, self.depth)
+    }
+
+    /// The register holding `o`, loading it into `scratch` unless it is already in `REG_ACC`.
+    fn opnd_reg(&mut self, o: Opnd, scratch: u64) -> u64 {
+        match o {
+            Opnd::Slot(off) => self.code.load_slot_to_reg(scratch, off),
+            Opnd::Const(c) => self.code.load_imm_to_reg(scratch, c as u64),
+            Opnd::Acc => return REG_ACC,
+        }
+        scratch
+    }
+
+    /// Stores the value in `REG_ACC`, if any, to its slot, so that `REG_ACC` can take another.
+    fn spill_acc(&mut self) {
+        if let Some(i) = self.vals.iter().position(|v| *v == Val::Acc) {
+            self.code.store_reg_to_slot(self.slot(i as u32), REG_ACC);
+            self.vals[i] = Val::Slot;
+        }
+    }
+
+    /// Copies every pending `local.get k` to its slot, before local `k` changes.
+    fn materialize_local(&mut self, k: u32) {
+        for i in 0..self.vals.len() {
+            if self.vals[i] == Val::Local(k) {
+                self.code.copy_slot(self.slot(i as u32), local_offset(k));
+                self.vals[i] = Val::Slot;
+            }
+        }
+    }
+
+    /// Computes a pending comparison on top of the stack into `REG_ACC`.
+    fn compute_cmp(&mut self) {
+        let Some(&Val::Cmp(c)) = self.vals.last() else {
+            return;
+        };
+        self.vals.pop();
+        self.spill_acc();
+        let ra = self.opnd_reg(c.a, REG_T0);
+        match c.b {
+            Opnd::Const(k) => self.code.alu_ri(c.op, REG_ACC, ra, k),
+            b => {
+                let rb = self.opnd_reg(b, REG_T1);
+                self.code.alu_rr(c.op, REG_ACC, ra, rb);
+            }
+        }
+        if c.invert {
+            self.code.alu_ri("xor", REG_ACC, REG_ACC, 1);
+        }
+        self.vals.push(Val::Acc);
+    }
+
+    /// Writes every value to its operand slot, as the slot-based code, labels, branches and
+    /// calls expect.  It only stores to memory, so registers survive it.
+    pub(crate) fn flush(&mut self) {
+        self.compute_cmp();
+        for i in 0..self.vals.len() {
+            let off = self.slot(i as u32);
+            match self.vals[i] {
+                Val::Slot => continue,
+                Val::Local(k) => self.code.copy_slot(off, local_offset(k)),
+                Val::Const(c) => self.code.store_imm_to_slot(off, c),
+                Val::Acc => self.code.store_reg_to_slot(off, REG_ACC),
+                Val::Cmp(_) => unreachable!("only the top of the stack can be a comparison"),
+            }
+            self.vals[i] = Val::Slot;
+        }
+    }
+
+    /// Lowers the operators that work on the virtual stack; returns `false` for the others.
+    fn lower_virtual(&mut self, op: &Operator) -> Result<bool, Box<dyn Error>> {
+        use Operator::*;
+        match *op {
+            // -- constants and variables ----------------------------------------
+            I32Const { value } => self.push_val(Val::Const(value as i64)),
+            I64Const { value } => self.push_val(Val::Const(value)),
+            LocalGet { local_index } => self.push_val(Val::Local(local_index)),
+            LocalSet { local_index } => {
+                let v = self.pop();
+                self.set_local(local_index, v);
+            }
+            LocalTee { local_index } => {
+                let top = *self.vals.last().expect("wasm: operand stack underflow");
+                let v = self.pop();
+                self.set_local(local_index, v);
+                self.push_val(top);
+            }
+            GlobalGet { global_index } => {
+                self.spill_acc();
+                self.code.load_abs_to_reg(REG_ACC, global_addr(global_index));
+                self.push_val(Val::Acc);
+            }
+            GlobalSet { global_index } => match self.pop() {
+                Opnd::Const(c) => self.code.store_imm_to_abs(global_addr(global_index), c as u64),
+                v => {
+                    let r = self.opnd_reg(v, REG_T0);
+                    self.code.store_reg_to_abs(global_addr(global_index), r, 8);
+                }
+            },
+
+            // -- integer arithmetic and logic -----------------------------------
+            I32Add => self.alu("add_w", true),
+            I32Sub => self.alu("sub_w", false),
+            I32Mul => self.alu("mul_w", true),
+            I64Add => self.alu("add", true),
+            I64Sub => self.alu("sub", false),
+            I64Mul => self.alu("mul", true),
+            I32And | I64And => self.alu("and", true),
+            I32Or | I64Or => self.alu("or", true),
+            I32Xor | I64Xor => self.alu("xor", true),
+            I32Shl => self.shift("sll_w", 0x1f),
+            I32ShrU => self.shift("srl_w", 0x1f),
+            I32ShrS => self.shift("sra_w", 0x1f),
+            I64Shl => self.shift("sll", 0x3f),
+            I64ShrU => self.shift("srl", 0x3f),
+            I64ShrS => self.shift("sra", 0x3f),
+            // ZisK's rotations take the count modulo the width, and the `_w` forms rotate the low
+            // 32 bits and sign-extend the result, which is the canonical i32 form.
+            I32Rotl => self.alu("rol_w", false),
+            I32Rotr => self.alu("ror_w", false),
+            I64Rotl => self.alu("rol", false),
+            I64Rotr => self.alu("ror", false),
+
+            // -- comparisons (0/1, or a branch on the flag) ---------------------
+            I32Eqz | I64Eqz => self.eqz(),
+            I32Eq | I64Eq => self.compare("eq", false, false),
+            I32Ne | I64Ne => self.compare("eq", false, true),
+            I32LtS | I64LtS => self.compare("lt", false, false),
+            I32LtU | I64LtU => self.compare("ltu", false, false),
+            I32GtS | I64GtS => self.compare("lt", true, false),
+            I32GtU | I64GtU => self.compare("ltu", true, false),
+            I32LeS | I64LeS => self.compare("le", false, false),
+            I32LeU | I64LeU => self.compare("leu", false, false),
+            I32GeS | I64GeS => self.compare("le", true, false),
+            I32GeU | I64GeU => self.compare("leu", true, false),
+
+            // -- conversions and sign extension ---------------------------------
+            I32WrapI64 | I64Extend32S => self.sign_extend("signextend_w"),
+            I32Extend8S | I64Extend8S => self.sign_extend("signextend_b"),
+            I32Extend16S | I64Extend16S => self.sign_extend("signextend_h"),
+            I64ExtendI32S => { /* canonical i32 already sign-extended: no-op */ }
+            I64ExtendI32U => {
+                self.push_val(Val::Const(0xFFFF_FFFF));
+                self.alu("and", true);
+            }
+
+            // -- memory loads and stores ----------------------------------------
+            I32Load { memarg } => self.load("signextend_w", 4, memarg.offset),
+            I64Load { memarg } => self.load("copyb", 8, memarg.offset),
+            I32Load8S { memarg } | I64Load8S { memarg } => {
+                self.load("signextend_b", 1, memarg.offset)
+            }
+            I32Load8U { memarg } | I64Load8U { memarg } => self.load("copyb", 1, memarg.offset),
+            I32Load16S { memarg } | I64Load16S { memarg } => {
+                self.load("signextend_h", 2, memarg.offset)
+            }
+            I32Load16U { memarg } | I64Load16U { memarg } => self.load("copyb", 2, memarg.offset),
+            I64Load32S { memarg } => self.load("signextend_w", 4, memarg.offset),
+            I64Load32U { memarg } => self.load("copyb", 4, memarg.offset),
+            I32Store { memarg } => self.store(4, memarg.offset),
+            I64Store { memarg } => self.store(8, memarg.offset),
+            I32Store8 { memarg } | I64Store8 { memarg } => self.store(1, memarg.offset),
+            I32Store16 { memarg } | I64Store16 { memarg } => self.store(2, memarg.offset),
+            I64Store32 { memarg } => self.store(4, memarg.offset),
+
+            // -- parametric and branches ----------------------------------------
+            Drop => {
+                self.pop_val();
+            }
+            Nop => {}
+            BrIf { relative_depth } => self.br_if(relative_depth),
+            If { blockty } => self.if_(blockty)?,
+
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+
+    /// `local.set k`: pending reads of local `k` get the old value first.
+    fn set_local(&mut self, k: u32, v: Opnd) {
+        self.materialize_local(k);
+        let dst = local_offset(k);
+        match v {
+            Opnd::Slot(off) if off == dst => {}
+            Opnd::Slot(off) => self.code.copy_slot(dst, off),
+            Opnd::Const(c) => self.code.store_imm_to_slot(dst, c),
+            Opnd::Acc => self.code.store_reg_to_slot(dst, REG_ACC),
+        }
+    }
+
+    /// `REG_ACC = op(a, b)`; a constant operand becomes the instruction's immediate.
+    fn alu(&mut self, op: &'static str, commutative: bool) {
+        let mut b = self.pop();
+        let mut a = self.pop();
+        if commutative && matches!(a, Opnd::Const(_)) && !matches!(b, Opnd::Const(_)) {
+            std::mem::swap(&mut a, &mut b);
+        }
+        self.spill_acc();
+        let ra = self.opnd_reg(a, REG_T0);
+        match b {
+            Opnd::Const(c) => self.code.alu_ri(op, REG_ACC, ra, c),
+            _ => {
+                let rb = self.opnd_reg(b, REG_T1);
+                self.code.alu_rr(op, REG_ACC, ra, rb);
+            }
+        }
+        self.push_val(Val::Acc);
+    }
+
+    /// A shift: wasm takes the count modulo the width (`count_mask`).
+    fn shift(&mut self, op: &'static str, count_mask: i64) {
+        let b = self.pop();
+        let a = self.pop();
+        self.spill_acc();
+        let ra = self.opnd_reg(a, REG_T0);
+        match b {
+            Opnd::Const(c) => self.code.alu_ri(op, REG_ACC, ra, c & count_mask),
+            _ => {
+                let rb = self.opnd_reg(b, REG_T1);
+                self.code.alu_ri("and", REG_T1, rb, count_mask);
+                self.code.alu_rr(op, REG_ACC, ra, REG_T1);
+            }
+        }
+        self.push_val(Val::Acc);
+    }
+
+    /// Pushes the comparison `op(a, b)` (operands swapped when `swap`, negated when `invert`)
+    /// without computing it.
+    fn compare(&mut self, op: &'static str, swap: bool, invert: bool) {
+        let b = self.pop();
+        let a = self.pop();
+        let (mut a, mut b) = if swap { (b, a) } else { (a, b) };
+        if op == "eq" && matches!(a, Opnd::Const(_)) {
+            std::mem::swap(&mut a, &mut b);
+        }
+        self.push_val(Val::Cmp(Cmp { op, a, b, invert }));
+    }
+
+    /// `eqz`: negates a pending comparison, or compares with zero.
+    fn eqz(&mut self) {
+        if let Some(Val::Cmp(c)) = self.vals.last_mut() {
+            c.invert = !c.invert;
+            return;
+        }
+        let a = self.pop();
+        self.push_val(Val::Cmp(Cmp { op: "eq", a, b: Opnd::Const(0), invert: false }));
+    }
+
+    /// `signextend_{b,h,w}`, folded for a constant.
+    pub(crate) fn sign_extend(&mut self, op: &'static str) {
+        let a = self.pop();
+        if let Opnd::Const(c) = a {
+            let v = match op {
+                "signextend_b" => c as i8 as i64,
+                "signextend_h" => c as i16 as i64,
+                _ => c as i32 as i64,
+            };
+            self.push_val(Val::Const(v));
+            return;
+        }
+        self.spill_acc();
+        let ra = self.opnd_reg(a, REG_T0);
+        // signextend acts on `b`.
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("imm", 0, false);
+        zib.src_b("reg", ra, false);
+        zib.op(op).unwrap();
+        zib.store("reg", REG_ACC as i64, false, false);
+        zib.j(4, 4);
+        self.code.push_raw(zib, Fixup::None);
+        self.push_val(Val::Acc);
+    }
+
+    /// Jumps to `label` when the popped condition `cond` (which was at depth `self.depth`) is
+    /// nonzero (`when`) or zero (`!when`).  A pending comparison branches on its own flag.
+    fn branch_on(&mut self, cond: Val, label: LabelId, when: bool) {
+        if let Val::Cmp(c) = cond {
+            let jump_if_flag = when != c.invert;
+            let ra = self.opnd_reg(c.a, REG_T0);
+            match c.b {
+                Opnd::Const(k) => self.code.cmp_imm_branch(c.op, ra, k, label, jump_if_flag),
+                b => {
+                    let rb = self.opnd_reg(b, REG_T1);
+                    self.code.cmp_reg_branch(c.op, ra, rb, label, jump_if_flag);
+                }
+            }
+            return;
+        }
+        match self.opnd_at(cond, self.depth) {
+            Opnd::Const(c) => {
+                if (c != 0) == when {
+                    self.code.jump(label);
+                }
+            }
+            o => {
+                let r = self.opnd_reg(o, REG_T0);
+                self.code.cmp_imm_branch("eq", r, 0, label, !when);
+            }
+        }
+    }
+
+    /// The label a branch to `relative_depth` can jump to directly, when it moves no value.
+    fn plain_branch_target(&self, relative_depth: u32) -> Option<LabelId> {
+        if relative_depth as usize == self.ctrl.len() {
+            return None; // a return
+        }
+        let frame = &self.ctrl[self.ctrl.len() - 1 - relative_depth as usize];
+        (frame.kind == CtrlKind::Loop || frame.result_arity == 0).then_some(frame.branch_label)
+    }
+
+    fn br_if(&mut self, relative_depth: u32) {
+        let cond = self.pop_val();
+        self.flush();
+        if let Some(label) = self.plain_branch_target(relative_depth) {
+            self.branch_on(cond, label, true);
+        } else {
+            let cont = self.code.new_label();
+            self.branch_on(cond, cont, false);
+            self.branch_to(relative_depth);
+            self.code.bind(cont);
+        }
+    }
+
+    fn if_(&mut self, blockty: BlockType) -> Result<(), Box<dyn Error>> {
+        let (_p, r) = self.block_arity(blockty)?;
+        let else_label = self.code.new_label();
+        let end_label = self.code.new_label();
+        // Pop the condition; when zero, jump to the else arm (or the end, if there is none).
+        let cond = self.pop_val();
+        self.flush();
+        self.branch_on(cond, else_label, false);
+        self.ctrl.push(CtrlFrame {
+            kind: CtrlKind::If,
+            branch_label: end_label,
+            end_label,
+            else_label: Some(else_label),
+            start_depth: self.depth,
+            result_arity: r,
+        });
+        Ok(())
     }
 
     fn block_arity(&self, blockty: BlockType) -> Result<(u32, u32), Box<dyn Error>> {
@@ -239,105 +658,34 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             }
         }
 
+        // Bring `vals` up to date with whatever the slot-based code did to `depth`, and compute
+        // a pending comparison unless this operator branches on it or negates it.
+        self.sync();
+        if !matches!(op, BrIf { .. } | If { .. } | I32Eqz | I64Eqz) {
+            self.compute_cmp();
+        }
+        if self.lower_virtual(&op)? {
+            return Ok(());
+        }
+        // Everything below works on the operand slots.
+        self.flush();
+
         match op {
-            // -- constants -----------------------------------------------------
-            I32Const { value } => {
-                let off = self.push();
-                self.code.store_imm_to_slot(off, value as i64);
-            }
-            I64Const { value } => {
-                let off = self.push();
-                self.code.store_imm_to_slot(off, value);
-            }
-
-            // -- locals / globals ---------------------------------------------
-            LocalGet { local_index } => {
-                let src = local_offset(local_index);
-                let dst = self.push();
-                self.code.copy_slot(dst, src);
-            }
-            LocalSet { local_index } => {
-                let src = self.slot(self.depth - 1);
-                let dst = local_offset(local_index);
-                self.code.copy_slot(dst, src);
-                self.depth -= 1;
-            }
-            LocalTee { local_index } => {
-                let src = self.slot(self.depth - 1);
-                let dst = local_offset(local_index);
-                self.code.copy_slot(dst, src);
-            }
-            GlobalGet { global_index } => {
-                let dst = self.push();
-                self.code.load_abs_to_reg(REG_T0, global_addr(global_index));
-                self.code.store_reg_to_slot(dst, REG_T0);
-            }
-            GlobalSet { global_index } => {
-                let src = self.slot(self.depth - 1);
-                self.code.load_slot_to_reg(REG_T0, src);
-                self.code.store_reg_to_abs(global_addr(global_index), REG_T0, 8);
-                self.depth -= 1;
-            }
-
-            // -- i32 arithmetic / logic ---------------------------------------
-            I32Add => self.binop("add_w", false),
-            I32Sub => self.binop("sub_w", false),
-            I32Mul => self.binop("mul_w", false),
-            I32And => self.binop("and", false),
-            I32Or => self.binop("or", false),
-            I32Xor => self.binop("xor", false),
+            // -- integer division (trap guards) -------------------------------
             I32DivU => self.binop_div("divu_w", false)?,
             I32DivS => self.binop_div("div_w", false)?,
             I32RemU => self.binop_div("remu_w", false)?,
             I32RemS => self.binop_div("rem_w", false)?,
-            I32Shl => self.shift_op("sll_w", 0x1f),
-            I32ShrU => self.shift_op("srl_w", 0x1f),
-            I32ShrS => self.shift_op("sra_w", 0x1f),
-            I32Rotl => self.rotate(true, true),
-            I32Rotr => self.rotate(false, true),
+            I64DivU => self.binop_div("divu", false)?,
+            I64DivS => self.binop_div("div", false)?,
+            I64RemU => self.binop_div("remu", false)?,
+            I64RemS => self.binop_div("rem", false)?,
 
-            // -- i64 arithmetic / logic ---------------------------------------
-            I64Add => self.binop("add", false),
-            I64Sub => self.binop("sub", false),
-            I64Mul => self.binop("mul", false),
             // wide arithmetic (128-bit values as two i64 halves, low half first)
             I64MulWideU => self.mul_wide("muluh"),
             I64MulWideS => self.mul_wide("mulh"),
             I64Add128 => self.add_sub128(true),
             I64Sub128 => self.add_sub128(false),
-            I64And => self.binop("and", false),
-            I64Or => self.binop("or", false),
-            I64Xor => self.binop("xor", false),
-            I64DivU => self.binop_div("divu", false)?,
-            I64DivS => self.binop_div("div", false)?,
-            I64RemU => self.binop_div("remu", false)?,
-            I64RemS => self.binop_div("rem", false)?,
-            I64Shl => self.shift_op("sll", 0x3f),
-            I64ShrU => self.shift_op("srl", 0x3f),
-            I64ShrS => self.shift_op("sra", 0x3f),
-            I64Rotl => self.rotate(true, false),
-            I64Rotr => self.rotate(false, false),
-
-            // -- comparisons (push 0/1) ---------------------------------------
-            I32Eqz | I64Eqz => self.unop_eqz(),
-            I32Eq | I64Eq => self.compare("eq", false, false),
-            I32Ne | I64Ne => self.compare("eq", false, true),
-            I32LtS | I64LtS => self.compare("lt", false, false),
-            I32LtU | I64LtU => self.compare("ltu", false, false),
-            I32GtS | I64GtS => self.compare("lt", true, false),
-            I32GtU | I64GtU => self.compare("ltu", true, false),
-            I32LeS | I64LeS => self.compare("le", false, false),
-            I32LeU | I64LeU => self.compare("leu", false, false),
-            I32GeS | I64GeS => self.compare("le", true, false),
-            I32GeU | I64GeU => self.compare("leu", true, false),
-
-            // -- conversions / sign extension ---------------------------------
-            I32WrapI64 => self.unop_signextend("signextend_w"),
-            I64ExtendI32S => { /* canonical i32 already sign-extended: no-op */ }
-            I64ExtendI32U => self.unop_and_imm(0xFFFF_FFFF),
-            I32Extend8S | I64Extend8S => self.unop_signextend("signextend_b"),
-            I32Extend16S | I64Extend16S => self.unop_signextend("signextend_h"),
-            I64Extend32S => self.unop_signextend("signextend_w"),
 
             // -- bit counting (runtime loops) ---------------------------------
             I32Popcnt => self.popcnt(true),
@@ -347,24 +695,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             I32Clz => self.clz(true),
             I64Clz => self.clz(false),
 
-            // -- memory loads / stores ----------------------------------------
-            I32Load { memarg } => self.load("signextend_w", 4, memarg.offset),
-            I64Load { memarg } => self.load("copyb", 8, memarg.offset),
-            I32Load8S { memarg } | I64Load8S { memarg } => {
-                self.load("signextend_b", 1, memarg.offset)
-            }
-            I32Load8U { memarg } | I64Load8U { memarg } => self.load("copyb", 1, memarg.offset),
-            I32Load16S { memarg } | I64Load16S { memarg } => {
-                self.load("signextend_h", 2, memarg.offset)
-            }
-            I32Load16U { memarg } | I64Load16U { memarg } => self.load("copyb", 2, memarg.offset),
-            I64Load32S { memarg } => self.load("signextend_w", 4, memarg.offset),
-            I64Load32U { memarg } => self.load("copyb", 4, memarg.offset),
-            I32Store { memarg } => self.store(4, memarg.offset),
-            I64Store { memarg } => self.store(8, memarg.offset),
-            I32Store8 { memarg } | I64Store8 { memarg } => self.store(1, memarg.offset),
-            I32Store16 { memarg } | I64Store16 { memarg } => self.store(2, memarg.offset),
-            I64Store32 { memarg } => self.store(4, memarg.offset),
+            // -- memory -------------------------------------------------------
             MemorySize { .. } => {
                 let dst = self.push();
                 self.code.load_abs_to_reg(REG_T0, WASM_MEM_PAGES_ADDR);
@@ -375,11 +706,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             MemoryFill { .. } => self.memory_fill(),
 
             // -- parametric ---------------------------------------------------
-            Drop => {
-                self.depth -= 1;
-            }
             Select => self.select(),
-            Nop => {}
             Unreachable => {
                 self.emit_trap();
                 self.unreachable = true;
@@ -412,24 +739,6 @@ impl<'a, 'b> FuncGen<'a, 'b> {
                     result_arity: r,
                 });
             }
-            If { blockty } => {
-                let (_p, r) = self.block_arity(blockty)?;
-                let else_label = self.code.new_label();
-                let end_label = self.code.new_label();
-                // pop condition; if zero jump to else (or end if no else section appears).
-                let cond = self.slot(self.depth - 1);
-                self.depth -= 1;
-                self.code.load_slot_to_reg(REG_T0, cond);
-                self.code.cmp_imm_branch("eq", REG_T0, 0, else_label, true);
-                self.ctrl.push(CtrlFrame {
-                    kind: CtrlKind::If,
-                    branch_label: end_label,
-                    end_label,
-                    else_label: Some(else_label),
-                    start_depth: self.depth,
-                    result_arity: r,
-                });
-            }
             Else => {
                 let frame = self.ctrl.last().unwrap();
                 let end_label = frame.end_label;
@@ -445,7 +754,6 @@ impl<'a, 'b> FuncGen<'a, 'b> {
                 self.branch_to(relative_depth);
                 self.unreachable = true;
             }
-            BrIf { relative_depth } => self.branch_if(relative_depth),
             BrTable { targets } => self.br_table(targets)?,
             Return => {
                 self.emit_return();
@@ -523,20 +831,6 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.depth -= 2;
     }
 
-    fn binop(&mut self, op: &str, swap: bool) {
-        let a = self.slot(self.depth - 2);
-        let b = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a);
-        self.code.load_slot_to_reg(REG_T1, b);
-        if swap {
-            self.code.alu_rr(op, REG_T0, REG_T1, REG_T0);
-        } else {
-            self.code.alu_rr(op, REG_T0, REG_T0, REG_T1);
-        }
-        self.code.store_reg_to_slot(a, REG_T0);
-        self.depth -= 1;
-    }
-
     /// Division/remainder with a wasm divide-by-zero trap guard.
     fn binop_div(&mut self, op: &str, swap: bool) -> Result<(), Box<dyn Error>> {
         let a = self.slot(self.depth - 2);
@@ -568,82 +862,6 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.store_reg_to_slot(a, REG_T0);
         self.depth -= 1;
         Ok(())
-    }
-
-    fn shift_op(&mut self, op: &str, count_mask: i64) {
-        let a = self.slot(self.depth - 2);
-        let b = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a);
-        self.code.load_slot_to_reg(REG_T1, b);
-        self.code.alu_ri("and", REG_T1, REG_T1, count_mask);
-        self.code.alu_rr(op, REG_T0, REG_T0, REG_T1);
-        self.code.store_reg_to_slot(a, REG_T0);
-        self.depth -= 1;
-    }
-
-    fn compare(&mut self, op: &str, swap: bool, invert: bool) {
-        let a = self.slot(self.depth - 2);
-        let b = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a);
-        self.code.load_slot_to_reg(REG_T1, b);
-        if swap {
-            self.code.alu_rr(op, REG_T0, REG_T1, REG_T0);
-        } else {
-            self.code.alu_rr(op, REG_T0, REG_T0, REG_T1);
-        }
-        if invert {
-            self.code.alu_ri("xor", REG_T0, REG_T0, 1);
-        }
-        self.code.store_reg_to_slot(a, REG_T0);
-        self.depth -= 1;
-    }
-
-    fn unop_eqz(&mut self) {
-        let a = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a);
-        self.code.alu_ri("eq", REG_T0, REG_T0, 0);
-        self.code.store_reg_to_slot(a, REG_T0);
-    }
-
-    pub(crate) fn unop_signextend(&mut self, op: &str) {
-        let a = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a);
-        // signextend acts on `b`; route REG_T0 through `b`.
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("imm", 0, false);
-        zib.src_b("reg", REG_T0, false);
-        zib.op(op).unwrap();
-        zib.store("reg", REG_T0 as i64, false, false);
-        zib.j(4, 4);
-
-        self.code.push_raw(zib, Fixup::None);
-        self.code.store_reg_to_slot(a, REG_T0);
-    }
-
-    fn unop_and_imm(&mut self, imm: i64) {
-        let a = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a);
-        self.code.alu_ri("and", REG_T0, REG_T0, imm);
-        self.code.store_reg_to_slot(a, REG_T0);
-    }
-
-    /// Rotate left/right for i32 (`is32`) or i64: one ZisK `rol`/`ror` (`_w` for i32).  The
-    /// operation takes the count modulo the width itself, and the `_w` forms rotate the low 32
-    /// bits and sign-extend the result, which is the canonical i32 form.
-    fn rotate(&mut self, left: bool, is32: bool) {
-        let op = match (left, is32) {
-            (true, false) => "rol",
-            (false, false) => "ror",
-            (true, true) => "rol_w",
-            (false, true) => "ror_w",
-        };
-        let a = self.slot(self.depth - 2);
-        let b = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a);
-        self.code.load_slot_to_reg(REG_T1, b);
-        self.code.alu_rr(op, REG_T0, REG_T0, REG_T1);
-        self.code.store_reg_to_slot(a, REG_T0);
-        self.depth -= 1;
     }
 
     /// Population count via a simple shift-and-add loop.
@@ -744,22 +962,37 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.bind(ok);
     }
 
+    /// A linear-memory load; the value goes to `REG_ACC`.
     pub(crate) fn load(&mut self, op: &str, width: u64, static_offset: u64) {
-        let a = self.slot(self.depth - 1);
-        self.compute_addr(REG_T0, a, static_offset);
+        let addr = self.pop();
+        self.addr_to_reg(REG_T0, addr, static_offset);
         self.check_bounds(REG_T0, Len::Imm(width), REG_T1);
-        self.code.load_mem_to_reg(op, REG_T1, REG_T0, 0, width);
-        self.code.store_reg_to_slot(a, REG_T1);
+        self.spill_acc();
+        self.code.load_mem_to_reg(op, REG_ACC, REG_T0, 0, width);
+        self.push_val(Val::Acc);
     }
 
+    /// A linear-memory store.
     pub(crate) fn store(&mut self, width: u64, static_offset: u64) {
-        let addr_slot = self.slot(self.depth - 2);
-        let val_slot = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T1, val_slot);
-        self.compute_addr(REG_T0, addr_slot, static_offset);
+        let val = self.pop();
+        let addr = self.pop();
+        let val_reg = self.opnd_reg(val, REG_T1);
+        self.addr_to_reg(REG_T0, addr, static_offset);
         self.check_bounds(REG_T0, Len::Imm(width), REG_T2);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T1, width);
-        self.depth -= 2;
+        self.code.store_reg_to_mem(REG_T0, 0, val_reg, width);
+    }
+
+    /// `reg` = the absolute address of wasm address `addr` + `static_offset`, as
+    /// [`Self::compute_addr`]; a constant address costs one instruction.
+    fn addr_to_reg(&mut self, reg: u64, addr: Opnd, static_offset: u64) {
+        let base = WASM_MEM_BASE + static_offset;
+        if let Opnd::Const(c) = addr {
+            self.code.load_imm_to_reg(reg, (c as u64 & 0xFFFF_FFFF) + base);
+            return;
+        }
+        let src = self.opnd_reg(addr, reg);
+        self.code.alu_ri("and", reg, src, 0xFFFF_FFFF); // zero-extend to u32
+        self.code.alu_ri("add", reg, reg, base as i64);
     }
 
     fn memory_grow(&mut self) {
@@ -884,17 +1117,6 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             self.code.copy_slot(dst, src);
         }
         self.code.jump(branch_label);
-    }
-
-    fn branch_if(&mut self, relative_depth: u32) {
-        // Pop condition; if nonzero, perform the branch.
-        let cond = self.slot(self.depth - 1);
-        self.depth -= 1;
-        self.code.load_slot_to_reg(REG_T0, cond);
-        let cont = self.code.new_label();
-        self.code.cmp_imm_branch("eq", REG_T0, 0, cont, true); // cond == 0 -> skip branch
-        self.branch_to(relative_depth);
-        self.code.bind(cont);
     }
 
     fn br_table(&mut self, targets: wasmparser::BrTable) -> Result<(), Box<dyn Error>> {

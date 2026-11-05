@@ -279,7 +279,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             F64PromoteF32 => self.f_unary_lib(Prec::S, op_fp(0x21, 0, FA, RNE, FR)),
 
             // -- reinterpretations: same bits, only the i32 canonical form changes ---
-            I32ReinterpretF32 => self.unop_signextend("signextend_w"),
+            I32ReinterpretF32 => self.sign_extend("signextend_w"),
             I64ReinterpretF64 | F32ReinterpretI32 | F64ReinterpretI64 => {}
 
             _ => return Ok(false),

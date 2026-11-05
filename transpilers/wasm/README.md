@@ -561,6 +561,7 @@ Only a few ZisK registers have a fixed role:
 | `x2` (`REG_FP`) | Frame pointer. The only pointer that stays live between wasm instructions. |
 | `x9` (`REG_MEM_END`) | One past the last valid linear-memory address. Set at entry, changed only by `memory.grow`. |
 | `x10` (`REG_RET`) | Function result. |
+| `x11` (`REG_ACC`) | The value the last operator produced, until the next one uses it (see below). Dead at every label, call and handler. |
 | `x5`–`x8` | Scratch, dead between wasm instructions. |
 
 Wasm validation guarantees that the operand-stack depth is known statically at every instruction.
@@ -585,6 +586,16 @@ The frame size is a compile-time constant per function, so a call computes the c
 pointer with one subtraction. ZisK instructions can read one indirect source and write one
 indirect store from the same base register, so with `a = FP` most slot-to-slot moves (`local.get`,
 `local.set`, argument copies) are a single instruction ([emit.rs](src/emit.rs)).
+
+A value is only written to its operand slot when something needs it there. While lowering, each
+operand-stack entry records where its value is: in its slot, still in a local (`local.get`), still
+a constant, in `x11`, or a comparison not computed yet. Operators read their operands from
+wherever they are, a constant becomes the instruction's immediate, and the result stays in `x11`
+for the next operator. So `local.get a; local.get b; i32.add; local.set c` is two loads, the add
+and a store, not seven instructions. A comparison followed by `br_if` or `if` is one
+compare-and-branch on the flag, and an `eqz` in between only flips the branch. Branches, labels,
+calls and every operator outside this set first write all pending values to their slots, so the
+code at a label always finds every value in its slot and `x11` is never live across one.
 
 ### Control flow and calls
 
@@ -666,15 +677,15 @@ keeps its own body.
 ### Cost model
 
 The per-instruction overhead against RISC-V comes from the stack-machine design. A RISC-V guest
-keeps hot values in registers. Here every wasm value lives in a memory slot, so most operations
-are a load, an ALU operation and a store. The slot-to-slot trick above removes many of them, but
-not all, and every linear-memory access adds a bounds check. Programs dominated by memory
-traffic and calls see a larger ratio than tight arithmetic loops.
+keeps hot values in registers. Here locals and values that outlive one operator live in memory
+slots, so most operations still load their operands from memory, and every linear-memory access
+adds a bounds check. Programs dominated by memory traffic and calls see a larger ratio than
+tight arithmetic loops.
 
 [`examples/wasm-vs-riscv`](../../examples/wasm-vs-riscv) measures this on ten workloads built
-from the same Rust code for both targets. In cost, wasm is about 1.5–3× RISC-V on
-register-bound code, 5–8× on typical code (sorting, maps, JSON) and 1.1–1.3× when a precompile
-does the work (including bulk copies, on the DMA). The largest gaps, 10–15×, are in
+from the same Rust code for both targets. In cost, wasm is about 0.7–1.7× RISC-V on
+register-bound code, 3–6× on typical code (sorting, maps, JSON) and 1.1–1.2× when a precompile
+does the work (including bulk copies, on the DMA). The largest gaps, 9–11×, are in
 arithmetic-heavy code that keeps many values live (software Keccak, 256-bit multiplication) and in
 floating point, which goes through the float handler.
 
