@@ -606,6 +606,81 @@ fn linear_memory_accesses_are_bounds_checked() {
         (false, 42)
     );
     assert!(outcome("(drop (memory.grow (i32.const 1))) (drop (i64.load (i32.const 131072)))").0);
+
+    // Accesses through the same local reuse its address, and check only what earlier accesses
+    // did not cover (see `Ptr` in the lowering).
+    let through_p =
+        |body: &str| outcome(&format!("(local $p i32) (local $q i32) (local $r i32) {body}"));
+    assert_eq!(
+        through_p(
+            "(i64.store (i32.const 65520) (i64.const 5))
+             (i64.store (i32.const 65528) (i64.const 7))
+             (local.set $p (i32.const 65520))
+             (i64.store (i32.const 8)
+               (i64.add (i64.load offset=8 (local.get $p)) (i64.load (local.get $p))))"
+        ),
+        (false, 12)
+    );
+    // A later access past the checked range is checked.
+    assert!(
+        through_p(
+            "(local.set $p (i32.const 65520))
+             (drop (i64.load (local.get $p)))
+             (drop (i64.load offset=16 (local.get $p)))"
+        )
+        .0
+    );
+    assert!(
+        through_p(
+            "(local.set $p (i32.const 65520))
+             (i64.store offset=8 (local.get $p) (i64.const 1))
+             (i64.store offset=9 (local.get $p) (i64.const 1))"
+        )
+        .0
+    );
+    // Writing the local drops its address, through `local.set` and `local.tee`.
+    assert!(
+        through_p(
+            "(local.set $p (i32.const 0))
+             (drop (i64.load (local.get $p)))
+             (local.set $p (i32.const 65532))
+             (drop (i64.load (local.get $p)))"
+        )
+        .0
+    );
+    assert!(
+        through_p(
+            "(local.set $p (i32.const 0))
+             (drop (i64.load (local.get $p)))
+             (drop (local.tee $p (i32.const 65532)))
+             (drop (i64.load (local.get $p)))"
+        )
+        .0
+    );
+    // A wrapping address through a local is out of bounds.
+    assert!(
+        through_p("(local.set $p (i32.const -1)) (drop (i32.load8_u offset=1 (local.get $p)))").0
+    );
+    // More locals than address registers: a reused register does not keep a stale check.
+    assert!(
+        through_p(
+            "(local.set $p (i32.const 0)) (local.set $q (i32.const 8)) (local.set $r (i32.const 16))
+             (drop (i64.load (local.get $p)))
+             (drop (i64.load (local.get $q)))
+             (drop (i64.load (local.get $r)))
+             (drop (i64.load offset=65528 (local.get $q)))"
+        )
+        .0
+    );
+    assert_eq!(
+        through_p(
+            "(local.set $p (i32.const 0)) (local.set $q (i32.const 8)) (local.set $r (i32.const 16))
+             (i64.store (local.get $r) (i64.const 3))
+             (i64.store (local.get $p) (i64.const 1))
+             (i64.store (local.get $q) (i64.load (local.get $r)))"
+        ),
+        (false, 3)
+    );
 }
 
 #[test]

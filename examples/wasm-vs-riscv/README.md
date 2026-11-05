@@ -40,27 +40,27 @@ wasm target), both `opt-level = 3`, `panic = "abort"`.
 
 | | wasm | RISC-V | ratio |
 |---|---:|---:|---:|
-| Steps | 12,971 | 2,631 | 4.9× |
-| Variable cost | 1,250,582 | 269,966 | 4.6× |
-| ROM size (instructions) | 131,609 | 47,881 | 2.7× |
+| Steps | 11,966 | 2,631 | 4.5× |
+| Variable cost | 1,170,270 | 269,966 | 4.3× |
+| ROM size (instructions) | 118,201 | 47,881 | 2.5× |
 
 **Per unit of work** (the slope between `n = 0` and `n = N`):
 
 | Workload | Unit | wasm steps | RISC-V steps | ratio | wasm cost | RISC-V cost | ratio |
 |---|---|---:|---:|---:|---:|---:|---:|
 | fib | loop iteration | 4 | 5 | 0.7× | 284 | 397 | 0.7× |
-| calls | 1,023 calls | 25,332 | 14,845 | 1.7× | 2,039,156 | 1,211,724 | 1.7× |
-| sort | element sorted | 572 | 126 | 4.5× | 56,971 | 18,410 | 3.1× |
-| btree | insert + lookup | 1,648 | 489 | 3.4× | 141,889 | 39,845 | 3.6× |
-| json | JSON record | 32,080 | 6,352 | 5.1× | 2,924,685 | 523,855 | 5.6× |
+| calls | 1,023 calls | 25,328 | 14,845 | 1.7× | 2,038,750 | 1,211,724 | 1.7× |
+| sort | element sorted | 498 | 126 | 3.9× | 50,959 | 18,410 | 2.8× |
+| btree | insert + lookup | 1,537 | 489 | 3.1× | 132,909 | 39,845 | 3.3× |
+| json | JSON record | 27,809 | 6,352 | 4.4× | 2,563,457 | 523,855 | 4.9× |
 | float | `f64` step | 5,548 | 506 | 11.0× | 517,443 | 48,998 | 10.6× |
-| keccak_sw | Keccak-f in Rust | 40,505 | 4,056 | 10.0× | 3,771,804 | 438,078 | 8.6× |
-| bigint | 256 × 256-bit product | 1,438 | 118 | 12.2× | 123,736 | 13,338 | 9.3× |
-| memcpy | 4 KiB copy | 92 | 19 | 4.8× | 43,383 | 35,722 | 1.2× |
-| keccak_pc | Keccak-f precompile | 45 | 7 | 6.8× | 45,707 | 42,774 | 1.1× |
+| keccak_sw | Keccak-f in Rust | 29,251 | 4,056 | 7.2× | 2,791,782 | 438,078 | 6.4× |
+| bigint | 256 × 256-bit product | 1,262 | 118 | 10.7× | 108,335 | 13,338 | 8.1× |
+| memcpy | 4 KiB copy | 67 | 19 | 3.5× | 41,151 | 35,722 | 1.2× |
+| keccak_pc | Keccak-f precompile | 45 | 7 | 6.9× | 45,733 | 42,774 | 1.1× |
 
 **Proving** (the `json` workload, emulator backend, measured before the transpiler changes,
-which take 36% of its steps away, so these ratios are now lower; instance counts from the prover's plan, proving time on
+which take 45% of its steps away, so these ratios are now lower; instance counts from the prover's plan, proving time on
 one 128-core machine, which is noisy):
 
 | `n = 2,000` | wasm | RISC-V | ratio |
@@ -92,10 +92,11 @@ where wasm moves more memory per step and overstate it where one RISC-V step is 
   slots of the frame, not registers, so operations load their operands from memory, and every
   call sets up a frame. A short chain of operations on a few locals, like `fib`'s loop, is as
   cheap as RISC-V's.
-- **About 3–6× for typical code** (`sort`, `btree`, `json`): on top of the slots, every
-  linear-memory access is bounds-checked, which shows as extra `leu`/`and` in the opcode
-  breakdown (`ziskemu -X`) and as memory cost.
-- **9–11× for arithmetic that keeps many values live, and for floating point:**
+- **About 3–5× for typical code** (`sort`, `btree`, `json`): on top of the slots, every
+  linear-memory access is bounds-checked (one compare, less when the same pointer local was
+  checked just before), which shows as extra `leu`/`and` in the opcode breakdown
+  (`ziskemu -X`) and as memory cost.
+- **6–11× for arithmetic that keeps many values live, and for floating point:**
   - `keccak_sw`: 25 lanes and their temporaries all live in slots and linear memory, so nearly
     every XOR, AND-NOT and rotation loads its operands and stores its result, with bounds
     checks; RISC-V keeps them in registers and has `andn`.
@@ -107,7 +108,7 @@ where wasm moves more memory per step and overstate it where one RISC-V step is 
     RISC-V instruction before running the soft-float routine.
 - **About 1× when a precompile does the work** (`keccak_pc`, and `memcpy` on the DMA): the
   precompile cost is identical and dominates.
-- **Fixed overhead about 5×**: Rust's `std` startup and WASI I/O on wasm, against `ziskos`
+- **Fixed overhead about 4.5×**: Rust's `std` startup and WASI I/O on wasm, against `ziskos`
   reading the input in place.
 
 ## Transpiler changes
@@ -123,13 +124,16 @@ above it:
 | `memory.copy` / `memory.fill` on the DMA `memcpy` / `memset` precompiles, not word loops | memcpy | 10.7× | 1.3× |
 | `__multi3` replaced by a body on 64-bit products (`i64.mul_wide_u`) | bigint | 23.1× | 12.5× |
 | Operands read from wherever they are (a local, a constant, the last result in `x11`), compares fused with `br_if`/`if` | json | 8.4× | 5.6× |
+| Bounds checks in one compare, and addresses reused across accesses through the same local | keccak_sw | 8.6× | 6.4× |
 
 `sort`, `btree` and `json` gained 1–2% from the DMA copies. The operand change applies to all
 code; in steps per unit it saved 50% on `fib`, 41–49% on `calls`, `sort`, `btree` and
 `keccak_sw`, 36% on `json`, 27% on `bigint` and 37% of the fixed overhead, nothing on `float`
-(the float handler dominates it), and it made the ROM 29% smaller.
+(the float handler dominates it), and it made the ROM 29% smaller. The bounds-check change
+saved 28% on `keccak_sw` and `memcpy`, 12–13% on `json`, `sort` and `bigint`, and 7% on
+`btree`.
 
 Support for the wide-arithmetic proposal came with the third change. A guest built with
 `RUSTFLAGS="-C target-feature=+wide-arithmetic"` (an unstable flag; stable Rust accepts it with a
 warning) multiplies inline instead of calling `__multi3`, which brings `bigint` to 441 steps and
-38,645 cost per product: 2.9× RISC-V, against 9.3× through `__multi3`.
+38,645 cost per product: 2.9× RISC-V, against 8.1× through `__multi3`.

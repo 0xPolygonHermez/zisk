@@ -103,6 +103,19 @@ enum Opnd {
     Acc,
 }
 
+/// Register `reg` holds the absolute address of local `local` (a wasm address) plus `off0`, and
+/// `[reg, reg + hi)` has been checked to lie inside linear memory.  An access through the same
+/// local at static offset `off` is to `reg + (off - off0)`, already checked when it ends by `hi`.
+/// Valid until the local is written or control reaches a label; linear memory never shrinks, so
+/// a check stays true.
+#[derive(Clone, Copy)]
+struct Ptr {
+    local: u32,
+    reg: u64,
+    off0: u64,
+    hi: i64,
+}
+
 /// Lowers `func_index` (which must be a defined function) into a [`Code`].
 pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<dyn Error>> {
     let defined_index = (func_index - module.func_import_count) as usize;
@@ -125,6 +138,8 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
         func_end,
         overflowed: false,
         vals: Vec::new(),
+        ptrs: Vec::new(),
+        next_ptr: 0,
     };
 
     // Prologue: save the return address and zero the non-parameter locals.
@@ -180,6 +195,10 @@ pub(crate) struct FuncGen<'a, 'b> {
     /// Where each operand-stack value is, bottom first.  Code that works on the slots directly
     /// runs after [`FuncGen::flush`] and only moves `depth`; [`FuncGen::sync`] then catches up.
     vals: Vec<Val>,
+    /// The addresses held in `REG_PTRS` registers.
+    ptrs: Vec<Ptr>,
+    /// The `REG_PTRS` register the next new address goes to.
+    next_ptr: usize,
 }
 
 impl<'a, 'b> FuncGen<'a, 'b> {
@@ -406,9 +425,11 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         Ok(true)
     }
 
-    /// `local.set k`: pending reads of local `k` get the old value first.
+    /// `local.set k`: pending reads of local `k` get the old value first, and an address made
+    /// from it is forgotten.
     fn set_local(&mut self, k: u32, v: Opnd) {
         self.materialize_local(k);
+        self.ptrs.retain(|p| p.local != k);
         let dst = local_offset(k);
         match v {
             Opnd::Slot(off) if off == dst => {}
@@ -618,6 +639,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
 
         // Dead-code skipping: only structural delimiters are processed while unreachable.
         if self.unreachable {
+            self.forget_ptrs(); // `else` and `end` bind labels
             match op {
                 Block { .. } | Loop { .. } | If { .. } => {
                     self.dead_nesting += 1;
@@ -667,8 +689,9 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         if self.lower_virtual(&op)? {
             return Ok(());
         }
-        // Everything below works on the operand slots.
+        // Everything below works on the operand slots, and may bind a label or call.
         self.flush();
+        self.forget_ptrs();
 
         match op {
             // -- integer division (trap guards) -------------------------------
@@ -949,37 +972,86 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     }
 
     /// Traps unless the `len` bytes starting at the absolute address in `addr_reg` lie inside the
-    /// current linear memory (`addr + len <= REG_MEM_END`); `scratch` receives the end address.
-    /// `len` is a register for the bulk operations and an immediate for plain accesses.
+    /// current linear memory (`addr + len <= REG_MEM_END`).  `len` is a register for the bulk
+    /// operations (`scratch` receives the end address) and an access width for plain accesses,
+    /// which compare the start address with that width's limit register in one instruction.
     fn check_bounds(&mut self, addr_reg: u64, len: Len, scratch: u64) {
-        match len {
-            Len::Imm(n) => self.code.alu_ri("add", scratch, addr_reg, n as i64),
-            Len::Reg(r) => self.code.alu_rr("add", scratch, addr_reg, r),
-        }
         let ok = self.code.new_label();
-        self.code.cmp_reg_branch("leu", scratch, REG_MEM_END, ok, true);
+        match len {
+            Len::Imm(w) => self.code.cmp_reg_branch("leu", addr_reg, mem_limit_reg(w), ok, true),
+            Len::Reg(r) => {
+                self.code.alu_rr("add", scratch, addr_reg, r);
+                self.code.cmp_reg_branch("leu", scratch, REG_MEM_END, ok, true);
+            }
+        }
         self.emit_trap();
         self.code.bind(ok);
     }
 
     /// A linear-memory load; the value goes to `REG_ACC`.
     pub(crate) fn load(&mut self, op: &str, width: u64, static_offset: u64) {
-        let addr = self.pop();
-        self.addr_to_reg(REG_T0, addr, static_offset);
-        self.check_bounds(REG_T0, Len::Imm(width), REG_T1);
+        let (reg, off) = self.access_addr(static_offset, width);
         self.spill_acc();
-        self.code.load_mem_to_reg(op, REG_ACC, REG_T0, 0, width);
+        self.code.load_mem_to_reg(op, REG_ACC, reg, off, width);
         self.push_val(Val::Acc);
     }
 
     /// A linear-memory store.
     pub(crate) fn store(&mut self, width: u64, static_offset: u64) {
         let val = self.pop();
-        let addr = self.pop();
         let val_reg = self.opnd_reg(val, REG_T1);
+        let (reg, off) = self.access_addr(static_offset, width);
+        self.code.store_reg_to_mem(reg, off, val_reg, width);
+    }
+
+    /// Pops the address operand of a `width`-byte access and returns `(reg, off)`: the access is
+    /// to `reg + off`, which has been checked to lie inside linear memory.  Only `REG_T0` and the
+    /// `REG_PTRS` registers are written.
+    fn access_addr(&mut self, static_offset: u64, width: u64) -> (u64, i64) {
+        let v = self.pop_val();
+        if let Val::Local(k) = v {
+            if let Some(access) = self.local_addr(k, static_offset, width) {
+                return access;
+            }
+        }
+        let addr = self.opnd_at(v, self.depth);
         self.addr_to_reg(REG_T0, addr, static_offset);
-        self.check_bounds(REG_T0, Len::Imm(width), REG_T2);
-        self.code.store_reg_to_mem(REG_T0, 0, val_reg, width);
+        self.check_bounds(REG_T0, Len::Imm(width), REG_T1);
+        (REG_T0, 0)
+    }
+
+    /// An access through local `k`, whose absolute address this straight-line code may already
+    /// have in a `REG_PTRS` register (see [`Ptr`]).  `None` for an offset too far from the one
+    /// the register was made for to be an instruction's offset.
+    fn local_addr(&mut self, k: u32, static_offset: u64, width: u64) -> Option<(u64, i64)> {
+        let w = width as i64;
+        if let Some(i) = self.ptrs.iter().position(|p| p.local == k) {
+            let p = self.ptrs[i];
+            let rel = static_offset as i64 - p.off0 as i64;
+            i32::try_from(rel).ok()?;
+            if rel + w <= p.hi {
+                return Some((p.reg, rel)); // already checked
+            }
+            self.code.alu_ri("add", REG_T0, p.reg, rel);
+            self.check_bounds(REG_T0, Len::Imm(width), REG_T1);
+            self.ptrs[i].hi = rel + w;
+            return Some((REG_T0, 0));
+        }
+        let reg = REG_PTRS[self.next_ptr];
+        self.next_ptr = (self.next_ptr + 1) % REG_PTRS.len();
+        self.ptrs.retain(|p| p.reg != reg);
+        self.code.load_slot_to_reg(reg, local_offset(k));
+        self.code.alu_ri("and", reg, reg, 0xFFFF_FFFF); // zero-extend to u32
+        self.code.alu_ri("add", reg, reg, (WASM_MEM_BASE + static_offset) as i64);
+        self.check_bounds(reg, Len::Imm(width), REG_T1);
+        self.ptrs.push(Ptr { local: k, reg, off0: static_offset, hi: w });
+        Some((reg, 0))
+    }
+
+    /// Forgets every address in a `REG_PTRS` register: at a label (where control can arrive from
+    /// code that left other values there) and around anything that may write those registers.
+    fn forget_ptrs(&mut self) {
+        self.ptrs.clear();
     }
 
     /// `reg` = the absolute address of wasm address `addr` + `static_offset`, as
@@ -1013,6 +1085,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.store_reg_to_abs(WASM_MEM_PAGES_ADDR, REG_T2, 8);
         self.code.alu_ri("sll", REG_T3, REG_T2, WASM_PAGE_SIZE.trailing_zeros() as i64);
         self.code.alu_ri("add", REG_MEM_END, REG_T3, WASM_MEM_BASE as i64);
+        self.code.set_mem_limits();
         self.code.store_reg_to_slot(a, REG_T1);
         self.code.bind(done);
     }

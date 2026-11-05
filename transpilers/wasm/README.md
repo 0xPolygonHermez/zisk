@@ -562,6 +562,8 @@ Only a few ZisK registers have a fixed role:
 | `x9` (`REG_MEM_END`) | One past the last valid linear-memory address. Set at entry, changed only by `memory.grow`. |
 | `x10` (`REG_RET`) | Function result. |
 | `x11` (`REG_ACC`) | The value the last operator produced, until the next one uses it (see below). Dead at every label, call and handler. |
+| `x12`, `x13` (`REG_PTRS`) | Absolute addresses made from pointer locals, reused by later accesses in straight-line code (see [Linear memory](#linear-memory)). Dead at every label and call. |
+| `x27`–`x30` (`REG_MEM_LIMITS`) | `REG_MEM_END` minus 1, 2, 4 and 8: the last address an access of that width may start at. Set with `REG_MEM_END`, and recomputed after a ZisK library routine, for which they are RISC-V temporaries. |
 | `x5`–`x8` | Scratch, dead between wasm instructions. |
 
 Wasm validation guarantees that the operand-stack depth is known statically at every instruction.
@@ -614,7 +616,12 @@ code at a label always finds every value in its slot and `x11` is never live acr
 ### Linear memory
 
 Every load and store adds `WASM_MEM_BASE` to the 32-bit address plus the static offset, then
-checks the end of the access against `REG_MEM_END`, and traps if it is outside. `memory.copy` and
+checks that the access ends inside the memory, and traps if it does not. The check is one
+compare of the start address with the limit register for the access width (`x27`–`x30`). An
+address made from a local stays in `x12` or `x13` until the local is written or control reaches a
+label, with the range already checked, so in `p.a + p.b` the second access through `p` is a
+single instruction. An access past that range checks only its own end; memory never shrinks, so
+an earlier check stays true. `memory.copy` and
 `memory.fill` check the whole range before touching memory, then run on the DMA precompiles, as a
 RISC-V guest's `memmove` and `memset` do: `memory.copy` is one `dma_memcpy` (which has `memmove`
 semantics, so overlap in either direction is fine), and `memory.fill` is one `dma_xmemset`. That

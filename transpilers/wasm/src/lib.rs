@@ -425,6 +425,7 @@ fn build_entry_routine(module: &WasmModule, func_addr: &[u64], entry_calls: &[u3
 
     // Linear-memory bound for the access checks (kept in a register, see `REG_MEM_END`).
     code.load_imm_to_reg(REG_MEM_END, WASM_MEM_BASE + module.mem_initial_pages * WASM_PAGE_SIZE);
+    code.set_mem_limits();
 
     code.load_imm_to_reg(REG_FP, WASM_STACK_TOP);
     for &func_index in entry_calls {

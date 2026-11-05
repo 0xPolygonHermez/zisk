@@ -24,7 +24,8 @@
 //!    pointer could reach the wasm machine's own state.  A pointer to `uint64_t` limbs must also
 //!    be 8-byte aligned, as the C type guarantees, since those routines hand it to precompiles;
 //! 3. a call into the routine, which follows the RISC-V calling convention: it preserves `r2`
-//!    and `r9` (`REG_MEM_END`), and returns its result in `r10` (`REG_RET`).  `r2` is both the
+//!    and `r9` (`REG_MEM_END`), and returns its result in `r10` (`REG_RET`); the stub then
+//!    recomputes the `REG_MEM_LIMITS` registers, which it may clobber.  `r2` is both the
 //!    wasm frame pointer and the RISC-V `sp` the routines push return addresses on, so for the
 //!    call it points below the stub's frame, at stack no frame is using.  A routine that RISC-V
 //!    guests expand inline (most of the u256 functions) sets no status, so the stub returns
@@ -576,6 +577,8 @@ fn call_routine(code: &mut Code, name: &str, frame: i64, entry: u64) {
     code.push_raw(zib, Fixup::None);
     // The routine restored `sp` to where it was set above (it is callee-saved).
     code.alu_ri("add", REG_FP, REG_FP, frame);
+    // It preserved `REG_MEM_END` too, but not the limit registers, which are RISC-V temporaries.
+    code.set_mem_limits();
 }
 
 /// `zkvm_fcall(id, params, n_params)`: `ZKVM_EFAIL` for an ID that is not a hint or more

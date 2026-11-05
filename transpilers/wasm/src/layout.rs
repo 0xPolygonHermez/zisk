@@ -38,6 +38,23 @@ pub const REG_ACC: u64 = 11;
 /// linear-memory access is bounds-checked against it.  WASI stubs and the float handler must
 /// preserve it (the handler saves/restores every register).
 pub const REG_MEM_END: u64 = 9;
+/// Absolute linear-memory addresses made from a local, reused by later accesses through the
+/// same local in straight-line code (see `Ptr` in the lowering).  Dead at every label and call.
+pub const REG_PTRS: [u64; 2] = [12, 13];
+/// `(width, register)`: the register holds `REG_MEM_END - width`, the last address an access of
+/// that width may start at, so a load or store is checked with one compare.  Kept in step with
+/// `REG_MEM_END` (see [`mem_limit_reg`]): WASI stubs and the float handler preserve them, and the
+/// zkvm stubs recompute them after a ZisK library routine, for which they are RISC-V temporaries.
+pub const REG_MEM_LIMITS: [(u64, u64); 4] = [(1, 27), (2, 28), (4, 29), (8, 30)];
+
+/// The register holding `REG_MEM_END - width` for an access of `width` bytes.
+pub fn mem_limit_reg(width: u64) -> u64 {
+    REG_MEM_LIMITS
+        .iter()
+        .find(|&&(w, _)| w == width)
+        .map(|&(_, reg)| reg)
+        .unwrap_or_else(|| panic!("wasm: no bounds register for a {width}-byte access"))
+}
 
 // ---------------------------------------------------------------------------
 // Stack frame layout (grows downward from REG_FP)

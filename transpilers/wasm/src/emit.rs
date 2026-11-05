@@ -184,6 +184,13 @@ impl Code {
         self.push(zib, Fixup::None);
     }
 
+    /// Sets every `REG_MEM_LIMITS` register from `REG_MEM_END`.
+    pub fn set_mem_limits(&mut self) {
+        for (width, reg) in REG_MEM_LIMITS {
+            self.alu_ri("sub", reg, REG_MEM_END, width as i64);
+        }
+    }
+
     /// `reg_dst = op(reg_a, reg_b)`.  `op` is a Zisk op name.
     pub fn alu_rr(&mut self, op: &str, reg_dst: u64, reg_a: u64, reg_b: u64) {
         let mut zib = ZiskInstBuilder::new(0);
