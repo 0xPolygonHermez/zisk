@@ -419,6 +419,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             Nop => {}
             BrIf { relative_depth } => self.br_if(relative_depth),
             If { blockty } => self.if_(blockty)?,
+            BrTable { ref targets } => self.br_table(targets)?,
 
             _ => return Ok(false),
         }
@@ -777,7 +778,6 @@ impl<'a, 'b> FuncGen<'a, 'b> {
                 self.branch_to(relative_depth);
                 self.unreachable = true;
             }
-            BrTable { targets } => self.br_table(targets)?,
             Return => {
                 self.emit_return();
                 self.unreachable = true;
@@ -1192,14 +1192,15 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.jump(branch_label);
     }
 
-    fn br_table(&mut self, targets: wasmparser::BrTable) -> Result<(), Box<dyn Error>> {
-        // MVP: only arity-0 br_table (the common switch lowering).
-        let cond = self.slot(self.depth - 1);
-        self.depth -= 1;
-        self.code.load_slot_to_reg(REG_T0, cond);
-        // Validate arity 0 across targets and emit a compare chain.  A target past the outermost
-        // block is the function body: those cases jump to a shared return stub emitted after
-        // the chain.
+    /// `br_table`: a jump table for `BR_TABLE_JUMP_MIN` targets or more, a compare chain below.
+    /// Only arity-0 targets (the common switch lowering).
+    fn br_table(&mut self, targets: &wasmparser::BrTable) -> Result<(), Box<dyn Error>> {
+        let cond = self.pop_val();
+        self.flush();
+        let cond = self.opnd_at(cond, self.depth);
+        let index = self.opnd_reg(cond, REG_T0);
+        // A target past the outermost block is the function body: those cases jump to a shared
+        // return stub emitted after the dispatch.
         let mut return_stub: Option<LabelId> = None;
         let mut target_label = |this: &mut Self, rel: u32| -> Result<LabelId, Box<dyn Error>> {
             if rel as usize == this.ctrl.len() {
@@ -1215,12 +1216,27 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             }
             Ok(this.ctrl[frame_idx].branch_label)
         };
-        for (i, target) in targets.targets().enumerate() {
-            let label = target_label(self, target?)?;
-            self.code.cmp_imm_branch("eq", REG_T0, i as i64, label, true);
+        let mut labels = Vec::new();
+        for target in targets.targets() {
+            labels.push(target_label(self, target?)?);
         }
-        let label = target_label(self, targets.default())?;
-        self.code.jump(label);
+        let default = target_label(self, targets.default())?;
+        if labels.len() < BR_TABLE_JUMP_MIN {
+            for (i, &label) in labels.iter().enumerate() {
+                self.code.cmp_imm_branch("eq", index, i as i64, label, true);
+            }
+            self.code.jump(default);
+        } else {
+            // An i32 index is sign-extended, so one at 2^31 or above compares as huge here too.
+            self.code.cmp_imm_branch("ltu", index, labels.len() as i64, default, false);
+            self.code.alu_ri("sll", REG_T0, index, 2); // one 4-byte jump per entry
+            let table = self.code.new_label();
+            self.code.jump_reg_plus_label(REG_T0, table);
+            self.code.bind(table);
+            for label in labels {
+                self.code.jump(label);
+            }
+        }
         if let Some(stub) = return_stub {
             self.code.bind(stub);
             self.emit_return();
@@ -1391,6 +1407,10 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         Ok(())
     }
 }
+
+/// Fewest `br_table` targets dispatched through a jump table (4 steps for any index); fewer go
+/// through a compare chain, which takes `i + 1` steps for index `i`.
+const BR_TABLE_JUMP_MIN: usize = 4;
 
 /// Instructions per entry of the `memory.fill` table.
 pub(crate) const MEMSET_TABLE_ENTRY: u64 = 2;

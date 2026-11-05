@@ -364,6 +364,19 @@ impl Code {
         self.push(zib, Fixup::None);
     }
 
+    /// Jumps to `reg + <absolute address of label>` in one instruction: an entry of a jump table
+    /// at `label`, `reg` holding the entry's byte offset.
+    pub fn jump_reg_plus_label(&mut self, reg: u64, label: LabelId) {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("reg", reg, false);
+        zib.src_b("imm", 0, false); // patched to the label address
+        zib.op("add").unwrap();
+        zib.set_pc();
+        zib.j(0, 4);
+
+        self.push(zib, Fixup::LabelAddr(label));
+    }
+
     /// `reg = <absolute address of function index>`, resolved at layout time.
     pub fn load_func_addr_to_reg(&mut self, reg: u64, index: u32) {
         let mut zib = ZiskInstBuilder::new(0);

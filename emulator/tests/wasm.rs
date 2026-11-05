@@ -412,6 +412,61 @@ fn branch_to_function_body_returns() {
 }
 
 #[test]
+fn br_table_dispatches_every_index() {
+    // `$big` has six targets (a jump table), `$small` two (a compare chain); both return the
+    // case number, or 15 for the default.  The result packs one 4-bit case per index, first
+    // index lowest.
+    let wat = r#"(module
+      (import "wasi_snapshot_preview1" "fd_write"
+        (func $fd_write (param i32 i32 i32 i32) (result i32)))
+      (memory 1)
+      (func $big (param $i i32) (result i64)
+        (block $d (block $5 (block $4 (block $3 (block $2 (block $1 (block $0
+          (br_table $0 $1 $2 $3 $4 $5 $d (local.get $i)))
+          (return (i64.const 0)))
+          (return (i64.const 1)))
+          (return (i64.const 2)))
+          (return (i64.const 3)))
+          (return (i64.const 4)))
+          (return (i64.const 5)))
+        (i64.const 15))
+      (func $small (param $i i32) (result i64)
+        (block $d (block $1 (block $0
+          (br_table $0 $1 $d (local.get $i)))
+          (return (i64.const 0)))
+          (return (i64.const 1)))
+        (i64.const 15))
+      (func $pack (param $acc i64) (param $case i64) (result i64)
+        (i64.or (i64.shl (local.get $acc) (i64.const 4)) (local.get $case)))
+      (func (export "_start")
+        (local $r i64)
+        ;; indices, last packed lowest: 0x80000000, 0x7fffffff, -1, 7, 6, 5, 4, 3, 2, 1, 0
+        (local.set $r (call $big (i32.const 0x80000000)))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 0x7fffffff))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const -1))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 7))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 6))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 5))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 4))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 3))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 2))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 1))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 0))))
+        (i64.store (i32.const 16) (local.get $r))
+        (local.set $r (call $small (i32.const -1)))
+        (local.set $r (call $pack (local.get $r) (call $small (i32.const 2))))
+        (local.set $r (call $pack (local.get $r) (call $small (i32.const 1))))
+        (local.set $r (call $pack (local.get $r) (call $small (i32.const 0))))
+        (i64.store (i32.const 24) (local.get $r))
+        (i32.store (i32.const 0) (i32.const 16))
+        (i32.store (i32.const 4) (i32.const 16))
+        (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#;
+    let out = run(&wat::parse_str(wat).unwrap(), &[]);
+    assert_eq!(out_u64(&out), 0xfff_ff54_3210);
+    assert_eq!(u64::from_le_bytes(out[8..16].try_into().unwrap()), 0xff10);
+}
+
+#[test]
 fn data_segments_must_not_overlap() {
     // Touching segments are fine and both land in memory ...
     let touching = r#"(module
