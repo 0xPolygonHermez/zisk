@@ -500,8 +500,8 @@ fn wide_arithmetic_takes_operands_from_anywhere() {
     let k = |v: u64| format!("(i64.const {})", v as i64);
     let ab = a as u128 * b as u128;
     let cases: Vec<(String, u128)> = vec![
-        (format!("(i64.mul_wide_u (i64.load (i32.const 512)) (local.get $y))"), x as u128 * y as u128),
-        (format!("(i64.mul_wide_u (local.get $y) (i64.load (i32.const 512)))"), x as u128 * y as u128),
+        ("(i64.mul_wide_u (i64.load (i32.const 512)) (local.get $y))".to_string(), x as u128 * y as u128),
+        ("(i64.mul_wide_u (local.get $y) (i64.load (i32.const 512)))".to_string(), x as u128 * y as u128),
         (
             format!("(i64.mul_wide_u {} {}) (local.set $t) (local.get $y) (i64.mul_wide_u)", k(a), k(b)),
             (ab as u64) as u128 * y as u128,
@@ -519,7 +519,7 @@ fn wide_arithmetic_takes_operands_from_anywhere() {
             c.wrapping_sub(ab),
         ),
         (
-            format!("(i64.mul_wide_s (i64.load (i32.const 512)) (local.get $y))"),
+            "(i64.mul_wide_s (i64.load (i32.const 512)) (local.get $y))".to_string(),
             (x as i64 as i128 * y as i64 as i128) as u128,
         ),
         (
