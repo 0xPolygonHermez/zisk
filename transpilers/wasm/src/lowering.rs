@@ -75,6 +75,9 @@ enum Val {
     Slot,
     /// The current value of local `k`, not copied yet.
     Local(u32),
+    /// `i32.add` of local `k` and a constant, not computed yet, so that an access through it
+    /// can use `k`'s address (see [`FuncGen::access_addr`]).
+    LocalPlus(u32, i32),
     /// A constant, not stored yet.
     Const(i64),
     /// In `REG_ACC`.  At most one value is, counting the operands of a pending `Cmp`.
@@ -106,6 +109,8 @@ enum Opnd {
     Const(i64),
     /// A register: `REG_ACC`, or the register of a local (see [`LocalRegs`]).
     Reg(u64),
+    /// Local `k` plus a constant, as `i32.add` computes it (see [`Val::LocalPlus`]).
+    LocalPlus(u32, i32),
 }
 
 /// Register `reg` holds the absolute address of local `local` (a wasm address) plus `off0`, and
@@ -348,6 +353,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         match v {
             Val::Slot => Opnd::Slot(self.slot(d)),
             Val::Local(k) => self.local_opnd(k),
+            Val::LocalPlus(k, c) => Opnd::LocalPlus(k, c),
             Val::Const(c) => Opnd::Const(c),
             Val::Acc => Opnd::Reg(REG_ACC),
             Val::Acc2 => Opnd::Reg(REG_ACC2),
@@ -366,6 +372,13 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             Opnd::Slot(off) => self.code.load_slot_to_reg(scratch, off),
             Opnd::Const(c) => self.code.load_imm_to_reg(scratch, c as u64),
             Opnd::Reg(r) => return r,
+            Opnd::LocalPlus(k, c) => {
+                let base = match self.local_opnd(k) {
+                    Opnd::Reg(r) => r,
+                    o => self.opnd_reg(o, scratch),
+                };
+                self.code.alu_ri("add_w", scratch, base, c as i64);
+            }
         }
         scratch
     }
@@ -397,6 +410,10 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             Opnd::Slot(src) => self.code.copy_slot(dst, src),
             Opnd::Const(c) => self.code.store_imm_to_slot(dst, c),
             Opnd::Reg(r) => self.code.store_reg_to_slot(dst, r),
+            Opnd::LocalPlus(..) => {
+                let r = self.opnd_reg(o, REG_T0);
+                self.code.store_reg_to_slot(dst, r);
+            }
         }
     }
 
@@ -427,8 +444,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     /// Copies every pending `local.get k` to its slot, before local `k` changes.
     fn materialize_local(&mut self, k: u32) {
         for i in 0..self.vals.len() {
-            if self.vals[i] == Val::Local(k) {
-                let o = self.local_opnd(k);
+            if matches!(self.vals[i], Val::Local(j) | Val::LocalPlus(j, _) if j == k) {
+                let o = self.opnd_at(self.vals[i], i as u32);
                 self.opnd_to_slot(self.slot(i as u32), o);
                 self.vals[i] = Val::Slot;
             }
@@ -458,14 +475,15 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     }
 
     /// Writes every value to its operand slot, as the slot-based code, labels, branches and
-    /// calls expect.  It only stores to memory, so registers survive it.
+    /// calls expect.  It stores to memory and computes a pending `local + constant` in `REG_T0`,
+    /// so every other register survives it.
     pub(crate) fn flush(&mut self) {
         self.compute_cmp();
         for i in 0..self.vals.len() {
             let off = self.slot(i as u32);
             match self.vals[i] {
                 Val::Slot => continue,
-                Val::Local(_) | Val::Const(_) | Val::Acc | Val::Acc2 => {
+                Val::Local(_) | Val::LocalPlus(..) | Val::Const(_) | Val::Acc | Val::Acc2 => {
                     let o = self.opnd_at(self.vals[i], i as u32);
                     self.opnd_to_slot(off, o);
                 }
@@ -492,10 +510,10 @@ impl<'a, 'b> FuncGen<'a, 'b> {
                 let v = self.pop();
                 self.set_local(local_index, v);
                 // The value is now the local's (its register may have taken it from `REG_ACC`).
-                let now = if self.locals.reg(local_index).is_some() {
-                    Val::Local(local_index)
-                } else {
-                    top
+                let now = match top {
+                    _ if self.locals.reg(local_index).is_some() => Val::Local(local_index),
+                    Val::LocalPlus(j, _) if j == local_index => Val::Local(local_index),
+                    _ => top,
                 };
                 self.push_val(now);
             }
@@ -619,8 +637,6 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             self.opnd_to_slot(local_offset(k), v);
             return;
         };
-        self.locals.clean[k as usize] = false;
-        self.locals.in_slot[k as usize] = false;
         match v {
             Opnd::Reg(REG_ACC) if self.acc_inst == Some(self.code.len()) => {
                 self.code.retarget_last_store(r);
@@ -630,11 +646,25 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             Opnd::Reg(src) => self.code.mov_reg(r, src),
             Opnd::Slot(off) => self.code.load_slot_to_reg(r, off),
             Opnd::Const(c) => self.code.load_imm_to_reg(r, c as u64),
+            Opnd::LocalPlus(..) => {
+                self.opnd_reg(v, r);
+            }
         }
+        // Only now: a pending `k + c` above reads `k` from wherever it was.
+        self.locals.clean[k as usize] = false;
+        self.locals.in_slot[k as usize] = false;
     }
 
-    /// `REG_ACC = op(a, b)`; a constant operand becomes the instruction's immediate.
+    /// `REG_ACC = op(a, b)`; a constant operand becomes the instruction's immediate.  An
+    /// `i32.add` or `i32.sub` of a local (plus a constant) and a constant stays pending as
+    /// [`Val::LocalPlus`].
     fn alu(&mut self, op: &'static str, commutative: bool) {
+        if let Some(v) = self.local_plus(op) {
+            self.pop_val();
+            self.pop_val();
+            self.push_val(v);
+            return;
+        }
         let mut b = self.pop();
         let mut a = self.pop();
         if commutative && matches!(a, Opnd::Const(_)) && !matches!(b, Opnd::Const(_)) {
@@ -650,6 +680,34 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             }
         }
         self.push_acc();
+    }
+
+    /// The pending `local + constant` that `op` on the top two values gives, if it is one.
+    fn local_plus(&self, op: &str) -> Option<Val> {
+        let [a, b] = self.vals.get(self.vals.len().checked_sub(2)?..)? else {
+            return None;
+        };
+        let base = |v: &Val| match *v {
+            Val::Local(k) => Some((k, 0i32)),
+            Val::LocalPlus(k, c) => Some((k, c)),
+            _ => None,
+        };
+        let constant = |v: &Val| match *v {
+            Val::Const(c) => Some(c as i32),
+            _ => None,
+        };
+        let (k, c0, c) = match op {
+            "add_w" => match (base(a), constant(b), constant(a), base(b)) {
+                (Some((k, c0)), Some(c), _, _) | (_, _, Some(c), Some((k, c0))) => (k, c0, c),
+                _ => return None,
+            },
+            "sub_w" => {
+                let (k, c0) = base(a)?;
+                (k, c0, constant(b)?.wrapping_neg())
+            }
+            _ => return None,
+        };
+        Some(Val::LocalPlus(k, c0.wrapping_add(c)))
     }
 
     /// A shift: wasm takes the count modulo the width (`count_mask`).
@@ -824,6 +882,9 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             Opnd::Const(c) => self.code.load_imm_to_reg(REG_RET, c as u64),
             Opnd::Reg(r) if r == REG_RET => {}
             Opnd::Reg(r) => self.code.mov_reg(REG_RET, r),
+            o @ Opnd::LocalPlus(..) => {
+                self.opnd_reg(o, REG_RET);
+            }
         }
     }
 
@@ -878,10 +939,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         // Bring `vals` up to date with whatever the slot-based code did to `depth`, and compute
         // a pending comparison unless this operator branches on it or negates it.
         self.sync();
-        if !matches!(
-            op,
-            BrIf { .. } | If { .. } | I32Eqz | I64Eqz | I64ExtendI32S | I64ExtendI32U
-        ) {
+        if !matches!(op, BrIf { .. } | If { .. } | I32Eqz | I64Eqz | I64ExtendI32S | I64ExtendI32U)
+        {
             self.compute_cmp();
         }
         if self.lower_virtual(&op)? {
@@ -1270,8 +1329,21 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     fn access_addr(&mut self, static_offset: u64, width: u64) -> (u64, i64) {
         let v = self.pop_val();
         if let Val::Local(k) = v {
-            if let Some(access) = self.local_addr(k, static_offset, width) {
+            if let Some(access) = self.local_addr(k, static_offset, width, true) {
                 return access;
+            }
+        }
+        // `local + c` with `c >= 0`: the access is at `local`'s address plus `c + offset`, as
+        // long as `local + c` does not wrap past 2^32.  It cannot when `local` is a valid address
+        // (below 2^31), which a remembered address of `local` proves, so only an existing one
+        // is used.  A new one would have to be checked on `local` alone, which would trap when
+        // `local` is not an address but `local + c` is (compilers do produce such pairs, a
+        // negative index and an array's address).
+        if let Val::LocalPlus(k, c) = v {
+            if c >= 0 {
+                if let Some(access) = self.local_addr(k, static_offset + c as u64, width, false) {
+                    return access;
+                }
             }
         }
         let addr = self.opnd_at(v, self.depth);
@@ -1282,8 +1354,15 @@ impl<'a, 'b> FuncGen<'a, 'b> {
 
     /// An access through local `k`, whose absolute address this straight-line code may already
     /// have in a `REG_PTRS` register (see [`Ptr`]).  `None` for an offset too far from the one
-    /// the register was made for to be an instruction's offset.
-    fn local_addr(&mut self, k: u32, static_offset: u64, width: u64) -> Option<(u64, i64)> {
+    /// the register was made for to be an instruction's offset, or when there is no such
+    /// register and `create` is not set.
+    fn local_addr(
+        &mut self,
+        k: u32,
+        static_offset: u64,
+        width: u64,
+        create: bool,
+    ) -> Option<(u64, i64)> {
         let w = width as i64;
         if let Some(i) = self.ptrs.iter().position(|p| p.local == k) {
             let p = self.ptrs[i];
@@ -1296,6 +1375,9 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             self.check_bounds(REG_T0, Len::Imm(width), REG_T1);
             self.ptrs[i].hi = rel + w;
             return Some((REG_T0, 0));
+        }
+        if !create {
+            return None;
         }
         let reg = REG_PTRS[self.next_ptr];
         self.next_ptr = (self.next_ptr + 1) % REG_PTRS.len();

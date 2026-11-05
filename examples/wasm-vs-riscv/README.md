@@ -40,27 +40,27 @@ wasm target), both `opt-level = 3`, `panic = "abort"`.
 
 | | wasm | RISC-V | ratio |
 |---|---:|---:|---:|
-| Steps | 9,533 | 2,631 | 3.6× |
-| Variable cost | 979,735 | 269,966 | 3.6× |
-| ROM size (instructions) | 100,521 | 47,881 | 2.1× |
+| Steps | 9,442 | 2,631 | 3.6× |
+| Variable cost | 972,179 | 269,966 | 3.6× |
+| ROM size (instructions) | 100,010 | 47,881 | 2.1× |
 
 **Per unit of work** (the slope between `n = 0` and `n = N`):
 
 | Workload | Unit | wasm steps | RISC-V steps | ratio | wasm cost | RISC-V cost | ratio |
 |---|---|---:|---:|---:|---:|---:|---:|
 | fib | loop iteration | 3 | 5 | 0.5× | 208 | 397 | 0.5× |
-| calls | 1,023 calls | 18,431 | 14,845 | 1.2× | 1,465,490 | 1,211,724 | 1.2× |
-| sort | element sorted | 317 | 126 | 2.5× | 36,394 | 18,410 | 2.0× |
-| btree | insert + lookup | 1,011 | 489 | 2.1× | 92,430 | 39,845 | 2.3× |
-| json | JSON record | 21,138 | 6,352 | 3.3× | 2,049,873 | 523,855 | 3.9× |
+| calls | 1,023 calls | 18,431 | 14,845 | 1.2× | 1,465,500 | 1,211,724 | 1.2× |
+| sort | element sorted | 294 | 126 | 2.3× | 34,226 | 18,410 | 1.9× |
+| btree | insert + lookup | 1,009 | 489 | 2.1× | 92,254 | 39,845 | 2.3× |
+| json | JSON record | 21,029 | 6,352 | 3.3× | 2,038,862 | 523,855 | 3.9× |
 | float | `f64` step | 5,546 | 506 | 11.0× | 517,276 | 48,998 | 10.6× |
-| keccak_sw | Keccak-f in Rust | 18,754 | 4,056 | 4.6× | 1,953,656 | 438,078 | 4.5× |
+| keccak_sw | Keccak-f in Rust | 18,779 | 4,056 | 4.6× | 1,955,506 | 438,078 | 4.5× |
 | bigint | 256 × 256-bit product | 399 | 118 | 3.4× | 36,487 | 13,338 | 2.7× |
-| memcpy | 4 KiB copy | 56 | 19 | 2.9× | 40,186 | 35,722 | 1.1× |
-| keccak_pc | Keccak-f precompile | 33 | 7 | 5.1× | 44,884 | 42,774 | 1.0× |
+| memcpy | 4 KiB copy | 56 | 19 | 2.9× | 40,185 | 35,722 | 1.1× |
+| keccak_pc | Keccak-f precompile | 33 | 7 | 5.1× | 44,887 | 42,774 | 1.0× |
 
 **Proving** (the `json` workload, emulator backend, measured before the transpiler changes,
-which take 58% of its steps away, so these ratios are now lower; instance counts from the prover's plan, proving time on
+which take 59% of its steps away, so these ratios are now lower; instance counts from the prover's plan, proving time on
 one 128-core machine, which is noisy):
 
 | `n = 2,000` | wasm | RISC-V | ratio |
@@ -91,8 +91,7 @@ where wasm moves more memory per step and overstate it where one RISC-V step is 
 - **About 0.5–1.2× for register-bound code** (`fib`, `calls`). A function's most used locals
   live in registers, so a short chain of operations on a few of them, like `fib`'s loop, beats
   the RISC-V build; every call still writes its arguments to memory, saves those registers and
-  checks the stack. A short chain of operations on a few locals, like `fib`'s loop, is as
-  cheap as RISC-V's.
+  checks the stack.
 - **About 2–4× for typical code** (`sort`, `btree`, `json`): on top of the slots, every
   linear-memory access is bounds-checked (one compare, less when the same pointer local was
   checked just before), which shows as extra `leu`/`and` in the opcode breakdown
@@ -132,6 +131,7 @@ above it:
 | Arguments written straight to the callee, one-instruction returns, `x1` kept by leaf functions, results left in the return register | calls | 1.7× | 1.3× |
 | The most used locals of each function in registers | keccak_sw | 6.4× | 4.5× |
 | `__multi3` inlined at its direct calls, and the wide-arithmetic operators reading their operands in place | bigint | 6.6× | 2.9× |
+| An access through `local + constant` uses the local's checked address when there is one | sort | 2.0× | 1.9× |
 
 `sort`, `btree` and `json` gained 1–2% from the DMA copies. The operand change applies to all
 code; in steps per unit it saved 50% on `fib`, 41–49% on `calls`, `sort`, `btree` and
@@ -144,7 +144,8 @@ Locals in registers saved 33–36% on `sort`, `btree` and `keccak_sw`, 28% on `f
 `memcpy`, 14% on `json`, 6% on `calls`, 2% on `bigint` and 11% of the fixed overhead.
 Inlining `__multi3` saved 58% on `bigint` and changed nothing else. Taking a comparison widened
 to `i64` (the carries of `bigint`) as the 0 or 1 it already is, without masking it, saved another
-6% there.
+6% there. Using a local's checked address for accesses through `local + constant` saved 7% on
+`sort` and 0.5% on `json`; `keccak_sw` lost 0.1%.
 
 Support for the wide-arithmetic proposal came with the third change. A guest built with
 `RUSTFLAGS="-C target-feature=+wide-arithmetic"` (an unstable flag; stable Rust accepts it with a

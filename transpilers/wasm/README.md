@@ -639,7 +639,10 @@ compare of the start address with the limit register for the access width (`x27`
 address made from a local stays in `x12` or `x13` until the local is written or control reaches a
 label, with the range already checked, so in `p.a + p.b` the second access through `p` is a
 single instruction. An access past that range checks only its own end; memory never shrinks, so
-an earlier check stays true. `memory.copy` and
+an earlier check stays true. An access through `local.get p; i32.const c; i32.add` with
+`c >= 0` uses `p`'s address the same way, when there is one: a checked address proves `p` is
+below 2^31, so `p + c` cannot wrap past 2^32. Without one it computes `p + c` as wasm does,
+since `p` alone may not be an address (a negative index plus an array's address is common). `memory.copy` and
 `memory.fill` check the whole range before touching memory, then run on the DMA precompiles, as a
 RISC-V guest's `memmove` and `memset` do: `memory.copy` is one `dma_memcpy` (which has `memmove`
 semantics, so overlap in either direction is fine), and `memory.fill` is one `dma_xmemset`. That

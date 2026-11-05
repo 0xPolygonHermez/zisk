@@ -404,6 +404,69 @@ fn multi3_runs_natively() {
 }
 
 #[test]
+fn local_plus_constant_keeps_its_value_when_the_local_changes() {
+    // `p + c` waits on the stack while `p` itself is reassigned (with `local.set` and
+    // `local.tee`), then serves as an address, a stored value and a call argument; each must see
+    // the old `p`.  Bytes 100.. hold 1, 2, 3, ...; the result packs one byte per check.
+    let wat = r#"(module
+      (import "wasi_snapshot_preview1" "fd_write"
+        (func $fd_write (param i32 i32 i32 i32) (result i32)))
+      (memory 1)
+      (func $id (param i32) (result i32) (local.get 0))
+      (func $f (result i64)
+        (local $p i32) (local $i i32) (local $r i64) (local $v i32) (local $w i64)
+        (loop $fill
+          (i32.store8 offset=100 (local.get $i) (i32.add (local.get $i) (i32.const 1)))
+          (local.set $i (i32.add (local.get $i) (i32.const 1)))
+          (br_if $fill (i32.lt_u (local.get $i) (i32.const 32))))
+        (local.set $p (i32.const 100))
+        ;; address: p + 2 loaded after p moves on by 10
+        (i32.add (local.get $p) (i32.const 2))
+        (local.set $p (i32.add (local.get $p) (i32.const 10)))
+        (local.set $r (i64.extend_i32_u (i32.load8_u)))
+        ;; value: p + 1 stored after p moves on (local.tee), read back
+        (i32.const 200)
+        (i32.add (local.get $p) (i32.const 1))
+        (drop (local.tee $p (i32.sub (local.get $p) (i32.const 5))))
+        (i32.store)
+        (local.set $r (i64.or (local.get $r)
+          (i64.shl (i64.load32_u (i32.const 200)) (i64.const 8))))
+        ;; argument: p + 3 passed after p changes
+        (i32.add (local.get $p) (i32.const 3))
+        (local.set $p (i32.const 0))
+        (call $id)
+        (local.set $v)
+        (local.set $r (i64.or (local.get $r)
+          (i64.shl (i64.extend_i32_u (local.get $v)) (i64.const 16))))
+        ;; address with a static offset, in a loop: p + 1 at offset 1, p advancing by 4
+        (local.set $p (i32.const 100))
+        (local.set $i (i32.const 0))
+        (loop $walk
+          (i32.add (local.get $p) (i32.const 1))
+          (local.set $p (i32.add (local.get $p) (i32.const 4)))
+          (local.set $w (i64.load8_u offset=1))
+          (local.set $r (i64.add (local.get $r) (i64.shl (local.get $w) (i64.const 32))))
+          (local.set $i (i32.add (local.get $i) (i32.const 1)))
+          (br_if $walk (i32.lt_u (local.get $i) (i32.const 3))))
+        (local.get $r))
+      (func (export "_start")
+        (i64.store (i32.const 16) (call $f))
+        (i32.store (i32.const 0) (i32.const 16))
+        (i32.store (i32.const 4) (i32.const 8))
+        (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#;
+    // byte at 100 + n is n + 1
+    let byte = |addr: u64| addr - 100 + 1;
+    let mut expected = byte(102); // p + 2 with p = 100
+    expected |= 111 << 8; // p + 1 with p = 110: the value 111
+    expected |= 108 << 16; // p + 3 with p = 105
+    for k in 0..3u64 {
+        expected += byte(100 + 4 * k + 1 + 1) << 32; // (p + 1) + offset 1
+    }
+    let out = run(&wat::parse_str(wat).unwrap(), &[]);
+    assert_eq!(out_u64(&out), expected);
+}
+
+#[test]
 fn extending_a_comparison_keeps_its_value() {
     // A comparison widened to i64 is the same 0 or 1, used as a number or negated by `eqz`.
     let body = r#"
