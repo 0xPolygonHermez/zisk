@@ -42,7 +42,7 @@ wasm target), both `opt-level = 3`, `panic = "abort"`.
 |---|---:|---:|---:|
 | Steps | 9,533 | 2,631 | 3.6× |
 | Variable cost | 979,735 | 269,966 | 3.6× |
-| ROM size (instructions) | 100,552 | 47,881 | 2.1× |
+| ROM size (instructions) | 100,521 | 47,881 | 2.1× |
 
 **Per unit of work** (the slope between `n = 0` and `n = N`):
 
@@ -55,7 +55,7 @@ wasm target), both `opt-level = 3`, `panic = "abort"`.
 | json | JSON record | 21,138 | 6,352 | 3.3× | 2,049,873 | 523,855 | 3.9× |
 | float | `f64` step | 5,546 | 506 | 11.0× | 517,276 | 48,998 | 10.6× |
 | keccak_sw | Keccak-f in Rust | 18,754 | 4,056 | 4.6× | 1,953,656 | 438,078 | 4.5× |
-| bigint | 256 × 256-bit product | 423 | 118 | 3.6× | 39,295 | 13,338 | 2.9× |
+| bigint | 256 × 256-bit product | 399 | 118 | 3.4× | 36,487 | 13,338 | 2.7× |
 | memcpy | 4 KiB copy | 56 | 19 | 2.9× | 40,186 | 35,722 | 1.1× |
 | keccak_pc | Keccak-f precompile | 33 | 7 | 5.1× | 44,884 | 42,774 | 1.0× |
 
@@ -102,7 +102,7 @@ where wasm moves more memory per step and overstate it where one RISC-V step is 
     the state lives in linear memory, so many XOR, AND-NOT and rotation operations load their
     operands or store their result, with bounds checks; RISC-V keeps more in registers and has
     `andn`.
-  - `bigint` (now 2.9×): wasm32 has no 64 × 64 → 128-bit multiply, so each product is a
+  - `bigint` (now 2.7×): wasm32 has no 64 × 64 → 128-bit multiply, so each product is a
     `__multi3` call, which the transpiler lowers inline to `mul` + `muluh`; but its result still
     goes through memory (the call's `ret` pointer) and is loaded back, with bounds checks, where
     RISC-V keeps both halves in registers.
@@ -142,9 +142,11 @@ saved 28% on `keccak_sw` and `memcpy`, 12–13% on `json`, `sort` and `bigint`, 
 `calls`, 19% on `bigint` (its `__multi3` calls), 9% on `json` and 11% of the fixed overhead.
 Locals in registers saved 33–36% on `sort`, `btree` and `keccak_sw`, 28% on `fib`, 17% on
 `memcpy`, 14% on `json`, 6% on `calls`, 2% on `bigint` and 11% of the fixed overhead.
-Inlining `__multi3` saved 58% on `bigint` and changed nothing else.
+Inlining `__multi3` saved 58% on `bigint` and changed nothing else. Taking a comparison widened
+to `i64` (the carries of `bigint`) as the 0 or 1 it already is, without masking it, saved another
+6% there.
 
 Support for the wide-arithmetic proposal came with the third change. A guest built with
 `RUSTFLAGS="-C target-feature=+wide-arithmetic"` (an unstable flag; stable Rust accepts it with a
 warning) multiplies inline instead of calling `__multi3`, which brings `bigint` to 241 steps and
-22,037 cost per product: 1.7× RISC-V, against 2.9× through `__multi3`.
+22,037 cost per product: 1.7× RISC-V, against 2.7× through `__multi3`.

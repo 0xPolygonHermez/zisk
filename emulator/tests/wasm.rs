@@ -404,6 +404,25 @@ fn multi3_runs_natively() {
 }
 
 #[test]
+fn extending_a_comparison_keeps_its_value() {
+    // A comparison widened to i64 is the same 0 or 1, used as a number or negated by `eqz`.
+    let body = r#"
+      (i64.add
+        (i64.add
+          (i64.extend_i32_u (i64.lt_u (i64.const 1) (i64.const 2)))
+          (i64.mul (i64.extend_i32_u (i32.eq (i32.const 3) (i32.const 4))) (i64.const 100)))
+        (i64.add
+          (i64.mul (i64.extend_i32_s (i32.ne (i32.const 3) (i32.const 4))) (i64.const 10))
+          (i64.add
+            (i64.mul (i64.extend_i32_u (i64.eqz (i64.extend_i32_u
+              (i32.lt_s (i32.const -1) (i32.const 0))))) (i64.const 1000))
+            (i64.mul (i64.extend_i32_u (i64.eqz (i64.extend_i32_u
+              (i32.gt_s (i32.const -1) (i32.const 0))))) (i64.const 10000)))))"#;
+    let out = run(&module_printing_i64(body), &[]);
+    assert_eq!(out_u64(&out), 10011);
+}
+
+#[test]
 fn wide_arithmetic_takes_operands_from_anywhere() {
     // Operands from a load (in the accumulator), a local, and earlier wide results: a low half
     // waiting in its own register as either input of `mul_wide`, and both halves as the input

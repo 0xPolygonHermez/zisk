@@ -83,8 +83,9 @@ enum Val {
     /// most one value is.
     Acc2,
     /// A comparison not computed yet, so that `br_if` and `if` can branch on its flag.  Only
-    /// ever the top of the stack: any operator other than `br_if`, `if` and `eqz` computes it
-    /// first, so the locals it reads cannot change under it.
+    /// ever the top of the stack: any operator other than `br_if`, `if`, `eqz` and the `i32` to
+    /// `i64` extensions (a 0 or 1 is the same in both) computes it first, so the locals it reads
+    /// cannot change under it.
     Cmp(Cmp),
 }
 
@@ -557,6 +558,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             I32Extend8S | I64Extend8S => self.sign_extend("signextend_b"),
             I32Extend16S | I64Extend16S => self.sign_extend("signextend_h"),
             I64ExtendI32S => { /* canonical i32 already sign-extended: no-op */ }
+            // A pending comparison is 0 or 1 either way: it stays pending.
+            I64ExtendI32U if matches!(self.vals.last(), Some(Val::Cmp(_))) => {}
             I64ExtendI32U => {
                 self.push_val(Val::Const(0xFFFF_FFFF));
                 self.alu("and", true);
@@ -875,7 +878,10 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         // Bring `vals` up to date with whatever the slot-based code did to `depth`, and compute
         // a pending comparison unless this operator branches on it or negates it.
         self.sync();
-        if !matches!(op, BrIf { .. } | If { .. } | I32Eqz | I64Eqz) {
+        if !matches!(
+            op,
+            BrIf { .. } | If { .. } | I32Eqz | I64Eqz | I64ExtendI32S | I64ExtendI32U
+        ) {
             self.compute_cmp();
         }
         if self.lower_virtual(&op)? {
