@@ -404,6 +404,148 @@ fn multi3_runs_natively() {
 }
 
 #[test]
+fn wide_arithmetic_takes_operands_from_anywhere() {
+    // Operands from a load (in the accumulator), a local, and earlier wide results: a low half
+    // waiting in its own register as either input of `mul_wide`, and both halves as the input
+    // of `add128` or `sub128`.  Each case leaves [lo, hi].
+    let (a, b, x, y) = (
+        0x1234_5678_9abc_def0u64,
+        u64::MAX - 5,
+        0x8000_0000_0000_0001u64,
+        0xfedc_ba98_7654_3210u64,
+    );
+    let c: u128 = (0xdead_beefu128 << 64) | 0xffff_ffff_ffff_fff0;
+    let k = |v: u64| format!("(i64.const {})", v as i64);
+    let ab = a as u128 * b as u128;
+    let cases: Vec<(String, u128)> = vec![
+        (format!("(i64.mul_wide_u (i64.load (i32.const 512)) (local.get $y))"), x as u128 * y as u128),
+        (format!("(i64.mul_wide_u (local.get $y) (i64.load (i32.const 512)))"), x as u128 * y as u128),
+        (
+            format!("(i64.mul_wide_u {} {}) (local.set $t) (local.get $y) (i64.mul_wide_u)", k(a), k(b)),
+            (ab as u64) as u128 * y as u128,
+        ),
+        (
+            format!("(local.get $y) (i64.mul_wide_u {} {}) (local.set $t) (i64.mul_wide_u)", k(a), k(b)),
+            y as u128 * (ab as u64) as u128,
+        ),
+        (
+            format!("(i64.mul_wide_u {} {}) {} {} (i64.add128)", k(a), k(b), k(c as u64), k((c >> 64) as u64)),
+            ab.wrapping_add(c),
+        ),
+        (
+            format!("{} {} (i64.mul_wide_u {} {}) (i64.sub128)", k(c as u64), k((c >> 64) as u64), k(a), k(b)),
+            c.wrapping_sub(ab),
+        ),
+        (
+            format!("(i64.mul_wide_s (i64.load (i32.const 512)) (local.get $y))"),
+            (x as i64 as i128 * y as i64 as i128) as u128,
+        ),
+        (
+            format!("(i64.mul_wide_u (local.get $y) (local.get $y)) (i64.mul_wide_u (local.get $y) {}) (i64.add128)", k(3)),
+            (y as u128 * y as u128).wrapping_add(y as u128 * 3),
+        ),
+    ];
+    let body: String = cases
+        .iter()
+        .enumerate()
+        .map(|(i, (case, _))| {
+            let at = 16 + 16 * i;
+            format!(
+                "{case} (local.set $hi) (local.set $lo)
+                 (i64.store (i32.const {at}) (local.get $lo))
+                 (i64.store (i32.const {}) (local.get $hi))",
+                at + 8
+            )
+        })
+        .collect();
+    let wat = format!(
+        r#"(module
+      (import "wasi_snapshot_preview1" "fd_write"
+        (func $fd_write (param i32 i32 i32 i32) (result i32)))
+      (memory 1)
+      (func (export "_start")
+        (local $lo i64) (local $hi i64) (local $t i64) (local $y i64)
+        (i64.store (i32.const 512) {})
+        (local.set $y {})
+        {body}
+        (i32.store (i32.const 0) (i32.const 16))
+        (i32.store (i32.const 4) (i32.const {}))
+        (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 8)))))"#,
+        k(x),
+        k(y),
+        16 * cases.len()
+    );
+    let out = run(&wat::parse_str(wat).unwrap(), &[]);
+    for (i, (case, expected)) in cases.iter().enumerate() {
+        let got = u128::from_le_bytes(out[16 * i..16 * i + 16].try_into().unwrap());
+        assert_eq!(got, *expected, "{case}");
+    }
+}
+
+#[test]
+fn multi3_is_inlined_and_checks_its_result_pointer() {
+    // A direct call to the native `__multi3` is lowered in place; `call_indirect` runs its
+    // body.  Operands come from register locals, a load and a slot.  Both write the product
+    // at `$p`, which must have room for its 16 bytes.  `direct` and `indirect` pick the calls,
+    // so that a trap is pinned on one of them.
+    let outcome = |p: u32, direct: bool, indirect: bool| -> (bool, u128, u128) {
+        let direct = if direct {
+            "(call $__multi3 (local.get $p) (local.get $alo) (local.get $ahi)
+               (i64.load (i32.const 512)) (i64.const 0x1111))"
+        } else {
+            ""
+        };
+        let indirect = if indirect {
+            "(call_indirect (type $m) (i32.add (local.get $p) (i32.const 16))
+               (local.get $alo) (local.get $ahi) (i64.load (i32.const 512)) (i64.const 0x1111)
+               (i32.const 0))"
+        } else {
+            ""
+        };
+        let wat = format!(
+            r#"(module
+              (import "wasi_snapshot_preview1" "fd_write"
+                (func $fd_write (param i32 i32 i32 i32) (result i32)))
+              (type $m (func (param i32 i64 i64 i64 i64)))
+              (table 1 funcref)
+              (elem (i32.const 0) $__multi3)
+              (memory 1)
+              (func $__multi3 (param i32 i64 i64 i64 i64)
+                (i64.store (local.get 0) (i64.const 0))
+                (i64.store offset=8 (local.get 0) (i64.const 0)))
+              (func (export "_start")
+                (local $p i32) (local $alo i64) (local $ahi i64)
+                (local.set $p (i32.const {p}))
+                (local.set $alo (i64.const 0x1234567890abcdef))
+                (local.set $ahi (i64.const 0x0fedcba987654321))
+                (i64.store (i32.const 512) (i64.const -7))
+                {direct}
+                {indirect}
+                (i32.store (i32.const 0) (i32.const 16))
+                (i32.store (i32.const 4) (i32.const 32))
+                (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#
+        );
+        let rom = wasm2rom(&wat::parse_str(wat).unwrap()).expect("wasm2rom");
+        let mut emu = ziskemu::Emu::new(&rom);
+        emu.run(Vec::new(), &EmuOptions::default(), None::<fn(EmuTrace)>);
+        assert!(emu.terminated(), "emulation did not terminate for p = {p}");
+        let out = emu.get_output_8();
+        let half = |i: usize| u128::from_le_bytes(out[i..i + 16].try_into().unwrap());
+        (emu.ctx.inst_ctx.error, half(0), half(16))
+    };
+    let a: u128 = 0x0fed_cba9_8765_4321_1234_5678_90ab_cdef;
+    let b: u128 = (0x1111u128 << 64) | (-7i64 as u64 as u128);
+    let product = a.wrapping_mul(b);
+    assert_eq!(outcome(16, true, true), (false, product, product));
+    // Eight bytes before the end of memory: the high half does not fit.
+    assert!(outcome(65536 - 8, true, false).0, "the inlined call must trap");
+    assert!(outcome(65536 - 24, false, true).0, "the call through the table must trap");
+    // Sixteen bytes before the end, both fit.
+    assert!(!outcome(65536 - 16, true, false).0);
+    assert!(!outcome(65536 - 32, false, true).0);
+}
+
+#[test]
 fn branch_to_function_body_returns() {
     // `br 1` from inside a block targets the function itself (Go emits this shape).
     let body = r#"(block (br 1 (i64.const 77))) (i64.const 1)"#;

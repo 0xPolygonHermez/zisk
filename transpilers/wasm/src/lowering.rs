@@ -79,6 +79,9 @@ enum Val {
     Const(i64),
     /// In `REG_ACC`.  At most one value is, counting the operands of a pending `Cmp`.
     Acc,
+    /// In `REG_ACC2`: the low half of a 128-bit result, whose high half is in `REG_ACC`.  At
+    /// most one value is.
+    Acc2,
     /// A comparison not computed yet, so that `br_if` and `if` can branch on its flag.  Only
     /// ever the top of the stack: any operator other than `br_if`, `if` and `eqz` computes it
     /// first, so the locals it reads cannot change under it.
@@ -143,6 +146,7 @@ impl LocalRegs {
         body: &wasmparser::FunctionBody,
         num_locals: u32,
         num_params: u32,
+        inlined: Option<u32>,
     ) -> Result<Self, Box<dyn Error>> {
         let mut uses = vec![0u64; num_locals as usize];
         let mut calls = 0u64;
@@ -160,6 +164,7 @@ impl LocalRegs {
                 Operator::LocalGet { local_index }
                 | Operator::LocalSet { local_index }
                 | Operator::LocalTee { local_index } => uses[local_index as usize] += weight,
+                Operator::Call { function_index } if Some(function_index) == inlined => {}
                 Operator::Call { .. } | Operator::CallIndirect { .. } => calls += weight,
                 _ => {}
             }
@@ -204,8 +209,9 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
     let sig = &module.sigs[func.type_index as usize];
 
     let num_locals = func.num_locals;
-    let leaf = calls_nothing(&func.body)?;
-    let locals = LocalRegs::choose(&func.body, num_locals, sig.params.len() as u32)?;
+    let inlined = module.native_multi3;
+    let leaf = calls_nothing(&func.body, inlined)?;
+    let locals = LocalRegs::choose(&func.body, num_locals, sig.params.len() as u32, inlined)?;
 
     let mut code = Code::new();
     let func_end = code.new_label();
@@ -343,6 +349,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             Val::Local(k) => self.local_opnd(k),
             Val::Const(c) => Opnd::Const(c),
             Val::Acc => Opnd::Reg(REG_ACC),
+            Val::Acc2 => Opnd::Reg(REG_ACC2),
             Val::Cmp(_) => unreachable!("a comparison is computed before its value is read"),
         }
     }
@@ -401,8 +408,17 @@ impl<'a, 'b> FuncGen<'a, 'b> {
 
     /// Stores the value in `REG_ACC`, if any, to its slot, so that `REG_ACC` can take another.
     fn spill_acc(&mut self) {
-        if let Some(i) = self.vals.iter().position(|v| *v == Val::Acc) {
-            self.code.store_reg_to_slot(self.slot(i as u32), REG_ACC);
+        self.spill_reg_val(Val::Acc, REG_ACC);
+    }
+
+    /// Stores the value in `REG_ACC2`, if any, to its slot.
+    fn spill_acc2(&mut self) {
+        self.spill_reg_val(Val::Acc2, REG_ACC2);
+    }
+
+    fn spill_reg_val(&mut self, v: Val, reg: u64) {
+        if let Some(i) = self.vals.iter().position(|&w| w == v) {
+            self.code.store_reg_to_slot(self.slot(i as u32), reg);
             self.vals[i] = Val::Slot;
         }
     }
@@ -448,7 +464,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             let off = self.slot(i as u32);
             match self.vals[i] {
                 Val::Slot => continue,
-                Val::Local(_) | Val::Const(_) | Val::Acc => {
+                Val::Local(_) | Val::Const(_) | Val::Acc | Val::Acc2 => {
                     let o = self.opnd_at(self.vals[i], i as u32);
                     self.opnd_to_slot(off, o);
                 }
@@ -513,6 +529,11 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             I64ShrS => self.shift("sra", 0x3f),
             // ZisK's rotations take the count modulo the width, and the `_w` forms rotate the low
             // 32 bits and sign-extend the result, which is the canonical i32 form.
+            // wide arithmetic (128-bit values as two i64 halves, low half first)
+            I64MulWideU => self.mul_wide("muluh"),
+            I64MulWideS => self.mul_wide("mulh"),
+            I64Add128 => self.add_sub128(true),
+            I64Sub128 => self.add_sub128(false),
             I32Rotl => self.alu("rol_w", false),
             I32Rotr => self.alu("ror_w", false),
             I64Rotl => self.alu("rol", false),
@@ -879,12 +900,6 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             I64RemU => self.binop_div("remu", false)?,
             I64RemS => self.binop_div("rem", false)?,
 
-            // wide arithmetic (128-bit values as two i64 halves, low half first)
-            I64MulWideU => self.mul_wide("muluh"),
-            I64MulWideS => self.mul_wide("mulh"),
-            I64Add128 => self.add_sub128(true),
-            I64Sub128 => self.add_sub128(false),
-
             // -- bit counting (runtime loops) ---------------------------------
             I32Popcnt => self.popcnt(true),
             I64Popcnt => self.popcnt(false),
@@ -984,42 +999,113 @@ impl<'a, 'b> FuncGen<'a, 'b> {
 
     // -- operator helpers ----------------------------------------------------
 
+    /// `dst = op(ra, b)`, with a constant `b` as the immediate.  `rb` is `b`'s register when
+    /// it is not a constant.
+    fn alu_opnd(&mut self, op: &str, dst: u64, ra: u64, b: Opnd, rb: Option<u64>) {
+        match (b, rb) {
+            (Opnd::Const(c), _) => self.code.alu_ri(op, dst, ra, c),
+            (_, Some(rb)) => self.code.alu_rr(op, dst, ra, rb),
+            _ => unreachable!("a non-constant operand has a register"),
+        }
+    }
+
+    /// The register of `o`, loaded into `scratch` if needed, or `None` for a constant (which an
+    /// instruction takes as its immediate).
+    fn opnd_reg_or_imm(&mut self, o: Opnd, scratch: u64) -> Option<u64> {
+        match o {
+            Opnd::Const(_) => None,
+            _ => Some(self.opnd_reg(o, scratch)),
+        }
+    }
+
+    /// Pushes a 128-bit result: the low half from `lo` (moved to `REG_ACC2` unless it is
+    /// already there) under the high half, which the last instruction emitted wrote to `REG_ACC`
+    /// when `hi_last` is set.
+    fn push_wide(&mut self, lo: u64, hi_last: bool) {
+        if lo != REG_ACC2 {
+            self.code.mov_reg(REG_ACC2, lo);
+        }
+        self.push_val(Val::Acc2);
+        if hi_last && lo == REG_ACC2 {
+            self.push_acc();
+        } else {
+            self.push_val(Val::Acc);
+        }
+    }
+
     /// `i64.mul_wide_{u,s}`: [a, b] -> [low, high] of the 128-bit product, `high` from ZisK's
-    /// `muluh` (unsigned) or `mulh` (signed).
+    /// `muluh` (unsigned) or `mulh` (signed).  The low half goes to `REG_ACC2` and the high half
+    /// to `REG_ACC`, through `REG_T2` when an operand is in `REG_ACC2`.
     fn mul_wide(&mut self, high_op: &str) {
-        let a = self.slot(self.depth - 2);
-        let b = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a);
-        self.code.load_slot_to_reg(REG_T1, b);
-        self.code.alu_rr("mul", REG_T2, REG_T0, REG_T1);
-        self.code.alu_rr(high_op, REG_T3, REG_T0, REG_T1);
-        self.code.store_reg_to_slot(a, REG_T2);
-        self.code.store_reg_to_slot(b, REG_T3);
+        let b = self.pop();
+        let a = self.pop();
+        self.spill_acc();
+        self.spill_acc2();
+        let ra = self.opnd_reg(a, REG_T0);
+        let rb = self.opnd_reg_or_imm(b, REG_T1);
+        let lo = if ra == REG_ACC2 || rb == Some(REG_ACC2) { REG_T2 } else { REG_ACC2 };
+        self.alu_opnd("mul", lo, ra, b, rb);
+        self.alu_opnd(high_op, REG_ACC, ra, b, rb);
+        self.push_wide(lo, true);
     }
 
     /// `i64.add128` / `i64.sub128`: [a_lo, a_hi, b_lo, b_hi] -> [lo, hi], the carry (or borrow)
-    /// out of the low halves taken with `ltu`.
+    /// out of the low halves taken with `ltu`.  The halves go to `REG_ACC2` and `REG_ACC`.
     fn add_sub128(&mut self, add: bool) {
-        let a_lo = self.slot(self.depth - 4);
-        let a_hi = self.slot(self.depth - 3);
-        let b_lo = self.slot(self.depth - 2);
-        let b_hi = self.slot(self.depth - 1);
+        let b_hi = self.pop();
+        let b_lo = self.pop();
+        let a_hi = self.pop();
+        let a_lo = self.pop();
+        self.spill_acc();
+        self.spill_acc2();
         let op = if add { "add" } else { "sub" };
-        self.code.load_slot_to_reg(REG_T0, a_lo);
-        self.code.load_slot_to_reg(REG_T1, b_lo);
-        self.code.alu_rr(op, REG_T2, REG_T0, REG_T1);
+        let ra_lo = self.opnd_reg(a_lo, REG_T0);
+        let rb_lo = self.opnd_reg_or_imm(b_lo, REG_T1);
+        self.alu_opnd(op, REG_T2, ra_lo, b_lo, rb_lo);
         if add {
-            self.code.alu_rr("ltu", REG_T3, REG_T2, REG_T0); // lo < a_lo: carry
+            self.code.alu_rr("ltu", REG_T3, REG_T2, ra_lo); // lo < a_lo: carry
         } else {
-            self.code.alu_rr("ltu", REG_T3, REG_T0, REG_T1); // a_lo < b_lo: borrow
+            self.alu_opnd("ltu", REG_T3, ra_lo, b_lo, rb_lo); // a_lo < b_lo: borrow
         }
-        self.code.store_reg_to_slot(a_lo, REG_T2);
-        self.code.load_slot_to_reg(REG_T0, a_hi);
-        self.code.load_slot_to_reg(REG_T1, b_hi);
-        self.code.alu_rr(op, REG_T0, REG_T0, REG_T1);
-        self.code.alu_rr(op, REG_T0, REG_T0, REG_T3);
-        self.code.store_reg_to_slot(a_hi, REG_T0);
-        self.depth -= 2;
+        let ra_hi = self.opnd_reg(a_hi, REG_T0);
+        let rb_hi = self.opnd_reg_or_imm(b_hi, REG_T1);
+        self.alu_opnd(op, REG_T0, ra_hi, b_hi, rb_hi);
+        // Every operand has been read: the low half can go to REG_ACC2 now.
+        self.code.mov_reg(REG_ACC2, REG_T2);
+        self.code.alu_rr(op, REG_ACC, REG_T0, REG_T3);
+        self.push_val(Val::Acc2);
+        self.push_acc();
+    }
+
+    /// A call to the native `__multi3` (see [`WasmModule::use_native_multi3`]), inline:
+    /// `[ret, a_lo, a_hi, b_lo, b_hi] -> []`, storing the low 128 bits of `a * b` at `ret`.  The
+    /// high half is `muluh(a_lo, b_lo) + a_lo * b_hi + a_hi * b_lo`; a cross product with a zero
+    /// constant (a 64-bit operand widened to 128 bits) is left out.  Only `REG_T0`..`REG_T3`
+    /// and the `REG_PTRS` registers are written, so nothing needs to go to its slot.
+    fn inline_multi3(&mut self) {
+        let b_hi = self.pop();
+        let b_lo = self.pop();
+        let a_hi = self.pop();
+        let a_lo = self.pop();
+        let ra = self.opnd_reg(a_lo, REG_T0);
+        let rb = self.opnd_reg_or_imm(b_lo, REG_T1);
+        self.alu_opnd("mul", REG_T2, ra, b_lo, rb);
+        self.alu_opnd("muluh", REG_T3, ra, b_lo, rb);
+        if b_hi != Opnd::Const(0) {
+            let rbh = self.opnd_reg_or_imm(b_hi, REG_T1);
+            self.alu_opnd("mul", REG_T1, ra, b_hi, rbh);
+            self.code.alu_rr("add", REG_T3, REG_T3, REG_T1);
+        }
+        if a_hi != Opnd::Const(0) {
+            let rah = self.opnd_reg(a_hi, REG_T0);
+            let rb = self.opnd_reg_or_imm(b_lo, REG_T1);
+            self.alu_opnd("mul", REG_T1, rah, b_lo, rb);
+            self.code.alu_rr("add", REG_T3, REG_T3, REG_T1);
+        }
+        // Checking the high half's 8 bytes covers the low half's, which come right before.
+        let (reg, off) = self.access_addr(8, 8);
+        self.code.store_reg_to_mem(reg, off - 8, REG_T2, 8);
+        self.code.store_reg_to_mem(reg, off, REG_T3, 8);
     }
 
     /// Division/remainder with a wasm divide-by-zero trap guard.
@@ -1473,6 +1559,10 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     }
 
     fn call(&mut self, callee: u32) -> Result<(), Box<dyn Error>> {
+        if Some(callee) == self.module.native_multi3 {
+            self.inline_multi3();
+            return Ok(());
+        }
         let sig = self.module.func_sig(callee)?;
         let (n_args, n_res) = (sig.params.len() as u32, sig.results.len() as u32);
         let callee_frame = callee_frame_size(self.module, callee)?;
@@ -1560,17 +1650,24 @@ pub(crate) fn build_memset_table() -> Code {
     code
 }
 
-/// Whether a function body leaves `REG_RA` alone: it has no call, and no `memory.fill` (which
-/// may call the fill table).  The float handler restores every register, so float operators
-/// are fine.
-fn calls_nothing(body: &wasmparser::FunctionBody) -> Result<bool, Box<dyn Error>> {
+/// Whether a function body leaves `REG_RA` alone: it has no call other than to `inlined` (which
+/// is lowered in place), and no `memory.fill` (which may call the fill table).  The float
+/// handler restores every register, so float operators are fine.
+fn calls_nothing(
+    body: &wasmparser::FunctionBody,
+    inlined: Option<u32>,
+) -> Result<bool, Box<dyn Error>> {
     let mut ops = body.get_operators_reader()?;
     while !ops.eof() {
+        let op = ops.read()?;
+        if matches!(op, Operator::Call { function_index } if Some(function_index) == inlined) {
+            continue;
+        }
         if let Operator::Call { .. }
         | Operator::CallIndirect { .. }
         | Operator::ReturnCall { .. }
         | Operator::ReturnCallIndirect { .. }
-        | Operator::MemoryFill { .. } = ops.read()?
+        | Operator::MemoryFill { .. } = op
         {
             return Ok(false);
         }

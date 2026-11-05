@@ -35,6 +35,10 @@ pub const REG_RET: u64 = 10;
 /// is the return register, so a call's result needs no move to get there, nor the value a
 /// function returns.
 pub const REG_ACC: u64 = REG_RET;
+/// The low half of a 128-bit result (`i64.mul_wide_*`, `i64.add128`, `i64.sub128`) whose high
+/// half is in `REG_ACC`.  Live only in straight-line code, like `REG_ACC`, so the float
+/// library's use of `x32`..`x39` as scratch cannot reach it.
+pub const REG_ACC2: u64 = 32;
 /// One past the last valid absolute linear-memory address (`WASM_MEM_BASE + pages * 64 KiB`).
 /// Live for the whole run: set by the entry routine and only ever changed by `memory.grow`; every
 /// linear-memory access is bounds-checked against it.  WASI stubs and the float handler must

@@ -130,6 +130,9 @@ pub struct WasmModule<'a> {
     /// Function names from the `name` custom section, by function index. Debug information
     /// only: absent or malformed names are skipped, never an error.
     pub func_names: BTreeMap<u32, String>,
+    /// The function index of `__multi3` once [`WasmModule::use_native_multi3`] has given it the
+    /// native body: its calls are lowered inline (see the lowering's `inline_multi3`).
+    pub native_multi3: Option<u32>,
 }
 
 impl<'a> WasmModule<'a> {
@@ -171,6 +174,7 @@ impl<'a> WasmModule<'a> {
                 wasmparser::FunctionBody::new(wasmparser::BinaryReader::new(MULTI3_BODY, 0));
             func.num_locals = 6;
             self.max_num_locals = self.max_num_locals.max(6);
+            self.native_multi3 = Some(self.func_import_count + defined as u32);
         }
     }
 
@@ -466,5 +470,6 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
         start_func,
         exports,
         func_names,
+        native_multi3: None,
     })
 }

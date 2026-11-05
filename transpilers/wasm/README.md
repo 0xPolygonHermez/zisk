@@ -561,6 +561,7 @@ Only a few ZisK registers have a fixed role:
 | `x2` (`REG_FP`) | Frame pointer. The only pointer that stays live between wasm instructions. |
 | `x9` (`REG_MEM_END`) | One past the last valid linear-memory address. Set at entry, changed only by `memory.grow`. |
 | `x10` (`REG_RET`, `REG_ACC`) | Function result, and the value the last operator produced, until the next one uses it (see below). Being both, a call's result and a function's last value need no move. Dead at every label, call and handler. |
+| `x32` (`REG_ACC2`) | The low half of a 128-bit result whose high half is in `x10`. Dead at every label, call and handler, so the float library's use of `x32`–`x39` as scratch cannot reach it. |
 | `x12`, `x13` (`REG_PTRS`) | Absolute addresses made from pointer locals, reused by later accesses in straight-line code (see [Linear memory](#linear-memory)). Dead at every label and call. |
 | `x27`–`x30` (`REG_MEM_LIMITS`) | `REG_MEM_END` minus 1, 2, 4 and 8: the last address an access of that width may start at. Set with `REG_MEM_END`, and recomputed after a ZisK library routine, for which they are RISC-V temporaries. |
 | `x3`, `x4`, `x11`, `x14`–`x26`, `x31` (`REG_LOCALS`) | A function's most used locals (see below). Saved by the caller around calls. |
@@ -689,14 +690,19 @@ instruction's RISC-V encoding. With the `float` feature, wasm reuses the same ma
 ### Native helpers
 
 Rotations lower to ZisK's `rol`/`ror` (`_w` for `i32`), and the wide-arithmetic operators to
-`mul` plus `muluh`/`mulh`, or to an add or subtract with the carry taken by `ltu`.
+`mul` plus `muluh`/`mulh`, or to an add or subtract with the carry taken by `ltu`. They read
+their operands from wherever they are, like the other operators, and leave the high half in
+`x10` and the low half in `x32`.
 
 wasm32 has no 64 × 64 → 128-bit multiply, so without `wide-arithmetic` LLVM calls compiler-rt's
 `__multi3` for every `i128`/`u128` product, which computes it from four 32-bit products. When
 the module defines `__multi3` (by its name in the `name` section) with compiler-rt's signature,
 `(i32 ret, i64 a_lo, i64 a_hi, i64 b_lo, i64 b_hi) -> ()`, the transpiler replaces its body
 with one on `i64.mul_wide_u` ([module.rs](src/module.rs)). A module without the `name` section
-keeps its own body.
+keeps its own body. A direct call to it is lowered in place: `mul` and `muluh` on the low halves
+plus the two cross products, skipping a cross product with a constant zero (a 64-bit value
+widened to 128 bits), then one bounds check and the two stores to `ret`, with no call, frame or
+stack check. A `call_indirect` still runs the body.
 
 ### Cost model
 
@@ -709,7 +715,7 @@ dominated by memory traffic and calls see a larger ratio than tight arithmetic l
 [`examples/wasm-vs-riscv`](../../examples/wasm-vs-riscv) measures this on ten workloads built
 from the same Rust code for both targets. In cost, wasm is about 0.5–1.2× RISC-V on
 register-bound code, 2–4× on typical code (sorting, maps, JSON) and 1.0–1.1× when a precompile
-does the work (including bulk copies, on the DMA). The largest gaps, 4.5–11×, are in
+does the work (including bulk copies, on the DMA). The largest gaps, 3–11×, are in
 arithmetic-heavy code that keeps many values live (software Keccak, 256-bit multiplication) and in
 floating point, which goes through the float handler.
 
