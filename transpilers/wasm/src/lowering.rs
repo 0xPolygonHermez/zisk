@@ -179,7 +179,7 @@ impl LocalRegs {
             .filter_map(|k| {
                 let cost = 2 * calls + u64::from(k < num_params);
                 let u = uses[k as usize];
-                (u > cost).then_some((u - cost, k))
+                u.checked_sub(cost).filter(|&g| g > 0).map(|g| (g, k))
             })
             .collect();
         gain.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
