@@ -467,6 +467,73 @@ fn br_table_dispatches_every_index() {
 }
 
 #[test]
+fn locals_in_registers_survive_calls_and_branches() {
+    // Every local here is used in a loop, so it gets a register; `$clobber` uses its own, which
+    // are the same registers as `$f`'s.  `$f` keeps `x` across the call (read from its slot
+    // after it), takes the call's result straight into `y`, and reads `x` once before
+    // `local.tee` changes it and once after.  `t` changes only before the call, so it is still
+    // in its slot at the loop's back edge, where it must go back to its register.
+    let wat = r#"(module
+      (import "wasi_snapshot_preview1" "fd_write"
+        (func $fd_write (param i32 i32 i32 i32) (result i32)))
+      (memory 1)
+      (func $clobber (param $n i32) (result i32)
+        (local $a i32) (local $b i32) (local $c i32) (local $d i32)
+        (loop $l
+          (local.set $a (i32.add (local.get $a) (local.get $n)))
+          (local.set $b (i32.xor (local.get $b) (local.get $a)))
+          (local.set $c (i32.add (local.get $c) (local.get $b)))
+          (local.set $d (i32.add (i32.mul (local.get $d) (i32.const 3)) (local.get $c)))
+          (local.set $n (i32.sub (local.get $n) (i32.const 1)))
+          (br_if $l (local.get $n)))
+        (i32.add (i32.add (local.get $a) (local.get $b)) (i32.add (local.get $c) (local.get $d))))
+      (func $f (result i64)
+        (local $i i32) (local $x i64) (local $y i64) (local $s i64) (local $t i64)
+        (loop $l
+          (local.set $t (i64.add (local.get $t) (i64.const 2)))
+          (local.set $x (i64.add (local.get $x) (i64.extend_i32_u (local.get $i))))
+          (local.set $y (i64.extend_i32_s
+            (call $clobber (i32.add (i32.and (local.get $i) (i32.const 7)) (i32.const 1)))))
+          (local.set $s (i64.add (i64.add (local.get $s) (local.get $t))
+            (i64.add (i64.mul (local.get $x) (i64.const 3)) (local.get $y))))
+          (local.set $s (i64.add (local.get $s)
+            (i64.sub (local.get $x) (local.tee $x (i64.add (local.get $x) (i64.const 1))))))
+          (local.set $i (i32.add (local.get $i) (i32.const 1)))
+          (br_if $l (i32.lt_u (local.get $i) (i32.const 20))))
+        (local.get $s))
+      (func (export "_start")
+        (i64.store (i32.const 16) (call $f))
+        (i32.store (i32.const 0) (i32.const 16))
+        (i32.store (i32.const 4) (i32.const 8))
+        (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#;
+    let clobber = |mut n: i32| {
+        let (mut a, mut b, mut c, mut d) = (0i32, 0i32, 0i32, 0i32);
+        loop {
+            a = a.wrapping_add(n);
+            b ^= a;
+            c = c.wrapping_add(b);
+            d = d.wrapping_mul(3).wrapping_add(c);
+            n -= 1;
+            if n == 0 {
+                break;
+            }
+        }
+        a.wrapping_add(b).wrapping_add(c.wrapping_add(d))
+    };
+    let (mut x, mut s, mut t) = (0i64, 0i64, 0i64);
+    for i in 0..20i32 {
+        t += 2;
+        x += i64::from(i);
+        let y = i64::from(clobber((i & 7) + 1));
+        s = s.wrapping_add(t + x * 3 + y);
+        s -= 1; // x - (x + 1)
+        x += 1;
+    }
+    let out = run(&wat::parse_str(wat).unwrap(), &[]);
+    assert_eq!(out_u64(&out) as i64, s);
+}
+
+#[test]
 fn data_segments_must_not_overlap() {
     // Touching segments are fine and both land in memory ...
     let touching = r#"(module

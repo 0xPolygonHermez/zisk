@@ -40,27 +40,27 @@ wasm target), both `opt-level = 3`, `panic = "abort"`.
 
 | | wasm | RISC-V | ratio |
 |---|---:|---:|---:|
-| Steps | 10,689 | 2,631 | 4.1× |
-| Variable cost | 1,077,291 | 269,966 | 4.0× |
-| ROM size (instructions) | 106,889 | 47,881 | 2.2× |
+| Steps | 9,533 | 2,631 | 3.6× |
+| Variable cost | 979,735 | 269,966 | 3.6× |
+| ROM size (instructions) | 100,817 | 47,881 | 2.1× |
 
 **Per unit of work** (the slope between `n = 0` and `n = N`):
 
 | Workload | Unit | wasm steps | RISC-V steps | ratio | wasm cost | RISC-V cost | ratio |
 |---|---|---:|---:|---:|---:|---:|---:|
-| fib | loop iteration | 4 | 5 | 0.7× | 284 | 397 | 0.7× |
-| calls | 1,023 calls | 19,698 | 14,845 | 1.3× | 1,621,626 | 1,211,724 | 1.3× |
-| sort | element sorted | 495 | 126 | 3.9× | 50,739 | 18,410 | 2.8× |
-| btree | insert + lookup | 1,508 | 489 | 3.1× | 130,869 | 39,845 | 3.3× |
-| json | JSON record | 24,676 | 6,352 | 3.9× | 2,339,364 | 523,855 | 4.5× |
-| float | `f64` step | 5,548 | 506 | 11.0× | 517,443 | 48,998 | 10.6× |
-| keccak_sw | Keccak-f in Rust | 29,249 | 4,056 | 7.2× | 2,791,573 | 438,078 | 6.4× |
-| bigint | 256 × 256-bit product | 1,022 | 118 | 8.7× | 90,399 | 13,338 | 6.8× |
-| memcpy | 4 KiB copy | 67 | 19 | 3.5× | 41,151 | 35,722 | 1.2× |
-| keccak_pc | Keccak-f precompile | 33 | 7 | 5.0× | 44,845 | 42,774 | 1.0× |
+| fib | loop iteration | 3 | 5 | 0.5× | 208 | 397 | 0.5× |
+| calls | 1,023 calls | 18,431 | 14,845 | 1.2× | 1,465,490 | 1,211,724 | 1.2× |
+| sort | element sorted | 317 | 126 | 2.5× | 36,394 | 18,410 | 2.0× |
+| btree | insert + lookup | 1,011 | 489 | 2.1× | 92,430 | 39,845 | 2.3× |
+| json | JSON record | 21,138 | 6,352 | 3.3× | 2,049,873 | 523,855 | 3.9× |
+| float | `f64` step | 5,546 | 506 | 11.0× | 517,276 | 48,998 | 10.6× |
+| keccak_sw | Keccak-f in Rust | 18,754 | 4,056 | 4.6× | 1,953,656 | 438,078 | 4.5× |
+| bigint | 256 × 256-bit product | 1,003 | 118 | 8.5× | 87,901 | 13,338 | 6.6× |
+| memcpy | 4 KiB copy | 56 | 19 | 2.9× | 40,186 | 35,722 | 1.1× |
+| keccak_pc | Keccak-f precompile | 33 | 7 | 5.1× | 44,884 | 42,774 | 1.0× |
 
 **Proving** (the `json` workload, emulator backend, measured before the transpiler changes,
-which take 51% of its steps away, so these ratios are now lower; instance counts from the prover's plan, proving time on
+which take 58% of its steps away, so these ratios are now lower; instance counts from the prover's plan, proving time on
 one 128-core machine, which is noisy):
 
 | `n = 2,000` | wasm | RISC-V | ratio |
@@ -88,18 +88,20 @@ memory instances dominate.
 Cost is what proving pays for, so it is the column to compare; steps alone understate the gap
 where wasm moves more memory per step and overstate it where one RISC-V step is a precompile.
 
-- **About 0.7–1.3× for register-bound code** (`fib`, `calls`). Wasm locals live in memory
-  slots of the frame, not registers, so operations load their operands from memory, and every
-  call writes its arguments to memory and checks the stack. A short chain of operations on a few locals, like `fib`'s loop, is as
+- **About 0.5–1.2× for register-bound code** (`fib`, `calls`). A function's most used locals
+  live in registers, so a short chain of operations on a few of them, like `fib`'s loop, beats
+  the RISC-V build; every call still writes its arguments to memory, saves those registers and
+  checks the stack. A short chain of operations on a few locals, like `fib`'s loop, is as
   cheap as RISC-V's.
-- **About 3–4.5× for typical code** (`sort`, `btree`, `json`): on top of the slots, every
+- **About 2–4× for typical code** (`sort`, `btree`, `json`): on top of the slots, every
   linear-memory access is bounds-checked (one compare, less when the same pointer local was
   checked just before), which shows as extra `leu`/`and` in the opcode breakdown
   (`ziskemu -X`) and as memory cost.
-- **6–11× for arithmetic that keeps many values live, and for floating point:**
-  - `keccak_sw`: 25 lanes and their temporaries all live in slots and linear memory, so nearly
-    every XOR, AND-NOT and rotation loads its operands and stores its result, with bounds
-    checks; RISC-V keeps them in registers and has `andn`.
+- **4.5–11× for arithmetic that keeps many values live, and for floating point:**
+  - `keccak_sw`: 25 lanes and their temporaries are more than the 17 registers locals get, and
+    the state lives in linear memory, so many XOR, AND-NOT and rotation operations load their
+    operands or store their result, with bounds checks; RISC-V keeps more in registers and has
+    `andn`.
   - `bigint`: each 64 × 64 → 128-bit product is a call to `__multi3` (wasm32 has no such
     instruction), with its frame and its result written to memory; RISC-V uses `mul` + `mulhu`
     inline.
@@ -108,7 +110,7 @@ where wasm moves more memory per step and overstate it where one RISC-V step is 
     RISC-V instruction before running the soft-float routine.
 - **About 1× when a precompile does the work** (`keccak_pc`, and `memcpy` on the DMA): the
   precompile cost is identical and dominates.
-- **Fixed overhead about 4×**: Rust's `std` startup and WASI I/O on wasm, against `ziskos`
+- **Fixed overhead about 3.5×**: Rust's `std` startup and WASI I/O on wasm, against `ziskos`
   reading the input in place.
 
 ## Transpiler changes
@@ -127,6 +129,7 @@ above it:
 | Bounds checks in one compare, and addresses reused across accesses through the same local | keccak_sw | 8.6× | 6.4× |
 | `br_table` through a jump table, not a chain of compares | json | 4.9× | 4.8× |
 | Arguments written straight to the callee, one-instruction returns, `x1` kept by leaf functions, results left in the return register | calls | 1.7× | 1.3× |
+| The most used locals of each function in registers | keccak_sw | 6.4× | 4.5× |
 
 `sort`, `btree` and `json` gained 1–2% from the DMA copies. The operand change applies to all
 code; in steps per unit it saved 50% on `fib`, 41–49% on `calls`, `sort`, `btree` and
@@ -135,8 +138,10 @@ code; in steps per unit it saved 50% on `fib`, 41–49% on `calls`, `sort`, `btr
 saved 28% on `keccak_sw` and `memcpy`, 12–13% on `json`, `sort` and `bigint`, and 7% on
 `btree`. The call change saved 28% on `keccak_pc` (a call to the precompile's import), 22% on
 `calls`, 19% on `bigint` (its `__multi3` calls), 9% on `json` and 11% of the fixed overhead.
+Locals in registers saved 33–36% on `sort`, `btree` and `keccak_sw`, 28% on `fib`, 17% on
+`memcpy`, 14% on `json`, 6% on `calls`, 2% on `bigint` and 11% of the fixed overhead.
 
 Support for the wide-arithmetic proposal came with the third change. A guest built with
 `RUSTFLAGS="-C target-feature=+wide-arithmetic"` (an unstable flag; stable Rust accepts it with a
-warning) multiplies inline instead of calling `__multi3`, which brings `bigint` to 441 steps and
-38,645 cost per product: 2.9× RISC-V, against 6.8× through `__multi3`.
+warning) multiplies inline instead of calling `__multi3`, which brings `bigint` to 439 steps and
+38,340 cost per product: 2.9× RISC-V, against 6.8× through `__multi3`.

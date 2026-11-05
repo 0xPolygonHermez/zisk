@@ -40,6 +40,13 @@ pub const REG_ACC: u64 = REG_RET;
 /// linear-memory access is bounds-checked against it.  WASI stubs and the float handler must
 /// preserve it (the handler saves/restores every register).
 pub const REG_MEM_END: u64 = 9;
+/// Registers that hold a function's most used locals (see `LocalRegs` in the lowering), in the
+/// order they are handed out.  The caller saves them around every call, so a callee, a stub or
+/// a ZisK library routine may use them freely; the float handler restores all of them.  `x32`
+/// and up are left out: the float library uses them as scratch and the handler does not
+/// restore them.
+pub const REG_LOCALS: [u64; 17] =
+    [11, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 31, 3, 4];
 /// Absolute linear-memory addresses made from a local, reused by later accesses through the
 /// same local in straight-line code (see `Ptr` in the lowering).  Dead at every label and call.
 pub const REG_PTRS: [u64; 2] = [12, 13];

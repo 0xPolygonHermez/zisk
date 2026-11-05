@@ -563,6 +563,7 @@ Only a few ZisK registers have a fixed role:
 | `x10` (`REG_RET`, `REG_ACC`) | Function result, and the value the last operator produced, until the next one uses it (see below). Being both, a call's result and a function's last value need no move. Dead at every label, call and handler. |
 | `x12`, `x13` (`REG_PTRS`) | Absolute addresses made from pointer locals, reused by later accesses in straight-line code (see [Linear memory](#linear-memory)). Dead at every label and call. |
 | `x27`–`x30` (`REG_MEM_LIMITS`) | `REG_MEM_END` minus 1, 2, 4 and 8: the last address an access of that width may start at. Set with `REG_MEM_END`, and recomputed after a ZisK library routine, for which they are RISC-V temporaries. |
+| `x3`, `x4`, `x11`, `x14`–`x26`, `x31` (`REG_LOCALS`) | A function's most used locals (see below). Saved by the caller around calls. |
 | `x5`–`x8` | Scratch, dead between wasm instructions. |
 
 Wasm validation guarantees that the operand-stack depth is known statically at every instruction.
@@ -598,6 +599,18 @@ and a store, not seven instructions. A comparison followed by `br_if` or `if` is
 compare-and-branch on the flag, and an `eqz` in between only flips the branch. Branches, labels,
 calls and every operator outside this set first write all pending values to their slots, so the
 code at a label always finds every value in its slot and `x10` is never live across one.
+
+The most used locals of a function live in registers instead of their slots, up to 17 of them.
+A pass over the body scores each local by its reads and writes, weighted by loop nesting (eight
+times per level), minus what the calls cost it, and gives the registers to the best that come
+out ahead. Inside the function the register is the local's home, across labels too, so
+`local.get a; local.get b; i32.add; local.set c` with all three in registers is one `add`: a
+`local.set` right after the instruction that computed its value makes that instruction write the
+local's register. Calls follow no convention for these registers. Before a call, the caller
+writes the register locals changed since they were last in their slots. After it, they are read
+from their slots, and any still there at the next jump or label is reloaded into its register,
+so a local the code leaves alone between two calls costs nothing. `x32`–`x39` are not used: the
+float library uses them as scratch, and the float handler restores only `x1`–`x31`.
 
 ### Control flow and calls
 
@@ -688,15 +701,15 @@ keeps its own body.
 ### Cost model
 
 The per-instruction overhead against RISC-V comes from the stack-machine design. A RISC-V guest
-keeps hot values in registers. Here locals and values that outlive one operator live in memory
-slots, so most operations still load their operands from memory, a call writes its arguments to
-memory, and linear-memory accesses add bounds checks. Programs dominated by memory traffic and calls see a larger ratio than
-tight arithmetic loops.
+keeps hot values in registers. Here only the most used locals get registers, values that
+outlive one operator and the other locals live in memory slots, a call writes its arguments to
+memory and saves the register locals, and linear-memory accesses add bounds checks. Programs
+dominated by memory traffic and calls see a larger ratio than tight arithmetic loops.
 
 [`examples/wasm-vs-riscv`](../../examples/wasm-vs-riscv) measures this on ten workloads built
-from the same Rust code for both targets. In cost, wasm is about 0.7–1.3× RISC-V on
-register-bound code, 3–4.5× on typical code (sorting, maps, JSON) and 1.0–1.2× when a precompile
-does the work (including bulk copies, on the DMA). The largest gaps, 6–11×, are in
+from the same Rust code for both targets. In cost, wasm is about 0.5–1.2× RISC-V on
+register-bound code, 2–4× on typical code (sorting, maps, JSON) and 1.0–1.1× when a precompile
+does the work (including bulk copies, on the DMA). The largest gaps, 4.5–11×, are in
 arithmetic-heavy code that keeps many values live (software Keccak, 256-bit multiplication) and in
 floating point, which goes through the float handler.
 

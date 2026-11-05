@@ -91,6 +91,13 @@ impl Code {
         self.insts.push(PendingInst { zib, fixup });
     }
 
+    /// Makes the last instruction, which stores its result to a register, store it to `reg`
+    /// instead.
+    pub fn retarget_last_store(&mut self, reg: u64) {
+        let last = self.insts.last_mut().expect("wasm: no instruction to retarget");
+        last.zib.store("reg", reg as i64, false, false);
+    }
+
     // -- raw building blocks -------------------------------------------------
 
     /// `copyb a=FP, b=imm value` -> store ind `slot_off` (width 8).  Pushes an immediate to a slot.

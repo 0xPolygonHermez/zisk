@@ -100,7 +100,8 @@ enum Opnd {
     /// A frame slot (an operand slot or a local), as an offset from FP.
     Slot(i64),
     Const(i64),
-    Acc,
+    /// A register: `REG_ACC`, or the register of a local (see [`LocalRegs`]).
+    Reg(u64),
 }
 
 /// Register `reg` holds the absolute address of local `local` (a wasm address) plus `off0`, and
@@ -116,6 +117,86 @@ struct Ptr {
     hi: i64,
 }
 
+/// The locals of a function that live in a `REG_LOCALS` register instead of their frame slot.
+///
+/// Inside the function the register is the local's home, across labels too.  Before a call the
+/// caller writes the ones changed since they were last in their slots (`clean`), so callees need
+/// no convention for these registers.  After the call each is `in_slot`: reads take it from the
+/// slot and a write puts it back in the register, and any that are still in their slots at the
+/// next jump or label are reloaded there (see [`FuncGen::restore_locals`]).  A local left alone
+/// between two calls costs nothing.
+struct LocalRegs {
+    reg: Vec<Option<u64>>,
+    /// The local's slot holds its current value.
+    clean: Vec<bool>,
+    /// Only the local's slot holds its current value (its register may not).
+    in_slot: Vec<bool>,
+}
+
+impl LocalRegs {
+    /// Gives the registers to the locals they save the most on.  A read or write of a local in a
+    /// register saves about one instruction, and each call costs up to two (the write before
+    /// it and the reload after it); both are weighted by loop nesting, eight times per level.  A
+    /// parameter also costs its load at entry.  The best locals that come out ahead, up to the
+    /// number of registers, get one.
+    fn choose(
+        body: &wasmparser::FunctionBody,
+        num_locals: u32,
+        num_params: u32,
+    ) -> Result<Self, Box<dyn Error>> {
+        let mut uses = vec![0u64; num_locals as usize];
+        let mut calls = 0u64;
+        let mut loops: Vec<bool> = Vec::new(); // per open block: whether it is a loop
+        let mut ops = body.get_operators_reader()?;
+        while !ops.eof() {
+            let depth = loops.iter().filter(|&&l| l).count().min(4) as u32;
+            let weight = 8u64.pow(depth);
+            match ops.read()? {
+                Operator::Block { .. } | Operator::If { .. } => loops.push(false),
+                Operator::Loop { .. } => loops.push(true),
+                Operator::End => {
+                    loops.pop();
+                }
+                Operator::LocalGet { local_index }
+                | Operator::LocalSet { local_index }
+                | Operator::LocalTee { local_index } => uses[local_index as usize] += weight,
+                Operator::Call { .. } | Operator::CallIndirect { .. } => calls += weight,
+                _ => {}
+            }
+        }
+        let mut gain: Vec<(u64, u32)> = (0..num_locals)
+            .filter_map(|k| {
+                let cost = 2 * calls + u64::from(k < num_params);
+                let u = uses[k as usize];
+                (u > cost).then_some((u - cost, k))
+            })
+            .collect();
+        gain.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        let mut reg = vec![None; num_locals as usize];
+        for (&(_, k), &r) in gain.iter().zip(REG_LOCALS.iter()) {
+            reg[k as usize] = Some(r);
+        }
+        let n = num_locals as usize;
+        Ok(Self { reg, clean: vec![false; n], in_slot: vec![false; n] })
+    }
+
+    fn reg(&self, k: u32) -> Option<u64> {
+        self.reg[k as usize]
+    }
+
+    /// `(local, register)` for every local in a register.
+    fn mapped(&self) -> Vec<(u32, u64)> {
+        self.reg.iter().enumerate().filter_map(|(k, r)| r.map(|r| (k as u32, r))).collect()
+    }
+
+    /// Where any path may arrive (every path has the locals in their registers by then, see
+    /// [`FuncGen::restore_locals`]): no slot is known to be up to date.
+    fn forget_clean(&mut self) {
+        self.clean.fill(false);
+        self.in_slot.fill(false);
+    }
+}
+
 /// Lowers `func_index` (which must be a defined function) into a [`Code`].
 pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<dyn Error>> {
     let defined_index = (func_index - module.func_import_count) as usize;
@@ -124,6 +205,7 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
 
     let num_locals = func.num_locals;
     let leaf = calls_nothing(&func.body)?;
+    let locals = LocalRegs::choose(&func.body, num_locals, sig.params.len() as u32)?;
 
     let mut code = Code::new();
     let func_end = code.new_label();
@@ -142,15 +224,26 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
         ptrs: Vec::new(),
         next_ptr: 0,
         leaf,
+        locals,
+        acc_inst: None,
     };
 
-    // Prologue: save the return address (a leaf keeps it in `REG_RA`) and zero the
-    // non-parameter locals.
+    // Prologue: save the return address (a leaf keeps it in `REG_RA`), load the parameters that
+    // live in registers and zero the other locals.
     if !leaf {
         gen.code.store_reg_to_slot(FRAME_RET_PC_OFF, REG_RA);
     }
-    for k in sig.params.len() as u32..num_locals {
-        gen.code.store_imm_to_slot(local_offset(k), 0);
+    for k in 0..num_locals {
+        let param = k < sig.params.len() as u32;
+        match (gen.locals.reg(k), param) {
+            (Some(r), true) => {
+                gen.code.load_slot_to_reg(r, local_offset(k));
+                gen.locals.clean[k as usize] = true;
+            }
+            (Some(r), false) => gen.code.load_imm_to_reg(r, 0),
+            (None, true) => {}
+            (None, false) => gen.code.store_imm_to_slot(local_offset(k), 0),
+        }
     }
 
     let mut op_reader = func.body.get_operators_reader()?;
@@ -203,6 +296,11 @@ pub(crate) struct FuncGen<'a, 'b> {
     next_ptr: usize,
     /// The function calls nothing (see [`calls_nothing`]), so `REG_RA` survives its body.
     leaf: bool,
+    /// The locals that live in registers.
+    locals: LocalRegs,
+    /// `Some(code.len())` right after an instruction wrote the value on top of the stack to
+    /// `REG_ACC`: a `local.set` may then redirect that instruction.
+    acc_inst: Option<usize>,
 }
 
 impl<'a, 'b> FuncGen<'a, 'b> {
@@ -242,9 +340,9 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     fn opnd_at(&self, v: Val, d: u32) -> Opnd {
         match v {
             Val::Slot => Opnd::Slot(self.slot(d)),
-            Val::Local(k) => Opnd::Slot(local_offset(k)),
+            Val::Local(k) => self.local_opnd(k),
             Val::Const(c) => Opnd::Const(c),
-            Val::Acc => Opnd::Acc,
+            Val::Acc => Opnd::Reg(REG_ACC),
             Val::Cmp(_) => unreachable!("a comparison is computed before its value is read"),
         }
     }
@@ -254,14 +352,51 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.opnd_at(v, self.depth)
     }
 
-    /// The register holding `o`, loading it into `scratch` unless it is already in `REG_ACC`.
+    /// The register holding `o`, loading it into `scratch` unless it is already in one.
     fn opnd_reg(&mut self, o: Opnd, scratch: u64) -> u64 {
         match o {
             Opnd::Slot(off) => self.code.load_slot_to_reg(scratch, off),
             Opnd::Const(c) => self.code.load_imm_to_reg(scratch, c as u64),
-            Opnd::Acc => return REG_ACC,
+            Opnd::Reg(r) => return r,
         }
         scratch
+    }
+
+    /// Where local `k` is: its register, or its frame slot.
+    fn local_opnd(&self, k: u32) -> Opnd {
+        match self.locals.reg(k) {
+            Some(r) if !self.locals.in_slot[k as usize] => Opnd::Reg(r),
+            _ => Opnd::Slot(local_offset(k)),
+        }
+    }
+
+    /// Reloads the locals a call left in their slots, before a jump or a label: code at a label
+    /// finds every local in its register.
+    fn restore_locals(&mut self) {
+        for (k, r) in self.locals.mapped() {
+            if self.locals.in_slot[k as usize] {
+                self.code.load_slot_to_reg(r, local_offset(k));
+                self.locals.in_slot[k as usize] = false;
+                self.locals.clean[k as usize] = true;
+            }
+        }
+    }
+
+    /// Writes `o` to the frame slot at `dst` (one instruction).
+    fn opnd_to_slot(&mut self, dst: i64, o: Opnd) {
+        match o {
+            Opnd::Slot(src) if src == dst => {}
+            Opnd::Slot(src) => self.code.copy_slot(dst, src),
+            Opnd::Const(c) => self.code.store_imm_to_slot(dst, c),
+            Opnd::Reg(r) => self.code.store_reg_to_slot(dst, r),
+        }
+    }
+
+    /// Pushes the value the last instruction wrote to `REG_ACC`, which a `local.set` right
+    /// after may redirect to the local's register (see [`Self::set_local`]).
+    fn push_acc(&mut self) {
+        self.push_val(Val::Acc);
+        self.acc_inst = Some(self.code.len());
     }
 
     /// Stores the value in `REG_ACC`, if any, to its slot, so that `REG_ACC` can take another.
@@ -276,7 +411,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     fn materialize_local(&mut self, k: u32) {
         for i in 0..self.vals.len() {
             if self.vals[i] == Val::Local(k) {
-                self.code.copy_slot(self.slot(i as u32), local_offset(k));
+                let o = self.local_opnd(k);
+                self.opnd_to_slot(self.slot(i as u32), o);
                 self.vals[i] = Val::Slot;
             }
         }
@@ -301,6 +437,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             self.code.alu_ri("xor", REG_ACC, REG_ACC, 1);
         }
         self.vals.push(Val::Acc);
+        self.acc_inst = Some(self.code.len());
     }
 
     /// Writes every value to its operand slot, as the slot-based code, labels, branches and
@@ -311,9 +448,10 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             let off = self.slot(i as u32);
             match self.vals[i] {
                 Val::Slot => continue,
-                Val::Local(k) => self.code.copy_slot(off, local_offset(k)),
-                Val::Const(c) => self.code.store_imm_to_slot(off, c),
-                Val::Acc => self.code.store_reg_to_slot(off, REG_ACC),
+                Val::Local(_) | Val::Const(_) | Val::Acc => {
+                    let o = self.opnd_at(self.vals[i], i as u32);
+                    self.opnd_to_slot(off, o);
+                }
                 Val::Cmp(_) => unreachable!("only the top of the stack can be a comparison"),
             }
             self.vals[i] = Val::Slot;
@@ -336,12 +474,18 @@ impl<'a, 'b> FuncGen<'a, 'b> {
                 let top = *self.vals.last().expect("wasm: operand stack underflow");
                 let v = self.pop();
                 self.set_local(local_index, v);
-                self.push_val(top);
+                // The value is now the local's (its register may have taken it from `REG_ACC`).
+                let now = if self.locals.reg(local_index).is_some() {
+                    Val::Local(local_index)
+                } else {
+                    top
+                };
+                self.push_val(now);
             }
             GlobalGet { global_index } => {
                 self.spill_acc();
                 self.code.load_abs_to_reg(REG_ACC, global_addr(global_index));
-                self.push_val(Val::Acc);
+                self.push_acc();
             }
             GlobalSet { global_index } => match self.pop() {
                 Opnd::Const(c) => self.code.store_imm_to_abs(global_addr(global_index), c as u64),
@@ -442,16 +586,26 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     }
 
     /// `local.set k`: pending reads of local `k` get the old value first, and an address made
-    /// from it is forgotten.
+    /// from it is forgotten.  A local in a register takes a value just computed into
+    /// `REG_ACC` by having that instruction write the local's register instead.
     fn set_local(&mut self, k: u32, v: Opnd) {
         self.materialize_local(k);
         self.ptrs.retain(|p| p.local != k);
-        let dst = local_offset(k);
+        let Some(r) = self.locals.reg(k) else {
+            self.opnd_to_slot(local_offset(k), v);
+            return;
+        };
+        self.locals.clean[k as usize] = false;
+        self.locals.in_slot[k as usize] = false;
         match v {
-            Opnd::Slot(off) if off == dst => {}
-            Opnd::Slot(off) => self.code.copy_slot(dst, off),
-            Opnd::Const(c) => self.code.store_imm_to_slot(dst, c),
-            Opnd::Acc => self.code.store_reg_to_slot(dst, REG_ACC),
+            Opnd::Reg(REG_ACC) if self.acc_inst == Some(self.code.len()) => {
+                self.code.retarget_last_store(r);
+                self.acc_inst = None;
+            }
+            Opnd::Reg(src) if src == r => {}
+            Opnd::Reg(src) => self.code.mov_reg(r, src),
+            Opnd::Slot(off) => self.code.load_slot_to_reg(r, off),
+            Opnd::Const(c) => self.code.load_imm_to_reg(r, c as u64),
         }
     }
 
@@ -471,7 +625,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
                 self.code.alu_rr(op, REG_ACC, ra, rb);
             }
         }
-        self.push_val(Val::Acc);
+        self.push_acc();
     }
 
     /// A shift: wasm takes the count modulo the width (`count_mask`).
@@ -488,7 +642,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
                 self.code.alu_rr(op, REG_ACC, ra, REG_T1);
             }
         }
-        self.push_val(Val::Acc);
+        self.push_acc();
     }
 
     /// Pushes the comparison `op(a, b)` (operands swapped when `swap`, negated when `invert`)
@@ -535,7 +689,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         zib.store("reg", REG_ACC as i64, false, false);
         zib.j(4, 4);
         self.code.push_raw(zib, Fixup::None);
-        self.push_val(Val::Acc);
+        self.push_acc();
     }
 
     /// Jumps to `label` when the popped condition `cond` (which was at depth `self.depth`) is
@@ -578,6 +732,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     fn br_if(&mut self, relative_depth: u32) {
         let cond = self.pop_val();
         self.flush();
+        self.restore_locals();
         if let Some(label) = self.plain_branch_target(relative_depth) {
             self.branch_on(cond, label, true);
         } else {
@@ -595,6 +750,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         // Pop the condition; when zero, jump to the else arm (or the end, if there is none).
         let cond = self.pop_val();
         self.flush();
+        self.restore_locals();
         self.branch_on(cond, else_label, false);
         self.ctrl.push(CtrlFrame {
             kind: CtrlKind::If,
@@ -642,7 +798,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         match self.pop() {
             Opnd::Slot(off) => self.code.load_slot_to_reg(REG_RET, off),
             Opnd::Const(c) => self.code.load_imm_to_reg(REG_RET, c as u64),
-            Opnd::Acc => {} // REG_ACC is REG_RET
+            Opnd::Reg(r) if r == REG_RET => {}
+            Opnd::Reg(r) => self.code.mov_reg(REG_RET, r),
         }
     }
 
@@ -651,7 +808,9 @@ impl<'a, 'b> FuncGen<'a, 'b> {
 
         // Dead-code skipping: only structural delimiters are processed while unreachable.
         if self.unreachable {
-            self.forget_ptrs(); // `else` and `end` bind labels
+            // `else` and `end` bind labels.
+            self.forget_ptrs();
+            self.locals.forget_clean();
             match op {
                 Block { .. } | Loop { .. } | If { .. } => {
                     self.dead_nesting += 1;
@@ -703,6 +862,10 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         }
         // Everything below works on the operand slots, and may bind a label or call.
         self.flush();
+        if matches!(op, Loop { .. } | Else | End | Br { .. }) {
+            self.restore_locals();
+            self.locals.forget_clean();
+        }
         self.forget_ptrs();
 
         match op {
@@ -998,7 +1161,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         let (reg, off) = self.access_addr(static_offset, width);
         self.spill_acc();
         self.code.load_mem_to_reg(op, REG_ACC, reg, off, width);
-        self.push_val(Val::Acc);
+        self.push_acc();
     }
 
     /// A linear-memory store.
@@ -1045,8 +1208,11 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         let reg = REG_PTRS[self.next_ptr];
         self.next_ptr = (self.next_ptr + 1) % REG_PTRS.len();
         self.ptrs.retain(|p| p.reg != reg);
-        self.code.load_slot_to_reg(reg, local_offset(k));
-        self.code.alu_ri("and", reg, reg, 0xFFFF_FFFF); // zero-extend to u32
+        let src = match self.local_opnd(k) {
+            Opnd::Reg(r) => r,
+            o => self.opnd_reg(o, reg),
+        };
+        self.code.alu_ri("and", reg, src, 0xFFFF_FFFF); // zero-extend to u32
         self.code.alu_ri("add", reg, reg, (WASM_MEM_BASE + static_offset) as i64);
         self.check_bounds(reg, Len::Imm(width), REG_T1);
         self.ptrs.push(Ptr { local: k, reg, off0: static_offset, hi: w });
@@ -1202,6 +1368,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     fn br_table(&mut self, targets: &wasmparser::BrTable) -> Result<(), Box<dyn Error>> {
         let cond = self.pop_val();
         self.flush();
+        self.restore_locals();
         let cond = self.opnd_at(cond, self.depth);
         let index = self.opnd_reg(cond, REG_T0);
         // A target past the outermost block is the function body: those cases jump to a shared
@@ -1283,15 +1450,23 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         // from this FP.
         for (i, v) in args.into_iter().enumerate() {
             let dst = -frame_sz + local_offset(i as u32);
-            match self.opnd_at(v, self.depth + i as u32) {
-                Opnd::Slot(src) => self.code.copy_slot(dst, src),
-                Opnd::Const(c) => self.code.store_imm_to_slot(dst, c),
-                Opnd::Acc => self.code.store_reg_to_slot(dst, REG_ACC),
+            let o = self.opnd_at(v, self.depth + i as u32);
+            self.opnd_to_slot(dst, o);
+        }
+        // The callee may write any register: locals in registers go to their slots (those
+        // changed since they were last there), and are read from there after the call.
+        for (k, r) in self.locals.mapped() {
+            if !self.locals.clean[k as usize] && !self.locals.in_slot[k as usize] {
+                self.code.store_reg_to_slot(local_offset(k), r);
             }
         }
         self.code.alu_ri("add", REG_FP, REG_FP, -frame_sz);
         emit_call(&mut self.code);
         self.code.alu_ri("add", REG_FP, REG_FP, frame_sz);
+        for (k, _) in self.locals.mapped() {
+            self.locals.in_slot[k as usize] = true;
+            self.locals.clean[k as usize] = true;
+        }
         if n_res == 1 {
             self.push_val(Val::Acc); // REG_ACC is REG_RET
         }
