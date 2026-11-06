@@ -1,0 +1,57 @@
+// The ZisK model, as sail-riscv's riscv.sail_project lays out RISC-V.
+//
+// ROM names the program: a file defining rom_fetch, relative to this
+// directory. The default has no instructions; `make ROM=...` replaces it.
+
+variable ROM = "zisk_rom.sail"
+
+zisk_core {
+  files
+    prelude.sail,
+    zisk_types.sail,
+    zisk_regs.sail,
+    zisk_mem.sail,
+}
+
+zisk_insts {
+  requires zisk_core
+
+  files
+    zisk_insts_begin.sail,
+    zisk_insts_internal.sail,
+    zisk_insts_binary.sail,
+    zisk_insts_binary_ext.sail,
+    zisk_insts_arith.sail,
+    zisk_insts_system.sail,
+    zisk_insts_dma.sail,
+    zisk_insts_fcall.sail,
+    zisk_insts_evm.sail,
+    zisk_precompiles.sail,
+    zisk_insts_bigint.sail,
+    zisk_insts_curves.sail,
+    zisk_insts_hash.sail,
+    zisk_poseidon_constants.sail,
+    zisk_insts_poseidon.sail,
+    zisk_insts_end.sail,
+    zisk_op_attrs.sail,
+    zisk_inst.sail,
+}
+
+zisk_rom {
+  requires zisk_core, zisk_insts
+
+  files $ROM
+}
+
+zisk_step {
+  requires zisk_core, zisk_insts, zisk_rom
+
+  files zisk_step.sail
+}
+
+// The C emulator's main loop and trace; the Lean build leaves it out.
+main {
+  requires zisk_core, zisk_insts, zisk_rom, zisk_step
+
+  files main.sail
+}

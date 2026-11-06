@@ -1,0 +1,12 @@
+; The edges of the memory map that are inside it, each read into a register:
+; the last word of the RAM, written and read back; the last word of the input
+; window, past any input, which reads as 0; and a constant in the ROM.
+const u64 K[1] = 0x1122334455667788
+main:
+	copyb(0, 0xbffffff8) -> r4
+	copyb(0, 0x0123456789abcdef) -> r6
+	copyb(r4, r6) -> 8[a + 0]
+	copyb(r4, 8[a + 0]) -> r5
+	copyb(0, [0x8ffffff8]) -> r7
+	copyb(0, [K]) -> r8
+	ret
