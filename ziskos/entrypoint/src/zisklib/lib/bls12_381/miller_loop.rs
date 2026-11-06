@@ -10,7 +10,10 @@ use crate::zisklib::{
 use super::{
     constants::{EXT_U_INV, X_ABS_BIN_BE},
     fp::{inv_fp_bls12_381, mul_fp_bls12_381, neg_fp_bls12_381},
-    fp12::{conjugate_fp12_bls12_381, sparse_mul_fp12_bls12_381, square_fp12_bls12_381},
+    fp12::{
+        conjugate_fp12_bls12_381, mul_fp12_bls12_381, sparse_mul_fp12_bls12_381,
+        square_fp12_bls12_381,
+    },
     fp2::{
         add_fp2_bls12_381, dbl_fp2_bls12_381, mul_fp2_bls12_381, neg_fp2_bls12_381,
         scalar_mul_fp2_bls12_381, square_fp2_bls12_381, sub_fp2_bls12_381,
@@ -186,6 +189,31 @@ pub fn miller_loop_batch_bls12_381(
     g2_points: &[[u64; 24]],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 72] {
+    let f = miller_loop_batch_with_witness_bls12_381(
+        g1_points,
+        g2_points,
+        None,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    // x < 0, so the Miller loop is f̅
+    conjugate_fp12_bls12_381(
+        &f,
+        #[cfg(feature = "hints")]
+        hints,
+    )
+}
+
+/// The Miller loop over |x| before the conjugation that accounts for x < 0. With `c_inv` it
+/// starts at c⁻¹ instead of 1 and multiplies by it at every set bit, so the result carries an
+/// extra factor (c⁻¹)^|x| at the cost of one multiplication per set bit.
+pub(crate) fn miller_loop_batch_with_witness_bls12_381(
+    g1_points: &[[u64; 12]],
+    g2_points: &[[u64; 24]],
+    c_inv: Option<&[u64; 72]>,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 72] {
     // Before the loop starts, compute xp' = (-xp/yp)·1/(1+u) and yp' = (1/yp)·1/(1+u)
     let n = g1_points.len();
     let mut xp_primes: Vec<[u64; 12]> = Vec::with_capacity(n);
@@ -230,6 +258,9 @@ pub fn miller_loop_batch_bls12_381(
     let mut r: Vec<[u64; 24]> = g2_points.iter().map(|q| q[0..24].try_into().unwrap()).collect();
     let mut f = [0u64; 72];
     f[0] = 1;
+    if let Some(c_inv) = c_inv {
+        f = *c_inv;
+    }
     for &bit in X_ABS_BIN_BE.iter().skip(1) {
         // Compute f = f² · line_{twist(r),twist(r)}(p)
         f = square_fp12_bls12_381(
@@ -337,14 +368,18 @@ pub fn miller_loop_batch_bls12_381(
                 );
             }
         }
+
+        if let Some(c_inv) = c_inv.filter(|_| bit == 1) {
+            f = mul_fp12_bls12_381(
+                &f,
+                c_inv,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+        }
     }
 
-    // Finally, compute f̅
-    conjugate_fp12_bls12_381(
-        &f,
-        #[cfg(feature = "hints")]
-        hints,
-    )
+    f
 }
 
 // We follow https://eprint.iacr.org/2024/640.pdf for the line computations.

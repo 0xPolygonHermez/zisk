@@ -31,3 +31,50 @@ pub fn n_u64_digits_from_biguint<const N: usize>(value: &BigUint) -> [u64; N] {
     }
     limbs
 }
+
+/// Fp12 arithmetic for [`pow_frob`].
+pub trait Fp12Ops: Copy {
+    fn one() -> Self;
+    fn mul(&self, other: &Self) -> Self;
+    fn sqr(&self) -> Self;
+    fn frobenius(&self) -> Self;
+}
+
+/// The 12 bases Frobᵏ(x) with their 4-bit multiples, for [`pow_frob`].
+pub fn frobenius_table<F: Fp12Ops>(x: &F) -> Vec<[F; 16]> {
+    let mut base = *x;
+    (0..12)
+        .map(|_| {
+            let mut row = [F::one(); 16];
+            for j in 1..16 {
+                row[j] = row[j - 1].mul(&base);
+            }
+            base = base.frobenius();
+            row
+        })
+        .collect()
+}
+
+/// x^e as Π Frobᵏ(x)^(eₖ) with e = Σ eₖ·pᵏ, from the table of x: the p-power map is cheap, so the
+/// exponent length drops from 12·log p to log p bits, taken in 4-bit windows over the 12 bases.
+pub fn pow_frob<F: Fp12Ops>(tab: &[[F; 16]], p: &BigUint, e: &BigUint) -> F {
+    let mut digits = Vec::with_capacity(12);
+    let mut t = e.clone();
+    for _ in 0..12 {
+        digits.push(&t % p);
+        t /= p;
+    }
+    let mut r = F::one();
+    for wi in (0..(p.bits() as usize).div_ceil(4)).rev() {
+        for _ in 0..4 {
+            r = r.sqr();
+        }
+        for (d, row) in digits.iter().zip(tab) {
+            let j = (0..4).fold(0, |j, i| (j << 1) | d.bit((4 * wi + 3 - i) as u64) as usize);
+            if j != 0 {
+                r = r.mul(&row[j]);
+            }
+        }
+    }
+    r
+}

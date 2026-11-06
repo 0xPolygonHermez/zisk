@@ -9,7 +9,7 @@ use crate::zisklib::{
 
 use super::{
     fp::{inv_fp_bn254, mul_fp_bn254, neg_fp_bn254},
-    fp12::{sparse_mul_fp12_bn254, square_fp12_bn254},
+    fp12::{mul_fp12_bn254, sparse_mul_fp12_bn254, square_fp12_bn254},
     fp2::{
         add_fp2_bn254, dbl_fp2_bn254, mul_fp2_bn254, neg_fp2_bn254, scalar_mul_fp2_bn254,
         square_fp2_bn254, sub_fp2_bn254,
@@ -280,6 +280,24 @@ pub fn miller_loop_batch_bn254(
     g2_points: &[[u64; 16]],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 48] {
+    miller_loop_batch_with_witness_bn254(
+        g1_points,
+        g2_points,
+        None,
+        #[cfg(feature = "hints")]
+        hints,
+    )
+}
+
+/// The batch Miller loop, optionally carrying a residue witness: with `(c_inv, c)` it starts at
+/// c⁻¹ instead of 1 and multiplies by c⁻¹ (c) at every 1 (-1) digit of 6x+2, so the result
+/// carries an extra factor (c⁻¹)^(6x+2) at the cost of one multiplication per non-zero digit.
+pub(crate) fn miller_loop_batch_with_witness_bn254(
+    g1_points: &[[u64; 8]],
+    g2_points: &[[u64; 16]],
+    witness: Option<(&[u64; 48], &[u64; 48])>,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 48] {
     // Before the loop starts, compute xp' = -xp/yp and yp' = 1/yp for each point p
     let mut xp_primes: Vec<[u64; 4]> = Vec::with_capacity(g1_points.len());
     let mut yp_primes: Vec<[u64; 4]> = Vec::with_capacity(g1_points.len());
@@ -311,6 +329,9 @@ pub fn miller_loop_batch_bn254(
     let mut r: Vec<[u64; 16]> = g2_points.iter().map(|q| q[0..16].try_into().unwrap()).collect();
     let mut f = [0u64; 48];
     f[0] = 1;
+    if let Some((c_inv, _)) = witness {
+        f = *c_inv;
+    }
     let n = g1_points.len();
     for &bit in LOOP_LENGTH.iter().skip(1) {
         // Compute f = f² · line_{twist(r),twist(r)}(p)
@@ -427,6 +448,15 @@ pub fn miller_loop_batch_bn254(
                     hints,
                 );
             }
+        }
+
+        if let Some((c_inv, c)) = witness.filter(|_| bit != 0) {
+            f = mul_fp12_bn254(
+                &f,
+                if bit == 1 { c_inv } else { c },
+                #[cfg(feature = "hints")]
+                hints,
+            );
         }
     }
 

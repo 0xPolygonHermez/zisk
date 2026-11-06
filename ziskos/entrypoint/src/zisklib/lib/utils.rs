@@ -150,3 +150,55 @@ pub(crate) unsafe fn slice_from_ffi<'a, T>(ptr: *const T, len: usize) -> &'a [T]
         core::slice::from_raw_parts(ptr, len)
     }
 }
+
+/// Extracts a `w`-bit window from a 256-bit scalar at the given window index.
+/// Window 0 is the least significant.
+pub(crate) fn get_scalar_window(scalar: &[u64; 4], window_idx: usize, w: usize) -> u64 {
+    let bit_offset = window_idx * w;
+    let limb_idx = bit_offset / 64;
+    let bit_in_limb = bit_offset % 64;
+    let mask = (1u64 << w) - 1;
+
+    if limb_idx >= 4 {
+        return 0;
+    }
+
+    let mut val = (scalar[limb_idx] >> bit_in_limb) & mask;
+
+    if bit_in_limb + w > 64 && limb_idx + 1 < 4 {
+        let remaining_bits = bit_in_limb + w - 64;
+        val |= (scalar[limb_idx + 1] & ((1u64 << remaining_bits) - 1)) << (64 - bit_in_limb);
+    }
+
+    val
+}
+
+/// Chooses the Pippenger window size that minimises total group operations for `n` points.
+/// Bands are derived from:
+///   `cost(n, w) = ⌈max_bits / w⌉ · (w + n + 2·(2^w − 1))`
+/// taking `max_bits = 256` as the more demanding regime.
+pub(crate) fn optimal_window_size(n: usize) -> usize {
+    if n <= 1 {
+        1
+    } else if n <= 10 {
+        2
+    } else if n <= 32 {
+        3
+    } else if n <= 100 {
+        4
+    } else if n <= 300 {
+        5
+    } else if n <= 700 {
+        6
+    } else if n <= 1500 {
+        7
+    } else if n <= 4500 {
+        8
+    } else if n <= 7000 {
+        9
+    } else if n <= 22000 {
+        10
+    } else {
+        11
+    }
+}

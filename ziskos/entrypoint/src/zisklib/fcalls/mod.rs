@@ -38,8 +38,15 @@ pub const FCALL_ED25519_FP_SQRT_RATIO_ID: u16 = 26;
 /// little-endian words. Resolved by the executor, which receives the seed with each execution;
 /// never part of the precompile hints.
 pub const FCALL_RANDOM_SEED_ID: u16 = 27;
+pub const FCALL_BLS12_381_FINAL_EXP_WITNESS_ID: u16 = 28;
+pub const FCALL_BN254_FINAL_EXP_WITNESS_ID: u16 = 29;
+
 /// Size of the host randomness seed in 64-bit words (256 bits).
 pub const RANDOM_SEED_WORDS: usize = 4;
+/// Most pairs the final exponentiation witness fcalls take: 1 + 36·n (BLS12-381) and 1 + 24·n (BN254)
+/// parameter words must fit the 386-word parameter buffer.
+pub const BLS12_381_FINAL_EXP_WITNESS_MAX_PAIRS: usize = 10;
+pub const BN254_FINAL_EXP_WITNESS_MAX_PAIRS: usize = 16;
 
 /// Returned by [`fcall_get_keccakf_cache_index`] when the executor has not cached the state.
 /// Reserved: it cannot be used as a cache index.

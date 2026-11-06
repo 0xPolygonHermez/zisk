@@ -1,15 +1,88 @@
 //! Final exponentiation for the pairings over BN254
 
+use crate::zisklib::{eq, is_one};
+
 use super::{
     cyclotomic::exp_by_x_cyclo_bn254,
     fp12::{
-        conjugate_fp12_bn254, frobenius1_fp12_bn254, frobenius2_fp12_bn254, frobenius3_fp12_bn254,
-        inv_fp12_bn254, mul_fp12_bn254, square_fp12_bn254,
+        conjugate_fp12_bn254, exp_fp12_bn254, frobenius1_fp12_bn254, frobenius2_fp12_bn254,
+        frobenius3_fp12_bn254, inv_fp12_bn254, mul_fp12_bn254, square_fp12_bn254,
     },
 };
 
-// TODO: The final exp could be optimized by using the optimizations described in https://eprint.iacr.org/2024/640.pdf
-// However, I dont think its a good idea in general to optimize verification "at all costs".
+/// 3x+1 for the BN254 seed x = 4965661367192848881, so that 6x+2 = 2·(3x+1) fits a u64 exponent
+const THREE_X_PLUS_ONE: u64 = 14896984101578546644;
+
+/// Checks a pairing product is 1 through the residue witness (Novakovic–Eagen, eprint 2024/640)
+/// carried through the Miller loop: `f` = g·(c⁻¹)^(6x+2), with g the Miller loop and c = (c⁻¹)⁻¹
+/// computed by the caller, so g·s = c^λ for λ = 6x+2+p-p²+p³ (a multiple of r) becomes
+/// f·s·(c⁻¹)ᵖ·(c⁻¹)^(p³) = (c⁻¹)^(p²). When the witness fails, g = f·c^(6x+2) takes the full
+/// final exponentiation.
+pub(crate) fn miller_loop_witness_is_one_bn254(
+    f: &[u64; 48],
+    c_inv: &[u64; 48],
+    c: &[u64; 48],
+    s: &[u64; 24],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> bool {
+    let mut s12 = [0u64; 48];
+    s12[..24].copy_from_slice(s);
+    let fs = mul_fp12_bn254(
+        f,
+        &s12,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let c_inv_p2 = frobenius2_fp12_bn254(
+        c_inv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    // (c⁻¹)ᵖ·(c⁻¹)^(p³) = (c⁻¹·(c⁻¹)^(p²))ᵖ
+    let c_inv_p_p3 = frobenius1_fp12_bn254(
+        &mul_fp12_bn254(
+            c_inv,
+            &c_inv_p2,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    if eq(
+        &mul_fp12_bn254(
+            &fs,
+            &c_inv_p_p3,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
+        &c_inv_p2,
+    ) {
+        return true;
+    }
+
+    let c_6x2 = square_fp12_bn254(
+        &exp_fp12_bn254(
+            THREE_X_PLUS_ONE,
+            c,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let g = mul_fp12_bn254(
+        f,
+        &c_6x2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    is_one(&final_exp_bn254(
+        &g,
+        #[cfg(feature = "hints")]
+        hints,
+    ))
+}
 
 /// Given f ∈ Fp12*, computes f^((p¹²-1)/r) ∈ Fp12*
 pub fn final_exp_bn254(f: &[u64; 48], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 48] {

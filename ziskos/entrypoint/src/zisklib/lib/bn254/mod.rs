@@ -40,3 +40,6 @@ pub use fp6::*;
 pub use fr::*;
 pub use pairing::*;
 pub use twist::*;
+
+// For the host side of the Miller loop witness fcall
+pub(crate) use miller_loop::miller_loop_batch_with_witness_bn254;

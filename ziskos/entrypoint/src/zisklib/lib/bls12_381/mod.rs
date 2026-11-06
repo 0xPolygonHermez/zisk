@@ -37,6 +37,7 @@ mod hash_to_curve;
 mod kzg;
 mod map_to_curve;
 mod miller_loop;
+mod msm;
 mod pairing;
 mod twist;
 
@@ -54,3 +55,6 @@ pub use kzg::*;
 pub use map_to_curve::*;
 pub use pairing::*;
 pub use twist::*;
+
+// For the host side of the Miller loop witness fcall
+pub(crate) use miller_loop::miller_loop_batch_with_witness_bls12_381;

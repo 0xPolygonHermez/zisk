@@ -16,6 +16,7 @@ use super::{
         square_fp2_bls12_381, sub_fp2_bls12_381,
     },
     fr::{reduce_fr_bls12_381, scalar_bytes_be_to_u64_le_bls12_381},
+    msm::msm_pippenger,
 };
 
 /// G2 add result codes
@@ -1010,7 +1011,6 @@ pub fn scalar_mul_by_abs_x_complete_twist_bls12_381(
 
 /// Multi-Scalar Multiplication (MSM) for BLS12-381 G2 points
 /// It computes k1·P1 + k2·P2 + ... + kn·Pn
-// TODO: This is a naive implementation, one can improve it by using, e.g., a windowed strategies!
 pub fn msm_complete_safe_twist_bls12_381(
     points: &[[u64; 24]],
     scalars: &[[u64; 4]],
@@ -1018,8 +1018,8 @@ pub fn msm_complete_safe_twist_bls12_381(
 ) -> Result<[u64; 24], u8> {
     assert_eq!(points.len(), scalars.len(), "Points and scalars must have the same length");
 
-    let mut acc = G2_IDENTITY;
-    let mut acc_is_inf = true;
+    let mut valid_points = Vec::with_capacity(points.len());
+    let mut valid_scalars = Vec::with_capacity(points.len());
 
     for (point, scalar) in points.iter().zip(scalars.iter()) {
         // Skip infinity points
@@ -1067,35 +1067,18 @@ pub fn msm_complete_safe_twist_bls12_381(
             continue;
         }
 
-        // Compute P * k
-        let product = scalar_mul_twist_bls12_381(
-            point,
-            &scalar,
-            #[cfg(feature = "hints")]
-            hints,
-        );
-
-        // Skip if product is infinity
-        if product == G2_IDENTITY {
-            continue;
-        }
-
-        // Add to accumulator
-        if acc_is_inf {
-            acc = product;
-            acc_is_inf = false;
-        } else {
-            acc = add_twist_bls12_381(
-                &acc,
-                &product,
-                #[cfg(feature = "hints")]
-                hints,
-            );
-            acc_is_inf = acc == G2_IDENTITY;
-        }
+        valid_points.push(*point);
+        valid_scalars.push(scalar);
     }
 
-    Ok(acc)
+    Ok(msm_pippenger(&valid_points, &valid_scalars, G2_IDENTITY, |a, b| {
+        add_complete_twist_bls12_381(
+            a,
+            b,
+            #[cfg(feature = "hints")]
+            hints,
+        )
+    }))
 }
 
 // ==================== C FFI Functions ====================

@@ -1,17 +1,77 @@
 //! Final exponentiation for BLS12-381
 
+use crate::zisklib::is_one;
+
 use super::{
     cyclotomic::{
         exp_by_x_cyclo_bls12_381, exp_by_xdiv3_cyclo_bls12_381, exp_by_xone_cyclo_bls12_381,
     },
     fp12::{
-        conjugate_fp12_bls12_381, frobenius1_fp12_bls12_381, frobenius2_fp12_bls12_381,
-        inv_fp12_bls12_381, mul_fp12_bls12_381,
+        conjugate_fp12_bls12_381, exp_fp12_bls12_381, frobenius1_fp12_bls12_381,
+        frobenius2_fp12_bls12_381, inv_fp12_bls12_381, mul_fp12_bls12_381,
     },
 };
 
-// TODO: The final exp could be optimized by using the optimizations described in https://eprint.iacr.org/2024/640.pdf
-// However, I dont think its a good idea in general to optimize verification "at all costs".
+/// |x| for the BLS12-381 seed x = -0xd201000000010000
+const X_ABS: u64 = 0xd201000000010000;
+
+/// Checks a pairing product is 1 through the residue witness (Novakovic–Eagen, eprint 2024/640)
+/// carried through the Miller loop: `f` = g·(c⁻¹)^|x|, with g the Miller loop before its final
+/// conjugation, so g·s = c^λ for λ = p - x (a multiple of r) becomes
+/// f·s·(c⁻¹)ᵖ = 1 (which also rules out c⁻¹ = 0). A pairing product is 1 exactly when
+/// g^((p¹²-1)/r) = 1: conjugation is the p⁶-th power, which keeps or inverts that value. When the
+/// witness fails, g = f·c^|x| takes the full final exponentiation.
+pub(crate) fn miller_loop_witness_is_one_bls12_381(
+    f: &[u64; 72],
+    c_inv: &[u64; 72],
+    s: &[u64; 36],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> bool {
+    let mut s12 = [0u64; 72];
+    s12[..36].copy_from_slice(s);
+    let fs = mul_fp12_bls12_381(
+        f,
+        &s12,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let c_inv_p = frobenius1_fp12_bls12_381(
+        c_inv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    if is_one(&mul_fp12_bls12_381(
+        &fs,
+        &c_inv_p,
+        #[cfg(feature = "hints")]
+        hints,
+    )) {
+        return true;
+    }
+
+    let c = inv_fp12_bls12_381(
+        c_inv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let c_x = exp_fp12_bls12_381(
+        X_ABS,
+        &c,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let g = mul_fp12_bls12_381(
+        f,
+        &c_x,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    is_one(&final_exp_bls12_381(
+        &g,
+        #[cfg(feature = "hints")]
+        hints,
+    ))
+}
 
 /// Given f ∈ Fp12*, computes f^((p¹²-1)/r) ∈ Fp12*
 ///

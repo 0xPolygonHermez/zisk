@@ -3,7 +3,11 @@
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
-use crate::zisklib::lib::utils::{eq, is_one, lt};
+use crate::zisklib::{
+    fcall_bls12_381_final_exp_witness,
+    lib::utils::{eq, is_one, is_zero, lt},
+    BLS12_381_FINAL_EXP_WITNESS_MAX_PAIRS,
+};
 
 use super::{
     constants::{G1_IDENTITY, G2_IDENTITY, P, P_MINUS_ONE},
@@ -11,8 +15,11 @@ use super::{
         g1_bytes_be_to_u64_le_bls12_381, is_on_curve_bls12_381, is_on_subgroup_bls12_381,
         neg_bls12_381,
     },
-    final_exp::final_exp_bls12_381,
-    miller_loop::{miller_loop_batch_bls12_381, miller_loop_bls12_381},
+    final_exp::{final_exp_bls12_381, miller_loop_witness_is_one_bls12_381},
+    miller_loop::{
+        miller_loop_batch_bls12_381, miller_loop_batch_with_witness_bls12_381,
+        miller_loop_bls12_381,
+    },
     twist::{
         g2_bytes_be_to_u64_le_bls12_381, is_on_curve_twist_bls12_381,
         is_on_subgroup_twist_bls12_381,
@@ -109,6 +116,58 @@ pub fn pairing_batch_bls12_381(
         #[cfg(feature = "hints")]
         hints,
     )
+}
+
+/// Checks e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) == 1, with a residue witness in place of the
+/// final exponentiation when the pairs fit the witness fcall
+///
+/// # Soundness
+/// All points must be on the corresponding subgroups, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
+pub fn pairing_batch_check_bls12_381(
+    g1_points: &[[u64; 12]],
+    g2_points: &[[u64; 24]],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> bool {
+    assert_eq!(g1_points.len(), g2_points.len(), "Number of G1 and G2 points must be equal");
+    if g1_points.is_empty() {
+        return true;
+    }
+
+    // The witness rides along the Miller loop when the pairs fit the fcall
+    if g1_points.len() <= BLS12_381_FINAL_EXP_WITNESS_MAX_PAIRS {
+        let (c_inv, s) = fcall_bls12_381_final_exp_witness(
+            g1_points,
+            g2_points,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        // A zero c⁻¹ would wipe the loop: that hint takes the plain path
+        if !is_zero(&c_inv) {
+            let f = miller_loop_batch_with_witness_bls12_381(
+                g1_points,
+                g2_points,
+                Some(&c_inv),
+                #[cfg(feature = "hints")]
+                hints,
+            );
+            return miller_loop_witness_is_one_bls12_381(
+                &f,
+                &c_inv,
+                &s,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+        }
+    }
+
+    // More pairs than the witness fcall takes, or no witness: the full final exponentiation
+    is_one(&pairing_batch_bls12_381(
+        g1_points,
+        g2_points,
+        #[cfg(feature = "hints")]
+        hints,
+    ))
 }
 
 /// Pairing check with validation
@@ -235,13 +294,13 @@ pub fn pairing_check_safe_bls12_381(
         return Ok(true);
     }
 
-    // Compute batch pairing and check if result is 1
-    Ok(is_one(&pairing_batch_bls12_381(
+    // Check that the batch pairing is 1
+    Ok(pairing_batch_check_bls12_381(
         &valid_g1,
         &valid_g2,
         #[cfg(feature = "hints")]
         hints,
-    )))
+    ))
 }
 
 // ==================== C FFI Functions ====================
@@ -294,5 +353,36 @@ pub(crate) unsafe fn pairing_check_safe_bls12_381_c(
         Ok(true) => PAIRING_CHECK_SUCCESS,
         Ok(false) => PAIRING_CHECK_FAILED,
         Err(code) => code,
+    }
+}
+
+#[cfg(all(test, not(feature = "hints")))]
+mod tests {
+    use super::{
+        super::constants::{G1_GENERATOR, G2_GENERATOR},
+        *,
+    };
+    use crate::zisklib::{
+        frobenius1_fp12_bls12_381, is_one, mul_fp12_bls12_381, neg_bls12_381, scalar_mul_bls12_381,
+        scalar_mul_twist_bls12_381,
+    };
+
+    /// e(7G₁, 11G₂)·e(-77G₁, G₂) = 1: the host witness must pass the guest's check without the
+    /// final exponentiation, and a product that is not 1 must get no witness
+    #[test]
+    fn miller_loop_witness_is_verified_without_the_final_exponentiation() {
+        let p = [
+            scalar_mul_bls12_381(&G1_GENERATOR, &[7, 0, 0, 0]),
+            neg_bls12_381(&scalar_mul_bls12_381(&G1_GENERATOR, &[77, 0, 0, 0])),
+        ];
+        let q = [scalar_mul_twist_bls12_381(&G2_GENERATOR, &[11, 0, 0, 0]), G2_GENERATOR];
+        let (c_inv, s) = fcall_bls12_381_final_exp_witness(&p, &q);
+        assert!(!is_zero(&c_inv));
+        let f = miller_loop_batch_with_witness_bls12_381(&p, &q, Some(&c_inv));
+        let mut s12 = [0u64; 72];
+        s12[..36].copy_from_slice(&s);
+        let fs = mul_fp12_bls12_381(&f, &s12);
+        assert!(is_one(&mul_fp12_bls12_381(&fs, &frobenius1_fp12_bls12_381(&c_inv))));
+        assert!(is_zero(&fcall_bls12_381_final_exp_witness(&[p[0], p[0]], &q).0));
     }
 }

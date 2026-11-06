@@ -3,13 +3,20 @@
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
-use crate::zisklib::lib::utils::{eq, is_one, lt, slice_from_ffi};
+use crate::zisklib::{
+    fcall_bn254_final_exp_witness,
+    lib::utils::{eq, is_one, is_zero, lt, slice_from_ffi},
+    BN254_FINAL_EXP_WITNESS_MAX_PAIRS,
+};
 
 use super::{
     constants::{G1_IDENTITY, G2_IDENTITY, P},
     curve::{g1_bytes_be_to_u64_le_bn254, is_on_curve_bn254},
-    final_exp::final_exp_bn254,
-    miller_loop::{miller_loop_batch_bn254, miller_loop_bn254},
+    final_exp::{final_exp_bn254, miller_loop_witness_is_one_bn254},
+    fp12::inv_fp12_bn254,
+    miller_loop::{
+        miller_loop_batch_bn254, miller_loop_batch_with_witness_bn254, miller_loop_bn254,
+    },
     twist::{g2_bytes_be_to_u64_le_bn254, is_on_curve_twist_bn254, is_on_subgroup_twist_bn254},
 };
 
@@ -80,45 +87,97 @@ pub fn pairing_batch_bn254(
     //  e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) = FinalExp(MillerLoop(P₁, Q₁) · MillerLoop(P₂, Q₂) · ... · MillerLoop(Pₙ, Qₙ))
     // We can compute the Miller loop for each pair, multiplying the results together
     // and then just do the final exponentiation once at the end.
-
-    let num_points = g1_points.len();
-    assert_eq!(num_points, g2_points.len(), "Number of G1 and G2 points must be equal");
-
-    // Miller loop and multiplication
-    let mut g1_points_ml = Vec::with_capacity(num_points);
-    let mut g2_points_ml = Vec::with_capacity(num_points);
-    for (p, q) in g1_points.iter().zip(g2_points.iter()) {
-        // Is p = 𝒪 or q = 𝒪?
-        if *p == G1_IDENTITY || *q == G2_IDENTITY {
-            // MillerLoop(P, 𝒪) = MillerLoop(𝒪, Q) = 1; we can skip
-            continue;
-        }
-
-        g1_points_ml.push(*p);
-        g2_points_ml.push(*q);
-    }
-
-    if g1_points_ml.is_empty() {
+    let (g1_points, g2_points) = non_identity_pairs_bn254(g1_points, g2_points);
+    if g1_points.is_empty() {
         // If all pairing computations were skipped, return 1
         let mut one = [0; 48];
         one[0] = 1;
         return one;
     }
 
-    // Compute the Miller loop for the batch
     let miller_loop = miller_loop_batch_bn254(
-        &g1_points_ml,
-        &g2_points_ml,
+        &g1_points,
+        &g2_points,
         #[cfg(feature = "hints")]
         hints,
     );
-
-    // Final exponentiation
     final_exp_bn254(
         &miller_loop,
         #[cfg(feature = "hints")]
         hints,
     )
+}
+
+/// Checks e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) == 1, with a residue witness in place of the
+/// final exponentiation when the pairs fit the witness fcall
+///
+/// # Soundness
+/// All points must be on the corresponding subgroups and have **canonical** coordinates (`x, y < p`).
+pub fn pairing_batch_check_bn254(
+    g1_points: &[[u64; 8]],
+    g2_points: &[[u64; 16]],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> bool {
+    let (g1_points, g2_points) = non_identity_pairs_bn254(g1_points, g2_points);
+    if g1_points.is_empty() {
+        return true;
+    }
+
+    // The witness rides along the Miller loop when the pairs fit the fcall
+    if g1_points.len() <= BN254_FINAL_EXP_WITNESS_MAX_PAIRS {
+        let (c_inv, s) = fcall_bn254_final_exp_witness(
+            &g1_points,
+            &g2_points,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        // A zero c⁻¹ would wipe the loop: that hint takes the plain path
+        if !is_zero(&c_inv) {
+            // The loop multiplies by c at the -1 digits
+            let c = inv_fp12_bn254(
+                &c_inv,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+            let f = miller_loop_batch_with_witness_bn254(
+                &g1_points,
+                &g2_points,
+                Some((&c_inv, &c)),
+                #[cfg(feature = "hints")]
+                hints,
+            );
+            return miller_loop_witness_is_one_bn254(
+                &f,
+                &c_inv,
+                &c,
+                &s,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+        }
+    }
+
+    // More pairs than the witness fcall takes, or no witness: the full final exponentiation
+    is_one(&pairing_batch_bn254(
+        &g1_points,
+        &g2_points,
+        #[cfg(feature = "hints")]
+        hints,
+    ))
+}
+
+/// The pairs with no identity point: MillerLoop(P, 𝒪) = MillerLoop(𝒪, Q) = 1.
+fn non_identity_pairs_bn254(
+    g1_points: &[[u64; 8]],
+    g2_points: &[[u64; 16]],
+) -> (Vec<[u64; 8]>, Vec<[u64; 16]>) {
+    assert_eq!(g1_points.len(), g2_points.len(), "Number of G1 and G2 points must be equal");
+    g1_points
+        .iter()
+        .zip(g2_points)
+        .filter(|(p, q)| **p != G1_IDENTITY && **q != G2_IDENTITY)
+        .map(|(p, q)| (*p, *q))
+        .unzip()
 }
 
 /// BN254 pairing check with validation
@@ -127,7 +186,7 @@ pub fn pairing_check_safe_bn254(
     g2_points: &[[u64; 16]],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Result<bool, u8> {
-    let pairing = pairing_batch_safe_bn254(
+    validate_pairing_points_bn254(
         g1_points,
         g2_points,
         #[cfg(feature = "hints")]
@@ -135,7 +194,12 @@ pub fn pairing_check_safe_bn254(
     )?;
 
     // Check whether e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) == 1
-    Ok(is_one(&pairing))
+    Ok(pairing_batch_check_bn254(
+        g1_points,
+        g2_points,
+        #[cfg(feature = "hints")]
+        hints,
+    ))
 }
 
 /// BN254 batch pairing with validation: checks that every point has canonical coordinates,
@@ -146,6 +210,29 @@ pub fn pairing_batch_safe_bn254(
     g2_points: &[[u64; 16]],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Result<[u64; 48], u8> {
+    validate_pairing_points_bn254(
+        g1_points,
+        g2_points,
+        #[cfg(feature = "hints")]
+        hints,
+    )?;
+
+    // Compute batch pairing e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ)
+    Ok(pairing_batch_bn254(
+        g1_points,
+        g2_points,
+        #[cfg(feature = "hints")]
+        hints,
+    ))
+}
+
+/// Checks that every point has canonical coordinates, lies on its curve and (for G2) in the
+/// prime-order subgroup. Identity points are allowed.
+fn validate_pairing_points_bn254(
+    g1_points: &[[u64; 8]],
+    g2_points: &[[u64; 16]],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> Result<(), u8> {
     assert_eq!(g1_points.len(), g2_points.len(), "Number of G1 and G2 points must be equal");
 
     // Validate every point pair
@@ -197,13 +284,7 @@ pub fn pairing_batch_safe_bn254(
         }
     }
 
-    // Compute batch pairing e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ)
-    Ok(pairing_batch_bn254(
-        g1_points,
-        g2_points,
-        #[cfg(feature = "hints")]
-        hints,
-    ))
+    Ok(())
 }
 
 // ==================== C FFI Functions ====================
@@ -291,5 +372,53 @@ pub(crate) unsafe fn pairing_check_safe_bn254_c(
         Ok(true) => PAIRING_CHECK_SUCCESS,
         Ok(false) => PAIRING_CHECK_FAILED,
         Err(code) => code,
+    }
+}
+
+#[cfg(all(test, not(feature = "hints")))]
+mod tests {
+    use super::*;
+    use crate::zisklib::{
+        frobenius1_fp12_bn254, frobenius2_fp12_bn254, frobenius3_fp12_bn254, mul_fp12_bn254,
+    };
+    use ark_bn254::{Fr, G1Projective, G2Projective};
+    use ark_ec::{CurveGroup, PrimeGroup};
+    use ark_ff::PrimeField;
+
+    fn g1(k: u64, neg: bool) -> [u64; 8] {
+        let p = (G1Projective::generator() * Fr::from(k)).into_affine();
+        let p = if neg { -p } else { p };
+        let mut o = [0u64; 8];
+        o[..4].copy_from_slice(&p.x.into_bigint().0);
+        o[4..].copy_from_slice(&p.y.into_bigint().0);
+        o
+    }
+
+    fn g2(k: u64) -> [u64; 16] {
+        let p = (G2Projective::generator() * Fr::from(k)).into_affine();
+        let mut o = [0u64; 16];
+        for (i, c) in [p.x.c0, p.x.c1, p.y.c0, p.y.c1].iter().enumerate() {
+            o[4 * i..4 * i + 4].copy_from_slice(&c.into_bigint().0);
+        }
+        o
+    }
+
+    /// e(7G₁, 11G₂)·e(-77G₁, G₂) = 1: the host witness must pass the guest's check without the
+    /// final exponentiation, and a product that is not 1 must get no witness
+    #[test]
+    fn miller_loop_witness_is_verified_without_the_final_exponentiation() {
+        let (p, q) = ([g1(7, false), g1(77, true)], [g2(11), g2(1)]);
+        let (c_inv, s) = fcall_bn254_final_exp_witness(&p, &q);
+        assert!(!is_zero(&c_inv));
+        let c = inv_fp12_bn254(&c_inv);
+        let f = miller_loop_batch_with_witness_bn254(&p, &q, Some((&c_inv, &c)));
+        let mut s12 = [0u64; 48];
+        s12[..24].copy_from_slice(&s);
+        let mut lhs = mul_fp12_bn254(&f, &s12);
+        for t in [frobenius1_fp12_bn254(&c_inv), frobenius3_fp12_bn254(&c_inv)] {
+            lhs = mul_fp12_bn254(&lhs, &t);
+        }
+        assert_eq!(lhs, frobenius2_fp12_bn254(&c_inv));
+        assert!(is_zero(&fcall_bn254_final_exp_witness(&[p[0], p[0]], &q).0));
     }
 }

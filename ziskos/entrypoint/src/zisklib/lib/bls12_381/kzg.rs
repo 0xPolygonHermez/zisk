@@ -1,6 +1,6 @@
 use crate::zisklib::{
     is_on_subgroup_bls12_381,
-    lib::utils::{eq, is_one, lt},
+    lib::utils::{eq, lt},
 };
 
 use super::{
@@ -8,7 +8,7 @@ use super::{
     curve::{
         add_complete_bls12_381, decompress_bls12_381, scalar_mul_bls12_381, sub_complete_bls12_381,
     },
-    pairing::pairing_batch_bls12_381,
+    pairing::pairing_batch_check_bls12_381,
     twist::neg_twist_bls12_381,
 };
 
@@ -122,13 +122,13 @@ pub fn verify_kzg_proof(
     let g1_points = [p1, proof];
     let g2_points = [neg_g2, TRUSTED_SETUP_TAU_G2];
 
-    // Check if the pairing result equals 1
-    is_one(&pairing_batch_bls12_381(
+    // Check that the pairing result equals 1
+    pairing_batch_check_bls12_381(
         &g1_points,
         &g2_points,
         #[cfg(feature = "hints")]
         hints,
-    ))
+    )
 }
 
 /// Verify KZG proof using BLS12-381 implementation.
