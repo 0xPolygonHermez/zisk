@@ -2987,6 +2987,7 @@ dependencies = [
  "rayon",
  "serial_test",
  "tokio",
+ "wat",
  "zisk-common",
  "zisk-prover-backend",
  "zisk-sdk",
@@ -8389,7 +8390,9 @@ version = "1.4.0-alpha"
 dependencies = [
  "wasmparser 0.244.0",
  "wat",
+ "zisk-asm",
  "zisk-core",
+ "zisk-definitions",
  "zisk-riscv",
 ]
 
@@ -8465,10 +8468,14 @@ dependencies = [
  "rayon",
  "regex",
  "serde_json",
+ "sha2",
  "symbolic-demangle",
  "sysinfo 0.38.4",
  "time",
+ "tiny-keccak",
  "vergen-git2",
+ "wasmparser 0.244.0",
+ "wast",
  "wat",
  "zisk-asm",
  "zisk-common",

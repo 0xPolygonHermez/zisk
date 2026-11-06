@@ -14,7 +14,7 @@ use super::emit::{Code, Fixup, LabelId};
 use super::layout::*;
 use super::module::{FuncSig, WasmModule};
 use wasmparser::{BlockType, Operator};
-use zisk_core::ZiskInstBuilder;
+use zisk_core::{ZiskInstBuilder, EXTRA_PARAMS_ADDR};
 
 /// Worst-case operand-stack depth a function may reach.  Frames reserve this many operand slots so
 /// callee frame placement is a compile-time constant (see `frame_size`).
@@ -65,6 +65,149 @@ struct CtrlFrame {
     result_arity: u32,
 }
 
+/// Where an operand-stack value is at compile time.  Values are only written to their operand
+/// slot when something needs them there (see [`FuncGen::flush`]): a `local.get` or a constant
+/// is read straight from the local or the instruction, and an operator's result stays in
+/// `REG_ACC` for the next operator.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Val {
+    /// In its own operand slot.
+    Slot,
+    /// The current value of local `k`, not copied yet.
+    Local(u32),
+    /// `i32.add` of local `k` and a constant, not computed yet, so that an access through it
+    /// can use `k`'s address (see [`FuncGen::access_addr`]).
+    LocalPlus(u32, i32),
+    /// A constant, not stored yet.
+    Const(i64),
+    /// In `REG_ACC`.  At most one value is, counting the operands of a pending `Cmp`.
+    Acc,
+    /// In `REG_ACC2`: the low half of a 128-bit result, whose high half is in `REG_ACC`.  At
+    /// most one value is.
+    Acc2,
+    /// A comparison not computed yet, so that `br_if` and `if` can branch on its flag.  Only
+    /// ever the top of the stack: any operator other than `br_if`, `if`, `eqz` and the `i32` to
+    /// `i64` extensions (a 0 or 1 is the same in both) computes it first, so the locals it reads
+    /// cannot change under it.
+    Cmp(Cmp),
+}
+
+/// A pending comparison: `op(a, b)`, negated when `invert`.
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Cmp {
+    op: &'static str,
+    a: Opnd,
+    b: Opnd,
+    invert: bool,
+}
+
+/// Where to read a popped operand.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Opnd {
+    /// A frame slot (an operand slot or a local), as an offset from FP.
+    Slot(i64),
+    Const(i64),
+    /// A register: `REG_ACC`, or the register of a local (see [`LocalRegs`]).
+    Reg(u64),
+    /// Local `k` plus a constant, as `i32.add` computes it (see [`Val::LocalPlus`]).
+    LocalPlus(u32, i32),
+}
+
+/// Register `reg` holds the absolute address of local `local` (a wasm address) plus `off0`, and
+/// `[reg, reg + hi)` has been checked to lie inside linear memory.  An access through the same
+/// local at static offset `off` is to `reg + (off - off0)`, already checked when it ends by `hi`.
+/// Valid until the local is written or control reaches a label; linear memory never shrinks, so
+/// a check stays true.
+#[derive(Clone, Copy)]
+struct Ptr {
+    local: u32,
+    reg: u64,
+    off0: u64,
+    hi: i64,
+}
+
+/// The locals of a function that live in a `REG_LOCALS` register instead of their frame slot.
+///
+/// Inside the function the register is the local's home, across labels too.  Before a call the
+/// caller writes the ones changed since they were last in their slots (`clean`), so callees need
+/// no convention for these registers.  After the call each is `in_slot`: reads take it from the
+/// slot and a write puts it back in the register, and any that are still in their slots at the
+/// next jump or label are reloaded there (see [`FuncGen::restore_locals`]).  A local left alone
+/// between two calls costs nothing.
+struct LocalRegs {
+    reg: Vec<Option<u64>>,
+    /// The local's slot holds its current value.
+    clean: Vec<bool>,
+    /// Only the local's slot holds its current value (its register may not).
+    in_slot: Vec<bool>,
+}
+
+impl LocalRegs {
+    /// Gives the registers to the locals they save the most on.  A read or write of a local in a
+    /// register saves about one instruction, and each call costs up to two (the write before
+    /// it and the reload after it); both are weighted by loop nesting, eight times per level.  A
+    /// parameter also costs its load at entry.  The best locals that come out ahead, up to the
+    /// number of registers, get one.
+    fn choose(
+        body: &wasmparser::FunctionBody,
+        num_locals: u32,
+        num_params: u32,
+        inlined: Option<u32>,
+    ) -> Result<Self, Box<dyn Error>> {
+        let mut uses = vec![0u64; num_locals as usize];
+        let mut calls = 0u64;
+        let mut loops: Vec<bool> = Vec::new(); // per open block: whether it is a loop
+        let mut ops = body.get_operators_reader()?;
+        while !ops.eof() {
+            let depth = loops.iter().filter(|&&l| l).count().min(4) as u32;
+            let weight = 8u64.pow(depth);
+            match ops.read()? {
+                Operator::Block { .. } | Operator::If { .. } => loops.push(false),
+                Operator::Loop { .. } => loops.push(true),
+                Operator::End => {
+                    loops.pop();
+                }
+                Operator::LocalGet { local_index }
+                | Operator::LocalSet { local_index }
+                | Operator::LocalTee { local_index } => uses[local_index as usize] += weight,
+                Operator::Call { function_index } if Some(function_index) == inlined => {}
+                Operator::Call { .. } | Operator::CallIndirect { .. } => calls += weight,
+                _ => {}
+            }
+        }
+        let mut gain: Vec<(u64, u32)> = (0..num_locals)
+            .filter_map(|k| {
+                let cost = 2 * calls + u64::from(k < num_params);
+                let u = uses[k as usize];
+                u.checked_sub(cost).filter(|&g| g > 0).map(|g| (g, k))
+            })
+            .collect();
+        gain.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        let mut reg = vec![None; num_locals as usize];
+        for (&(_, k), &r) in gain.iter().zip(REG_LOCALS.iter()) {
+            reg[k as usize] = Some(r);
+        }
+        let n = num_locals as usize;
+        Ok(Self { reg, clean: vec![false; n], in_slot: vec![false; n] })
+    }
+
+    fn reg(&self, k: u32) -> Option<u64> {
+        self.reg[k as usize]
+    }
+
+    /// `(local, register)` for every local in a register.
+    fn mapped(&self) -> Vec<(u32, u64)> {
+        self.reg.iter().enumerate().filter_map(|(k, r)| r.map(|r| (k as u32, r))).collect()
+    }
+
+    /// Where any path may arrive (every path has the locals in their registers by then, see
+    /// [`FuncGen::restore_locals`]): no slot is known to be up to date.
+    fn forget_clean(&mut self) {
+        self.clean.fill(false);
+        self.in_slot.fill(false);
+    }
+}
+
 /// Lowers `func_index` (which must be a defined function) into a [`Code`].
 pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<dyn Error>> {
     let defined_index = (func_index - module.func_import_count) as usize;
@@ -72,6 +215,9 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
     let sig = &module.sigs[func.type_index as usize];
 
     let num_locals = func.num_locals;
+    let inlined = module.native_multi3;
+    let leaf = calls_nothing(&func.body, inlined)?;
+    let locals = LocalRegs::choose(&func.body, num_locals, sig.params.len() as u32, inlined)?;
 
     let mut code = Code::new();
     let func_end = code.new_label();
@@ -86,12 +232,30 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
         dead_nesting: 0,
         func_end,
         overflowed: false,
+        vals: Vec::new(),
+        ptrs: Vec::new(),
+        next_ptr: 0,
+        leaf,
+        locals,
+        acc_inst: None,
     };
 
-    // Prologue: save the return address and zero the non-parameter locals.
-    gen.code.store_reg_to_slot(FRAME_RET_PC_OFF, REG_RA);
-    for k in sig.params.len() as u32..num_locals {
-        gen.code.store_imm_to_slot(local_offset(k), 0);
+    // Prologue: save the return address (a leaf keeps it in `REG_RA`), load the parameters that
+    // live in registers and zero the other locals.
+    if !leaf {
+        gen.code.store_reg_to_slot(FRAME_RET_PC_OFF, REG_RA);
+    }
+    for k in 0..num_locals {
+        let param = k < sig.params.len() as u32;
+        match (gen.locals.reg(k), param) {
+            (Some(r), true) => {
+                gen.code.load_slot_to_reg(r, local_offset(k));
+                gen.locals.clean[k as usize] = true;
+            }
+            (Some(r), false) => gen.code.load_imm_to_reg(r, 0),
+            (None, true) => {}
+            (None, false) => gen.code.store_imm_to_slot(local_offset(k), 0),
+        }
     }
 
     let mut op_reader = func.body.get_operators_reader()?;
@@ -108,11 +272,12 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
 
     // Fallthrough off the end of the body: the result is on top of the operand stack.  Every
     // other path to `func_end` (explicit or implicit `return`) has already loaded `REG_RET`.
-    if !gen.unreachable && !sig.results.is_empty() {
-        let off = gen.slot(gen.depth - 1);
-        gen.code.load_slot_to_reg(REG_RET, off);
+    if !gen.unreachable {
+        gen.sync();
+        gen.compute_cmp();
+        gen.result_to_ret();
     }
-    // Epilogue (bound at func_end): restore caller FP and return.
+    // Epilogue (bound at func_end): return.
     gen.code.bind(func_end);
     gen.emit_epilogue();
 
@@ -134,6 +299,20 @@ pub(crate) struct FuncGen<'a, 'b> {
     func_end: LabelId,
     /// Set by `push` when the operand stack outgrows the frame's reserved slots.
     overflowed: bool,
+    /// Where each operand-stack value is, bottom first.  Code that works on the slots directly
+    /// runs after [`FuncGen::flush`] and only moves `depth`; [`FuncGen::sync`] then catches up.
+    vals: Vec<Val>,
+    /// The addresses held in `REG_PTRS` registers.
+    ptrs: Vec<Ptr>,
+    /// The `REG_PTRS` register the next new address goes to.
+    next_ptr: usize,
+    /// The function calls nothing (see [`calls_nothing`]), so `REG_RA` survives its body.
+    leaf: bool,
+    /// The locals that live in registers.
+    locals: LocalRegs,
+    /// `Some(code.len())` right after an instruction wrote the value on top of the stack to
+    /// `REG_ACC`: a `local.set` may then redirect that instruction.
+    acc_inst: Option<usize>,
 }
 
 impl<'a, 'b> FuncGen<'a, 'b> {
@@ -149,6 +328,521 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             self.overflowed = true;
         }
         off
+    }
+
+    // -- the virtual operand stack ------------------------------------------------
+
+    /// Catches `vals` up with `depth` after code that works on the slots: such code runs after a
+    /// [`Self::flush`], so every value it leaves is in its slot.
+    pub(crate) fn sync(&mut self) {
+        self.vals.resize(self.depth as usize, Val::Slot);
+    }
+
+    fn push_val(&mut self, v: Val) {
+        self.push();
+        self.vals.push(v);
+    }
+
+    fn pop_val(&mut self) -> Val {
+        self.depth -= 1;
+        self.vals.pop().expect("wasm: operand stack underflow")
+    }
+
+    /// Where to read value `v`, which was at depth `d`.
+    fn opnd_at(&self, v: Val, d: u32) -> Opnd {
+        match v {
+            Val::Slot => Opnd::Slot(self.slot(d)),
+            Val::Local(k) => self.local_opnd(k),
+            Val::LocalPlus(k, c) => Opnd::LocalPlus(k, c),
+            Val::Const(c) => Opnd::Const(c),
+            Val::Acc => Opnd::Reg(REG_ACC),
+            Val::Acc2 => Opnd::Reg(REG_ACC2),
+            Val::Cmp(_) => unreachable!("a comparison is computed before its value is read"),
+        }
+    }
+
+    fn pop(&mut self) -> Opnd {
+        let v = self.pop_val();
+        self.opnd_at(v, self.depth)
+    }
+
+    /// The register holding `o`, loading it into `scratch` unless it is already in one.
+    fn opnd_reg(&mut self, o: Opnd, scratch: u64) -> u64 {
+        match o {
+            Opnd::Slot(off) => self.code.load_slot_to_reg(scratch, off),
+            Opnd::Const(c) => self.code.load_imm_to_reg(scratch, c as u64),
+            Opnd::Reg(r) => return r,
+            Opnd::LocalPlus(k, c) => {
+                let base = match self.local_opnd(k) {
+                    Opnd::Reg(r) => r,
+                    o => self.opnd_reg(o, scratch),
+                };
+                self.code.alu_ri("add_w", scratch, base, c as i64);
+            }
+        }
+        scratch
+    }
+
+    /// Where local `k` is: its register, or its frame slot.
+    fn local_opnd(&self, k: u32) -> Opnd {
+        match self.locals.reg(k) {
+            Some(r) if !self.locals.in_slot[k as usize] => Opnd::Reg(r),
+            _ => Opnd::Slot(local_offset(k)),
+        }
+    }
+
+    /// Reloads the locals a call left in their slots, before a jump or a label: code at a label
+    /// finds every local in its register.
+    fn restore_locals(&mut self) {
+        for (k, r) in self.locals.mapped() {
+            if self.locals.in_slot[k as usize] {
+                self.code.load_slot_to_reg(r, local_offset(k));
+                self.locals.in_slot[k as usize] = false;
+                self.locals.clean[k as usize] = true;
+            }
+        }
+    }
+
+    /// Writes `o` to the frame slot at `dst` (one instruction).
+    fn opnd_to_slot(&mut self, dst: i64, o: Opnd) {
+        match o {
+            Opnd::Slot(src) if src == dst => {}
+            Opnd::Slot(src) => self.code.copy_slot(dst, src),
+            Opnd::Const(c) => self.code.store_imm_to_slot(dst, c),
+            Opnd::Reg(r) => self.code.store_reg_to_slot(dst, r),
+            Opnd::LocalPlus(..) => {
+                let r = self.opnd_reg(o, REG_T0);
+                self.code.store_reg_to_slot(dst, r);
+            }
+        }
+    }
+
+    /// Pushes the value the last instruction wrote to `REG_ACC`, which a `local.set` right
+    /// after may redirect to the local's register (see [`Self::set_local`]).
+    fn push_acc(&mut self) {
+        self.push_val(Val::Acc);
+        self.acc_inst = Some(self.code.len());
+    }
+
+    /// Stores the value in `REG_ACC`, if any, to its slot, so that `REG_ACC` can take another.
+    fn spill_acc(&mut self) {
+        self.spill_reg_val(Val::Acc, REG_ACC);
+    }
+
+    /// Stores the value in `REG_ACC2`, if any, to its slot.
+    fn spill_acc2(&mut self) {
+        self.spill_reg_val(Val::Acc2, REG_ACC2);
+    }
+
+    fn spill_reg_val(&mut self, v: Val, reg: u64) {
+        if let Some(i) = self.vals.iter().position(|&w| w == v) {
+            self.code.store_reg_to_slot(self.slot(i as u32), reg);
+            self.vals[i] = Val::Slot;
+        }
+    }
+
+    /// Copies every pending `local.get k` to its slot, before local `k` changes.
+    fn materialize_local(&mut self, k: u32) {
+        for i in 0..self.vals.len() {
+            if matches!(self.vals[i], Val::Local(j) | Val::LocalPlus(j, _) if j == k) {
+                let o = self.opnd_at(self.vals[i], i as u32);
+                self.opnd_to_slot(self.slot(i as u32), o);
+                self.vals[i] = Val::Slot;
+            }
+        }
+    }
+
+    /// Computes a pending comparison on top of the stack into `REG_ACC`.
+    fn compute_cmp(&mut self) {
+        let Some(&Val::Cmp(c)) = self.vals.last() else {
+            return;
+        };
+        self.vals.pop();
+        self.spill_acc();
+        let ra = self.opnd_reg(c.a, REG_T0);
+        match c.b {
+            Opnd::Const(k) => self.code.alu_ri(c.op, REG_ACC, ra, k),
+            b => {
+                let rb = self.opnd_reg(b, REG_T1);
+                self.code.alu_rr(c.op, REG_ACC, ra, rb);
+            }
+        }
+        if c.invert {
+            self.code.alu_ri("xor", REG_ACC, REG_ACC, 1);
+        }
+        self.vals.push(Val::Acc);
+        self.acc_inst = Some(self.code.len());
+    }
+
+    /// Writes every value to its operand slot, as the slot-based code, labels, branches and
+    /// calls expect.  It stores to memory and computes a pending `local + constant` in `REG_T0`,
+    /// so every other register survives it.
+    pub(crate) fn flush(&mut self) {
+        self.compute_cmp();
+        for i in 0..self.vals.len() {
+            let off = self.slot(i as u32);
+            match self.vals[i] {
+                Val::Slot => continue,
+                Val::Local(_) | Val::LocalPlus(..) | Val::Const(_) | Val::Acc | Val::Acc2 => {
+                    let o = self.opnd_at(self.vals[i], i as u32);
+                    self.opnd_to_slot(off, o);
+                }
+                Val::Cmp(_) => unreachable!("only the top of the stack can be a comparison"),
+            }
+            self.vals[i] = Val::Slot;
+        }
+    }
+
+    /// Lowers the operators that work on the virtual stack; returns `false` for the others.
+    fn lower_virtual(&mut self, op: &Operator) -> Result<bool, Box<dyn Error>> {
+        use Operator::*;
+        match *op {
+            // -- constants and variables ----------------------------------------
+            I32Const { value } => self.push_val(Val::Const(value as i64)),
+            I64Const { value } => self.push_val(Val::Const(value)),
+            LocalGet { local_index } => self.push_val(Val::Local(local_index)),
+            LocalSet { local_index } => {
+                let v = self.pop();
+                self.set_local(local_index, v);
+            }
+            LocalTee { local_index } => {
+                let top = *self.vals.last().expect("wasm: operand stack underflow");
+                let v = self.pop();
+                self.set_local(local_index, v);
+                // The value is now the local's (its register may have taken it from `REG_ACC`).
+                let now = match top {
+                    _ if self.locals.reg(local_index).is_some() => Val::Local(local_index),
+                    Val::LocalPlus(j, _) if j == local_index => Val::Local(local_index),
+                    _ => top,
+                };
+                self.push_val(now);
+            }
+            GlobalGet { global_index } => {
+                self.spill_acc();
+                self.code.load_abs_to_reg(REG_ACC, global_addr(global_index));
+                self.push_acc();
+            }
+            GlobalSet { global_index } => match self.pop() {
+                Opnd::Const(c) => self.code.store_imm_to_abs(global_addr(global_index), c as u64),
+                v => {
+                    let r = self.opnd_reg(v, REG_T0);
+                    self.code.store_reg_to_abs(global_addr(global_index), r, 8);
+                }
+            },
+
+            // -- integer arithmetic and logic -----------------------------------
+            I32Add => self.alu("add_w", true),
+            I32Sub => self.alu("sub_w", false),
+            I32Mul => self.alu("mul_w", true),
+            I64Add => self.alu("add", true),
+            I64Sub => self.alu("sub", false),
+            I64Mul => self.alu("mul", true),
+            I32And | I64And => self.alu("and", true),
+            I32Or | I64Or => self.alu("or", true),
+            I32Xor | I64Xor => self.alu("xor", true),
+            I32Shl => self.shift("sll_w", 0x1f),
+            I32ShrU => self.shift("srl_w", 0x1f),
+            I32ShrS => self.shift("sra_w", 0x1f),
+            I64Shl => self.shift("sll", 0x3f),
+            I64ShrU => self.shift("srl", 0x3f),
+            I64ShrS => self.shift("sra", 0x3f),
+            // ZisK's rotations take the count modulo the width, and the `_w` forms rotate the low
+            // 32 bits and sign-extend the result, which is the canonical i32 form.
+            // wide arithmetic (128-bit values as two i64 halves, low half first)
+            I64MulWideU => self.mul_wide("muluh"),
+            I64MulWideS => self.mul_wide("mulh"),
+            I64Add128 => self.add_sub128(true),
+            I64Sub128 => self.add_sub128(false),
+            I32Rotl => self.alu("rol_w", false),
+            I32Rotr => self.alu("ror_w", false),
+            I64Rotl => self.alu("rol", false),
+            I64Rotr => self.alu("ror", false),
+
+            // -- comparisons (0/1, or a branch on the flag) ---------------------
+            I32Eqz | I64Eqz => self.eqz(),
+            I32Eq | I64Eq => self.compare("eq", false, false),
+            I32Ne | I64Ne => self.compare("eq", false, true),
+            I32LtS | I64LtS => self.compare("lt", false, false),
+            I32LtU | I64LtU => self.compare("ltu", false, false),
+            I32GtS | I64GtS => self.compare("lt", true, false),
+            I32GtU | I64GtU => self.compare("ltu", true, false),
+            I32LeS | I64LeS => self.compare("le", false, false),
+            I32LeU | I64LeU => self.compare("leu", false, false),
+            I32GeS | I64GeS => self.compare("le", true, false),
+            I32GeU | I64GeU => self.compare("leu", true, false),
+
+            // -- conversions and sign extension ---------------------------------
+            I32WrapI64 | I64Extend32S => self.sign_extend("signextend_w"),
+            I32Extend8S | I64Extend8S => self.sign_extend("signextend_b"),
+            I32Extend16S | I64Extend16S => self.sign_extend("signextend_h"),
+            I64ExtendI32S => { /* canonical i32 already sign-extended: no-op */ }
+            // A pending comparison is 0 or 1 either way: it stays pending.
+            I64ExtendI32U if matches!(self.vals.last(), Some(Val::Cmp(_))) => {}
+            I64ExtendI32U => {
+                self.push_val(Val::Const(0xFFFF_FFFF));
+                self.alu("and", true);
+            }
+
+            // -- memory loads and stores ----------------------------------------
+            I32Load { memarg } => self.load("signextend_w", 4, memarg.offset),
+            I64Load { memarg } => self.load("copyb", 8, memarg.offset),
+            I32Load8S { memarg } | I64Load8S { memarg } => {
+                self.load("signextend_b", 1, memarg.offset)
+            }
+            I32Load8U { memarg } | I64Load8U { memarg } => self.load("copyb", 1, memarg.offset),
+            I32Load16S { memarg } | I64Load16S { memarg } => {
+                self.load("signextend_h", 2, memarg.offset)
+            }
+            I32Load16U { memarg } | I64Load16U { memarg } => self.load("copyb", 2, memarg.offset),
+            I64Load32S { memarg } => self.load("signextend_w", 4, memarg.offset),
+            I64Load32U { memarg } => self.load("copyb", 4, memarg.offset),
+            I32Store { memarg } => self.store(4, memarg.offset),
+            I64Store { memarg } => self.store(8, memarg.offset),
+            I32Store8 { memarg } | I64Store8 { memarg } => self.store(1, memarg.offset),
+            I32Store16 { memarg } | I64Store16 { memarg } => self.store(2, memarg.offset),
+            I64Store32 { memarg } => self.store(4, memarg.offset),
+
+            // -- parametric and branches ----------------------------------------
+            Drop => {
+                self.pop_val();
+            }
+            Nop => {}
+            BrIf { relative_depth } => self.br_if(relative_depth),
+            If { blockty } => self.if_(blockty)?,
+            BrTable { ref targets } => self.br_table(targets)?,
+            Return => {
+                self.result_to_ret();
+                self.code.jump(self.func_end);
+                self.unreachable = true;
+            }
+            // The function's own end: what follows is the fallthrough return.
+            End if self.ctrl.is_empty() => {}
+
+            // -- calls ----------------------------------------------------------
+            Call { function_index } => self.call(function_index)?,
+            CallIndirect { type_index, .. } => self.call_indirect(type_index)?,
+
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+
+    /// `local.set k`: pending reads of local `k` get the old value first, and an address made
+    /// from it is forgotten.  A local in a register takes a value just computed into
+    /// `REG_ACC` by having that instruction write the local's register instead.
+    fn set_local(&mut self, k: u32, v: Opnd) {
+        self.materialize_local(k);
+        self.ptrs.retain(|p| p.local != k);
+        let Some(r) = self.locals.reg(k) else {
+            self.opnd_to_slot(local_offset(k), v);
+            return;
+        };
+        match v {
+            Opnd::Reg(REG_ACC) if self.acc_inst == Some(self.code.len()) => {
+                self.code.retarget_last_store(r);
+                self.acc_inst = None;
+            }
+            Opnd::Reg(src) if src == r => {}
+            Opnd::Reg(src) => self.code.mov_reg(r, src),
+            Opnd::Slot(off) => self.code.load_slot_to_reg(r, off),
+            Opnd::Const(c) => self.code.load_imm_to_reg(r, c as u64),
+            Opnd::LocalPlus(..) => {
+                self.opnd_reg(v, r);
+            }
+        }
+        // Only now: a pending `k + c` above reads `k` from wherever it was.
+        self.locals.clean[k as usize] = false;
+        self.locals.in_slot[k as usize] = false;
+    }
+
+    /// `REG_ACC = op(a, b)`; a constant operand becomes the instruction's immediate.  An
+    /// `i32.add` or `i32.sub` of a local (plus a constant) and a constant stays pending as
+    /// [`Val::LocalPlus`].
+    fn alu(&mut self, op: &'static str, commutative: bool) {
+        if let Some(v) = self.local_plus(op) {
+            self.pop_val();
+            self.pop_val();
+            self.push_val(v);
+            return;
+        }
+        let mut b = self.pop();
+        let mut a = self.pop();
+        if commutative && matches!(a, Opnd::Const(_)) && !matches!(b, Opnd::Const(_)) {
+            std::mem::swap(&mut a, &mut b);
+        }
+        self.spill_acc();
+        let ra = self.opnd_reg(a, REG_T0);
+        match b {
+            Opnd::Const(c) => self.code.alu_ri(op, REG_ACC, ra, c),
+            _ => {
+                let rb = self.opnd_reg(b, REG_T1);
+                self.code.alu_rr(op, REG_ACC, ra, rb);
+            }
+        }
+        self.push_acc();
+    }
+
+    /// The pending `local + constant` that `op` on the top two values gives, if it is one.
+    fn local_plus(&self, op: &str) -> Option<Val> {
+        let [a, b] = self.vals.get(self.vals.len().checked_sub(2)?..)? else {
+            return None;
+        };
+        let base = |v: &Val| match *v {
+            Val::Local(k) => Some((k, 0i32)),
+            Val::LocalPlus(k, c) => Some((k, c)),
+            _ => None,
+        };
+        let constant = |v: &Val| match *v {
+            Val::Const(c) => Some(c as i32),
+            _ => None,
+        };
+        let (k, c0, c) = match op {
+            "add_w" => match (base(a), constant(b), constant(a), base(b)) {
+                (Some((k, c0)), Some(c), _, _) | (_, _, Some(c), Some((k, c0))) => (k, c0, c),
+                _ => return None,
+            },
+            "sub_w" => {
+                let (k, c0) = base(a)?;
+                (k, c0, constant(b)?.wrapping_neg())
+            }
+            _ => return None,
+        };
+        Some(Val::LocalPlus(k, c0.wrapping_add(c)))
+    }
+
+    /// A shift: wasm takes the count modulo the width (`count_mask`).
+    fn shift(&mut self, op: &'static str, count_mask: i64) {
+        let b = self.pop();
+        let a = self.pop();
+        self.spill_acc();
+        let ra = self.opnd_reg(a, REG_T0);
+        match b {
+            Opnd::Const(c) => self.code.alu_ri(op, REG_ACC, ra, c & count_mask),
+            _ => {
+                let rb = self.opnd_reg(b, REG_T1);
+                self.code.alu_ri("and", REG_T1, rb, count_mask);
+                self.code.alu_rr(op, REG_ACC, ra, REG_T1);
+            }
+        }
+        self.push_acc();
+    }
+
+    /// Pushes the comparison `op(a, b)` (operands swapped when `swap`, negated when `invert`)
+    /// without computing it.
+    fn compare(&mut self, op: &'static str, swap: bool, invert: bool) {
+        let b = self.pop();
+        let a = self.pop();
+        let (mut a, mut b) = if swap { (b, a) } else { (a, b) };
+        if op == "eq" && matches!(a, Opnd::Const(_)) {
+            std::mem::swap(&mut a, &mut b);
+        }
+        self.push_val(Val::Cmp(Cmp { op, a, b, invert }));
+    }
+
+    /// `eqz`: negates a pending comparison, or compares with zero.
+    fn eqz(&mut self) {
+        if let Some(Val::Cmp(c)) = self.vals.last_mut() {
+            c.invert = !c.invert;
+            return;
+        }
+        let a = self.pop();
+        self.push_val(Val::Cmp(Cmp { op: "eq", a, b: Opnd::Const(0), invert: false }));
+    }
+
+    /// `signextend_{b,h,w}`, folded for a constant.
+    pub(crate) fn sign_extend(&mut self, op: &'static str) {
+        let a = self.pop();
+        if let Opnd::Const(c) = a {
+            let v = match op {
+                "signextend_b" => c as i8 as i64,
+                "signextend_h" => c as i16 as i64,
+                _ => c as i32 as i64,
+            };
+            self.push_val(Val::Const(v));
+            return;
+        }
+        self.spill_acc();
+        let ra = self.opnd_reg(a, REG_T0);
+        // signextend acts on `b`.
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("imm", 0, false);
+        zib.src_b("reg", ra, false);
+        zib.op(op).unwrap();
+        zib.store("reg", REG_ACC as i64, false, false);
+        zib.j(4, 4);
+        self.code.push_raw(zib, Fixup::None);
+        self.push_acc();
+    }
+
+    /// Jumps to `label` when the popped condition `cond` (which was at depth `self.depth`) is
+    /// nonzero (`when`) or zero (`!when`).  A pending comparison branches on its own flag.
+    fn branch_on(&mut self, cond: Val, label: LabelId, when: bool) {
+        if let Val::Cmp(c) = cond {
+            let jump_if_flag = when != c.invert;
+            let ra = self.opnd_reg(c.a, REG_T0);
+            match c.b {
+                Opnd::Const(k) => self.code.cmp_imm_branch(c.op, ra, k, label, jump_if_flag),
+                b => {
+                    let rb = self.opnd_reg(b, REG_T1);
+                    self.code.cmp_reg_branch(c.op, ra, rb, label, jump_if_flag);
+                }
+            }
+            return;
+        }
+        match self.opnd_at(cond, self.depth) {
+            Opnd::Const(c) => {
+                if (c != 0) == when {
+                    self.code.jump(label);
+                }
+            }
+            o => {
+                let r = self.opnd_reg(o, REG_T0);
+                self.code.cmp_imm_branch("eq", r, 0, label, !when);
+            }
+        }
+    }
+
+    /// The label a branch to `relative_depth` can jump to directly, when it moves no value.
+    fn plain_branch_target(&self, relative_depth: u32) -> Option<LabelId> {
+        if relative_depth as usize == self.ctrl.len() {
+            return None; // a return
+        }
+        let frame = &self.ctrl[self.ctrl.len() - 1 - relative_depth as usize];
+        (frame.kind == CtrlKind::Loop || frame.result_arity == 0).then_some(frame.branch_label)
+    }
+
+    fn br_if(&mut self, relative_depth: u32) {
+        let cond = self.pop_val();
+        self.flush();
+        self.restore_locals();
+        if let Some(label) = self.plain_branch_target(relative_depth) {
+            self.branch_on(cond, label, true);
+        } else {
+            let cont = self.code.new_label();
+            self.branch_on(cond, cont, false);
+            self.branch_to(relative_depth);
+            self.code.bind(cont);
+        }
+    }
+
+    fn if_(&mut self, blockty: BlockType) -> Result<(), Box<dyn Error>> {
+        let (_p, r) = self.block_arity(blockty)?;
+        let else_label = self.code.new_label();
+        let end_label = self.code.new_label();
+        // Pop the condition; when zero, jump to the else arm (or the end, if there is none).
+        let cond = self.pop_val();
+        self.flush();
+        self.restore_locals();
+        self.branch_on(cond, else_label, false);
+        self.ctrl.push(CtrlFrame {
+            kind: CtrlKind::If,
+            branch_label: end_label,
+            end_label,
+            else_label: Some(else_label),
+            start_depth: self.depth,
+            result_arity: r,
+        });
+        Ok(())
     }
 
     fn block_arity(&self, blockty: BlockType) -> Result<(u32, u32), Box<dyn Error>> {
@@ -168,28 +862,30 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         }
     }
 
+    /// Returns: a leaf through `REG_RA`, any other function through its saved return address.
+    /// The caller restores FP.
     fn emit_epilogue(&mut self) {
-        // Restore caller FP and jump to the saved return address.
-        self.code.load_slot_to_reg(REG_T0, FRAME_RET_PC_OFF);
-        self.code.load_slot_to_reg(REG_T2, FRAME_CALLER_FP_OFF);
-        // FP <- caller FP
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("imm", 0, false);
-        zib.src_b("reg", REG_T2, false);
-        zib.op("copyb").unwrap();
-        zib.store("reg", REG_FP as i64, false, false);
-        zib.j(4, 4);
+        if self.leaf {
+            self.code.ret_reg(REG_RA);
+        } else {
+            self.code.ret_via_slot(FRAME_RET_PC_OFF);
+        }
+    }
 
-        self.code.push_raw(zib, Fixup::None);
-        // pc <- saved return address
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("imm", 0, false);
-        zib.src_b("reg", REG_T0, false);
-        zib.op("copyb").unwrap();
-        zib.set_pc();
-        zib.j(0, 4);
-
-        self.code.push_raw(zib, Fixup::None);
+    /// Pops the function's result, if it has one, into `REG_RET`.
+    fn result_to_ret(&mut self) {
+        if self.sig.results.is_empty() {
+            return;
+        }
+        match self.pop() {
+            Opnd::Slot(off) => self.code.load_slot_to_reg(REG_RET, off),
+            Opnd::Const(c) => self.code.load_imm_to_reg(REG_RET, c as u64),
+            Opnd::Reg(r) if r == REG_RET => {}
+            Opnd::Reg(r) => self.code.mov_reg(REG_RET, r),
+            o @ Opnd::LocalPlus(..) => {
+                self.opnd_reg(o, REG_RET);
+            }
+        }
     }
 
     fn lower_op(&mut self, op: Operator, func_end: LabelId) -> Result<(), Box<dyn Error>> {
@@ -197,6 +893,9 @@ impl<'a, 'b> FuncGen<'a, 'b> {
 
         // Dead-code skipping: only structural delimiters are processed while unreachable.
         if self.unreachable {
+            // `else` and `end` bind labels.
+            self.forget_ptrs();
+            self.locals.forget_clean();
             match op {
                 Block { .. } | Loop { .. } | If { .. } => {
                     self.dead_nesting += 1;
@@ -237,100 +936,34 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             }
         }
 
+        // Bring `vals` up to date with whatever the slot-based code did to `depth`, and compute
+        // a pending comparison unless this operator branches on it or negates it.
+        self.sync();
+        if !matches!(op, BrIf { .. } | If { .. } | I32Eqz | I64Eqz | I64ExtendI32S | I64ExtendI32U)
+        {
+            self.compute_cmp();
+        }
+        if self.lower_virtual(&op)? {
+            return Ok(());
+        }
+        // Everything below works on the operand slots, and may bind a label or call.
+        self.flush();
+        if matches!(op, Loop { .. } | Else | End | Br { .. }) {
+            self.restore_locals();
+            self.locals.forget_clean();
+        }
+        self.forget_ptrs();
+
         match op {
-            // -- constants -----------------------------------------------------
-            I32Const { value } => {
-                let off = self.push();
-                self.code.store_imm_to_slot(off, value as i64);
-            }
-            I64Const { value } => {
-                let off = self.push();
-                self.code.store_imm_to_slot(off, value);
-            }
-
-            // -- locals / globals ---------------------------------------------
-            LocalGet { local_index } => {
-                let src = local_offset(local_index);
-                let dst = self.push();
-                self.code.copy_slot(dst, src);
-            }
-            LocalSet { local_index } => {
-                let src = self.slot(self.depth - 1);
-                let dst = local_offset(local_index);
-                self.code.copy_slot(dst, src);
-                self.depth -= 1;
-            }
-            LocalTee { local_index } => {
-                let src = self.slot(self.depth - 1);
-                let dst = local_offset(local_index);
-                self.code.copy_slot(dst, src);
-            }
-            GlobalGet { global_index } => {
-                let dst = self.push();
-                self.code.load_abs_to_reg(REG_T0, global_addr(global_index));
-                self.code.store_reg_to_slot(dst, REG_T0);
-            }
-            GlobalSet { global_index } => {
-                let src = self.slot(self.depth - 1);
-                self.code.load_slot_to_reg(REG_T0, src);
-                self.code.store_reg_to_abs(global_addr(global_index), REG_T0, 8);
-                self.depth -= 1;
-            }
-
-            // -- i32 arithmetic / logic ---------------------------------------
-            I32Add => self.binop("add_w", false),
-            I32Sub => self.binop("sub_w", false),
-            I32Mul => self.binop("mul_w", false),
-            I32And => self.binop("and", false),
-            I32Or => self.binop("or", false),
-            I32Xor => self.binop("xor", false),
+            // -- integer division (trap guards) -------------------------------
             I32DivU => self.binop_div("divu_w", false)?,
             I32DivS => self.binop_div("div_w", false)?,
             I32RemU => self.binop_div("remu_w", false)?,
             I32RemS => self.binop_div("rem_w", false)?,
-            I32Shl => self.shift_op("sll_w", 0x1f),
-            I32ShrU => self.shift_op("srl_w", 0x1f),
-            I32ShrS => self.shift_op("sra_w", 0x1f),
-            I32Rotl => self.rotate(true, true),
-            I32Rotr => self.rotate(false, true),
-
-            // -- i64 arithmetic / logic ---------------------------------------
-            I64Add => self.binop("add", false),
-            I64Sub => self.binop("sub", false),
-            I64Mul => self.binop("mul", false),
-            I64And => self.binop("and", false),
-            I64Or => self.binop("or", false),
-            I64Xor => self.binop("xor", false),
             I64DivU => self.binop_div("divu", false)?,
             I64DivS => self.binop_div("div", false)?,
             I64RemU => self.binop_div("remu", false)?,
             I64RemS => self.binop_div("rem", false)?,
-            I64Shl => self.shift_op("sll", 0x3f),
-            I64ShrU => self.shift_op("srl", 0x3f),
-            I64ShrS => self.shift_op("sra", 0x3f),
-            I64Rotl => self.rotate(true, false),
-            I64Rotr => self.rotate(false, false),
-
-            // -- comparisons (push 0/1) ---------------------------------------
-            I32Eqz | I64Eqz => self.unop_eqz(),
-            I32Eq | I64Eq => self.compare("eq", false, false),
-            I32Ne | I64Ne => self.compare("eq", false, true),
-            I32LtS | I64LtS => self.compare("lt", false, false),
-            I32LtU | I64LtU => self.compare("ltu", false, false),
-            I32GtS | I64GtS => self.compare("lt", true, false),
-            I32GtU | I64GtU => self.compare("ltu", true, false),
-            I32LeS | I64LeS => self.compare("le", false, false),
-            I32LeU | I64LeU => self.compare("leu", false, false),
-            I32GeS | I64GeS => self.compare("le", true, false),
-            I32GeU | I64GeU => self.compare("leu", true, false),
-
-            // -- conversions / sign extension ---------------------------------
-            I32WrapI64 => self.unop_signextend("signextend_w"),
-            I64ExtendI32S => { /* canonical i32 already sign-extended: no-op */ }
-            I64ExtendI32U => self.unop_and_imm(0xFFFF_FFFF),
-            I32Extend8S | I64Extend8S => self.unop_signextend("signextend_b"),
-            I32Extend16S | I64Extend16S => self.unop_signextend("signextend_h"),
-            I64Extend32S => self.unop_signextend("signextend_w"),
 
             // -- bit counting (runtime loops) ---------------------------------
             I32Popcnt => self.popcnt(true),
@@ -340,24 +973,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             I32Clz => self.clz(true),
             I64Clz => self.clz(false),
 
-            // -- memory loads / stores ----------------------------------------
-            I32Load { memarg } => self.load("signextend_w", 4, memarg.offset),
-            I64Load { memarg } => self.load("copyb", 8, memarg.offset),
-            I32Load8S { memarg } | I64Load8S { memarg } => {
-                self.load("signextend_b", 1, memarg.offset)
-            }
-            I32Load8U { memarg } | I64Load8U { memarg } => self.load("copyb", 1, memarg.offset),
-            I32Load16S { memarg } | I64Load16S { memarg } => {
-                self.load("signextend_h", 2, memarg.offset)
-            }
-            I32Load16U { memarg } | I64Load16U { memarg } => self.load("copyb", 2, memarg.offset),
-            I64Load32S { memarg } => self.load("signextend_w", 4, memarg.offset),
-            I64Load32U { memarg } => self.load("copyb", 4, memarg.offset),
-            I32Store { memarg } => self.store(4, memarg.offset),
-            I64Store { memarg } => self.store(8, memarg.offset),
-            I32Store8 { memarg } | I64Store8 { memarg } => self.store(1, memarg.offset),
-            I32Store16 { memarg } | I64Store16 { memarg } => self.store(2, memarg.offset),
-            I64Store32 { memarg } => self.store(4, memarg.offset),
+            // -- memory -------------------------------------------------------
             MemorySize { .. } => {
                 let dst = self.push();
                 self.code.load_abs_to_reg(REG_T0, WASM_MEM_PAGES_ADDR);
@@ -368,11 +984,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             MemoryFill { .. } => self.memory_fill(),
 
             // -- parametric ---------------------------------------------------
-            Drop => {
-                self.depth -= 1;
-            }
             Select => self.select(),
-            Nop => {}
             Unreachable => {
                 self.emit_trap();
                 self.unreachable = true;
@@ -405,24 +1017,6 @@ impl<'a, 'b> FuncGen<'a, 'b> {
                     result_arity: r,
                 });
             }
-            If { blockty } => {
-                let (_p, r) = self.block_arity(blockty)?;
-                let else_label = self.code.new_label();
-                let end_label = self.code.new_label();
-                // pop condition; if zero jump to else (or end if no else section appears).
-                let cond = self.slot(self.depth - 1);
-                self.depth -= 1;
-                self.code.load_slot_to_reg(REG_T0, cond);
-                self.code.cmp_imm_branch("eq", REG_T0, 0, else_label, true);
-                self.ctrl.push(CtrlFrame {
-                    kind: CtrlKind::If,
-                    branch_label: end_label,
-                    end_label,
-                    else_label: Some(else_label),
-                    start_depth: self.depth,
-                    result_arity: r,
-                });
-            }
             Else => {
                 let frame = self.ctrl.last().unwrap();
                 let end_label = frame.end_label;
@@ -438,14 +1032,6 @@ impl<'a, 'b> FuncGen<'a, 'b> {
                 self.branch_to(relative_depth);
                 self.unreachable = true;
             }
-            BrIf { relative_depth } => self.branch_if(relative_depth),
-            BrTable { targets } => self.br_table(targets)?,
-            Return => {
-                self.emit_return();
-                self.unreachable = true;
-            }
-            Call { function_index } => self.call(function_index)?,
-            CallIndirect { type_index, .. } => self.call_indirect(type_index)?,
 
             other => {
                 #[cfg(feature = "float")]
@@ -478,18 +1064,113 @@ impl<'a, 'b> FuncGen<'a, 'b> {
 
     // -- operator helpers ----------------------------------------------------
 
-    fn binop(&mut self, op: &str, swap: bool) {
-        let a = self.slot(self.depth - 2);
-        let b = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a);
-        self.code.load_slot_to_reg(REG_T1, b);
-        if swap {
-            self.code.alu_rr(op, REG_T0, REG_T1, REG_T0);
-        } else {
-            self.code.alu_rr(op, REG_T0, REG_T0, REG_T1);
+    /// `dst = op(ra, b)`, with a constant `b` as the immediate.  `rb` is `b`'s register when
+    /// it is not a constant.
+    fn alu_opnd(&mut self, op: &str, dst: u64, ra: u64, b: Opnd, rb: Option<u64>) {
+        match (b, rb) {
+            (Opnd::Const(c), _) => self.code.alu_ri(op, dst, ra, c),
+            (_, Some(rb)) => self.code.alu_rr(op, dst, ra, rb),
+            _ => unreachable!("a non-constant operand has a register"),
         }
-        self.code.store_reg_to_slot(a, REG_T0);
-        self.depth -= 1;
+    }
+
+    /// The register of `o`, loaded into `scratch` if needed, or `None` for a constant (which an
+    /// instruction takes as its immediate).
+    fn opnd_reg_or_imm(&mut self, o: Opnd, scratch: u64) -> Option<u64> {
+        match o {
+            Opnd::Const(_) => None,
+            _ => Some(self.opnd_reg(o, scratch)),
+        }
+    }
+
+    /// Pushes a 128-bit result: the low half from `lo` (moved to `REG_ACC2` unless it is
+    /// already there) under the high half, which the last instruction emitted wrote to `REG_ACC`
+    /// when `hi_last` is set.
+    fn push_wide(&mut self, lo: u64, hi_last: bool) {
+        if lo != REG_ACC2 {
+            self.code.mov_reg(REG_ACC2, lo);
+        }
+        self.push_val(Val::Acc2);
+        if hi_last && lo == REG_ACC2 {
+            self.push_acc();
+        } else {
+            self.push_val(Val::Acc);
+        }
+    }
+
+    /// `i64.mul_wide_{u,s}`: [a, b] -> [low, high] of the 128-bit product, `high` from ZisK's
+    /// `muluh` (unsigned) or `mulh` (signed).  The low half goes to `REG_ACC2` and the high half
+    /// to `REG_ACC`, through `REG_T2` when an operand is in `REG_ACC2`.
+    fn mul_wide(&mut self, high_op: &str) {
+        let b = self.pop();
+        let a = self.pop();
+        self.spill_acc();
+        self.spill_acc2();
+        let ra = self.opnd_reg(a, REG_T0);
+        let rb = self.opnd_reg_or_imm(b, REG_T1);
+        let lo = if ra == REG_ACC2 || rb == Some(REG_ACC2) { REG_T2 } else { REG_ACC2 };
+        self.alu_opnd("mul", lo, ra, b, rb);
+        self.alu_opnd(high_op, REG_ACC, ra, b, rb);
+        self.push_wide(lo, true);
+    }
+
+    /// `i64.add128` / `i64.sub128`: [a_lo, a_hi, b_lo, b_hi] -> [lo, hi], the carry (or borrow)
+    /// out of the low halves taken with `ltu`.  The halves go to `REG_ACC2` and `REG_ACC`.
+    fn add_sub128(&mut self, add: bool) {
+        let b_hi = self.pop();
+        let b_lo = self.pop();
+        let a_hi = self.pop();
+        let a_lo = self.pop();
+        self.spill_acc();
+        self.spill_acc2();
+        let op = if add { "add" } else { "sub" };
+        let ra_lo = self.opnd_reg(a_lo, REG_T0);
+        let rb_lo = self.opnd_reg_or_imm(b_lo, REG_T1);
+        self.alu_opnd(op, REG_T2, ra_lo, b_lo, rb_lo);
+        if add {
+            self.code.alu_rr("ltu", REG_T3, REG_T2, ra_lo); // lo < a_lo: carry
+        } else {
+            self.alu_opnd("ltu", REG_T3, ra_lo, b_lo, rb_lo); // a_lo < b_lo: borrow
+        }
+        let ra_hi = self.opnd_reg(a_hi, REG_T0);
+        let rb_hi = self.opnd_reg_or_imm(b_hi, REG_T1);
+        self.alu_opnd(op, REG_T0, ra_hi, b_hi, rb_hi);
+        // Every operand has been read: the low half can go to REG_ACC2 now.
+        self.code.mov_reg(REG_ACC2, REG_T2);
+        self.code.alu_rr(op, REG_ACC, REG_T0, REG_T3);
+        self.push_val(Val::Acc2);
+        self.push_acc();
+    }
+
+    /// A call to the native `__multi3` (see [`WasmModule::use_native_multi3`]), inline:
+    /// `[ret, a_lo, a_hi, b_lo, b_hi] -> []`, storing the low 128 bits of `a * b` at `ret`.  The
+    /// high half is `muluh(a_lo, b_lo) + a_lo * b_hi + a_hi * b_lo`; a cross product with a zero
+    /// constant (a 64-bit operand widened to 128 bits) is left out.  Only `REG_T0`..`REG_T3`
+    /// and the `REG_PTRS` registers are written, so nothing needs to go to its slot.
+    fn inline_multi3(&mut self) {
+        let b_hi = self.pop();
+        let b_lo = self.pop();
+        let a_hi = self.pop();
+        let a_lo = self.pop();
+        let ra = self.opnd_reg(a_lo, REG_T0);
+        let rb = self.opnd_reg_or_imm(b_lo, REG_T1);
+        self.alu_opnd("mul", REG_T2, ra, b_lo, rb);
+        self.alu_opnd("muluh", REG_T3, ra, b_lo, rb);
+        if b_hi != Opnd::Const(0) {
+            let rbh = self.opnd_reg_or_imm(b_hi, REG_T1);
+            self.alu_opnd("mul", REG_T1, ra, b_hi, rbh);
+            self.code.alu_rr("add", REG_T3, REG_T3, REG_T1);
+        }
+        if a_hi != Opnd::Const(0) {
+            let rah = self.opnd_reg(a_hi, REG_T0);
+            let rb = self.opnd_reg_or_imm(b_lo, REG_T1);
+            self.alu_opnd("mul", REG_T1, rah, b_lo, rb);
+            self.code.alu_rr("add", REG_T3, REG_T3, REG_T1);
+        }
+        // Checking the high half's 8 bytes covers the low half's, which come right before.
+        let (reg, off) = self.access_addr(8, 8);
+        self.code.store_reg_to_mem(reg, off - 8, REG_T2, 8);
+        self.code.store_reg_to_mem(reg, off, REG_T3, 8);
     }
 
     /// Division/remainder with a wasm divide-by-zero trap guard.
@@ -523,108 +1204,6 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.store_reg_to_slot(a, REG_T0);
         self.depth -= 1;
         Ok(())
-    }
-
-    fn shift_op(&mut self, op: &str, count_mask: i64) {
-        let a = self.slot(self.depth - 2);
-        let b = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a);
-        self.code.load_slot_to_reg(REG_T1, b);
-        self.code.alu_ri("and", REG_T1, REG_T1, count_mask);
-        self.code.alu_rr(op, REG_T0, REG_T0, REG_T1);
-        self.code.store_reg_to_slot(a, REG_T0);
-        self.depth -= 1;
-    }
-
-    fn compare(&mut self, op: &str, swap: bool, invert: bool) {
-        let a = self.slot(self.depth - 2);
-        let b = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a);
-        self.code.load_slot_to_reg(REG_T1, b);
-        if swap {
-            self.code.alu_rr(op, REG_T0, REG_T1, REG_T0);
-        } else {
-            self.code.alu_rr(op, REG_T0, REG_T0, REG_T1);
-        }
-        if invert {
-            self.code.alu_ri("xor", REG_T0, REG_T0, 1);
-        }
-        self.code.store_reg_to_slot(a, REG_T0);
-        self.depth -= 1;
-    }
-
-    fn unop_eqz(&mut self) {
-        let a = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a);
-        self.code.alu_ri("eq", REG_T0, REG_T0, 0);
-        self.code.store_reg_to_slot(a, REG_T0);
-    }
-
-    pub(crate) fn unop_signextend(&mut self, op: &str) {
-        let a = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a);
-        // signextend acts on `b`; route REG_T0 through `b`.
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("imm", 0, false);
-        zib.src_b("reg", REG_T0, false);
-        zib.op(op).unwrap();
-        zib.store("reg", REG_T0 as i64, false, false);
-        zib.j(4, 4);
-
-        self.code.push_raw(zib, Fixup::None);
-        self.code.store_reg_to_slot(a, REG_T0);
-    }
-
-    fn unop_and_imm(&mut self, imm: i64) {
-        let a = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a);
-        self.code.alu_ri("and", REG_T0, REG_T0, imm);
-        self.code.store_reg_to_slot(a, REG_T0);
-    }
-
-    /// Rotate left/right for i32 (`is32`) or i64.  Implemented with shifts and an `or`.
-    fn rotate(&mut self, left: bool, is32: bool) {
-        let width: i64 = if is32 { 32 } else { 64 };
-        let mask: i64 = if is32 { 0x1f } else { 0x3f };
-        let (shl, shr) = if is32 { ("sll_w", "srl_w") } else { ("sll", "srl") };
-        let a = self.slot(self.depth - 2);
-        let b = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a); // value
-        self.code.load_slot_to_reg(REG_T1, b); // count
-        self.code.alu_ri("and", REG_T1, REG_T1, mask); // n
-        if is32 {
-            // value must be treated as unsigned 32-bit for the right half.
-            self.code.alu_ri("and", REG_T0, REG_T0, 0xFFFF_FFFF);
-        }
-        // T2 = (width - n) & mask, so the complementary shift count is always in range
-        // (handles rotate-by-zero, where width-n would otherwise equal the bit width).
-        self.code.load_imm_to_reg(REG_T3, width as u64);
-        self.code.alu_rr("sub", REG_T2, REG_T3, REG_T1);
-        self.code.alu_ri("and", REG_T2, REG_T2, mask);
-        if left {
-            // (v << n) | (v >> (width-n))
-            self.code.alu_rr(shl, REG_T3, REG_T0, REG_T1);
-            self.code.alu_rr(shr, REG_T0, REG_T0, REG_T2);
-            self.code.alu_rr("or", REG_T0, REG_T3, REG_T0);
-        } else {
-            // (v >> n) | (v << (width-n))
-            self.code.alu_rr(shr, REG_T3, REG_T0, REG_T1);
-            self.code.alu_rr(shl, REG_T0, REG_T0, REG_T2);
-            self.code.alu_rr("or", REG_T0, REG_T3, REG_T0);
-        }
-        if is32 {
-            // re-canonicalize to sign-extended 32-bit
-            let mut zib = ZiskInstBuilder::new(0);
-            zib.src_a("imm", 0, false);
-            zib.src_b("reg", REG_T0, false);
-            zib.op("signextend_w").unwrap();
-            zib.store("reg", REG_T0 as i64, false, false);
-            zib.j(4, 4);
-
-            self.code.push_raw(zib, Fixup::None);
-        }
-        self.code.store_reg_to_slot(a, REG_T0);
-        self.depth -= 1;
     }
 
     /// Population count via a simple shift-and-add loop.
@@ -712,35 +1291,125 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     }
 
     /// Traps unless the `len` bytes starting at the absolute address in `addr_reg` lie inside the
-    /// current linear memory (`addr + len <= REG_MEM_END`); `scratch` receives the end address.
-    /// `len` is a register for the bulk operations and an immediate for plain accesses.
+    /// current linear memory (`addr + len <= REG_MEM_END`).  `len` is a register for the bulk
+    /// operations (`scratch` receives the end address) and an access width for plain accesses,
+    /// which compare the start address with that width's limit register in one instruction.
     fn check_bounds(&mut self, addr_reg: u64, len: Len, scratch: u64) {
-        match len {
-            Len::Imm(n) => self.code.alu_ri("add", scratch, addr_reg, n as i64),
-            Len::Reg(r) => self.code.alu_rr("add", scratch, addr_reg, r),
-        }
         let ok = self.code.new_label();
-        self.code.cmp_reg_branch("leu", scratch, REG_MEM_END, ok, true);
+        match len {
+            Len::Imm(w) => self.code.cmp_reg_branch("leu", addr_reg, mem_limit_reg(w), ok, true),
+            Len::Reg(r) => {
+                self.code.alu_rr("add", scratch, addr_reg, r);
+                self.code.cmp_reg_branch("leu", scratch, REG_MEM_END, ok, true);
+            }
+        }
         self.emit_trap();
         self.code.bind(ok);
     }
 
+    /// A linear-memory load; the value goes to `REG_ACC`.
     pub(crate) fn load(&mut self, op: &str, width: u64, static_offset: u64) {
-        let a = self.slot(self.depth - 1);
-        self.compute_addr(REG_T0, a, static_offset);
-        self.check_bounds(REG_T0, Len::Imm(width), REG_T1);
-        self.code.load_mem_to_reg(op, REG_T1, REG_T0, 0, width);
-        self.code.store_reg_to_slot(a, REG_T1);
+        let (reg, off) = self.access_addr(static_offset, width);
+        self.spill_acc();
+        self.code.load_mem_to_reg(op, REG_ACC, reg, off, width);
+        self.push_acc();
     }
 
+    /// A linear-memory store.
     pub(crate) fn store(&mut self, width: u64, static_offset: u64) {
-        let addr_slot = self.slot(self.depth - 2);
-        let val_slot = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T1, val_slot);
-        self.compute_addr(REG_T0, addr_slot, static_offset);
-        self.check_bounds(REG_T0, Len::Imm(width), REG_T2);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T1, width);
-        self.depth -= 2;
+        let val = self.pop();
+        let val_reg = self.opnd_reg(val, REG_T1);
+        let (reg, off) = self.access_addr(static_offset, width);
+        self.code.store_reg_to_mem(reg, off, val_reg, width);
+    }
+
+    /// Pops the address operand of a `width`-byte access and returns `(reg, off)`: the access is
+    /// to `reg + off`, which has been checked to lie inside linear memory.  Only `REG_T0` and the
+    /// `REG_PTRS` registers are written.
+    fn access_addr(&mut self, static_offset: u64, width: u64) -> (u64, i64) {
+        let v = self.pop_val();
+        if let Val::Local(k) = v {
+            if let Some(access) = self.local_addr(k, static_offset, width, true) {
+                return access;
+            }
+        }
+        // `local + c` with `c >= 0`: the access is at `local`'s address plus `c + offset`, as
+        // long as `local + c` does not wrap past 2^32.  It cannot when `local` is a valid address
+        // (below 2^31), which a remembered address of `local` proves, so only an existing one
+        // is used.  A new one would have to be checked on `local` alone, which would trap when
+        // `local` is not an address but `local + c` is (compilers do produce such pairs, a
+        // negative index and an array's address).
+        if let Val::LocalPlus(k, c) = v {
+            if c >= 0 {
+                if let Some(access) = self.local_addr(k, static_offset + c as u64, width, false) {
+                    return access;
+                }
+            }
+        }
+        let addr = self.opnd_at(v, self.depth);
+        self.addr_to_reg(REG_T0, addr, static_offset);
+        self.check_bounds(REG_T0, Len::Imm(width), REG_T1);
+        (REG_T0, 0)
+    }
+
+    /// An access through local `k`, whose absolute address this straight-line code may already
+    /// have in a `REG_PTRS` register (see [`Ptr`]).  `None` for an offset too far from the one
+    /// the register was made for to be an instruction's offset, or when there is no such
+    /// register and `create` is not set.
+    fn local_addr(
+        &mut self,
+        k: u32,
+        static_offset: u64,
+        width: u64,
+        create: bool,
+    ) -> Option<(u64, i64)> {
+        let w = width as i64;
+        if let Some(i) = self.ptrs.iter().position(|p| p.local == k) {
+            let p = self.ptrs[i];
+            let rel = static_offset as i64 - p.off0 as i64;
+            i32::try_from(rel).ok()?;
+            if rel + w <= p.hi {
+                return Some((p.reg, rel)); // already checked
+            }
+            self.code.alu_ri("add", REG_T0, p.reg, rel);
+            self.check_bounds(REG_T0, Len::Imm(width), REG_T1);
+            self.ptrs[i].hi = rel + w;
+            return Some((REG_T0, 0));
+        }
+        if !create {
+            return None;
+        }
+        let reg = REG_PTRS[self.next_ptr];
+        self.next_ptr = (self.next_ptr + 1) % REG_PTRS.len();
+        self.ptrs.retain(|p| p.reg != reg);
+        let src = match self.local_opnd(k) {
+            Opnd::Reg(r) => r,
+            o => self.opnd_reg(o, reg),
+        };
+        self.code.alu_ri("and", reg, src, 0xFFFF_FFFF); // zero-extend to u32
+        self.code.alu_ri("add", reg, reg, (WASM_MEM_BASE + static_offset) as i64);
+        self.check_bounds(reg, Len::Imm(width), REG_T1);
+        self.ptrs.push(Ptr { local: k, reg, off0: static_offset, hi: w });
+        Some((reg, 0))
+    }
+
+    /// Forgets every address in a `REG_PTRS` register: at a label (where control can arrive from
+    /// code that left other values there) and around anything that may write those registers.
+    fn forget_ptrs(&mut self) {
+        self.ptrs.clear();
+    }
+
+    /// `reg` = the absolute address of wasm address `addr` + `static_offset`, as
+    /// [`Self::compute_addr`]; a constant address costs one instruction.
+    fn addr_to_reg(&mut self, reg: u64, addr: Opnd, static_offset: u64) {
+        let base = WASM_MEM_BASE + static_offset;
+        if let Opnd::Const(c) = addr {
+            self.code.load_imm_to_reg(reg, (c as u64 & 0xFFFF_FFFF) + base);
+            return;
+        }
+        let src = self.opnd_reg(addr, reg);
+        self.code.alu_ri("and", reg, src, 0xFFFF_FFFF); // zero-extend to u32
+        self.code.alu_ri("add", reg, reg, base as i64);
     }
 
     fn memory_grow(&mut self) {
@@ -761,10 +1430,15 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.store_reg_to_abs(WASM_MEM_PAGES_ADDR, REG_T2, 8);
         self.code.alu_ri("sll", REG_T3, REG_T2, WASM_PAGE_SIZE.trailing_zeros() as i64);
         self.code.alu_ri("add", REG_MEM_END, REG_T3, WASM_MEM_BASE as i64);
+        self.code.set_mem_limits();
         self.code.store_reg_to_slot(a, REG_T1);
         self.code.bind(done);
     }
 
+    /// `memory.fill` on the DMA `memset` precompile, as a RISC-V guest's `memset` does.  The
+    /// precompile takes the byte as a constant: zero, by far the common case, is one inline
+    /// instruction, and any other byte calls its entry of the module's table (see
+    /// [`build_memset_table`]).
     fn memory_fill(&mut self) {
         // stack: dst, val, len
         let dst = self.slot(self.depth - 3);
@@ -775,31 +1449,26 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.load_slot_to_reg(REG_T1, val);
         self.compute_addr(REG_T0, dst, 0);
         self.check_bounds(REG_T0, Len::Reg(REG_T2), REG_T3);
-        // Replicate the byte into all eight lanes for the word loop.
         self.code.alu_ri("and", REG_T1, REG_T1, 0xFF);
-        self.code.alu_ri("mul", REG_T1, REG_T1, 0x0101_0101_0101_0101);
-        let words = self.code.new_label();
-        let bytes = self.code.new_label();
+        let nonzero = self.code.new_label();
         let end = self.code.new_label();
-        self.code.bind(words);
-        self.code.cmp_imm_branch("ltu", REG_T2, 8, bytes, true); // len < 8 -> byte tail
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T1, 8);
-        self.code.alu_ri("add", REG_T0, REG_T0, 8);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 8);
-        self.code.jump(words);
-        self.code.bind(bytes);
-        self.code.cmp_imm_branch("eq", REG_T2, 0, end, true);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T1, 1);
-        self.code.alu_ri("add", REG_T0, REG_T0, 1);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 1);
-        self.code.jump(bytes);
+        self.code.cmp_imm_branch("eq", REG_T1, 0, nonzero, false);
+        self.code.dma_xmemset(REG_T0, REG_T2, 0);
+        self.code.jump(end);
+        // Entry `byte` of the table is MEMSET_TABLE_ENTRY instructions in.
+        self.code.bind(nonzero);
+        self.code.load_func_addr_to_reg(REG_T3, self.module.func_count());
+        self.code.alu_ri("mul", REG_T1, REG_T1, 4 * MEMSET_TABLE_ENTRY as i64);
+        self.code.alu_rr("add", REG_T3, REG_T3, REG_T1);
+        self.code.call_reg(REG_T3);
+        self.code.uses_memset_table = true;
         self.code.bind(end);
         self.depth -= 3;
     }
 
-    /// `memory.copy` with memmove semantics: copies forward unless the destination starts inside
-    /// the source range, in which case it copies backward from the end.  Both directions move
-    /// whole words while at least 8 bytes remain.
+    /// `memory.copy` on the DMA `memcpy` precompile, as a RISC-V guest's `memmove` does: the
+    /// precompile has `memmove` semantics, so the ranges may overlap either way.  The length
+    /// goes through `EXTRA_PARAMS_ADDR`, where the precompile reads it.
     fn memory_copy(&mut self) {
         // stack: dst, src, len
         let dst = self.slot(self.depth - 3);
@@ -811,59 +1480,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.compute_addr(REG_T0, dst, 0);
         self.check_bounds(REG_T1, Len::Reg(REG_T2), REG_T3);
         self.check_bounds(REG_T0, Len::Reg(REG_T2), REG_T3);
-        let forward = self.code.new_label();
-        let backward = self.code.new_label();
-        let end = self.code.new_label();
-        // dst <= src: forward is always safe.  Otherwise dst > src and forward is only safe when
-        // dst >= src + len, i.e. the ranges do not overlap.
-        self.code.cmp_reg_branch("leu", REG_T0, REG_T1, forward, true);
-        self.code.alu_rr("add", REG_T3, REG_T1, REG_T2); // src end
-        self.code.cmp_reg_branch("ltu", REG_T0, REG_T3, backward, true); // dst < src+len
-
-        // -- forward ------------------------------------------------------
-        self.code.bind(forward);
-        let fwords = self.code.new_label();
-        let fbytes = self.code.new_label();
-        self.code.bind(fwords);
-        self.code.cmp_imm_branch("ltu", REG_T2, 8, fbytes, true);
-        self.code.load_mem_to_reg("copyb", REG_T3, REG_T1, 0, 8);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T3, 8);
-        self.code.alu_ri("add", REG_T0, REG_T0, 8);
-        self.code.alu_ri("add", REG_T1, REG_T1, 8);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 8);
-        self.code.jump(fwords);
-        self.code.bind(fbytes);
-        self.code.cmp_imm_branch("eq", REG_T2, 0, end, true);
-        self.code.load_mem_to_reg("copyb", REG_T3, REG_T1, 0, 1);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T3, 1);
-        self.code.alu_ri("add", REG_T0, REG_T0, 1);
-        self.code.alu_ri("add", REG_T1, REG_T1, 1);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 1);
-        self.code.jump(fbytes);
-
-        // -- backward (pointers moved to the end, pre-decremented) ------------
-        self.code.bind(backward);
-        self.code.alu_rr("add", REG_T0, REG_T0, REG_T2);
-        self.code.alu_rr("add", REG_T1, REG_T1, REG_T2);
-        let bwords = self.code.new_label();
-        let bbytes = self.code.new_label();
-        self.code.bind(bwords);
-        self.code.cmp_imm_branch("ltu", REG_T2, 8, bbytes, true);
-        self.code.alu_ri("sub", REG_T0, REG_T0, 8);
-        self.code.alu_ri("sub", REG_T1, REG_T1, 8);
-        self.code.load_mem_to_reg("copyb", REG_T3, REG_T1, 0, 8);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T3, 8);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 8);
-        self.code.jump(bwords);
-        self.code.bind(bbytes);
-        self.code.cmp_imm_branch("eq", REG_T2, 0, end, true);
-        self.code.alu_ri("sub", REG_T0, REG_T0, 1);
-        self.code.alu_ri("sub", REG_T1, REG_T1, 1);
-        self.code.load_mem_to_reg("copyb", REG_T3, REG_T1, 0, 1);
-        self.code.store_reg_to_mem(REG_T0, 0, REG_T3, 1);
-        self.code.alu_ri("sub", REG_T2, REG_T2, 1);
-        self.code.jump(bbytes);
-        self.code.bind(end);
+        self.code.store_reg_to_abs(EXTRA_PARAMS_ADDR, REG_T2, 8);
+        self.code.dma_memcpy(REG_T0, REG_T1);
         self.depth -= 3;
     }
 
@@ -919,25 +1537,16 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.jump(branch_label);
     }
 
-    fn branch_if(&mut self, relative_depth: u32) {
-        // Pop condition; if nonzero, perform the branch.
-        let cond = self.slot(self.depth - 1);
-        self.depth -= 1;
-        self.code.load_slot_to_reg(REG_T0, cond);
-        let cont = self.code.new_label();
-        self.code.cmp_imm_branch("eq", REG_T0, 0, cont, true); // cond == 0 -> skip branch
-        self.branch_to(relative_depth);
-        self.code.bind(cont);
-    }
-
-    fn br_table(&mut self, targets: wasmparser::BrTable) -> Result<(), Box<dyn Error>> {
-        // MVP: only arity-0 br_table (the common switch lowering).
-        let cond = self.slot(self.depth - 1);
-        self.depth -= 1;
-        self.code.load_slot_to_reg(REG_T0, cond);
-        // Validate arity 0 across targets and emit a compare chain.  A target past the outermost
-        // block is the function body: those cases jump to a shared return stub emitted after
-        // the chain.
+    /// `br_table`: a jump table for `BR_TABLE_JUMP_MIN` targets or more, a compare chain below.
+    /// Only arity-0 targets (the common switch lowering).
+    fn br_table(&mut self, targets: &wasmparser::BrTable) -> Result<(), Box<dyn Error>> {
+        let cond = self.pop_val();
+        self.flush();
+        self.restore_locals();
+        let cond = self.opnd_at(cond, self.depth);
+        let index = self.opnd_reg(cond, REG_T0);
+        // A target past the outermost block is the function body: those cases jump to a shared
+        // return stub emitted after the dispatch.
         let mut return_stub: Option<LabelId> = None;
         let mut target_label = |this: &mut Self, rel: u32| -> Result<LabelId, Box<dyn Error>> {
             if rel as usize == this.ctrl.len() {
@@ -953,12 +1562,27 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             }
             Ok(this.ctrl[frame_idx].branch_label)
         };
-        for (i, target) in targets.targets().enumerate() {
-            let label = target_label(self, target?)?;
-            self.code.cmp_imm_branch("eq", REG_T0, i as i64, label, true);
+        let mut labels = Vec::new();
+        for target in targets.targets() {
+            labels.push(target_label(self, target?)?);
         }
-        let label = target_label(self, targets.default())?;
-        self.code.jump(label);
+        let default = target_label(self, targets.default())?;
+        if labels.len() < BR_TABLE_JUMP_MIN {
+            for (i, &label) in labels.iter().enumerate() {
+                self.code.cmp_imm_branch("eq", index, i as i64, label, true);
+            }
+            self.code.jump(default);
+        } else {
+            // An i32 index is sign-extended, so one at 2^31 or above compares as huge here too.
+            self.code.cmp_imm_branch("ltu", index, labels.len() as i64, default, false);
+            self.code.alu_ri("sll", REG_T0, index, 2); // one 4-byte jump per entry
+            let table = self.code.new_label();
+            self.code.jump_reg_plus_label(REG_T0, table);
+            self.code.bind(table);
+            for label in labels {
+                self.code.jump(label);
+            }
+        }
         if let Some(stub) = return_stub {
             self.code.bind(stub);
             self.emit_return();
@@ -967,89 +1591,93 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         Ok(())
     }
 
-    fn check_stack(&mut self, new_fp_reg: u64, callee_frame: i64, scratch: u64) {
-        self.code.alu_ri("add", scratch, new_fp_reg, -callee_frame);
+    /// The calling sequence shared by `call` and `call_indirect`: pops the `n_args` arguments
+    /// and writes each into the callee's parameter slot (one instruction, from wherever it is),
+    /// checks that a callee frame of `callee_frame` bytes fits on the stack, moves FP to the
+    /// callee's frame, calls `target` (`emit_call` emits the call instruction itself), moves FP
+    /// back and pushes the result, if any, which the callee left in `REG_RET`.
+    ///
+    /// Only the values below the arguments go to their slots first, as the callee may write any
+    /// register; nothing here writes the registers holding a `call_indirect` target.
+    fn emit_call_sequence(
+        &mut self,
+        n_args: u32,
+        n_res: u32,
+        callee_frame: i64,
+        scratch: u64,
+        emit_call: impl FnOnce(&mut Code),
+    ) {
+        let frame_sz = func_frame_size(self.num_locals);
+        let args = self.vals.split_off(self.vals.len() - n_args as usize);
+        self.depth -= n_args;
+        self.flush();
+        self.forget_ptrs();
+
+        // Trap unless the callee's frame, which ends `frame_sz + callee_frame` below FP, fits.
+        self.code.alu_ri("add", scratch, REG_FP, -(frame_sz + callee_frame));
         let ok = self.code.new_label();
         self.code.cmp_imm_branch("ltu", scratch, WASM_STACK_LIMIT as i64, ok, false);
         self.emit_trap();
         self.code.bind(ok);
+
+        // The callee's FP will be `FP - frame_sz`, so its parameter `i` is at a fixed offset
+        // from this FP.
+        for (i, v) in args.into_iter().enumerate() {
+            let dst = -frame_sz + local_offset(i as u32);
+            let o = self.opnd_at(v, self.depth + i as u32);
+            self.opnd_to_slot(dst, o);
+        }
+        // The callee may write any register: locals in registers go to their slots (those
+        // changed since they were last there), and are read from there after the call.
+        for (k, r) in self.locals.mapped() {
+            if !self.locals.clean[k as usize] && !self.locals.in_slot[k as usize] {
+                self.code.store_reg_to_slot(local_offset(k), r);
+            }
+        }
+        self.code.alu_ri("add", REG_FP, REG_FP, -frame_sz);
+        emit_call(&mut self.code);
+        self.code.alu_ri("add", REG_FP, REG_FP, frame_sz);
+        for (k, _) in self.locals.mapped() {
+            self.locals.in_slot[k as usize] = true;
+            self.locals.clean[k as usize] = true;
+        }
+        if n_res == 1 {
+            self.push_val(Val::Acc); // REG_ACC is REG_RET
+        }
     }
 
     fn call(&mut self, callee: u32) -> Result<(), Box<dyn Error>> {
-        let sig = self.module.func_sig(callee)?.clone();
-        let n_args = sig.params.len() as u32;
-        let n_res = sig.results.len() as u32;
-        let frame_sz = func_frame_size(self.num_locals);
-
-        // newFP = FP - frame_size(caller)
-        self.code.alu_ri("add", REG_T2, REG_FP, -frame_sz);
+        if Some(callee) == self.module.native_multi3 {
+            self.inline_multi3();
+            return Ok(());
+        }
+        let sig = self.module.func_sig(callee)?;
+        let (n_args, n_res) = (sig.params.len() as u32, sig.results.len() as u32);
         let callee_frame = callee_frame_size(self.module, callee)?;
-        self.check_stack(REG_T2, callee_frame, REG_T3);
-        // Copy arguments into callee locals.
-        for i in 0..n_args {
-            let src = self.slot(self.depth - n_args + i);
-            self.code.load_slot_to_reg(REG_T0, src);
-            // mem[newFP + local_offset(i)] = REG_T0
+        self.emit_call_sequence(n_args, n_res, callee_frame, REG_T3, |code| {
+            // pc <- callee address (patched), RA <- return address (pc + 4)
             let mut zib = ZiskInstBuilder::new(0);
-            zib.src_a("reg", REG_T2, false);
-            zib.src_b("reg", REG_T0, false);
+            zib.src_a("imm", 0, false);
+            zib.src_b("imm", 0, false); // patched to callee address
             zib.op("copyb").unwrap();
-            zib.ind_width(8);
-            zib.store("ind", local_offset(i), false, false);
-            zib.j(4, 4);
-
-            self.code.push_raw(zib, Fixup::None);
-        }
-        // Save caller FP into callee header: mem[newFP - 16] = FP
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("reg", REG_T2, false);
-        zib.src_b("reg", REG_FP, false);
-        zib.op("copyb").unwrap();
-        zib.ind_width(8);
-        zib.store("ind", FRAME_CALLER_FP_OFF, false, false);
-        zib.j(4, 4);
-
-        self.code.push_raw(zib, Fixup::None);
-        // FP <- newFP
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("imm", 0, false);
-        zib.src_b("reg", REG_T2, false);
-        zib.op("copyb").unwrap();
-        zib.store("reg", REG_FP as i64, false, false);
-        zib.j(4, 4);
-
-        self.code.push_raw(zib, Fixup::None);
-        // CALL: pc <- callee_addr (patched), RA <- return addr (pc + 4)
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("imm", 0, false);
-        zib.src_b("imm", 0, false); // patched to callee address
-        zib.op("copyb").unwrap();
-        zib.set_pc();
-        zib.store_pc("reg", REG_RA as i64, false);
-        zib.j(0, 4);
-
-        self.code.push_raw(zib, Fixup::FuncAddr(callee));
-
-        // Pop arguments; push result.
-        self.depth -= n_args;
-        if n_res == 1 {
-            let dst = self.push();
-            self.code.store_reg_to_slot(dst, REG_RET);
-        }
+            zib.set_pc();
+            zib.store_pc("reg", REG_RA as i64, false);
+            zib.j(0, 4);
+            // Profiling metadata: a call linking through ra, like a RISC-V `jal ra`
+            zib.set_meta_rd(REG_RA as u8);
+            code.push_raw(zib, Fixup::FuncAddr(callee));
+        });
         Ok(())
     }
 
     fn call_indirect(&mut self, type_index: u32) -> Result<(), Box<dyn Error>> {
-        let sig = self.module.sigs[type_index as usize].clone();
-        let n_args = sig.params.len() as u32;
-        let n_res = sig.results.len() as u32;
-        let frame_sz = func_frame_size(self.num_locals);
+        let sig = &self.module.sigs[type_index as usize];
+        let (n_args, n_res) = (sig.params.len() as u32, sig.results.len() as u32);
 
-        // table index is on top of stack
-        let idx_slot = self.slot(self.depth - 1);
-        self.depth -= 1;
-        self.code.load_slot_to_reg(REG_T0, idx_slot);
-        self.code.alu_ri("and", REG_T0, REG_T0, 0xFFFF_FFFF);
+        // The table index is on top of the stack.
+        let idx = self.pop();
+        let idx = self.opnd_reg(idx, REG_T0);
+        self.code.alu_ri("and", REG_T0, idx, 0xFFFF_FFFF);
         let in_bounds = self.code.new_label();
         self.code.cmp_imm_branch("ltu", REG_T0, self.module.table_initial as i64, in_bounds, true);
         self.emit_trap();
@@ -1070,58 +1698,67 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.emit_trap();
         self.code.bind(ok);
 
-        // newFP = FP - frame_size
-        self.code.alu_ri("add", REG_T2, REG_FP, -frame_sz);
         let worst_frame = func_frame_size(self.module.max_num_locals());
-        self.check_stack(REG_T2, worst_frame, REG_T1);
-        for i in 0..n_args {
-            let src = self.slot(self.depth - n_args + i);
-            self.code.load_slot_to_reg(REG_T1, src);
+        self.emit_call_sequence(n_args, n_res, worst_frame, REG_T1, |code| {
+            // Call through the target pc in REG_T3.
             let mut zib = ZiskInstBuilder::new(0);
-            zib.src_a("reg", REG_T2, false);
-            zib.src_b("reg", REG_T1, false);
+            zib.src_a("imm", 0, false);
+            zib.src_b("reg", REG_T3, false);
             zib.op("copyb").unwrap();
-            zib.ind_width(8);
-            zib.store("ind", local_offset(i), false, false);
-            zib.j(4, 4);
-
-            self.code.push_raw(zib, Fixup::None);
-        }
-        // save caller FP
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("reg", REG_T2, false);
-        zib.src_b("reg", REG_FP, false);
-        zib.op("copyb").unwrap();
-        zib.ind_width(8);
-        zib.store("ind", FRAME_CALLER_FP_OFF, false, false);
-        zib.j(4, 4);
-
-        self.code.push_raw(zib, Fixup::None);
-        // FP <- newFP
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("imm", 0, false);
-        zib.src_b("reg", REG_T2, false);
-        zib.op("copyb").unwrap();
-        zib.store("reg", REG_FP as i64, false, false);
-        zib.j(4, 4);
-
-        self.code.push_raw(zib, Fixup::None);
-        // CALL via register (target pc in REG_T3)
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("imm", 0, false);
-        zib.src_b("reg", REG_T3, false);
-        zib.op("copyb").unwrap();
-        zib.set_pc();
-        zib.store_pc("reg", REG_RA as i64, false);
-        zib.j(0, 4);
-
-        self.code.push_raw(zib, Fixup::None);
-
-        self.depth -= n_args;
-        if n_res == 1 {
-            let dst = self.push();
-            self.code.store_reg_to_slot(dst, REG_RET);
-        }
+            zib.set_pc();
+            zib.store_pc("reg", REG_RA as i64, false);
+            zib.j(0, 4);
+            // Profiling metadata: a call linking through ra, like a RISC-V `jal ra`
+            zib.set_meta_rd(REG_RA as u8);
+            code.push_raw(zib, Fixup::None);
+        });
         Ok(())
     }
+}
+
+/// Fewest `br_table` targets dispatched through a jump table (4 steps for any index); fewer go
+/// through a compare chain, which takes `i + 1` steps for index `i`.
+const BR_TABLE_JUMP_MIN: usize = 4;
+
+/// Instructions per entry of the `memory.fill` table.
+pub(crate) const MEMSET_TABLE_ENTRY: u64 = 2;
+
+/// The module's `memory.fill` table, laid out right after its functions (at function index
+/// `func_count`): entry `b` fills `REG_T2` bytes at `REG_T0` with byte `b` and returns through
+/// `REG_RA`.  The DMA `memset` precompile takes its byte as a constant, so a byte known only at
+/// run time selects its entry; RISC-V guests' `memset` uses the same table (`ziskos`'s
+/// `memset.s`).
+pub(crate) fn build_memset_table() -> Code {
+    let mut code = Code::new();
+    for byte in 0..=255u8 {
+        code.dma_xmemset(REG_T0, REG_T2, byte);
+        code.ret_reg(REG_RA);
+    }
+    debug_assert_eq!(code.len() as u64, 256 * MEMSET_TABLE_ENTRY);
+    code
+}
+
+/// Whether a function body leaves `REG_RA` alone: it has no call other than to `inlined` (which
+/// is lowered in place), and no `memory.fill` (which may call the fill table).  The float
+/// handler restores every register, so float operators are fine.
+fn calls_nothing(
+    body: &wasmparser::FunctionBody,
+    inlined: Option<u32>,
+) -> Result<bool, Box<dyn Error>> {
+    let mut ops = body.get_operators_reader()?;
+    while !ops.eof() {
+        let op = ops.read()?;
+        if matches!(op, Operator::Call { function_index } if Some(function_index) == inlined) {
+            continue;
+        }
+        if let Operator::Call { .. }
+        | Operator::CallIndirect { .. }
+        | Operator::ReturnCall { .. }
+        | Operator::ReturnCallIndirect { .. }
+        | Operator::MemoryFill { .. } = op
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }

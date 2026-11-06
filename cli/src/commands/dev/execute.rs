@@ -52,7 +52,7 @@ pub(crate) fn hints_backend_error(
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Execute the guest program through the same pipeline that prove command uses but without generating a proof
 pub(crate) struct ExecuteCmd {
-    /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
+    /// Path to the guest program (RISC-V ELF or .wasm). If omitted, it is auto-detected from the current project
     #[arg(short = 'e', long)]
     elf: Option<PathBuf>,
 
@@ -121,7 +121,7 @@ impl ExecuteCmd {
                 Some(elf) => Some(elf),
                 None => {
                     anyhow::bail!(
-                        "No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf."
+                        "No guest program provided, and could not detect one in the current project. Please pass a RISC-V ELF or .wasm file with --elf."
                     );
                 }
             };
@@ -136,7 +136,7 @@ impl ExecuteCmd {
         if rank_zero {
             print_banner();
             print_banner_command("Execute");
-            print_banner_field("Elf", self.elf.as_ref().unwrap().display());
+            print_banner_field("Program", self.elf.as_ref().unwrap().display());
 
             let inputs_str = self.inputs.clone().unwrap_or_else(|| "None".dimmed().to_string());
             print_banner_field("Input", inputs_str);

@@ -15,7 +15,7 @@ use crate::ux::{print_execute_output, print_job_banner};
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Execute a guest program locally
 pub(crate) struct ZiskEmbeddedExecute {
-    /// Path to the guest ELF file. If omitted, the ELF is auto-detected from the current project
+    /// Path to the guest program (RISC-V ELF or .wasm). If omitted, it is auto-detected from the current project
     #[arg(short = 'e', long)]
     elf: Option<PathBuf>,
 

@@ -41,11 +41,11 @@ impl EmuExecClient {
     /// Parse the program's ELF into a `ZiskRom` and cache it, so the cost is
     /// paid once and amortized across repeated [`execute`](Self::execute) calls.
     pub fn setup(&self, program: &GuestProgram) -> Result<()> {
-        tracing::info!("Setting up EmuExecClient for ELF '{}'", program.name());
-        tracing::debug!("Parsing ELF into ZiskRom");
+        tracing::info!("Setting up EmuExecClient for program '{}'", program.name());
+        tracing::debug!("Transpiling the guest program into a ZiskRom");
         let zisk_rom = ZiskTranspiler::new(program.elf())
             .run()
-            .map_err(|e| anyhow::anyhow!("failed to parse ELF: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("failed to transpile the guest program: {e}"))?;
         *self.program.lock().expect("program mutex") =
             Some(EmuSetupState { zisk_rom: Arc::new(zisk_rom) });
         tracing::info!("EmuExecClient ready");

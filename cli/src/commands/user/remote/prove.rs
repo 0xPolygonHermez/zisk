@@ -18,7 +18,7 @@ use crate::ux::{print_job_banner, print_random_seed};
 ///
 /// The program must already be registered and set up (run `remote setup` first).
 pub(crate) struct ZiskRemoteProve {
-    /// Path to the guest ELF file. If omitted, the ELF is auto-detected from the current project
+    /// Path to the guest program (RISC-V ELF or .wasm). If omitted, it is auto-detected from the current project
     #[arg(short = 'e', long)]
     elf: Option<PathBuf>,
 

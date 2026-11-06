@@ -220,11 +220,541 @@ fn memory_copy_overlapping_forward_and_backward() {
 }
 
 #[test]
+fn memory_fill_and_copy_run_on_the_dma_precompiles() {
+    // Fill 256 regions, region i with byte i (every entry of the memset table, at odd lengths and
+    // alignments), copy the whole area elsewhere and fold the copy into a checksum.
+    let wat = r#"(module
+      (import "wasi_snapshot_preview1" "fd_write"
+        (func $fd_write (param i32 i32 i32 i32) (result i32)))
+      (memory 1)
+      (func (export "_start")
+        (local $i i32) (local $acc i64)
+        (loop $fill
+          (memory.fill
+            (i32.add (i32.const 1024)
+              (i32.add (i32.mul (local.get $i) (i32.const 16)) (i32.rem_u (local.get $i) (i32.const 7))))
+            (local.get $i)
+            (i32.add (i32.const 1) (i32.rem_u (local.get $i) (i32.const 9))))
+          (local.set $i (i32.add (local.get $i) (i32.const 1)))
+          (br_if $fill (i32.lt_u (local.get $i) (i32.const 256))))
+        (memory.copy (i32.const 8192) (i32.const 1024) (i32.const 4096))
+        (local.set $i (i32.const 0))
+        (loop $sum
+          (local.set $acc
+            (i64.add (local.get $acc)
+              (i64.mul (i64.load8_u (i32.add (i32.const 8192) (local.get $i)))
+                       (i64.extend_i32_u (i32.add (local.get $i) (i32.const 1))))))
+          (local.set $i (i32.add (local.get $i) (i32.const 1)))
+          (br_if $sum (i32.lt_u (local.get $i) (i32.const 4096))))
+        (i64.store (i32.const 16) (local.get $acc))
+        (i32.store (i32.const 0) (i32.const 16))
+        (i32.store (i32.const 4) (i32.const 8))
+        (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#;
+    let wasm = wat::parse_str(wat).unwrap();
+
+    let mut mem = [0u8; 4096];
+    for i in 0..256usize {
+        let at = i * 16 + i % 7;
+        mem[at..at + 1 + i % 9].fill(i as u8);
+    }
+    let expected =
+        mem.iter().enumerate().fold(0u64, |acc, (k, &b)| acc + b as u64 * (k as u64 + 1));
+    assert_eq!(out_u64(&run(&wasm, &[])), expected);
+
+    let rom = wasm2rom(&wasm).unwrap();
+    let uses = |op: &str| rom.insts.values().any(|b| b.i.op_str == op);
+    assert!(uses("dma_xmemset") && uses("dma_memcpy"), "the DMA precompiles are not used");
+}
+
+#[test]
+fn wide_arithmetic_matches_128_bit_integers() {
+    // Each case leaves [lo, hi] on the stack; both halves are stored and printed (16 cases, the
+    // 256-byte output).
+    let run_cases = |cases: &[String]| -> Vec<u128> {
+        let body: String = cases
+            .iter()
+            .enumerate()
+            .map(|(i, case)| {
+                let at = 16 + 16 * i;
+                format!(
+                    "{case} (local.set $hi) (local.set $lo)
+                     (i64.store (i32.const {at}) (local.get $lo))
+                     (i64.store (i32.const {}) (local.get $hi))",
+                    at + 8
+                )
+            })
+            .collect();
+        let wat = format!(
+            r#"(module
+          (import "wasi_snapshot_preview1" "fd_write"
+            (func $fd_write (param i32 i32 i32 i32) (result i32)))
+          (memory 1)
+          (func (export "_start")
+            (local $lo i64) (local $hi i64)
+            {body}
+            (i32.store (i32.const 0) (i32.const 16))
+            (i32.store (i32.const 4) (i32.const {}))
+            (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 8)))))"#,
+            16 * cases.len()
+        );
+        let out = run(&wat::parse_str(wat).unwrap(), &[]);
+        out[..16 * cases.len()]
+            .chunks(16)
+            .map(|c| u128::from_le_bytes(c.try_into().unwrap()))
+            .collect()
+    };
+    let words =
+        [0u64, 1, 2, 0x7fff_ffff_ffff_ffff, 0x8000_0000_0000_0000, u64::MAX, 0x1234_5678_9abc_def0];
+    let pairs: Vec<(u64, u64)> =
+        words.iter().flat_map(|&a| words.iter().map(move |&b| (a, b))).collect();
+    let c = |v: u64| format!("(i64.const {})", v as i64);
+
+    for (op, model) in [
+        ("i64.mul_wide_u", (|a: u64, b: u64| a as u128 * b as u128) as fn(u64, u64) -> u128),
+        ("i64.mul_wide_s", |a, b| (a as i64 as i128 * b as i64 as i128) as u128),
+    ] {
+        for chunk in pairs.chunks(16) {
+            let cases: Vec<String> =
+                chunk.iter().map(|&(a, b)| format!("({op} {} {})", c(a), c(b))).collect();
+            let expected: Vec<u128> = chunk.iter().map(|&(a, b)| model(a, b)).collect();
+            assert_eq!(run_cases(&cases), expected, "{op}");
+        }
+    }
+
+    // 128-bit operands from pairs of words, so carries and borrows cross the halves.
+    let wide: Vec<u128> =
+        pairs.iter().map(|&(lo, hi)| lo as u128 | (hi as u128) << 64).step_by(3).collect();
+    let operands: Vec<(u128, u128)> =
+        wide.iter().zip(wide.iter().rev()).map(|(&a, &b)| (a, b)).collect();
+    for (op, model) in [
+        ("i64.add128", u128::wrapping_add as fn(u128, u128) -> u128),
+        ("i64.sub128", u128::wrapping_sub),
+    ] {
+        for chunk in operands.chunks(16) {
+            let cases: Vec<String> = chunk
+                .iter()
+                .map(|&(a, b)| {
+                    format!(
+                        "({op} {} {} {} {})",
+                        c(a as u64),
+                        c((a >> 64) as u64),
+                        c(b as u64),
+                        c((b >> 64) as u64)
+                    )
+                })
+                .collect();
+            let expected: Vec<u128> = chunk.iter().map(|&(a, b)| model(a, b)).collect();
+            assert_eq!(run_cases(&cases), expected, "{op}");
+        }
+    }
+}
+
+#[test]
+fn multi3_runs_natively() {
+    // A `__multi3` with compiler-rt's signature gets the transpiler's own body: this one stores
+    // zeros, so the right product proves it was replaced.
+    let module = |signature: &str, call: &str| {
+        format!(
+            r#"(module
+          (import "wasi_snapshot_preview1" "fd_write"
+            (func $fd_write (param i32 i32 i32 i32) (result i32)))
+          (memory 1)
+          (func $__multi3 {signature}
+            (i64.store (local.get 0) (i64.const 0))
+            (i64.store offset=8 (local.get 0) (i64.const 0)))
+          (func (export "_start")
+            {call}
+            (i32.store (i32.const 0) (i32.const 16))
+            (i32.store (i32.const 4) (i32.const 16))
+            (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#
+        )
+    };
+    let product = |a: u128, b: u128| {
+        let c = |v: u128| format!("(i64.const {})", v as u64 as i64);
+        let wat = module(
+            "(param i32 i64 i64 i64 i64)",
+            &format!(
+                "(call $__multi3 (i32.const 16) {} {} {} {})",
+                c(a),
+                c(a >> 64),
+                c(b),
+                c(b >> 64)
+            ),
+        );
+        let out = run(&wat::parse_str(wat).unwrap(), &[]);
+        u128::from_le_bytes(out[..16].try_into().unwrap())
+    };
+    for (a, b) in [
+        (u128::MAX, u128::MAX),
+        (0xffff_ffff_ffff_ffff, 0xffff_ffff_ffff_ffff),
+        (0x1234_5678_9abc_def0_0fed_cba9_8765_4321, 0x0011_2233_4455_6677_8899_aabb_ccdd_eeff),
+        (1u128 << 127, 3),
+        (0, u128::MAX),
+    ] {
+        assert_eq!(product(a, b), a.wrapping_mul(b), "{a:#x} * {b:#x}");
+    }
+
+    // Any other signature keeps its body.
+    let wat = module(
+        "(param i32 i64 i64 i64)",
+        "(call $__multi3 (i32.const 16) (i64.const 2) (i64.const 0) (i64.const 3))",
+    );
+    let out = run(&wat::parse_str(wat).unwrap(), &[]);
+    assert_eq!(&out[..16], &[0; 16]);
+}
+
+#[test]
+fn local_plus_constant_keeps_its_value_when_the_local_changes() {
+    // `p + c` waits on the stack while `p` itself is reassigned (with `local.set` and
+    // `local.tee`), then serves as an address, a stored value and a call argument; each must see
+    // the old `p`.  Bytes 100.. hold 1, 2, 3, ...; the result packs one byte per check.
+    let wat = r#"(module
+      (import "wasi_snapshot_preview1" "fd_write"
+        (func $fd_write (param i32 i32 i32 i32) (result i32)))
+      (memory 1)
+      (func $id (param i32) (result i32) (local.get 0))
+      (func $f (result i64)
+        (local $p i32) (local $i i32) (local $r i64) (local $v i32) (local $w i64)
+        (loop $fill
+          (i32.store8 offset=100 (local.get $i) (i32.add (local.get $i) (i32.const 1)))
+          (local.set $i (i32.add (local.get $i) (i32.const 1)))
+          (br_if $fill (i32.lt_u (local.get $i) (i32.const 32))))
+        (local.set $p (i32.const 100))
+        ;; address: p + 2 loaded after p moves on by 10
+        (i32.add (local.get $p) (i32.const 2))
+        (local.set $p (i32.add (local.get $p) (i32.const 10)))
+        (local.set $r (i64.extend_i32_u (i32.load8_u)))
+        ;; value: p + 1 stored after p moves on (local.tee), read back
+        (i32.const 200)
+        (i32.add (local.get $p) (i32.const 1))
+        (drop (local.tee $p (i32.sub (local.get $p) (i32.const 5))))
+        (i32.store)
+        (local.set $r (i64.or (local.get $r)
+          (i64.shl (i64.load32_u (i32.const 200)) (i64.const 8))))
+        ;; argument: p + 3 passed after p changes
+        (i32.add (local.get $p) (i32.const 3))
+        (local.set $p (i32.const 0))
+        (call $id)
+        (local.set $v)
+        (local.set $r (i64.or (local.get $r)
+          (i64.shl (i64.extend_i32_u (local.get $v)) (i64.const 16))))
+        ;; address with a static offset, in a loop: p + 1 at offset 1, p advancing by 4
+        (local.set $p (i32.const 100))
+        (local.set $i (i32.const 0))
+        (loop $walk
+          (i32.add (local.get $p) (i32.const 1))
+          (local.set $p (i32.add (local.get $p) (i32.const 4)))
+          (local.set $w (i64.load8_u offset=1))
+          (local.set $r (i64.add (local.get $r) (i64.shl (local.get $w) (i64.const 32))))
+          (local.set $i (i32.add (local.get $i) (i32.const 1)))
+          (br_if $walk (i32.lt_u (local.get $i) (i32.const 3))))
+        (local.get $r))
+      (func (export "_start")
+        (i64.store (i32.const 16) (call $f))
+        (i32.store (i32.const 0) (i32.const 16))
+        (i32.store (i32.const 4) (i32.const 8))
+        (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#;
+    // byte at 100 + n is n + 1
+    let byte = |addr: u64| addr - 100 + 1;
+    let mut expected = byte(102); // p + 2 with p = 100
+    expected |= 111 << 8; // p + 1 with p = 110: the value 111
+    expected |= 108 << 16; // p + 3 with p = 105
+    for k in 0..3u64 {
+        expected += byte(100 + 4 * k + 1 + 1) << 32; // (p + 1) + offset 1
+    }
+    let out = run(&wat::parse_str(wat).unwrap(), &[]);
+    assert_eq!(out_u64(&out), expected);
+}
+
+#[test]
+fn extending_a_comparison_keeps_its_value() {
+    // A comparison widened to i64 is the same 0 or 1, used as a number or negated by `eqz`.
+    let body = r#"
+      (i64.add
+        (i64.add
+          (i64.extend_i32_u (i64.lt_u (i64.const 1) (i64.const 2)))
+          (i64.mul (i64.extend_i32_u (i32.eq (i32.const 3) (i32.const 4))) (i64.const 100)))
+        (i64.add
+          (i64.mul (i64.extend_i32_s (i32.ne (i32.const 3) (i32.const 4))) (i64.const 10))
+          (i64.add
+            (i64.mul (i64.extend_i32_u (i64.eqz (i64.extend_i32_u
+              (i32.lt_s (i32.const -1) (i32.const 0))))) (i64.const 1000))
+            (i64.mul (i64.extend_i32_u (i64.eqz (i64.extend_i32_u
+              (i32.gt_s (i32.const -1) (i32.const 0))))) (i64.const 10000)))))"#;
+    let out = run(&module_printing_i64(body), &[]);
+    assert_eq!(out_u64(&out), 10011);
+}
+
+#[test]
+fn wide_arithmetic_takes_operands_from_anywhere() {
+    // Operands from a load (in the accumulator), a local, and earlier wide results: a low half
+    // waiting in its own register as either input of `mul_wide`, and both halves as the input
+    // of `add128` or `sub128`.  Each case leaves [lo, hi].
+    let (a, b, x, y) = (
+        0x1234_5678_9abc_def0u64,
+        u64::MAX - 5,
+        0x8000_0000_0000_0001u64,
+        0xfedc_ba98_7654_3210u64,
+    );
+    let c: u128 = (0xdead_beefu128 << 64) | 0xffff_ffff_ffff_fff0;
+    let k = |v: u64| format!("(i64.const {})", v as i64);
+    let ab = a as u128 * b as u128;
+    let cases: Vec<(String, u128)> = vec![
+        ("(i64.mul_wide_u (i64.load (i32.const 512)) (local.get $y))".to_string(), x as u128 * y as u128),
+        ("(i64.mul_wide_u (local.get $y) (i64.load (i32.const 512)))".to_string(), x as u128 * y as u128),
+        (
+            format!("(i64.mul_wide_u {} {}) (local.set $t) (local.get $y) (i64.mul_wide_u)", k(a), k(b)),
+            (ab as u64) as u128 * y as u128,
+        ),
+        (
+            format!("(local.get $y) (i64.mul_wide_u {} {}) (local.set $t) (i64.mul_wide_u)", k(a), k(b)),
+            y as u128 * (ab as u64) as u128,
+        ),
+        (
+            format!("(i64.mul_wide_u {} {}) {} {} (i64.add128)", k(a), k(b), k(c as u64), k((c >> 64) as u64)),
+            ab.wrapping_add(c),
+        ),
+        (
+            format!("{} {} (i64.mul_wide_u {} {}) (i64.sub128)", k(c as u64), k((c >> 64) as u64), k(a), k(b)),
+            c.wrapping_sub(ab),
+        ),
+        (
+            "(i64.mul_wide_s (i64.load (i32.const 512)) (local.get $y))".to_string(),
+            (x as i64 as i128 * y as i64 as i128) as u128,
+        ),
+        (
+            format!("(i64.mul_wide_u (local.get $y) (local.get $y)) (i64.mul_wide_u (local.get $y) {}) (i64.add128)", k(3)),
+            (y as u128 * y as u128).wrapping_add(y as u128 * 3),
+        ),
+    ];
+    let body: String = cases
+        .iter()
+        .enumerate()
+        .map(|(i, (case, _))| {
+            let at = 16 + 16 * i;
+            format!(
+                "{case} (local.set $hi) (local.set $lo)
+                 (i64.store (i32.const {at}) (local.get $lo))
+                 (i64.store (i32.const {}) (local.get $hi))",
+                at + 8
+            )
+        })
+        .collect();
+    let wat = format!(
+        r#"(module
+      (import "wasi_snapshot_preview1" "fd_write"
+        (func $fd_write (param i32 i32 i32 i32) (result i32)))
+      (memory 1)
+      (func (export "_start")
+        (local $lo i64) (local $hi i64) (local $t i64) (local $y i64)
+        (i64.store (i32.const 512) {})
+        (local.set $y {})
+        {body}
+        (i32.store (i32.const 0) (i32.const 16))
+        (i32.store (i32.const 4) (i32.const {}))
+        (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 8)))))"#,
+        k(x),
+        k(y),
+        16 * cases.len()
+    );
+    let out = run(&wat::parse_str(wat).unwrap(), &[]);
+    for (i, (case, expected)) in cases.iter().enumerate() {
+        let got = u128::from_le_bytes(out[16 * i..16 * i + 16].try_into().unwrap());
+        assert_eq!(got, *expected, "{case}");
+    }
+}
+
+#[test]
+fn multi3_is_inlined_and_checks_its_result_pointer() {
+    // A direct call to the native `__multi3` is lowered in place; `call_indirect` runs its
+    // body.  Operands come from register locals, a load and a slot.  Both write the product
+    // at `$p`, which must have room for its 16 bytes.  `direct` and `indirect` pick the calls,
+    // so that a trap is pinned on one of them.
+    let outcome = |p: u32, direct: bool, indirect: bool| -> (bool, u128, u128) {
+        let direct = if direct {
+            "(call $__multi3 (local.get $p) (local.get $alo) (local.get $ahi)
+               (i64.load (i32.const 512)) (i64.const 0x1111))"
+        } else {
+            ""
+        };
+        let indirect = if indirect {
+            "(call_indirect (type $m) (i32.add (local.get $p) (i32.const 16))
+               (local.get $alo) (local.get $ahi) (i64.load (i32.const 512)) (i64.const 0x1111)
+               (i32.const 0))"
+        } else {
+            ""
+        };
+        let wat = format!(
+            r#"(module
+              (import "wasi_snapshot_preview1" "fd_write"
+                (func $fd_write (param i32 i32 i32 i32) (result i32)))
+              (type $m (func (param i32 i64 i64 i64 i64)))
+              (table 1 funcref)
+              (elem (i32.const 0) $__multi3)
+              (memory 1)
+              (func $__multi3 (param i32 i64 i64 i64 i64)
+                (i64.store (local.get 0) (i64.const 0))
+                (i64.store offset=8 (local.get 0) (i64.const 0)))
+              (func (export "_start")
+                (local $p i32) (local $alo i64) (local $ahi i64)
+                (local.set $p (i32.const {p}))
+                (local.set $alo (i64.const 0x1234567890abcdef))
+                (local.set $ahi (i64.const 0x0fedcba987654321))
+                (i64.store (i32.const 512) (i64.const -7))
+                {direct}
+                {indirect}
+                (i32.store (i32.const 0) (i32.const 16))
+                (i32.store (i32.const 4) (i32.const 32))
+                (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#
+        );
+        let rom = wasm2rom(&wat::parse_str(wat).unwrap()).expect("wasm2rom");
+        let mut emu = ziskemu::Emu::new(&rom);
+        emu.run(Vec::new(), &EmuOptions::default(), None::<fn(EmuTrace)>);
+        assert!(emu.terminated(), "emulation did not terminate for p = {p}");
+        let out = emu.get_output_8();
+        let half = |i: usize| u128::from_le_bytes(out[i..i + 16].try_into().unwrap());
+        (emu.ctx.inst_ctx.error, half(0), half(16))
+    };
+    let a: u128 = 0x0fed_cba9_8765_4321_1234_5678_90ab_cdef;
+    let b: u128 = (0x1111u128 << 64) | (-7i64 as u64 as u128);
+    let product = a.wrapping_mul(b);
+    assert_eq!(outcome(16, true, true), (false, product, product));
+    // Eight bytes before the end of memory: the high half does not fit.
+    assert!(outcome(65536 - 8, true, false).0, "the inlined call must trap");
+    assert!(outcome(65536 - 24, false, true).0, "the call through the table must trap");
+    // Sixteen bytes before the end, both fit.
+    assert!(!outcome(65536 - 16, true, false).0);
+    assert!(!outcome(65536 - 32, false, true).0);
+}
+
+#[test]
 fn branch_to_function_body_returns() {
     // `br 1` from inside a block targets the function itself (Go emits this shape).
     let body = r#"(block (br 1 (i64.const 77))) (i64.const 1)"#;
     let out = run(&module_printing_i64(body), &[]);
     assert_eq!(out_u64(&out), 77);
+}
+
+#[test]
+fn br_table_dispatches_every_index() {
+    // `$big` has six targets (a jump table), `$small` two (a compare chain); both return the
+    // case number, or 15 for the default.  The result packs one 4-bit case per index, first
+    // index lowest.
+    let wat = r#"(module
+      (import "wasi_snapshot_preview1" "fd_write"
+        (func $fd_write (param i32 i32 i32 i32) (result i32)))
+      (memory 1)
+      (func $big (param $i i32) (result i64)
+        (block $d (block $5 (block $4 (block $3 (block $2 (block $1 (block $0
+          (br_table $0 $1 $2 $3 $4 $5 $d (local.get $i)))
+          (return (i64.const 0)))
+          (return (i64.const 1)))
+          (return (i64.const 2)))
+          (return (i64.const 3)))
+          (return (i64.const 4)))
+          (return (i64.const 5)))
+        (i64.const 15))
+      (func $small (param $i i32) (result i64)
+        (block $d (block $1 (block $0
+          (br_table $0 $1 $d (local.get $i)))
+          (return (i64.const 0)))
+          (return (i64.const 1)))
+        (i64.const 15))
+      (func $pack (param $acc i64) (param $case i64) (result i64)
+        (i64.or (i64.shl (local.get $acc) (i64.const 4)) (local.get $case)))
+      (func (export "_start")
+        (local $r i64)
+        ;; indices, last packed lowest: 0x80000000, 0x7fffffff, -1, 7, 6, 5, 4, 3, 2, 1, 0
+        (local.set $r (call $big (i32.const 0x80000000)))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 0x7fffffff))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const -1))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 7))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 6))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 5))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 4))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 3))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 2))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 1))))
+        (local.set $r (call $pack (local.get $r) (call $big (i32.const 0))))
+        (i64.store (i32.const 16) (local.get $r))
+        (local.set $r (call $small (i32.const -1)))
+        (local.set $r (call $pack (local.get $r) (call $small (i32.const 2))))
+        (local.set $r (call $pack (local.get $r) (call $small (i32.const 1))))
+        (local.set $r (call $pack (local.get $r) (call $small (i32.const 0))))
+        (i64.store (i32.const 24) (local.get $r))
+        (i32.store (i32.const 0) (i32.const 16))
+        (i32.store (i32.const 4) (i32.const 16))
+        (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#;
+    let out = run(&wat::parse_str(wat).unwrap(), &[]);
+    assert_eq!(out_u64(&out), 0xfff_ff54_3210);
+    assert_eq!(u64::from_le_bytes(out[8..16].try_into().unwrap()), 0xff10);
+}
+
+#[test]
+fn locals_in_registers_survive_calls_and_branches() {
+    // Every local here is used in a loop, so it gets a register; `$clobber` uses its own, which
+    // are the same registers as `$f`'s.  `$f` keeps `x` across the call (read from its slot
+    // after it), takes the call's result straight into `y`, and reads `x` once before
+    // `local.tee` changes it and once after.  `t` changes only before the call, so it is still
+    // in its slot at the loop's back edge, where it must go back to its register.
+    let wat = r#"(module
+      (import "wasi_snapshot_preview1" "fd_write"
+        (func $fd_write (param i32 i32 i32 i32) (result i32)))
+      (memory 1)
+      (func $clobber (param $n i32) (result i32)
+        (local $a i32) (local $b i32) (local $c i32) (local $d i32)
+        (loop $l
+          (local.set $a (i32.add (local.get $a) (local.get $n)))
+          (local.set $b (i32.xor (local.get $b) (local.get $a)))
+          (local.set $c (i32.add (local.get $c) (local.get $b)))
+          (local.set $d (i32.add (i32.mul (local.get $d) (i32.const 3)) (local.get $c)))
+          (local.set $n (i32.sub (local.get $n) (i32.const 1)))
+          (br_if $l (local.get $n)))
+        (i32.add (i32.add (local.get $a) (local.get $b)) (i32.add (local.get $c) (local.get $d))))
+      (func $f (result i64)
+        (local $i i32) (local $x i64) (local $y i64) (local $s i64) (local $t i64)
+        (loop $l
+          (local.set $t (i64.add (local.get $t) (i64.const 2)))
+          (local.set $x (i64.add (local.get $x) (i64.extend_i32_u (local.get $i))))
+          (local.set $y (i64.extend_i32_s
+            (call $clobber (i32.add (i32.and (local.get $i) (i32.const 7)) (i32.const 1)))))
+          (local.set $s (i64.add (i64.add (local.get $s) (local.get $t))
+            (i64.add (i64.mul (local.get $x) (i64.const 3)) (local.get $y))))
+          (local.set $s (i64.add (local.get $s)
+            (i64.sub (local.get $x) (local.tee $x (i64.add (local.get $x) (i64.const 1))))))
+          (local.set $i (i32.add (local.get $i) (i32.const 1)))
+          (br_if $l (i32.lt_u (local.get $i) (i32.const 20))))
+        (local.get $s))
+      (func (export "_start")
+        (i64.store (i32.const 16) (call $f))
+        (i32.store (i32.const 0) (i32.const 16))
+        (i32.store (i32.const 4) (i32.const 8))
+        (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#;
+    let clobber = |mut n: i32| {
+        let (mut a, mut b, mut c, mut d) = (0i32, 0i32, 0i32, 0i32);
+        loop {
+            a = a.wrapping_add(n);
+            b ^= a;
+            c = c.wrapping_add(b);
+            d = d.wrapping_mul(3).wrapping_add(c);
+            n -= 1;
+            if n == 0 {
+                break;
+            }
+        }
+        a.wrapping_add(b).wrapping_add(c.wrapping_add(d))
+    };
+    let (mut x, mut s, mut t) = (0i64, 0i64, 0i64);
+    for i in 0..20i32 {
+        t += 2;
+        x += i64::from(i);
+        let y = i64::from(clobber((i & 7) + 1));
+        s = s.wrapping_add(t + x * 3 + y);
+        s -= 1; // x - (x + 1)
+        x += 1;
+    }
+    let out = run(&wat::parse_str(wat).unwrap(), &[]);
+    assert_eq!(out_u64(&out) as i64, s);
 }
 
 #[test]
@@ -422,6 +952,81 @@ fn linear_memory_accesses_are_bounds_checked() {
         (false, 42)
     );
     assert!(outcome("(drop (memory.grow (i32.const 1))) (drop (i64.load (i32.const 131072)))").0);
+
+    // Accesses through the same local reuse its address, and check only what earlier accesses
+    // did not cover (see `Ptr` in the lowering).
+    let through_p =
+        |body: &str| outcome(&format!("(local $p i32) (local $q i32) (local $r i32) {body}"));
+    assert_eq!(
+        through_p(
+            "(i64.store (i32.const 65520) (i64.const 5))
+             (i64.store (i32.const 65528) (i64.const 7))
+             (local.set $p (i32.const 65520))
+             (i64.store (i32.const 8)
+               (i64.add (i64.load offset=8 (local.get $p)) (i64.load (local.get $p))))"
+        ),
+        (false, 12)
+    );
+    // A later access past the checked range is checked.
+    assert!(
+        through_p(
+            "(local.set $p (i32.const 65520))
+             (drop (i64.load (local.get $p)))
+             (drop (i64.load offset=16 (local.get $p)))"
+        )
+        .0
+    );
+    assert!(
+        through_p(
+            "(local.set $p (i32.const 65520))
+             (i64.store offset=8 (local.get $p) (i64.const 1))
+             (i64.store offset=9 (local.get $p) (i64.const 1))"
+        )
+        .0
+    );
+    // Writing the local drops its address, through `local.set` and `local.tee`.
+    assert!(
+        through_p(
+            "(local.set $p (i32.const 0))
+             (drop (i64.load (local.get $p)))
+             (local.set $p (i32.const 65532))
+             (drop (i64.load (local.get $p)))"
+        )
+        .0
+    );
+    assert!(
+        through_p(
+            "(local.set $p (i32.const 0))
+             (drop (i64.load (local.get $p)))
+             (drop (local.tee $p (i32.const 65532)))
+             (drop (i64.load (local.get $p)))"
+        )
+        .0
+    );
+    // A wrapping address through a local is out of bounds.
+    assert!(
+        through_p("(local.set $p (i32.const -1)) (drop (i32.load8_u offset=1 (local.get $p)))").0
+    );
+    // More locals than address registers: a reused register does not keep a stale check.
+    assert!(
+        through_p(
+            "(local.set $p (i32.const 0)) (local.set $q (i32.const 8)) (local.set $r (i32.const 16))
+             (drop (i64.load (local.get $p)))
+             (drop (i64.load (local.get $q)))
+             (drop (i64.load (local.get $r)))
+             (drop (i64.load offset=65528 (local.get $q)))"
+        )
+        .0
+    );
+    assert_eq!(
+        through_p(
+            "(local.set $p (i32.const 0)) (local.set $q (i32.const 8)) (local.set $r (i32.const 16))
+             (i64.store (local.get $r) (i64.const 3))
+             (i64.store (local.get $p) (i64.const 1))
+             (i64.store (local.get $q) (i64.load (local.get $r)))"
+        ),
+        (false, 3)
+    );
 }
 
 #[test]
@@ -980,4 +1585,48 @@ fn poll_oneoff_writes_well_formed_events() {
         assert_eq!(mem.read(ev + 16, 8), 0, "event {i} nbytes");
         assert_eq!(mem.read(ev + 24, 2), 0, "event {i} flags");
     }
+}
+
+#[test]
+fn function_symbols_name_the_rom_ranges_profiling_sees() {
+    let wasm = wat::parse_str(
+        r#"(module
+          (import "wasi_snapshot_preview1" "fd_write"
+            (func $fd_write (param i32 i32 i32 i32) (result i32)))
+          (memory 1)
+          (func $square (param $x i64) (result i64) (i64.mul (local.get $x) (local.get $x)))
+          (func (export "_start")
+            (i64.store (i32.const 16) (call $square (i64.const 7)))))"#,
+    )
+    .unwrap();
+    let symbols = zisk_transpiler_wasm::wasm_function_symbols(&wasm).expect("symbols");
+
+    // `wat` writes every `$name` into the name section, which takes precedence; the entry
+    // routine comes last.
+    let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, ["fd_write", "square", "_start", "wasm entry routine"]);
+
+    // Every symbol is a non-empty, 4-byte aligned range of the ROM, and they do not overlap.
+    let rom = wasm2rom(&wasm).expect("wasm2rom");
+    for pair in symbols.windows(2) {
+        assert!(pair[0].address + pair[0].size <= pair[1].address, "{pair:?} overlap");
+    }
+    for s in &symbols {
+        assert!(s.size > 0 && s.address % 4 == 0 && s.size % 4 == 0, "{s:?}");
+        assert!(rom.insts.contains_key(&s.address), "{s:?} starts outside the ROM");
+        assert!(rom.insts.contains_key(&(s.address + s.size - 4)), "{s:?} ends outside the ROM");
+    }
+
+    // The profiler's symbol reader takes a .wasm file in place of an ELF.
+    let path = std::env::temp_dir().join(format!("zisk_wasm_symbols_{}.wasm", std::process::id()));
+    std::fs::write(&path, &wasm).unwrap();
+    let mut reader = ziskemu::ElfSymbolReader::new();
+    let heap = reader.load_from_file(path.to_str().unwrap(), &["_heap_bottom"]).unwrap();
+    std::fs::remove_file(&path).unwrap();
+    assert_eq!(heap, [0], "a wasm module has no heap symbols");
+    let loaded: Vec<(String, u64)> =
+        reader.functions().map(|s| (s.name.clone(), s.address)).collect();
+    let expected: Vec<(String, u64)> =
+        symbols.iter().map(|s| (s.name.clone(), s.address)).collect();
+    assert_eq!(loaded, expected);
 }

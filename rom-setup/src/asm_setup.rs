@@ -5,7 +5,7 @@ use std::{
     process::{Command, Stdio},
 };
 use zisk_common::ZiskPaths;
-use zisk_core::{is_elf_file, AsmGenerationMethod};
+use zisk_core::{is_elf_file, is_wasm_file, AsmGenerationMethod};
 use zisk_transpiler_common::ZiskTranspiler;
 
 use crate::get_elf_data_hash;
@@ -271,8 +271,8 @@ pub fn generate_assembly(
 ) -> Result<(), anyhow::Error> {
     let elf_hash = get_elf_data_hash(elf);
 
-    if !is_elf_file(elf).context("Error reading ROM file")? {
-        anyhow::bail!("ROM file is not a valid ELF file");
+    if !is_wasm_file(elf) && !is_elf_file(elf).context("Error reading ROM file")? {
+        anyhow::bail!("ROM file is not a valid ELF or WebAssembly file");
     }
 
     let base = asm_file_base(&elf_hash, hints);

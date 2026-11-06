@@ -9,8 +9,8 @@ and only the surface language differs.
 
 A guest program calls the functions declared in [`include/`](include/): the
 Ethereum Foundation zkVM standard (`zkvm_accelerators.h`, `zkvm_io.h`,
-`zkvm_u256.h`) and ZisK's extensions to it (`zkvm_u256_le.h`, `zkvm_mem.h`,
-`zkvm_evm.h`, `zkvm_zisklib.h`). Most are zkvmcall thunks
+`zkvm_u256.h`, `zkvm_random.h`) and ZisK's extensions to it (`zkvm_u256_le.h`,
+`zkvm_mem.h`, `zkvm_evm.h`, `zkvm_zisklib.h`, `zkvm_fcall.h`). Most are zkvmcall thunks
 ([`src/zkvm_calls.s`](src/zkvm_calls.s)), each a `csrs <id>, x0; ret`: during
 transpilation (`elf2rom`) the `csrs` becomes a jump to the matching `.zisk`
 routine, which follows the RISC-V calling convention and returns straight to the
@@ -33,6 +33,7 @@ precompile CSRs directly. One `.zisk` implementation serves every guest.
 | `include/`            | the public headers, one per family (see [Coverage](#coverage)) |
 | `src/zkvm_calls.s`    | the zkvmcall thunks |
 | `src/zkvm_mem.s`      | `zkvm_memset_any` and weak libc `memcpy`/`memmove`/`memcmp`/`memset` on the DMA ops |
+| `src/zkvm_fcall.s`    | `zkvm_fcall`, `zkvm_fcall_get` and `zkvm_fcall_read` on the fcall CSRs |
 | `src/_start.s`        | the guest entry point (EF §9), `abort` and the DMA `mem*` |
 | `CMakeLists.txt`      | builds the `zisklib_c` static library + include dir |
 | `package.sh`          | builds and stages the distributable archive |
@@ -147,6 +148,7 @@ The library covers these families:
 | `zkvm_memcpy`/`memset`/`memcmp` — memory (ZisK extension, not EF) | 3 | [`zkvm_mem.h`](include/zkvm_mem.h) | inline in the header: one DMA marker each (one ZisK instruction with a constant size); a run-time memset fill calls `zkvm_memset_any` in [`src/zkvm_mem.s`](src/zkvm_mem.s), which also defines weak libc `memcpy`/`memmove`/`memcmp`/`memset` on the same DMA ops |
 | `zkvm_evm_jumpdest_bitmap` — EVM JUMPDEST analysis (ZisK extension, not EF) | 1 | [`zkvm_evm.h`](include/zkvm_evm.h) | inline in the header (the jump_dest precompile marker); `ZKVM_EFAIL` when the precompile cannot take the arguments (unaligned, empty) |
 | `zkvm_zisklib_*` — other ZisK library functions (not EF): 256-bit arithmetic on u64[4] limbs, secp256k1/r1 signatures, BN254/BLS12-381 pairings, maps and hashes to curves, BLS and KZG verify, modexp | 24 | [`zkvm_zisklib.h`](include/zkvm_zisklib.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s), to the `zisklib_*` routines |
+| `zkvm_fcall*` — free-input calls, the unverified hints (ZisK extension, not EF) | 3 | [`zkvm_fcall.h`](include/zkvm_fcall.h) | [`src/zkvm_fcall.s`](src/zkvm_fcall.s): one `csrs` per parameter word, then the `csrwi` of the hint, picked by the ID from the hints the header lists (others return `ZKVM_EFAIL`), and one `csrr` per result word. The guest must check every result |
 
 The `zkvm_u256_*` functions have three builds under the same ABI, chosen when
 including `zkvm_u256.h`:

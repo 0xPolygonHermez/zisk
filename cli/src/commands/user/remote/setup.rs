@@ -14,9 +14,9 @@ use crate::ux::{print_banner, print_banner_command, print_banner_field};
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Generate the proving setup for a guest or aggregation program on the remote service
 pub(crate) struct ZiskRemoteSetup {
-    /// Path to the guest ELF file. Uploads the program, then runs setup.
-    /// If omitted (and no `--hash-id`/`--aggregation`), the ELF is auto-detected
-    /// from the current project
+    /// Path to the guest program (RISC-V ELF or .wasm). Uploads the program, then runs setup.
+    /// If omitted (and no `--hash-id`/`--aggregation`), it is auto-detected from the current
+    /// project
     #[arg(short = 'e', long, conflicts_with_all = ["hash_id", "aggregation"])]
     elf: Option<PathBuf>,
 
@@ -81,7 +81,7 @@ impl ZiskRemoteSetup {
             (hash_id, setup.run()?)
         } else {
             let elf = resolve_elf(self.elf.take(), self.selector.profile(), self.selector.bin())?;
-            print_banner_field("Elf", elf.display());
+            print_banner_field("Program", elf.display());
             println!();
 
             let program = GuestProgram::from_uri(elf.to_str().unwrap())?;

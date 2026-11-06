@@ -51,11 +51,28 @@ fn project_elf_path(
     project_root.join("target").join("elf").join(ZISK_TARGET).join(profile.dir()).join(binary_name)
 }
 
-/// Auto-detect the current project's guest ELF for a specific [`Profile`].
+/// Build the WebAssembly guest path a stock `cargo build --target wasm32-wasip1` produces for a
+/// given project root, profile, and binary name.
+///
+/// Pure (no filesystem access) so the layout is testable in isolation.
+fn project_wasm_path(
+    project_root: &std::path::Path,
+    profile: Profile,
+    binary_name: &str,
+) -> PathBuf {
+    project_root
+        .join("target")
+        .join("wasm32-wasip1")
+        .join(profile.dir())
+        .join(format!("{binary_name}.wasm"))
+}
+
+/// Auto-detect the current project's guest program for a specific [`Profile`]: the ZisK ELF,
+/// or else the `wasm32-wasip1` module.
 ///
 /// The binary name is `bin` when given (e.g. `--bin`), otherwise the package
 /// name from `Cargo.toml`. Returns `Ok(None)` when there is no `Cargo.toml`, no
-/// resolvable binary name, or no built ELF for that profile/binary. Looks in
+/// resolvable binary name, or no built guest for that profile/binary. Looks in
 /// exactly one profile directory (no fallback).
 pub(crate) fn detect_project_elf_for_profile(
     profile: Profile,
@@ -78,8 +95,12 @@ pub(crate) fn detect_project_elf_for_profile(
         }
     };
 
-    let candidate = project_elf_path(&current_dir, profile, &binary_name);
-    Ok(candidate.exists().then_some(candidate))
+    let elf = project_elf_path(&current_dir, profile, &binary_name);
+    if elf.exists() {
+        return Ok(Some(elf));
+    }
+    let wasm = project_wasm_path(&current_dir, profile, &binary_name);
+    Ok(wasm.exists().then_some(wasm))
 }
 
 /// Auto-detect the current project's guest ELF, preferring `release` then `debug`.
@@ -164,8 +185,9 @@ pub(crate) fn resolve_elf(
                 None => "project".to_string(),
             };
             anyhow::anyhow!(
-                "No ELF file provided, and could not detect a {} {} ELF in the current directory. \
-                 Build the guest{}, select a binary with --bin <BIN>, or pass an ELF file with --elf.",
+                "No guest program provided, and could not detect a {} {} build (ZisK ELF or \
+                 wasm32-wasip1 module) in the current directory. Build the guest{}, select a \
+                 binary with --bin <BIN>, or pass a RISC-V ELF or .wasm file with --elf.",
                 profile.dir(),
                 target,
                 match profile {
@@ -266,6 +288,17 @@ mod tests {
         let suffix = PathBuf::from("target").join("elf").join(ZISK_TARGET);
         assert_eq!(debug, root.join(&suffix).join("debug").join("guest"));
         assert_eq!(release, root.join(&suffix).join("release").join("guest"));
+    }
+
+    #[test]
+    fn project_wasm_path_uses_the_stock_wasm_target_dir() {
+        let root = PathBuf::from("/proj");
+        let debug = project_wasm_path(&root, Profile::Debug, "guest");
+        let release = project_wasm_path(&root, Profile::Release, "guest");
+
+        let suffix = PathBuf::from("target").join("wasm32-wasip1");
+        assert_eq!(debug, root.join(&suffix).join("debug").join("guest.wasm"));
+        assert_eq!(release, root.join(&suffix).join("release").join("guest.wasm"));
     }
 
     #[test]

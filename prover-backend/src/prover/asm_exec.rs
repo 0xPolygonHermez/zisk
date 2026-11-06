@@ -56,7 +56,7 @@ impl AsmExecClient {
     /// hints stream.
     pub fn setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()> {
         tracing::info!(
-            "Setting up AsmExecClient for ELF '{}' (with_hints={})",
+            "Setting up AsmExecClient for program '{}' (with_hints={})",
             program.name(),
             with_hints
         );
@@ -74,10 +74,10 @@ impl AsmExecClient {
             .context("AsmResources::new_standalone failed")?,
         );
 
-        tracing::debug!("Parsing ELF into ZiskRom");
+        tracing::debug!("Transpiling the guest program into a ZiskRom");
         let zisk_rom = ZiskTranspiler::new(program.elf())
             .run()
-            .map_err(|e| anyhow::anyhow!("failed to parse ELF: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("failed to transpile the guest program: {e}"))?;
         *self.program.lock().expect("program mutex") =
             Some(AsmSetupState { zisk_rom: Arc::new(zisk_rom), with_hints, resources });
         tracing::info!("AsmExecClient ready");
@@ -132,7 +132,7 @@ impl AsmExecClient {
 
         if mt.exists() && rh.exists() && mo.exists() && mol.exists() {
             tracing::debug!(
-                "Using cached ASM binaries for ELF '{}' at {}",
+                "Using cached ASM binaries for program '{}' at {}",
                 program.name(),
                 self.asm_cache_dir.display()
             );
@@ -140,7 +140,7 @@ impl AsmExecClient {
         }
 
         tracing::info!(
-            "Generating ASM binaries for ELF '{}' (one-time per ELF) at {} (with_hints={})",
+            "Generating ASM binaries for program '{}' (one-time per program) at {} (with_hints={})",
             program.name(),
             self.asm_cache_dir.display(),
             with_hints
@@ -153,7 +153,7 @@ impl AsmExecClient {
             gen_verbose,
         )
         .context("zisk_rom_setup::generate_assembly failed")?;
-        tracing::info!("ASM binaries generated for ELF '{}'", program.name());
+        tracing::info!("ASM binaries generated for program '{}'", program.name());
         Ok(mt)
     }
 }

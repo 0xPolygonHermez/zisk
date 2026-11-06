@@ -9,12 +9,13 @@
 //! and floating point without the `float` feature) with a clear error, so the supported subset
 //! fails loudly rather than miscompiling.
 
+use std::collections::BTreeMap;
 use std::error::Error;
 
 use super::layout::WASM_MAX_PAGES;
 use wasmparser::{
-    DataKind, ElementItems, ElementKind, ExternalKind, Operator, Parser, Payload, TypeRef, ValType,
-    Validator, WasmFeatures,
+    DataKind, ElementItems, ElementKind, ExternalKind, KnownCustom, Name, Operator, Parser,
+    Payload, TypeRef, ValType, Validator, WasmFeatures,
 };
 
 const SUPPORTED_FEATURES: WasmFeatures = WasmFeatures::WASM1
@@ -22,7 +23,26 @@ const SUPPORTED_FEATURES: WasmFeatures = WasmFeatures::WASM1
     .union(WasmFeatures::REFERENCE_TYPES)
     .union(WasmFeatures::SIGN_EXTENSION)
     .union(WasmFeatures::SATURATING_FLOAT_TO_INT)
-    .union(WasmFeatures::MULTI_VALUE);
+    .union(WasmFeatures::MULTI_VALUE)
+    .union(WasmFeatures::WIDE_ARITHMETIC);
+
+/// The body [`WasmModule::use_native_multi3`] gives `__multi3`: stores the low 128 bits of
+/// `a * b` at `ret`, from one 64 × 64 → 128-bit product and two 64-bit cross products.
+#[rustfmt::skip]
+static MULTI3_BODY: &[u8] = &[
+    0x01, 0x01, 0x7e,                   // one extra local, $hi: i64 (local 5)
+    0x20, 0x00,                         // local.get $ret
+    0x20, 0x01, 0x20, 0x03,             // local.get $a_lo, local.get $b_lo
+    0xfc, 0x16,                         // i64.mul_wide_u
+    0x21, 0x05,                         // local.set $hi
+    0x37, 0x03, 0x00,                   // i64.store offset=0 (the low half)
+    0x20, 0x00,                         // local.get $ret
+    0x20, 0x05,                         // local.get $hi
+    0x20, 0x01, 0x20, 0x04, 0x7e, 0x7c, // + a_lo * b_hi
+    0x20, 0x02, 0x20, 0x03, 0x7e, 0x7c, // + a_hi * b_lo
+    0x37, 0x03, 0x08,                   // i64.store offset=8 (the high half)
+    0x0b,                               // end
+];
 
 /// The value kinds the lowering supports.  Every kind lives in a 64-bit Zisk slot: i32 values are
 /// kept sign-extended, f32 values occupy the low 32 bits (the high half is don't-care).
@@ -107,6 +127,12 @@ pub struct WasmModule<'a> {
     max_num_locals: u32,
     pub start_func: Option<u32>,
     pub exports: Vec<(String, ExternalKind, u32)>,
+    /// Function names from the `name` custom section, by function index. Debug information
+    /// only: absent or malformed names are skipped, never an error.
+    pub func_names: BTreeMap<u32, String>,
+    /// The function index of `__multi3` once [`WasmModule::use_native_multi3`] has given it the
+    /// native body: its calls are lowered inline (see the lowering's `inline_multi3`).
+    pub native_multi3: Option<u32>,
 }
 
 impl<'a> WasmModule<'a> {
@@ -125,6 +151,31 @@ impl<'a> WasmModule<'a> {
 
     pub fn max_num_locals(&self) -> u32 {
         self.max_num_locals
+    }
+
+    /// Replaces the body of `__multi3`, when the module defines it, with [`MULTI3_BODY`].
+    /// `__multi3` is compiler-rt's 128-bit multiply, which LLVM calls for every `i128`/`u128`
+    /// product on wasm32 (the target has no 64 × 64 → 128-bit multiply unless
+    /// `wide-arithmetic` is enabled); its portable body takes four 32-bit products, while ZisK
+    /// multiplies 64-bit halves natively.  The name comes from the `name` section, so a stripped
+    /// module keeps its own body, and the signature must be compiler-rt's:
+    /// `(i32 ret, i64 a_lo, i64 a_hi, i64 b_lo, i64 b_hi) -> ()`.
+    pub fn use_native_multi3(&mut self) {
+        let signature = [ValKind::I32, ValKind::I64, ValKind::I64, ValKind::I64, ValKind::I64];
+        let found = self.func_names.iter().find_map(|(&index, name)| {
+            let defined = index.checked_sub(self.func_import_count)? as usize;
+            let sig = &self.sigs[self.defined.get(defined)?.type_index as usize];
+            (name == "__multi3" && sig.params == signature && sig.results.is_empty())
+                .then_some(defined)
+        });
+        if let Some(defined) = found {
+            let func = &mut self.defined[defined];
+            func.body =
+                wasmparser::FunctionBody::new(wasmparser::BinaryReader::new(MULTI3_BODY, 0));
+            func.num_locals = 6;
+            self.max_num_locals = self.max_num_locals.max(6);
+            self.native_multi3 = Some(self.func_import_count + defined as u32);
+        }
     }
 
     /// Returns the signature of function `func_index` (across the whole index space).
@@ -206,6 +257,7 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
     let mut has_table = false;
     let mut start_func: Option<u32> = None;
     let mut exports: Vec<(String, ExternalKind, u32)> = Vec::new();
+    let mut func_names: BTreeMap<u32, String> = BTreeMap::new();
 
     for payload in Parser::new(0).parse_all(bytes) {
         match payload? {
@@ -357,6 +409,17 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
             Payload::TagSection(_) => {
                 return Err("wasm: exception handling (tags) is not supported".into());
             }
+            Payload::CustomSection(reader) => {
+                if let KnownCustom::Name(names) = reader.as_known() {
+                    for name in names.into_iter().flatten() {
+                        if let Name::Function(map) = name {
+                            for naming in map.into_iter().flatten() {
+                                func_names.insert(naming.index, naming.name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -406,5 +469,7 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
         max_num_locals,
         start_func,
         exports,
+        func_names,
+        native_multi3: None,
     })
 }

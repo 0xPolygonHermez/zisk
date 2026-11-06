@@ -82,6 +82,14 @@ MSB                                                         LSB
 #define F32_QUIET_NAN      0x7FC00000
 #define F32_SIGNALING_NAN  0x7FE00000
 
+// NaN boxing of single-precision values in the 64-bit float registers (RISC-V spec, "NaN Boxing of
+// Narrower Values"). A single-precision result is written with the upper 32 bits set to 1. A
+// single-precision operand is valid only if its upper 32 bits are all 1; otherwise it reads as
+// the canonical NaN. Valid operands are returned sign-extended from bit 31, the form the
+// F32_* macros below expect (F32_SIGN_BIT_MASK covers bits 63-31).
+#define F32_NAN_BOX(a) ( (uint64_t)(a) | 0xFFFFFFFF00000000 )
+#define F32_UNBOX(a) ( (((a) >> 32) == 0xFFFFFFFF) ? (uint64_t)(int64_t)(int32_t)(a) : F32_QUIET_NAN )
+
 // Negate a float by flipping its sign bit(s)
 #define F64_NEGATE(x) ( (x) ^ F64_SIGN_BIT_MASK )
 #define F32_NEGATE(x) ( (x) ^ F32_SIGN_BIT_MASK )

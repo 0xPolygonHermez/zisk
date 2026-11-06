@@ -96,8 +96,25 @@ jobs:
           RUST_BACKTRACE: 1
 
       - name: Run the wasm guest tests with the float feature
-        run: cargo test -p ziskemu --release --features float --test wasm --test wasm_float --test wasm_example
+        run: cargo test -p ziskemu --release --features float --test wasm --test wasm_float --test wasm_example --test wasm_precompiles
         env:
+          RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
+          RUST_BACKTRACE: 1
+
+      # The official WebAssembly test suite, at the commit pinned in emulator/tests/wasm_spec.rs.
+      - name: Fetch the WebAssembly test suite
+        run: |
+          mkdir -p "$RUNNER_TEMP/wasm-testsuite"
+          cd "$RUNNER_TEMP/wasm-testsuite"
+          git init -q
+          git remote add origin https://github.com/WebAssembly/testsuite.git
+          git fetch -q --depth 1 origin 63908677d00585fdab4c4eccbf01f781d3a454d5
+          git checkout -q FETCH_HEAD
+
+      - name: Run the WebAssembly test suite with the float feature
+        run: cargo test -p ziskemu --release --features float --test wasm_spec -- --ignored --nocapture
+        env:
+          WASM_TESTSUITE: ${{ runner.temp }}/wasm-testsuite
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
 

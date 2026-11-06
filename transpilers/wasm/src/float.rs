@@ -164,13 +164,13 @@ fn call_handler(code: &mut Code, inst: u32) {
     code.bind(ret);
 }
 
-/// `f<f> = mem[FP+slot]`, sign-extended from 32 bits for single precision (one instruction).
+/// `f<f> = mem[FP+slot]`. A single-precision value is NaN-boxed (upper 32 bits set to 1), as the
+/// RISC-V spec requires: the float library reads any other upper half as the canonical NaN.
 fn freg_from_slot(code: &mut Code, f: u32, slot: i64, prec: Prec) {
-    let op = match prec {
-        Prec::D => "copyb",
-        Prec::S => "signextend_w",
-    };
-    code.slot_to_abs(freg_addr(f), slot, op);
+    code.slot_to_abs(freg_addr(f), slot, "copyb");
+    if prec == Prec::S {
+        code.or_imm_to_abs(freg_addr(f), 0xFFFF_FFFF_0000_0000);
+    }
 }
 
 /// `mem[FP+slot] = f<f>` (one instruction).
@@ -279,7 +279,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             F64PromoteF32 => self.f_unary_lib(Prec::S, op_fp(0x21, 0, FA, RNE, FR)),
 
             // -- reinterpretations: same bits, only the i32 canonical form changes ---
-            I32ReinterpretF32 => self.unop_signextend("signextend_w"),
+            I32ReinterpretF32 => self.sign_extend("signextend_w"),
             I64ReinterpretF64 | F32ReinterpretI32 | F64ReinterpretI64 => {}
 
             _ => return Ok(false),
@@ -356,15 +356,17 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     }
 
     /// Rounds to an integral value in rounding mode `rm` via `fcvt.l.<p>` + `fcvt.<p>.l`.  Values
-    /// with `|x| >= 2^precision` (all integral), infinities and NaNs pass through unchanged; the
+    /// with `|x| >= 2^precision` (all integral) and infinities pass through unchanged, and a NaN
+    /// comes back quiet (wasm requires an arithmetic NaN, so a signaling one cannot pass); the
     /// sign of `x` is re-applied so that e.g. `ceil(-0.5)` yields `-0`.
     fn f_round(&mut self, prec: Prec, rm: u32) {
         let a = self.slot(self.depth - 1);
+        let large = self.code.new_label();
         let done = self.code.new_label();
         self.code.load_slot_to_reg(REG_T0, a);
         self.code.alu_ri("and", REG_T1, REG_T0, prec.abs_mask() as i64);
-        // |x| >= 2^p (includes inf/NaN): leave the operand as is.
-        self.code.cmp_imm_branch("ltu", REG_T1, prec.integral_threshold() as i64, done, false);
+        // |x| >= 2^p (includes inf/NaN): handled below.
+        self.code.cmp_imm_branch("ltu", REG_T1, prec.integral_threshold() as i64, large, false);
         freg_from_slot(&mut self.code, FA, a, prec);
         // x5 = (int64) round(fA);  fR = (float) x5
         call_handler(&mut self.code, op_fp(0x60 + prec.fmt(), 2, FA, rm, XT));
@@ -375,6 +377,12 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.load_slot_to_reg(REG_T1, a);
         self.code.alu_ri("and", REG_T1, REG_T1, prec.sign_mask() as i64);
         self.code.alu_rr("or", REG_T0, REG_T0, REG_T1);
+        self.code.store_reg_to_slot(a, REG_T0);
+        self.code.jump(done);
+        // Integral or infinite: unchanged.  NaN: set the quiet bit.
+        self.code.bind(large);
+        self.code.cmp_imm_branch("ltu", REG_T1, prec.inf_bits() as i64 + 1, done, true);
+        self.code.alu_ri("or", REG_T0, REG_T0, (prec.canonical_nan() - prec.inf_bits()) as i64);
         self.code.store_reg_to_slot(a, REG_T0);
         self.code.bind(done);
     }
