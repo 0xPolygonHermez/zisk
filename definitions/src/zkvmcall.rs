@@ -186,6 +186,9 @@ pub const ZKVMCALLS: &[ZkvmCall] = &[
     // `flag` that reads the text's pointer and length and jumps past it, the same in
     // every ROM; ziskemu prints the text only when asked to (see `add_zisk_code`)
     zcx(0x8B4, "write_log", 2),
+    // keccak256 with a memo of the Keccak-f it has run (zkvm_zisklib.h, not EF)
+    zc(0x8B5, "zkvm_keccak256_cached", "ziskasm_zkvm_keccak256_cached"),
+    zc(0x8B6, "zkvm_keccak256_cache_init", "ziskasm_zkvm_keccak256_cache_init"),
 ];
 
 /// Returns the zkvmcall with CSR number `id`, if any.

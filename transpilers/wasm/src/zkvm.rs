@@ -58,6 +58,9 @@ enum Size {
     /// The result of `zkvm_zisklib_modexp_u64_c`: `max(4, ceil(m / 4) * 4)` limbs, where `m` is
     /// the modulus length (in limbs) at this index.
     ModexpResult(usize),
+    /// The table of `zkvm_keccak256_cache_init`: the 8-byte entry count, then 400 bytes (the input
+    /// and output states) per entry, as many entries as the capacity at this index.
+    KeccakfCache(usize),
 }
 
 /// One argument, as the header declares it.
@@ -101,7 +104,7 @@ enum Kind {
 }
 
 use Arg::{Ptr, Ptr8, U32, U64, U8};
-use Size::{Array, Bytes, LenArg, ModexpResult};
+use Size::{Array, Bytes, KeccakfCache, LenArg, ModexpResult};
 
 /// A function of the C interface and how its stub implements it.
 struct Function {
@@ -320,6 +323,8 @@ const ZISKLIB: &[Function] = &[
         ],
         Ret::I32
     ),
+    ef!("zkvm_keccak256_cache_init", &[Ptr8(KeccakfCache(1)), U32]),
+    ef!("zkvm_keccak256_cached", &[Ptr(LenArg(1)), U32, Ptr(Bytes(32))]),
 ];
 
 /// `zkvm_fcall.h`.
@@ -544,6 +549,13 @@ fn load_and_check_args(code: &mut Code, f: &Function, out_of_bounds: LabelId, un
                 code.bind(big_enough);
                 code.alu_rr("add", R_END, ptr, R_LEN);
             }
+            KeccakfCache(cap) => {
+                // The count is always read, so even an empty table needs its 8 bytes.
+                check_u64(code, cap);
+                code.alu_ri("mul", R_LEN, arg_reg(cap), 400);
+                code.alu_ri("add", R_LEN, R_LEN, 8);
+                code.alu_rr("add", R_END, ptr, R_LEN);
+            }
         }
         code.cmp_reg_branch("ltu", REG_MEM_END, R_END, out_of_bounds, true);
         code.bind(ok);
@@ -684,7 +696,9 @@ mod tests {
             assert!(f.args.len() <= 8, "{}", f.name);
             for arg in f.args {
                 if let Ptr(size) | Ptr8(size) = arg {
-                    if let LenArg(i) | Array { count: i, .. } | ModexpResult(i) = size {
+                    if let LenArg(i) | Array { count: i, .. } | ModexpResult(i) | KeccakfCache(i) =
+                        size
+                    {
                         assert!(matches!(f.args[*i], U32 | U64), "{}: argument {i}", f.name);
                     }
                 }

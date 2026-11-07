@@ -921,6 +921,29 @@ zkvmcall! {
 }
 
 zkvmcall! {
+    /// `zkvm_keccak256_cache_init(table, capacity)` — calls
+    /// `ziskasm_zkvm_keccak256_cache_init`: registers the memo table of
+    /// [`zkvm_keccak256_cached`] (layout in `zkvm_zisklib.h`) and empties it.
+    ///
+    /// # Safety
+    /// `table` points to `1 + 50 * capacity` writable, 8-byte aligned words that nothing
+    /// else touches while they are registered.
+    fn zkvm_keccak256_cache_init(table: *mut u64, capacity: usize)
+}
+
+zkvmcall! {
+    /// `zkvm_keccak256_cached(data, len, output)` — calls
+    /// `ziskasm_zkvm_keccak256_cached`: keccak256 like [`zkvm_keccak256`], with each
+    /// Keccak-f looked up first in the table [`zkvm_keccak256_cache_init`] registered,
+    /// a memo of the permutations this execution has run. With no table it is
+    /// [`zkvm_keccak256`].
+    ///
+    /// # Safety
+    /// `data` points to `len` readable bytes; `output` to 32 writable bytes.
+    fn zkvm_keccak256_cached(data: *const u8, len: usize, output: *mut u8)
+}
+
+zkvmcall! {
     /// `zkvm_sha256(data, len, output)` — calls the shared `ziskasm_zkvm_sha256`.
     ///
     /// # Safety

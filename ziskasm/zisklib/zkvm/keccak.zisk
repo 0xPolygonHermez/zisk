@@ -142,6 +142,205 @@ zzk_squeeze:
 	ret
 
 ; ============================================================================
+; zkvm_status zkvm_keccak256_cache_init(uint64_t* table, size_t capacity)
+;   Hands the memo of zkvm_keccak256_cached its table, which the guest owns
+;   (ZISKLIB_RAM is far too small for one): 8-byte aligned, 1 + 50 * capacity
+;   words, no initial contents needed. Word 0 counts the entries written, and is
+;   set to 0 here; entry i is the 25-word state before permutation i and the 25
+;   words after it, at word 1 + 50 * i. Calling it again starts over (the old
+;   entries become unreachable); capacity 0 turns the memo off. a0 = table,
+;   a1 = capacity; returns a0 = ZKVM_EOK (0). Entry
+;   `ziskasm_zkvm_keccak256_cache_init`.
+; ============================================================================
+u64 ZKC_TABLE = 0                       ; the guest's table, 0 before init
+u64 ZKC_CAP = 0                         ; its capacity in entries, 0 = no memo
+
+ziskasm_zkvm_keccak256_cache_init:
+	copyb(0, r10) -> [ZKC_TABLE]
+	copyb(0, r11) -> [ZKC_CAP]
+	copyb(r10, 0) -> 8[a + 0]           ; empty: every hint is out of range
+	copyb(0, 0) -> r10                  ; return ZKVM_EOK (a0 = 0)
+	ret
+
+; ============================================================================
+; zkvm_status zkvm_keccak256_cached(const uint8_t* data, size_t len,
+;                                   zkvm_keccak256_hash* output)
+;   keccak256, with the signature of zkvm_keccak256, with every Keccak-f going
+;   through a memo of the permutations this execution has already run, kept in
+;   the table zkvm_keccak256_cache_init registered. Without one (or with
+;   capacity 0) it is zkvm_keccak256. a0 = data, a1 = len, a2 = output; returns
+;   a0 = ZKVM_EOK (0). Entry `ziskasm_zkvm_keccak256_cached`.
+;
+; The lookup is the executor's: fcall FCALL_GET_KECCAKF_CACHE_INDEX hands back
+; the index a state was filed under (through FCALL_SET_KECCAKF_CACHE_INDEX right
+; before its keccak), or ~0. The index is a hint, so it is used only if it is
+; below the entry count and that entry's input equals the state word for word;
+; Keccak-f is a function, so a hint that passes both checks gives the right
+; output, and one that fails them costs a miss, never a wrong digest. The output
+; it copies was written by this execution right after a proven keccak, which is
+; why the table has to be in the guest's memory and not in the executor's. The
+; count is published only after both halves of a new entry are written. Once
+; the table is full the routine keeps permuting and stops filing.
+;
+; The sponge is the one of zkvm_keccak256 above, with `call zkc_perm` in place of
+; each `keccak`; r28 keeps the caller's return address across those calls.
+; zkc_perm uses r5, r15..r17 and r29 (the fcall passthrough), and reads r13
+; (table) and r14 (capacity).
+; ============================================================================
+ziskasm_zkvm_keccak256_cached:
+	copyb(0, [ZKC_CAP]) -> r14
+	eq(r14, 0), j(ziskasm_zkvm_keccak256)   ; no table: the plain sponge, same arguments
+	copyb(0, [ZKC_TABLE]) -> r13
+	copyb(0, r1) -> r28                 ; zkc_perm is reached with `call`, which writes r1
+	dma_xmemset(ZKVM_KECCAK_STATE, 200) -> r5, j(0, 4)
+	ltu(r11, 136), j(zkc_fresh)
+	dma_xmemcpy(ZKVM_KECCAK_STATE, r10) -> r5, j(136, 4)
+	call zkc_perm
+	add(r10, 136) -> r10
+	sub(r11, 136) -> r11
+
+; --- full blocks into the live state, r11 = remaining bytes ---
+zkc_full:
+	ltu(r11, 136), j(zkc_last)
+	copyb(r10, 8[a + 0])
+	xor([ZKVM_KECCAK_STATE + 0], c) -> [ZKVM_KECCAK_STATE + 0]
+	copyb(r10, 8[a + 8])
+	xor([ZKVM_KECCAK_STATE + 8], c) -> [ZKVM_KECCAK_STATE + 8]
+	copyb(r10, 8[a + 16])
+	xor([ZKVM_KECCAK_STATE + 16], c) -> [ZKVM_KECCAK_STATE + 16]
+	copyb(r10, 8[a + 24])
+	xor([ZKVM_KECCAK_STATE + 24], c) -> [ZKVM_KECCAK_STATE + 24]
+	copyb(r10, 8[a + 32])
+	xor([ZKVM_KECCAK_STATE + 32], c) -> [ZKVM_KECCAK_STATE + 32]
+	copyb(r10, 8[a + 40])
+	xor([ZKVM_KECCAK_STATE + 40], c) -> [ZKVM_KECCAK_STATE + 40]
+	copyb(r10, 8[a + 48])
+	xor([ZKVM_KECCAK_STATE + 48], c) -> [ZKVM_KECCAK_STATE + 48]
+	copyb(r10, 8[a + 56])
+	xor([ZKVM_KECCAK_STATE + 56], c) -> [ZKVM_KECCAK_STATE + 56]
+	copyb(r10, 8[a + 64])
+	xor([ZKVM_KECCAK_STATE + 64], c) -> [ZKVM_KECCAK_STATE + 64]
+	copyb(r10, 8[a + 72])
+	xor([ZKVM_KECCAK_STATE + 72], c) -> [ZKVM_KECCAK_STATE + 72]
+	copyb(r10, 8[a + 80])
+	xor([ZKVM_KECCAK_STATE + 80], c) -> [ZKVM_KECCAK_STATE + 80]
+	copyb(r10, 8[a + 88])
+	xor([ZKVM_KECCAK_STATE + 88], c) -> [ZKVM_KECCAK_STATE + 88]
+	copyb(r10, 8[a + 96])
+	xor([ZKVM_KECCAK_STATE + 96], c) -> [ZKVM_KECCAK_STATE + 96]
+	copyb(r10, 8[a + 104])
+	xor([ZKVM_KECCAK_STATE + 104], c) -> [ZKVM_KECCAK_STATE + 104]
+	copyb(r10, 8[a + 112])
+	xor([ZKVM_KECCAK_STATE + 112], c) -> [ZKVM_KECCAK_STATE + 112]
+	copyb(r10, 8[a + 120])
+	xor([ZKVM_KECCAK_STATE + 120], c) -> [ZKVM_KECCAK_STATE + 120]
+	copyb(r10, 8[a + 128])
+	xor([ZKVM_KECCAK_STATE + 128], c) -> [ZKVM_KECCAK_STATE + 128]
+	call zkc_perm
+	add(r10, 136) -> r10
+	sub(r11, 136) -> r11
+	jump(zkc_full)
+
+; --- the final block after at least one full block: pad it in ZKVM_KECCAK_PAD ---
+zkc_last:
+	dma_xmemset(ZKVM_KECCAK_PAD, 136) -> r5, j(0, 4)
+	copyb(0, r11) -> [ZZK_DMA_COUNT]
+	dma_memcpy(ZKVM_KECCAK_PAD, r10) -> r5
+	add(r11, ZKVM_KECCAK_PAD) -> r6
+	copyb(r6, 1) -> 1[a + 0]            ; the 0x01 after the message
+	copyb(0, [ZKVM_KECCAK_PAD + 128])
+	or(c, 0x8000000000000000) -> [ZKVM_KECCAK_PAD + 128]   ; the 0x80 in byte 135
+	copyb(0, ZKVM_KECCAK_PAD) -> r10
+	copyb(r10, 8[a + 0])
+	xor([ZKVM_KECCAK_STATE + 0], c) -> [ZKVM_KECCAK_STATE + 0]
+	copyb(r10, 8[a + 8])
+	xor([ZKVM_KECCAK_STATE + 8], c) -> [ZKVM_KECCAK_STATE + 8]
+	copyb(r10, 8[a + 16])
+	xor([ZKVM_KECCAK_STATE + 16], c) -> [ZKVM_KECCAK_STATE + 16]
+	copyb(r10, 8[a + 24])
+	xor([ZKVM_KECCAK_STATE + 24], c) -> [ZKVM_KECCAK_STATE + 24]
+	copyb(r10, 8[a + 32])
+	xor([ZKVM_KECCAK_STATE + 32], c) -> [ZKVM_KECCAK_STATE + 32]
+	copyb(r10, 8[a + 40])
+	xor([ZKVM_KECCAK_STATE + 40], c) -> [ZKVM_KECCAK_STATE + 40]
+	copyb(r10, 8[a + 48])
+	xor([ZKVM_KECCAK_STATE + 48], c) -> [ZKVM_KECCAK_STATE + 48]
+	copyb(r10, 8[a + 56])
+	xor([ZKVM_KECCAK_STATE + 56], c) -> [ZKVM_KECCAK_STATE + 56]
+	copyb(r10, 8[a + 64])
+	xor([ZKVM_KECCAK_STATE + 64], c) -> [ZKVM_KECCAK_STATE + 64]
+	copyb(r10, 8[a + 72])
+	xor([ZKVM_KECCAK_STATE + 72], c) -> [ZKVM_KECCAK_STATE + 72]
+	copyb(r10, 8[a + 80])
+	xor([ZKVM_KECCAK_STATE + 80], c) -> [ZKVM_KECCAK_STATE + 80]
+	copyb(r10, 8[a + 88])
+	xor([ZKVM_KECCAK_STATE + 88], c) -> [ZKVM_KECCAK_STATE + 88]
+	copyb(r10, 8[a + 96])
+	xor([ZKVM_KECCAK_STATE + 96], c) -> [ZKVM_KECCAK_STATE + 96]
+	copyb(r10, 8[a + 104])
+	xor([ZKVM_KECCAK_STATE + 104], c) -> [ZKVM_KECCAK_STATE + 104]
+	copyb(r10, 8[a + 112])
+	xor([ZKVM_KECCAK_STATE + 112], c) -> [ZKVM_KECCAK_STATE + 112]
+	copyb(r10, 8[a + 120])
+	xor([ZKVM_KECCAK_STATE + 120], c) -> [ZKVM_KECCAK_STATE + 120]
+	copyb(r10, 8[a + 128])
+	xor([ZKVM_KECCAK_STATE + 128], c) -> [ZKVM_KECCAK_STATE + 128]
+	call zkc_perm
+	jump(zkc_squeeze)
+
+; --- the whole input is one partial block: pad it in the zeroed state ---
+zkc_fresh:
+	copyb(0, r11) -> [ZZK_DMA_COUNT]
+	dma_memcpy(ZKVM_KECCAK_STATE, r10) -> r5
+	add(r11, ZKVM_KECCAK_STATE) -> r6
+	copyb(r6, 1) -> 1[a + 0]            ; the 0x01 after the message
+	copyb(0, [ZKVM_KECCAK_STATE + 128])
+	or(c, 0x8000000000000000) -> [ZKVM_KECCAK_STATE + 128]   ; the 0x80 in byte 135
+	call zkc_perm
+
+zkc_squeeze:
+	dma_xmemcpy(r12, ZKVM_KECCAK_STATE) -> r5, j(32, 4)   ; the digest: state bytes 0..31
+	copyb(0, 0) -> r10                  ; return ZKVM_EOK (a0 = 0)
+	and(0xfffffffffffffffe, r28), setpc(0)   ; `ret` through the saved return address
+
+; --- Keccak-f on ZKVM_KECCAK_STATE through the memo ---
+; In: r13 = cache, r14 = capacity. Clobbers r5, r15..r17, r29; keeps r13, r14.
+zkc_perm:
+	fcall_param(25, ZKVM_KECCAK_STATE) -> r29
+	fcall(FCALL_GET_KECCAKF_CACHE_INDEX, 0) -> r29
+	copyb(0, [FREE_INPUT]) -> r16       ; r16 = hinted index (~0 = not seen), the fcall's first word
+	copyb(r13, 8[a + 0]) -> r15         ; r15 = entries written
+	ltu(r16, r15), j(zkc_probe)         ; only an index below the count can be believed
+zkc_miss:
+	ltu(r15, r14), j(zkc_file)          ; room for one more entry?
+	keccak(0, ZKVM_KECCAK_STATE)        ; full: permute without filing
+	ret
+zkc_file:
+	mul(r15, 400) -> r17
+	add(r17, r13) -> r17
+	add(r17, 8) -> r17                  ; r17 = &entry[count].in
+	dma_xmemcpy(r17, ZKVM_KECCAK_STATE) -> r5, j(200, 4)
+	fcall_param(1, r15) -> r29
+	fcall(FCALL_SET_KECCAKF_CACHE_INDEX, 0) -> r29   ; file this keccak's input under count
+	keccak(0, ZKVM_KECCAK_STATE)
+	add(r17, 200) -> r17                ; r17 = &entry[count].out
+	dma_xmemcpy(r17, ZKVM_KECCAK_STATE) -> r5, j(200, 4)
+	add(r15, 1) -> r15
+	copyb(r13, r15) -> 8[a + 0]         ; publish: the entry is in range only now
+	ret
+zkc_probe:
+	mul(r16, 400) -> r17
+	add(r17, r13) -> r17
+	add(r17, 8) -> r17                  ; r17 = &entry[index].in
+	dma_xmemcmp(r17, ZKVM_KECCAK_STATE) -> r5, j(200, 4)
+	eq(r5, 0), j(zkc_hit)
+	jump(zkc_miss)                      ; a hint for another state: treat as a miss
+zkc_hit:
+	add(r17, 200) -> r17
+	dma_xmemcpy(ZKVM_KECCAK_STATE, r17) -> r5, j(200, 4)   ; the output it had
+	ret
+
+; ============================================================================
 ; zkvm_status zkvm_keccak_f1600(uint64_t* state)
 ;   Keccak-f[1600] permutation applied IN PLACE to the 25-word (25 * u64) state
 ;   at a0. This is the raw permutation (no sponge/padding) — exactly what the ZisK

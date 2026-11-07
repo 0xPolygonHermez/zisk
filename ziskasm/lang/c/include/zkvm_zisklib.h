@@ -141,6 +141,28 @@ size_t zkvm_zisklib_modexp_u64_c(const uint64_t *base, size_t base_len,
                                  const uint64_t *modulus, size_t modulus_len,
                                  uint64_t *result);
 
+/* ---- memoised keccak256 ------------------------------------------------ */
+
+/* Words of a zkvm_keccak256_cache_init table that holds `n` permutations. */
+#define ZKVM_KECCAKF_CACHE_WORDS(n) (1 + 50 * (size_t)(n))
+
+/* Registers the memo table of zkvm_keccak256_cached: `table` holds
+ * ZKVM_KECCAKF_CACHE_WORDS(capacity) words, 8-byte aligned, owned by the guest
+ * (a static array is fine; it needs no initial contents) and left alone while it
+ * is registered. Word 0 counts the entries and is reset here; entry i (input
+ * state, then output state, 25 words each) starts at word 1 + 50 * i. Calling it
+ * again starts over; capacity 0 turns the memo off. Returns 0 (ZKVM_EOK). */
+int zkvm_keccak256_cache_init(uint64_t *table, size_t capacity);
+
+/* keccak256(data[0..len]) -> output (32 bytes), with zkvm_keccak256's signature,
+ * but each Keccak-f permutation is first looked up in the registered table of the
+ * ones this execution has already run, and only run (and filed) when it is not
+ * there. The lookup is a hint from the executor that the routine verifies (index
+ * in range, then a 200-byte compare), so a wrong hint costs a miss, never a wrong
+ * digest. When the table is full it keeps hashing and stops filing; with no table
+ * registered it is zkvm_keccak256. Returns 0 (ZKVM_EOK). */
+int zkvm_keccak256_cached(const uint8_t *data, size_t len, uint8_t *output);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

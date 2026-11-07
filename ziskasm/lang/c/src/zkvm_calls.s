@@ -148,3 +148,7 @@ ZKVMCALL zkvm_random_u64, 0x8B3
  * default zkvm_io.h inlines it. Either way the transpiler makes it one step, which
  * the emulators print only when asked to. */
 ZKVMCALL write_log, 0x8B4
+
+/* ---- memoised keccak256 (zkvm_zisklib.h) ---- */
+ZKVMCALL zkvm_keccak256_cached, 0x8B5
+ZKVMCALL zkvm_keccak256_cache_init, 0x8B6
