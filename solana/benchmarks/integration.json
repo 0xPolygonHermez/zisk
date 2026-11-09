@@ -1,0 +1,40 @@
+{
+  "measurements": {
+    "valid_cu": 1385858,
+    "late_invalid_cu": 1385885,
+    "consumer_valid_cu": 1388559,
+    "consumer_invalid_cu": 1388017,
+    "largest_upload_tx_bytes": 1150,
+    "upload_chunks": 8,
+    "proof_bytes": 6752,
+    "buffer_rent_lamports": 48198000,
+    "buffer_bytes": 6797,
+    "create_initialize_cu": 41742,
+    "append_cu_each": [
+      884,
+      884,
+      884,
+      884,
+      884,
+      884,
+      884,
+      884
+    ],
+    "seal_cu": 852,
+    "close_cu": 938,
+    "verifier_elf_bytes": 256720,
+    "consumer_elf_bytes": 25040
+  },
+  "runtime": "LiteSVM0.16.0 / Agave4.2.2, default features and syscall costs",
+  "builder": "cargo-build-sbf4.6.0, platform-tools v1.57, SBPFv3, legacy transactions",
+  "transaction_ceiling": 1400000,
+  "target_cu": 1000000,
+  "target_met": false,
+  "hashes": {
+    "target/deploy/zisk_solana_program.so": "2feab68d8d7fd5f56e8e36e9b7da7c4bef057f6d73c964dc73228e002279a1cd",
+    "target/deploy/zisk_consumer_example.so": "97688717bf2ffb25f79c2095faf223c7cbc06edc91742ae9e11bbafba706ef0c",
+    "Cargo.lock": "cce9a2d75ccb7a0cadfa99d466366d743cab9f3f0fd51f9b9cfcf7c996028c5c",
+    "runtime-tests/Cargo.lock": "6195956b7524c2f00f3417c6f2d81868c6a716cabd7c8cefbaa43ed016f97742",
+    "package-lock.json": "8f434872c206aeaef03478c716fb37ccf2650b59b6b17434852dd956c46fba75"
+  }
+}

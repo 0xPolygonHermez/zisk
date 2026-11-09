@@ -1,4 +1,4 @@
-# ZisK Pilfflonk verification library
+# ZisK Pilfflonk verification on Solana
 
 The Rust library verifies the fixed ZisK v1.4.0-alpha BLAKE3 leaf profile.
 The caller supplies its expected 32-byte guest key and all 512 output bytes.
@@ -37,3 +37,29 @@ The fuzz script reconstructs the public release-proof seed and retains discovere
 inputs in ignored `fuzz/corpus/`. Arithmetic tests compare with arkworks; verifier
 tests compare with the unchanged JS/Solidity references. This is evidence for one
 real proof and its mutations, not an external audit or broad positive proof coverage.
+
+## Upload and consume a proof
+
+The [wire format and client guide](docs/wire.md) describes sequential upload,
+immutable sealing, verification and authority-controlled rent return. The consumer
+pins the verifier and guest identities, propagates CPI failure, and updates its
+signed receipt only after verification. Its IDs are test configuration.
+
+Build the actual Solana programs and run signed-transaction tests:
+
+```sh
+cargo install cargo-build-sbf --version 4.6.0 --locked --root .cache/build-tools
+bash scripts/build-sbf.sh
+cargo test --locked --manifest-path runtime-tests/Cargo.toml -- --nocapture
+node --test client/*.test.mjs
+```
+
+The fuzz script now also runs `buffer_state`, which checks account transitions
+against a state model. Runtime tests cover transaction rollback, close/recreate,
+account aliases and verifier substitution using the compiled SBF programs.
+
+The runtime is LiteSVM 0.16.0 / Agave 4.2.2, with the ordinary 1.4M-CU ceiling.
+[Recorded integration measurements](benchmarks/integration.json) show 1,385,858
+CUs for verification and 1,388,559 CUs through the example consumer. The 1M-CU
+target remains unmet, and the consumer leaves only 11,441 CUs of headroom.
+No live RPC submission or public-cluster deployment has been performed.
