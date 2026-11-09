@@ -18,12 +18,15 @@
 pub mod emit;
 #[cfg(feature = "float")]
 pub mod float;
+mod imports;
 pub mod layout;
 pub mod lowering;
 pub mod module;
 pub mod precompiles;
 pub mod wasi;
 pub mod zkvm;
+
+pub use imports::Import;
 
 use std::collections::HashMap;
 use std::error::Error;
@@ -57,17 +60,32 @@ pub struct WasmFunctionSymbol {
 
 /// Transpiles a wasm module into a Zisk ROM.
 pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
-    Ok(transpile(bytes)?.0)
+    wasm2rom_with_imports(bytes, &[])
 }
 
 /// The functions of a wasm module as [`wasm2rom`] lays them out in the ROM, plus the entry
 /// routine. A function is named from the module's `name` section when present, otherwise from
 /// its import or export name, otherwise `wasm-function[<index>]`.
 pub fn wasm_function_symbols(bytes: &[u8]) -> Result<Vec<WasmFunctionSymbol>, Box<dyn Error>> {
-    Ok(transpile(bytes)?.1)
+    Ok(transpile(bytes, &[])?.1)
 }
 
-fn transpile(bytes: &[u8]) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn Error>> {
+/// Transpiles a module with explicitly registered custom imports.
+///
+/// Registrations emit trusted compiler code. Built-in imports cannot be overridden.
+/// See [`Import`] for the calling convention and program-identity contract.
+pub fn wasm2rom_with_imports(
+    bytes: &[u8],
+    imports: &[Import<'_>],
+) -> Result<ZiskRom, Box<dyn Error>> {
+    Ok(transpile(bytes, imports)?.0)
+}
+
+fn transpile(
+    bytes: &[u8],
+    imports: &[Import<'_>],
+) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn Error>> {
+    imports::validate(imports)?;
     let mut module = parse_module(bytes)?;
     module.use_native_multi3();
     reject_unsupported_layout(&module)?;
@@ -162,7 +180,7 @@ fn transpile(bytes: &[u8]) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn
         } else if precompiles::is_precompile_import(import_module, name) {
             precompiles::build_stub(&module, i)?
         } else {
-            wasi::build_wasi_stub(&module, i)?
+            imports::build(&module, i, imports)?
         });
     }
     for d in 0..module.defined.len() {
