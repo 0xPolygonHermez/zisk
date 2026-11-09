@@ -2189,6 +2189,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-consumer-example"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "solana-loader-v3-interface",
+ "solana-program",
+ "solana-sdk-ids",
+ "solana-system-interface",
+ "zisk-solana-program",
+]
+
+[[package]]
+name = "zisk-solana-program"
+version = "0.1.0"
+dependencies = [
+ "solana-program",
+ "zisk-solana-verifier",
+]
+
+[[package]]
 name = "zisk-solana-verifier"
 version = "0.1.0"
 dependencies = [
@@ -2200,4 +2220,11 @@ dependencies = [
  "solana-keccak-hasher",
  "solana-program",
  "solana-sha256-hasher",
+]
+
+[[package]]
+name = "zisk-test-noop"
+version = "0.0.0"
+dependencies = [
+ "solana-program",
 ]

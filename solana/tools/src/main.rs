@@ -1,3 +1,4 @@
+mod benchmark;
 mod generate;
 
 use std::path::{Path, PathBuf};
@@ -22,6 +23,10 @@ fn main() -> Result<()> {
     match args.as_slice() {
         ["generate-profile"] => generate::run(false),
         ["generate-profile", "--check"] => generate::run(true),
-        _ => Err("usage: zisk-solana-tools {generate-profile [--check]}".into()),
+        ["check-benchmark", log] => benchmark::run(Path::new(log)),
+        _ => {
+            Err("usage: zisk-solana-tools {generate-profile [--check] | check-benchmark LOG}"
+                .into())
+        }
     }
 }

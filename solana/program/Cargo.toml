@@ -1,0 +1,12 @@
+[package]
+name = "zisk-solana-program"
+version = "0.1.0"
+edition = "2021"
+[lib]
+crate-type = ["cdylib", "lib"]
+[features]
+no-entrypoint = []
+profile-cus = ["zisk-solana-verifier/profile-cus"]
+[dependencies]
+zisk-solana-verifier = { path = "../verifier" }
+solana-program = "=2.3.0"

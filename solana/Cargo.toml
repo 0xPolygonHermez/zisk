@@ -1,5 +1,5 @@
 [workspace]
-members = ["verifier"]
+members = ["verifier", "program", "consumer", "test-noop"]
 resolver = "2"
 
 [profile.release]

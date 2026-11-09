@@ -7,15 +7,106 @@ the caller binds its expected guest key and all 512 output bytes.
 The [profile specification](docs/profile.md) records the pinned inputs,
 statement encoding and cryptographic acceptance requirements.
 
+Verification can save a statement digest in the sealed proof account. An
+application can consume that result in a later transaction, leaving room for its
+own logic. The example requires an immutable verifier and creates a permanent
+receipt that prevents consuming the same guest/output statement twice.
+
+| Path | LiteSVM CUs | Local validator CUs |
+|---|---:|---:|
+| Valid proof, without saving a result | 1,374,842 | 1,374,713 |
+| Invalid final opening, rejected at pairing | 1,374,877 | Not measured |
+| Verify and save result | 1,375,268 | 1,375,268 |
+| Consumer verification through CPI and receipt creation | 1,388,425 | 1,388,512 |
+| Consume a previously saved result | 12,306 | 12,468 |
+
+**The 1,000,000-CU verification target is not met.** Use the saved-result path for
+applications that need substantial compute; direct CPI has only about 11k CUs
+left. The real-validator saved-result transaction passes with a 50,000-CU cap.
+These measurements cover one real release proof and pinned local runtimes,
+not a public-cluster deployment or general application workloads.
+More independent proofs and an external cryptographic audit are still required
+before production use. Agent reviews do not replace that audit.
+
+## Reproduce
+
+Tested tools: Rust 1.95.0, Node 26.12.1, Foundry 1.5.1, and
+`cargo-build-sbf` 4.6.0. SBF builds explicitly use platform-tools v1.57 and SBPF v2.
+The host runtime uses LiteSVM 0.16.0 / Agave 4.2.2 with v3 and the v0-v2 deployment
+disable gate explicitly disabled before constructing its runtime. A regression
+test loads the actual compiled programs with those gates disabled.
+The local `rust-toolchain.toml` pins the host compiler and lint/format components.
+
+From this directory:
+
+```sh
+rustup component add clippy rustfmt
+cargo install cargo-build-sbf --version 4.6.0 --locked --root .cache/build-tools
+bash scripts/check.sh
+
+# Requires solana-cli and solana-test-validator 2.2.21 on PATH.
+node tools/test_validator.mjs
+```
+
+The validator test creates its own loopback-only ledger and test wallet under
+`.cache/`, loads the verifier and consumer at the example's configured IDs, and
+runs the actual upload client and both consumer paths through RPC. It checks
+wrong-guest/output rejection, upgrade-authority rejection, replay protection and
+close. Only its own validator process is stopped afterwards. It reproduces the
+inactive gates in [validator-features.json](benchmarks/validator-features.json)
+as visible to Agave 2.2.21; that is not full mainnet equivalence. This test needs
+the separate validator installation and is not part of `scripts/check.sh` or CI.
+
+SBPF feature IDs differ between Agave generations. On 2026-11-09 the old CLI's
+`C8XZ…` v3 gate was inactive, but Agave 4.2.2's `5cC3…` gate was active on both
+mainnet and devnet. The recorded account data does **not** support the claim
+that no live cluster runs v3. We target v2 for compatibility with the tested
+Agave 2.2.21 validator; verify deployment support against the intended cluster.
+
+If the builder installer reports a shadowing Solana CLI, put `$HOME/.cargo/bin`
+first in PATH for that installation command. The build script invokes the
+installed task-local binary directly. It also rejects LLVM stack-frame errors
+that may otherwise leave `cargo-build-sbf` with a successful exit code.
+
+`PROFILE_CUS=1 bash scripts/build-sbf.sh` enables stage logs for measurement.
+Rebuild without that variable for release measurements. No enlarged compute
+budget is used by the runtime tests.
+
+`scripts/check.sh` regenerates fixtures, checks the generator, formatting and Clippy, runs
+the independent references and host/client tests, builds SBF, and runs the runtime
+suite. Its benchmark check rejects missing measurements, packet-limit violations,
+transactions reaching 1.4M CUs, and CU increases over 5%. Reports go in `.cache/`.
+
 ## Components and guarantees
 
 - `verifier/`: strict scalar/point parsing, SHA-256 statement binding, exact
   Keccak transcript, checked inverses, polynomial arithmetic and native BN254
   operations. JS intermediate traces, arkworks arithmetic and Solidity verdicts
   provide independent comparisons.
+- `program/`: sequential bounded upload, immutable seal, stateless verification
+  or verification with a saved statement digest, and authority-controlled rent
+  return. Cryptographic verification completes in one transaction.
+- `consumer/`: example pinning the verifier and guest, checking immutable loader
+  metadata, and consuming a proof by CPI or a saved result. A permanent PDA keyed
+  by the statement prevents replay across transactions and different uploads.
+  Its configuration must be replaced with the application's trusted deployment
+  and guest; application authorization still depends on the proved outputs.
+- `client/`: resumable uploader requiring an independently supplied `--guest`,
+  saving verified results and checking fully signed transaction sizes.
+  [Wire format and usage](docs/wire.md) describe the authority and consumption
+  requirements. Real RPC validation uses the local validator described above.
 - `tools/src/generate.rs`: deterministic translation of six stages from one
   SHA-256-pinned Solidity verifier; unsupported source/syntax fails closed.
   [Scalar arithmetic notes](docs/scalar.md) explain the optimized backend's bounds.
+
+The runtime suite checks every proof-word mutation, late pairing failure,
+malformed accounts/instructions, wrong authority, post-seal writes, rent return,
+verifier substitution and atomic CPI failure. Application output semantics,
+freshness and authorization remain the consuming application's responsibility.
+Production configuration must also account for trusted setup and the initial
+trusted deployment. The example deliberately rejects a remaining verifier
+upgrade authority. Aggregated proofs require another pinned profile/key/root
+and independent fixtures; removing the fixed-root check would not add support.
 
 ## Reference fixtures
 
