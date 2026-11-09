@@ -1,0 +1,19 @@
+[workspace]
+[package]
+name = "zisk-solana-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+[package.metadata]
+cargo-fuzz = true
+[dependencies]
+libfuzzer-sys = "=0.4.10"
+zisk-solana-verifier = { path = "../verifier" }
+ark-bn254 = "=0.4.0"
+ark-ff = "=0.4.2"
+[[bin]]
+name = "verify"
+path = "fuzz_targets/verify.rs"
+test = false
+doc = false
+bench = false
