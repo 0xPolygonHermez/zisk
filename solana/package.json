@@ -1,0 +1,12 @@
+{
+  "name": "zisk-solana-reference-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tools/*.test.mjs"
+  },
+  "dependencies": {
+    "@noble/hashes": "1.7.1",
+    "ffjavascript": "0.3.1"
+  }
+}
