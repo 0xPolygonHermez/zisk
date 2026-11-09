@@ -22,6 +22,7 @@ mod imports;
 pub mod layout;
 pub mod lowering;
 pub mod module;
+pub mod nitro;
 pub mod precompiles;
 pub mod wasi;
 pub mod zkvm;
@@ -149,7 +150,7 @@ fn transpile(
         .filter(|(m, name, _)| zkvm::is_zkvm_import(m, name))
         .map(|(_, name, _)| name.as_str())
         .collect();
-    let library = if zkvm_imports.iter().all(|name| zkvm::routine(name).is_none()) {
+    let mut library = if zkvm_imports.iter().all(|name| zkvm::routine(name).is_none()) {
         None
     } else {
         Some(ziskasm::assemble_zisk_library().map_err(|e| format!("ZisK library: {e}"))?)
@@ -192,6 +193,15 @@ fn transpile(
         codes.push(lowering::build_memset_table());
     }
 
+    // Native custom imports share the same library as built-in env imports.
+    if library.is_none()
+        && codes.iter().any(|c| c.insts.iter().any(|i| matches!(i.fixup, Fixup::LibraryAddr(_))))
+    {
+        library = Some(ziskasm::assemble_zisk_library()?);
+    }
+    let no_symbols = HashMap::new();
+    let library_symbols = library.as_ref().map_or(&no_symbols, |lib| &lib.symbols);
+
     // -- lay out functions in the program ROM area ---------------------------
     let mut func_addr = vec![0u64; codes.len()];
     let mut addr = ROM_ADDR;
@@ -209,7 +219,7 @@ fn transpile(
 
     // -- resolve symbolic jumps/calls and insert into the ROM ----------------
     for (i, code) in codes.iter().enumerate() {
-        resolve_and_insert(&mut rom, code, func_addr[i], &func_addr);
+        resolve_and_insert(&mut rom, code, func_addr[i], &func_addr, library_symbols)?;
     }
 
     // -- emit the entry routine (init data + call _start + finalize) ---------
@@ -226,12 +236,12 @@ fn transpile(
         )
         .into());
     }
-    resolve_and_insert(&mut rom, &entry, entry_base, &func_addr);
+    resolve_and_insert(&mut rom, &entry, entry_base, &func_addr, library_symbols)?;
 
     let mut bios_jump = Code::new();
     bios_jump.jump_abs(entry_base);
     let bios_jump_addr = rom.next_init_inst_addr;
-    resolve_and_insert(&mut rom, &bios_jump, bios_jump_addr, &func_addr);
+    resolve_and_insert(&mut rom, &bios_jump, bios_jump_addr, &func_addr, library_symbols)?;
     rom.next_init_inst_addr = bios_jump_addr + 4 * bios_jump.len() as u64;
 
     // The library goes in after every guest instruction, which it is renumbered to follow.
@@ -376,7 +386,13 @@ fn reject_overlapping_segments(data: &[module::DataSeg]) -> Result<(), Box<dyn E
 
 /// Resolves the symbolic fixups of a [`Code`] laid out at `base` and inserts every instruction into
 /// `rom.insts` at its final address.
-fn resolve_and_insert(rom: &mut ZiskRom, code: &Code, base: u64, func_addr: &[u64]) {
+fn resolve_and_insert(
+    rom: &mut ZiskRom,
+    code: &Code,
+    base: u64,
+    func_addr: &[u64],
+    symbols: &HashMap<String, u64>,
+) -> Result<(), Box<dyn Error>> {
     for (j, pending) in code.insts.iter().enumerate() {
         let inst_addr = base + 4 * j as u64;
         let mut zib = pending.zib.clone();
@@ -401,12 +417,31 @@ fn resolve_and_insert(rom: &mut ZiskRom, code: &Code, base: u64, func_addr: &[u6
             Fixup::FuncAddr(index) => {
                 zib.src_b("imm", func_addr[*index as usize], false);
             }
+            Fixup::LibraryAddr(symbol) => {
+                let address = symbols
+                    .get(*symbol)
+                    .ok_or_else(|| format!("wasm: unknown native library symbol {symbol}"))?;
+                if !matches!(*symbol, "ziskasm_zkvm_keccak256" | "ziskasm_zkvm_secp256k1_ecrecover")
+                {
+                    return Err(
+                        format!("wasm: unsupported native library entry point {symbol}").into()
+                    );
+                }
+                let call =
+                    zisk_definitions::ZKVMCALLS
+                        .iter()
+                        .find(|call| call.target == *symbol)
+                        .ok_or_else(|| format!("wasm: missing zkvmcall definition for {symbol}"))?;
+                rom.zkvmcalls.insert(call.id);
+                zib.src_b("imm", *address, false);
+            }
             Fixup::LabelAddr(label) => {
                 zib.src_b("imm", base + 4 * code.label_target(*label) as u64, false);
             }
         }
         zib.build(rom);
     }
+    Ok(())
 }
 
 /// Builds the entry routine: initialize the runtime, call each of `entry_calls` in order

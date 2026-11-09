@@ -221,7 +221,7 @@ fn_inv_wrl:
 fn_inv_ret:
 	ret
 fn_inv_panic:
-	copyb(0, 0) -> r10, end
+	halt(0, 0), end
 
 ; u64 zisklib_glv_decompose_fn_secp256k1(const u64* k, u64* k1_out, u64* k2_out)
 ;   [r10=k, r11=k1_out, r12=k2_out] -> r10 = sigma1 | (sigma2 << 1).
@@ -384,4 +384,4 @@ fn_glv_ret:
 	or(r6, r7) -> r10
 	ret
 fn_glv_panic:
-	copyb(0, 0) -> r10, end
+	halt(0, 0), end
