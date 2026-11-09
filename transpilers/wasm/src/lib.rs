@@ -98,6 +98,9 @@ fn transpile(
     imports::validate(imports)?;
     let mut module = parse_module(bytes)?;
     module.use_native_multi3();
+    if runtime.is_some() {
+        nitro::runtime::reserve_helper_memory(&mut module)?;
+    }
     reject_unsupported_layout(&module)?;
 
     // Resolve the program entry point.

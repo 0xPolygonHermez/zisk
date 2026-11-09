@@ -32,6 +32,8 @@ serde_json = { workspace = true }
 hex = { workspace = true }
 tiny-keccak = { workspace = true }
 base64 = "0.22"
+regex = { workspace = true }
+toml = { workspace = true }
 
 [features]
 default = []

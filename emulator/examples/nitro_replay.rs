@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     eprintln!("Compiling Nitro and native runtime ({} Wasm bytes)", wasm.len());
     let rom = zisk_transpiler_wasm::nitro::wasm2rom(&wasm, &runtime)?;
     eprintln!("Compiled {} instructions in {:?}; executing", rom.insts.len(), start.elapsed());
-    let options = EmuOptions { max_steps: 2_000_000_000, log_metrics: true, ..Default::default() };
+    let options = EmuOptions { max_steps: 3_000_000_000, log_metrics: true, ..Default::default() };
     let mut emu = Emu::new(&rom);
     emu.run(stdin, &options, None::<fn(EmuTrace)>);
     if let Some((reason, step, pc)) = emu.failure() {

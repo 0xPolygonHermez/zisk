@@ -55,7 +55,6 @@ struct Recording {
     delayed_msg_b64: String,
     delayed_msg_nr: Option<u64>,
     preimages_b64: BTreeMap<String, BTreeMap<String, String>>,
-    user_wasms: BTreeMap<String, BTreeMap<String, Value>>,
 }
 
 // Reject duplicate keys even inside ignored compiled caches, before typed deserialization.
@@ -165,10 +164,6 @@ fn encode(
     anyhow::ensure!(
         request.has_delayed_msg != request.delayed_msg_b64.is_empty(),
         "HasDelayedMsg must agree with the recorded delayed message"
-    );
-    anyhow::ensure!(
-        request.user_wasms.values().all(BTreeMap::is_empty),
-        "Stylus modules are unsupported"
     );
     let start = state(&request.start_state)?;
     let end = state(&request.expected_end_state)?;
@@ -462,15 +457,5 @@ mod tests {
             hex::encode(keccak(b"abc")),
             "4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45"
         );
-    }
-
-    #[test]
-    fn rejects_stylus_before_the_interpreter_is_available() {
-        let mut request = fixture();
-        request.user_wasms.insert("wavm".into(), BTreeMap::from([("module".into(), Value::Null)]));
-        assert!(encoded(&request)
-            .unwrap_err()
-            .to_string()
-            .contains("Stylus modules are unsupported"));
     }
 }

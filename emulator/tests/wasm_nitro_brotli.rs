@@ -182,6 +182,27 @@ fn decoder_grows_scratch_beyond_64k_in_vm() {
 
 #[test]
 #[ignore = "requires built native runtime ELF and float feature"]
+fn decoder_fills_a_16_mib_batch_with_a_16_mib_window_in_vm() {
+    // Brotli quality11/window24 fixture for exactly 16 MiB of ASCII A bytes: Nitro's default
+    // uncompressed batch limit with the largest standard window.
+    let data =
+        format!(r#"(data (i32.const 128) "{}")"#, bytes(&hex("9ffffffff82582e2b14020f7fe1f")));
+    let body = format!(
+        r#"
+      (drop (memory.grow (i32.const 257)))
+      (i32.store (i32.const 16) (i32.const 16777216))
+      (call $assert {})
+      (call $assert (i32.eq (i32.load (i32.const 16)) (i32.const 16777216)))
+      (call $assert (i32.eq (i32.load (i32.const 16778236)) (i32.const 0x41414141)))"#,
+        decode(128, 14, 1024)
+    );
+    let output = execute_with_step_limit(&data, &body, 16777208, 3_000_000_000)
+        .expect("a 16 MiB batch fits the arena");
+    assert_eq!(&output[112..144], &[b'A'; 32]);
+}
+
+#[test]
+#[ignore = "requires built native runtime ELF and float feature"]
 fn quality11_encoder_grows_scratch_and_matches_known_literal_stream_in_vm() {
     // Pinned one-shot C reference: 8bffff + xorshift32(seed7) bytes + 03.
     let mut state = 7u32;

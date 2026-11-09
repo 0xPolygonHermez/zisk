@@ -25,7 +25,19 @@ void runtime_sha256(const void *input, size_t len, uint8_t output[32]) {
     memcpy(output, digest.data, 32);
 }
 
-uint64_t nitro_dispatch(uint64_t op, const uint64_t args[8], uint64_t mem_end) {
+/* RustCrypto's pinned ZisK patch supplies an aligned 25-word permutation state. */
+void syscall_keccak_f(uint64_t *state) {
+    if (zkvm_keccak_f1600(state) != ZKVM_EOK) runtime_trap();
+}
+
+uint64_t nitro_dispatch(uint64_t op, const uint64_t args[16], uint64_t mem_end) {
     if (op == 20 || op == 21) return runtime_brotli(op, args, mem_end);
+    if (op >= 30 && op <= 41) {
+        if (mem_end < NITRO_WASM_BASE || mem_end > NITRO_ARENA) runtime_trap();
+        /* Nitro serializes its internally prepared modules with transient Brotli allocations. */
+        runtime_arena_reset();
+        return nitro_stylus_dispatch(op, args, (uint8_t *)(uintptr_t)NITRO_WASM_BASE,
+                                    mem_end - NITRO_WASM_BASE);
+    }
     return runtime_state(op, args, mem_end);
 }

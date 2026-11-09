@@ -16,6 +16,8 @@ pub struct Args {
     /// Run native codec controls before cross-compiling.
     #[arg(long)]
     test: bool,
+    #[arg(long)]
+    stylus_library: Option<PathBuf>,
 }
 
 fn download(path: &Path, url: &str, digest: &str) -> Result<()> {
@@ -64,6 +66,13 @@ fn brotli_source(out: &Path, repo: Option<&Path>) -> Result<PathBuf> {
 pub fn build(args: Args) -> Result<()> {
     let here = runtime();
     let root = root();
+    let library = args.stylus_library.unwrap_or_else(|| {
+        root.join(
+            "target/nitro-stylus/cargo/riscv64ima-zisk-zkvm-elf/release/libnitro_stylus_runtime.a",
+        )
+    });
+    let library =
+        library.canonicalize().context("missing Stylus library; run nitro_tools stylus first")?;
     let out = output_dir(args.out, "nitro-runtime")?;
     let dictionary = here.join("stylus-dictionary/stylus-program-11.lz");
     check_sha(&dictionary, DICTIONARY_SHA)?;
@@ -142,7 +151,7 @@ pub fn build(args: Args) -> Result<()> {
             .arg(format!("-ffile-prefix-map={}=.", root.display()))
             .arg("-I")
             .arg(&out)
-            .arg("-c")
+            .args(["-DBROTLI_BUILD_ENC_EXTRA_API", "-DBROTLI_HAVE_LOG2=1", "-c"])
             .arg(source)
             .arg("-o")
             .arg(&object))?;
@@ -169,7 +178,8 @@ pub fn build(args: Args) -> Result<()> {
         .arg(out.join("nitro-runtime.map"))
         .arg("-o")
         .arg(&elf)
-        .args(objects))?;
+        .args(objects)
+        .arg(&library))?;
     write_json(
         &out.join("build.json"),
         &json!({
@@ -179,7 +189,7 @@ pub fn build(args: Args) -> Result<()> {
             "target": "riscv64-unknown-elf", "march": "rv64imfd", "abi": "lp64",
             "elf_sha256": sha(&elf)?,
             "stylus_dictionary_revision": "62f0625ad9bdb4e1ff42f08688429fc33618f181",
-            "stylus_dictionary_sha256": DICTIONARY_SHA
+            "stylus_dictionary_sha256": DICTIONARY_SHA, "stylus_library_sha256": sha(&library)?
         }),
     )?;
     println!("{}", elf.display());

@@ -10,5 +10,7 @@ SECTIONS {
   .data : { *(.data .data.* .sdata .sdata.*) } :data
   .bss (NOLOAD) : { *(.bss .bss.* .sbss .sbss.*) *(COMMON) } :data
   ASSERT(. <= 0xa0fd0000, "Nitro runtime RAM exceeds reserved region")
+  __stylus_heap_start = 0xb7000000;
+  __stylus_heap_end = 0xbefd0000;
   /DISCARD/ : { *(.comment .eh_frame .riscv.attributes) }
 }

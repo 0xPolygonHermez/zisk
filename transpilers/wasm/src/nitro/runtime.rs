@@ -16,8 +16,25 @@ use zisk_riscv::elf_extraction::{
 
 pub(crate) const ROM_BASE: u64 = 0x9700_0000;
 const RAM_BASE: u64 = 0xa060_0000;
+// Above Go memory: Brotli's 64 MiB per-call arena (NITRO_ARENA), then the persistent
+// interpreter heap, which the arena cannot hold.
+const NATIVE_HEAP_BASE: u64 = 0xb300_0000;
 const ARGS: u64 = WASM_CTRL_ADDR + 0x200;
 const MODULE_HASH: u64 = WASM_CTRL_ADDR + 0x300;
+
+pub(crate) fn reserve_helper_memory(
+    module: &mut crate::module::WasmModule,
+) -> Result<(), Box<dyn Error>> {
+    let pages = (NATIVE_HEAP_BASE - WASM_MEM_BASE) / WASM_PAGE_SIZE;
+    if module.mem_initial_pages > pages {
+        return Err(format!(
+            "nitro: initial memory exceeds the {pages} pages below native helper memory"
+        )
+        .into());
+    }
+    module.mem_max_pages = module.mem_max_pages.min(pages);
+    Ok(())
+}
 
 pub(crate) struct Runtime {
     payload: ElfPayload,
@@ -239,6 +256,130 @@ pub(crate) fn imports<'a>() -> Vec<Import<'a>> {
             emit: emit::<21, 7, 127>,
         },
         Import { module: "hooks", name: "beforeFirstIO", params: &[], results: &[], emit: |_| {} },
+        Import {
+            module: "programs",
+            name: "activate_v2",
+            params: &[I32, I32, I32, I32, I32, I32, I32, I64, I32, I32, I32, I32, I32, I32],
+            results: &[I32],
+            emit: emit::<30, 14, 0x3f7f>,
+        },
+        Import {
+            module: "programs",
+            name: "create_stylus_config",
+            params: &[I32, I32, I32, I32],
+            results: &[I64],
+            emit: emit::<31, 4, 15>,
+        },
+        Import {
+            module: "programs",
+            name: "create_evm_data_v2",
+            params: &[I64, I32, I64, I32, I64, I64, I64, I32, I32, I32, I32, I32, I32, I32, I32],
+            results: &[I64],
+            emit: emit::<32, 15, 0x7f8a>,
+        },
+        Import {
+            module: "programs",
+            name: "new_program",
+            params: &[I32, I32, I32, I64, I64, I64],
+            results: &[I32],
+            emit: emit::<33, 6, 7>,
+        },
+        Import {
+            module: "programs",
+            name: "start_program",
+            params: &[I32],
+            results: &[I32],
+            emit: emit::<34, 1, 1>,
+        },
+        Import {
+            module: "programs",
+            name: "get_request",
+            params: &[I32, I32],
+            results: &[I32],
+            emit: emit::<35, 2, 3>,
+        },
+        Import {
+            module: "programs",
+            name: "get_request_data",
+            params: &[I32, I32],
+            results: &[],
+            emit: emit::<36, 2, 3>,
+        },
+        Import {
+            module: "programs",
+            name: "set_response",
+            params: &[I32, I64, I32, I32, I32, I32],
+            results: &[],
+            emit: emit::<37, 6, 61>,
+        },
+        Import {
+            module: "programs",
+            name: "send_response",
+            params: &[I32],
+            results: &[I32],
+            emit: emit::<38, 1, 1>,
+        },
+        Import {
+            module: "programs",
+            name: "pop",
+            params: &[],
+            results: &[],
+            emit: emit::<39, 0, 0>,
+        },
+        Import {
+            module: "programs",
+            name: "program_requires_prepare",
+            params: &[I32],
+            results: &[I32],
+            emit: emit::<40, 1, 1>,
+        },
+        Import {
+            module: "programs",
+            name: "program_prepare",
+            params: &[I32, I64, I32, I32, I32, I32, I32, I32],
+            results: &[],
+            emit: emit::<41, 8, 253>,
+        },
     ]);
     imports
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::module::parse_module;
+
+    #[test]
+    fn nitro_memory_reservation_preserves_smaller_guest_limits() {
+        let wasm = wat::parse_str("(module (memory 1 2))").unwrap();
+        let mut module = parse_module(&wasm).unwrap();
+        reserve_helper_memory(&mut module).unwrap();
+        assert_eq!(module.mem_max_pages, 2);
+    }
+
+    #[test]
+    fn nitro_memory_cannot_grow_or_start_inside_native_helper_memory() {
+        let pages = (NATIVE_HEAP_BASE - WASM_MEM_BASE) / WASM_PAGE_SIZE;
+        let wasm = wat::parse_str("(module (memory 1))").unwrap();
+        let mut module = parse_module(&wasm).unwrap();
+        assert!(module.mem_max_pages > pages, "generic Wasm retains its existing memory limit");
+        reserve_helper_memory(&mut module).unwrap();
+        assert_eq!(module.mem_max_pages, pages);
+        let oversized = wat::parse_str(format!("(module (memory {}))", pages + 1)).unwrap();
+        let mut module = parse_module(&oversized).unwrap();
+        assert!(reserve_helper_memory(&mut module).is_err());
+    }
+
+    #[test]
+    fn stylus_imports_reject_unknown_methods_and_wrong_signatures() {
+        for declaration in [
+            r#"(import "programs" "unknown" (func))"#,
+            r#"(import "programs" "create_stylus_config" (func (param i32 i32 i32 i32) (result i32)))"#,
+            r#"(import "programs" "program_prepare" (func (param i32 i32 i32 i32 i32 i32 i32 i32)))"#,
+        ] {
+            let wasm = wat::parse_str(format!("(module {declaration})")).unwrap();
+            let module = parse_module(&wasm).unwrap();
+            assert!(crate::imports::build(&module, 0, &imports(), true).is_err());
+        }
+    }
 }

@@ -1,5 +1,6 @@
 //! Build native Nitro helpers and prepare recorded replay inputs.
 mod build;
+mod stylus;
 mod witness;
 
 use anyhow::{bail, Context, Result};
@@ -19,8 +20,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Action {
-    /// Build the pinned native C helper.
+    /// Build the pinned C helper and link the Stylus static library.
     Build(build::Args),
+    /// Build the canonical Stylus interpreter from pinned Git sources.
+    Stylus(stylus::Args),
     /// Encode a recorded transition and its separate expected public claim.
     Witness(witness::Args),
 }
@@ -28,6 +31,7 @@ enum Action {
 fn main() -> Result<()> {
     match Cli::parse().command {
         Action::Build(args) => build::build(args),
+        Action::Stylus(args) => stylus::build(args),
         Action::Witness(args) => witness::prepare(args),
     }
 }

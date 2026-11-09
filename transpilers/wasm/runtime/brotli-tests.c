@@ -22,10 +22,18 @@ uint8_t *runtime_checked_range(uint64_t off, uint64_t n, uint64_t end) {
 }
 extern size_t runtime_arena_highwater(void);
 static const uint64_t end = NITRO_WASM_BASE + 1048576;
+/* Batch-sized controls address the whole mapping; the others keep a 1 MiB memory end. */
+#define BIG_MEM (48u << 20)
+static const uint64_t big_end = NITRO_WASM_BASE + BIG_MEM;
+static uint64_t call_until(uint64_t mem_end, uint64_t op, uint32_t input, uint32_t len,
+                           uint32_t output, uint32_t outlen, uint32_t level, uint32_t window,
+                           uint32_t dict) {
+    uint64_t args[8] = {input, len, output, outlen, level, window, dict};
+    return runtime_brotli(op, args, mem_end);
+}
 static uint64_t call(uint64_t op, uint32_t input, uint32_t len, uint32_t output,
                      uint32_t outlen, uint32_t level, uint32_t window, uint32_t dict) {
-    uint64_t args[8] = {input, len, output, outlen, level, window, dict};
-    return runtime_brotli(op, args, end);
+    return call_until(end, op, input, len, output, outlen, level, window, dict);
 }
 static void length(uint32_t n) { memcpy(mem + 16, &n, 4); }
 static uint32_t result_length(void) { uint32_t n; memcpy(&n, mem + 16, 4); return n; }
@@ -51,7 +59,7 @@ static size_t reference_compress(const uint8_t *input, size_t len, uint8_t *outp
     return count;
 }
 int main(void) {
-    mem = mmap(0, 1048576, PROT_READ|PROT_WRITE,
+    mem = mmap(0, BIG_MEM, PROT_READ|PROT_WRITE,
                MAP_PRIVATE|MAP_ANON, -1, 0);
     assert(mem != MAP_FAILED);
     const uint8_t hello[] = {0x0b, 0x02, 0x80, 'h', 'e', 'l', 'l', 'o', 0x03};
@@ -166,15 +174,35 @@ int main(void) {
     assert(call(20, 200000, compressed, 524288, 16, 0, 0, 0) == 0);
     assert(result_length() == 65537);
     for (uint32_t i = 0; i < 131072; i++) assert(mem[524288 + i] == 0x5a);
+    /* Nitro's default 16 MiB batch limit fits with the largest standard window, whether the
+     * batch is compressible or not. */
+    const uint32_t batch = 16u << 20, batch_output = 24u << 20;
+    uint8_t *plain = malloc(batch), *packed = malloc(BrotliEncoderMaxCompressedSize(batch));
+    assert(plain && packed);
+    for (int dense = 0; dense < 2; dense++) {
+        for (uint32_t i = 0, x = 29; i < batch; i++) {
+            x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+            plain[i] = dense || i % 64 == 0 ? (uint8_t)x : (uint8_t)(i >> 6);
+        }
+        size_t packed_len = BrotliEncoderMaxCompressedSize(batch);
+        assert(BrotliEncoderCompress(1, 24, BROTLI_MODE_GENERIC, batch, plain, &packed_len, packed));
+        assert(4096 + packed_len <= batch_output);
+        memcpy(mem + 4096, packed, packed_len);
+        length(batch);
+        assert(call_until(big_end, 20, 4096, packed_len, batch_output, 16, 0, 0, 0) == 1);
+        assert(result_length() == batch && !memcmp(mem + batch_output, plain, batch));
+    }
+    free(plain);
+    free(packed);
     /* Actual encoder working memory can still exceed the bounded arena. */
-    for (uint32_t i = 0, x = 23; i < 262144; i++) {
+    for (uint32_t i = 0, x = 23; i < (2u << 20); i++) {
         x ^= x << 13; x ^= x >> 17; x ^= x << 5;
         mem[4096 + i] = (uint8_t)x;
     }
-    length(300000);
+    length(3u << 20);
     expect_trap = 1;
     if (!setjmp(trapped)) {
-        call(21, 4096, 262144, 524288, 16, 11, 22, 0);
+        call_until(big_end, 21, 4096, 2u << 20, batch_output, 16, 11, 22, 0);
         assert(!"internal codec allocation exhaustion must trap");
     }
     expect_trap = 0;

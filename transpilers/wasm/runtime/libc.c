@@ -1,9 +1,13 @@
 #include "runtime.h"
 
 /* Each import starts fresh; free/coalescing also bounds temporary encoder work. */
-#define ARENA_SIZE (8 * 1024 * 1024)
+#define ARENA_SIZE NITRO_ARENA_SIZE
 typedef struct Block { size_t size; struct Block *next; size_t free; size_t pad; } Block;
+#ifdef NITRO_RUNTIME_HOST_TEST
 _Alignas(16) static uint8_t arena[ARENA_SIZE];
+#else
+#define arena ((uint8_t *)(uintptr_t)NITRO_ARENA)
+#endif
 static size_t live_bytes, peak_bytes;
 void runtime_arena_reset(void) {
     Block *first = (Block *)arena;
