@@ -1,0 +1,44 @@
+{
+  "runtime": "anvil Version: 1.5.1-stable",
+  "hardfork": "prague",
+  "compiler": {
+    "version": "0.8.30+commit.73712a01"
+  },
+  "optimizer": {
+    "enabled": true,
+    "runs": 200
+  },
+  "proof_sha256": "1f6de6c6eda737c67406d0dcbce3650039842b4272edc79695f7228fd9fbe80c",
+  "runtime_bytecode_sha256": "3d8f83766606b7cf8705a60819a8cc3c5297d8542f895044bcb20194943c5a2d",
+  "runtime_bytecode_bytes": 23395,
+  "deployment_gas": 5111547,
+  "measurements": {
+    "valid_wrapper": {
+      "transaction_gas": 435183,
+      "intrinsic_gas": 132356,
+      "execution_gas": 302827,
+      "calldata_bytes": 7460,
+      "calldata_zero_bytes": 667,
+      "calldata_floor_gas": 299390,
+      "status": 1
+    },
+    "late_invalid_wrapper": {
+      "transaction_gas": 435200,
+      "intrinsic_gas": 132356,
+      "execution_gas": 302844,
+      "calldata_bytes": 7460,
+      "calldata_zero_bytes": 667,
+      "calldata_floor_gas": 299390,
+      "status": 0
+    },
+    "valid_core": {
+      "transaction_gas": 396118,
+      "intrinsic_gas": 129176,
+      "execution_gas": 266942,
+      "calldata_bytes": 6788,
+      "calldata_zero_bytes": 36,
+      "calldata_floor_gas": 291440,
+      "status": 1
+    }
+  }
+}
