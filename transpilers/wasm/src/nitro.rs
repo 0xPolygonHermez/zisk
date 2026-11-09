@@ -9,6 +9,38 @@ use super::{
     Import,
 };
 
+pub(crate) mod runtime;
+
+/// Compile Nitro with an explicitly supplied, trusted native runtime ELF.
+/// The resulting ROM/VK binds both artifacts; stdin remains untrusted witness.
+pub fn wasm2rom(
+    bytes: &[u8],
+    runtime_elf: &[u8],
+) -> Result<zisk_core::ZiskRom, Box<dyn std::error::Error>> {
+    if !cfg!(feature = "float") {
+        return Err("nitro: build with the float feature".into());
+    }
+    let runtime = runtime::Runtime::new(bytes, runtime_elf)?;
+    let module = super::module::parse_module(bytes)?;
+    let mut imports = runtime::imports();
+    // Unsupported Stylus calls are explicit execution traps, regardless of their signature.
+    for (namespace, name, ty) in &module.imports {
+        if namespace == "programs"
+            && !imports.iter().any(|i| i.module == namespace && i.name == name)
+        {
+            let sig = &module.sigs[*ty as usize];
+            imports.push(Import {
+                module: namespace,
+                name,
+                params: &sig.params,
+                results: &sig.results,
+                emit: Code::trap,
+            });
+        }
+    }
+    super::wasm2rom_impl(bytes, &imports, Some(&runtime))
+}
+
 /// Registers Nitro's `arbcrypto` imports without changing the generic compiler or CLI defaults.
 pub fn crypto_imports() -> [Import<'static>; 2] {
     [

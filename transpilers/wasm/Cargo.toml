@@ -21,10 +21,22 @@ zisk-riscv = { workspace = true }
 ziskasm = { workspace = true }
 
 wasmparser = { workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
 wat = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+hex = { workspace = true }
+tiny-keccak = { workspace = true }
+base64 = "0.22"
 
 [features]
 default = []
 float = ["zisk-riscv/float", "zisk-core/float"]
+
+[[example]]
+name = "nitro_tools"
+path = "examples/nitro_tools/main.rs"

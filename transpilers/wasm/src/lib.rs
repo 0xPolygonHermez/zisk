@@ -68,7 +68,7 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 /// routine. A function is named from the module's `name` section when present, otherwise from
 /// its import or export name, otherwise `wasm-function[<index>]`.
 pub fn wasm_function_symbols(bytes: &[u8]) -> Result<Vec<WasmFunctionSymbol>, Box<dyn Error>> {
-    Ok(transpile(bytes, &[])?.1)
+    Ok(transpile(bytes, &[], None)?.1)
 }
 
 /// Transpiles a module with explicitly registered custom imports.
@@ -79,12 +79,21 @@ pub fn wasm2rom_with_imports(
     bytes: &[u8],
     imports: &[Import<'_>],
 ) -> Result<ZiskRom, Box<dyn Error>> {
-    Ok(transpile(bytes, imports)?.0)
+    wasm2rom_impl(bytes, imports, None)
+}
+
+fn wasm2rom_impl(
+    bytes: &[u8],
+    imports: &[Import<'_>],
+    runtime: Option<&nitro::runtime::Runtime>,
+) -> Result<ZiskRom, Box<dyn Error>> {
+    Ok(transpile(bytes, imports, runtime)?.0)
 }
 
 fn transpile(
     bytes: &[u8],
     imports: &[Import<'_>],
+    runtime: Option<&nitro::runtime::Runtime>,
 ) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn Error>> {
     imports::validate(imports)?;
     let mut module = parse_module(bytes)?;
@@ -181,7 +190,7 @@ fn transpile(
         } else if precompiles::is_precompile_import(import_module, name) {
             precompiles::build_stub(&module, i)?
         } else {
-            imports::build(&module, i, imports)?
+            imports::build(&module, i, imports, runtime.is_some())?
         });
     }
     for d in 0..module.defined.len() {
@@ -195,12 +204,20 @@ fn transpile(
 
     // Native custom imports share the same library as built-in env imports.
     if library.is_none()
-        && codes.iter().any(|c| c.insts.iter().any(|i| matches!(i.fixup, Fixup::LibraryAddr(_))))
+        && (runtime.is_some()
+            || codes
+                .iter()
+                .any(|c| c.insts.iter().any(|i| matches!(i.fixup, Fixup::LibraryAddr(_)))))
     {
         library = Some(ziskasm::assemble_zisk_library()?);
     }
     let no_symbols = HashMap::new();
     let library_symbols = library.as_ref().map_or(&no_symbols, |lib| &lib.symbols);
+    let program_rom_end =
+        if runtime.is_some() { nitro::runtime::ROM_BASE } else { PROGRAM_ROM_END };
+    if let Some(runtime) = runtime {
+        runtime.link(&mut rom, library_symbols)?;
+    }
 
     // -- lay out functions in the program ROM area ---------------------------
     let mut func_addr = vec![0u64; codes.len()];
@@ -208,10 +225,10 @@ fn transpile(
     for (i, code) in codes.iter().enumerate() {
         func_addr[i] = addr;
         addr += 4 * code.len() as u64;
-        if addr > PROGRAM_ROM_END {
+        if addr > program_rom_end {
             return Err(format!(
                 "wasm: program too large ({addr:#x} exceeds the program ROM end \
-                 {PROGRAM_ROM_END:#x})"
+                 {program_rom_end:#x})"
             )
             .into());
         }
@@ -219,29 +236,50 @@ fn transpile(
 
     // -- resolve symbolic jumps/calls and insert into the ROM ----------------
     for (i, code) in codes.iter().enumerate() {
-        resolve_and_insert(&mut rom, code, func_addr[i], &func_addr, library_symbols)?;
+        resolve_and_insert(
+            &mut rom,
+            code,
+            func_addr[i],
+            &func_addr,
+            library_symbols,
+            runtime.map(|r| r.entry),
+        )?;
     }
 
     // -- emit the entry routine (init data + call _start + finalize) ---------
     // It goes in the program ROM window, after the functions, and the BIOS only jumps to it:
     // `_start` returns to its caller through x1, and the assembly emulator resolves dynamic jumps
     // into the BIOS window only in float builds.
-    let entry = build_entry_routine(&module, &func_addr, &entry_calls);
+    let entry = build_entry_routine(&module, &func_addr, &entry_calls, runtime);
     let entry_base = addr;
     let entry_end = entry_base + 4 * entry.len() as u64;
-    if entry_end > PROGRAM_ROM_END {
+    if entry_end > program_rom_end {
         return Err(format!(
             "wasm: program too large ({entry_end:#x} exceeds the program ROM end \
-             {PROGRAM_ROM_END:#x})"
+             {program_rom_end:#x})"
         )
         .into());
     }
-    resolve_and_insert(&mut rom, &entry, entry_base, &func_addr, library_symbols)?;
+    resolve_and_insert(
+        &mut rom,
+        &entry,
+        entry_base,
+        &func_addr,
+        library_symbols,
+        runtime.map(|r| r.entry),
+    )?;
 
     let mut bios_jump = Code::new();
     bios_jump.jump_abs(entry_base);
     let bios_jump_addr = rom.next_init_inst_addr;
-    resolve_and_insert(&mut rom, &bios_jump, bios_jump_addr, &func_addr, library_symbols)?;
+    resolve_and_insert(
+        &mut rom,
+        &bios_jump,
+        bios_jump_addr,
+        &func_addr,
+        library_symbols,
+        runtime.map(|r| r.entry),
+    )?;
     rom.next_init_inst_addr = bios_jump_addr + 4 * bios_jump.len() as u64;
 
     // The library goes in after every guest instruction, which it is renumbered to follow.
@@ -392,6 +430,7 @@ fn resolve_and_insert(
     base: u64,
     func_addr: &[u64],
     symbols: &HashMap<String, u64>,
+    runtime_entry: Option<u64>,
 ) -> Result<(), Box<dyn Error>> {
     for (j, pending) in code.insts.iter().enumerate() {
         let inst_addr = base + 4 * j as u64;
@@ -435,6 +474,9 @@ fn resolve_and_insert(
                 rom.zkvmcalls.insert(call.id);
                 zib.src_b("imm", *address, false);
             }
+            Fixup::RuntimeAddr => {
+                zib.src_b("imm", runtime_entry.ok_or("wasm: no native runtime linked")?, false);
+            }
             Fixup::LabelAddr(label) => {
                 zib.src_b("imm", base + 4 * code.label_target(*label) as u64, false);
             }
@@ -448,7 +490,12 @@ fn resolve_and_insert(
 /// (the start-section function, then `_start`), then publish output and halt.  Returned as a
 /// [`Code`] so its calls and internal jumps resolve through the same fixup machinery as ordinary
 /// functions.
-fn build_entry_routine(module: &WasmModule, func_addr: &[u64], entry_calls: &[u32]) -> Code {
+fn build_entry_routine(
+    module: &WasmModule,
+    func_addr: &[u64],
+    entry_calls: &[u32],
+    runtime: Option<&nitro::runtime::Runtime>,
+) -> Code {
     let mut code = Code::new();
 
     // marchid = Zisk (parity with the RISC-V path).
@@ -481,10 +528,16 @@ fn build_entry_routine(module: &WasmModule, func_addr: &[u64], entry_calls: &[u3
     code.set_mem_limits();
 
     code.load_imm_to_reg(REG_FP, WASM_STACK_TOP);
+    if let Some(runtime) = runtime {
+        runtime.initialize(&mut code);
+    }
     for &func_index in entry_calls {
         emit_entry_call(&mut code, func_index);
     }
 
+    if runtime.is_some() {
+        nitro::runtime::emit_finalize(&mut code);
+    }
     wasi::emit_pubout_exit(&mut code);
 
     code
