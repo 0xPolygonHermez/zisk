@@ -1378,6 +1378,42 @@ impl<'a> Riscv2ZiskContext<'a> {
             return;
         }
 
+        // auipc rd followed by addi rd, rd, imm (the `la`/`lla` pair GCC emits for the address
+        // of a global): rd = pc + auipc_imm + addi_imm is a constant, so one copyb writes it and
+        // jumps past the addi. The addi keeps its own ROM entry, so a jump that lands on it
+        // directly still runs it. Same idea as the auipc + jalr fusion above.
+        if let Some(next) = next_instructions.first() {
+            let next_size = match next.inst_name {
+                RiscvInstName::Addi => 4,
+                RiscvInstName::CAddi => 2,
+                _ => 0,
+            };
+            if next_size != 0
+                && i.rd != 0
+                && next.rd == i.rd
+                && next.rs1 == i.rd
+                && next.rom_address == i.rom_address + 4
+            {
+                let value = (i.rom_address as i64)
+                    .wrapping_add(i.imm as i64) // already shifted << 12 at decoding time
+                    .wrapping_add(next.imm as i64) as u64;
+                let skip = 4 + next_size;
+                let mut zib =
+                    ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
+                zib.src_a("imm", 0, false);
+                zib.src_b("imm", value, false);
+                zib.op("copyb").unwrap();
+                zib.store("reg", i.rd as i64, false, false);
+                zib.j(skip, skip);
+                zib.verbose(&format!(
+                    "auipc r{}, 0x{:x} + addi r{}, r{}, {:#x} = 0x{:x}",
+                    i.rd, i.imm, next.rd, next.rs1, next.imm, value
+                ));
+                zib.build(self.rom);
+                return;
+            }
+        }
+
         let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("imm", 0, false);
         zib.src_b("imm", (i.rom_address as i64 + (i.imm as i64)) as u64, false);
@@ -3346,6 +3382,51 @@ mod tests {
                 assert_eq!((zi.store, zi.store_offset), (STORE_REG, rd as i64), "rd={rd}");
             }
             assert_eq!((zi.jmp_offset1, zi.jmp_offset2), (0, 4), "rd={rd} rs1={rs1}");
+        }
+    }
+
+    /// `auipc rd` + `addi rd, rd, imm` (or `c.addi`) becomes one copyb of the constant
+    /// pc + auipc_imm + addi_imm into rd that jumps past the addi; any other follower, or an
+    /// addi that reads or writes a different register, leaves the auipc on its own.
+    #[test]
+    fn auipc_addi_same_rd_is_one_constant() {
+        let copyb = ZiskOp::try_from_name("copyb").unwrap().code();
+        let auipc = RiscvInst {
+            rom_address: ROM_ADDR,
+            inst_name: RiscvInstName::Auipc,
+            rd: 5,
+            imm: 0x10012 << 12,
+            ..Default::default()
+        };
+        let addi = |name, rd, rs1, imm| RiscvInst {
+            rom_address: ROM_ADDR + 4,
+            inst_name: name,
+            rd,
+            rs1,
+            imm,
+            ..Default::default()
+        };
+        let base = ROM_ADDR as i64 + (0x10012 << 12);
+        // (follower, fused value or None, jump past)
+        let cases = [
+            (addi(RiscvInstName::Addi, 5, 5, -400), Some(base - 400), 8),
+            (addi(RiscvInstName::CAddi, 5, 5, 12), Some(base + 12), 6),
+            (addi(RiscvInstName::Addi, 6, 5, -400), None, 4), // writes another register
+            (addi(RiscvInstName::Addi, 5, 6, -400), None, 4), // reads another register
+            (addi(RiscvInstName::Add, 5, 5, 0), None, 4),     // not an addi
+        ];
+        for (next, fused, skip) in cases {
+            let mut rom = ZiskRom::default();
+            Riscv2ZiskContext::new(&mut rom).auipc(&auipc, std::slice::from_ref(&next));
+
+            assert_eq!(rom.insts.len(), 1, "{next:?}: one instruction");
+            let zi = &rom.insts[&ROM_ADDR].i;
+            assert_eq!(zi.op, copyb, "{next:?}");
+            let value = fused.unwrap_or(base) as u64;
+            assert_eq!((zi.b_src, zi.b_offset_imm0), (SRC_IMM, value & 0xffff_ffff), "{next:?}");
+            assert_eq!(zi.b_use_sp_imm1, value >> 32, "{next:?}");
+            assert_eq!((zi.store, zi.store_offset), (STORE_REG, 5), "{next:?}");
+            assert_eq!((zi.jmp_offset1, zi.jmp_offset2), (skip, skip), "{next:?}");
         }
     }
 }
