@@ -7,6 +7,16 @@ the caller binds its expected guest key and all 512 output bytes.
 The [profile specification](docs/profile.md) records the pinned inputs,
 statement encoding and cryptographic acceptance requirements.
 
+## Components and guarantees
+
+- `verifier/`: strict scalar/point parsing, SHA-256 statement binding, exact
+  Keccak transcript, checked inverses, polynomial arithmetic and native BN254
+  operations. JS intermediate traces, arkworks arithmetic and Solidity verdicts
+  provide independent comparisons.
+- `tools/src/generate.rs`: deterministic translation of six stages from one
+  SHA-256-pinned Solidity verifier; unsupported source/syntax fails closed.
+  [Scalar arithmetic notes](docs/scalar.md) explain the optimized backend's bounds.
+
 ## Reference fixtures
 
 `tools/prepare-fixtures.sh` verifies the published Proofman crate checksum,
