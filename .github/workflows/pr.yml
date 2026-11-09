@@ -102,8 +102,11 @@ jobs:
           RUST_BACKTRACE: 1
 
       # The official WebAssembly test suite, at the commit pinned in emulator/tests/wasm_spec.rs.
+      # Starts from an empty directory: on the self-hosted runner $RUNNER_TEMP outlives a run,
+      # so a previous run's clone (and its `origin`) can still be there.
       - name: Fetch the WebAssembly test suite
         run: |
+          rm -rf "$RUNNER_TEMP/wasm-testsuite"
           mkdir -p "$RUNNER_TEMP/wasm-testsuite"
           cd "$RUNNER_TEMP/wasm-testsuite"
           git init -q
