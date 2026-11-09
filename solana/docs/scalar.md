@@ -55,7 +55,8 @@ xi²¹⁶ reuses xi²¹⁵·xi. All inverse checks and zero-denominator checks r
 Tests compare complete JS transcript/quotient/group traces, the release proof,
 each proof-word mutation, and exceptional challenges. Arithmetic tests compare
 100,000 seeded pairs, raw limb boundaries, encoding, hash reduction, subtraction,
-squaring and powers against arkworks. Separate SBF tests execute the real
+squaring and powers against arkworks. Coverage-guided fuzzing checks arithmetic
+equivalence and exercises the proof decoder. Separate SBF tests execute the real
 ELF, including every proof-word mutation and late pairing failure.
 
 These bounds explain the implementation; the tests are evidence, not a formal

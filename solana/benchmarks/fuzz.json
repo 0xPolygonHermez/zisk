@@ -1,0 +1,79 @@
+{
+  "date": "2026-11-08",
+  "host": "aarch64-apple-darwin",
+  "toolchain": "nightly-2026-02-12; rustc 1.95.0-nightly (7057231bd 2026-02-11)",
+  "cargo_fuzz": "0.13.1",
+  "libfuzzer_sys": "0.4.10",
+  "sanitizer": "address (cargo-fuzz default)",
+  "campaigns": [
+    {
+      "target": "verify",
+      "seed": 17012026,
+      "max_len": 7297,
+      "requested_seconds": 1800,
+      "elapsed_seconds": 1801,
+      "executions": 3944810,
+      "coverage_counter": 2478,
+      "feature_counter": 3873,
+      "corpus_files": 193,
+      "corpus_kb": 1142,
+      "rss_mb": 440,
+      "failures": 0,
+      "starting_corpus": "one 7296-byte public release proof reconstructed from the fixture",
+      "binary_sha256": "2a64e96921c294b4f556fc800a2b13e73ea0cc7cdba1460231344375c69e1f11",
+      "log_sha256": "cb68b1cec8c025e680f5ed28bad7fdc9b1b828131d6fc20b11e5a254fd4462e4",
+      "local_log": ".cache/campaigns/verify-1800.log"
+    },
+    {
+      "target": "buffer_state",
+      "seed": 17012027,
+      "max_len": 384,
+      "requested_seconds": 600,
+      "elapsed_seconds": 601,
+      "executions": 4012854,
+      "coverage_counter": 549,
+      "feature_counter": 3575,
+      "corpus_files": 433,
+      "corpus_kb": 44,
+      "rss_mb": 455,
+      "failures": 0,
+      "starting_corpus": "one 84-byte lifecycle reconstructed from the historical state model",
+      "binary_sha256": "03a262d5cb16e389b81fb30c139217b2646fc0c231e5b5e2b0f3f88be54740ac",
+      "log_sha256": "f6946f9479ea4986647197d507d1861d6e841c1f7abc0ff1ab428fd099e72c8a",
+      "local_log": ".cache/campaigns/buffer_state-600.log"
+    }
+  ],
+  "production_revision": "d4d3b86308875762361e74a803093d5bd505d553",
+  "source_sha256": {
+    "fuzz/fuzz_targets/buffer_state.rs": "1adcf925490396b764e61facd118574cca2eb37ada981de429de8103c2664ce6",
+    "fuzz/fuzz_targets/verify.rs": "387b55cf55a6195db373ce58bf9d936e24b665fccea22369dc72e04020544cc8",
+    "verifier/src/curve.rs": "027fb8a602a15c3e7f5a444c2429d2d87c756f39bf04ceb0e36c1bb1a8edf65a",
+    "verifier/src/lib.rs": "57999bd34400938390aa225a00e7c7faf83275b95910dbaf5755de5778e7f42e",
+    "verifier/src/profile.rs": "90ab964ef40168c0b28843274bfd90f4860db924766dee2b09c9ba7cd8864139",
+    "verifier/src/scalar.rs": "619ca495276c8d67e6b2b15922e6331a9adb73b9654fe42daa5511d72751dc6e",
+    "program/src/lib.rs": "15d0ac543b506fbf2de6a574c6a85b0578a6400f6303edf10da69c7d3b8d6e92"
+  },
+  "smoke": [
+    {
+      "target": "verify",
+      "seed": 17012026,
+      "requested_seconds": 60,
+      "executions": 714906,
+      "elapsed_seconds": 61,
+      "failures": 0,
+      "starting_corpus": "retained local campaign corpus plus public seed",
+      "log_sha256": "fec3300ba60762ddcebcd3531073b257b7b3fe6cc83a9a1c239d244c679d6b7a"
+    },
+    {
+      "target": "buffer_state",
+      "seed": 17012026,
+      "requested_seconds": 60,
+      "executions": 644893,
+      "elapsed_seconds": 61,
+      "failures": 0,
+      "starting_corpus": "retained local campaign corpus plus public seed",
+      "log_sha256": "1a330e39fb561f0419b46595bd5bbae42b24fc997b29aab759b9091dca3e104d"
+    }
+  ],
+  "final_fuzz_lock_sha256": "95550c1da33bf12ac5212625e4129e5fed20b6d879bc1483336e004f9b3d4a33"
+}

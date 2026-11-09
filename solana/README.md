@@ -44,6 +44,10 @@ rustup component add clippy rustfmt
 cargo install cargo-build-sbf --version 4.6.0 --locked --root .cache/build-tools
 bash scripts/check.sh
 
+cargo install cargo-fuzz --version 0.13.1 --locked --root .cache/fuzz-tools
+rustup toolchain install nightly-2026-02-12 --profile minimal
+bash scripts/fuzz.sh 60
+
 # Requires solana-cli and solana-test-validator 2.2.21 on PATH.
 node tools/test_validator.mjs
 ```
@@ -76,6 +80,53 @@ budget is used by the runtime tests.
 the independent references and host/client tests, builds SBF, and runs the runtime
 suite. Its benchmark check rejects missing measurements, packet-limit violations,
 transactions reaching 1.4M CUs, and CU increases over 5%. Reports go in `.cache/`.
+The CI workflow runs these same commands and publishes runtime and fuzz logs.
+
+The fuzz script runs each target for the supplied number of seconds. It rebuilds
+public starting seeds and retains discovered inputs in ignored `fuzz/corpus/`.
+The [validation report](docs/validation.md) records campaign results, measured
+stage costs, review scope and remaining acceptance gates.
+
+## EVM comparison on the same proof
+
+Run `cargo run --locked --manifest-path tools/Cargo.toml -- benchmark-evm`
+to measure real transaction receipts against the unchanged Solidity verifier
+in a temporary, loopback-only Anvil. It terminates
+that node when finished. Results are saved in [benchmarks/evm.json](benchmarks/evm.json).
+The recorded run uses Anvil 1.5.1, Prague, solc 0.8.30 and 200 optimizer runs.
+
+| Measurement | EVM | Solana |
+|---|---:|---:|
+| Valid verification transaction | 435,183 gas | 1,374,842 CUs |
+| Late-invalid verification transaction | 435,200 gas | 1,374,877 CUs |
+| Raw proof | 6,752 bytes | 6,752 bytes |
+| Transactions to upload and verify a fresh proof | 1 | 11 |
+| Refundable proof-buffer rent reserve | None | 0.048420720 SOL |
+
+Gas and CUs have different pricing and execution models; their ratio is not a
+speed or fee comparison. EVM's valid total includes 132,356 intrinsic/calldata
+gas and 302,827 execution gas. Its calldata is 7,460 bytes. The direct core
+verifier, with a precomputed public digest, uses 266,942 execution gas; use the
+full wrapper for the statement-binding comparison. The old Foundry test's gas
+includes loading fixture storage and is not the direct transaction cost.
+
+Solana's 11 transactions are create/initialize, eight appends, seal and verify
+(the uploader saves the result during that last transaction). Later consumption
+adds one transaction and a 32-byte permanent receipt costing 0.001113600 SOL at
+the measured rent settings. That receipt is retained to prevent replay.
+They use 12 signatures: at 5,000 lamports each, the base fees total 0.000060 SOL
+before priority fees. Closing adds one transaction and 0.000005 SOL base fee,
+and returns the rent reserve. These figures exclude deployment and application
+state setup. For EVM, 435,183 gas at an illustrative effective price of 10 gwei
+costs 0.00435183 ETH; L2 fee components require a separate chain-specific estimate.
+Fee rules: [Solana](https://solana.com/docs/core/fees),
+[Ethereum](https://ethereum.org/developers/docs/gas/).
+
+This compares one real proof on pinned local runtimes. It does not measure
+public-network confirmation latency, current token prices or an EVM consumer
+equivalent to the Solana receipt example.
+Solidity bytecode includes source-path metadata, so its hash can differ between
+checkouts even when the executable bytes and measured gas are identical.
 
 ## Components and guarantees
 
@@ -98,6 +149,12 @@ transactions reaching 1.4M CUs, and CU increases over 5%. Reports go in `.cache/
 - `tools/src/generate.rs`: deterministic translation of six stages from one
   SHA-256-pinned Solidity verifier; unsupported source/syntax fails closed.
   [Scalar arithmetic notes](docs/scalar.md) explain the optimized backend's bounds.
+
+The host tools live in a separate Rust crate under `tools/`, outside the SBF
+dependency graph. Run `cargo test --locked --manifest-path tools/Cargo.toml`
+for generator, resource-limit, fuzz-seed and build-diagnostic checks.
+`cargo run --locked --manifest-path tools/Cargo.toml -- generate-profile --check`
+checks that the committed arithmetic matches the pinned Solidity source.
 
 The runtime suite checks every proof-word mutation, late pairing failure,
 malformed accounts/instructions, wrong authority, post-seal writes, rent return,

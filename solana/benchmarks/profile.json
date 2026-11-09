@@ -1,0 +1,21 @@
+{
+  "instrumented": true,
+  "note": "Adjacent checkpoint deltas include logging overhead. Use integration.json for release totals. stages groups and before pairing include scalar encoding and group assembly.",
+  "valid_cu": 1388367,
+  "stage_cu": {
+    "entry_and_first_checkpoint": 750,
+    "decode": 167869,
+    "transcript": 14256,
+    "zh": 25910,
+    "zi": 226,
+    "q": 757573,
+    "z": 9753,
+    "inversions": 74902,
+    "r": 184908,
+    "groups": 95753,
+    "before pairing": 6938,
+    "pairing_and_return": 49529
+  },
+  "instrumented_elf_sha256": "f81973b9adfa6b95dbebc8266e14232dc1fef8b03e00c37cbac2554d00021613",
+  "profile_log_sha256": "f8324e3ed647c203fa014acef53b6578aa866139c4f3081ad538910d1533be9d"
+}

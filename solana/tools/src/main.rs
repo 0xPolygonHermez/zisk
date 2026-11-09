@@ -1,5 +1,7 @@
 mod benchmark;
+mod evm;
 mod generate;
+mod seeds;
 
 use std::path::{Path, PathBuf};
 
@@ -24,9 +26,8 @@ fn main() -> Result<()> {
         ["generate-profile"] => generate::run(false),
         ["generate-profile", "--check"] => generate::run(true),
         ["check-benchmark", log] => benchmark::run(Path::new(log)),
-        _ => {
-            Err("usage: zisk-solana-tools {generate-profile [--check] | check-benchmark LOG}"
-                .into())
-        }
+        ["seed-fuzz"] => seeds::run(),
+        ["benchmark-evm"] => evm::run(),
+        _ => Err("usage: zisk-solana-tools {generate-profile [--check] | check-benchmark LOG | seed-fuzz | benchmark-evm}".into()),
     }
 }
