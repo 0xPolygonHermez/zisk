@@ -297,6 +297,15 @@ fn cost_per_type_from_job(job: &Job) -> StatsCostPerType {
         .unwrap_or_default()
 }
 
+/// Heartbeat age past which a worker counts as hung: `heartbeat_interval_seconds ×
+/// heartbeat_max_missed`.
+fn stale_heartbeat_threshold(config: &Config) -> chrono::Duration {
+    chrono::Duration::seconds(
+        (config.coordinator.heartbeat_interval_seconds
+            * config.coordinator.heartbeat_max_missed as u64) as i64,
+    )
+}
+
 impl Coordinator {
     /// Creates a new coordinator service instance with the provided configuration.
     ///
@@ -306,11 +315,12 @@ impl Coordinator {
     pub fn new(config: Config) -> Self {
         let start_time_utc = Utc::now();
         crate::metrics::record_coordinator_started();
+        let workers_pool = WorkersPool::new().with_stale_after(stale_heartbeat_threshold(&config));
 
         Self {
             config,
             start_time_utc,
-            workers_pool: Arc::new(WorkersPool::new()),
+            workers_pool: Arc::new(workers_pool),
             jobs: RwLock::new(HashMap::new()),
             agg_arity: tokio::sync::Mutex::new(0),
             snark_protocol: tokio::sync::Mutex::new(None),
@@ -1844,10 +1854,7 @@ impl Coordinator {
     /// disconnects every worker with a stale heartbeat, so a frozen `Ready`
     /// worker is not given the next job.
     pub async fn check_stale_heartbeats(&self) {
-        let threshold = chrono::Duration::seconds(
-            (self.config.coordinator.heartbeat_interval_seconds
-                * self.config.coordinator.heartbeat_max_missed as u64) as i64,
-        );
+        let threshold = stale_heartbeat_threshold(&self.config);
         let stale = self.workers_pool.get_stale_computing_workers(threshold).await;
 
         let mut handled_jobs = std::collections::HashSet::new();
@@ -6220,6 +6227,25 @@ mod tests {
 
         let err = coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap_err();
         assert!(matches!(err, CoordinatorError::WorkersNotSetup), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_skips_a_worker_past_its_heartbeat() {
+        // A Ready worker that stopped heartbeating since the monitor last ran
+        // is not counted, so no job is planned on it.
+        let coordinator = Coordinator::new(test_config_with(|c| {
+            c.coordinator.heartbeat_interval_seconds = 10;
+            c.coordinator.heartbeat_max_missed = 3;
+        }));
+        add_worker(&coordinator, "fresh", 4, WorkerState::Ready).await;
+        add_worker(&coordinator, "hung", 4, WorkerState::Ready).await;
+        let hung = WorkerId::from("hung".to_string());
+        let old = Utc::now() - chrono::Duration::seconds(31);
+        coordinator.workers_pool.set_last_heartbeat(&hung, old).await.unwrap();
+
+        let (requested, _minimum) =
+            coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap();
+        assert_eq!(requested, ComputeCapacity::from(4u32));
     }
 
     #[tokio::test]

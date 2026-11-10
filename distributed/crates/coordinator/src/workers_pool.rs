@@ -110,6 +110,10 @@ pub struct WorkersPool {
     /// that is unregistered and registers again must not get the generation of
     /// its old connection, whose drop guard may still fire.
     next_generation: AtomicU64,
+    /// Heartbeat age past which a `Ready` worker is given no job (`None`: no
+    /// limit). The monitor disconnects such a worker on its next pass; until
+    /// then the pool counts it as unavailable rather than handing it a job.
+    stale_after: Option<chrono::Duration>,
 }
 
 impl Default for WorkersPool {
@@ -121,7 +125,29 @@ impl Default for WorkersPool {
 impl WorkersPool {
     /// Creates a new empty workers pool.
     pub fn new() -> Self {
-        Self { workers: RwLock::new(HashMap::new()), next_generation: AtomicU64::new(0) }
+        Self {
+            workers: RwLock::new(HashMap::new()),
+            next_generation: AtomicU64::new(0),
+            stale_after: None,
+        }
+    }
+
+    /// Gives no job to a `Ready` worker whose last heartbeat is older than
+    /// `threshold`, the age at which the monitor disconnects it.
+    #[must_use]
+    pub fn with_stale_after(mut self, threshold: chrono::Duration) -> Self {
+        self.stale_after = Some(threshold);
+        self
+    }
+
+    /// Whether `worker` can be given a job at `now`: `Ready`, and not past its
+    /// heartbeat. Checked under the same lock as the reservation, so a worker
+    /// that stopped heartbeating since the monitor last ran is not picked.
+    fn can_take_job(&self, worker: &WorkerInfo, now: DateTime<Utc>) -> bool {
+        worker.state == WorkerState::Ready
+            && self.stale_after.map_or(true, |threshold| {
+                now.signed_duration_since(worker.last_heartbeat) < threshold
+            })
     }
 
     /// Returns the worker's state and connection generation if present.
@@ -292,16 +318,18 @@ impl WorkersPool {
     /// them via separate `*_compute_capacity` calls would let a worker's state
     /// transition between acquisitions, double-counting or dropping its capacity.
     pub async fn capacity_snapshot(&self) -> CapacitySnapshot {
+        let now = Utc::now();
         let workers = self.workers.read().await;
         let mut snapshot = CapacitySnapshot::default();
         for w in workers.values() {
             let units = w.compute_capacity.compute_units;
             match &w.state {
-                WorkerState::Ready => snapshot.available += units,
+                WorkerState::Ready if self.can_take_job(w, now) => snapshot.available += units,
                 WorkerState::SettingUp => snapshot.recovering += units,
                 WorkerState::Computing(_) => snapshot.busy += units,
                 WorkerState::Idle => snapshot.idle_workers += 1,
-                // Disconnected / Connecting / Error contribute to no capacity bucket.
+                // Disconnected / Connecting / Error, and a Ready worker past its
+                // heartbeat, contribute to no capacity bucket.
                 _ => {}
             }
         }
@@ -875,6 +903,7 @@ impl WorkersPool {
         }
 
         let mut workers = self.workers.write().await;
+        let now = Utc::now();
 
         // For simulation mode, replicate the single worker N times in the
         // returned id list (each "replica" gets its own partition entry).
@@ -882,7 +911,7 @@ impl WorkersPool {
         let (selected_workers, worker_capacities, total_capacity) =
             if execution_mode.is_simulating() {
                 let Some((worker_id, worker_info)) =
-                    workers.iter().find(|(_, p)| matches!(p.state, WorkerState::Ready))
+                    workers.iter().find(|(_, p)| self.can_take_job(p, now))
                 else {
                     return Err(CoordinatorError::InsufficientCapacity);
                 };
@@ -901,7 +930,7 @@ impl WorkersPool {
                 // cover `required`.
                 let available_capacity: u32 = workers
                     .values()
-                    .filter(|p| matches!(p.state, WorkerState::Ready))
+                    .filter(|p| self.can_take_job(p, now))
                     .map(|p| p.compute_capacity.compute_units)
                     .sum();
                 if minimal_compute_capacity.compute_units > available_capacity {
@@ -915,10 +944,8 @@ impl WorkersPool {
                 // dispatch_contributions_messages) stable across jobs instead
                 // of arbitrary. rank_id stays dense (0..N-1) and aligned with
                 // the positionally-computed partitions.
-                let mut ready: Vec<(&WorkerId, &WorkerInfo)> = workers
-                    .iter()
-                    .filter(|(_, info)| matches!(info.state, WorkerState::Ready))
-                    .collect();
+                let mut ready: Vec<(&WorkerId, &WorkerInfo)> =
+                    workers.iter().filter(|(_, info)| self.can_take_job(info, now)).collect();
                 ready.sort_by(|(a, _), (b, _)| a.as_str().cmp(b.as_str()));
 
                 let mut selected = Vec::new();
@@ -1346,6 +1373,33 @@ mod tests {
         assert!(matches!(rx.try_recv(), Err(TryRecvError::Disconnected)));
         assert_eq!(pool.worker_state(&fresh).await, Some(WorkerState::Idle));
         assert!(matches!(pool.worker_state(&computing).await, Some(WorkerState::Computing(_))));
+    }
+
+    #[tokio::test]
+    async fn test_a_worker_past_its_heartbeat_is_given_no_job() {
+        // The monitor disconnects it on its next pass; until then the pool must
+        // neither count it nor reserve it.
+        let pool = WorkersPool::new().with_stale_after(chrono::Duration::seconds(30));
+        let (fresh, _) = register_test_worker(&pool, "fresh").await;
+        let (hung, _) = register_test_worker(&pool, "hung").await;
+        for worker in [&fresh, &hung] {
+            pool.mark_worker_with_state(worker, WorkerState::Ready).await.unwrap();
+        }
+        let old = Utc::now() - chrono::Duration::seconds(31);
+        pool.set_last_heartbeat(&hung, old).await.unwrap();
+
+        assert_eq!(pool.capacity_snapshot().await.available, 1);
+        let (selected, _) = pool
+            .partition_and_reserve(
+                ComputeCapacity::from(2u32),
+                ComputeCapacity::from(1u32),
+                JobExecutionMode::Standard,
+                &JobId::new(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(selected, vec![fresh]);
+        assert_eq!(pool.worker_state(&hung).await, Some(WorkerState::Ready));
     }
 
     #[tokio::test]
