@@ -2966,7 +2966,7 @@ mod tests {
             compute_capacity: 1u32.into(),
             last_known_job_id: None,
         };
-        let (accepted, _msg, _directive, _setup) =
+        let (accepted, _msg, _directive, _setup, _generation) =
             coordinator.handle_stream_reconnection(req, Box::new(sender2)).await;
         assert!(accepted);
         assert!(!coordinator.pending_recovery.read().await.contains_key(&w0_id));
@@ -3179,8 +3179,42 @@ mod tests {
         assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
     }
 
-    /// Fresh entries in `pending_recovery` (within the threshold) survive the
-    /// sweep — only the timed-out ones are evicted.
+    /// Each registration hands its stream the generation it was given. The
+    /// stream used to read it from the pool after answering the worker, by which
+    /// time a later connection of the same worker could have replaced it; the
+    /// old stream's guard would then disconnect the new connection.
+    #[tokio::test]
+    async fn test_registration_returns_its_own_generation() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        let w0 = WorkerId::from("w0".to_string());
+        let register = || zisk_cluster_common::WorkerRegisterRequestDto {
+            worker_id: w0.clone(),
+            aggregation_arity: 2,
+            snark_protocol: None,
+            compute_capacity: 1u32.into(),
+            previous_exit: None,
+        };
+
+        let (sender, _msgs) = MockMessageSender::new();
+        let (accepted, _msg, _setup, first) =
+            coordinator.handle_stream_registration(register(), Box::new(sender)).await;
+        assert!(accepted);
+        let first = first.expect("an accepted registration has a generation");
+        assert_eq!(coordinator.workers_pool.connection_generation(&w0).await, Some(first));
+
+        let (sender, _msgs) = MockMessageSender::new();
+        let (accepted, _msg, _setup, second) =
+            coordinator.handle_stream_registration(register(), Box::new(sender)).await;
+        assert!(accepted);
+        let second = second.expect("an accepted registration has a generation");
+        assert_ne!(first, second);
+        assert_eq!(coordinator.workers_pool.connection_generation(&w0).await, Some(second));
+
+        // The first stream's guard leaves the second connection alone.
+        coordinator.disconnect_worker_if_generation(&w0, first).await.unwrap();
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Idle));
+    }
+
     #[tokio::test]
     async fn test_cleanup_stuck_recovery_skips_fresh_entries() {
         let (coordinator, workers, job_id) =
@@ -3932,7 +3966,7 @@ mod tests {
             compute_capacity: 1u32.into(),
             previous_exit: None,
         };
-        let (accepted, _msg, _setup) =
+        let (accepted, _msg, _setup, _generation) =
             coordinator.handle_stream_registration(req, Box::new(sender)).await;
         assert!(accepted, "fresh register must succeed");
 
@@ -5282,7 +5316,7 @@ mod tests {
         coordinator.workers_pool.disconnect_worker(&w0_id).await.unwrap();
 
         let (sender, _msgs) = MockMessageSender::new();
-        let (accepted, _msg, directive, _setup) = coordinator
+        let (accepted, _msg, directive, _setup, _generation) = coordinator
             .handle_stream_reconnection(
                 WorkerReconnectRequestDto {
                     worker_id: w0_id.clone(),
@@ -5311,7 +5345,7 @@ mod tests {
         coordinator.pending_recovery.write().await.insert(w0_id.clone(), Utc::now());
 
         let (sender, _msgs) = MockMessageSender::new();
-        let (accepted, _msg, directive, _setup) = coordinator
+        let (accepted, _msg, directive, _setup, _generation) = coordinator
             .handle_stream_reconnection(
                 WorkerReconnectRequestDto {
                     worker_id: w0_id.clone(),
@@ -5348,7 +5382,7 @@ mod tests {
         coordinator.workers_pool.disconnect_worker(&w0_id).await.unwrap();
 
         let (sender, _msgs) = MockMessageSender::new();
-        let (accepted, _msg, _directive, _setup) = coordinator
+        let (accepted, _msg, _directive, _setup, _generation) = coordinator
             .handle_stream_reconnection(
                 WorkerReconnectRequestDto {
                     worker_id: w0_id.clone(),
@@ -5677,7 +5711,7 @@ mod tests {
             snark_protocol,
             previous_exit: None,
         };
-        let (accepted, message, _setup) =
+        let (accepted, message, _setup, _generation) =
             coordinator.handle_stream_registration(req, Box::new(sender)).await;
         (accepted, message)
     }
@@ -5722,7 +5756,7 @@ mod tests {
             aggregation_arity: 2,
             snark_protocol: PLONK,
         };
-        let (accepted, message, _directive, _setup) =
+        let (accepted, message, _directive, _setup, _generation) =
             coordinator.handle_stream_reconnection(req, Box::new(sender)).await;
 
         assert!(!accepted);

@@ -336,14 +336,16 @@ impl WorkersPool {
     ///
     /// # Returns
     ///
-    /// `InvalidRequest` error if worker ID is already registered.
+    /// The connection generation given to this registration, which the caller keeps to tell its
+    /// connection from a later one of the same worker. `InvalidRequest` error if worker ID is
+    /// already registered.
     pub async fn register_worker(
         &self,
         worker_id: WorkerId,
         compute_capacity: impl Into<ComputeCapacity>,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
         initial_state: WorkerState,
-    ) -> CoordinatorResult<()> {
+    ) -> CoordinatorResult<u64> {
         let connection = WorkerInfo::new(
             worker_id.clone(),
             compute_capacity.into(),
@@ -405,7 +407,7 @@ impl WorkersPool {
             (total, cc.compute_units, acc.compute_units),
         );
 
-        Ok(())
+        Ok(generation)
     }
 
     // /// Reconnects an existing worker with updated connection details.
@@ -549,6 +551,11 @@ impl WorkersPool {
 
     /// Core disconnect logic. Returns `Ok(true)` if the worker was disconnected,
     /// `Ok(false)` if it was a no-op (stale generation or already disconnected).
+    ///
+    /// Drops the worker's message channel, which closes its stream if it is
+    /// still open: a worker the pool counts as disconnected then sees its stream
+    /// end and connects again, rather than heartbeating on a connection the pool
+    /// no longer counts.
     fn do_disconnect(
         workers: &mut HashMap<WorkerId, WorkerInfo>,
         worker_id: &WorkerId,
@@ -563,6 +570,7 @@ impl WorkersPool {
             Some(worker) if worker.state == WorkerState::Disconnected => Ok(false),
             Some(worker) => {
                 worker.state = WorkerState::Disconnected;
+                worker.msg_sender = Box::new(ClosedSender);
                 Ok(true)
             }
             None => {
@@ -1383,6 +1391,33 @@ mod tests {
         // Current generation matches → should disconnect
         pool.disconnect_worker_if_generation(&w1, 0).await.unwrap();
         assert_eq!(pool.worker_state(&w1).await, Some(WorkerState::Disconnected));
+    }
+
+    #[tokio::test]
+    async fn test_disconnect_closes_a_stream_still_open() {
+        use crate::coordinator_grpc::GrpcMessageSender;
+        use tokio::sync::mpsc::{error::TryRecvError, unbounded_channel};
+
+        // A disconnect that lands while the stream is still open, as one with a
+        // wrong generation would, ends that stream so the worker connects again.
+        let pool = WorkersPool::new();
+        let (tx, mut rx) = unbounded_channel();
+        let w1 = WorkerId::from("w1".to_string());
+        let generation = pool
+            .register_worker(
+                w1.clone(),
+                1u32,
+                Box::new(GrpcMessageSender::new(tx)),
+                WorkerState::Ready,
+            )
+            .await
+            .unwrap();
+        assert_eq!(pool.connection_generation(&w1).await, Some(generation));
+
+        assert!(pool.disconnect_worker_if_generation(&w1, generation).await.unwrap());
+
+        assert_eq!(pool.worker_state(&w1).await, Some(WorkerState::Disconnected));
+        assert!(matches!(rx.try_recv(), Err(TryRecvError::Disconnected)));
     }
 
     #[tokio::test]

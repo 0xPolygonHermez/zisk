@@ -480,12 +480,14 @@ impl Coordinator {
         }
     }
 
-    /// Handles new worker registration. Returns `(accepted, message)`.
+    /// Handles new worker registration. Returns `(accepted, message, setup, generation)`: the
+    /// connection generation of an accepted registration, which its stream keeps to tell itself
+    /// from a later connection of the same worker.
     pub async fn handle_stream_registration(
         &self,
         req: WorkerRegisterRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
-    ) -> (bool, String, Option<SetupProgramDto>) {
+    ) -> (bool, String, Option<SetupProgramDto>, Option<u64>) {
         self.registrations.fetch_add(1, Ordering::Relaxed);
 
         let registering = self.registration.lock().await;
@@ -498,14 +500,15 @@ impl Coordinator {
                 false,
                 format!("Maximum concurrent connections reached: ({})", max_connections),
                 None,
+                None,
             );
         }
 
         if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
-            return (false, e.to_string(), None);
+            return (false, e.to_string(), None, None);
         }
         if let Err(e) = self.observe_snark_protocol(&req.worker_id, req.snark_protocol).await {
-            return (false, e.to_string(), None);
+            return (false, e.to_string(), None, None);
         }
 
         // Read all known setups before registering so the initial state is set atomically —
@@ -539,7 +542,7 @@ impl Coordinator {
         drop(registering);
 
         match registered {
-            Ok(()) => {
+            Ok(generation) => {
                 if let Some(exit) = req.previous_exit {
                     self.record_worker_exit(&worker_id, exit);
                 }
@@ -565,9 +568,9 @@ impl Coordinator {
                         );
                     }
                 }
-                (true, "Registration successful".to_string(), first_setup)
+                (true, "Registration successful".to_string(), first_setup, Some(generation))
             }
-            Err(e) => (false, format!("Registration failed: {e}"), None),
+            Err(e) => (false, format!("Registration failed: {e}"), None, None),
         }
     }
 
@@ -584,11 +587,15 @@ impl Coordinator {
     /// | Some(X)             | Job X terminal             | CancelStaleJob           |
     /// | Some(X)             | Job X active, not assigned | CancelStaleJob           |
     /// | Some(X)             | Job X active, assigned     | ResumeComputing          |
+    ///
+    /// Also returns the connection generation of an accepted reconnection, as
+    /// [`Self::handle_stream_registration`] does.
     pub async fn handle_stream_reconnection(
         &self,
         req: WorkerReconnectRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
-    ) -> (bool, String, Option<ReconnectionDirectiveDto>, Option<SetupProgramDto>) {
+    ) -> (bool, String, Option<ReconnectionDirectiveDto>, Option<SetupProgramDto>, Option<u64>)
+    {
         self.reconnections.fetch_add(1, Ordering::Relaxed);
 
         let registering = self.registration.lock().await;
@@ -604,14 +611,15 @@ impl Coordinator {
                 format!("Maximum concurrent connections reached: ({})", max_connections),
                 None,
                 None,
+                None,
             );
         }
 
         if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
-            return (false, e.to_string(), None, None);
+            return (false, e.to_string(), None, None, None);
         }
         if let Err(e) = self.observe_snark_protocol(&req.worker_id, req.snark_protocol).await {
-            return (false, e.to_string(), None, None);
+            return (false, e.to_string(), None, None, None);
         }
 
         let worker_id = req.worker_id.clone();
@@ -648,13 +656,14 @@ impl Coordinator {
             _ => default_state,
         };
 
-        if let Err(e) = self
+        let generation = match self
             .workers_pool
             .register_worker(req.worker_id, req.compute_capacity, msg_sender, initial_state)
             .await
         {
-            return (false, format!("Reconnection failed: {e}"), None, None);
-        }
+            Ok(generation) => generation,
+            Err(e) => return (false, format!("Reconnection failed: {e}"), None, None, None),
+        };
         drop(registering);
 
         if let Some(ref d) = directive {
@@ -707,7 +716,7 @@ impl Coordinator {
             }
         }
 
-        (true, "Reconnection successful".to_string(), directive, first_setup)
+        (true, "Reconnection successful".to_string(), directive, first_setup, Some(generation))
     }
 
     /// Computes the reconciliation directive for a reconnecting worker based on
