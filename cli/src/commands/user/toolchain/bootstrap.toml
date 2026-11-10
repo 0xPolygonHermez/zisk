@@ -9,5 +9,6 @@ cargo-native-static = true
 download-ci-llvm = false
 
 [rust]
+channel = "auto-detect"
 lld = true
 llvm-tools = true
