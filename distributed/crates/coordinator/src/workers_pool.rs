@@ -1090,16 +1090,18 @@ impl WorkersPool {
     /// paths that need exactly one worker (e.g. wrap) rather than a
     /// capacity-driven partition. Same race-closing property as
     /// `partition_and_reserve`: by the time this returns, the worker is no
-    /// longer visible as `Ready` to any concurrent allocator.
+    /// longer visible as `Ready` to any concurrent allocator. Like it, it
+    /// skips a worker past its heartbeat.
     pub async fn try_reserve_single_ready_for(
         &self,
         job_id: &JobId,
         phase: JobPhase,
     ) -> CoordinatorResult<WorkerId> {
         let mut workers = self.workers.write().await;
+        let now = Utc::now();
         let worker_id = workers
             .iter()
-            .find(|(_, p)| matches!(p.state, WorkerState::Ready))
+            .find(|(_, p)| self.can_take_job(p, now))
             .map(|(id, _)| id.clone())
             .ok_or(CoordinatorError::InsufficientCapacity)?;
         if let Some(info) = workers.get_mut(&worker_id) {
@@ -1400,6 +1402,26 @@ mod tests {
             .unwrap();
         assert_eq!(selected, vec![fresh]);
         assert_eq!(pool.worker_state(&hung).await, Some(WorkerState::Ready));
+    }
+
+    #[tokio::test]
+    async fn test_a_single_worker_job_skips_a_worker_past_its_heartbeat() {
+        // A wrap or an aggregation reserves one worker; a hung one is not it.
+        let pool = WorkersPool::new().with_stale_after(chrono::Duration::seconds(30));
+        let (hung, _) = register_test_worker(&pool, "hung").await;
+        pool.mark_worker_with_state(&hung, WorkerState::Ready).await.unwrap();
+        let old = Utc::now() - chrono::Duration::seconds(31);
+        pool.set_last_heartbeat(&hung, old).await.unwrap();
+
+        let refused = pool.try_reserve_single_ready_for(&JobId::new(), JobPhase::Recurse).await;
+        assert!(matches!(refused, Err(CoordinatorError::InsufficientCapacity)), "{refused:?}");
+        assert_eq!(pool.worker_state(&hung).await, Some(WorkerState::Ready));
+
+        let (fresh, _) = register_test_worker(&pool, "fresh").await;
+        pool.mark_worker_with_state(&fresh, WorkerState::Ready).await.unwrap();
+        let reserved =
+            pool.try_reserve_single_ready_for(&JobId::new(), JobPhase::Recurse).await.unwrap();
+        assert_eq!(reserved, fresh);
     }
 
     #[tokio::test]
