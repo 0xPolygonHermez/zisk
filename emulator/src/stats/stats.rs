@@ -321,7 +321,9 @@ pub struct Stats {
     ram_monitor: RamMonitor,
     profile_tags_map: HashMap<String, usize>,
     profile_tags: Vec<ProfileStats>,
-    profile_stack: Vec<(usize, u64)>,
+    /// Open profile tags, innermost last: `(tag id, reference, measures steps)`. The reference
+    /// is the step count or the total cost at the START, depending on the mark kind.
+    profile_stack: Vec<(usize, u64, bool)>,
     current_variable_cost: u64,
     /// When set, `on_op` prints a per-instruction execution trace (ziskemu's
     /// `--trace-steps`).
@@ -1509,25 +1511,34 @@ impl Stats {
             self.profile_tags.len() - 1
         });
         if use_steps {
-            self.profile_stack.push((*id, self.costs.steps));
+            self.profile_stack.push((*id, self.costs.steps, true));
             self.profile_tags[*id].steps_calls += 1;
         } else {
-            self.profile_stack.push((*id, self.costs.total_cost()));
+            self.profile_stack.push((*id, self.costs.total_cost(), false));
             self.profile_tags[*id].cost_calls += 1;
         }
         *id
     }
 
-    /// Closes the innermost open profile tag, which must be `tag`, and returns the steps or cost
-    /// spent inside it. An END without a matching START (empty stack or different tag) is reported
-    /// as an error and leaves the stack untouched.
+    /// Closes the innermost open profile tag, which must be `tag` opened with the same kind of
+    /// mark (steps or cost), and returns the steps or cost spent inside it. An END without a
+    /// matching START (empty stack, different tag or different kind) is reported as an error and
+    /// leaves the stack untouched.
     fn end_profile_tag(&mut self, tag: &str, use_steps: bool) -> Result<u64, String> {
-        let Some(&(rtag, reference)) = self.profile_stack.last() else {
+        let Some(&(rtag, reference, open_use_steps)) = self.profile_stack.last() else {
             return Err(format!("PROFILE_END '{tag}' without a matching PROFILE_START"));
         };
         let open_tag = &self.profile_tags[rtag].tag;
         if open_tag != tag {
             return Err(format!("profile tag mismatch: expected '{open_tag}', got '{tag}'"));
+        }
+        if open_use_steps != use_steps {
+            let kind = |steps: bool| if steps { "steps" } else { "cost" };
+            return Err(format!(
+                "profile tag '{tag}' was started as a {} mark but ended as a {} mark",
+                kind(open_use_steps),
+                kind(use_steps)
+            ));
         }
         self.profile_stack.pop();
         let stats = &mut self.profile_tags[rtag];
@@ -4563,6 +4574,24 @@ mod tests {
         assert!(stats.profile_stack.is_empty());
         assert_eq!(stats.profile_tags[0].total_steps, 10);
         assert_eq!(stats.profile_tags[0].steps_calls, 1);
+    }
+
+    #[test]
+    fn profile_end_of_a_different_kind_is_an_error_and_keeps_the_open_tag() {
+        let mut stats = Stats::default();
+        // A cost reference is far larger than the step count, so accounting a cost START as a
+        // steps END would underflow; it must be rejected instead.
+        stats.start_profile_tag("tag", false);
+        stats.costs.steps += 1;
+        assert!(stats.end_profile_tag("tag", true).is_err());
+        assert_eq!(stats.profile_stack.len(), 1, "the mismatched END must not pop 'tag'");
+        assert!(stats.end_profile_tag("tag", false).is_ok());
+        assert!(stats.profile_stack.is_empty());
+        // And the other way round
+        stats.start_profile_tag("tag", true);
+        assert!(stats.end_profile_tag("tag", false).is_err());
+        assert_eq!(stats.profile_stack.len(), 1);
+        assert_eq!(stats.end_profile_tag("tag", true), Ok(0));
     }
 
     #[test]
