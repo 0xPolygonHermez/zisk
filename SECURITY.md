@@ -26,6 +26,8 @@ Report them privately through GitHub instead:
 
 Only the reporter and the ZisK maintainers can see the report.
 
+If you cannot use GitHub, email the ZisK security team at [security@silentsig.build](mailto:security@silentsig.build).
+
 Please include as much of the following as you can:
 
 - The affected component (for example a state machine or PIL file, a precompile, the verifier or the Solidity contracts).
