@@ -23,6 +23,7 @@
 #include "emu.hpp"
 #include "c_provided.hpp"
 #include "log.hpp"
+#include "par.hpp"
 #include "../../lib-c/c/src/keccakf_cache/keccakf_cache.hpp"
 #include "../../lib-c/c/src/fcall/fcall.hpp"
 
@@ -64,13 +65,25 @@ static void on_emulation_signal(int sig)
 static void write_abort_chunk(void)
 {
     bool is_mo = (gen_method == MemOp);
-    size_t n_words = is_mo ? 2 : MT_CHUNK_HEADER_WORDS;
+    size_t n_words = is_mo ? MO_CHUNK_HEADER_WORDS : MT_CHUNK_HEADER_WORDS;
     size_t end_idx = is_mo ? 0 : MT_CHUNK_END_INDEX;
 
     uint64_t * chunk = (uint64_t *)MEM_CHUNK_ADDRESS;
     memset(chunk, 0, n_words * sizeof(uint64_t));
     chunk[end_idx] = 1;
     MEM_CHUNK_ADDRESS += n_words * sizeof(uint64_t);
+}
+
+void server_abort_emulation (int error)
+{
+    if (!in_emulation)
+    {
+        asm_printf("ERROR: server_abort_emulation(%d) called outside an emulation\n", error);
+        exit(-1);
+    }
+    in_emulation = 0;
+    caught_signal = (sig_atomic_t)error;
+    siglongjmp(emulation_jmp_buf, 1);
 }
 
 void server_signal_handler(void)
@@ -872,6 +885,13 @@ void server_setup (void)
         trace_map_initialize();
     }
 
+    // Chunk events, with which MT and MO publish their chunks (see par_events.hpp)
+    if ((gen_method == MinimalTrace) ||
+        (gen_method == MemOp))
+    {
+        par_events_setup();
+    }
+
     /******************/
     /* SEM CHUNK DONE */
     /******************/
@@ -1056,6 +1076,10 @@ void server_run (void)
     // Start this emulation with an empty Keccak-f cache: it only lives for one execution
     keccakf_cache_reset();
 
+    // Nor any fork-join region an aborted emulation left open, nor the last run's chunk events and
+    // task trace objects
+    par_run_start();
+
 #ifdef ASM_CALL_METRICS
     reset_asm_call_metrics();
 #endif
@@ -1122,10 +1146,21 @@ void server_run (void)
     else
     {
         in_emulation = 0;
+        // Before anything else: a fork-join region's tasks (see par.c) must not outlive the
+        // emulation, since they write the RAM and the trace
+        par_reset();
         MEM_ERROR = (uint64_t)caught_signal;
         emulation_aborted = true;
         asm_printf("WARNING: caught signal %d during emulation, aborting run\n",
                    (int)caught_signal);
+    }
+
+    // A fork-join task's process (see par.c) leaves the emulation at its task's end and never
+    // answers the request: getting here means the emulation ended or aborted inside a task, and
+    // its parent learns why from its exit code
+    if (par_is_child())
+    {
+        par_child_end(emulation_aborted);
     }
     if (verbose) asm_printf("After calling emu_start() trace_address=%lx\n", trace_address);
     gettimeofday(&stop_time,NULL);
@@ -1455,6 +1490,9 @@ void server_cleanup (void)
 
     // Cleanup trace
     trace_cleanup();
+
+    // Cleanup chunk events and the last run's task trace objects
+    par_events_cleanup();
 
     // Cleanup chunk done semaphore
     if (call_chunk_done)
