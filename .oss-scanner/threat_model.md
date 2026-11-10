@@ -134,7 +134,8 @@ file in pil2-proofman.
 - **Under-constrained PIL**: columns, lookups, permutations, range checks or selectors that let a
   malicious witness satisfy constraints with incorrect values. Includes bus/connection arguments
   between state machines, memory consistency (read-after-write, alignment, initial/final state,
-  `InputData` and `RomData`), register handling, and DMA.
+  `InputData` and `RomData`), register handling, and DMA. Review PIL following
+  [pil2_audit_guide.md](pil2_audit_guide.md) (section 8).
 - **Constraint vs. RISC-V spec mismatch**: any instruction (including edge cases: signed division,
   overflow, shifts, dynamic jumps, misaligned access, `x0` writes) where the constraints accept a
   result different from the RV64 specification, and the FROPS tables.
@@ -221,6 +222,10 @@ The image built from `.oss-scanner/Dockerfile` contains a CPU-only build of ZisK
 - The proving key is not installed: proving needs far more memory than the analysis environment
   has. Prefer emulator runs, unit tests and constraint-level reasoning (PIL files under `pil/`,
   `state-machines/*/pil`, `precompiles/*/pil`).
+- PIL audit methodology: `/src/.oss-scanner/pil2_audit_guide.md` describes how the ZisK team audits
+  PIL2 constraints (adversarial prover model, PIL2 and std-library semantics, a phased procedure,
+  table airs and recurring patterns). Read it before reviewing PIL files in ZisK or in
+  `/pil2-proofman/pil2-components/lib/std/pil/`. This document still governs severity and reports.
 
 ## 9. How we would like reports
 
