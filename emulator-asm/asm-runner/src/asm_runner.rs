@@ -1,7 +1,10 @@
 use std::process::{Command, Stdio};
 use thiserror::Error;
 
-use crate::AsmService;
+use crate::{
+    AsmService, RegionFailure, TaskAt, PAR_ABORT_ERROR, PAR_ABORT_TASK_ENDED,
+    PAR_ABORT_TASK_FAULTED,
+};
 
 /// Enum representing various errors that can occur during the execution of the assembly runner, including semaphore errors, thread pool errors, child process errors, and unexpected conditions.
 #[derive(Debug, Error)]
@@ -46,9 +49,81 @@ pub enum AsmRunError {
         how: String,
     },
 
+    /// The guest ended or faulted inside a fork-join task, which a region run apart does not
+    /// follow: a task must not end the program.
+    #[error(
+        "the guest {failure} inside a fork-join task{}: a task must not end the program (with \
+         ZISK_ASM_PAR_WORKERS=1 regions run one task after another, as in a sequential execution)",
+        task_at_suffix(.at)
+    )]
+    ForkJoinTask {
+        /// What the guest did inside the task.
+        failure: TaskFailure,
+        /// The task, when the service said which.
+        at: Option<TaskAt>,
+    },
+
+    /// A fork-join region run apart failed in the assembly service, other than by the guest
+    /// ending or faulting inside a task: a task's process could not be set up or publish its
+    /// chunks, left its task in another state than the region's, or reached a limit of the
+    /// host's; or the service could not set the region up.
+    #[error(
+        "a fork-join region failed in the assembly service: {} (with ZISK_ASM_PAR_WORKERS=1 \
+         regions run one task after another, as in a sequential execution)",
+        region_failure_text(.failure)
+    )]
+    ForkJoinRegionFailed {
+        /// What failed, as the service reported it, if it did.
+        failure: Option<RegionFailure>,
+    },
+
     /// Errors related to unexpected conditions, such as unwrapping an `Arc` that has been dropped.
     #[error("Arc unwrap failed")]
     ArcUnwrap,
+}
+
+/// What the guest did inside a fork-join task: see [`AsmRunError::ForkJoinTask`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskFailure {
+    /// It ended the program: it exited or panicked.
+    Ended,
+    /// It faulted.
+    Faulted,
+}
+
+impl std::fmt::Display for TaskFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Ended => "ended (it exited or panicked)",
+            Self::Faulted => "faulted",
+        })
+    }
+}
+
+fn task_at_suffix(at: &Option<TaskAt>) -> String {
+    at.map(|at| format!(" ({at})")).unwrap_or_default()
+}
+
+fn region_failure_text(failure: &Option<RegionFailure>) -> String {
+    match failure {
+        Some(failure) => failure.to_string(),
+        None => "the service did not say how; its log does".to_string(),
+    }
+}
+
+impl AsmRunError {
+    /// The error for a run a service ended with a nonzero `exit_code`: the codes of a run a
+    /// fork-join region aborted (`PAR_ABORT_*`) by what they mean, with the `failure` the service
+    /// reported, any other as is.
+    pub(crate) fn from_exit_code(exit_code: u64, failure: Option<RegionFailure>) -> Self {
+        let at = failure.and_then(|failure| failure.task_at());
+        match exit_code {
+            PAR_ABORT_ERROR => Self::ForkJoinRegionFailed { failure },
+            PAR_ABORT_TASK_ENDED => Self::ForkJoinTask { failure: TaskFailure::Ended, at },
+            PAR_ABORT_TASK_FAULTED => Self::ForkJoinTask { failure: TaskFailure::Faulted, at },
+            code => Self::ExitCode(code as u32),
+        }
+    }
 }
 
 /// Enum representing the level of tracing to be performed during assembly execution, with options for no tracing, basic tracing, and extended tracing.
@@ -258,6 +333,76 @@ mod tests {
         assert!(o.unlock_mapped_memory && o.asm_out_file && o.keccak_trace);
         assert_eq!(o.local_rank, 3);
         assert!(matches!(o.trace_level, AsmRunnerTraceLevel::ExtendedTrace));
+    }
+
+    /// The codes of a run a fork-join region aborted name what failed, and say what to do; any
+    /// other code is reported as is.
+    #[test]
+    fn fork_join_abort_codes_name_their_failure() {
+        use crate::FailureCause;
+        let in_task = |cause| RegionFailure { region: Some(1), task: Some(3), cause };
+        let at = Some(TaskAt { region: 1, task: 3 });
+
+        assert!(matches!(
+            AsmRunError::from_exit_code(PAR_ABORT_ERROR, None),
+            AsmRunError::ForkJoinRegionFailed { failure: None }
+        ));
+        assert!(matches!(
+            AsmRunError::from_exit_code(PAR_ABORT_TASK_ENDED, None),
+            AsmRunError::ForkJoinTask { failure: TaskFailure::Ended, at: None }
+        ));
+        assert!(matches!(
+            AsmRunError::from_exit_code(PAR_ABORT_TASK_ENDED, Some(in_task(FailureCause::GuestEnded))),
+            AsmRunError::ForkJoinTask { failure: TaskFailure::Ended, at: a } if a == at
+        ));
+        assert!(matches!(
+            AsmRunError::from_exit_code(PAR_ABORT_TASK_FAULTED, None),
+            AsmRunError::ForkJoinTask { failure: TaskFailure::Faulted, at: None }
+        ));
+        for code in [1u32, 11, 0x103] {
+            assert!(matches!(
+                AsmRunError::from_exit_code(code.into(), None),
+                AsmRunError::ExitCode(c) if c == code
+            ));
+        }
+
+        let message = |code, failure| AsmRunError::from_exit_code(code, failure).to_string();
+        let ended = message(PAR_ABORT_TASK_ENDED, None);
+        assert!(
+            ended.starts_with(
+                "the guest ended (it exited or panicked) inside a fork-join task: a task must \
+                 not end the program"
+            ),
+            "{ended}"
+        );
+        let ended_at = message(PAR_ABORT_TASK_ENDED, Some(in_task(FailureCause::GuestEnded)));
+        assert!(
+            ended_at.starts_with(
+                "the guest ended (it exited or panicked) inside a fork-join task (task 3 of \
+                 region 1): "
+            ),
+            "{ended_at}"
+        );
+        let faulted = message(PAR_ABORT_TASK_FAULTED, None);
+        assert!(faulted.starts_with("the guest faulted inside a fork-join task"), "{faulted}");
+        let region = message(PAR_ABORT_ERROR, None);
+        assert!(
+            region.starts_with(
+                "a fork-join region failed in the assembly service: the service did not say how"
+            ),
+            "{region}"
+        );
+        let full = message(PAR_ABORT_ERROR, Some(in_task(FailureCause::ShmFull)));
+        assert!(
+            full.starts_with(
+                "a fork-join region failed in the assembly service: task 3 of region 1: the \
+                 task's process could not write its trace"
+            ),
+            "{full}"
+        );
+        for message in [ended, ended_at, faulted, region, full] {
+            assert!(message.contains("ZISK_ASM_PAR_WORKERS=1 regions run one task after another"));
+        }
     }
 
     fn applied_args(o: &AsmRunnerOptions, svc: AsmService) -> Vec<String> {

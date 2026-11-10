@@ -1,12 +1,12 @@
 use std::{
-    io::{Read, Write},
+    io::{BufRead, BufReader, Read, Write},
     process::{Child, ChildStdin, ChildStdout, ExitStatus, Stdio},
     sync::{Mutex, MutexGuard, TryLockError},
     thread,
 };
 
 use anyhow::{Context, Result};
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use super::services::AsmServices;
 use super::{
@@ -212,9 +212,23 @@ impl StdioService {
             stop(child);
             anyhow::bail!("Failed to open the pipes of stdio service {asm_service}");
         };
+        // The service's error output must be read, or a full pipe would block it. In verbose
+        // mode it is what the service says it does (which fork-join regions it ran apart, and
+        // why not), so it goes to the log; otherwise it is dropped
+        let verbose = launch.options.verbose;
+        let service = asm_service.to_string();
         let stderr_drain = match thread::Builder::new().spawn(move || {
-            let mut chunk = [0u8; 4096];
-            while matches!(stderr.read(&mut chunk), Ok(n) if n > 0) {}
+            if !verbose {
+                let mut chunk = [0u8; 4096];
+                while matches!(stderr.read(&mut chunk), Ok(n) if n > 0) {}
+                return;
+            }
+            let mut reader = BufReader::new(stderr);
+            let mut line = Vec::new();
+            while matches!(reader.read_until(b'\n', &mut line), Ok(n) if n > 0) {
+                info!("[asm {service}] {}", String::from_utf8_lossy(&line).trim_end());
+                line.clear();
+            }
         }) {
             Ok(stderr_drain) => stderr_drain,
             Err(e) => {
