@@ -349,19 +349,33 @@ fn wide_arithmetic_matches_128_bit_integers() {
     }
 }
 
+// compiler-rt's `__multi3` as Rust's compiler_builtins ships it for wasm32 (one of the
+// transpiler's known bodies, byte for byte): it gets the transpiler's own body and its
+// direct calls are inlined. Used where a test needs `__multi3` replaced.
+const RUST_MULTI3: &str = "(local i64 i64 i64 i64 i64 i64)
+    local.get 0 local.get 3 i64.const 4294967295 i64.and local.tee 5 local.get 1
+    i64.const 4294967295 i64.and local.tee 6 i64.mul local.tee 7 local.get 3 i64.const 32
+    i64.shr_u local.tee 8 local.get 6 i64.mul local.tee 6 local.get 5 local.get 1
+    i64.const 32 i64.shr_u local.tee 9 i64.mul i64.add local.tee 5 i64.const 32 i64.shl
+    i64.add local.tee 10 i64.store local.get 0 local.get 8 local.get 9 i64.mul local.get 5
+    local.get 6 i64.lt_u i64.extend_i32_u i64.const 32 i64.shl local.get 5 i64.const 32
+    i64.shr_u i64.or i64.add local.get 10 local.get 7 i64.lt_u i64.extend_i32_u i64.add
+    local.get 4 local.get 1 i64.mul local.get 3 local.get 2 i64.mul i64.add i64.add
+    i64.store offset=8";
+
 #[test]
 fn multi3_runs_natively() {
-    // A `__multi3` with compiler-rt's signature gets the transpiler's own body: this one stores
-    // zeros, so the right product proves it was replaced.
-    let module = |signature: &str, call: &str| {
+    // A user function that only shares the name: it stores zeros, and must keep doing so.
+    const ZEROS: &str =
+        "(i64.store (local.get 0) (i64.const 0)) (i64.store offset=8 (local.get 0) (i64.const 0))";
+    const SIG: &str = "(param i32 i64 i64 i64 i64)";
+    let module = |signature: &str, body: &str, call: &str| {
         format!(
             r#"(module
           (import "wasi_snapshot_preview1" "fd_write"
             (func $fd_write (param i32 i32 i32 i32) (result i32)))
           (memory 1)
-          (func $__multi3 {signature}
-            (i64.store (local.get 0) (i64.const 0))
-            (i64.store offset=8 (local.get 0) (i64.const 0)))
+          (func $__multi3 {signature} {body})
           (func (export "_start")
             {call}
             (i32.store (i32.const 0) (i32.const 16))
@@ -369,19 +383,12 @@ fn multi3_runs_natively() {
             (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#
         )
     };
-    let product = |a: u128, b: u128| {
+    let call = |a: u128, b: u128| {
         let c = |v: u128| format!("(i64.const {})", v as u64 as i64);
-        let wat = module(
-            "(param i32 i64 i64 i64 i64)",
-            &format!(
-                "(call $__multi3 (i32.const 16) {} {} {} {})",
-                c(a),
-                c(a >> 64),
-                c(b),
-                c(b >> 64)
-            ),
-        );
-        let out = run(&wat::parse_str(wat).unwrap(), &[]);
+        format!("(call $__multi3 (i32.const 16) {} {} {} {})", c(a), c(a >> 64), c(b), c(b >> 64))
+    };
+    let product = |body: &str, a: u128, b: u128| {
+        let out = run(&wat::parse_str(module(SIG, body, &call(a, b))).unwrap(), &[]);
         u128::from_le_bytes(out[..16].try_into().unwrap())
     };
     for (a, b) in [
@@ -391,12 +398,15 @@ fn multi3_runs_natively() {
         (1u128 << 127, 3),
         (0, u128::MAX),
     ] {
-        assert_eq!(product(a, b), a.wrapping_mul(b), "{a:#x} * {b:#x}");
+        assert_eq!(product(RUST_MULTI3, a, b), a.wrapping_mul(b), "{a:#x} * {b:#x}");
+        // Same name and signature, unknown body: it runs as written.
+        assert_eq!(product(ZEROS, a, b), 0, "{a:#x} * {b:#x}");
     }
 
-    // Any other signature keeps its body.
+    // Any other signature keeps its body too.
     let wat = module(
         "(param i32 i64 i64 i64)",
+        ZEROS,
         "(call $__multi3 (i32.const 16) (i64.const 2) (i64.const 0) (i64.const 3))",
     );
     let out = run(&wat::parse_str(wat).unwrap(), &[]);
@@ -592,9 +602,7 @@ fn multi3_is_inlined_and_checks_its_result_pointer() {
               (table 1 funcref)
               (elem (i32.const 0) $__multi3)
               (memory 1)
-              (func $__multi3 (param i32 i64 i64 i64 i64)
-                (i64.store (local.get 0) (i64.const 0))
-                (i64.store offset=8 (local.get 0) (i64.const 0)))
+              (func $__multi3 (param i32 i64 i64 i64 i64) {RUST_MULTI3})
               (func (export "_start")
                 (local $p i32) (local $alo i64) (local $ahi i64)
                 (local.set $p (i32.const {p}))

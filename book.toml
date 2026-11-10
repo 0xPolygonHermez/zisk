@@ -6,7 +6,7 @@ src = "book"
 title = "ZisK Documentation"
 
 [output.html]
-additional-js = ["book/theme/mermaid.min.js", "book/theme/mermaid-init.js"]
+additional-js = ["book/mermaid/mermaid.min.js", "book/mermaid/mermaid-init.js"]
 
 [output.html.playground]
 runnable = false
