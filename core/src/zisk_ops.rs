@@ -37,12 +37,14 @@ use std::{
 use tiny_keccak::keccakf;
 use ziskos::zisklib::{
     keccakf_cache::KECCAKF_STATE_WORDS, FCALL_GET_KECCAKF_CACHE_INDEX_ID, FCALL_INPUT_READY_ID,
-    FCALL_RANDOM_SEED_ID, FCALL_SET_KECCAKF_CACHE_INDEX_ID, RANDOM_SEED_WORDS,
+    FCALL_PAR_PAD_ID, FCALL_RANDOM_SEED_ID, FCALL_SET_KECCAKF_CACHE_INDEX_ID, RANDOM_SEED_WORDS,
 };
 
 use crate::ops_core::*;
 use crate::ops_core_context::*;
-use crate::{FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE};
+use crate::{
+    is_par_marker, par_marker, par_pad_steps, FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE,
+};
 
 /// Determines the type of a [`ZiskOp`].
 ///
@@ -2333,6 +2335,9 @@ pub fn op_fcall(a: u64, b: u64) -> (u64, bool) {
 /// InstContext-based wrapper over op_fcall()
 #[inline(always)]
 pub fn opc_fcall(ctx: &mut InstContext) {
+    // The c the previous instruction left, which a chunk starting here records
+    let previous_c = ctx.c;
+
     // Set c and flag according to the spec
     ctx.c = ctx.b;
     ctx.flag = false;
@@ -2409,6 +2414,16 @@ pub fn opc_fcall(ctx: &mut InstContext) {
         };
         ctx.fcall.result[..RANDOM_SEED_WORDS].copy_from_slice(&seed);
         RANDOM_SEED_WORDS as i64
+    } else if is_par_marker(function_id) {
+        // Fork-join markers: this emulator runs the tasks one after another, which is what the
+        // proof sees anyway, so there is nothing to return; it only checks the region keeps the
+        // invariant a parallel emulation relies on
+        par_marker(ctx, function_id, previous_c);
+        0
+    } else if function_id == FCALL_PAR_PAD_ID as u64 {
+        // `step` is this instruction's; it is incremented once the instruction completes
+        ctx.fcall.result[0] = par_pad_steps(ctx.step);
+        1
     } else {
         fcall_proxy(function_id, &ctx.fcall.parameters, &mut ctx.fcall.result)
     };
