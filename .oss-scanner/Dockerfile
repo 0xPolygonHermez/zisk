@@ -59,7 +59,8 @@ COPY --chown=ziskuser:ziskuser . /src
 # to /src as in the "Proofman Local development" block of Cargo.toml, and build ZisK against it
 # through [patch.crates-io] in $CARGO_HOME/config.toml, so that /src/Cargo.toml stays untouched and
 # changes made in /pil2-proofman are rebuilt. Only the crates.io packages in Cargo.lock that the
-# clone provides are patched. Without that tag the published crates are used.
+# clone provides are patched. The build fails if that tag cannot be found, so that pil2-proofman is
+# never left out silently.
 # Every Cargo.lock that pulls in pil2-proofman is re-resolved here, before anything is built: the
 # guest build scripts rerun whenever their workspace's Cargo.lock changes, and a lock rewritten by
 # the nested guest build itself would force every later build to rebuild all the guests.
@@ -91,7 +92,8 @@ RUN version="$(sed -n '/^name = "proofman"$/{n;s/^version = "\(.*\)"$/\1/p;q}' C
            fi; \
          done; \
     else \
-      echo "WARNING: pil2-proofman has no tag v${version}: building against the published crates"; \
+      echo "ERROR: pil2-proofman has no tag v${version} (or ${repo} is unreachable)" >&2; \
+      exit 1; \
     fi
 
 # Build ZisK with the cpu-only feature, copy the binaries to ~/.zisk/bin and install the ZisK Rust
