@@ -1570,12 +1570,13 @@ impl Coordinator {
             )));
         }
 
-        // With no other worker connected (the fleet cycled, maybe re-keyed) the first value
-        // reported is adopted. Disconnected entries do not count, the worker's own old one
-        // included: a worker restarted with another key would otherwise wait for the
-        // stale-disconnected sweep.
+        // With no worker connected (the fleet cycled, maybe re-keyed) the first value reported
+        // is adopted. Disconnected entries do not count, the worker's own old one included: a
+        // worker restarted with another key would otherwise wait for the stale-disconnected
+        // sweep. Its own entry still live does count: the pool may yet refuse to replace it (a
+        // computing one), and the cluster's value must not change for a refused registration.
         let mut current = self.agg_arity.lock().await;
-        let alone = self.workers_pool.live_workers_other_than(worker_id).await == 0;
+        let alone = !self.workers_pool.has_live_worker().await;
         if *current == 0 || alone {
             *current = arity as u64;
             return Ok(());
@@ -1599,9 +1600,9 @@ impl Coordinator {
         worker_id: &WorkerId,
         protocol: Option<SnarkProtocol>,
     ) -> CoordinatorResult<()> {
-        // With no other worker connected the first value reported is adopted, as for the arity.
+        // With no worker connected the first value reported is adopted, as for the arity.
         let mut current = self.snark_protocol.lock().await;
-        let alone = self.workers_pool.live_workers_other_than(worker_id).await == 0;
+        let alone = !self.workers_pool.has_live_worker().await;
         let Some(cluster) = current.filter(|_| !alone) else {
             *current = Some(protocol);
             return Ok(());
@@ -5720,28 +5721,50 @@ mod tests {
     #[tokio::test]
     async fn a_worker_restarted_with_another_arity_is_taken_at_once() {
         let coordinator = Coordinator::new(test_config_with(|_| {}));
-        let register = |arity: u32| {
-            let (sender, _msgs) = MockMessageSender::new();
-            let req = zisk_cluster_common::WorkerRegisterRequestDto {
-                worker_id: WorkerId::from("w0".to_string()),
-                compute_capacity: 1u32.into(),
-                aggregation_arity: arity,
-                snark_protocol: None,
-                previous_exit: None,
-            };
-            coordinator.handle_stream_registration(req, Box::new(sender))
-        };
-        assert!(register(2).await.0);
+        assert!(register_with_arity(&coordinator, "w0", 2).await.0);
         coordinator
             .workers_pool
             .disconnect_worker(&WorkerId::from("w0".to_string()))
             .await
             .unwrap();
 
-        // Read by field: the handler's result grows a field when the stream keeps its generation.
-        let registered = register(4).await;
-        assert!(registered.0, "{}", registered.1);
+        let (accepted, message) = register_with_arity(&coordinator, "w0", 4).await;
+        assert!(accepted, "{message}");
         assert_eq!(coordinator.agg_arity().await.unwrap(), 4);
+    }
+
+    /// A worker's own entry still live counts: the pool refuses to replace a computing one, so a
+    /// registration beside it must not change the cluster's arity first.
+    #[tokio::test]
+    async fn a_registration_beside_its_own_live_entry_keeps_the_cluster_arity() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        let w0 = WorkerId::from("w0".to_string());
+        assert!(register_with_arity(&coordinator, "w0", 2).await.0);
+        let computing = WorkerState::Computing((JobId::new(), JobPhase::Contributions));
+        coordinator.workers_pool.mark_worker_with_state(&w0, computing).await.unwrap();
+
+        let (accepted, _message) = register_with_arity(&coordinator, "w0", 4).await;
+        assert!(!accepted);
+        assert_eq!(coordinator.agg_arity().await.unwrap(), 2);
+    }
+
+    /// Registers worker `id` with aggregation arity `arity`. Reads the handler's result by field,
+    /// as it grows one when the stream keeps its generation.
+    async fn register_with_arity(
+        coordinator: &Coordinator,
+        id: &str,
+        arity: u32,
+    ) -> (bool, String) {
+        let (sender, _msgs) = MockMessageSender::new();
+        let req = zisk_cluster_common::WorkerRegisterRequestDto {
+            worker_id: WorkerId::from(id.to_string()),
+            compute_capacity: 1u32.into(),
+            aggregation_arity: arity,
+            snark_protocol: None,
+            previous_exit: None,
+        };
+        let registered = coordinator.handle_stream_registration(req, Box::new(sender)).await;
+        (registered.0, registered.1)
     }
 
     /// The connection limit counts only the other live workers: a worker that comes back with

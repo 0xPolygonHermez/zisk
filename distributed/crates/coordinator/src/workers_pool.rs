@@ -124,6 +124,12 @@ impl WorkersPool {
         self.workers.read().await.len()
     }
 
+    /// Whether any worker is connected. A disconnected entry, waiting for the stale-disconnected
+    /// sweep, does not count.
+    pub async fn has_live_worker(&self) -> bool {
+        self.workers.read().await.values().any(|worker| worker.state != WorkerState::Disconnected)
+    }
+
     /// The workers other than `worker_id` that are connected. A disconnected entry, waiting for
     /// the stale-disconnected sweep, does not count: it holds no live prover and no connection.
     pub async fn live_workers_other_than(&self, worker_id: &WorkerId) -> usize {
