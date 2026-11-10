@@ -489,20 +489,23 @@ impl Coordinator {
         self.registrations.fetch_add(1, Ordering::Relaxed);
 
         let registering = self.registration.lock().await;
-        if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
-            return (false, e.to_string(), None);
-        }
-        if let Err(e) = self.observe_snark_protocol(&req.worker_id, req.snark_protocol).await {
-            return (false, e.to_string(), None);
-        }
-
+        // The limit counts the other live workers: a worker with no job comes back with
+        // `Register`, and its own disconnected entry, or another's, holds no connection. Checked
+        // before the arity and SNARK checks, so a refused worker does not set the cluster's key.
         let max_connections = self.config.coordinator.max_total_workers as usize;
-        if self.workers_pool.num_workers().await >= max_connections {
+        if self.workers_pool.live_workers_other_than(&req.worker_id).await >= max_connections {
             return (
                 false,
                 format!("Maximum concurrent connections reached: ({})", max_connections),
                 None,
             );
+        }
+
+        if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
+            return (false, e.to_string(), None);
+        }
+        if let Err(e) = self.observe_snark_protocol(&req.worker_id, req.snark_protocol).await {
+            return (false, e.to_string(), None);
         }
 
         // Read all known setups before registering so the initial state is set atomically —
@@ -589,16 +592,11 @@ impl Coordinator {
         self.reconnections.fetch_add(1, Ordering::Relaxed);
 
         let registering = self.registration.lock().await;
-        if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
-            return (false, e.to_string(), None, None);
-        }
-        if let Err(e) = self.observe_snark_protocol(&req.worker_id, req.snark_protocol).await {
-            return (false, e.to_string(), None, None);
-        }
-
-        // Check max connections — but allow if the worker already exists (reconnection)
+        // Check max connections over the other live workers, as for a registration — but allow
+        // a worker that already exists, to resume its job. Checked before the arity and SNARK
+        // checks, so a refused worker does not set the cluster's key.
         let max_connections = self.config.coordinator.max_total_workers as usize;
-        if self.workers_pool.num_workers().await >= max_connections
+        if self.workers_pool.live_workers_other_than(&req.worker_id).await >= max_connections
             && self.workers_pool.worker_state(&req.worker_id).await.is_none()
         {
             return (
@@ -607,6 +605,13 @@ impl Coordinator {
                 None,
                 None,
             );
+        }
+
+        if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
+            return (false, e.to_string(), None, None);
+        }
+        if let Err(e) = self.observe_snark_protocol(&req.worker_id, req.snark_protocol).await {
+            return (false, e.to_string(), None, None);
         }
 
         let worker_id = req.worker_id.clone();

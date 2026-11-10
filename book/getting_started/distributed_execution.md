@@ -452,7 +452,7 @@ Edit `/etc/zisk/worker.toml`:
 
 | Setting                      | Default | Notes                                                                |
 | ---                          | ---     | ---                                                                  |
-| `reconnect_interval_seconds` | `5`     | Backoff between reconnect attempts when the coordinator is unreachable. |
+| `reconnect_interval_seconds` | `5`     | Backoff between reconnect attempts when the coordinator is unreachable or refused the registration (another proving key, the connection limit). |
 | `heartbeat_timeout_seconds`  | `30`    | How long to wait for a heartbeat before treating the connection dead.   |
 
 **`[logging]`** — same shape as the coordinator's `[logging]`

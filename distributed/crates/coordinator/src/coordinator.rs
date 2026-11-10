@@ -1575,7 +1575,7 @@ impl Coordinator {
         // included: a worker restarted with another key would otherwise wait for the
         // stale-disconnected sweep.
         let mut current = self.agg_arity.lock().await;
-        let alone = !self.workers_pool.has_other_live_worker(worker_id).await;
+        let alone = self.workers_pool.live_workers_other_than(worker_id).await == 0;
         if *current == 0 || alone {
             *current = arity as u64;
             return Ok(());
@@ -1601,7 +1601,7 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         // With no other worker connected the first value reported is adopted, as for the arity.
         let mut current = self.snark_protocol.lock().await;
-        let alone = !self.workers_pool.has_other_live_worker(worker_id).await;
+        let alone = self.workers_pool.live_workers_other_than(worker_id).await == 0;
         let Some(cluster) = current.filter(|_| !alone) else {
             *current = Some(protocol);
             return Ok(());
@@ -5738,9 +5738,45 @@ mod tests {
             .await
             .unwrap();
 
-        let (accepted, message, _setup) = register(4).await;
-        assert!(accepted, "{message}");
+        // Read by field: the handler's result grows a field when the stream keeps its generation.
+        let registered = register(4).await;
+        assert!(registered.0, "{}", registered.1);
         assert_eq!(coordinator.agg_arity().await.unwrap(), 4);
+    }
+
+    /// The connection limit counts only the other live workers: a worker that comes back with
+    /// `Register` (it had no job) is not refused for its own disconnected entry, nor for another
+    /// worker's.
+    #[tokio::test]
+    async fn the_connection_limit_counts_only_the_other_live_workers() {
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.max_total_workers = 1));
+        let w0 = WorkerId::from("w0".to_string());
+        assert!(register_with_snark(&coordinator, "w0", None).await.0);
+        coordinator.workers_pool.disconnect_worker(&w0).await.unwrap();
+
+        let (accepted, message) = register_with_snark(&coordinator, "w0", None).await;
+        assert!(accepted, "its own disconnected entry takes no connection: {message}");
+        let (accepted, message) = register_with_snark(&coordinator, "w1", None).await;
+        assert!(!accepted, "w0 is live and holds the only connection");
+        assert!(message.contains("Maximum concurrent connections"), "{message}");
+
+        coordinator.workers_pool.disconnect_worker(&w0).await.unwrap();
+        let (accepted, message) = register_with_snark(&coordinator, "w1", None).await;
+        assert!(accepted, "another worker's disconnected entry takes none either: {message}");
+    }
+
+    /// A registration the connection limit refuses sets no cluster key: the limit is checked
+    /// before the key is adopted.
+    #[tokio::test]
+    async fn a_registration_refused_by_the_limit_sets_no_cluster_key() {
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.max_total_workers = 0));
+        let (accepted, message) = register_with_snark(&coordinator, "w0", PLONK).await;
+        assert!(!accepted);
+        assert!(message.contains("Maximum concurrent connections"), "{message}");
+        assert_eq!(*coordinator.snark_protocol.lock().await, None);
+        assert_eq!(*coordinator.agg_arity.lock().await, 0);
     }
 
     /// A Ready worker `w0` for `hash`, on a cluster whose workers' SNARK proving key is of
