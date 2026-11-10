@@ -700,9 +700,13 @@ their operands from wherever they are, like the other operators, and leave the h
 wasm32 has no 64 × 64 → 128-bit multiply, so without `wide-arithmetic` LLVM calls compiler-rt's
 `__multi3` for every `i128`/`u128` product, which computes it from four 32-bit products. When
 the module defines `__multi3` (by its name in the `name` section) with compiler-rt's signature,
-`(i32 ret, i64 a_lo, i64 a_hi, i64 b_lo, i64 b_hi) -> ()`, the transpiler replaces its body
-with one on `i64.mul_wide_u` ([module.rs](src/module.rs)). A module without the `name` section
-keeps its own body. A direct call to it is lowered in place: `mul` and `muluh` on the low halves
+`(i32 ret, i64 a_lo, i64 a_hi, i64 b_lo, i64 b_hi) -> ()` and a body byte-identical to a known
+compiler-rt build (`KNOWN_MULTI3_BODIES` in [module.rs](src/module.rs): Rust's
+`compiler_builtins` and TinyGo's), the transpiler replaces its body with one on
+`i64.mul_wide_u`. The name section is debug information, so the body is what shows the function
+is compiler-rt's: any other function keeps its own body, including one that only shares the name
+and signature, and so does a module without the `name` section. A toolchain whose `__multi3`
+compiles to a different body just misses the speed-up. A direct call to it is lowered in place: `mul` and `muluh` on the low halves
 plus the two cross products, skipping a cross product with a constant zero (a 64-bit value
 widened to 128 bits), then one bounds check and the two stores to `ret`, with no call, frame or
 stack check. A `call_indirect` still runs the body.
