@@ -148,3 +148,9 @@ ZKVMCALL zkvm_random_u64, 0x8B3
  * default zkvm_io.h inlines it. Either way the transpiler makes it one step, which
  * the emulators print only when asked to. */
 ZKVMCALL write_log, 0x8B4
+
+/* ---- fork-join regions (not EF) ----
+ * zkvm_parallel(tasks, n, zkvm_parallel_ret): a task returns to zkvm_parallel_ret,
+ * whose zkvmcall takes it back into the library routine. */
+ZKVMCALL zkvm_parallel, 0x8B5
+ZKVMCALL zkvm_parallel_ret, 0x8B6

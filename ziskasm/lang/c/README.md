@@ -10,7 +10,7 @@ and only the surface language differs.
 A guest program calls the functions declared in [`include/`](include/): the
 Ethereum Foundation zkVM standard (`zkvm_accelerators.h`, `zkvm_io.h`,
 `zkvm_u256.h`, `zkvm_random.h`) and ZisK's extensions to it (`zkvm_u256_le.h`,
-`zkvm_mem.h`, `zkvm_evm.h`, `zkvm_zisklib.h`, `zkvm_fcall.h`). Most are zkvmcall thunks
+`zkvm_mem.h`, `zkvm_evm.h`, `zkvm_zisklib.h`, `zkvm_fcall.h`, `zkvm_parallel.h`). Most are zkvmcall thunks
 ([`src/zkvm_calls.s`](src/zkvm_calls.s)), each a `csrs <id>, x0; ret`: during
 transpilation (`elf2rom`) the `csrs` becomes a jump to the matching `.zisk`
 routine, which follows the RISC-V calling convention and returns straight to the
@@ -149,6 +149,7 @@ The library covers these families:
 | `zkvm_evm_jumpdest_bitmap` — EVM JUMPDEST analysis (ZisK extension, not EF) | 1 | [`zkvm_evm.h`](include/zkvm_evm.h) | inline in the header (the jump_dest precompile marker); `ZKVM_EFAIL` when the precompile cannot take the arguments (unaligned, empty) |
 | `zkvm_zisklib_*` — other ZisK library functions (not EF): 256-bit arithmetic on u64[4] limbs, secp256k1/r1 signatures, BN254/BLS12-381 pairings, maps and hashes to curves, BLS and KZG verify, modexp | 24 | [`zkvm_zisklib.h`](include/zkvm_zisklib.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s), to the `zisklib_*` routines |
 | `zkvm_fcall*` — free-input calls, the unverified hints (ZisK extension, not EF) | 3 | [`zkvm_fcall.h`](include/zkvm_fcall.h) | [`src/zkvm_fcall.s`](src/zkvm_fcall.s): one `csrs` per parameter word, then the `csrwi` of the hint, picked by the ID from the hints the header lists (others return `ZKVM_EFAIL`), and one `csrr` per result word. The guest must check every result |
+| `zkvm_parallel` — fork-join regions (ZisK extension, not EF) | 2 | [`zkvm_parallel.h`](include/zkvm_parallel.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s), to `zkvm/parallel.zisk`; `zkvm_parallel_run` is inline in the header. The tasks run as if one after another; the assembly emulator may run them at the same time (see the book's *Parallel Execution* page). [`example/zkvm_parallel_guest.c`](example/zkvm_parallel_guest.c) runs SAXPY over four tasks |
 
 The `zkvm_u256_*` functions have three builds under the same ABI, chosen when
 including `zkvm_u256.h`:

@@ -2,12 +2,13 @@
 elf-output/
 
 # Ignore all .elf files except the committed ones (prebuilt-elfs, failed_execution, zkvm_random,
-# zkvm_fcall, write_log, abort)
+# zkvm_fcall, zkvm_parallel, write_log, abort)
 *.elf
 !prebuilt-elfs/*.elf
 !failed_execution/*.elf
 !zkvm_random/*.elf
 !zkvm_fcall/*.elf
+!zkvm_parallel/*.elf
 !write_log/*.elf
 !abort/*.elf
 
