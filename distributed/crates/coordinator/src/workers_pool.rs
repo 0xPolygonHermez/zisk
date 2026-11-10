@@ -299,14 +299,16 @@ impl WorkersPool {
         ComputeCapacity::from(total_capacity)
     }
 
-    /// Calculates total available compute capacity across all registered workers.
+    /// Calculates total available compute capacity across all registered workers: that of the
+    /// workers a job can be given, so not a Ready worker past its heartbeat.
     pub async fn available_compute_capacity(&self) -> ComputeCapacity {
+        let now = Utc::now();
         let total_capacity: u32 = self
             .workers
             .read()
             .await
             .values()
-            .filter(|p| p.state == WorkerState::Ready)
+            .filter(|p| self.can_take_job(p, now))
             .map(|p| p.compute_capacity.compute_units)
             .sum();
 
@@ -338,6 +340,7 @@ impl WorkersPool {
 
     /// Returns (num_workers, compute_capacity, available_compute_capacity) under a single read lock.
     pub async fn pool_stats(&self) -> (usize, ComputeCapacity, ComputeCapacity) {
+        let now = Utc::now();
         let workers = self.workers.read().await;
         let mut total = 0;
         let mut cc: u32 = 0;
@@ -347,7 +350,8 @@ impl WorkersPool {
                 total += 1;
                 cc += w.compute_capacity.compute_units;
             }
-            if w.state == WorkerState::Ready {
+            // Available as a job sees it: a Ready worker past its heartbeat is not.
+            if self.can_take_job(w, now) {
                 acc += w.compute_capacity.compute_units;
             }
         }
@@ -1391,6 +1395,9 @@ mod tests {
         pool.set_last_heartbeat(&hung, old).await.unwrap();
 
         assert_eq!(pool.capacity_snapshot().await.available, 1);
+        // The metrics and logs report the same available capacity.
+        assert_eq!(pool.available_compute_capacity().await, ComputeCapacity::from(1u32));
+        assert_eq!(pool.pool_stats().await.2, ComputeCapacity::from(1u32));
         let (selected, _) = pool
             .partition_and_reserve(
                 ComputeCapacity::from(2u32),
