@@ -404,7 +404,7 @@ jobs:
 
   test-macos:
     name: Test on macOS
-    runs-on: macos-14
+    runs-on: macos-15
     # Includes the ziskethone cross-toolchain build (~10-15 min on a cold runner).
     timeout-minutes: 75
     defaults:
@@ -454,7 +454,7 @@ jobs:
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             platform: Ubuntu x86_64
-          - runner: macos-14
+          - runner: macos-15
             target: aarch64-apple-darwin
             platform: macOS
     steps:
