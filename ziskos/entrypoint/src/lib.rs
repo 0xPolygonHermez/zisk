@@ -32,6 +32,7 @@ mod profile;
 #[cfg(zisk_guest)]
 pub use fcall::*;
 pub mod io;
+pub mod par;
 pub use profile::*;
 pub mod syscalls;
 pub mod zisklib;
