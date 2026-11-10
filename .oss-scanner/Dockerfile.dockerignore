@@ -1,0 +1,4 @@
+# Used by BuildKit instead of the repository's .dockerignore when building .oss-scanner/Dockerfile.
+# The scanner needs the whole checkout, including .git and the documentation; only local build
+# output is left out.
+/target/
