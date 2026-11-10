@@ -809,6 +809,8 @@ impl Coordinator {
     pub async fn disconnect_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
         let worker_state = self.workers_pool.worker_state(worker_id).await;
         self.fail_job_if_computing(worker_id, worker_state, "disconnected").await?;
+        // Held until the setups are pruned: a reconnection in between would be pruned with them.
+        let _registering = self.registration.lock().await;
         let disconnected = self.workers_pool.disconnect_worker(worker_id).await?;
         if disconnected {
             // Even on a "transient" disconnect the worker's gRPC stream is
@@ -825,10 +827,15 @@ impl Coordinator {
     /// Disconnects the workers that stopped heartbeating, closing their streams
     /// (see [`crate::workers_pool::WorkersPool::disconnect_stale_workers`]),
     /// and drops the setups they owe. Returns the workers disconnected.
+    ///
+    /// Holds `registration` until the setups are pruned, so a worker that
+    /// connects again meanwhile is registered after the prune rather than pruned
+    /// from a setup it was never sent.
     pub(crate) async fn disconnect_stale_workers(
         &self,
         threshold: chrono::Duration,
     ) -> Vec<WorkerId> {
+        let _registering = self.registration.lock().await;
         let disconnected = self.workers_pool.disconnect_stale_workers(threshold).await;
         for worker_id in &disconnected {
             self.prune_setup_pending_for_lost_worker(worker_id).await;
@@ -870,7 +877,9 @@ impl Coordinator {
         // Disconnect with generation check (re-validates under write lock).
         // Only prune in-flight setups if the disconnect actually landed —
         // otherwise the worker reconnected between the check above and
-        // this call, and we'd be pruning a still-live worker.
+        // this call, and we'd be pruning a still-live worker. `registration`
+        // is held until the prune, so no reconnection lands in between either.
+        let _registering = self.registration.lock().await;
         let disconnected = self
             .workers_pool
             .disconnect_worker_if_generation(worker_id, expected_generation)

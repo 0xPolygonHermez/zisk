@@ -148,8 +148,10 @@ pub struct Coordinator {
     snark_protocol: tokio::sync::Mutex<Option<Option<SnarkProtocol>>>,
 
     /// Held from the arity and SNARK checks until the worker is in the pool, so two first
-    /// registrations cannot both see an empty fleet and adopt different values. Taken only by the
-    /// registration handlers, so it never nests inside a job lock.
+    /// registrations cannot both see an empty fleet and adopt different values. A disconnect holds
+    /// it until it has pruned the setups the worker owed, so a reconnection of that worker is not
+    /// pruned with them. Taken only by the registration handlers and by those disconnects, after
+    /// any job is failed, so it never nests inside a job lock.
     registration: tokio::sync::Mutex<()>,
 
     /// Number of registrations accumulated.
@@ -3215,6 +3217,54 @@ mod tests {
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Idle));
     }
 
+    /// A stale-heartbeat disconnect holds `registration` until it has pruned the
+    /// setups the worker owed, so a reconnection of that worker cannot land in
+    /// between and be pruned from a setup it was never sent.
+    #[tokio::test]
+    async fn test_stale_disconnect_waits_for_a_registration_in_flight() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
+        let w0 = WorkerId::from("w0".to_string());
+        let (sender, _msgs) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(w0.clone(), 1u32, Box::new(sender), WorkerState::Ready)
+            .await
+            .unwrap();
+        let old = Utc::now() - chrono::Duration::seconds(100);
+        coordinator.workers_pool.set_last_heartbeat(&w0, old).await.unwrap();
+        // Another worker still owes the setup, so pruning w0 does not finish it.
+        let setup_job = JobId::new();
+        coordinator.setup_pending.write().await.insert(
+            setup_job.clone(),
+            SetupPendingState {
+                pending: HashSet::from([w0.clone(), WorkerId::from("w1".to_string())]),
+                vks: Vec::new(),
+                hash_id: "hash".to_string(),
+                program_name: "program".to_string(),
+                with_hints: false,
+                emulator_only: false,
+            },
+        );
+        let registering = coordinator.registration.lock().await;
+        let disconnect = tokio::spawn({
+            let coordinator = Arc::clone(&coordinator);
+            async move { coordinator.disconnect_stale_workers(chrono::Duration::seconds(90)).await }
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(coordinator.setup_pending.read().await[&setup_job].pending.contains(&w0));
+
+        drop(registering);
+        assert_eq!(disconnect.await.unwrap(), vec![w0.clone()]);
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0).await,
+            Some(WorkerState::Disconnected)
+        );
+        assert!(!coordinator.setup_pending.read().await[&setup_job].pending.contains(&w0));
+    }
+
+    /// Fresh entries in `pending_recovery` (within the threshold) survive the
+    /// sweep — only the timed-out ones are evicted.
     #[tokio::test]
     async fn test_cleanup_stuck_recovery_skips_fresh_entries() {
         let (coordinator, workers, job_id) =
