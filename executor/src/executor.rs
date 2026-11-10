@@ -480,6 +480,16 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             *self.state.min_traces.write_or_poison("min_traces")? = Some(min_traces);
         }
 
+        // A debugging aid, off unless the variable is set: the minimal traces, to compare two
+        // executions chunk by chunk
+        if let Some(path) = std::env::var_os(crate::execution::trace_dump::DUMP_MIN_TRACES_VAR) {
+            if let Some(traces) = self.state.min_traces.read_or_poison("min_traces")?.as_ref() {
+                if let Err(e) = crate::execution::trace_dump::dump_min_traces(&path, traces) {
+                    tracing::warn!("could not dump the minimal traces to {path:?}: {e}");
+                }
+            }
+        }
+
         // ASM + witness: the hook already released every Main instance during the
         // run (the runner only returns `Ok` after delivering the final chunk).
         let main_instances_count = if is_asm_emulator && self.witness.is_some() {
