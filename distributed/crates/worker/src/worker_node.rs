@@ -178,15 +178,25 @@ fn keeps_computation(
 /// The recovery from a cancelled wrap or recurser prove, which cannot be stopped: wait for
 /// the task to end, then signal `WorkerRecoveryComplete`. The coordinator keeps the worker
 /// parked until then, and the task's own result, sent before it ends, reaches the loop first.
-async fn recover_after_task(task: JoinHandle<()>, loop_tx: LoopEventSender, worker_id: String) {
-    if let Err(e) = task.await {
-        warn!("[Recovery] {worker_id}: cancelled task join error: {e}");
+/// A task still running after `timeout` is wedged: the error says so, for the caller to
+/// abort the worker, since nothing short of a restart frees its prover.
+async fn recover_after_task(
+    task: JoinHandle<()>,
+    loop_tx: LoopEventSender,
+    worker_id: String,
+    timeout: Duration,
+) -> std::result::Result<(), String> {
+    match tokio::time::timeout(timeout, task).await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => warn!("[Recovery] {worker_id}: cancelled task join error: {e}"),
+        Err(_) => return Err(format!("the cancelled task did not end within {timeout:?}")),
     }
     info!("[Recovery] {worker_id}: cancelled task ended; signalling Ready");
     let msg = WorkerRecoveryComplete { worker_id: worker_id.clone() };
     if let Err(e) = loop_tx.send_recovery_complete(msg) {
         error!("[Recovery] {worker_id}: enqueue RecoveryComplete failed: {e}");
     }
+    Ok(())
 }
 
 /// The exit status of a worker that ends itself because it cannot recover
@@ -1731,11 +1741,24 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 let recovery_spawned = match task {
                     Some(task) => {
                         let worker_id = self.worker_config.worker.worker_id.as_string();
-                        self.recovery = Some(tokio::spawn(recover_after_task(
-                            task,
-                            loop_tx.clone(),
-                            worker_id,
-                        )));
+                        let prover = self.worker.prover_arc();
+                        let tx = loop_tx.clone();
+                        self.recovery = Some(tokio::spawn(async move {
+                            let recovered = recover_after_task(
+                                task,
+                                tx,
+                                worker_id.clone(),
+                                Self::RECOVERY_TIMEOUT,
+                            )
+                            .await;
+                            if let Err(why) = recovered {
+                                abort_wedged_worker(
+                                    &prover,
+                                    ExitReason::RecoveryTimeout,
+                                    &format!("[Recovery] {worker_id}: {why}"),
+                                )
+                            }
+                        }));
                         true
                     }
                     None => self.drive_cancellation(loop_tx, cancelled_work, cancelled.job_id),
@@ -3168,13 +3191,14 @@ mod recovery_tests {
             let response = WorkerMessage { payload: None };
             tx.send_computation(ComputationResult::WrapResponse { job_id, response }).unwrap();
         });
-        let recovery = tokio::spawn(recover_after_task(task, loop_tx, "w0".into()));
+        let timeout = Duration::from_secs(60);
+        let recovery = tokio::spawn(recover_after_task(task, loop_tx, "w0".into(), timeout));
 
         tokio::time::sleep(Duration::from_millis(50)).await;
         assert!(loop_rx.try_recv().is_err(), "no recovery while the task runs");
 
         release.send(()).unwrap();
-        recovery.await.unwrap();
+        assert_eq!(recovery.await.unwrap(), Ok(()));
         let first = loop_rx.recv().await.unwrap();
         assert!(
             matches!(&first, LoopEvent::Computation(result)
@@ -3182,6 +3206,21 @@ mod recovery_tests {
             "the task's result comes first"
         );
         assert!(matches!(loop_rx.recv().await, Some(LoopEvent::RecoveryComplete(_))));
+    }
+
+    /// A cancelled task that never ends is wedged: the recovery gives up after its timeout,
+    /// without reporting the worker recovered, for the caller to abort it.
+    #[tokio::test]
+    async fn a_wedged_cancelled_task_fails_its_recovery() {
+        let (raw_tx, mut loop_rx) = mpsc::unbounded_channel::<LoopEvent>();
+        let loop_tx = LoopEventSender::new(raw_tx);
+        let task = tokio::spawn(std::future::pending::<()>());
+
+        let recovered =
+            recover_after_task(task, loop_tx, "w0".into(), Duration::from_millis(50)).await;
+
+        assert!(recovered.unwrap_err().contains("did not end"));
+        assert!(loop_rx.try_recv().is_err(), "a wedged task's worker is not reported recovered");
     }
 
     fn response() -> WorkerMessage {
