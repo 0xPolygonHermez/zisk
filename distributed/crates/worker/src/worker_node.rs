@@ -2843,6 +2843,17 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     ) -> Result<()> {
         let job_id = JobId::from(request.job_id.clone());
 
+        // Idempotency guard, as for `prove` and `aggregate`: a wrap sent again for the job
+        // it runs, as a replay could, must not start a second one, whose handle would
+        // detach the first's. The running wrap answers.
+        if computes(self.worker.state(), &job_id) && self.worker.has_live_computation() {
+            error!(
+                "[DUPLICATE-DISPATCH] Wrap for {job_id} received while it is still running — \
+                 ignoring"
+            );
+            return Ok(());
+        }
+
         let Some(execute_task_request::Params::WrapParams(wrap_params)) = request.params else {
             return Err(anyhow!("Expected WrapParams for Wrap task"));
         };
