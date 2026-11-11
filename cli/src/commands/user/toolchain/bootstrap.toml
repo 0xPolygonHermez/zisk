@@ -12,3 +12,7 @@ download-ci-llvm = false
 channel = "auto-detect"
 lld = true
 llvm-tools = true
+
+[target.riscv64ima-zisk-zkvm-elf]
+cc = "riscv64-unknown-elf-gcc"
+ar = "riscv64-unknown-elf-ar"
