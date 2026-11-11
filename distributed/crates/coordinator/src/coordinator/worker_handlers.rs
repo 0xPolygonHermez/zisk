@@ -807,10 +807,11 @@ impl Coordinator {
     /// Transient disconnect — preserves `pending_recovery` so a reconnect
     /// re-parks the worker `SettingUp` until recovery completes.
     pub async fn disconnect_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
+        // Held from the first look at the worker until the setups are pruned: a reconnection in
+        // between would be pruned with them.
+        let _registering = self.registration.lock().await;
         let worker_state = self.workers_pool.worker_state(worker_id).await;
         self.fail_job_if_computing(worker_id, worker_state, "disconnected").await?;
-        // Held until the setups are pruned: a reconnection in between would be pruned with them.
-        let _registering = self.registration.lock().await;
         let disconnected = self.workers_pool.disconnect_worker(worker_id).await?;
         if disconnected {
             // Even on a "transient" disconnect the worker's gRPC stream is
@@ -855,6 +856,11 @@ impl Coordinator {
         worker_id: &WorkerId,
         expected_generation: u64,
     ) -> CoordinatorResult<()> {
+        // Held from the generation check until the setups are pruned: a worker that reconnects
+        // meanwhile, to resume its job, registers once this is done, so its job is not failed,
+        // nor its setups pruned, on the old connection's account.
+        let _registering = self.registration.lock().await;
+
         // Read the worker state + generation atomically under one lock
         let (generation_matches, worker_state) = {
             match self.workers_pool.worker_state_and_generation(worker_id).await {
@@ -877,9 +883,7 @@ impl Coordinator {
         // Disconnect with generation check (re-validates under write lock).
         // Only prune in-flight setups if the disconnect actually landed —
         // otherwise the worker reconnected between the check above and
-        // this call, and we'd be pruning a still-live worker. `registration`
-        // is held until the prune, so no reconnection lands in between either.
-        let _registering = self.registration.lock().await;
+        // this call, and we'd be pruning a still-live worker.
         let disconnected = self
             .workers_pool
             .disconnect_worker_if_generation(worker_id, expected_generation)
