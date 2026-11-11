@@ -36,7 +36,7 @@ pub struct TelemetryConfig {
     #[serde(default = "TelemetryConfig::default_enabled")]
     pub enabled: bool,
 
-    /// Seconds between two reports.
+    /// Seconds between two samples. The heartbeat, every 5 s, carries the latest.
     #[serde(default = "TelemetryConfig::default_interval")]
     pub interval_seconds: u64,
 }
