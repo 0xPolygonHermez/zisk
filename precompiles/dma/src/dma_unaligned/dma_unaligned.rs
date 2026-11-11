@@ -51,8 +51,8 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
         let initial_count = DmaInfo::get_loop_count(input.encoded) - input.skip as usize;
         let mut count = initial_count;
         let src_offset = DmaInfo::get_loop_src_offset(input.encoded);
-        let mut dst64 = (input.dst >> 3) + input.skip;
-        let mut src64 = (input.src >> 3) + input.skip;
+        let mut dst64 = ((input.dst >> 3) as u32) + input.skip;
+        let mut src64 = ((input.src >> 3) as u32) + input.skip;
 
         let mut src_values_index = 0;
 

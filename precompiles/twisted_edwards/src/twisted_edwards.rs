@@ -26,15 +26,15 @@ pub struct TwistedEdwardsSM<F: PrimeField64> {
 struct TwistedEdwardsStepAddr {
     main_step: u64,
     /// Main operand b: the p2 address.
-    addr_op: u32,
+    addr_op: u64,
     /// Main operand a: the p1 address (the result overwrites p1).
-    addr_a: u32,
-    addr_x1: u32,
-    addr_y1: u32,
-    addr_x2: u32,
-    addr_y2: u32,
-    addr_x3: u32,
-    addr_y3: u32,
+    addr_a: u64,
+    addr_x1: u64,
+    addr_y1: u64,
+    addr_x2: u64,
+    addr_y2: u64,
+    addr_x3: u64,
+    addr_y3: u64,
 }
 
 impl<F: PrimeField64> TwistedEdwardsSM<F> {
@@ -48,14 +48,14 @@ impl<F: PrimeField64> TwistedEdwardsSM<F> {
         trace: &mut [R],
     ) {
         trace[0].set_step_addr(data.main_step);
-        trace[1].set_step_addr(data.addr_op as u64);
-        trace[2].set_step_addr(data.addr_x1 as u64);
-        trace[3].set_step_addr(data.addr_y1 as u64);
-        trace[4].set_step_addr(data.addr_x2 as u64);
-        trace[5].set_step_addr(data.addr_y2 as u64);
-        trace[6].set_step_addr(data.addr_x3 as u64);
-        trace[7].set_step_addr(data.addr_y3 as u64);
-        trace[8].set_step_addr(data.addr_a as u64);
+        trace[1].set_step_addr(data.addr_op);
+        trace[2].set_step_addr(data.addr_x1);
+        trace[3].set_step_addr(data.addr_y1);
+        trace[4].set_step_addr(data.addr_x2);
+        trace[5].set_step_addr(data.addr_y2);
+        trace[6].set_step_addr(data.addr_x3);
+        trace[7].set_step_addr(data.addr_y3);
+        trace[8].set_step_addr(data.addr_a);
         for row in trace.iter_mut().take(TWISTED_EDWARDS_ROWS_BY_OP).skip(9) {
             row.set_step_addr(0);
         }

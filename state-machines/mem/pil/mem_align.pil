@@ -96,7 +96,7 @@ require "mem_align_rom.pil"
 airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM = 8, const int CHUNK_BITS = 8) {
     const int CHUNKS_BY_RC = CHUNK_NUM / RC;
 
-    col witness bits(29) addr;
+    col witness bits(ADDR_W_BITS) addr;
     col witness bits(3) offset;
     col witness bits(4) width;
     col witness bits(1) wr;

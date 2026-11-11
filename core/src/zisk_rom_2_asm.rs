@@ -68,8 +68,9 @@ const REG_PC: &str = "r8";
 //   - rsi
 //   - rsp
 
-// Only used to calculate histogram position for every rom pc
-const TRACE_ADDR_NUMBER: u64 = 0xd0000000 + 0x20;
+// Only used to calculate histogram position for every rom pc. TRACE_ADDR in
+// emulator-asm/src/constants.hpp: above the end of the RAM (0x1_4000_0000).
+const TRACE_ADDR_NUMBER: u64 = 0x2_0000_0000 + 0x20;
 
 // Control input and output shared memory pages, mapped by the emulator at these fixed addresses.
 // They must match CONTROL_INPUT_ADDR and CONTROL_OUTPUT_ADDR in emulator-asm/src/constants.hpp.
@@ -102,40 +103,44 @@ const FCALL_LENGTH: u64 = FCALL_RESULT_GOT + 1;
 const XMM_MAPPED_REGS: [u64; 16] = [1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
 //const XMM_MAPPED_REGS: [u64; 0] = []; // Used for debugging
 
-const F_MOPS_CLEAR_WRITE_BYTE: u64 = 1 << 37;
+const F_MOPS_CLEAR_WRITE_BYTE: u64 = 0x20 << F_MOPS_MODE_SHIFT;
 
 // Memory-ops records are tagged 8-byte words: bit 63 set on the header word, clear on payload
 // words, so a consumer finds record boundaries in parallel. A read is one header word; a write
 // adds the value with its bit 63 moved to header bit 62; a block read adds the step field. The
-// light form (no values, no steps: header bits 58 and 62) is one word per record. Layout:
+// light form (no values, no steps: header bits 59 and 62) is one word per record. The byte
+// address takes bits 0-32 (addresses are 33 bits wide) and the mode starts at bit 33. Layout:
 // state-machines/mem-cpp/cpp/mops_format.hpp.
 const F_MOPS_TAG: u64 = 1 << 63;
+const F_MOPS_MODE_SHIFT: u64 = 33;
 
-const F_MOPS_BLOCK_READ: u64 = 0x0000_000A_0000_0000 | F_MOPS_TAG;
+const F_MOPS_BLOCK_READ: u64 = (0x0A << F_MOPS_MODE_SHIFT) | F_MOPS_TAG;
 
-const F_MOPS_READ_8: u64 = 0x0000_0008_0000_0000 | F_MOPS_TAG;
-const F_MOPS_READ_4: u64 = 0x0000_0004_0000_0000 | F_MOPS_TAG;
-const F_MOPS_READ_2: u64 = 0x0000_0002_0000_0000 | F_MOPS_TAG;
-const F_MOPS_READ_1: u64 = 0x0000_0001_0000_0000 | F_MOPS_TAG;
+const F_MOPS_READ_8: u64 = (0x08 << F_MOPS_MODE_SHIFT) | F_MOPS_TAG;
+const F_MOPS_READ_4: u64 = (0x04 << F_MOPS_MODE_SHIFT) | F_MOPS_TAG;
+const F_MOPS_READ_2: u64 = (0x02 << F_MOPS_MODE_SHIFT) | F_MOPS_TAG;
+const F_MOPS_READ_1: u64 = (0x01 << F_MOPS_MODE_SHIFT) | F_MOPS_TAG;
 
-const F_MOPS_WRITE_8: u64 = 0x0000_0018_0000_0000 | F_MOPS_TAG;
-const F_MOPS_WRITE_4: u64 = 0x0000_0014_0000_0000 | F_MOPS_TAG;
-const F_MOPS_WRITE_2: u64 = 0x0000_0012_0000_0000 | F_MOPS_TAG;
-const F_MOPS_WRITE_1: u64 = 0x0000_0011_0000_0000 | F_MOPS_TAG;
+const F_MOPS_WRITE_8: u64 = (0x18 << F_MOPS_MODE_SHIFT) | F_MOPS_TAG;
+const F_MOPS_WRITE_4: u64 = (0x14 << F_MOPS_MODE_SHIFT) | F_MOPS_TAG;
+const F_MOPS_WRITE_2: u64 = (0x12 << F_MOPS_MODE_SHIFT) | F_MOPS_TAG;
+const F_MOPS_WRITE_1: u64 = (0x11 << F_MOPS_MODE_SHIFT) | F_MOPS_TAG;
 
-const F_MOPS_ALIGNED_READ: u64 = 0x0000_000C_0000_0000 | F_MOPS_TAG;
+const F_MOPS_ALIGNED_READ: u64 = (0x0C << F_MOPS_MODE_SHIFT) | F_MOPS_TAG;
 /// An aligned 8-byte read with its value: the free-input word, whose reads are fcall results.
-const F_MOPS_READ_8_VALUE: u64 = 0x0000_0028_0000_0000 | F_MOPS_TAG;
-const F_MOPS_ALIGNED_WRITE: u64 = 0x0000_000D_0000_0000 | F_MOPS_TAG;
+const F_MOPS_READ_8_VALUE: u64 = (0x28 << F_MOPS_MODE_SHIFT) | F_MOPS_TAG;
+const F_MOPS_ALIGNED_WRITE: u64 = (0x0D << F_MOPS_MODE_SHIFT) | F_MOPS_TAG;
 // const F_MOPS_ALIGNED_BLOCK_READ: u64 = 0x0000_000E_0000_0000;
-const F_MOPS_ALIGNED_BLOCK_WRITE: u64 = 0x0000_000F_0000_0000 | F_MOPS_TAG;
+const F_MOPS_ALIGNED_BLOCK_WRITE: u64 = (0x0F << F_MOPS_MODE_SHIFT) | F_MOPS_TAG;
 // Light form: a write header without a value word, a block header without a step word.
-const F_MOPS_NO_VALUE_BIT: u64 = 58;
+const F_MOPS_NO_VALUE_BIT: u64 = 59;
 const F_MOPS_NO_PAYLOAD_BIT: u64 = 62;
-const F_MOPS_BLOCK_LENGTH_SHIFT: u64 = 36;
-// Non-block headers: `(step_in_chunk << 2) | slot` at bits 38-57. Block records carry the same
+const F_MOPS_BLOCK_LENGTH_SHIFT: u64 = 37;
+/// The widest block one record holds (25 bits of count); the DMA recorders split longer blocks.
+const F_MOPS_BLOCK_LENGTH_MAX: u64 = (1 << 25) - 1;
+// Non-block headers: `(step_in_chunk << 2) | slot` at bits 39-58. Block records carry the same
 // field, at the same position, in their payload word.
-const F_MOPS_STEP_SHIFT: u64 = 38;
+const F_MOPS_STEP_SHIFT: u64 = 39;
 /// Trace space the memory-ops runner keeps for the initialised-data records at the ROM entry,
 /// two words per data word (constants.hpp MAX_MO_INIT_DATA_MARGIN).
 pub const MAX_MO_INIT_DATA_MARGIN: u64 = 64 << 20;
@@ -1798,6 +1803,13 @@ impl ZiskRom2Asm {
 
                 // Calculate memory address
                 if instruction.b_offset_imm0 != 0 {
+                    // `add reg, imm` takes a sign-extended 32-bit immediate only
+                    assert!(
+                        (instruction.b_offset_imm0 as i64)
+                            == (instruction.b_offset_imm0 as i32 as i64),
+                        "b_offset_imm0 0x{:x} does not fit in an imm32",
+                        instruction.b_offset_imm0
+                    );
                     *code += &format!(
                         "\tadd {}, 0x{:x} {}\n",
                         reg_address,
@@ -2271,6 +2283,12 @@ impl ZiskRom2Asm {
                             ctx.comment_str("a(address) = imm + offset")
                         );
                     } else if instruction.store_offset != 0 {
+                        // `add reg, imm` takes a sign-extended 32-bit immediate only
+                        assert!(
+                            instruction.store_offset == (instruction.store_offset as i32 as i64),
+                            "store_offset 0x{:x} does not fit in an imm32",
+                            instruction.store_offset
+                        );
                         *code += &format!(
                             "\tadd {}, 0x{:x} {}\n",
                             reg_address,
@@ -8039,6 +8057,10 @@ impl ZiskRom2Asm {
             ctx.mops_pending_writes.push(MopsPendingWrite { param_index: None, words: length });
             return;
         }
+        debug_assert!(
+            length <= F_MOPS_BLOCK_LENGTH_MAX,
+            "block of {length} words does not fit a record"
+        );
         let mops_mask: u64 = if length > 1 {
             F_MOPS_BLOCK_READ | (length << F_MOPS_BLOCK_LENGTH_SHIFT)
         } else {

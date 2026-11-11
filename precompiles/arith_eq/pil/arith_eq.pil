@@ -538,6 +538,12 @@ airtemplate ArithEq (const int N = 2**18, const int equations = EQ_ALL_256) {
 
     col witness bits(40) step_addr;
 
+    // High limb (bit 32) of the indirect addresses read from the parameter struct at the
+    // ADDR_IND_* clocks: step_addr holds the whole 33-bit address and the memory value is two
+    // 32-bit limbs, so the low limb is step_addr - 2^32 * addr_hi.
+    col witness bits(1) addr_hi;
+    addr_hi * (1 - addr_hi) === 0;
+
     const int MAIN_STEP = 0;
 
     // 4 reads    256 bits  = 4 * 4 = 16 reads 64 bits
@@ -718,25 +724,30 @@ airtemplate ArithEq (const int N = 2**18, const int equations = EQ_ALL_256) {
     mem_value[0][0] =   map_chunks_to_m32(x1, start: 0, end: 3) +
                         map_chunks_to_m32(x2, start: 4, end: 7) +
                         map_chunks_to_m32(x3, start: 8, end: 11) +
-                        clock_map(step_addr, ADDR_IND_0, 12) +
-                        clock_map(step_addr, ADDR_IND_2, 13) +
-                        clock_map(step_addr, ADDR_IND_4, 14);
+                        clock_map(step_addr, ADDR_IND_0, 12) - 2**32 * clock_map(addr_hi, ADDR_IND_0, 12) +
+                        clock_map(step_addr, ADDR_IND_2, 13) - 2**32 * clock_map(addr_hi, ADDR_IND_2, 13) +
+                        clock_map(step_addr, ADDR_IND_4, 14) - 2**32 * clock_map(addr_hi, ADDR_IND_4, 14);
 
     mem_value[0][1] =   map_chunks_to_m32(x1, index: 2, start:0, end: 3) +
                         map_chunks_to_m32(x2, index: 2, start:4, end: 7) +
-                        map_chunks_to_m32(x3, index: 2, start:8, end: 11);
-                        // high bits of indirect addresses are 0.
+                        map_chunks_to_m32(x3, index: 2, start:8, end: 11) +
+                        clock_map(addr_hi, ADDR_IND_0, 12) +
+                        clock_map(addr_hi, ADDR_IND_2, 13) +
+                        clock_map(addr_hi, ADDR_IND_4, 14);
+                        // high limbs of the indirect addresses
 
     mem_value[1][0] =   map_chunks_to_m32(y1, start: 0, end: 3) +
                         map_chunks_to_m32(y2, start: 4, end: 7) +
                         map_chunks_to_m32(y3, start: 8, end: 11) +
-                        clock_map(step_addr, ADDR_IND_1, 12) +
-                        clock_map(step_addr, ADDR_IND_3, 13);
+                        clock_map(step_addr, ADDR_IND_1, 12) - 2**32 * clock_map(addr_hi, ADDR_IND_1, 12) +
+                        clock_map(step_addr, ADDR_IND_3, 13) - 2**32 * clock_map(addr_hi, ADDR_IND_3, 13);
 
     mem_value[1][1] =   map_chunks_to_m32(y1, index: 2, start:0, end: 3) +
                         map_chunks_to_m32(y2, index: 2, start:4, end: 7) +
-                        map_chunks_to_m32(y3, index: 2, start:8, end: 11);
-                        // high bits of indirect addresses are 0.
+                        map_chunks_to_m32(y3, index: 2, start:8, end: 11) +
+                        clock_map(addr_hi, ADDR_IND_1, 12) +
+                        clock_map(addr_hi, ADDR_IND_3, 13);
+                        // high limbs of the indirect addresses
 
     const expr mem_sel[2];
 

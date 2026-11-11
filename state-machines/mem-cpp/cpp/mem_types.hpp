@@ -3,12 +3,13 @@
 
 #include <stdint.h>
 #include "mem_config.hpp"
+#include "mops_format.hpp"
 // One memory-ops record as the counters (mem_counter.cpp, mem_align_counter.cpp) consume it:
-// the byte address and the header's bits 32-61 (mops_format.hpp). The counters switch on the low
+// the byte address and the header's bits 33-61 (mops_format.hpp). The counters switch on the low
 // nibble of `flags` (the width or the block kind), test the write flag, and read a block's word
 // count as `flags >> 4`; they never look at the step bits above.
 struct MemCountersBusData {
-    uint32_t addr;
+    uint64_t addr;   // 33-bit byte address
     uint32_t flags;
 } __attribute__((packed));
 
@@ -20,10 +21,10 @@ struct MemCountersBusData {
 static inline MemCountersBusData mops_decode_record(const uint64_t *w) {
     const uint64_t hdr = w[0];
     MemCountersBusData rec;
-    rec.addr = (uint32_t)hdr;
-    rec.flags = (uint32_t)(hdr >> 32) & 0x3FFFFFFF;
+    rec.addr = hdr & MOPS_ADDR_MASK;
+    rec.flags = (uint32_t)(hdr >> MOPS_MODE_SHIFT) & 0x1FFFFFFF;
     if ((rec.flags & 0x0F) == MOPS_BLOCK_VALUES) {
-        rec.flags = MOPS_ALIGNED_BLOCK_WRITE | ((uint32_t)((hdr >> 36) & 63) << MOPS_BLOCK_COUNT_SBITS);
+        rec.flags = MOPS_ALIGNED_BLOCK_WRITE | ((uint32_t)((hdr >> MOPS_BLOCK_COUNT_SHIFT) & 63) << MOPS_BLOCK_COUNT_SBITS);
     }
     return rec;
 }

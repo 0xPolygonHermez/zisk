@@ -79,9 +79,7 @@ direct_jump_dest_mops:
     mov     rdi, [rsp + 8]                # original dst
     lea     rax, [rdx + 63]
     shr     rax, 6
-    shl     rax, MOPS_BLOCK_WORDS_RS
-    mov     rcx, MOPS_ALIGNED_BLOCK_WRITE
-    add     rax, rcx
+    shl     rax, MOPS_DESC_WORDS_RS
     add     rax, rdi
     mov     [r12 + r13 * 8], rax
     mov     R_MOPS_R, [rsp]

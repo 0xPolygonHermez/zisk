@@ -12,7 +12,7 @@ pub const BN254_COMPLEX_SUB_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputC
 };
 
 pub fn generate_bn254_complex_sub_mem_inputs<P: MemProcessor>(
-    addr_main: u32,
+    addr_main: u64,
     step_main: u64,
     data: &[u64],
     only_counters: bool,
@@ -36,7 +36,7 @@ pub fn generate_bn254_complex_sub_mem_inputs<P: MemProcessor>(
 }
 
 pub fn skip_bn254_complex_sub_mem_inputs<P: MemProcessor>(
-    addr_main: u32,
+    addr_main: u64,
     data: &[u64],
     mem_processors: &mut P,
 ) -> bool {

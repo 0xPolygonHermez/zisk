@@ -112,11 +112,11 @@ airtemplate Dma(int N = 2**21,
     // l_count                       9
     // count_diff_chunks            16 <===
 
-    // h_dst64                      22
+    // h_dst64                      23
     // l_dst64                       7
     // dst_offset                    3
 
-    // h_src64                      22
+    // h_src64                      23
     // l_src64                       7
     // src_offset                    3
     // src_offset_after_pre          3
@@ -286,9 +286,9 @@ airtemplate Dma(int N = 2**21,
     // src_offset range verified with dma_rom table
 
 
-    // 32 bit address
-    // 22 bits RC +  7 bits RC + 3 bits T
-    col witness bits(22) h_dst64;
+    // 33 bit address (ADDR_BITS)
+    // 23 bits RC +  7 bits RC + 3 bits T
+    col witness bits(23) h_dst64;
     col witness bits(7) l_dst64;
     col witness bits(3) dst_offset;
     const expr dst = h_dst64 * 2**10 + l_dst64 * 2**3 + dst_offset;
@@ -297,12 +297,12 @@ airtemplate Dma(int N = 2**21,
 
     col witness bits(MAIN_STEP_BITS) main_step;
 
-    range_check(expression: h_dst64, min: 0, max: 2**22-1, sel: sel);
+    range_check(expression: h_dst64, min: 0, max: 2**24-1, sel: sel);
 
-    // 32 bit address
-    // 22 bits RC + 5 bits RC + 3 bits T
+    // 33 bit address (ADDR_BITS)
+    // 23 bits RC + 7 bits RC + 3 bits T
     if (has_src) {
-        col witness bits(22) air.h_src64;
+        col witness bits(23) air.h_src64;
         col witness bits(7) air.l_src64;
         col witness bits(3) air.src_offset;
         col witness bits(3) air.src_offset_after_pre;
@@ -316,7 +316,7 @@ airtemplate Dma(int N = 2**21,
             (sel_memset + sel_inputcpy) * src_offset_after_pre === 0;
         }
 
-        range_check(expression: h_src64, min: 0, max: 2**22-1, sel: sel);
+        range_check(expression: h_src64, min: 0, max: 2**24-1, sel: sel);
         lookup_assumes(DUAL_RANGE_7_BITS_ID, expressions: [l_src64, l_dst64], sel: sel, sel_is_binary: 1);
 
         // High 32 bits of the source address, see dst_hi below.
@@ -456,7 +456,7 @@ airtemplate Dma(int N = 2**21,
                     loop_count * (sel_inputcpy + sel_memset);
 
     if (degree(_loop_b0) > 1) {
-        col witness bits(32) air.loop_b0;
+        col witness bits(ADDR_BITS) air.loop_b0;
         loop_b0 <== _loop_b0;
     } else {
         const expr air.loop_b0 = _loop_b0;
@@ -546,10 +546,11 @@ airtemplate Dma(int N = 2**21,
     // OP_DMA_XMEMCMP  (dst, 0, src,   0, 0, R0, R1, main_step, count)
     // OP_DMA_XMEMSET  (dst, 0, count, 0, 0,  0,  0, main_step, value)
 
+    // Main sends the operands of a precompiled operation as single field elements (see main.pil).
     proves_operation(op: bus_op, 
-                     a: [dst, dst_hi], 
-                     b: [src * (sel_memcpy + sel_memcmp) + count * (sel_inputcpy + sel_memset), src_hi], 
-                     c: bus_result,
+                     a: [dst + 2**32 * dst_hi, 0], 
+                     b: [src * (sel_memcpy + sel_memcmp) + count * (sel_inputcpy + sel_memset) + 2**32 * src_hi, 0], 
+                     c: [bus_result[0] + 2**32 * bus_result[1], 0],
                      flag: 0, 
                      main_step:, 
                      extended_arg: static_count * (sel_memcpy + sel_memcmp) + fill_byte * sel_memset,

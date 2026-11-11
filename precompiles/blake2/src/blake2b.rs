@@ -32,9 +32,9 @@ pub struct Blake2bInput {
     /// Static argument of the instruction (first word of the payload): round index and chain mode.
     pub index: u64,
     /// Main operand a: the state address (the result overwrites it).
-    pub state_addr: u32,
+    pub state_addr: u64,
     /// Main operand b: the input block address.
-    pub input_addr: u32,
+    pub input_addr: u64,
     pub state: [u64; 16],
     pub input: [u64; 16],
 }
@@ -45,8 +45,8 @@ impl Blake2bInput {
         Self {
             step_main: values[4],
             index: values[5],
-            state_addr: values[2] as u32,
-            input_addr: values[3] as u32,
+            state_addr: values[2],
+            input_addr: values[3],
             state: values[6..22].try_into().unwrap(),
             input: values[22..38].try_into().unwrap(),
         }
@@ -87,8 +87,8 @@ impl<F: PrimeField64> Blake2bSM<F> {
 
         // Fill the step_addr
         trace[0].set_step_addr(input.step_main); // STEP_MAIN
-        trace[1].set_step_addr(input.state_addr as u64); // ADDR_STATE (main operand a)
-        trace[2].set_step_addr(input.input_addr as u64); // ADDR_INPUT (main operand b)
+        trace[1].set_step_addr(input.state_addr); // ADDR_STATE (main operand a)
+        trace[2].set_step_addr(input.input_addr); // ADDR_INPUT (main operand b)
 
         // Running state: each row's G function reads and writes 4 words of it
         let mut v = input.state;

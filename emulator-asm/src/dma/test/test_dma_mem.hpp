@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define EXTRA_PARAMETER_ADDR 0xA0400F00
+#define EXTRA_PARAMETER_ADDR 0xC0400F00
 
 class TestDmaMem {
 protected:
@@ -23,6 +23,10 @@ protected:
     bool use_src;
     int diff_dst_src;
     uint64_t count;
+    bool low_mapped = false;
+    // Moves the buffers to anonymous mappings at `base` (below 2^33, the width of a recorded
+    // address): the default heap of a large test sits above it.
+    void map_low(uint64_t base);
 public:
     TestDmaMem(size_t max_count = 1024, bool use_src = true);
     virtual ~TestDmaMem();    

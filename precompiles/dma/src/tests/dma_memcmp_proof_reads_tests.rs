@@ -27,10 +27,10 @@ impl MemProcessor for Recorder {
             self.reads.push(data[1]);
         }
     }
-    fn skip_addr(&mut self, _addr: u32) -> bool {
+    fn skip_addr(&mut self, _addr: u64) -> bool {
         false
     }
-    fn skip_addr_range(&mut self, _addr_from: u32, _addr_to: u32) -> bool {
+    fn skip_addr_range(&mut self, _addr_from: u64, _addr_to: u64) -> bool {
         false
     }
 }

@@ -30,7 +30,7 @@ extern "C"
 
     uint32_t get_mem_segment_count(MemCountAndPlan *mcp, uint32_t mem_id);
     PagedOffsets get_mem_segment_offset_pages(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id,
-                                              uint32_t &offsets_base_addr_out);
+                                              uint32_t &offsets_base_addr_w_out); // word address of slot 0
     const MemCheckPoint *get_mem_segment_check_points(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id, uint32_t &count);
     const MemAlignChunkCounters *get_mem_align_counters(MemCountAndPlan *mcp, uint32_t &count);
     const MemAlignChunkCounters *get_mem_align_total_counters(MemCountAndPlan *mcp);

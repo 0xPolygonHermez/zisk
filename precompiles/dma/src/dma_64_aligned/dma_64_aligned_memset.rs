@@ -54,7 +54,7 @@ impl<F: PrimeField64> Dma64AlignedMemSetSM<F> {
         //     "DMA_64_ALIGNED INPUT {input:?} count:{count64} rows:{rows} dma_info:{}",
         //     DmaInfo::to_string(input.encoded)
         // );
-        let mut dst64 = ((input.dst + 7) >> 3) + skip_count as u32;
+        let mut dst64 = (((input.dst + 7) >> 3) as u32) + skip_count as u32;
         let mut seq_end = false;
         let addr_incr_by_row = self.op_x_rows as u32;
 

@@ -13,7 +13,7 @@ int main(void) {
     g_k[0] ^= (uint8_t)s1; g_s[0] ^= (uint8_t)s2;    /* status EOK=0 -> unchanged */
     emit32(g_k);
     /* also emit sha to a 2nd 32-byte slot at OUTPUT+32 */
-    volatile uint32_t *o = (volatile uint32_t *)(0xA0410000ULL + 32);
+    volatile uint32_t *o = (volatile uint32_t *)(0xC0410000ULL + 32);
     for (unsigned i = 0; i < 8; i++)
         o[i] = (uint32_t)g_s[4*i] | ((uint32_t)g_s[4*i+1]<<8) | ((uint32_t)g_s[4*i+2]<<16) | ((uint32_t)g_s[4*i+3]<<24);
     return 0;

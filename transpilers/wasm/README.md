@@ -544,12 +544,12 @@ The wasm machine lives inside the standard ZisK memory map ([layout.rs](src/layo
 |---|---|---|
 | Input | `INPUT_ADDR` | Standard ZisK input: 8-byte length, then data. Read by `fd_read`. |
 | Public output | `OUTPUT_ADDR` | First 256 bytes of stdout/stderr, published by `pubout` at exit. |
-| Globals | `0xa043_0000` | 8 bytes per global. |
-| Indirect-call table | `0xa044_0000` | 16 bytes per entry: `{ zisk_pc, canonical_type_id }`. |
-| Control cells | `0xa054_0000` | Memory size in pages, stdin cursor, stdout length, clock, RNG state. |
-| Linear memory | `0xa0fd_0000` … `0xbefd_0000` | wasm address 0 maps to `WASM_MEM_BASE`. |
-| Call / operand stack | grows down from `0xbffb_0000` to `0xbefd_0000` | One frame per active call. Above it: the ZisK library RAM (`0xbffc_0000`, used by the library routines) and the float library RAM. |
-| Float library RAM | above the stack | Used only by the soft-float library. |
+| Globals | `0xC047_0000` | 8 bytes per global. |
+| Indirect-call table | `0xC048_0000` | 16 bytes per entry: `{ zisk_pc, canonical_type_id }`. |
+| Control cells | `0xC058_0000` | Memory size in pages, stdin cursor, stdout length, clock, RNG state. |
+| Linear memory | `0xC100_0000` … `0xDF00_0000` | wasm address 0 maps to `WASM_MEM_BASE`. |
+| Call / operand stack | grows down from `0xDFFE_0000` to `0xDF00_0000` | One frame per active call. |
+| Float / ZisK library RAM | `0xC043_0000` / `0xC044_0000` | Below the globals; used only by the soft-float library and the ZisK library routines. |
 
 ### Registers and frames
 

@@ -30,8 +30,9 @@ pub struct MemModuleCollector {
     pub inputs: Vec<MemInput>,
     pub prev_segment: Option<MemPreviousSegment>,
     pub min_addr: u32,
-    pub filter_min_addr: u32,
-    pub filter_max_addr: u32,
+    /// byte address filters (33 bits)
+    pub filter_min_addr: u64,
+    pub filter_max_addr: u64,
     pub aligned_min_addr: u32,
     pub aligned_max_addr: u32,
     pub _segment_id: SegmentId,
@@ -71,8 +72,8 @@ impl MemModuleCollector {
             min_addr,
             aligned_min_addr,
             aligned_max_addr,
-            filter_min_addr: aligned_min_addr << MEM_BYTES_BITS,
-            filter_max_addr: (aligned_max_addr << MEM_BYTES_BITS) + MEM_BYTES - 1,
+            filter_min_addr: (aligned_min_addr as u64) << MEM_BYTES_BITS,
+            filter_max_addr: ((aligned_max_addr as u64) << MEM_BYTES_BITS) + MEM_BYTES as u64 - 1,
             _segment_id: segment_id,
             count,
             to_count,
@@ -284,7 +285,7 @@ impl MemModuleCollector {
     /// - `bytes`: The number of bytes in the memory access.
     /// - `is_write`: Whether this is a write operation (true) or read operation (false).
     /// - `data`: The data associated with the memory access.
-    fn process_unaligned_data(&mut self, addr: u32, bytes: u8, data: &[u64]) {
+    fn process_unaligned_data(&mut self, addr: u64, bytes: u8, data: &[u64]) {
         let addr_w = MemHelpers::get_addr_w(addr);
         if MemHelpers::is_double(addr, bytes) {
             let discard_addr_1 = self.discard_align_addr(addr_w);
@@ -476,7 +477,7 @@ impl MemModuleCollector {
             }
         }
     }
-    fn bus_data_to_input(&mut self, addr: u32, data: &[u64]) {
+    fn bus_data_to_input(&mut self, addr: u64, data: &[u64]) {
         // decoding information in bus
 
         let bytes = MemBusData::get_bytes(data);
@@ -507,7 +508,7 @@ impl MemModuleCollector {
         }
     }
 
-    fn aligned_init_data_to_input(&mut self, addr: u32, value: u64) {
+    fn aligned_init_data_to_input(&mut self, addr: u64, value: u64) {
         // Direct case when is aligned, calculated 8 bytes addres (addr_w) and check if is a
         // write or read.
 
@@ -522,14 +523,14 @@ impl MemModuleCollector {
         }
     }
 
-    pub fn skip_addr(&self, addr: u32) -> bool {
+    pub fn skip_addr(&self, addr: u64) -> bool {
         if addr > self.filter_max_addr || addr < self.filter_min_addr {
             return true;
         }
         false
     }
 
-    pub fn skip_addr_range(&self, addr_from: u32, addr_to: u32) -> bool {
+    pub fn skip_addr_range(&self, addr_from: u64, addr_to: u64) -> bool {
         if addr_from > self.filter_max_addr || addr_to < self.filter_min_addr {
             return true;
         }
@@ -542,7 +543,7 @@ impl MemModuleCollector {
 
         let addr = MemBusData::get_addr(data);
         let bytes = MemBusData::get_bytes(data);
-        if (addr + bytes as u32) > self.filter_min_addr && addr <= self.filter_max_addr {
+        if (addr + bytes as u64) > self.filter_min_addr && addr <= self.filter_max_addr {
             self.bus_data_to_input(addr, data);
         }
         true
@@ -553,8 +554,8 @@ impl MemModuleCollector {
             if section.data.is_empty() {
                 continue;
             }
-            let addr_from = section.addr as u32;
-            let addr_to = addr_from + section.data.len() as u32 * 8 - 8;
+            let addr_from = section.addr;
+            let addr_to = addr_from + section.data.len() as u64 * 8 - 8;
             if addr_to < self.filter_min_addr || addr_from > self.filter_max_addr {
                 continue;
             }
@@ -568,9 +569,9 @@ impl MemModuleCollector {
             } else {
                 section.data.len()
             };
-            let addr_from = addr_from + 8 * from_index as u32;
+            let addr_from = addr_from + 8 * from_index as u64;
             for (index, value) in section.data[from_index..to_index].iter().enumerate() {
-                let addr = addr_from + (index as u32) * 8;
+                let addr = addr_from + (index as u64) * 8;
                 self.aligned_init_data_to_input(addr, *value);
             }
         }

@@ -38,7 +38,7 @@ We have plans to add to ZisK the support to consume input data as a stream.  Thi
 
 This limit consists of the maximum ROM address space size in bytes.  Another way to describe it is the maximum size of the program code and the program constant data, together.  In essence, we are referring to the program size.
 
-Currently, ZisK maps the ROM to the virtual address space between addresses 0x9000_0000 and 0x97FF_FFFF, i.e. 128 MB.  The top 1 MB of that region, from 0x97F0_0000 to 0x97FF_FFFF, is used by the float library ROM, and the 1 MB below it, from 0x97E0_0000 to 0x97EF_FFFF, by the ZisK library ROM.  This leaves an effective limit of 126 MB for the program.
+Currently, ZisK maps the ROM to the virtual address space between addresses 0xA800_0000 and 0xAFFF_FFFF, i.e. 128 MB.  The top 1 MB of that region, from 0xAFF0_0000 to 0xAFFF_FFFF, is used by the float library ROM, and the 1 MB below it, from 0xAFE0_0000 to 0x97EF_FFFF, by the ZisK library ROM.  This leaves an effective limit of 126 MB for the program.
 
 An Ethereum client normally uses about 4 MB.  This is approximately 3 % of the maximum ROM size.
 
@@ -52,15 +52,16 @@ ZisK uses the following RAM virtual address map:
 
 | From | To | Usage |
 |---|---|---|
-| 0xA000_0000 | 0xA03F_FFFF | program stack (4 MB) |
-| 0xA040_0000 | 0xA040_FFFF | ziskos system RAM (64 KB): memory-mapped GPR registers at +0x0, UART at +0x200, memory-mapped float registers at +0x1000, and CSRs at +0x8000 |
-| 0xA041_0000 | 0xA042_FFFF | output |
-| 0xA043_0000 | 0xBFFE_FFFF | program RAM (including heap) |
-| 0xBFFF_0000 | 0xBFFF_FFFF | float library RAM address |
+| 0xC000_0000 | 0xC03F_FFFF | program stack (4 MB) |
+| 0xC040_0000 | 0xC040_FFFF | ziskos system RAM (64 KB): memory-mapped GPR registers at +0x0, UART at +0x200, memory-mapped float registers at +0x1000, and CSRs at +0x8000 |
+| 0xC041_0000 | 0xC042_FFFF | output |
+| 0xC043_0000 | 0xC043_FFFF | float library RAM |
+| 0xC044_0000 | 0xC046_FFFF | ZisK library RAM |
+| 0xC047_0000 | 0x1_3FFF_FFFF | program RAM (including heap) |
 
-This leaves an effective program RAM limit of 507.75 MB.
+Addresses are 33 bits wide (the RAM crosses the 4 GB boundary). This leaves an effective program RAM limit of about 2043.5 MB.
 
-An Ethereum client block verification normally consumes up to 256 MB (for very busy and complex real blocks).  This is approximately 50 % of the maximum ram size.
+An Ethereum client block verification normally consumes up to 256 MB (for very busy and complex real blocks).  This is approximately 12.5 % of the maximum ram size.
 
 Increasing the RAM size would require PIL modification, assigning a larger virtual address for the assembly, and it would consume more physical memory.
 

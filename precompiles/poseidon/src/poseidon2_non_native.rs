@@ -37,7 +37,7 @@ macro_rules! poseidon2_non_native_sm {
             pub struct [<$name Input>] {
                 pub step_main: u64,
                 /// Main operand b: the state address (the result overwrites it).
-                pub addr_main: u32,
+                pub addr_main: u64,
                 pub state: [u64; [<$name:snake:upper _WORDS>]],
             }
 
@@ -46,7 +46,7 @@ macro_rules! poseidon2_non_native_sm {
                     // op,op_type,a,b,step,state
                     Self {
                         step_main: values[4],
-                        addr_main: values[3] as u32,
+                        addr_main: values[3],
                         state: values[zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE..]
                             .try_into()
                             .unwrap(),
@@ -67,7 +67,7 @@ macro_rules! poseidon2_non_native_sm {
                 fn fill_block<R: zisk_pil::[<$name TraceRowOps>]<F>>(
                     trace: &mut [R],
                     state: &[u64],
-                    active: Option<(u64, u32)>,
+                    active: Option<(u64, u64)>,
                 ) {
                     let rows = $params.trace_rows(&zisk_precomp_helpers::Poseidon2Params::lanes(state));
                     let num_steps = $params.sbox_steps().len();
@@ -93,7 +93,7 @@ macro_rules! poseidon2_non_native_sm {
                     }
                     if let Some((step_main, addr_main)) = active {
                         trace[0].set_step_addr(step_main);
-                        trace[1].set_step_addr(addr_main as u64);
+                        trace[1].set_step_addr(addr_main);
                         for t in trace.iter_mut() {
                             t.set_in_use(true);
                         }
@@ -160,7 +160,7 @@ macro_rules! poseidon2_non_native_sm {
                 for [<$name SM>]<F>
             {
                 fn generate<P: zisk_precomp_common::MemProcessor>(
-                    addr_main: u32,
+                    addr_main: u64,
                     step_main: u64,
                     data: &[u64],
                     only_counters: bool,
@@ -179,11 +179,11 @@ macro_rules! poseidon2_non_native_sm {
                 }
 
                 fn should_skip<P: zisk_precomp_common::MemProcessor>(
-                    addr_main: u32,
+                    addr_main: u64,
                     _data: &[u64],
                     mem_processors: &mut P,
                 ) -> bool {
-                    (0..[<$name:snake:upper _WORDS>] as u32).all(|i| mem_processors.skip_addr(addr_main + 8 * i))
+                    (0..[<$name:snake:upper _WORDS>] as u64).all(|i| mem_processors.skip_addr(addr_main + 8 * i))
                 }
             }
         }

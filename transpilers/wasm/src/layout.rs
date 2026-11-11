@@ -6,13 +6,13 @@
 //! indirect-call table, control cells, linear memory and the call/operand stack), and pick which
 //! of the 32 Zisk registers play which role.
 
-use zisk_core::{FLOAT_LIB_RAM_ADDR, OUTPUT_ADDR, OUTPUT_MAX_SIZE, ZISKLIB_RAM_ADDR};
+use zisk_core::{GENERAL_RAM_ADDR, PC_REACH_END, RAM_ADDR, RAM_SIZE};
 
 pub const WASM_PUBLIC_OUTPUT_BYTES: u64 = 32 * 8;
 
-/// Base of the Zisk general-purpose RW region, i.e. the first address above the output region.
-/// The wasm runtime areas below are carved out of it.
-const GP_RAM_ADDR: u64 = OUTPUT_ADDR + OUTPUT_MAX_SIZE;
+/// Base of the Zisk general-purpose RW region, i.e. the first address above the output region
+/// and the float / ZisK library RAM. The wasm runtime areas below are carved out of it.
+const GP_RAM_ADDR: u64 = GENERAL_RAM_ADDR;
 
 // ---------------------------------------------------------------------------
 // Register assignment (indices into the 32-register Zisk register file)
@@ -105,19 +105,19 @@ pub fn frame_size(num_locals: u32, max_stack_depth: u32) -> i64 {
 // ---------------------------------------------------------------------------
 
 /// Base of wasm globals, 8 bytes each.
-pub const WASM_GLOBALS_ADDR: u64 = GP_RAM_ADDR; // 0xa0430000
+pub const WASM_GLOBALS_ADDR: u64 = GP_RAM_ADDR; // 0xC047_0000
 /// Capacity of the globals area, in globals (64 KiB).  Enforced at transpile time.
 pub const WASM_MAX_GLOBALS: u64 = 0x2000;
 
 /// Base of the indirect-call table, 16 bytes per entry: `{ zisk_pc: u64, type_index: u64 }`.
-pub const WASM_TABLE_ADDR: u64 = WASM_GLOBALS_ADDR + 8 * WASM_MAX_GLOBALS; // 0xa0440000
+pub const WASM_TABLE_ADDR: u64 = WASM_GLOBALS_ADDR + 8 * WASM_MAX_GLOBALS; // 0xC048_0000
 pub const WASM_TABLE_ENTRY_BYTES: u64 = 16;
 /// Capacity of the table area, in entries (1 MiB; a Go program declares ~12k).  Enforced at
 /// transpile time against the declared table size, and at run time by `call_indirect`.
 pub const WASM_MAX_TABLE_ENTRIES: u64 = 0x10000;
 
 /// Control cells used by the runtime.
-pub const WASM_CTRL_ADDR: u64 = WASM_TABLE_ADDR + WASM_TABLE_ENTRY_BYTES * WASM_MAX_TABLE_ENTRIES; // 0xa0540000
+pub const WASM_CTRL_ADDR: u64 = WASM_TABLE_ADDR + WASM_TABLE_ENTRY_BYTES * WASM_MAX_TABLE_ENTRIES; // 0xC058_0000
 /// Current linear-memory size, in 64 KiB pages.
 pub const WASM_MEM_PAGES_ADDR: u64 = WASM_CTRL_ADDR;
 /// Read cursor into the input region, used by `fd_read` on stdin.
@@ -135,27 +135,25 @@ pub const WASM_RNG_WARNED_ADDR: u64 = WASM_CTRL_ADDR + 40;
 pub const WASM_PRECOMPILE_BLOCK_ADDR: u64 = WASM_CTRL_ADDR + 64;
 pub const WASM_PRECOMPILE_BLOCK_SLOTS: u64 = 8;
 
-/// Base of wasm linear memory: wasm address 0 maps here.
-/// It sits 192 KiB lower than the 0xa100_0000 it started at, so that reserving the ZisK library
-/// RAM above the call stack took that room from the gap after the control cells, not from the
-/// memory or the stack.
-pub const WASM_MEM_BASE: u64 = 0xa0fd_0000;
+/// Base of wasm linear memory: wasm address 0 maps here, 16 MiB above the start of the RAM.
+pub const WASM_MEM_BASE: u64 = RAM_ADDR + 0x100_0000; // 0xC100_0000
 const _: () = assert!(WASM_MEM_BASE >= WASM_CTRL_ADDR + 0x10000);
 /// Page size, per the wasm spec (64 KiB).
 pub const WASM_PAGE_SIZE: u64 = 0x10000;
 /// Upper bound for linear memory, where the call stack ends: 7,680 pages (480 MiB) above the base.
-pub const WASM_MEM_LIMIT: u64 = 0xbefd_0000;
+pub const WASM_MEM_LIMIT: u64 = WASM_MEM_BASE + 7680 * WASM_PAGE_SIZE;
 /// Maximum number of linear-memory pages the runtime supports.
 pub const WASM_MAX_PAGES: u64 = (WASM_MEM_LIMIT - WASM_MEM_BASE) / WASM_PAGE_SIZE;
 
-/// Top of the call/operand stack; frames grow downward from here.  Kept below the ZisK library
-/// RAM region (the accelerator routines' scratch, see `zkvm.rs`), which sits just below the float
-/// library RAM, so neither is ever overwritten by a frame.
-pub const WASM_STACK_TOP: u64 = ZISKLIB_RAM_ADDR - 0x10000; // 0xbffb0000
-const _: () = assert!(WASM_STACK_TOP < ZISKLIB_RAM_ADDR && ZISKLIB_RAM_ADDR < FLOAT_LIB_RAM_ADDR);
-// 7,680 pages of memory and a 0xfe_0000-byte stack (about 2,000 frames), as before the ZisK
-// library RAM was reserved.
+/// Top of the call/operand stack; frames grow downward from here, 0xfe_0000 bytes (about 2,000
+/// frames) above the end of the linear memory. The float and ZisK library RAM regions sit below
+/// the general-purpose RAM, so no frame can ever overwrite them.
+pub const WASM_STACK_TOP: u64 = WASM_MEM_LIMIT + 0xfe_0000;
+const _: () = assert!(WASM_STACK_TOP <= RAM_ADDR + RAM_SIZE);
 const _: () = assert!(WASM_MAX_PAGES == 7680 && WASM_STACK_TOP - WASM_STACK_LIMIT == 0xfe_0000);
+// The runtime areas the generated code addresses as constants are below the PC reach, but
+// linear memory and the stack are addressed through registers, so they may be above it.
+const _: () = assert!(WASM_CTRL_ADDR + 0x10000 <= PC_REACH_END);
 /// Lowest address a frame may occupy: the stack ends where linear memory can grow to.  Calls trap
 /// (stack exhaustion) instead of placing a frame below it.
 pub const WASM_STACK_LIMIT: u64 = WASM_MEM_LIMIT;

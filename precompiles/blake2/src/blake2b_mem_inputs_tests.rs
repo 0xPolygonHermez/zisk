@@ -21,10 +21,10 @@ impl MemProcessor for Recorder {
     fn process_mem_data(&mut self, data: &[u64; 7]) {
         self.rows.push(*data);
     }
-    fn skip_addr(&mut self, _addr: u32) -> bool {
+    fn skip_addr(&mut self, _addr: u64) -> bool {
         false
     }
-    fn skip_addr_range(&mut self, _addr_from: u32, _addr_to: u32) -> bool {
+    fn skip_addr_range(&mut self, _addr_from: u64, _addr_to: u64) -> bool {
         false
     }
 }
@@ -48,18 +48,18 @@ fn blake2b_mem_inputs_take_the_operands_from_a_and_b_and_the_index_from_the_payl
     // Reads of the state at a and of the input at b, then the new state written back at a.
     let mut expected = Recorder::default();
     for (i, value) in state.iter().enumerate() {
-        MemBusHelpers::mem_aligned_read(a as u32 + 8 * i as u32, step, *value, &mut expected);
+        MemBusHelpers::mem_aligned_read(a + 8 * i as u64, step, *value, &mut expected);
     }
     for (i, value) in input.iter().enumerate() {
-        MemBusHelpers::mem_aligned_read(b as u32 + 8 * i as u32, step, *value, &mut expected);
+        MemBusHelpers::mem_aligned_read(b + 8 * i as u64, step, *value, &mut expected);
     }
     for (i, value) in new_state.iter().enumerate() {
-        MemBusHelpers::mem_aligned_write(a as u32 + 8 * i as u32, step, *value, &mut expected);
+        MemBusHelpers::mem_aligned_write(a + 8 * i as u64, step, *value, &mut expected);
     }
 
     let mut recorder = Recorder::default();
     <Blake2bSM<Goldilocks> as PrecompileMemInputs>::generate(
-        data[B] as u32,
+        data[B],
         data[STEP],
         &data,
         false,
@@ -73,7 +73,7 @@ fn blake2b_mem_inputs_take_the_operands_from_a_and_b_and_the_index_from_the_payl
         panic!("unexpected bus payload variant");
     };
     let decoded = Blake2bInput::from(&values);
-    assert_eq!((decoded.state_addr as u64, decoded.input_addr as u64), (data[A], data[B]));
+    assert_eq!((decoded.state_addr, decoded.input_addr), (data[A], data[B]));
     assert_eq!((decoded.index, decoded.step_main), (index, step));
     assert_eq!((decoded.state, decoded.input), (state, input));
 }
@@ -93,7 +93,7 @@ fn blake2b_mem_inputs_skip_the_chained_state() {
         data.extend_from_slice(&[1u64; 32]);
         let mut recorder = Recorder::default();
         <Blake2bSM<Goldilocks> as PrecompileMemInputs>::generate(
-            b as u32,
+            b,
             step,
             &data,
             false,
@@ -102,12 +102,12 @@ fn blake2b_mem_inputs_skip_the_chained_state() {
         let mut expected = Recorder::default();
         for i in 0..reads {
             let addr = if i < 16 { a + 8 * i } else { b + 8 * (i - 16) };
-            MemBusHelpers::mem_aligned_read(addr as u32, step, 1, &mut expected);
+            MemBusHelpers::mem_aligned_read(addr, step, 1, &mut expected);
         }
         let mut state = [1u64; 16];
         blake2br(index, &mut state, &[1u64; 16]);
         for (i, value) in state.iter().enumerate().take(writes) {
-            MemBusHelpers::mem_aligned_write(a as u32 + 8 * i as u32, step, *value, &mut expected);
+            MemBusHelpers::mem_aligned_write(a + 8 * i as u64, step, *value, &mut expected);
         }
         assert_eq!(recorder.rows, expected.rows, "index {index:#x}");
     }

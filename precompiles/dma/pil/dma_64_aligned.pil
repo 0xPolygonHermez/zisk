@@ -588,7 +588,7 @@ airtemplate Dma64Aligned(int N = 2**21,                   // Rows of instance
     }
     
     if (degree(_b0) > max_bus_op_degree) {
-        col witness bits(32) air.b0;
+        col witness bits(ADDR_BITS) air.b0;
         b0 <== _b0;
     } else { 
         const expr air.b0 = _b0;

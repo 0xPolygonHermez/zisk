@@ -15,7 +15,7 @@ use crate::ArithEq384SM;
 
 impl<F: PrimeField64> PrecompileMemInputs for ArithEq384SM<F> {
     fn generate<P: MemProcessor>(
-        addr_main: u32,
+        addr_main: u64,
         step_main: u64,
         data: &[u64],
         only_counters: bool,
@@ -68,7 +68,7 @@ impl<F: PrimeField64> PrecompileMemInputs for ArithEq384SM<F> {
         }
     }
 
-    fn should_skip<P: MemProcessor>(addr_main: u32, data: &[u64], mem_processors: &mut P) -> bool {
+    fn should_skip<P: MemProcessor>(addr_main: u64, data: &[u64], mem_processors: &mut P) -> bool {
         match data[OP] as u8 {
             ZiskOp::ARITH384_MOD => skip_arith384_mod_mem_inputs(addr_main, data, mem_processors),
             ZiskOp::BLS12_381_CURVE_ADD => {

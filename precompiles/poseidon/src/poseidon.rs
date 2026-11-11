@@ -23,7 +23,7 @@ use zisk_pil::{PoseidonTraceRowOps, ZISK_AIRGROUP_ID};
 #[derive(Debug)]
 pub struct PoseidonInput {
     pub step_main: u64,
-    pub addr_main: u32,
+    pub addr_main: u64,
     pub state: [u64; 16],
     pub is_poseidon1: bool,
 }
@@ -32,7 +32,7 @@ impl PoseidonInput {
     pub fn from(values: &OperationPoseidonData<u64>) -> Self {
         Self {
             step_main: values[4],
-            addr_main: values[3] as u32,
+            addr_main: values[3],
             state: values[5..21].try_into().unwrap(),
             is_poseidon1: values[OP] == ZiskOp::Poseidon1 as u64,
         }
@@ -105,7 +105,7 @@ impl<F: PrimeField64> PoseidonSM<F> {
 
         // Fill step and addr
         trace[0].set_step_addr(input.step_main);
-        trace[1].set_step_addr(input.addr_main as u64);
+        trace[1].set_step_addr(input.addr_main);
 
         // Fill in_use
         for item in trace.iter_mut().take(CLOCKS) {

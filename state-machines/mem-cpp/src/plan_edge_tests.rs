@@ -11,28 +11,29 @@ use crate::{GpuCountAndPlan, MemPlanner};
 use zisk_common::{ChunkId, Plan};
 use zisk_sm_mem_common::{MemAlignCheckPoint, MemModuleSegmentCheckPoint};
 
-// The memory map of core/src/mem.rs, as count_and_plan.cuh carries it.
-const INPUT_ADDR: u32 = 0x1000_0000;
-const INPUT_SIZE: u32 = 1 << 31;
-const ROM_ADDR: u32 = 0x9000_0000;
-const ROM_SIZE: u32 = 1 << 27;
-const RAM_ADDR: u32 = 0xA000_0000;
+// The memory map of core/src/mem.rs, as count_and_plan.cuh carries it (33-bit addresses).
+const INPUT_ADDR: u64 = 0x2000_0000;
+const INPUT_SIZE: u64 = 1 << 31;
+const ROM_ADDR: u64 = 0xA800_0000;
+const ROM_SIZE: u64 = 1 << 27;
+const RAM_ADDR: u64 = 0xC000_0000;
 /// The largest gap two consecutive addresses of an immutable region may have (2^24 words), the
 /// step of the BIOS anchor reads.
-const ANCHOR_STEP: u32 = (1 << 24) * 8;
+const ANCHOR_STEP: u64 = (1 << 24) * 8;
 
-// Light records (mops_format.hpp): a header word per record, no values, no steps.
+// Light records (mops_format.hpp): a header word per record, no values, no steps. The address
+// takes bits 0-32, the mode starts at bit 33 and a block's word count at bit 37.
 const TAG: u64 = 1 << 63;
-const NO_VALUE: u64 = 1 << 58;
+const NO_VALUE: u64 = 1 << 59;
 const NO_PAYLOAD: u64 = 1 << 62;
-fn read8(addr: u32) -> u64 {
-    TAG | (0x08 << 32) | addr as u64
+fn read8(addr: u64) -> u64 {
+    TAG | (0x08 << 33) | addr
 }
-fn write8(addr: u32) -> u64 {
-    TAG | NO_VALUE | (0x18 << 32) | addr as u64
+fn write8(addr: u64) -> u64 {
+    TAG | NO_VALUE | (0x18 << 33) | addr
 }
-fn block_read(addr: u32, words: u64) -> u64 {
-    TAG | NO_PAYLOAD | (0x0A << 32) | (words << 36) | addr as u64
+fn block_read(addr: u64, words: u64) -> u64 {
+    TAG | NO_PAYLOAD | (0x0A << 33) | (words << 37) | addr
 }
 
 fn planner() -> Option<&'static Mutex<GpuCountAndPlan>> {
@@ -155,10 +156,10 @@ fn assert_same_plans(name: &str, chunks: &[Vec<u64>]) {
 fn small_chunk(salt: u32) -> Vec<u64> {
     let mut c = Vec::new();
     for i in 0..64u32 {
-        c.push(read8(ROM_ADDR + 8 * (i + salt)));
-        c.push(read8(INPUT_ADDR + 8 * i));
-        c.push(write8(RAM_ADDR + 8 * (i % 7)));
-        c.push(read8(RAM_ADDR + 8 * (i % 7)));
+        c.push(read8(ROM_ADDR + 8 * u64::from(i + salt)));
+        c.push(read8(INPUT_ADDR + 8 * u64::from(i)));
+        c.push(write8(RAM_ADDR + 8 * u64::from(i % 7)));
+        c.push(read8(RAM_ADDR + 8 * u64::from(i % 7)));
     }
     c
 }
@@ -173,7 +174,7 @@ fn the_last_word_of_a_region_leaves_the_next_region_prefix_intact() {
         * zisk_sm_mem_common::input_data_lanes_x_row()) as u32;
     let mut c0 = Vec::new();
     for i in 0..input_rows + input_rows / 4 {
-        c0.push(read8(INPUT_ADDR + 8 * i));
+        c0.push(read8(INPUT_ADDR + 8 * u64::from(i)));
     }
     for k in 1..INPUT_SIZE / ANCHOR_STEP {
         c0.push(read8(INPUT_ADDR + k * ANCHOR_STEP));
@@ -182,8 +183,8 @@ fn the_last_word_of_a_region_leaves_the_next_region_prefix_intact() {
     c0.push(read8(ROM_ADDR));
     c0.push(read8(ROM_ADDR + ROM_SIZE - 8));
     for i in 0..1000u32 {
-        c0.push(write8(RAM_ADDR + 8 * i));
-        c0.push(read8(RAM_ADDR + 8 * i));
+        c0.push(write8(RAM_ADDR + 8 * u64::from(i)));
+        c0.push(read8(RAM_ADDR + 8 * u64::from(i)));
     }
     let chunks = vec![c0, small_chunk(1), small_chunk(2)];
     assert_same_plans("last words", &chunks);

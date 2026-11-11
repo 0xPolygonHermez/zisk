@@ -52,8 +52,8 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
         let is_pre = dst_offset > 0;
         let step = input.step;
 
-        let dst64 = input.dst >> 3;
-        let src64 = input.src >> 3;
+        let dst64 = (input.dst >> 3) as u32;
+        let src64 = (input.src >> 3) as u32;
 
         trace.set_main_step(input.step);
         trace.set_dst64(dst64);

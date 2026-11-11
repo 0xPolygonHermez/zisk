@@ -56,16 +56,25 @@ airtemplate BigIntAdd(const int N = 2**21, const int bits = 256, const int opera
     col witness bits(1) cout[N_RC][RC];
 
     // address of struct with params
-    col witness bits(32) addr_params;
+    col witness bits(ADDR_BITS) addr_params;
 
     // address of a chunks
-    col witness bits(32) addr_a;
+    col witness bits(ADDR_BITS) addr_a;
 
     // address of b chunks
-    col witness bits(32) addr_b;
+    col witness bits(ADDR_BITS) addr_b;
 
     // address of c chunks
-    col witness bits(32) addr_c;
+    col witness bits(ADDR_BITS) addr_c;
+
+    // The pointers a, b and c are read from the parameter struct as two 32-bit limbs; their high
+    // limb (bit 32 of a 33-bit address) is a witness and the low limb addr_x - 2^32 * addr_x_hi.
+    col witness bits(1) addr_a_hi;
+    col witness bits(1) addr_b_hi;
+    col witness bits(1) addr_c_hi;
+    addr_a_hi * (1 - addr_a_hi) === 0;
+    addr_b_hi * (1 - addr_b_hi) === 0;
+    addr_c_hi * (1 - addr_c_hi) === 0;
 
     // main step of the operation
     col witness bits(40) step;
@@ -122,13 +131,13 @@ airtemplate BigIntAdd(const int N = 2**21, const int bits = 256, const int opera
 
     // load parameters from struct
     // load addr_a from addr_params[0]
-    precompiled_mem_load(addr: addr_params, main_step: step, value: [addr_a, 0], sel: sel);
+    precompiled_mem_load(addr: addr_params, main_step: step, value: [addr_a - 2**32 * addr_a_hi, addr_a_hi], sel: sel);
     // load addr_b from addr_params[1]
-    precompiled_mem_load(addr: addr_params + 8, main_step: step, value: [addr_b, 0], sel: sel);
+    precompiled_mem_load(addr: addr_params + 8, main_step: step, value: [addr_b - 2**32 * addr_b_hi, addr_b_hi], sel: sel);
     // load cin from addr_params[2]
     precompiled_mem_load(addr: addr_params + 16, main_step: step, value: [cin, 0], sel: sel);
     // load addr_c from addr_params[3]
-    precompiled_mem_load(addr: addr_params + 24, main_step: step, value: [addr_c, 0], sel: sel);
+    precompiled_mem_load(addr: addr_params + 24, main_step: step, value: [addr_c - 2**32 * addr_c_hi, addr_c_hi], sel: sel);
 
     const expr final_cout = cout[N_RC-1][RC-1];
 

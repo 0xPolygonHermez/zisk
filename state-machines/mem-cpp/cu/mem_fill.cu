@@ -37,8 +37,9 @@
 namespace {
 
 constexpr int RF_BLOCK = 256;
-constexpr uint32_t RF_STEP_BITS = 38;         // mem step bits inside a sort key (address above)
-constexpr uint32_t RF_ADDR_BITS = 26;         // compact RAM word address bits
+constexpr uint32_t RF_STEP_BITS = 36;         // mem step bits inside a sort key (address above)
+constexpr uint32_t RF_ADDR_BITS = 28;         // compact RAM word address bits (2GB of RAM)
+static_assert(RF_STEP_BITS + RF_ADDR_BITS <= 64, "sort key does not fit");
 constexpr uint64_t RF_STEP_MASK = (1ull << RF_STEP_BITS) - 1;
 constexpr size_t   RF_PROP_BLOCK = (size_t)1 << 24;  // accesses per value-propagation block
 constexpr int      RF_REGION_RAM = 2;
@@ -1617,7 +1618,7 @@ __device__ void mb_row(const RowPackLayout& l, uint32_t air_kind, const AlignRec
     rowpack_put(l, w, c++, value_16b);
     rowpack_put(l, w, c++, value_8b);
     rowpack_put(l, w, c++, byte);
-    rowpack_put(l, w, c++, a.addr >> 3);
+    rowpack_put(l, w, c++, a.addr >> 3);   // addr_w: word address
     rowpack_put(l, w, c++, align_step_of(a.info));
     if (air_kind == 1) rowpack_put(l, w, c++, wr ? 1 : 0);
     if (air_kind != 2) { rowpack_put(l, w, c++, mw0); rowpack_put(l, w, c++, mw1); }

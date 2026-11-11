@@ -24,7 +24,7 @@ int main(void){
   zkvm_status s4=zkvm_bls12_g2_msm((const void*)msm2,2,(void*)om2);
   zkvm_status s5=zkvm_bls12_pairing((const void*)pairA,2,&okA);
   zkvm_status s6=zkvm_bls12_pairing((const void*)pairR,1,&okR);
-  volatile uint8_t *O=(volatile uint8_t*)(0xA0410000ULL); unsigned k=0;
+  volatile uint8_t *O=(volatile uint8_t*)(0xC0410000ULL); unsigned k=0;
   O[k++]=(uint8_t)s1; O[k++]=(uint8_t)cmp(o1,er1,96);
   O[k++]=(uint8_t)s2; O[k++]=(uint8_t)cmp(o2,er2,192);
   O[k++]=(uint8_t)s3; O[k++]=(uint8_t)cmp(om1,erm1,96);

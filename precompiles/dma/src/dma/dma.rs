@@ -26,6 +26,18 @@ impl<F: PrimeField64> DmaSM<F> {
         Arc::new(Self { _phantom: PhantomData })
     }
 
+    /// A pointer register as the Dma air represents it: `(dst, dst_hi)` with the register equal
+    /// to `dst + 2^32 * dst_hi`. A 33-bit address keeps `dst_hi = 0`; a larger value (legal only
+    /// for an operation with count == 0, which touches no memory) is split at bit 32.
+    #[inline(always)]
+    fn split_pointer(value: u64) -> (u64, u32) {
+        if value <= zisk_core::MAX_ADDR {
+            (value, 0)
+        } else {
+            (value & 0xFFFF_FFFF, (value >> 32) as u32)
+        }
+    }
+
     /// Processes a slice of operation data, updating the trace.
     ///
     /// # Arguments
@@ -48,14 +60,17 @@ impl<F: PrimeField64> DmaSM<F> {
         let l_count = (count & 0xFF) as u16 + 256 * count_ge_256 as u16;
         trace.set_l_count(l_count);
 
-        let src = input.src as u32;
-        let dst = input.dst as u32;
-        let h_src64 = src >> 10;
-        let h_dst64 = dst >> 10;
+        // The operation bus carries each pointer register as dst + 2^32 * dst_hi (see dma.pil):
+        // a 33-bit address with dst_hi = 0, or, when count == 0 and no memory is touched, any
+        // 64-bit value split at bit 32.
+        let (src, src_hi) = Self::split_pointer(input.src);
+        let (dst, dst_hi) = Self::split_pointer(input.dst);
+        let h_src64 = (src >> 10) as u32;
+        let h_dst64 = (dst >> 10) as u32;
         let l_src64 = (src >> 3) as u8 & 0x7F;
         let l_dst64 = (dst >> 3) as u8 & 0x7F;
 
-        trace.set_src_hi((input.src >> 32) as u32);
+        trace.set_src_hi(src_hi);
         trace.set_h_src64(h_src64);
         trace.set_l_src64(l_src64);
         let src_offset = src as u8 & 0x07;
@@ -63,7 +78,7 @@ impl<F: PrimeField64> DmaSM<F> {
 
         trace.set_h_dst64(h_dst64);
         trace.set_l_dst64(l_dst64);
-        trace.set_dst_hi((input.dst >> 32) as u32);
+        trace.set_dst_hi(dst_hi);
         trace.set_dst_offset(dst as u8 & 0x07);
 
         trace.set_main_step(input.step);

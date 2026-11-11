@@ -51,6 +51,7 @@ use crate::{
 #[derive(Clone, Copy, Default)]
 struct Cursor {
     seq_end: bool,
+    /// word addresses (byte address / 8)
     src64: u32,
     dst64: u32,
     main_step: u64,
@@ -590,7 +591,7 @@ mod tests {
     #[test]
     fn one_operation_satisfies_every_transition() {
         let bytecode = vec![0x5bu8; 200];
-        let inp = input(&bytecode, 0xA000_0000, 0xB000_0000);
+        let inp = input(&bytecode, 0xC000_0000, 0xD000_0000);
         let mut rows = blank(inp.rows() as usize);
         let (written, cursor) = JumpDestSM::<F>::process_input(&inp, 0, &mut rows);
 
@@ -610,11 +611,11 @@ mod tests {
     #[test]
     fn the_mstore_address_walks_the_bitmap_words() {
         let bytecode = vec![0x00u8; 200];
-        let inp = input(&bytecode, 0xA000_0000, 0xB000_0000);
+        let inp = input(&bytecode, 0xC000_0000, 0xD000_0000);
         let mut rows = blank(inp.rows() as usize);
         JumpDestSM::<F>::process_input(&inp, 0, &mut rows);
 
-        let base = (0xA000_0000u64 / 8) as u32;
+        let base = (0xC000_0000u64 / 8) as u32;
         for block in 0..bitmap_words(200) {
             let last_clock = block * JUMP_DEST_ROWS_X_BLOCK + JUMP_DEST_ROWS_X_BLOCK - 1;
             let previous = rows[last_clock - 1].get_dst64();
@@ -631,7 +632,7 @@ mod tests {
         for pc in (0..512).step_by(33) {
             bytecode[pc] = 0x7f;
         }
-        let inp = input(&bytecode, 0xA000_0000, 0xB000_0000);
+        let inp = input(&bytecode, 0xC000_0000, 0xD000_0000);
         let total = inp.rows() as usize;
 
         let mut whole = blank(total);
@@ -693,7 +694,7 @@ mod tests {
                 for pc in (0..len).step_by(stride) {
                     bytecode[pc] = 0x7f;
                 }
-                let inp = input(&bytecode, 0xA000_0000, 0xB000_0000);
+                let inp = input(&bytecode, 0xC000_0000, 0xD000_0000);
                 let mut rows = blank(inp.rows() as usize);
                 JumpDestSM::<F>::process_input(&inp, 0, &mut rows);
 
@@ -717,7 +718,7 @@ mod tests {
     #[test]
     fn inactive_blocks_continue_the_transitions() {
         let bytecode = vec![0x5bu8; 64];
-        let inp = input(&bytecode, 0xA000_0000, 0xB000_0000);
+        let inp = input(&bytecode, 0xC000_0000, 0xD000_0000);
         let used = inp.rows() as usize;
         let mut rows = blank(used + 3 * JUMP_DEST_ROWS_X_BLOCK);
 

@@ -17,9 +17,9 @@ use super::sha256f_constants::*;
 pub struct Sha256fInput {
     pub step_main: u64,
     /// Main operand a: the state address (the result overwrites it).
-    pub state_addr: u32,
+    pub state_addr: u64,
     /// Main operand b: the input block address.
-    pub input_addr: u32,
+    pub input_addr: u64,
     pub state: [u64; 4],
     pub input: [u64; 8],
 }
@@ -29,8 +29,8 @@ impl Sha256fInput {
         // op,op_type,a,b,step,state[4],input[8]
         Self {
             step_main: values[4],
-            state_addr: values[2] as u32,
-            input_addr: values[3] as u32,
+            state_addr: values[2],
+            input_addr: values[3],
             state: values[5..9].try_into().unwrap(),
             input: values[9..17].try_into().unwrap(),
         }
@@ -70,8 +70,8 @@ impl<F: PrimeField64> Sha256fSM<F> {
 
         // Fill the step_addr
         trace[0].set_step_addr(step_main); // STEP_MAIN
-        trace[1].set_step_addr(state_addr as u64); // ADDR_STATE (main operand a)
-        trace[2].set_step_addr(input_addr as u64); // ADDR_INPUT (main operand b)
+        trace[1].set_step_addr(state_addr); // ADDR_STATE (main operand a)
+        trace[2].set_step_addr(input_addr); // ADDR_INPUT (main operand b)
 
         // Activate the in_use selector
         for r in trace.iter_mut().take(18) {

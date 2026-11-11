@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <cuda_runtime.h>
+#include "../cpp/mops_format.hpp"
 #include <string>
 #include <vector>
 #include <atomic>
@@ -34,16 +35,19 @@
 
 // ─── Public input type ──────────────────────────────────────────────
 
-// One memory-ops record. `flags` holds the mode in bits 0-5; for non-block modes bits 6-25 hold
-// `(step_in_chunk << 2) | slot`, for block modes bits 4-31 hold the word count and the step field
-// sits in `payload` at the same position it has in a non-block header (bits 38-57). For non-block
-// writes `payload` is the written value.
+// One memory-ops record: the header word (mops_format.hpp: the 33-bit byte address in bits
+// 0-32, the mode at 33-38, the step field or the block count above) and its payload. `op_addr`
+// and `op_flags` read the address and the field above it: for non-block modes `flags` bits 6-25
+// hold `(step_in_chunk << 2) | slot`, for block modes bits 4-28 hold the word count and the step
+// field sits in `payload` at the same position it has in a non-block header (bits 39-58). For
+// non-block writes `payload` is the written value.
 struct __align__(8) MemOp {
-    uint32_t addr;
-    uint32_t flags;
+    uint64_t hdr;
     uint64_t payload;
 };
 static_assert(sizeof(MemOp) == 16, "MemOp is one decoded record");
+__host__ __device__ __forceinline__ uint64_t op_addr(const MemOp& op) { return op.hdr & MOPS_ADDR_MASK; }
+__host__ __device__ __forceinline__ uint32_t op_flags(const MemOp& op) { return (uint32_t)(op.hdr >> MOPS_MODE_SHIFT) & 0x1FFFFFFFu; }
 
 // Stream layout: cpp/mem_config.hpp. `load_record` decodes the record at a word position into a
 // `MemOp`.
@@ -64,26 +68,28 @@ struct ChunkCounters {
     uint32_t write_byte;
 };
 
-// ZisK memory map (core/src/mem.rs, must match it): input 2 GB, ROM 128 MB, RAM 512 MB.
-constexpr uint32_t ZISK_INPUT_ADDR_BASE   = 0x10000000u;
-constexpr uint32_t ZISK_INPUT_SIZE_BYTES  = 1u << 31;
-constexpr uint32_t ZISK_INPUT_ADDR_END    = ZISK_INPUT_ADDR_BASE + ZISK_INPUT_SIZE_BYTES;
-constexpr uint32_t ZISK_ROM_ADDR_BASE     = 0x90000000u;
-constexpr uint32_t ZISK_ROM_SIZE_BYTES    = 1u << 27;
-constexpr uint32_t ZISK_ROM_ADDR_END      = ZISK_ROM_ADDR_BASE + ZISK_ROM_SIZE_BYTES;
-constexpr uint32_t ZISK_RAM_ADDR_BASE     = 0xA0000000u;
-constexpr uint32_t ZISK_RAM_SIZE_BYTES    = 1u << 29;
-constexpr uint32_t ZISK_RAM_ADDR_END      = ZISK_RAM_ADDR_BASE + ZISK_RAM_SIZE_BYTES;
-constexpr uint32_t ZISK_ALIGN_MASK        = 0xFFFFFFF8u;
+// ZisK memory map (core/src/mem.rs, must match it): input 2 GB, ROM 128 MB, RAM 2 GB above
+// 4GB. Byte addresses are 33 bits wide (uint64_t); word addresses (byte address / 8) and the
+// compact addresses fit in a uint32_t.
+constexpr uint64_t ZISK_INPUT_ADDR_BASE   = 0x20000000ull;
+constexpr uint64_t ZISK_INPUT_SIZE_BYTES  = 1ull << 31;
+constexpr uint64_t ZISK_INPUT_ADDR_END    = ZISK_INPUT_ADDR_BASE + ZISK_INPUT_SIZE_BYTES;
+constexpr uint64_t ZISK_ROM_ADDR_BASE     = 0xA8000000ull;
+constexpr uint64_t ZISK_ROM_SIZE_BYTES    = 1ull << 27;
+constexpr uint64_t ZISK_ROM_ADDR_END      = ZISK_ROM_ADDR_BASE + ZISK_ROM_SIZE_BYTES;
+constexpr uint64_t ZISK_RAM_ADDR_BASE     = 0xC0000000ull;
+constexpr uint64_t ZISK_RAM_SIZE_BYTES    = 1ull << 31;
+constexpr uint64_t ZISK_RAM_ADDR_END      = ZISK_RAM_ADDR_BASE + ZISK_RAM_SIZE_BYTES;
+constexpr uint64_t ZISK_ALIGN_MASK        = ~0x7ull;
 // The region tests (compact_addr, the address check of the ROM/input retention) assume
 // input < ROM < RAM, without overlaps.
 static_assert(ZISK_INPUT_ADDR_END <= ZISK_ROM_ADDR_BASE && ZISK_ROM_ADDR_END <= ZISK_RAM_ADDR_BASE,
               "memory map: expected input < ROM < RAM");
 
 // Compact address space: one entry per 8-byte word of each area, ROM then input then RAM.
-constexpr uint32_t N_ADDR_ROM   = ZISK_ROM_SIZE_BYTES >> 3;    // 2^24
-constexpr uint32_t N_ADDR_INPUT = ZISK_INPUT_SIZE_BYTES >> 3;  // 2^28
-constexpr uint32_t N_ADDR_RAM   = ZISK_RAM_SIZE_BYTES >> 3;    // 2^26
+constexpr uint32_t N_ADDR_ROM   = (uint32_t)(ZISK_ROM_SIZE_BYTES >> 3);    // 2^24
+constexpr uint32_t N_ADDR_INPUT = (uint32_t)(ZISK_INPUT_SIZE_BYTES >> 3);  // 2^28
+constexpr uint32_t N_ADDR_RAM   = (uint32_t)(ZISK_RAM_SIZE_BYTES >> 3);    // 2^28
 constexpr uint32_t N_ADDR = N_ADDR_ROM + N_ADDR_INPUT + N_ADDR_RAM;
 constexpr uint32_t REGION_ADDR_START[3] = {0, N_ADDR_ROM, N_ADDR_ROM + N_ADDR_INPUT};
 
@@ -119,8 +125,9 @@ struct RamRecords {
 // the arena top. The read potentials of the access carry the index of its old-word slots, which
 // the memory fills scatter the resolved words into.
 struct AlignRecord {
-    uint32_t addr;     // byte address
+    uint64_t addr;     // byte address (33 bits)
     uint32_t chunk;
+    uint32_t pad_;
     uint64_t info;     // mem step (40) | kind << 40 (3) | width << 43 (4) | wr << 47
     uint64_t value;    // the written value as the stream carries it; 0 for a read
     uint64_t old[2];   // the words the access found, filled in by the fills
@@ -140,9 +147,9 @@ struct AlignPlanDesc { uint32_t air_kind, air_id, segment, n_rows, entry_from, e
 struct AlignChunkEntry { uint32_t chunk; uint32_t skip[ALIGN_KINDS]; uint32_t count[ALIGN_KINDS]; };
 static_assert(sizeof(AlignPlanDesc) == 24 && sizeof(AlignChunkEntry) == 44, "align plan layout changed: update gpu_bindings.rs");
 
-// Word index of the first and last RAM addresses.
-constexpr uint32_t RAM_W_ADDR_BASE = ZISK_RAM_ADDR_BASE >> 3;
-constexpr uint32_t RAM_W_ADDR_LAST = (ZISK_RAM_ADDR_END - 8u) >> 3;
+// Word index of the first and last RAM addresses (full word addresses, 30 bits).
+constexpr uint32_t RAM_W_ADDR_BASE = (uint32_t)(ZISK_RAM_ADDR_BASE >> 3);
+constexpr uint32_t RAM_W_ADDR_LAST = (uint32_t)((ZISK_RAM_ADDR_END - 8u) >> 3);
 
 // What the block's preparation (prepare_fills) established, every family together. POD, mirrored
 // in mem_witness_types.rs.

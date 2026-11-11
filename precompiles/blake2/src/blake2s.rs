@@ -36,9 +36,9 @@ fn u32_to_limbs16(value: u32) -> [u16; 2] {
 pub struct Blake2sInput {
     pub step_main: u64,
     /// Main operand a: the state address (the result overwrites it).
-    pub state_addr: u32,
+    pub state_addr: u64,
     /// Main operand b: the input block address.
-    pub input_addr: u32,
+    pub input_addr: u64,
     pub state: [u64; 8],
     pub input: [u64; 8],
 }
@@ -48,8 +48,8 @@ impl Blake2sInput {
         // op,op_type,a,b,step,state[8],input[8]
         Self {
             step_main: values[4],
-            state_addr: values[2] as u32,
-            input_addr: values[3] as u32,
+            state_addr: values[2],
+            input_addr: values[3],
             state: values[5..13].try_into().unwrap(),
             input: values[13..21].try_into().unwrap(),
         }
@@ -81,8 +81,8 @@ impl<F: PrimeField64> Blake2sSM<F> {
     pub fn process_input<R: Blake2sTraceRowOps<F>>(&self, input: &Blake2sInput, trace: &mut [R]) {
         // Fill the step_addr
         trace[0].set_step_addr(input.step_main); // STEP_MAIN
-        trace[1].set_step_addr(input.state_addr as u64); // ADDR_STATE (main operand a)
-        trace[2].set_step_addr(input.input_addr as u64); // ADDR_INPUT (main operand b)
+        trace[1].set_step_addr(input.state_addr); // ADDR_STATE (main operand a)
+        trace[2].set_step_addr(input.input_addr); // ADDR_INPUT (main operand b)
 
         // View the state and the message block as 16 little-endian u32 words each
         let mut v = [0u32; 16];
