@@ -1,0 +1,11 @@
+[package]
+name = "mlp-host"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mlp-common = { path = "../common" }
+zisk-sdk = { workspace = true }
+
+[build-dependencies]
+zisk-sdk = { workspace = true }

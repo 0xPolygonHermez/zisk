@@ -3129,6 +3129,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "mlp-common"
+version = "0.1.0"
+
+[[package]]
+name = "mlp-guest"
+version = "0.1.0"
+dependencies = [
+ "mlp-common",
+ "ziskos",
+]
+
+[[package]]
+name = "mlp-host"
+version = "0.1.0"
+dependencies = [
+ "mlp-common",
+ "zisk-sdk",
+]
+
+[[package]]
 name = "mpi"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7563,7 +7583,9 @@ name = "zisk-transpiler-wasm"
 version = "1.4.0-alpha"
 dependencies = [
  "wasmparser",
+ "zisk-asm",
  "zisk-core",
+ "zisk-definitions",
  "zisk-riscv",
 ]
 
