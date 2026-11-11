@@ -132,6 +132,49 @@ fn computes(state: &WorkerState, job_id: &JobId) -> bool {
     matches!(state, WorkerState::Computing((computing, _)) if computing == job_id)
 }
 
+/// Whether the worker, in `state` with `current_job`, still runs the task `result` comes
+/// from. A wrap, a recurser setup or prove and a prove job's final wrap run off the loop and
+/// cannot be stopped, so one can end after the worker has moved on: a reconnection
+/// registers a worker without a current job as free, and a new job waits only
+/// `COMPUTE_DRAIN_TIMEOUT` for the task before it starts. Every other result comes from the
+/// current computation.
+fn still_runs(
+    result: &ComputationResult,
+    state: &WorkerState,
+    current_job: Option<&JobId>,
+) -> bool {
+    match result {
+        ComputationResult::WrapResponse { job_id, .. } => computes(state, job_id),
+        ComputationResult::RecurserAck { job_id, ack } => match ack.payload {
+            Some(worker_message::Payload::SetupAggregationProgramAck(_)) => {
+                matches!(state, WorkerState::SettingUp)
+            }
+            _ => computes(state, job_id),
+        },
+        ComputationResult::WrappedFinalProof { job_id, .. } => current_job == Some(job_id),
+        _ => true,
+    }
+}
+
+/// Whether the loop keeps the computation handle when `result` arrives. A program setup runs
+/// apart from the computation, which goes on. So does the work the worker took after a task
+/// it no longer runs: the handle is that work's. Otherwise the task that sent `result` has
+/// ended, and its handle goes.
+fn keeps_computation(
+    result: &ComputationResult,
+    state: &WorkerState,
+    current_job: Option<&JobId>,
+) -> bool {
+    match result {
+        ComputationResult::SetupProgramComplete { .. } => true,
+        _ => {
+            let other_work = current_job.is_some()
+                || matches!(state, WorkerState::Computing(_) | WorkerState::SettingUp);
+            other_work && !still_runs(result, state, current_job)
+        }
+    }
+}
+
 /// The recovery from a cancelled wrap or recurser prove, which cannot be stopped: wait for
 /// the task to end, then signal `WorkerRecoveryComplete`. The coordinator keeps the worker
 /// parked until then, and the task's own result, sent before it ends, reaches the loop first.
@@ -500,8 +543,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 Some(event) = loop_rx.recv() => {
                     match event {
                         LoopEvent::Computation(result) => {
-                            if matches!(*result, ComputationResult::SetupProgramComplete { .. }) {
-                                // A setup runs apart from the computation, which goes on.
+                            let current_job = self.current_job_id().await;
+                            if keeps_computation(&result, self.worker.state(), current_job.as_ref()) {
                                 if let Some(h) = computation_handle.take() {
                                     self.worker.set_current_computation(h);
                                 }
@@ -661,6 +704,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         loop_tx: &LoopEventSender,
     ) -> Result<()> {
+        let current_job = self.current_job_id().await;
+        let runs = still_runs(&result, self.worker.state(), current_job.as_ref());
         match result {
             ComputationResult::Execution { job_id, success, result, task_received_time } => {
                 self.send_execution(
@@ -715,23 +760,23 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             }
             ComputationResult::RecurserAck { job_id, ack }
             | ComputationResult::WrapResponse { job_id, response: ack } => {
-                // Ack already built by the blocking handler; just forward it.
+                // Ack already built by the blocking handler; just forward it, even from a
+                // task the worker no longer runs: the coordinator ignores a late one. Only
+                // the worker's own task ends here, not the work it took since.
                 if let Err(e) = message_sender.send(ack) {
                     warn!("Failed to send the response of job {job_id}: {e}");
                 }
-                self.worker.set_current_job(None);
-                self.worker.set_state(WorkerState::Ready);
+                if runs {
+                    self.worker.set_current_job(None);
+                    self.worker.set_state(WorkerState::Ready);
+                }
                 Ok(())
             }
             ComputationResult::WrappedFinalProof { job_id, response } => {
                 message_sender.send(response)?;
                 // A cancellation stops waiting for the wrap after a while, and the worker may
                 // have taken another job since: only this job ends here.
-                let own = match self.worker.current_job() {
-                    Some(job) => job.lock().await.job_id == job_id,
-                    None => false,
-                };
-                if own {
+                if runs {
                     info!("Aggregation task completed for {}", job_id);
                     self.worker.set_current_job(None);
                     self.worker.set_state(WorkerState::Ready);
@@ -1349,6 +1394,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         match self.worker.current_job() {
             Some(job) => job.lock().await.job_id == *job_id,
             None => false,
+        }
+    }
+
+    /// The id of the worker's current job, if it has one.
+    async fn current_job_id(&self) -> Option<JobId> {
+        match self.worker.current_job() {
+            Some(job) => Some(job.lock().await.job_id.clone()),
+            None => None,
         }
     }
 
@@ -3129,6 +3182,81 @@ mod recovery_tests {
             "the task's result comes first"
         );
         assert!(matches!(loop_rx.recv().await, Some(LoopEvent::RecoveryComplete(_))));
+    }
+
+    fn response() -> WorkerMessage {
+        WorkerMessage { payload: None }
+    }
+
+    /// A wrap still running ends with its result. One the worker has moved on from, as a
+    /// reconnection without a current job lets it, leaves the newer job and that job's
+    /// computation alone; with no newer work, only the late wrap's own handle goes.
+    #[test]
+    fn a_late_wrap_result_leaves_a_newer_job_alone() {
+        let old = JobId::from("job-1".to_string());
+        let new = JobId::from("job-2".to_string());
+        let wrap = ComputationResult::WrapResponse { job_id: old.clone(), response: response() };
+        let wrapping = WorkerState::Computing((old, JobPhase::Recurse));
+        let newer = WorkerState::Computing((new.clone(), JobPhase::Contributions));
+
+        assert!(still_runs(&wrap, &wrapping, None));
+        assert!(!keeps_computation(&wrap, &wrapping, None));
+
+        assert!(!still_runs(&wrap, &newer, Some(&new)));
+        assert!(keeps_computation(&wrap, &newer, Some(&new)));
+
+        assert!(!still_runs(&wrap, &WorkerState::Ready, None));
+        assert!(!keeps_computation(&wrap, &WorkerState::Ready, None));
+    }
+
+    /// A prove job's final wrap ends its job only while that job is the worker's.
+    #[test]
+    fn a_late_final_wrap_leaves_a_newer_job_alone() {
+        let old = JobId::from("job-1".to_string());
+        let new = JobId::from("job-2".to_string());
+        let wrap =
+            ComputationResult::WrappedFinalProof { job_id: old.clone(), response: response() };
+        let aggregating = WorkerState::Computing((old.clone(), JobPhase::Recurse));
+        let newer = WorkerState::Computing((new.clone(), JobPhase::Contributions));
+
+        assert!(still_runs(&wrap, &aggregating, Some(&old)));
+        assert!(!keeps_computation(&wrap, &aggregating, Some(&old)));
+
+        assert!(!still_runs(&wrap, &newer, Some(&new)));
+        assert!(keeps_computation(&wrap, &newer, Some(&new)));
+    }
+
+    /// A recurser setup is found by its `SettingUp` state, a recurser prove by the job it
+    /// computes; either one's late ack leaves newer work alone.
+    #[test]
+    fn a_late_recurser_ack_leaves_a_newer_job_alone() {
+        let old = JobId::from("job-1".to_string());
+        let new = JobId::from("job-2".to_string());
+        let newer = WorkerState::Computing((new.clone(), JobPhase::Contributions));
+        let setup_ack = ComputationResult::RecurserAck {
+            job_id: old.clone(),
+            ack: WorkerMessage {
+                payload: Some(worker_message::Payload::SetupAggregationProgramAck(
+                    SetupAggregationProgramAck::default(),
+                )),
+            },
+        };
+        let prove_ack = ComputationResult::RecurserAck {
+            job_id: old.clone(),
+            ack: WorkerMessage {
+                payload: Some(worker_message::Payload::RunAggregateProofsAck(
+                    RunAggregateProofsAck::default(),
+                )),
+            },
+        };
+
+        assert!(still_runs(&setup_ack, &WorkerState::SettingUp, None));
+        assert!(!still_runs(&setup_ack, &newer, Some(&new)));
+        assert!(keeps_computation(&setup_ack, &newer, Some(&new)));
+
+        assert!(still_runs(&prove_ack, &WorkerState::Computing((old, JobPhase::Recurse)), None));
+        assert!(!still_runs(&prove_ack, &WorkerState::SettingUp, None));
+        assert!(keeps_computation(&prove_ack, &newer, Some(&new)));
     }
 
     /// Process-long loop channel must redeliver after the original
