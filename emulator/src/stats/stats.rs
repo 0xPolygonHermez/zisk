@@ -332,7 +332,9 @@ pub struct Stats {
     ram_monitor: RamMonitor,
     profile_tags_map: HashMap<String, usize>,
     profile_tags: Vec<ProfileStats>,
-    profile_stack: Vec<(usize, u64)>,
+    /// Open profile tags, innermost last: `(tag id, reference, measures steps)`. The reference
+    /// is the step count or the total cost at the START, depending on the mark kind.
+    profile_stack: Vec<(usize, u64, bool)>,
     current_variable_cost: u64,
     /// When set, `on_op` prints a per-instruction execution trace (ziskemu's
     /// `--trace-steps`).
@@ -1221,43 +1223,12 @@ impl Stats {
         self.debug_stats_trace(pc);
 
         if inst.op == ZiskOp::PROFILE {
-            let p_data = inst_ctx.mem.read(inst_ctx.a, 8);
-            let count = inst_ctx.mem.read(inst_ctx.a + 8, 8);
-            let bytes = inst_ctx.mem.read_slice(p_data, count);
-            let tag = unsafe { std::str::from_utf8_unchecked(bytes) };
-            match inst_ctx.b as u8 {
-                PROFILE_START_COST_ID => {
-                    self.start_profile_tag(tag, false);
-                }
-                PROFILE_START_STEPS_ID => {
-                    self.start_profile_tag(tag, true);
-                }
-                PROFILE_REPORT_START_COST_ID => {
-                    let id = self.start_profile_tag(tag, false);
-                    self.profile_tags[id].report_cost = true;
-                }
-                PROFILE_REPORT_START_STEPS_ID => {
-                    let id = self.start_profile_tag(tag, true);
-                    self.profile_tags[id].report_steps = true;
-                }
-                PROFILE_END_COST_ID => {
-                    println!("[{tag}] {}", self.end_profile_tag(tag, false));
-                }
-                PROFILE_END_STEPS_ID => {
-                    println!("[{tag}] {}", self.end_profile_tag(tag, true));
-                }
-                PROFILE_REPORT_END_COST_ID => {
-                    self.end_profile_tag(tag, false);
-                }
-                PROFILE_REPORT_END_STEPS_ID => {
-                    self.end_profile_tag(tag, true);
-                }
-                _ => panic!("Unknown profile mark type: {}", inst_ctx.b),
+            if let Err(error) = self.on_profile_mark(inst_ctx) {
+                eprintln!(
+                    "WARNING: ignoring PROFILE mark at step {} pc 0x{:x}: {error}",
+                    self.costs.steps, inst_ctx.pc
+                );
             }
-            // println!(
-            //     "##PROFILE MARK## ID: {:08X} TYPE: {} [0x{p_data:08X},{count}] '{s}'",
-            //     inst_ctx.a, inst_ctx.b
-            // );
         }
         if self.store_ops
             && (inst.op_type == ZiskOperationType::Arith
@@ -1479,45 +1450,123 @@ impl Stats {
         self.previous_pc = pc;
     }
 
+    /// Handles a PROFILE mark. `a` points to a `(ptr, len)` pair describing the tag string and `b`
+    /// selects the mark type. All three values come from the guest, so every memory access is
+    /// bounds-checked and the tag is validated as UTF-8 before use. Returns a description of the
+    /// problem instead of panicking when the mark is malformed.
+    fn on_profile_mark(&mut self, inst_ctx: &InstContext) -> Result<(), String> {
+        let mark = u8::try_from(inst_ctx.b)
+            .map_err(|_| format!("unknown profile mark type {}", inst_ctx.b))?;
+        if !matches!(
+            mark,
+            PROFILE_START_COST_ID
+                | PROFILE_START_STEPS_ID
+                | PROFILE_REPORT_START_COST_ID
+                | PROFILE_REPORT_START_STEPS_ID
+                | PROFILE_END_COST_ID
+                | PROFILE_END_STEPS_ID
+                | PROFILE_REPORT_END_COST_ID
+                | PROFILE_REPORT_END_STEPS_ID
+        ) {
+            return Err(format!("unknown profile mark type {mark}"));
+        }
+
+        let descriptor = inst_ctx
+            .mem
+            .try_read_slice(inst_ctx.a, 16)
+            .ok_or_else(|| format!("tag descriptor at 0x{:x} is not readable", inst_ctx.a))?;
+        let p_data = u64::from_le_bytes(descriptor[0..8].try_into().unwrap());
+        let count = u64::from_le_bytes(descriptor[8..16].try_into().unwrap());
+        let bytes = inst_ctx
+            .mem
+            .try_read_slice(p_data, count)
+            .ok_or_else(|| format!("tag bytes [0x{p_data:x}, {count} bytes] are not readable"))?;
+        let tag = std::str::from_utf8(bytes)
+            .map_err(|e| format!("tag at 0x{p_data:x} is not valid UTF-8 ({e})"))?;
+
+        match mark {
+            PROFILE_START_COST_ID => {
+                self.start_profile_tag(tag, false);
+            }
+            PROFILE_START_STEPS_ID => {
+                self.start_profile_tag(tag, true);
+            }
+            PROFILE_REPORT_START_COST_ID => {
+                let id = self.start_profile_tag(tag, false);
+                self.profile_tags[id].report_cost = true;
+            }
+            PROFILE_REPORT_START_STEPS_ID => {
+                let id = self.start_profile_tag(tag, true);
+                self.profile_tags[id].report_steps = true;
+            }
+            PROFILE_END_COST_ID => {
+                println!("[{tag}] {}", self.end_profile_tag(tag, false)?);
+            }
+            PROFILE_END_STEPS_ID => {
+                println!("[{tag}] {}", self.end_profile_tag(tag, true)?);
+            }
+            PROFILE_REPORT_END_COST_ID => {
+                self.end_profile_tag(tag, false)?;
+            }
+            PROFILE_REPORT_END_STEPS_ID => {
+                self.end_profile_tag(tag, true)?;
+            }
+            _ => unreachable!("mark type validated above"),
+        }
+        Ok(())
+    }
+
     fn start_profile_tag(&mut self, tag: &str, use_steps: bool) -> usize {
         let id = self.profile_tags_map.entry(tag.to_string()).or_insert_with(|| {
             self.profile_tags.push(ProfileStats { tag: tag.to_string(), ..Default::default() });
             self.profile_tags.len() - 1
         });
         if use_steps {
-            self.profile_stack.push((*id, self.costs.steps));
+            self.profile_stack.push((*id, self.costs.steps, true));
             self.profile_tags[*id].steps_calls += 1;
         } else {
-            self.profile_stack.push((*id, self.costs.total_cost()));
+            self.profile_stack.push((*id, self.costs.total_cost(), false));
             self.profile_tags[*id].cost_calls += 1;
         }
         *id
     }
-    fn end_profile_tag(&mut self, tag: &str, use_steps: bool) -> u64 {
-        let (rtag, reference) = self.profile_stack.pop().unwrap();
-        if self.profile_tags.len() > rtag {
-            if self.profile_tags[rtag].tag != tag {
-                panic!(
-                    "Profile tag mismatch: expected '{}', got '{}'",
-                    self.profile_tags[rtag].tag, tag
-                );
-            }
-            if use_steps {
-                let delta = self.costs.steps - reference;
-                self.profile_tags[rtag].total_steps += delta;
-                self.profile_tags[rtag].max_steps = self.profile_tags[rtag].max_steps.max(delta);
-                self.profile_tags[rtag].min_steps = self.profile_tags[rtag].min_steps.min(delta);
-                delta
-            } else {
-                let delta = self.costs.total_cost() - reference;
-                self.profile_tags[rtag].total_cost += delta;
-                self.profile_tags[rtag].max_cost = self.profile_tags[rtag].max_cost.max(delta);
-                self.profile_tags[rtag].min_cost = self.profile_tags[rtag].min_cost.min(delta);
-                delta
-            }
-        } else {
-            panic!("Profile tag index {} not found in profile_tags", rtag);
+
+    /// Closes the innermost open profile tag, which must be `tag` opened with the same kind of
+    /// mark (steps or cost), and returns the steps or cost spent inside it. An END without a
+    /// matching START (empty stack, different tag or different kind) is reported as an error and
+    /// leaves the stack untouched.
+    fn end_profile_tag(&mut self, tag: &str, use_steps: bool) -> Result<u64, String> {
+        let Some(&(rtag, reference, open_use_steps)) = self.profile_stack.last() else {
+            return Err(format!("PROFILE_END '{tag}' without a matching PROFILE_START"));
+        };
+        let open_tag = &self.profile_tags[rtag].tag;
+        if open_tag != tag {
+            return Err(format!("profile tag mismatch: expected '{open_tag}', got '{tag}'"));
         }
+        if open_use_steps != use_steps {
+            let kind = |steps: bool| if steps { "steps" } else { "cost" };
+            return Err(format!(
+                "profile tag '{tag}' was started as a {} mark but ended as a {} mark",
+                kind(open_use_steps),
+                kind(use_steps)
+            ));
+        }
+        self.profile_stack.pop();
+        let stats = &mut self.profile_tags[rtag];
+        let delta = if use_steps {
+            let delta = self.costs.steps - reference;
+            stats.total_steps += delta;
+            stats.max_steps = stats.max_steps.max(delta);
+            stats.min_steps = stats.min_steps.min(delta);
+            delta
+        } else {
+            let delta = self.costs.total_cost() - reference;
+            stats.total_cost += delta;
+            stats.max_cost = stats.max_cost.max(delta);
+            stats.min_cost = stats.min_cost.min(delta);
+            delta
+        };
+        Ok(delta)
     }
     pub fn set_store_ops(&mut self, store: bool) {
         self.store_ops = store;
@@ -4523,6 +4572,61 @@ mod tests {
         }
         points.push(step);
         points.windows(2).map(|w| w[1] - w[0]).max().unwrap()
+    }
+
+    #[test]
+    fn profile_end_without_start_is_an_error_and_keeps_the_stack() {
+        let mut stats = Stats::default();
+        assert!(stats.end_profile_tag("orphan", true).is_err());
+        assert!(stats.end_profile_tag("orphan", false).is_err());
+        assert!(stats.profile_stack.is_empty());
+    }
+
+    #[test]
+    fn profile_end_with_a_different_tag_is_an_error_and_keeps_the_open_tag() {
+        let mut stats = Stats::default();
+        stats.start_profile_tag("outer", true);
+        assert!(stats.end_profile_tag("inner", true).is_err());
+        assert_eq!(stats.profile_stack.len(), 1, "the mismatched END must not pop 'outer'");
+        stats.costs.steps += 10;
+        assert_eq!(stats.end_profile_tag("outer", true), Ok(10));
+        assert!(stats.profile_stack.is_empty());
+        assert_eq!(stats.profile_tags[0].total_steps, 10);
+        assert_eq!(stats.profile_tags[0].steps_calls, 1);
+    }
+
+    #[test]
+    fn profile_end_of_a_different_kind_is_an_error_and_keeps_the_open_tag() {
+        let mut stats = Stats::default();
+        // A cost reference is far larger than the step count, so accounting a cost START as a
+        // steps END would underflow; it must be rejected instead.
+        stats.start_profile_tag("tag", false);
+        stats.costs.steps += 1;
+        assert!(stats.end_profile_tag("tag", true).is_err());
+        assert_eq!(stats.profile_stack.len(), 1, "the mismatched END must not pop 'tag'");
+        assert!(stats.end_profile_tag("tag", false).is_ok());
+        assert!(stats.profile_stack.is_empty());
+        // And the other way round
+        stats.start_profile_tag("tag", true);
+        assert!(stats.end_profile_tag("tag", false).is_err());
+        assert_eq!(stats.profile_stack.len(), 1);
+        assert_eq!(stats.end_profile_tag("tag", true), Ok(0));
+    }
+
+    #[test]
+    fn nested_profile_tags_account_steps_to_the_innermost_open_tag() {
+        let mut stats = Stats::default();
+        stats.start_profile_tag("outer", true);
+        stats.costs.steps += 3;
+        stats.start_profile_tag("inner", true);
+        stats.costs.steps += 5;
+        assert_eq!(stats.end_profile_tag("inner", true), Ok(5));
+        stats.costs.steps += 2;
+        assert_eq!(stats.end_profile_tag("outer", true), Ok(10));
+        let inner = stats.profile_tags_map["inner"];
+        let outer = stats.profile_tags_map["outer"];
+        assert_eq!(stats.profile_tags[inner].total_steps, 5);
+        assert_eq!(stats.profile_tags[outer].total_steps, 10);
     }
 
     #[test]
