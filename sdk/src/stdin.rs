@@ -13,11 +13,23 @@ impl ZiskStdin {
         Self(ZiskStdinInner::new())
     }
 
-    /// Creates stdin from a byte vector.
+    /// Creates stdin holding `bytes` as one item, framed as [`write_slice`](Self::write_slice)
+    /// frames it: what the guest reads with one `read_vec`.
+    ///
+    /// For bytes that already are an input tape (written with `write`/`write_slice`, or read from
+    /// an input file) use [`from_tape`](Self::from_tape): passed here they would be framed once
+    /// more, and the guest would read them as one item of the wrong layout.
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
         let stdin = Self(ZiskStdinInner::new());
         stdin.write_slice(&bytes);
         stdin
+    }
+
+    /// Creates stdin from an input tape as is: bytes already framed, as written by
+    /// [`write`](Self::write) and [`write_slice`](Self::write_slice) or read from an input file.
+    /// [`from_file`](Self::from_file) does the same with a file's contents.
+    pub fn from_tape(tape: Vec<u8>) -> Self {
+        Self(ZiskStdinInner::from_vec(tape))
     }
 
     /// Creates stdin from a file path.
@@ -93,5 +105,27 @@ impl ZiskStdin {
 impl Default for ZiskStdin {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A tape given to `from_tape` reads back item by item; given to `from_bytes` it becomes one
+    /// item of its own.
+    #[test]
+    fn from_tape_keeps_a_tape_that_from_bytes_would_frame_again() {
+        let written = ZiskStdin::new();
+        written.write_slice(&[1, 2, 3]);
+        written.write(&7u64);
+        let tape = written.read_data();
+
+        let as_tape = ZiskStdin::from_tape(tape.clone());
+        assert_eq!(as_tape.read_bytes(), vec![1, 2, 3]);
+        assert_eq!(as_tape.read::<u64>().unwrap(), 7);
+
+        let framed = ZiskStdin::from_bytes(tape.clone());
+        assert_eq!(framed.read_bytes(), tape);
     }
 }

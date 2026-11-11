@@ -511,6 +511,16 @@ impl EmbeddedProver {
 
 /// An in-process prover client: runs setup, proving, and aggregation locally
 /// rather than dispatching to a remote coordinator.
+///
+/// # Thread stacks
+///
+/// Proving runs on the global rayon pool, whose threads need larger stacks than rayon's 2 MiB
+/// default: with it a proof can fail intermittently with "has overflowed its stack". The ZisK
+/// binaries use 64 MiB. Build the global pool before the first use of rayon:
+///
+/// ```no_run
+/// rayon::ThreadPoolBuilder::new().stack_size(64 << 20).build_global().unwrap();
+/// ```
 pub struct EmbeddedClient {
     prover: Arc<EmbeddedProver>,
     executor: ExecutorKind,
