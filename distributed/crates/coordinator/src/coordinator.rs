@@ -149,9 +149,10 @@ pub struct Coordinator {
 
     /// Held from the arity and SNARK checks until the worker is in the pool, so two first
     /// registrations cannot both see an empty fleet and adopt different values. A disconnect holds
-    /// it until it has pruned the setups the worker owed, so a reconnection of that worker is not
-    /// pruned with them. Taken only by the registration handlers and by those disconnects, after
-    /// any job is failed, so it never nests inside a job lock.
+    /// it from its first look at the worker until it has pruned the setups the worker owed, so a
+    /// reconnection of that worker has neither its job failed nor its setups pruned on the old
+    /// connection's account. Taken only by the registration handlers and by those disconnects,
+    /// before any job lock, so it never nests inside one.
     registration: tokio::sync::Mutex<()>,
 
     /// Number of registrations accumulated.
@@ -3222,6 +3223,50 @@ mod tests {
         // The first stream's guard leaves the second connection alone.
         coordinator.disconnect_worker_if_generation(&w0, first).await.unwrap();
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Idle));
+    }
+
+    /// The stream's drop guard holds `registration` from its generation check on. A worker that
+    /// reconnects while the guard waits, to resume its job, registers first: the guard then finds
+    /// the new generation and leaves the job running, rather than failing it from what it saw of
+    /// the old connection.
+    #[tokio::test]
+    async fn test_drop_guard_waits_for_a_registration_in_flight() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let coordinator = Arc::new(coordinator);
+        let w0 = workers[0].0.clone();
+        let old = coordinator.workers_pool.connection_generation(&w0).await.unwrap();
+        let running = || async {
+            let job = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            let state = job.read().await.state.clone();
+            state == JobState::Running(JobPhase::Contributions)
+        };
+
+        let registering = coordinator.registration.lock().await;
+        let guard = tokio::spawn({
+            let coordinator = Arc::clone(&coordinator);
+            let w0 = w0.clone();
+            async move { coordinator.disconnect_worker_if_generation(&w0, old).await }
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(running().await, "the guard waits before it fails anything");
+
+        // The worker comes back to resume its job, as the reconnection handler registers it.
+        let (sender, _msgs) = MockMessageSender::new();
+        let computing = WorkerState::Computing((job_id.clone(), JobPhase::Contributions));
+        coordinator
+            .workers_pool
+            .register_worker(w0.clone(), 1u32, Box::new(sender), computing)
+            .await
+            .unwrap();
+        drop(registering);
+
+        guard.await.unwrap().unwrap();
+        assert!(running().await, "the job of the new connection is not failed");
+        assert!(matches!(
+            coordinator.workers_pool.worker_state(&w0).await,
+            Some(WorkerState::Computing(_))
+        ));
     }
 
     /// A stale-heartbeat disconnect holds `registration` until it has pruned the
