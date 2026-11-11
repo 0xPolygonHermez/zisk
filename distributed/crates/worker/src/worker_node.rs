@@ -536,20 +536,35 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         self.deferred.retain(|work| matches!(work, DeferredWork::Setup(_)));
 
         let mut heartbeat_interval = tokio::time::interval(Self::HEARTBEAT_INTERVAL);
+        // After a handler held the loop, one heartbeat goes at once, not one per missed tick.
+        heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
         // Main non-blocking event loop
         loop {
             // Take the computation handle out so select! can poll it directly:
             // happy path fires the channel arm (handle put back), panic/cancel
-            // fires the handle arm. `biased` orders branches loop events >
-            // coordinator messages > task health > heartbeat — a wakeup race
+            // fires the handle arm. `biased` orders branches heartbeat > loop
+            // events > coordinator messages > task health — a wakeup race
             // can still let the JoinHandle resolve before the channel poll
             // sees the result, so the `Ok(())` arm re-drains via `try_recv`.
             let mut computation_handle = self.worker.take_current_computation();
             tokio::select! {
                 biased;
 
-                // Highest priority: events from spawn_blocking / recovery driver
+                // First, as it is due at most once per interval: a steady flow of events
+                // or coordinator messages, such as a streamed input, would otherwise hold
+                // it back past the coordinator's heartbeat threshold.
+                _ = heartbeat_interval.tick() => {
+                    // Put the handle back before processing.
+                    if let Some(h) = computation_handle.take() {
+                        self.worker.set_current_computation(h);
+                    }
+                    if let Err(e) = self.send_heartbeat_ack(&message_sender).await {
+                        error!("Error sending heartbeat: {}", e);
+                        break;
+                    }
+                }
+                // Then events from spawn_blocking / recovery driver
                 Some(event) = loop_rx.recv() => {
                     match event {
                         LoopEvent::Computation(result) => {
@@ -685,16 +700,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                 }
                             }
                         }
-                    }
-                }
-                _ = heartbeat_interval.tick() => {
-                    // Put the handle back before processing.
-                    if let Some(h) = computation_handle.take() {
-                        self.worker.set_current_computation(h);
-                    }
-                    if let Err(e) = self.send_heartbeat_ack(&message_sender).await {
-                        error!("Error sending heartbeat: {}", e);
-                        break;
                     }
                 }
             }
