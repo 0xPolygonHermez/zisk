@@ -196,6 +196,16 @@ fn cancel_job_on_stop<T: ZiskBackend + 'static>(worker: &Worker<T>) {
     });
 }
 
+/// The worker's state once its stream is over: `Disconnected`, to connect again at once, but for
+/// a refused registration, whose `Error` makes `run` wait `reconnect_interval_seconds` first. A
+/// refused worker connecting again at once would retry tens of times a second.
+fn state_after_stream(state: &WorkerState) -> WorkerState {
+    match state {
+        WorkerState::Error => WorkerState::Error,
+        _ => WorkerState::Disconnected,
+    }
+}
+
 /// A worker process, specialized by MPI role: rank 0 talks to the coordinator
 /// over gRPC, secondary ranks only service MPI broadcasts.
 // One per process: the rank-0 variant's extra configuration costs nothing.
@@ -618,7 +628,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             self.run_deferred(&message_sender, loop_tx).await;
         }
 
-        self.worker.set_state(WorkerState::Disconnected);
+        self.worker.set_state(state_after_stream(self.worker.state()));
         Ok(())
     }
 
@@ -2754,6 +2764,21 @@ mod aggregate_response_tests {
         assert!(!success, "an empty proof with success set reads as an intermediate ack");
         assert_eq!(error_message, "boom");
         assert!(proof_data.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod state_after_stream_tests {
+    use super::*;
+
+    /// A refused registration keeps `Error`, so that `run` waits before it connects again; any
+    /// other end of the stream connects again at once.
+    #[test]
+    fn a_refused_worker_waits_before_it_connects_again() {
+        assert_eq!(state_after_stream(&WorkerState::Error), WorkerState::Error);
+        for state in [WorkerState::Connecting, WorkerState::Ready, WorkerState::Disconnected] {
+            assert_eq!(state_after_stream(&state), WorkerState::Disconnected);
+        }
     }
 }
 

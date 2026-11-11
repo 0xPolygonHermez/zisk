@@ -40,7 +40,8 @@ url = "http://127.0.0.1:50051"
 # ── Connection behaviour ──────────────────────────────────────────────────────
 
 [connection]
-# Seconds between reconnection attempts when the coordinator is unreachable.
+# Seconds between reconnection attempts when the coordinator is unreachable or
+# refused the registration (another proving key, the connection limit).
 reconnect_interval_seconds = 5
 
 # Seconds without a heartbeat before the worker considers the connection dead

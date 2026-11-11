@@ -1570,10 +1570,14 @@ impl Coordinator {
             )));
         }
 
-        // An empty pool (the fleet cycled, maybe re-keyed) adopts the first value reported.
+        // With no worker connected (the fleet cycled, maybe re-keyed) the first value reported
+        // is adopted. Disconnected entries do not count, the worker's own old one included: a
+        // worker restarted with another key would otherwise wait for the stale-disconnected
+        // sweep. Its own entry still live does count: the pool may yet refuse to replace it (a
+        // computing one), and the cluster's value must not change for a refused registration.
         let mut current = self.agg_arity.lock().await;
-        let pool_empty = self.workers_pool.num_workers().await == 0;
-        if *current == 0 || pool_empty {
+        let alone = !self.workers_pool.has_live_worker().await;
+        if *current == 0 || alone {
             *current = arity as u64;
             return Ok(());
         }
@@ -1596,10 +1600,10 @@ impl Coordinator {
         worker_id: &WorkerId,
         protocol: Option<SnarkProtocol>,
     ) -> CoordinatorResult<()> {
-        // An empty pool (the fleet cycled, maybe re-keyed) adopts the first value reported.
+        // With no worker connected the first value reported is adopted, as for the arity.
         let mut current = self.snark_protocol.lock().await;
-        let pool_empty = self.workers_pool.num_workers().await == 0;
-        let Some(cluster) = current.filter(|_| !pool_empty) else {
+        let alone = !self.workers_pool.has_live_worker().await;
+        let Some(cluster) = current.filter(|_| !alone) else {
             *current = Some(protocol);
             return Ok(());
         };
@@ -5671,6 +5675,131 @@ mod tests {
         let (accepted, message) = register_with_snark(&coordinator, "w2", PLONK).await;
         assert!(!accepted);
         assert!(message.contains("the cluster's workers have no SNARK proving key"), "{message}");
+    }
+
+    /// A worker restarted with another SNARK proving key, or none, is taken at once: no entry
+    /// disconnected and waiting for the stale-disconnected sweep holds the cluster's key, its own
+    /// old one included.
+    #[tokio::test]
+    async fn a_worker_restarted_with_another_snark_key_is_taken_at_once() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        let w0 = WorkerId::from("w0".to_string());
+        assert!(register_with_snark(&coordinator, "w0", None).await.0);
+        coordinator.workers_pool.disconnect_worker(&w0).await.unwrap();
+
+        let (accepted, message) = register_with_snark(&coordinator, "w0", PILFFLONK).await;
+        assert!(accepted, "its own old entry holds no key: {message}");
+        coordinator.workers_pool.disconnect_worker(&w0).await.unwrap();
+
+        let (accepted, message) = register_with_snark(&coordinator, "w1", None).await;
+        assert!(accepted, "another worker's disconnected entry holds none either: {message}");
+    }
+
+    /// A connected worker still holds the cluster's key: a worker restarted with another one
+    /// is refused while it is there.
+    #[tokio::test]
+    async fn a_connected_worker_keeps_the_snark_key_for_a_restarted_one() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert!(register_with_snark(&coordinator, "w0", PLONK).await.0);
+        assert!(register_with_snark(&coordinator, "w1", PLONK).await.0);
+        coordinator
+            .workers_pool
+            .disconnect_worker(&WorkerId::from("w0".to_string()))
+            .await
+            .unwrap();
+
+        let (accepted, message) = register_with_snark(&coordinator, "w0", None).await;
+        assert!(!accepted);
+        assert!(
+            message.contains("the cluster's workers have a PLONK SNARK proving key"),
+            "{message}"
+        );
+    }
+
+    /// The same for the aggregation arity: a worker restarted with a key of another arity is
+    /// taken at once when no other worker is connected.
+    #[tokio::test]
+    async fn a_worker_restarted_with_another_arity_is_taken_at_once() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert!(register_with_arity(&coordinator, "w0", 2).await.0);
+        coordinator
+            .workers_pool
+            .disconnect_worker(&WorkerId::from("w0".to_string()))
+            .await
+            .unwrap();
+
+        let (accepted, message) = register_with_arity(&coordinator, "w0", 4).await;
+        assert!(accepted, "{message}");
+        assert_eq!(coordinator.agg_arity().await.unwrap(), 4);
+    }
+
+    /// A worker's own entry still live counts: the pool refuses to replace a computing one, so a
+    /// registration beside it must not change the cluster's arity first.
+    #[tokio::test]
+    async fn a_registration_beside_its_own_live_entry_keeps_the_cluster_arity() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        let w0 = WorkerId::from("w0".to_string());
+        assert!(register_with_arity(&coordinator, "w0", 2).await.0);
+        let computing = WorkerState::Computing((JobId::new(), JobPhase::Contributions));
+        coordinator.workers_pool.mark_worker_with_state(&w0, computing).await.unwrap();
+
+        let (accepted, _message) = register_with_arity(&coordinator, "w0", 4).await;
+        assert!(!accepted);
+        assert_eq!(coordinator.agg_arity().await.unwrap(), 2);
+    }
+
+    /// Registers worker `id` with aggregation arity `arity`. Reads the handler's result by field,
+    /// as it grows one when the stream keeps its generation.
+    async fn register_with_arity(
+        coordinator: &Coordinator,
+        id: &str,
+        arity: u32,
+    ) -> (bool, String) {
+        let (sender, _msgs) = MockMessageSender::new();
+        let req = zisk_cluster_common::WorkerRegisterRequestDto {
+            worker_id: WorkerId::from(id.to_string()),
+            compute_capacity: 1u32.into(),
+            aggregation_arity: arity,
+            snark_protocol: None,
+            previous_exit: None,
+        };
+        let registered = coordinator.handle_stream_registration(req, Box::new(sender)).await;
+        (registered.0, registered.1)
+    }
+
+    /// The connection limit counts only the other live workers: a worker that comes back with
+    /// `Register` (it had no job) is not refused for its own disconnected entry, nor for another
+    /// worker's.
+    #[tokio::test]
+    async fn the_connection_limit_counts_only_the_other_live_workers() {
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.max_total_workers = 1));
+        let w0 = WorkerId::from("w0".to_string());
+        assert!(register_with_snark(&coordinator, "w0", None).await.0);
+        coordinator.workers_pool.disconnect_worker(&w0).await.unwrap();
+
+        let (accepted, message) = register_with_snark(&coordinator, "w0", None).await;
+        assert!(accepted, "its own disconnected entry takes no connection: {message}");
+        let (accepted, message) = register_with_snark(&coordinator, "w1", None).await;
+        assert!(!accepted, "w0 is live and holds the only connection");
+        assert!(message.contains("Maximum concurrent connections"), "{message}");
+
+        coordinator.workers_pool.disconnect_worker(&w0).await.unwrap();
+        let (accepted, message) = register_with_snark(&coordinator, "w1", None).await;
+        assert!(accepted, "another worker's disconnected entry takes none either: {message}");
+    }
+
+    /// A registration the connection limit refuses sets no cluster key: the limit is checked
+    /// before the key is adopted.
+    #[tokio::test]
+    async fn a_registration_refused_by_the_limit_sets_no_cluster_key() {
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.max_total_workers = 0));
+        let (accepted, message) = register_with_snark(&coordinator, "w0", PLONK).await;
+        assert!(!accepted);
+        assert!(message.contains("Maximum concurrent connections"), "{message}");
+        assert_eq!(*coordinator.snark_protocol.lock().await, None);
+        assert_eq!(*coordinator.agg_arity.lock().await, 0);
     }
 
     /// A Ready worker `w0` for `hash`, on a cluster whose workers' SNARK proving key is of
