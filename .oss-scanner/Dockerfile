@@ -44,6 +44,15 @@ ENV SHELL=/bin/bash \
     DISABLE_ENV_CONFIRM=1 \
     ZISK_CI_NO_DOCKER_REBUILD=1
 
+# Guest programs are built without LTO in this image. The guest profile (test-artifacts/programs,
+# examples) uses fat LTO with one codegen unit, which links every guest in a single thread for
+# about two minutes: the 46 test guests alone take more than 20 minutes on a 4-CPU machine, more
+# than the scanner's CI runner allows. Without LTO they build in under two minutes on 16 CPUs and
+# the tests behave the same; the ELFs are only larger and slower to emulate than release builds.
+# The workspace profile does not set lto, so the host build is unchanged. Set here, before anything
+# is compiled, so that every build in the image shares the same profile fingerprint.
+ENV CARGO_PROFILE_RELEASE_LTO=false
+
 # System packages, Node.js, snarkjs and Rust (no CUDA). Only the scripts it needs are copied first,
 # so this layer does not depend on the rest of the checkout. No .env file is created:
 # configuration comes from the environment, so load_env never asks for confirmation.

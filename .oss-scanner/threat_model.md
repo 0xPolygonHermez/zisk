@@ -218,7 +218,10 @@ The image built from `.oss-scanner/Dockerfile` contains a CPU-only build of ZisK
 - Prebuilt guest ELFs for the emulator: `elf-regressions/`, e.g.
   `ziskemu -e elf-regressions/prebuilt-elfs/cpp_static_init.elf`.
 - Guest programs can be built offline with the ZisK toolchain, e.g.
-  `cd examples/fibonacci/guest && cargo-zisk build --release`.
+  `cd examples/fibonacci/guest && cargo-zisk build --release`. In this image guests are built
+  without LTO (`CARGO_PROFILE_RELEASE_LTO=false` in the environment) to keep builds short; release
+  guests use fat LTO. This changes code size and emulation speed of the ELFs, not their behaviour.
+  Keep that variable set, or cargo rebuilds the workspace.
 - The proving key is not installed: proving needs far more memory than the analysis environment
   has. Prefer emulator runs, unit tests and constraint-level reasoning (PIL files under `pil/`,
   `state-machines/*/pil`, `precompiles/*/pil`).
