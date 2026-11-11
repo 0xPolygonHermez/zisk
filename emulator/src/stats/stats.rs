@@ -13,15 +13,17 @@ use std::{
 };
 use zisk_core::{
     zisk_ops::{OpStats, OpType, ZiskOp},
-    InstContext, ZiskInst, ZiskOperationType, ZiskRom, RAM_ADDR, REGS_IN_MAIN_TOTAL_NUMBER,
-    ROM_ADDR, ROM_ENTRY, ROM_ENTRY_SIZE, ROM_EXIT, ROM_SIZE, SRC_IMM, STORE_NONE, SYS_ADDR,
+    InstContext, ZiskInst, ZiskOperationType, ZiskRom, BINARY_ADD_COST, RAM_ADDR,
+    REGS_IN_MAIN_TOTAL_NUMBER, ROM_ADDR, ROM_ENTRY, ROM_ENTRY_SIZE, ROM_EXIT, ROM_SIZE, SRC_IMM,
+    STORE_NONE, SYS_ADDR,
 };
 use zisk_core::{FLOAT_LIB_ROM_ADDR, ZISKLIB_ROM_ADDR, ZISK_COSTS_VERSION};
 use zisk_pil::RomRomTrace;
 use zisk_riscv::RiscVRegisters;
 use zisk_sm_arith::{ArithFrops, ArithLegacyFrops};
 use zisk_sm_binary::{
-    BinaryBasicFrops, BinaryBasicLegacyFrops, BinaryExtensionFrops, BinaryExtensionLegacyFrops,
+    sh3add_shape, BinaryBasicFrops, BinaryBasicLegacyFrops, BinaryExtensionFrops,
+    BinaryExtensionLegacyFrops, Sh3addShape,
 };
 
 use zisk_definitions::{
@@ -114,17 +116,26 @@ const RETURN_REGS: [u8; 2] = [REG_RA_IDX, REG_T0_IDX];
 // ------------------------------------------------------------------------------------------------
 // Cheap opcode variants: opcodes whose operands meet a condition that makes them cheaper to prove,
 // counted separately so their reduced cost can be accounted for and shown as a per-opcode
-// breakdown. A general mechanism — currently the BinaryAddHi shapes of ADD:
-//   add_hi0 : hi32(a)=hi32(c)=0 and hi32(b)=0            (both operands fit in 32 bits)
-//   add_hif : hi32(a)=hi32(c)=0 and hi32(b)=0xFFFF_FFFF  (a subtraction encoded as an addition)
+// breakdown. A general mechanism — currently the BinaryAddHi shapes of ADD and the shapes in which
+// the packed add airs also prove SH3ADD:
+//   add_hi0    : hi32(a)=hi32(c)=0 and hi32(b)=0            (both operands fit in 32 bits)
+//   add_hif    : hi32(a)=hi32(c)=0 and hi32(b)=0xFFFF_FFFF  (a subtraction encoded as an addition)
+//   sh3add_hi  : proven by BinaryAddHi  (`Sh3addShape::Hi`, see zisk_sm_binary::sh3add_shape)
+//   sh3add_add : proven by BinaryAdd    (`Sh3addShape::Add`)
 // ------------------------------------------------------------------------------------------------
 const HI32_MASK: u64 = 0xFFFF_FFFF_0000_0000;
 const CHEAP_ADD_HI0: usize = 0;
 const CHEAP_ADD_HIF: usize = 1;
-const CHEAP_VARIANT_COUNT: usize = 2;
+const CHEAP_SH3ADD_HI: usize = 2;
+const CHEAP_SH3ADD_ADD: usize = 3;
+const CHEAP_VARIANT_COUNT: usize = 4;
 /// (base opcode, label, reduced cost) for each cheap variant, indexed by `CHEAP_*`.
-const CHEAP_VARIANTS: [(u8, &str, u64); CHEAP_VARIANT_COUNT] =
-    [(ZiskOp::ADD, "add_hi0", BINARY_ADD_HI_COST), (ZiskOp::ADD, "add_hif", BINARY_ADD_HI_COST)];
+const CHEAP_VARIANTS: [(u8, &str, u64); CHEAP_VARIANT_COUNT] = [
+    (ZiskOp::ADD, "add_hi0", BINARY_ADD_HI_COST),
+    (ZiskOp::ADD, "add_hif", BINARY_ADD_HI_COST),
+    (ZiskOp::SH3ADD, "sh3add_hi", BINARY_ADD_HI_COST),
+    (ZiskOp::SH3ADD, "sh3add_add", BINARY_ADD_COST),
+];
 
 // ------------------------------------------------------------------------------------------------
 // Precompile duplicate analysis: detect precompile calls that repeat the same computation (same
@@ -3730,9 +3741,17 @@ impl Stats {
 
     /// Classifies an executed operation into a cheap variant (index into `CHEAP_VARIANTS`), or
     /// `None` if it is a regular operation. Currently the BinaryAddHi shapes of ADD:
-    /// hi32(a)=hi32(c)=0 with hi32(b)=0 (add_hi0) or hi32(b)=0xFFFF_FFFF (add_hif).
+    /// hi32(a)=hi32(c)=0 with hi32(b)=0 (add_hi0) or hi32(b)=0xFFFF_FFFF (add_hif); and SH3ADD as
+    /// the binary state machine routes it, by the same `sh3add_shape` its planner uses.
     #[inline(always)]
     fn cheap_variant(op: u8, a: u64, b: u64, c: u64) -> Option<usize> {
+        if op == ZiskOp::SH3ADD {
+            return match sh3add_shape(a, b) {
+                Sh3addShape::Hi => Some(CHEAP_SH3ADD_HI),
+                Sh3addShape::Add => Some(CHEAP_SH3ADD_ADD),
+                Sh3addShape::Full => None,
+            };
+        }
         if op == ZiskOp::ADD && a & HI32_MASK == 0 && c & HI32_MASK == 0 {
             if b & HI32_MASK == 0 {
                 return Some(CHEAP_ADD_HI0);
@@ -4629,5 +4648,24 @@ lib_fail:
                 (sym("lib_helper"), sym("lib_fail") + 3, "lib_helper"),
             ]
         );
+    }
+
+    /// SH3ADD is charged by the air that proves it: BinaryAddHi or BinaryAdd when its operands
+    /// allow, Binary otherwise. `c` plays no part in the classification of SH3ADD.
+    #[test]
+    fn sh3add_cheap_variant_follows_the_binary_routing() {
+        let sh3add = |a: u64, b: u64| Stats::cheap_variant(ZiskOp::SH3ADD, a, b, 0);
+        // A table index and a 32-bit base: the whole result fits in the low limb.
+        assert_eq!(sh3add(5, 0xA000_0000), Some(CHEAP_SH3ADD_HI));
+        // The low limb carries once into a clean b: BinaryAdd, not BinaryAddHi.
+        assert_eq!(sh3add(0x1FFF_FFFF, 0xFFFF_FFFF), Some(CHEAP_SH3ADD_ADD));
+        // A shifted operand above 32 bits only fits in Binary.
+        assert_eq!(sh3add(0x1_0000_0000, 0), None);
+        assert_eq!(CHEAP_VARIANTS[CHEAP_SH3ADD_HI].2, BINARY_ADD_HI_COST);
+        assert_eq!(CHEAP_VARIANTS[CHEAP_SH3ADD_ADD].2, BINARY_ADD_COST);
+        // Every variant is cheaper than the opcode's own cost, or it would not be a saving.
+        for (op, label, cost) in CHEAP_VARIANTS {
+            assert!(cost < ZiskOp::try_from_code(op).unwrap().cost(), "{label}");
+        }
     }
 }

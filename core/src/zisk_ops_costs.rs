@@ -5,7 +5,7 @@
 /// - any cost in this file, or in `emulator/src/emu_costs.rs` (memory, main, rom, tables, ...),
 /// - the way costs are accumulated (what is charged for an operation, a memory access, ...),
 /// - the FROPS (frequent operations) tables or the way they are evaluated.
-pub const ZISK_COSTS_VERSION: u32 = 1;
+pub const ZISK_COSTS_VERSION: u32 = 2;
 
 // Cost definitions: Area x Op
 //
