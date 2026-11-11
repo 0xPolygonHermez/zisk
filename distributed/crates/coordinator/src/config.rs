@@ -72,8 +72,10 @@ pub struct ServiceConfig {
 /// of its heartbeats has been seen past 5.5 s. Keep the threshold at least 3× the
 /// longest gap, so a busy worker is never taken for a hung one: the default 30 s
 /// leaves more than 5×. Older workers heartbeat every 10 s, or every 30 s without
-/// telemetry: upgrade them with the coordinator, or keep a threshold of 90 s
-/// (30 s × 3) while they run.
+/// telemetry, and not at all while they wrap a proof, so this threshold can drop
+/// them over and over. Upgrade the workers before the coordinator, since a newer
+/// worker is fine with an older coordinator's 90 s, or keep a threshold of 90 s
+/// (30 s × 3) while older workers run.
 ///
 /// ## Stale worker cleanup
 ///
