@@ -148,8 +148,10 @@ pub struct Coordinator {
     snark_protocol: tokio::sync::Mutex<Option<Option<SnarkProtocol>>>,
 
     /// Held from the arity and SNARK checks until the worker is in the pool, so two first
-    /// registrations cannot both see an empty fleet and adopt different values. Taken only by the
-    /// registration handlers, so it never nests inside a job lock.
+    /// registrations cannot both see an empty fleet and adopt different values. A disconnect holds
+    /// it until it has pruned the setups the worker owed, so a reconnection of that worker is not
+    /// pruned with them. Taken only by the registration handlers and by those disconnects, after
+    /// any job is failed, so it never nests inside a job lock.
     registration: tokio::sync::Mutex<()>,
 
     /// Number of registrations accumulated.
@@ -295,6 +297,15 @@ fn cost_per_type_from_job(job: &Job) -> StatsCostPerType {
         .unwrap_or_default()
 }
 
+/// Heartbeat age past which a worker counts as hung: `heartbeat_interval_seconds ×
+/// heartbeat_max_missed`.
+fn stale_heartbeat_threshold(config: &Config) -> chrono::Duration {
+    chrono::Duration::seconds(
+        (config.coordinator.heartbeat_interval_seconds
+            * config.coordinator.heartbeat_max_missed as u64) as i64,
+    )
+}
+
 impl Coordinator {
     /// Creates a new coordinator service instance with the provided configuration.
     ///
@@ -304,11 +315,12 @@ impl Coordinator {
     pub fn new(config: Config) -> Self {
         let start_time_utc = Utc::now();
         crate::metrics::record_coordinator_started();
+        let workers_pool = WorkersPool::new().with_stale_after(stale_heartbeat_threshold(&config));
 
         Self {
             config,
             start_time_utc,
-            workers_pool: Arc::new(WorkersPool::new()),
+            workers_pool: Arc::new(workers_pool),
             jobs: RwLock::new(HashMap::new()),
             agg_arity: tokio::sync::Mutex::new(0),
             snark_protocol: tokio::sync::Mutex::new(None),
@@ -1838,12 +1850,11 @@ impl Coordinator {
         }
     }
 
-    /// Checks for computing workers with stale heartbeats and fails their jobs.
+    /// Fails the job of every computing worker with a stale heartbeat, then
+    /// disconnects every worker with a stale heartbeat, so a frozen `Ready`
+    /// worker is not given the next job.
     pub async fn check_stale_heartbeats(&self) {
-        let threshold = chrono::Duration::seconds(
-            (self.config.coordinator.heartbeat_interval_seconds
-                * self.config.coordinator.heartbeat_max_missed as u64) as i64,
-        );
+        let threshold = stale_heartbeat_threshold(&self.config);
         let stale = self.workers_pool.get_stale_computing_workers(threshold).await;
 
         let mut handled_jobs = std::collections::HashSet::new();
@@ -1858,6 +1869,11 @@ impl Coordinator {
             if let Err(e) = self.fail_job(job_id, &reason).await {
                 error!("Failed to abort job {} due to stale heartbeat: {}", job_id, e);
             }
+        }
+
+        // Failing the job parked its stale workers, so they are disconnected here too.
+        for worker_id in self.disconnect_stale_workers(threshold).await {
+            warn!("[Monitor] Worker {} missed heartbeats; disconnected", worker_id);
         }
     }
 
@@ -2295,6 +2311,38 @@ mod tests {
 
         let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
         assert_eq!(entry.read().await.state, JobState::Failed);
+        // The stale worker is dropped; the other stays parked for its recovery.
+        assert_eq!(
+            coordinator.workers_pool.worker_state(w0).await,
+            Some(WorkerState::Disconnected)
+        );
+        let w1 = &_workers[1].0;
+        assert_eq!(coordinator.workers_pool.worker_state(w1).await, Some(WorkerState::SettingUp));
+    }
+
+    /// A `Ready` worker that stopped heartbeating leaves the available capacity
+    /// before it can be given a job.
+    #[tokio::test]
+    async fn test_check_stale_heartbeats_disconnects_ready_worker() {
+        let coordinator = Coordinator::new(test_config_with(|c| {
+            c.coordinator.heartbeat_interval_seconds = 30;
+            c.coordinator.heartbeat_max_missed = 3;
+        }));
+        let (w0, _) = register_test_worker(&coordinator.workers_pool, "w0").await;
+        coordinator.workers_pool.mark_worker_with_state(&w0, WorkerState::Ready).await.unwrap();
+        coordinator
+            .workers_pool
+            .set_last_heartbeat(&w0, Utc::now() - chrono::Duration::seconds(100))
+            .await
+            .unwrap();
+
+        coordinator.check_stale_heartbeats().await;
+
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0).await,
+            Some(WorkerState::Disconnected)
+        );
+        assert_eq!(coordinator.workers_pool.capacity_snapshot().await.available, 0);
     }
 
     #[tokio::test]
@@ -2927,7 +2975,7 @@ mod tests {
             compute_capacity: 1u32.into(),
             last_known_job_id: None,
         };
-        let (accepted, _msg, _directive, _setup) =
+        let (accepted, _msg, _directive, _setup, _generation) =
             coordinator.handle_stream_reconnection(req, Box::new(sender2)).await;
         assert!(accepted);
         assert!(!coordinator.pending_recovery.read().await.contains_key(&w0_id));
@@ -3104,6 +3152,122 @@ mod tests {
             None,
             "stuck worker must be unregistered from the pool"
         );
+    }
+
+    /// A worker the sweep unregistered comes back on a new stream; when the drop
+    /// guard of its old stream fires, the new connection must survive. Reusing
+    /// the old connection's generation would fail the worker's next job and
+    /// leave it `Disconnected` while the new stream keeps heartbeating.
+    #[tokio::test]
+    async fn test_old_stream_guard_spares_worker_back_after_sweep() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |c| {
+                c.coordinator.stuck_recovery_threshold_seconds = 1;
+            })
+            .await;
+        let w0_id = workers[0].0.clone();
+        let old_generation = coordinator.workers_pool.connection_generation(&w0_id).await.unwrap();
+
+        coordinator.fail_job(&job_id, "intentional").await.unwrap();
+        {
+            let mut pending = coordinator.pending_recovery.write().await;
+            let entry = pending.get_mut(&w0_id).expect("worker in pending_recovery");
+            *entry = Utc::now() - chrono::Duration::seconds(60);
+        }
+        coordinator.cleanup_stuck_recovery_workers().await;
+        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, None);
+
+        let (sender, _msgs) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(w0_id.clone(), 1u32, Box::new(sender), WorkerState::Ready)
+            .await
+            .unwrap();
+
+        coordinator.disconnect_worker_if_generation(&w0_id, old_generation).await.unwrap();
+        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
+    }
+
+    /// Each registration hands its stream the generation it was given. The
+    /// stream used to read it from the pool after answering the worker, by which
+    /// time a later connection of the same worker could have replaced it; the
+    /// old stream's guard would then disconnect the new connection.
+    #[tokio::test]
+    async fn test_registration_returns_its_own_generation() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        let w0 = WorkerId::from("w0".to_string());
+        let register = || zisk_cluster_common::WorkerRegisterRequestDto {
+            worker_id: w0.clone(),
+            aggregation_arity: 2,
+            snark_protocol: None,
+            compute_capacity: 1u32.into(),
+            previous_exit: None,
+        };
+
+        let (sender, _msgs) = MockMessageSender::new();
+        let (accepted, _msg, _setup, first) =
+            coordinator.handle_stream_registration(register(), Box::new(sender)).await;
+        assert!(accepted);
+        let first = first.expect("an accepted registration has a generation");
+        assert_eq!(coordinator.workers_pool.connection_generation(&w0).await, Some(first));
+
+        let (sender, _msgs) = MockMessageSender::new();
+        let (accepted, _msg, _setup, second) =
+            coordinator.handle_stream_registration(register(), Box::new(sender)).await;
+        assert!(accepted);
+        let second = second.expect("an accepted registration has a generation");
+        assert_ne!(first, second);
+        assert_eq!(coordinator.workers_pool.connection_generation(&w0).await, Some(second));
+
+        // The first stream's guard leaves the second connection alone.
+        coordinator.disconnect_worker_if_generation(&w0, first).await.unwrap();
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Idle));
+    }
+
+    /// A stale-heartbeat disconnect holds `registration` until it has pruned the
+    /// setups the worker owed, so a reconnection of that worker cannot land in
+    /// between and be pruned from a setup it was never sent.
+    #[tokio::test]
+    async fn test_stale_disconnect_waits_for_a_registration_in_flight() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
+        let w0 = WorkerId::from("w0".to_string());
+        let (sender, _msgs) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(w0.clone(), 1u32, Box::new(sender), WorkerState::Ready)
+            .await
+            .unwrap();
+        let old = Utc::now() - chrono::Duration::seconds(100);
+        coordinator.workers_pool.set_last_heartbeat(&w0, old).await.unwrap();
+        // Another worker still owes the setup, so pruning w0 does not finish it.
+        let setup_job = JobId::new();
+        coordinator.setup_pending.write().await.insert(
+            setup_job.clone(),
+            SetupPendingState {
+                pending: HashSet::from([w0.clone(), WorkerId::from("w1".to_string())]),
+                vks: Vec::new(),
+                hash_id: "hash".to_string(),
+                program_name: "program".to_string(),
+                with_hints: false,
+                emulator_only: false,
+            },
+        );
+        let registering = coordinator.registration.lock().await;
+        let disconnect = tokio::spawn({
+            let coordinator = Arc::clone(&coordinator);
+            async move { coordinator.disconnect_stale_workers(chrono::Duration::seconds(90)).await }
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(coordinator.setup_pending.read().await[&setup_job].pending.contains(&w0));
+
+        drop(registering);
+        assert_eq!(disconnect.await.unwrap(), vec![w0.clone()]);
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0).await,
+            Some(WorkerState::Disconnected)
+        );
+        assert!(!coordinator.setup_pending.read().await[&setup_job].pending.contains(&w0));
     }
 
     /// Fresh entries in `pending_recovery` (within the threshold) survive the
@@ -3859,7 +4023,7 @@ mod tests {
             compute_capacity: 1u32.into(),
             previous_exit: None,
         };
-        let (accepted, _msg, _setup) =
+        let (accepted, _msg, _setup, _generation) =
             coordinator.handle_stream_registration(req, Box::new(sender)).await;
         assert!(accepted, "fresh register must succeed");
 
@@ -5209,7 +5373,7 @@ mod tests {
         coordinator.workers_pool.disconnect_worker(&w0_id).await.unwrap();
 
         let (sender, _msgs) = MockMessageSender::new();
-        let (accepted, _msg, directive, _setup) = coordinator
+        let (accepted, _msg, directive, _setup, _generation) = coordinator
             .handle_stream_reconnection(
                 WorkerReconnectRequestDto {
                     worker_id: w0_id.clone(),
@@ -5238,7 +5402,7 @@ mod tests {
         coordinator.pending_recovery.write().await.insert(w0_id.clone(), Utc::now());
 
         let (sender, _msgs) = MockMessageSender::new();
-        let (accepted, _msg, directive, _setup) = coordinator
+        let (accepted, _msg, directive, _setup, _generation) = coordinator
             .handle_stream_reconnection(
                 WorkerReconnectRequestDto {
                     worker_id: w0_id.clone(),
@@ -5275,7 +5439,7 @@ mod tests {
         coordinator.workers_pool.disconnect_worker(&w0_id).await.unwrap();
 
         let (sender, _msgs) = MockMessageSender::new();
-        let (accepted, _msg, _directive, _setup) = coordinator
+        let (accepted, _msg, _directive, _setup, _generation) = coordinator
             .handle_stream_reconnection(
                 WorkerReconnectRequestDto {
                     worker_id: w0_id.clone(),
@@ -5604,7 +5768,7 @@ mod tests {
             snark_protocol,
             previous_exit: None,
         };
-        let (accepted, message, _setup) =
+        let (accepted, message, _setup, _generation) =
             coordinator.handle_stream_registration(req, Box::new(sender)).await;
         (accepted, message)
     }
@@ -5649,7 +5813,7 @@ mod tests {
             aggregation_arity: 2,
             snark_protocol: PLONK,
         };
-        let (accepted, message, _directive, _setup) =
+        let (accepted, message, _directive, _setup, _generation) =
             coordinator.handle_stream_reconnection(req, Box::new(sender)).await;
 
         assert!(!accepted);
@@ -6063,6 +6227,25 @@ mod tests {
 
         let err = coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap_err();
         assert!(matches!(err, CoordinatorError::WorkersNotSetup), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_skips_a_worker_past_its_heartbeat() {
+        // A Ready worker that stopped heartbeating since the monitor last ran
+        // is not counted, so no job is planned on it.
+        let coordinator = Coordinator::new(test_config_with(|c| {
+            c.coordinator.heartbeat_interval_seconds = 10;
+            c.coordinator.heartbeat_max_missed = 3;
+        }));
+        add_worker(&coordinator, "fresh", 4, WorkerState::Ready).await;
+        add_worker(&coordinator, "hung", 4, WorkerState::Ready).await;
+        let hung = WorkerId::from("hung".to_string());
+        let old = Utc::now() - chrono::Duration::seconds(31);
+        coordinator.workers_pool.set_last_heartbeat(&hung, old).await.unwrap();
+
+        let (requested, _minimum) =
+            coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap();
+        assert_eq!(requested, ComputeCapacity::from(4u32));
     }
 
     #[tokio::test]
