@@ -4,20 +4,20 @@ ENTRY(_start)
 
 MEMORY
 {
-    ROM (rx) : ORIGIN = 0x90000000, LENGTH = 0x10000000
-    RAM (rw) : ORIGIN = 0xa0020000, LENGTH = 0x1FFE0000
+    ROM (rx) : ORIGIN = 0xA8000000, LENGTH = 0x10000000
+    RAM (rw) : ORIGIN = 0xC0020000, LENGTH = 0x7FFE0000
 }
 
 SECTIONS
 {
-    . = 0x90000000;  /* Start of ROM space */
+    . = 0xA8000000;  /* Start of ROM space */
     
     .header : ALIGN(4) {
         /* Our custom header/metadata section */
         KEEP(*(.header))
     } > ROM
     
-    . = 0x90001000;  /* Actual code starts here */
+    . = 0xA8001000;  /* Actual code starts here */
     .text : {
         *(.text.init)
         *(.text)

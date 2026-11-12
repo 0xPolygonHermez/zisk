@@ -62,27 +62,27 @@ public:
                 const uint64_t *words = (const uint64_t *)chunk_data;
                 for (int32_t i = 0; i < chunk_size; i += mops_record_len(words[i])) {
                     const MemCountersBusData rec = mops_decode_record(words + i);
-                    const uint32_t addr = rec.addr;
+                    const uint64_t addr = rec.addr;
                     if (addr < INPUT_ADDR || addr >= ROM_ADDR) continue;
                     const uint8_t bytes = rec.flags & 0x0F;
                     const uint8_t is_write = (rec.flags & MOPS_WRITE_FLAG) != 0;
                     if ((addr & 0x7) == 0 && bytes == 8) {
-                        printf("MEM_OP 0x%08X %04d:%07d:0\n", addr, chunk_id, i);
+                        printf("MEM_OP 0x%09lX %04d:%07d:0\n", addr, chunk_id, i);
                     } else if ((addr & 0x7) != 0 || bytes != 8) {
-                        uint32_t aligned_addr = addr & 0xFFFFFFF8;
+                        uint64_t aligned_addr = addr & ~(uint64_t)0x7;
                         if ((addr & 0x7) + bytes > 8) {
-                            printf("MEM_OP 0x%08X %04d:%07d:0 offset %d bytes %d RD1\n", aligned_addr, chunk_id, i, addr & 0x7, bytes);
+                            printf("MEM_OP 0x%09lX %04d:%07d:0 offset %d bytes %d RD1\n", aligned_addr, chunk_id, i, (int)(addr & 0x7), bytes);
                             if (is_write) {
-                                printf("MEM_OP 0x%08X %04d:%07d:1 offset %d bytes %d WR1\n", aligned_addr, chunk_id, i ,addr & 0x7, bytes);
+                                printf("MEM_OP 0x%09lX %04d:%07d:1 offset %d bytes %d WR1\n", aligned_addr, chunk_id, i, (int)(addr & 0x7), bytes);
                             }
                             aligned_addr += 8;
-                            printf("MEM_OP 0x%08X %04d:%07d:0 offset %d bytes %d RD2\n", aligned_addr, chunk_id, i, addr & 0x7, bytes);
+                            printf("MEM_OP 0x%09lX %04d:%07d:0 offset %d bytes %d RD2\n", aligned_addr, chunk_id, i, (int)(addr & 0x7), bytes);
                             if (is_write) {
-                                printf("MEM_OP 0x%08X %04d:%07d:1 offset %d bytes %d WR2\n", aligned_addr, chunk_id, i, addr & 0x7, bytes);
+                                printf("MEM_OP 0x%09lX %04d:%07d:1 offset %d bytes %d WR2\n", aligned_addr, chunk_id, i, (int)(addr & 0x7), bytes);
                             }
                         } else {
-                            printf("MEM_OP 0x%08X %04d:%07d:0 offset %d bytes %d RD\n", aligned_addr, chunk_id, i, addr & 0x7, bytes);
-                            if (is_write) printf("MEM_ALIGN_OP 0x%08X %04d:%07d:1 offset %d bytes %d WR\n", aligned_addr, chunk_id, i, addr & 0x7, bytes);
+                            printf("MEM_OP 0x%09lX %04d:%07d:0 offset %d bytes %d RD\n", aligned_addr, chunk_id, i, (int)(addr & 0x7), bytes);
+                            if (is_write) printf("MEM_ALIGN_OP 0x%09lX %04d:%07d:1 offset %d bytes %d WR\n", aligned_addr, chunk_id, i, (int)(addr & 0x7), bytes);
                         }
                     }
 

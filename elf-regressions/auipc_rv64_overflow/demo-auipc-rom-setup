@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build the AUIPC overflow fixture and show that ROM setup accepts it.
+# Build the AUIPC overflow fixture and run ROM setup on it.
 # Usage: ./demo-auipc-rom-setup [program-setup args...]
 
 set -euo pipefail
@@ -16,4 +16,4 @@ echo "Running ROM setup for AUIPC overflow fixture..."
 
 echo
 echo "ROM setup accepted the AUIPC overflow fixture."
-echo "This demonstrates the AUIPC failure is not caught during ROM setup."
+echo "Prove it with: $ROOT/prove-elf $ELF"

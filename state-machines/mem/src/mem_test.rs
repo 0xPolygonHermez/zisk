@@ -6,14 +6,14 @@ use zisk_common::{ChunkId, Plan, MEM_BUS_ID};
 use zisk_sm_mem_common::{MemCounters, MEMORY_LOAD_OP, MEMORY_STORE_OP};
 
 fn generate_test_plans(
-    from_addr: u32,
+    from_addr: u64,
     rows: u32,
     counters: Vec<(ChunkId, &MemCounters)>,
 ) -> Vec<Plan> {
     let addr_index = match from_addr {
-        0x9000_0000 => 0,
-        0x1000_0000 => 1,
-        0xA000_0000 => 2,
+        0xA800_0000 => 0,
+        0x2000_0000 => 1,
+        0xC000_0000 => 2,
         _ => panic!("invalid addr 0x{from_addr:X}"),
     };
     let mut planner = MemModulePlanner::new(
@@ -21,8 +21,8 @@ fn generate_test_plans(
             airgroup_id: 0,
             air_id: addr_index + 10,
             addr_index,
-            from_addr: from_addr >> 3,
-            last_addr: (from_addr >> 3) - if from_addr == 0x9000_0000 { 1 } else { 0 },
+            from_addr: (from_addr >> 3) as u32,
+            last_addr: (from_addr >> 3) as u32 - if from_addr == 0xA800_0000 { 1 } else { 0 },
             rows,
             max_addr_distance: 1,
         },
@@ -36,14 +36,14 @@ fn add_test_aligned_mem_reads(
     counter: &mut MemCounters,
     count: u64,
     step_delta: u64,
-    addr: u32,
+    addr: u64,
     step: u64,
     value: u64,
 ) {
     for i in 0..count {
         counter.process_data(
             &MEM_BUS_ID,
-            &[MEMORY_LOAD_OP as u64, addr as u64, step + i * step_delta, 8, value],
+            &[MEMORY_LOAD_OP as u64, addr, step + i * step_delta, 8, value],
         );
     }
 }
@@ -59,14 +59,14 @@ struct ConfigNextOp {
 fn add_mem_data(
     counter: &mut MemCounters,
     count: u64,
-    addr: u32,
+    addr: u64,
     step: u64,
     value: u64,
     width: u64,
     is_write: bool,
     config: &ConfigNextOp,
 ) {
-    let mut addr = addr as u64;
+    let mut addr = addr;
     let mut step = step;
     let op = if is_write { MEMORY_STORE_OP } else { MEMORY_LOAD_OP } as u64;
     for i in 0..count {
@@ -96,40 +96,40 @@ fn add_mem_data(
 //     counter.process_data(&MEM_BUS_ID, &[MEMORY_STORE_OP as u64, addr as u64, step, width, value]);
 // }
 
-fn add_mem_read64(counter: &mut MemCounters, addr: u32, step: u64, value: u64) {
-    counter.process_data(&MEM_BUS_ID, &[MEMORY_LOAD_OP as u64, addr as u64, step, 8, value]);
+fn add_mem_read64(counter: &mut MemCounters, addr: u64, step: u64, value: u64) {
+    counter.process_data(&MEM_BUS_ID, &[MEMORY_LOAD_OP as u64, addr, step, 8, value]);
 }
 
-fn add_mem_write64(counter: &mut MemCounters, addr: u32, step: u64, value: u64) {
-    counter.process_data(&MEM_BUS_ID, &[MEMORY_STORE_OP as u64, addr as u64, step, 8, value]);
+fn add_mem_write64(counter: &mut MemCounters, addr: u64, step: u64, value: u64) {
+    counter.process_data(&MEM_BUS_ID, &[MEMORY_STORE_OP as u64, addr, step, 8, value]);
 }
 
 #[test]
 fn test_mem_module_planner_empty() {
     let counter = MemCounters::new();
     let counters: Vec<(ChunkId, &MemCounters)> = vec![(ChunkId(0), &counter)];
-    let plans = generate_test_plans(0xA000_0000, 4, counters);
+    let plans = generate_test_plans(0xC000_0000, 4, counters);
     assert_eq!(plans.len(), 0);
 }
 #[test]
 fn test_mem_module_planner_with_exact_one_segment() {
     let mut counter = MemCounters::new();
-    add_test_aligned_mem_reads(&mut counter, 4, 10, 0xA000_0000, 10, 0x0000_0000);
+    add_test_aligned_mem_reads(&mut counter, 4, 10, 0xC000_0000, 10, 0x0000_0000);
     counter.close();
     let counters: Vec<(ChunkId, &MemCounters)> = vec![(ChunkId(0), &counter)];
 
-    let plans = generate_test_plans(0xA000_0000, 4, counters);
+    let plans = generate_test_plans(0xC000_0000, 4, counters);
     assert_eq!(plans.len(), 1);
 }
 
 #[test]
 fn test_mem_module_planner() {
     let mut counter = MemCounters::new();
-    add_test_aligned_mem_reads(&mut counter, 5, 10, 0xA000_0000, 10, 0x0000_0000);
+    add_test_aligned_mem_reads(&mut counter, 5, 10, 0xC000_0000, 10, 0x0000_0000);
     counter.close();
     let counters: Vec<(ChunkId, &MemCounters)> = vec![(ChunkId(0), &counter)];
 
-    let plans = generate_test_plans(0xA000_0000, 4, counters);
+    let plans = generate_test_plans(0xC000_0000, 4, counters);
     assert_eq!(plans.len(), 1);
 }
 
@@ -137,20 +137,20 @@ fn test_mem_module_planner() {
 fn test_counters() {
     let mut counter = MemCounters::new();
     let cfg = ConfigNextOp { step_delta: 1, step_cycle: 0, addr_delta: 8, addr_cycle: 0 };
-    add_mem_data(&mut counter, 10, 0x9000_0000, 10, 0x01020304_05060708, 8, true, &cfg);
-    add_mem_data(&mut counter, 10, 0x9000_0000, 100, 0x01020304_05060708, 8, false, &cfg);
-    add_mem_write64(&mut counter, 0xA000_0002, 18, 0x2222_2222_2222_2222);
-    add_mem_read64(&mut counter, 0xA000_0000, 12, 0x1111_1111_1111_1111);
-    add_mem_read64(&mut counter, 0xA000_0000, 40, 0x2222_2222_2222_1111); // dual
-    add_mem_write64(&mut counter, 0xA000_0000, 50, 0x2222_2222_3333_1111);
-    add_mem_write64(&mut counter, 0xA000_0000, 60, 0x2222_2222_4444_1111);
-    add_mem_write64(&mut counter, 0xA000_0000, 70, 0x2222_2222_5555_1111);
-    add_mem_write64(&mut counter, 0xA000_0000, 80, 0x2222_2222_6666_1111);
-    add_mem_read64(&mut counter, 0xA000_0016, 85, 0x3333_3333_3333_3333);
-    add_mem_read64(&mut counter, 0xA000_0000, 90, 0x2222_2222_6666_1111); // dual => 2 (A000_0002) + 5 rows = 7
-    add_mem_data(&mut counter, 10, 0x1000_0000, 10, 0x4041_4243_4445_4647, 8, false, &cfg);
+    add_mem_data(&mut counter, 10, 0xA800_0000, 10, 0x01020304_05060708, 8, true, &cfg);
+    add_mem_data(&mut counter, 10, 0xA800_0000, 100, 0x01020304_05060708, 8, false, &cfg);
+    add_mem_write64(&mut counter, 0xC000_0002, 18, 0x2222_2222_2222_2222);
+    add_mem_read64(&mut counter, 0xC000_0000, 12, 0x1111_1111_1111_1111);
+    add_mem_read64(&mut counter, 0xC000_0000, 40, 0x2222_2222_2222_1111); // dual
+    add_mem_write64(&mut counter, 0xC000_0000, 50, 0x2222_2222_3333_1111);
+    add_mem_write64(&mut counter, 0xC000_0000, 60, 0x2222_2222_4444_1111);
+    add_mem_write64(&mut counter, 0xC000_0000, 70, 0x2222_2222_5555_1111);
+    add_mem_write64(&mut counter, 0xC000_0000, 80, 0x2222_2222_6666_1111);
+    add_mem_read64(&mut counter, 0xC000_0016, 85, 0x3333_3333_3333_3333);
+    add_mem_read64(&mut counter, 0xC000_0000, 90, 0x2222_2222_6666_1111); // dual => 2 (C000_0002) + 5 rows = 7
+    add_mem_data(&mut counter, 10, 0x2000_0000, 10, 0x4041_4243_4445_4647, 8, false, &cfg);
     counter.close();
-    assert_eq!(format!("{counter:?}"), "[MEM_0,#:10 => 0x90000000:2 0x90000008:2 0x90000010:2 0x90000018:2 0x90000020:2 0x90000028:2 0x90000030:2 0x90000038:2 0x90000040:2 0x90000048:2][MEM_1,#:10 => 0x10000000:1 0x10000008:1 0x10000010:1 0x10000018:1 0x10000020:1 0x10000028:1 0x10000030:1 0x10000038:1 0x10000040:1 0x10000048:1][MEM_2,#:4 => 0xA0000000:7 0xA0000008:2 0xA0000010:1 0xA0000018:1]");
+    assert_eq!(format!("{counter:?}"), "[MEM_0,#:10 => 0xA8000000:2 0xA8000008:2 0xA8000010:2 0xA8000018:2 0xA8000020:2 0xA8000028:2 0xA8000030:2 0xA8000038:2 0xA8000040:2 0xA8000048:2][MEM_1,#:10 => 0x20000000:1 0x20000008:1 0x20000010:1 0x20000018:1 0x20000020:1 0x20000028:1 0x20000030:1 0x20000038:1 0x20000040:1 0x20000048:1][MEM_2,#:4 => 0xC0000000:7 0xC0000008:2 0xC0000010:1 0xC0000018:1]");
 }
 
 #[test]

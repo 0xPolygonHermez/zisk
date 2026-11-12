@@ -1,14 +1,15 @@
 #ifndef __MEM_CONFIG_HPP__
 #define __MEM_CONFIG_HPP__
 
-// Must match core/src/mem.rs
-#define ROM_ADDR 0x90000000
-#define INPUT_ADDR 0x10000000
-#define RAM_ADDR 0xA0000000
+// Must match core/src/mem.rs. Addresses are 33 bits wide (the RAM crosses 4GB), so every
+// byte address in the planner is a uint64_t; word addresses (byte address / 8) fit in a uint32_t.
+#define ROM_ADDR 0xA8000000ULL
+#define INPUT_ADDR 0x20000000ULL
+#define RAM_ADDR 0xC0000000ULL
 
 #define ROM_SIZE_MB 128
 #define INPUT_SIZE_MB 2048
-#define RAM_SIZE_MB 512
+#define RAM_SIZE_MB 2048
 
 #define CHUNK_SIZE_BITS 18
 #define CHUNK_SIZE (1 << CHUNK_SIZE_BITS)
@@ -40,9 +41,9 @@
 #define MAX_THREADS (1 << THREAD_BITS)
 #define ADDR_MASK ((MAX_THREADS - 1) * 8)
 
-// Each page covers 64MB (2^ADDR_BLOCK_BITS bytes) of address space, the pages of each memory area
+// Each page covers 128MB (2^ADDR_BLOCK_BITS bytes) of address space, the pages of each memory area
 // are consecutive: ROM pages first, then INPUT pages and then RAM pages.
-#define ADDR_BLOCK_BITS 26
+#define ADDR_BLOCK_BITS 27
 #define ADDR_BLOCK_MB (1 << (ADDR_BLOCK_BITS - 20))
 #define ROM_PAGES (ROM_SIZE_MB / ADDR_BLOCK_MB)
 #define INPUT_PAGES (INPUT_SIZE_MB / ADDR_BLOCK_MB)
@@ -58,7 +59,7 @@
 #define OFFSET_BITS (ADDR_PAGE_BITS + 6) // 6 bits for up to 64 pages
 #define OFFSET_PAGE_SHIFT_BITS (OFFSET_BITS - 3)
 
-#if (ROM_ADDR % (1 << ADDR_BLOCK_BITS)) || (INPUT_ADDR % (1 << ADDR_BLOCK_BITS)) || (RAM_ADDR % (1 << ADDR_BLOCK_BITS))
+#if (ROM_ADDR % (1ULL << ADDR_BLOCK_BITS)) || (INPUT_ADDR % (1ULL << ADDR_BLOCK_BITS)) || (RAM_ADDR % (1ULL << ADDR_BLOCK_BITS))
 #error "memory areas must start at a page boundary"
 #endif
 #if (ROM_SIZE_MB % ADDR_BLOCK_MB) || (INPUT_SIZE_MB % ADDR_BLOCK_MB) || (RAM_SIZE_MB % ADDR_BLOCK_MB)

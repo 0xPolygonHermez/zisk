@@ -669,8 +669,8 @@ mod tests {
         derive(&mut b);
         rom.insts.insert(b.paddr, ZiskInstBuilder { i: b });
 
-        rom.ro_data_64.push(DataSection64 { addr: 0x9000_0000, data: vec![0xdead, 0xbeef] });
-        rom.rw_data_64.push(DataSection64 { addr: 0xa043_0000, data: vec![0, 1, 2] });
+        rom.ro_data_64.push(DataSection64 { addr: 0xA800_0000, data: vec![0xdead, 0xbeef] });
+        rom.rw_data_64.push(DataSection64 { addr: 0xC043_0000, data: vec![0, 1, 2] });
         rom.zkvmcalls = [0x850, 0x8B3].into();
         rom
     }
@@ -711,7 +711,7 @@ mod tests {
             assert_inst_eq(&decoded.insts[addr].i, &zib.i);
         }
         assert_eq!(decoded.ro_data_64.len(), 1);
-        assert_eq!(decoded.ro_data_64[0].addr, 0x9000_0000);
+        assert_eq!(decoded.ro_data_64[0].addr, 0xA800_0000);
         assert_eq!(decoded.ro_data_64[0].data, vec![0xdead, 0xbeef]);
         assert_eq!(decoded.rw_data_64[0].data, vec![0, 1, 2]);
         assert_eq!(decoded.zkvmcalls, rom.zkvmcalls);
@@ -791,14 +791,14 @@ mod tests {
     fn rejects_oversized_section_length() {
         // A word count with no payload behind it must error out, not reserve on it.
         let mut blob = blob_header(0, 1, 0);
-        put_uvarint(&mut blob, 0x9000_0000); // section addr
+        put_uvarint(&mut blob, 0xA800_0000); // section addr
         put_uvarint(&mut blob, 1 << 40); // 8 TiB of words, payload absent
         let err = decode_rom(&blob).unwrap_err();
         assert!(err.contains("unexpected end of data"), "{err}");
 
         // A count whose byte length overflows usize is caught before the read.
         let mut blob = blob_header(0, 1, 0);
-        put_uvarint(&mut blob, 0x9000_0000);
+        put_uvarint(&mut blob, 0xA800_0000);
         put_uvarint(&mut blob, u64::MAX);
         let err = decode_rom(&blob).unwrap_err();
         assert!(err.contains("section length overflow"), "{err}");

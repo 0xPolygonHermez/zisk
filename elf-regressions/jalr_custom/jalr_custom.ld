@@ -1,24 +1,24 @@
 /* Custom linker script for JALR test with non-standard entry point */
-/* Entry point at 0x90001000 instead of 0x90000000 */
+/* Entry point at 0xA8001000 instead of 0xA8000000 */
 
 ENTRY(_start)
 
 MEMORY
 {
-    ROM (rx)  : ORIGIN = 0x90000000, LENGTH = 0x10000000
-    RAM (rw)  : ORIGIN = 0xa0020000, LENGTH = 0x1FFE0000
+    ROM (rx)  : ORIGIN = 0xA8000000, LENGTH = 0x10000000
+    RAM (rw)  : ORIGIN = 0xC0020000, LENGTH = 0x7FFE0000
 }
 
 SECTIONS
 {
-    . = 0x90000000;  /* Start of ROM space */
+    . = 0xA8000000;  /* Start of ROM space */
     
     .header : ALIGN(4) {
         /* Reserve space for header - filled with zeros */
         KEEP(*(.header))
     } > ROM
     
-    . = 0x90001000;  /* Actual code starts here */
+    . = 0xA8001000;  /* Actual code starts here */
     .text : {
         *(.text.init)
         *(.text)
@@ -30,7 +30,7 @@ SECTIONS
     } > ROM
     
     /* Switch to RAM address space for data sections */
-    . = 0xa0020000;
+    . = 0xC0020000;
     
     .data : {
         *(.data)

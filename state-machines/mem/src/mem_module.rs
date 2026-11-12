@@ -94,7 +94,7 @@ pub fn save_offsets_to_file(seg: &MemModuleSegmentCheckPoint, file_name: &str) {
     println!("[MemDebug] saving offsets to {} .....", file_name);
     let file = File::create(file_name).unwrap();
     let mut writer = BufWriter::new(file);
-    let base = seg.offsets_base_addr as u64;
+    let base = (seg.offsets_base_addr_w as u64) << 3;
     for index in 0..seg.addr_range_slots {
         let addr = index as u64 * 8 + base;
         let value = seg.offset_at(index);

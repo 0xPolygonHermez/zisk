@@ -2,7 +2,7 @@
    immediate forms) in every register pattern the transpiler special-cases:
    rd = 0, rs1 = 0 (or imm = 0), rd = rs1, and all distinct. Each case checks the
    old CSR value returned in rd and the new CSR value against plain C. Output: one
-   byte per case at 0xa0410000, 1 = wrong, and 1 in the byte after the last case
+   byte per case at 0xc0410000, 1 = wrong, and 1 in the byte after the last case
    once every case has run. check.sh compares it with a golden snapshot.
    The add256 precompile (csrrs rd, 0x811, &block) is checked in the same three
    register patterns: its 256-bit sum against plain C, and its carry-out in rd.

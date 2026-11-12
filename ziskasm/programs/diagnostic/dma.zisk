@@ -15,7 +15,7 @@
 ; with the jump modifier after the store:
 ;   op(a, b) -> c, j(<extended_arg>, 4)     ; 4 = normal fall-through (instr stride)
 ; The non-extended memcpy/memcmp read their byte count from EXTRA_PARAMS_ADDR
-; (0xa0400f00), written with an ordinary store beforehand.
+; (0xc0400f00), written with an ordinary store beforehand.
 ;
 ; dma_inputcpy pulls from the fcall result buffer, so it is driven by a preceding
 ; fcall (here msb_pos_256, id 17) rather than a program input file.
@@ -28,7 +28,7 @@
 ;   2f04  dma_xmemcmp     2f05  dma_xmemset    2f06  dma_inputcpy
 ; ============================================================================
 
-define EXTRA_PARAMS_ADDR 0xa0400f00
+define EXTRA_PARAMS_ADDR 0xc0400f00
 
 const u64 DMA_SRC[4] =
 	0x1122334455667788, 0xaabbccddeeff0011, 0x0123456789abcdef, 0xfedcba9876543210

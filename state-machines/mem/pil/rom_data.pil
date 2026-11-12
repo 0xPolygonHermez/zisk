@@ -41,7 +41,7 @@ airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom
     const int LAST_LANE = lanes_x_row - 1;
 
     col witness bits(1) addr_change[lanes_x_row];
-    col witness bits(29) addr[lanes_x_row];
+    col witness bits(ADDR_W_BITS) addr[lanes_x_row];
     col witness bits(40) step[lanes_x_row];
     col witness bits(32) value[lanes_x_row][RC];
 

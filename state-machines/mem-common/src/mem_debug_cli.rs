@@ -3,6 +3,7 @@ use proofman_fields::Goldilocks;
 use std::path::PathBuf;
 use zisk_common::ChunkId;
 use zisk_common::MemBusData;
+use zisk_core::{RAM_ADDR, RAM_SIZE};
 use zisk_pil::MemTrace;
 use zisk_sm_mem_common::MemHelpers;
 use zisk_sm_mem_common::{mem_lanes_x_row, MemCounters, MemDebug};
@@ -32,7 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut total = 0usize;
 
-    let mut debug = MemDebug::new(0xA000_0000, 0xFFFF_FFFF, true);
+    let mut debug = MemDebug::new(RAM_ADDR, RAM_ADDR + RAM_SIZE - 1, true);
     let mut chunk_id = 0;
     while let Ok(bus) = MemCounters::load_from_file(ChunkId(chunk_id as usize)) {
         println!("Loading chunk {chunk_id} ..... *");

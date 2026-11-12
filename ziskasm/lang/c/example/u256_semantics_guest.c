@@ -99,7 +99,7 @@ static uint8_t g_bss[32];
 static volatile uint32_t g_data = 0x600df00d;
 int main(void){
   __asm__ volatile("" : : "r"(&g_bss[0]), "r"(&g_data) : "memory");
-  O = (volatile uint8_t *)(0xA0410000ULL); k = 0;
+  O = (volatile uint8_t *)(0xC0410000ULL); k = 0;
 
   for (unsigned i = 0; i < sizeof(CASES)/sizeof(CASES[0]); i++) {
     const case_t *c = &CASES[i];

@@ -4,7 +4,7 @@
 //! elements. Pure transformation: ELF bytes → `ZiskRom` → trace rows.
 
 use proofman_fields::PrimeField64;
-use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, SRC_IMM};
+use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, SRC_IMM, SRC_MEM, STORE_MEM};
 use zisk_pil::{RomRomTrace, RomRomTraceRow, RomTrace};
 use zisk_sm_mem_common::{MEMORY_ROM_INIT_OP, MEMORY_STORE_OP};
 use zisk_transpiler_common::ZiskTranspiler;
@@ -71,10 +71,20 @@ impl CustomRom {
 
             // Fill the rom trace row fields
             trace[index].line = F::from_u64(inst.paddr); // TODO: unify names: pc, paddr, line
-            trace[index].a_offset_imm0 = Self::signed_to_field(inst.a_offset_imm0 as i64);
+
+            // A constant memory address (SRC_MEM / STORE_MEM) is a 33-bit value, not an offset
+            trace[index].a_offset_imm0 = if inst.a_src == SRC_MEM {
+                F::from_u64(inst.a_offset_imm0)
+            } else {
+                Self::signed_to_field(inst.a_offset_imm0 as i64)
+            };
             trace[index].a_imm1 =
                 F::from_u64(if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 });
-            trace[index].b_offset_imm0 = Self::signed_to_field(inst.b_offset_imm0 as i64);
+            trace[index].b_offset_imm0 = if inst.b_src == SRC_MEM {
+                F::from_u64(inst.b_offset_imm0)
+            } else {
+                Self::signed_to_field(inst.b_offset_imm0 as i64)
+            };
             trace[index].b_imm1 =
                 F::from_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
             trace[index].ind_width = F::from_u64(inst.ind_width);
@@ -88,7 +98,11 @@ impl CustomRom {
             } else {
                 F::from_u8(inst.op)
             };
-            trace[index].store_offset = Self::signed_to_field(inst.store_offset);
+            trace[index].store_offset = if inst.store == STORE_MEM {
+                F::from_u64(inst.store_offset as u64)
+            } else {
+                Self::signed_to_field(inst.store_offset)
+            };
             trace[index].jmp_offset1 = Self::signed_to_field(inst.jmp_offset1);
             trace[index].jmp_offset2 = Self::signed_to_field(inst.jmp_offset2);
             trace[index].flags = F::from_u64(inst.get_flags());

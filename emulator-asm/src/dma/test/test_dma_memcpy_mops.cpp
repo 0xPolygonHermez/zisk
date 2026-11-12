@@ -24,6 +24,9 @@ public:
     TestDmaMemCpyMops(size_t max_count = 1024);
     virtual ~TestDmaMemCpyMops();
     void run(void);
+    // Blocks longer than one record: the recorder splits the source read and the expansion of the
+    // destination descriptor takes the whole count.
+    void run_long(void);
 };
 
 TestDmaMemCpyMops::TestDmaMemCpyMops(size_t max_count):
@@ -52,6 +55,23 @@ void TestDmaMemCpyMops::run(void) {
         }
     }
     printf("\nAll %ld tests are [\x1B[1;32mOK\x1B[0m]\n", total_tests);
+}
+
+void TestDmaMemCpyMops::run_long(void) {
+    map_low(0x140000000);
+    fill_pattern(src, data_size, 3013102105130209);
+    printf("SRC:0x%08lX DST:0x%08lX\n", (uint64_t)src, (uint64_t)dst);
+    const uint64_t words = (uint64_t)MOPS_BLOCK_COUNT_MAX + 5;
+    const struct { uint64_t dst_offset, src_offset, count; } cases[] = {
+        {0, 0, words * 8}, {0, 3, words * 8 + 2}, {5, 2, words * 8 * 2 + 1}};
+    for (const auto &c : cases) {
+        dst_offset = c.dst_offset; src_offset = c.src_offset; count = c.count;
+        if (!execute_single_test()) {
+            printf("\nTest is [\x1B[1;31mFAIL\x1B[0m]\n");
+            return;
+        }
+    }
+    printf("\nAll %ld long tests are [\x1B[1;32mOK\x1B[0m]\n", sizeof(cases) / sizeof(cases[0]));
 }
 
 bool TestDmaMemCpyMops::execute_single_test(void) {
@@ -106,7 +126,7 @@ bool TestDmaMemCpyMops::execute_single_test(void) {
     if (loop_count > 0) {
         uint64_t src_loop = ((uint64_t)src + src_offset + pre_count) & ~0x07;
         size_t src_count = dst_offset == src_offset ? loop_count : (loop_count + 1);
-        if (!check_record(index, encode_aligned_block_read(src_loop, src_count), "LOOP src read")) {
+        if (!check_aligned_block_read(index, src_loop, src_count, "LOOP src read")) {
             return false;
         }
     }
@@ -143,4 +163,6 @@ void test_dma_memcpy_mops() {
     printf("\x1B[1;34mTEST DMA MEMCPY MOPS =================================================\x1B[0m\n");
     TestDmaMemCpyMops test(1024);
     test.run();
+    TestDmaMemCpyMops long_test(2 * (size_t)MOPS_BLOCK_COUNT_MAX + 64);
+    long_test.run_long();
 }

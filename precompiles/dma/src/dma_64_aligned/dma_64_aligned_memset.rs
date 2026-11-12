@@ -54,7 +54,7 @@ impl<F: PrimeField64> Dma64AlignedMemSetSM<F> {
         //     "DMA_64_ALIGNED INPUT {input:?} count:{count64} rows:{rows} dma_info:{}",
         //     DmaInfo::to_string(input.encoded)
         // );
-        let mut dst64 = ((input.dst + 7) >> 3) + skip_count as u32;
+        let mut dst64 = (((input.dst + 7) >> 3) as u32) + skip_count as u32;
         let mut seq_end = false;
         let addr_incr_by_row = self.op_x_rows as u32;
 
@@ -68,6 +68,8 @@ impl<F: PrimeField64> Dma64AlignedMemSetSM<F> {
             // calculate the first aligned address
             // if dst is aligned is same address if not it's addr + 8
             row.set_dst64(dst64);
+            // bit 32 of the byte address is bit 29 of the word address
+            row.set_dst_addr_hi((dst64 >> 29) & 1 == 1);
             dst64 += addr_incr_by_row;
 
             row.set_count64(count64 as u32);

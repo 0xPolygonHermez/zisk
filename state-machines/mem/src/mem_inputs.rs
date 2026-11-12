@@ -11,7 +11,7 @@ fn format_u64_hex(value: u64) -> String {
 
 #[derive(Debug, Clone)]
 pub struct MemAlignInput {
-    pub addr: u32,
+    pub addr: u64, // byte address (33 bits)
     pub is_write: bool,
     pub width: u8,
     pub step: u64,

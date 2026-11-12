@@ -63,8 +63,8 @@ const MAX_MEM_OPS_BY_MAIN_STEP: u64 = 4;
 /// Trait for processing memory operations - allows static dispatch
 pub trait MemProcessor {
     fn process_mem_data(&mut self, data: &[u64; 7]);
-    fn skip_addr(&mut self, addr: u32) -> bool;
-    fn skip_addr_range(&mut self, addr_from: u32, addr_to: u32) -> bool;
+    fn skip_addr(&mut self, addr: u64) -> bool;
+    fn skip_addr_range(&mut self, addr_from: u64, addr_to: u64) -> bool;
 }
 
 /// Mem-input contract for uniform precompiles (`blake2b`, `blake2s`, `keccakf`, `sha256f`,
@@ -82,7 +82,7 @@ pub trait PrecompileMemInputs {
     /// Emit derived mem inputs for this precompile's operation.
     /// `only_counters = true` in Counter mode, `false` in InputGenerator mode.
     fn generate<P: MemProcessor>(
-        addr_main: u32,
+        addr_main: u64,
         step_main: u64,
         data: &[u64],
         only_counters: bool,
@@ -92,7 +92,7 @@ pub trait PrecompileMemInputs {
     /// Decide whether the op should be skipped in InputGenerator mode.
     /// Default: never skip.
     #[allow(unused_variables)]
-    fn should_skip<P: MemProcessor>(addr_main: u32, data: &[u64], mem_processors: &mut P) -> bool {
+    fn should_skip<P: MemProcessor>(addr_main: u64, data: &[u64], mem_processors: &mut P) -> bool {
         false
     }
 }
@@ -125,7 +125,7 @@ impl MemProcessor for MemCollectorProcessor<'_> {
     }
 
     #[inline(always)]
-    fn skip_addr(&mut self, addr: u32) -> bool {
+    fn skip_addr(&mut self, addr: u64) -> bool {
         for collector in self.mem.iter_mut() {
             if !collector.1.skip_addr(addr) {
                 return false;
@@ -135,7 +135,7 @@ impl MemProcessor for MemCollectorProcessor<'_> {
     }
 
     #[inline(always)]
-    fn skip_addr_range(&mut self, addr_from: u32, addr_to: u32) -> bool {
+    fn skip_addr_range(&mut self, addr_from: u64, addr_to: u64) -> bool {
         for collector in self.mem.iter_mut() {
             if !collector.1.skip_addr_range(addr_from, addr_to) {
                 return false;
@@ -165,11 +165,11 @@ impl MemProcessor for MemCounterProcessor<'_> {
         }
     }
 
-    fn skip_addr(&mut self, _addr: u32) -> bool {
+    fn skip_addr(&mut self, _addr: u64) -> bool {
         false
     }
 
-    fn skip_addr_range(&mut self, _addr_from: u32, _addr_to: u32) -> bool {
+    fn skip_addr_range(&mut self, _addr_from: u64, _addr_to: u64) -> bool {
         false
     }
 }
@@ -178,7 +178,7 @@ impl MemBusHelpers {
     /// Generates an aligned memory read operation.
     /// The address must be 8-byte aligned.
     pub fn mem_aligned_read<P: MemProcessor>(
-        addr: u32,
+        addr: u64,
         step: u64,
         mem_value: u64,
         mem_processor: &mut P,
@@ -186,7 +186,7 @@ impl MemBusHelpers {
         debug_assert!(addr % 8 == 0);
         let data: [u64; 7] = [
             MEMORY_LOAD_OP,
-            addr as u64,
+            addr,
             MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 2,
             8,
             mem_value,
@@ -199,7 +199,7 @@ impl MemBusHelpers {
     /// Generates an aligned memory write operation.
     /// The address must be 8-byte aligned.
     pub fn mem_aligned_write<P: MemProcessor>(
-        addr: u32,
+        addr: u64,
         step: u64,
         value: u64,
         mem_processor: &mut P,
@@ -207,7 +207,7 @@ impl MemBusHelpers {
         debug_assert!(addr % 8 == 0);
         let data: [u64; 7] = [
             MEMORY_STORE_OP,
-            addr as u64,
+            addr,
             MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 3,
             8,
             0,
@@ -220,7 +220,7 @@ impl MemBusHelpers {
     /// Generates an aligned memory operation (load or write).
     /// The address must be 8-byte aligned.
     pub fn mem_aligned_op<P: MemProcessor>(
-        addr: u32,
+        addr: u64,
         step: u64,
         value: u64,
         is_write: bool,
@@ -228,7 +228,7 @@ impl MemBusHelpers {
     ) {
         let data: [u64; 7] = [
             if is_write { MEMORY_STORE_OP } else { MEMORY_LOAD_OP },
-            addr as u64,
+            addr,
             MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + if is_write { 3 } else { 2 },
             8,
             if is_write { 0 } else { value },
@@ -242,7 +242,7 @@ impl MemBusHelpers {
     /// Generates multiple aligned memory load operations from a slice of values.
     /// The address must be 8-byte aligned.
     pub fn mem_aligned_read_from_slice<P: MemProcessor>(
-        addr: u32,
+        addr: u64,
         step: u64,
         values: &[u64],
         mem_processor: &mut P,
@@ -250,8 +250,7 @@ impl MemBusHelpers {
         assert!(addr % 8 == 0);
         let mem_step = MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 2;
         for (i, &value) in values.iter().enumerate() {
-            let data: [u64; 7] =
-                [MEMORY_LOAD_OP, (addr as usize + i * 8) as u64, mem_step, 8, value, 0, 0];
+            let data: [u64; 7] = [MEMORY_LOAD_OP, addr + i as u64 * 8, mem_step, 8, value, 0, 0];
 
             mem_processor.process_mem_data(&data);
         }
@@ -261,16 +260,16 @@ impl MemBusHelpers {
     /// is useful for memcmp when are aligned because the words must be the same. At same time do dst
     /// and src read. The address must be 8-byte aligned.
     pub fn mem_double_aligned_read_from_slice<P: MemProcessor>(
-        dst: u32,
-        src: u32,
+        dst: u64,
+        src: u64,
         step: u64,
         values: &[u64],
         mem_processor: &mut P,
     ) {
         assert!(dst % 8 == 0);
         assert!(src % 8 == 0);
-        let mut dst = dst as u64;
-        let mut src = src as u64;
+        let mut dst = dst;
+        let mut src = src;
         let mem_step = MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 2;
         for value in values.iter() {
             let mut data: [u64; 7] = [MEMORY_LOAD_OP, dst, mem_step, 8, *value, 0, 0];
@@ -284,7 +283,7 @@ impl MemBusHelpers {
     /// Generates multiple aligned memory write operations from a slice of values.
     /// The address must be 8-byte aligned.
     pub fn mem_aligned_write_from_slice<P: MemProcessor>(
-        addr: u32,
+        addr: u64,
         step: u64,
         values: &[u64],
         mem_processor: &mut P,
@@ -292,15 +291,14 @@ impl MemBusHelpers {
         assert!(addr % 8 == 0);
         let mem_step = MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 3;
         for (i, &value) in values.iter().enumerate() {
-            let data: [u64; 7] =
-                [MEMORY_STORE_OP, (addr as usize + i * 8) as u64, mem_step, 8, 0, 0, value];
+            let data: [u64; 7] = [MEMORY_STORE_OP, addr + i as u64 * 8, mem_step, 8, 0, 0, value];
             mem_processor.process_mem_data(&data);
         }
     }
     /// Generates multiple aligned memory write operations with same fill pattern
     /// The address must be 8-byte aligned.
     pub fn mem_aligned_write_pattern<P: MemProcessor>(
-        addr: u32,
+        addr: u64,
         step: u64,
         value: u64,
         count64: usize,
@@ -309,8 +307,7 @@ impl MemBusHelpers {
         assert!(addr % 8 == 0);
         let mem_step = MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 3;
         for i in 0..count64 {
-            let data: [u64; 7] =
-                [MEMORY_STORE_OP, (addr as usize + i * 8) as u64, mem_step, 8, 0, 0, value];
+            let data: [u64; 7] = [MEMORY_STORE_OP, addr + i as u64 * 8, mem_step, 8, 0, 0, value];
 
             mem_processor.process_mem_data(&data);
         }
@@ -321,7 +318,7 @@ impl MemBusHelpers {
     /// first aligned reads and then aligned writes.
     /// The address must be 8-byte aligned.
     pub fn mem_aligned_write_from_read_unaligned_slice<P: MemProcessor>(
-        addr: u32,
+        addr: u64,
         step: u64,
         src_offset: u8,
         values: &[u64],
@@ -342,7 +339,7 @@ impl MemBusHelpers {
                 _ => panic!("invalid src_offset {src_offset} on DmaUnaligned"),
             };
             let data: [u64; 7] =
-                [MEMORY_STORE_OP, (addr as usize + i * 8) as u64, mem_step, 8, 0, 0, write_value];
+                [MEMORY_STORE_OP, addr + i as u64 * 8, mem_step, 8, 0, 0, write_value];
 
             mem_processor.process_mem_data(&data);
         }
@@ -353,8 +350,8 @@ impl MemBusHelpers {
     /// with reads. The number of dst reads generated is `values.len() - 1` because the last value is not
     /// enough to create a full 8-byte dst read. The address must be 8-byte aligned.
     pub fn mem_aligned_read_from_read_unaligned_slice<P: MemProcessor>(
-        dst: u32,
-        src: u32,
+        dst: u64,
+        src: u64,
         step: u64,
         src_offset: u8,
         values: &[u64],
@@ -362,8 +359,8 @@ impl MemBusHelpers {
     ) {
         assert!(dst % 8 == 0);
         assert!(src % 8 == 0);
-        let mut dst = dst as u64;
-        let mut src = src as u64;
+        let mut dst = dst;
+        let mut src = src;
         let mem_step = MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 2;
         let write_count = values.len() - 1;
         for i in 0..write_count {

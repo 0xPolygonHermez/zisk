@@ -19,10 +19,10 @@ impl MemProcessor for Recorder {
     fn process_mem_data(&mut self, data: &[u64; 7]) {
         self.rows.push(*data);
     }
-    fn skip_addr(&mut self, _addr: u32) -> bool {
+    fn skip_addr(&mut self, _addr: u64) -> bool {
         false
     }
-    fn skip_addr_range(&mut self, _addr_from: u32, _addr_to: u32) -> bool {
+    fn skip_addr_range(&mut self, _addr_from: u64, _addr_to: u64) -> bool {
         false
     }
 }
@@ -45,18 +45,18 @@ fn sha256f_mem_inputs_take_the_operands_from_a_and_b() {
     // Reads of the state at a and of the input at b, then the new state written back at a.
     let mut expected = Recorder::default();
     for (i, value) in state.iter().enumerate() {
-        MemBusHelpers::mem_aligned_read(a as u32 + 8 * i as u32, step, *value, &mut expected);
+        MemBusHelpers::mem_aligned_read(a + 8 * i as u64, step, *value, &mut expected);
     }
     for (i, value) in input.iter().enumerate() {
-        MemBusHelpers::mem_aligned_read(b as u32 + 8 * i as u32, step, *value, &mut expected);
+        MemBusHelpers::mem_aligned_read(b + 8 * i as u64, step, *value, &mut expected);
     }
     for (i, value) in new_state.iter().enumerate() {
-        MemBusHelpers::mem_aligned_write(a as u32 + 8 * i as u32, step, *value, &mut expected);
+        MemBusHelpers::mem_aligned_write(a + 8 * i as u64, step, *value, &mut expected);
     }
 
     let mut recorder = Recorder::default();
     <Sha256fSM<Goldilocks> as PrecompileMemInputs>::generate(
-        data[B] as u32,
+        data[B],
         data[STEP],
         &data,
         false,
@@ -70,6 +70,6 @@ fn sha256f_mem_inputs_take_the_operands_from_a_and_b() {
         panic!("unexpected bus payload variant");
     };
     let decoded = Sha256fInput::from(&values);
-    assert_eq!((decoded.state_addr as u64, decoded.input_addr as u64), (data[A], data[B]));
+    assert_eq!((decoded.state_addr, decoded.input_addr), (data[A], data[B]));
     assert_eq!((decoded.state, decoded.input, decoded.step_main), (state, input, step));
 }

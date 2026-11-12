@@ -74,8 +74,8 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
         //     input.step
         // );
         let mut src_values_index = 0;
-        let mut dst64 = ((input.dst + 7) >> 3) + skip_count as u32;
-        let mut src64 = ((input.src + 7) >> 3) + skip_count as u32;
+        let mut dst64 = (((input.dst + 7) >> 3) as u32) + skip_count as u32;
+        let mut src64 = (((input.src + 7) >> 3) as u32) + skip_count as u32;
         let mut seq_end = false;
         let addr_incr_by_row = self.op_x_rows as u32;
         let is_memcpy = input.op == ZiskOp::DMA_XMEMCPY || input.op == ZiskOp::DMA_MEMCPY;
@@ -96,7 +96,10 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
             // calculate the first aligned address
             // if dst is aligned is same address if not it's addr + 8
             row.set_dst64(dst64);
+            // bit 32 of the byte address is bit 29 of the word address
+            row.set_dst_addr_hi((dst64 >> 29) & 1 == 1);
             row.set_src64(src64);
+            row.set_src_addr_hi((src64 >> 29) & 1 == 1);
             dst64 += addr_incr_by_row;
             src64 += addr_incr_by_row;
 

@@ -7,8 +7,8 @@ static HEAP: Talck<talc::locking::AssumeUnlockable, ErrOnOom> = Talc::new(ErrOnO
 
 pub fn init() {
     unsafe {
-        let heap_start = &_heap_bottom as *const u8 as usize;
-        let heap_size = &_heap_size as *const u8 as usize;
+        let heap_start = heap_bottom();
+        let heap_size = heap_size();
         let heap_span = talc::Span::from_base_size(heap_start as *mut u8, heap_size);
         HEAP.lock().claim(heap_span).unwrap();
     }

@@ -163,27 +163,20 @@ direct_dma_xmemcmp_mops:
     
     # check edge case loop_count = 0
     jz      .L_prepare_result
-    shl     rcx, MOPS_BLOCK_WORDS_RS    # 1 cycle - rcx = loop | 0 (4 bits) | (32 bits)
+    mov     r11, rcx                    # r11 = words of the source block
+    mov     r9, MOPS_ALIGNED_BLOCK_READ    # 1 cycle - r9 = read block
 
     # in case of unaligned loop, add and extra read because each qword verification
     # of dst need part of current read and part of next read.
 
     test    rax, DMA_UNALIGNED_DST_SRC_MASK
-    jnz     .L_src_extra_for_unaligned_loop
-
-    # add flags of aligned block read
-    mov     r9, MOPS_ALIGNED_BLOCK_READ    # 1 cycle - r9 = read block
-    jmp     .L_src_block_before_address
-
-.L_src_extra_for_unaligned_loop:    
-    # add special flags with that add one to current count loop count in r9
-    mov     r9, MOPS_ALIGNED_BLOCK_READ + MOPS_BLOCK_ONE_WORD
+    jz      .L_src_block_before_address
+    inc     r11
 
 .L_src_block_before_address:
-    # at this point in r9 we have flags, and lenght but we need to add the 
-    # base src address. For do it, first we need to know if we need to pass
-    # the first src because it was used only for pre part.
-    add     r9, rcx
+    # at this point in r9 we have the flags but we need to add the base src address.
+    # For do it, first we need to know if we need to pass the first src because it
+    # was used only for pre part.
     test    rax, DMA_SRC64_INC_BY_PRE_MASK
     jnz     .L_src_incr_by_pre
     add     r9, rsi                        # 1 cycle - rcx = first block src address
@@ -197,19 +190,18 @@ direct_dma_xmemcmp_mops:
 .L_src_to_mops_ready:
     # before store all, we need to align them
     and     r9, ALIGN_MASK
-    MOPS_REC_BLOCK r9
+    MOPS_REC_BLOCK_WORDS r9, r11, rbx
 
-    # rcx = loop_count
+    # destination block of rcx = loop_count words
     mov     r9, MOPS_ALIGNED_BLOCK_READ
-    add     rcx, r9
     test    rax, DMA_PRE_COUNT_MASK
     jz      .L_dst_loop_has_not_offset
-    add     rcx, 8
+    add     r9, 8
 
 .L_dst_loop_has_not_offset:
-    add     rcx, rdi
-    and     rcx, ALIGN_MASK
-    MOPS_REC_BLOCK rcx
+    add     r9, rdi
+    and     r9, ALIGN_MASK
+    MOPS_REC_BLOCK_WORDS r9, rcx, rbx
 
 .L_prepare_result: 
     # how we are in comparation, we don't write pre/post parts because when pre-read

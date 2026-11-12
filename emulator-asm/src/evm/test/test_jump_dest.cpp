@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#define EXTRA_PARAMETER_ADDR 0xA0400F00
+#define EXTRA_PARAMETER_ADDR 0xC0400F00
 
 #define MOPS_ALIGNED_READ 0x0C
 #define MOPS_ALIGNED_WRITE 0x0D

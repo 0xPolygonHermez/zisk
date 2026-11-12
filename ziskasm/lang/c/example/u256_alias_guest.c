@@ -59,7 +59,7 @@ static uint8_t g_bss[32];
 static volatile uint32_t g_data = 0x600df00d;
 int main(void){
   __asm__ volatile("" : : "r"(&g_bss[0]), "r"(&g_data) : "memory");
-  O = (volatile uint8_t *)(0xA0410000ULL); k = 0;
+  O = (volatile uint8_t *)(0xC0410000ULL); k = 0;
 
   chk_bin(zkvm_u256_add,&A,&B);   chk_bin(zkvm_u256_sub,&A,&B);
   chk_bin(zkvm_u256_mul,&A,&B);   chk_bin(zkvm_u256_div,&A,&B);

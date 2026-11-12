@@ -1,7 +1,7 @@
 #include "immutable_mem_planner.hpp"
 #include <vector>
 
-ImmutableMemPlanner::ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint32_t mb_size, bool intermediate_rows):
+ImmutableMemPlanner::ImmutableMemPlanner(uint32_t rows, uint64_t from_addr, uint32_t mb_size, bool intermediate_rows):
     rows_by_segment(rows),
     intermediate_rows(intermediate_rows),
     last_addr(0) {
@@ -23,7 +23,7 @@ ImmutableMemPlanner::ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint
     current_segment = new MemSegment(hash_table);
     #endif
     from_page = MemCounter::addr_to_page(from_addr);
-    to_page = MemCounter::addr_to_page(from_addr + (mb_size * 1024 * 1024) - 1);
+    to_page = MemCounter::addr_to_page(from_addr + ((uint64_t)mb_size * 1024 * 1024) - 1);
     if (MemCounter::page_to_addr(from_page) != from_addr) {
         std::ostringstream msg;
         msg << "MemPlanner::constructor: from_addr " << std::hex << from_addr << " not aligned to page " << std::dec << from_page;
@@ -64,8 +64,8 @@ ImmutableMemPlanner::~ImmutableMemPlanner() {
 // - Optimize storage by collapsing empty or single-value pages
 void ImmutableMemPlanner::calculate_pages(const std::vector<MemCounter *> &workers) {
     uint32_t rows_available = rows_by_segment;
-    uint32_t last_addr_with_data = 0;
-    uint32_t segment_first_addr = 0;
+    uint64_t last_addr_with_data = 0;
+    uint64_t segment_first_addr = 0;
     uint32_t offset, last_offset;
     uint32_t collapsible_pages = 0;
 
@@ -77,7 +77,7 @@ void ImmutableMemPlanner::calculate_pages(const std::vector<MemCounter *> &worke
                 uint32_t real_count = workers[thread_index]->get_count_table(offset);
                 if (real_count == 0) continue;
                 
-                uint32_t real_addr = MemCounter::offset_to_addr(offset, thread_index);
+                uint64_t real_addr = MemCounter::offset_to_addr(offset, thread_index);
                 
                 // Process the real address and any intermediate addresses that precede it.
                 // When intermediate_rows is enabled and the gap to the previous address exceeds
@@ -86,7 +86,7 @@ void ImmutableMemPlanner::calculate_pages(const std::vector<MemCounter *> &worke
                 // reach real_addr. Intermediates are treated as regular addresses for row/segment
                 // accounting purposes. The first address never generates intermediates
                 // (last_addr_with_data == 0).
-                uint32_t addr = 0;
+                uint64_t addr = 0;
                 while (addr < real_addr) {
                     if (intermediate_rows && last_addr_with_data != 0 && (real_addr - last_addr_with_data) > MAX_IMMUTABLE_ADDR_DISTANCE) {
                         // Inject an intermediate address at MAX_IMMUTABLE_ADDR_DISTANCE from last data
@@ -106,7 +106,7 @@ void ImmutableMemPlanner::calculate_pages(const std::vector<MemCounter *> &worke
                             if (segment_first_addr != 0) {
                                 // Round up to nearest page
                                 // + 8/8 - 1 = 0
-                                uint32_t pages = (((last_addr_with_data - segment_first_addr + 1) / 8) + OFFSET_PAGE_SIZE) / OFFSET_PAGE_SIZE; 
+                                uint32_t pages = (uint32_t)((((last_addr_with_data - segment_first_addr + 1) / 8) + OFFSET_PAGE_SIZE) / OFFSET_PAGE_SIZE); 
                                 segments_pages.push_back(std::make_pair(pages, collapsible_pages));
                                 collapsible_pages = 0;
                             }
@@ -129,12 +129,12 @@ void ImmutableMemPlanner::calculate_pages(const std::vector<MemCounter *> &worke
                         // => collapsible count = page_next_addr - last_data_page - 1
                         if (last_addr_with_data != 0 && addr > (last_addr_with_data + 8)) {
                             // Distance in number of addresses (each address is 8 bytes apart)
-                            uint32_t distance = (addr - last_addr_with_data) / 8;
+                            uint32_t distance = (uint32_t)((addr - last_addr_with_data) / 8);
                             
                             // Only relevant if the gap spans at least one full page
                             if ((distance + 1) >= OFFSET_PAGE_SIZE) {
                                 // Index of last_addr_with_data within the segment
-                                uint32_t index = (last_addr_with_data - segment_first_addr) / 8;
+                                uint32_t index = (uint32_t)((last_addr_with_data - segment_first_addr) / 8);
                                 
                                 // Page containing last_addr_with_data
                                 uint32_t last_data_page = index / OFFSET_PAGE_SIZE;
@@ -148,8 +148,6 @@ void ImmutableMemPlanner::calculate_pages(const std::vector<MemCounter *> &worke
                                     uint32_t new_collapsible = page_next_addr - last_data_page - 1;
                                     uint32_t first_coll_page = last_data_page + 1;
                                     uint32_t last_coll_page  = page_next_addr - 1;
-                                    uint32_t coll_addr_start = segment_first_addr + first_coll_page * OFFSET_PAGE_SIZE * 8;
-                                    uint32_t coll_addr_end   = segment_first_addr + (last_coll_page + 1) * OFFSET_PAGE_SIZE * 8 - 8;
                                     collapsible_pages += new_collapsible;
                                 }
                             }
@@ -168,13 +166,13 @@ void ImmutableMemPlanner::calculate_pages(const std::vector<MemCounter *> &worke
     }
     if (rows_available < rows_by_segment) {
         // + 8/8 - 1 = 0
-        uint32_t pages = (((last_addr_with_data - segment_first_addr + 1) / 8) + OFFSET_PAGE_SIZE) / OFFSET_PAGE_SIZE;
+        uint32_t pages = (uint32_t)((((last_addr_with_data - segment_first_addr + 1) / 8) + OFFSET_PAGE_SIZE) / OFFSET_PAGE_SIZE);
         segments_pages.push_back(std::make_pair(pages, collapsible_pages));
     }
 }
 
 void ImmutableMemPlanner::execute(const std::vector<MemCounter *> &workers) {
-    uint32_t addr = 0;
+    uint64_t addr = 0;
     uint32_t offset;
     uint32_t last_offset;
     calculate_pages(workers);
@@ -226,7 +224,7 @@ void ImmutableMemPlanner::close_segment() {
     #endif
     
     // Move MemOffsets data to current_segment->offsets before saving
-    mem_offsets->move_to_paged_offsets(current_segment->offsets, current_segment->offsets_base_addr);
+    mem_offsets->move_to_paged_offsets(current_segment->offsets, current_segment->offsets_base_addr_w);
     
     segments.emplace_back(current_segment);
     init_mem_offsets();
@@ -260,7 +258,7 @@ void ImmutableMemPlanner::open_segment() {
     rows_available = rows_by_segment;
 }
 
-void ImmutableMemPlanner::preopen_segment(uint32_t addr, uint32_t intermediate_rows) {
+void ImmutableMemPlanner::preopen_segment(uint64_t addr, uint32_t intermediate_rows) {
     if (rows_available == 0) {
         if (intermediate_rows > 0) {
             add_next_addr_to_segment(addr);
@@ -268,7 +266,7 @@ void ImmutableMemPlanner::preopen_segment(uint32_t addr, uint32_t intermediate_r
         open_segment();
     }
 }
-void ImmutableMemPlanner::consume_rows(uint32_t addr, uint32_t row_count, uint32_t skip) {
+void ImmutableMemPlanner::consume_rows(uint64_t addr, uint32_t row_count, uint32_t skip) {
     if (row_count == 0 && rows_available > 0) {
         return;
     }
@@ -318,7 +316,7 @@ void ImmutableMemPlanner::add_intermediate_rows(uint32_t count) {
     }
 }
 
-void ImmutableMemPlanner::add_rows(uint32_t addr, uint32_t count) {
+void ImmutableMemPlanner::add_rows(uint64_t addr, uint32_t count) {
     uint32_t pending = count;
     while (pending > 0) {
         uint32_t rows_consumed = std::min(pending, rows_available);
@@ -328,9 +326,9 @@ void ImmutableMemPlanner::add_rows(uint32_t addr, uint32_t count) {
     }
 }
 
-uint32_t ImmutableMemPlanner::add_intermediate_addr(uint32_t from_addr, uint32_t to_addr) {
+uint32_t ImmutableMemPlanner::add_intermediate_addr(uint64_t from_addr, uint64_t to_addr) {
     // adding internal reads of zero for consecutive addresses
-    uint32_t count = (to_addr - from_addr + 8) >> 3;
+    uint32_t count = (uint32_t)((to_addr - from_addr + 8) >> 3);
     if (count > 1) {
         // add_intermediate_rows(from_addr, 1);
         // add_intermediate_rows(to_addr, count - 1);
@@ -342,7 +340,7 @@ uint32_t ImmutableMemPlanner::add_intermediate_addr(uint32_t from_addr, uint32_t
     return count;
 }
 
-uint32_t ImmutableMemPlanner::add_intermediates(uint32_t addr) {
+uint32_t ImmutableMemPlanner::add_intermediates(uint64_t addr) {
     uint32_t count = 0;
     if (intermediate_rows && (addr - last_addr) > 8) {
         count = add_intermediate_addr(last_addr + 8, addr - 8);
