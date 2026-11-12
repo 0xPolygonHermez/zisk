@@ -1,7 +1,7 @@
 #include "mem_planner.hpp"
 #include <assert.h>
 
-MemPlanner::MemPlanner(uint32_t id, uint32_t rows, uint32_t from_addr, uint32_t mb_size)
+MemPlanner::MemPlanner(uint32_t id, uint32_t rows, uint64_t from_addr, uint32_t mb_size)
 #ifdef MEM_CHECK_POINT_MAP
 :id(id),rows(rows) {
 #else
@@ -23,7 +23,7 @@ MemPlanner::MemPlanner(uint32_t id, uint32_t rows, uint32_t from_addr, uint32_t 
     #endif
     current_segment = nullptr;
     from_page = MemCounter::addr_to_page(from_addr);
-    to_page = MemCounter::addr_to_page(from_addr + (mb_size * 1024 * 1024) - 1);
+    to_page = MemCounter::addr_to_page(from_addr + ((uint64_t)mb_size * 1024 * 1024) - 1);
     #ifdef MEM_DEBUG
     if (MemCounter::page_to_addr(from_page) != from_addr) {
         std::ostringstream msg;
@@ -88,7 +88,7 @@ void MemPlanner::execute_from_locators(const std::vector<MemCounter *> &workers,
 }
 
 void MemPlanner::precompute_locator_requirements(const std::vector<MemCounter *> &workers, const MemLocator *locator,
-                                                  uint32_t &first_addr_out, uint32_t &last_addr_out, uint32_t &num_addrs_out) {
+                                                  uint64_t &first_addr_out, uint64_t &last_addr_out, uint32_t &num_addrs_out) {
     first_addr_out = 0;
     last_addr_out = 0;
     num_addrs_out = 0;
@@ -104,7 +104,7 @@ void MemPlanner::precompute_locator_requirements(const std::vector<MemCounter *>
                 uint32_t pos = workers[thread_index]->get_addr_table(offset);
                 if (pos == 0) continue;
                 
-                uint32_t addr = MemCounter::offset_to_addr(offset, thread_index);
+                uint64_t addr = MemCounter::offset_to_addr(offset, thread_index);
                 if (first_addr_out == 0) {
                     first_addr_out = addr;
                 }
@@ -117,7 +117,7 @@ void MemPlanner::precompute_locator_requirements(const std::vector<MemCounter *>
 
 void MemPlanner::execute_from_locator(const std::vector<MemCounter *> &workers, uint32_t segment_id, const MemLocator *locator) {
     current_segment = nullptr;
-    uint32_t addr = 0;
+    uint64_t addr = 0;
     
     rows_available = rows;
     reference_addr_chunk = NO_CHUNK_ID;
@@ -129,7 +129,8 @@ void MemPlanner::execute_from_locator(const std::vector<MemCounter *> &workers, 
     current_chunk = NO_CHUNK_ID;
 
     // Pre-compute requirements and preallocate
-    uint32_t first_addr, last_addr, num_addrs;
+    uint64_t first_addr, last_addr;
+    uint32_t num_addrs;
     precompute_locator_requirements(workers, locator, first_addr, last_addr, num_addrs);
     
     // Create local MemOffsets for this segment
@@ -148,8 +149,8 @@ void MemPlanner::execute_from_locator(const std::vector<MemCounter *> &workers, 
     uint32_t cpos = locator->cpos;
     bool first_pos = true;
     #ifdef MEM_PLANNER_STATS
-    uint32_t first_segment_addr = MemCounter::offset_to_addr(offset, thread_index);
-    uint32_t last_segment_addr = first_segment_addr;
+    uint64_t first_segment_addr = MemCounter::offset_to_addr(offset, thread_index);
+    uint64_t last_segment_addr = first_segment_addr;
     #endif
     rows_available = rows;
     for (;page <= to_page; ++page, thread_index = 0, get_offset_limits(workers, page, offset, max_offset)) {
@@ -161,7 +162,7 @@ void MemPlanner::execute_from_locator(const std::vector<MemCounter *> &workers, 
             for (;thread_index < MAX_THREADS; ++thread_index, addr += 8, first_pos = false) {
                 uint32_t pos = workers[thread_index]->get_addr_table(offset);
                 if (pos == 0) {
-                    if (first_pos) printf("************ ERROR SEGMENT %d thread_index %d offset %d addr 0x%08X\n", segment_id, thread_index, offset, addr);
+                    if (first_pos) printf("************ ERROR SEGMENT %d thread_index %d offset %d addr 0x%09lX\n", segment_id, thread_index, offset, addr);
                     continue;
                 }
                 #ifdef MEM_PLANNER_STATS
@@ -187,7 +188,7 @@ void MemPlanner::execute_from_locator(const std::vector<MemCounter *> &workers, 
                         mem_offsets.save_offsets_to_file("tmp/mem_trace_" + std::to_string(segment_id) + "_cpp_offsets.txt", false);
                         #endif
                         // Move MemOffsets data to current_segment->offsets
-                        mem_offsets.move_to_paged_offsets(current_segment->offsets, current_segment->offsets_base_addr);
+                        mem_offsets.move_to_paged_offsets(current_segment->offsets, current_segment->offsets_base_addr_w);
                         return;
                     }
                     skip = 0;
@@ -205,11 +206,11 @@ void MemPlanner::execute_from_locator(const std::vector<MemCounter *> &workers, 
     #endif
     
     // Move MemOffsets data to current_segment->offsets
-    mem_offsets.move_to_paged_offsets(current_segment->offsets, current_segment->offsets_base_addr);
+    mem_offsets.move_to_paged_offsets(current_segment->offsets, current_segment->offsets_base_addr_w);
 }
 
 #ifdef MEM_PLANNER_STATS
-void MemPlanner::update_segment_stats(uint32_t addr_count, uint32_t offset_count, uint32_t first_segment_addr, uint32_t last_segment_addr) {
+void MemPlanner::update_segment_stats(uint32_t addr_count, uint32_t offset_count, uint64_t first_segment_addr, uint64_t last_segment_addr) {
     uint32_t index = segments.size();
     segment_stats[index].addr_count = addr_count;
     segment_stats[index].offset_count = offset_count;
@@ -226,7 +227,7 @@ void MemPlanner::generate_locators(const std::vector<MemCounter *> &workers, Mem
     rows_available = rows;
     uint32_t count;
     uint32_t offset, max_offset;
-    uint32_t previous_addr, addr = 0;
+    uint64_t previous_addr, addr = 0;
     bool inserted_first_locator = false;
     for (uint32_t page = from_page; page <= to_page; ++page) {
         get_offset_limits(workers, page, offset, max_offset);
@@ -297,7 +298,7 @@ uint32_t MemPlanner::get_max_offset(const std::vector<MemCounter *> &workers, ui
     return last_offset;
 }
 
-bool MemPlanner::add_chunk(uint32_t chunk_id, uint32_t addr, uint32_t count, uint32_t skip) {
+bool MemPlanner::add_chunk(uint32_t chunk_id, uint64_t addr, uint32_t count, uint32_t skip) {
     if (current_segment == nullptr) {
         // include first chunk
         uint32_t consumed = std::min(count, rows);
@@ -319,7 +320,7 @@ bool MemPlanner::add_chunk(uint32_t chunk_id, uint32_t addr, uint32_t count, uin
     return true;
 }
 
-void MemPlanner::current_segment_add(uint32_t chunk_id, uint32_t addr, uint32_t count) {
+void MemPlanner::current_segment_add(uint32_t chunk_id, uint64_t addr, uint32_t count) {
     #ifdef MEM_CHECK_POINT_MAP
     current_segment->add_or_update(chunk_id, addr, 0, count);
     #else
@@ -335,7 +336,7 @@ void MemPlanner::stats() {
     }
     uint32_t count = segments.size();
     for (uint32_t index = 0; index < count; ++index) {
-        printf("SEGMENT_STAT|0x%08X-0x%08X|T: %2d|S: %3d|C: %4d|@: %7d|O: %7d\n",
+        printf("SEGMENT_STAT|0x%09lX-0x%09lX|T: %2d|S: %3d|C: %4d|@: %7d|O: %7d\n",
             segment_stats[index].first_addr,
             segment_stats[index].last_addr,
             id,

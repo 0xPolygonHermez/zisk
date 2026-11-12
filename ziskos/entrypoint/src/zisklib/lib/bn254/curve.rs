@@ -4,10 +4,7 @@
 use crate::alloc_extern::vec::Vec;
 
 use crate::{
-    syscalls::{
-        syscall_bn254_curve_add, syscall_bn254_curve_dbl, SyscallBn254CurveAddParams,
-        SyscallPoint256,
-    },
+    syscalls::{syscall_bn254_curve_add, syscall_bn254_curve_dbl, SyscallPoint256},
     zisklib::{eq, fcall_msb_pos_256, is_one, is_two, is_zero, lt},
 };
 
@@ -151,16 +148,16 @@ pub fn add_bn254(
     let p2 = SyscallPoint256 { x: x2, y: y2 };
 
     // Call the syscall to add the two points
-    let mut params = SyscallBn254CurveAddParams { p1: &mut p1, p2: &p2 };
     syscall_bn254_curve_add(
-        &mut params,
+        &mut p1,
+        &p2,
         #[cfg(feature = "hints")]
         hints,
     );
 
     // Convert the result back to a single array
-    let x3 = params.p1.x;
-    let y3 = params.p1.y;
+    let x3 = p1.x;
+    let y3 = p1.y;
     [x3[0], x3[1], x3[2], x3[3], y3[0], y3[1], y3[2], y3[3]]
 }
 
@@ -363,9 +360,9 @@ pub fn scalar_mul_bn254(
             // Get the next bit b of k.
             // If b == 1, we should add P to Q, otherwise start the next iteration
             if ((k[i] >> j) & 1) == 1 {
-                let mut params = SyscallBn254CurveAddParams { p1: &mut q, p2: &p };
                 syscall_bn254_curve_add(
-                    &mut params,
+                    &mut q,
+                    &p,
                     #[cfg(feature = "hints")]
                     hints,
                 );

@@ -10,6 +10,10 @@
 //! * [`lowering`] — per-function lowering of the integer wasm subset.
 //! * [`float`] — f32/f64 operators, lowered onto the RISC-V soft-float library (`float` feature).
 //! * [`wasi`] — minimal `wasi_snapshot_preview1` runtime.
+//! * [`zkvm`] — the ZisK guest C interface (the EF accelerators, U256 and more), imported from
+//!   `env`.
+//! * [`precompiles`] — the ZisK precompiles (keccak-f, sha256-f, curve and big-int arithmetic,
+//!   ...) as `env` host imports.
 
 pub mod emit;
 #[cfg(feature = "float")]
@@ -17,8 +21,11 @@ pub mod float;
 pub mod layout;
 pub mod lowering;
 pub mod module;
+pub mod precompiles;
 pub mod wasi;
+pub mod zkvm;
 
+use std::collections::HashMap;
 use std::error::Error;
 
 use emit::{Code, Fixup};
@@ -27,25 +34,42 @@ use module::{parse_module, WasmModule};
 use zisk_core::mem::DataSection;
 use zisk_core::rom_layout::{add_end_and_lib, normalize_rw_data_sections};
 use zisk_core::zisk_rom::DataSection64;
-use zisk_core::{
-    ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, MAX_ZISK_OS_ROM_ADDR, ROM_ADDR,
-    ROM_ENTRY,
-};
+use zisk_core::{ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, ROM_ADDR, ROM_ENTRY};
 
-/// One past the last program ROM address generated functions may occupy.  With the `float`
-/// feature the top of the program ROM window holds the soft-float library (linked by
-/// `float::link_float_lib`), so the program must stop below it.
-#[cfg(feature = "float")]
-const PROGRAM_ROM_END: u64 = zisk_core::FLOAT_LIB_ROM_ADDR;
-#[cfg(not(feature = "float"))]
-const PROGRAM_ROM_END: u64 = zisk_core::ROM_ADDR_MAX + 1;
+/// One past the last program ROM address generated functions may occupy.  The top of the program
+/// ROM window holds the ZisK library (merged when the module calls one of its routines, see
+/// [`zkvm`]) and, above it, the soft-float library (`float` feature), so the program stops below
+/// both.
+const PROGRAM_ROM_END: u64 = zisk_core::ZISKLIB_ROM_ADDR;
+const _: () = assert!(PROGRAM_ROM_END < zisk_core::FLOAT_LIB_ROM_ADDR);
 
 /// Reserve below `WASM_STACK_TOP` for the synthetic entry "frame" that calls `_start`.
 const ENTRY_FRAME_RESERVE: i64 = 64;
 
+/// A function of a transpiled module and the ROM range its code occupies; profiling uses these
+/// to name ROM addresses, as it uses an ELF's symbol table for a RISC-V guest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WasmFunctionSymbol {
+    pub name: String,
+    pub address: u64,
+    pub size: u64,
+}
+
 /// Transpiles a wasm module into a Zisk ROM.
 pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
-    let module = parse_module(bytes)?;
+    Ok(transpile(bytes)?.0)
+}
+
+/// The functions of a wasm module as [`wasm2rom`] lays them out in the ROM, plus the entry
+/// routine. A function is named from the module's `name` section when present, otherwise from
+/// its import or export name, otherwise `wasm-function[<index>]`.
+pub fn wasm_function_symbols(bytes: &[u8]) -> Result<Vec<WasmFunctionSymbol>, Box<dyn Error>> {
+    Ok(transpile(bytes)?.1)
+}
+
+fn transpile(bytes: &[u8]) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn Error>> {
+    let mut module = parse_module(bytes)?;
+    module.use_native_multi3();
     reject_unsupported_layout(&module)?;
 
     // Resolve the program entry point.
@@ -77,7 +101,7 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 
     // Reuse the RISC-V BIOS prologue: it installs the end instruction (at ROM_EXIT), the float
     // handler (with the `float` feature), and the initial jump that lands at the first post-BIOS
-    // instruction (our entry routine).
+    // instruction (a jump to our entry routine).
     add_end_and_lib(&mut rom);
 
     // The soft-float library the float handler dispatches to lives in its own reserved ROM/RAM
@@ -100,20 +124,58 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         rom.rw_data_64.push(DataSection64 { addr: section.addr, data: data.collect() });
     }
 
-    // -- lower every function (imports become WASI stubs) --------------------
+    // -- the ZisK library, when the module calls one of its routines ----------
+    let zkvm_imports: Vec<&str> = module
+        .imports
+        .iter()
+        .filter(|(m, name, _)| zkvm::is_zkvm_import(m, name))
+        .map(|(_, name, _)| name.as_str())
+        .collect();
+    let library = if zkvm_imports.iter().all(|name| zkvm::routine(name).is_none()) {
+        None
+    } else {
+        Some(ziskasm::assemble_zisk_library().map_err(|e| format!("ZisK library: {e}"))?)
+    };
+    let mut routine_entry: HashMap<&str, u64> = HashMap::new();
+    if let Some(library) = &library {
+        for name in &zkvm_imports {
+            let Some(routine) = zkvm::routine(name) else { continue };
+            let entry = *library
+                .symbols
+                .get(routine)
+                .ok_or_else(|| format!("ZisK library has no routine `{routine}` for {name}"))?;
+            routine_entry.insert(name, entry);
+        }
+    }
+    // The zkvmcalls the module uses, as a RISC-V guest's ROM records them: profiling names the
+    // library's code after them, and `zkvm_random_u64` marks a guest that needs a random seed.
+    rom.zkvmcalls = zkvm_imports.iter().filter_map(|name| zkvm::zkvmcall_id(name)).collect();
+
+    // -- lower every function (imports become WASI, ZisK C-interface or precompile stubs) ----
     let n_funcs = module.func_count() as usize;
     let n_imports = module.func_import_count as usize;
     let mut codes: Vec<Code> = Vec::with_capacity(n_funcs);
     for i in 0..n_imports {
-        codes.push(wasi::build_wasi_stub(&module, i)?);
+        let (import_module, name, _) = &module.imports[i];
+        codes.push(if zkvm::is_zkvm_import(import_module, name) {
+            zkvm::build_zkvm_stub(&module, i, routine_entry.get(name.as_str()).copied())?
+        } else if precompiles::is_precompile_import(import_module, name) {
+            precompiles::build_stub(&module, i)?
+        } else {
+            wasi::build_wasi_stub(&module, i)?
+        });
     }
     for d in 0..module.defined.len() {
         let func_index = (n_imports + d) as u32;
         codes.push(lowering::lower_function(&module, func_index)?);
     }
+    // The `memory.fill` table goes right after the functions, as function index `n_funcs`.
+    if codes.iter().any(|code| code.uses_memset_table) {
+        codes.push(lowering::build_memset_table());
+    }
 
     // -- lay out functions in the program ROM area ---------------------------
-    let mut func_addr = vec![0u64; n_funcs];
+    let mut func_addr = vec![0u64; codes.len()];
     let mut addr = ROM_ADDR;
     for (i, code) in codes.iter().enumerate() {
         func_addr[i] = addr;
@@ -133,22 +195,77 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     }
 
     // -- emit the entry routine (init data + call _start + finalize) ---------
+    // It goes in the program ROM window, after the functions, and the BIOS only jumps to it:
+    // `_start` returns to its caller through x1, and the assembly emulator resolves dynamic jumps
+    // into the BIOS window only in float builds.
     let entry = build_entry_routine(&module, &func_addr, &entry_calls);
-    let entry_base = rom.next_init_inst_addr;
+    let entry_base = addr;
     let entry_end = entry_base + 4 * entry.len() as u64;
-    if entry_end > MAX_ZISK_OS_ROM_ADDR + 1 {
+    if entry_end > PROGRAM_ROM_END {
         return Err(format!(
-            "wasm: entry routine too large ({entry_end:#x} exceeds the BIOS ROM end {:#x})",
-            MAX_ZISK_OS_ROM_ADDR + 1
+            "wasm: program too large ({entry_end:#x} exceeds the program ROM end \
+             {PROGRAM_ROM_END:#x})"
         )
         .into());
     }
     resolve_and_insert(&mut rom, &entry, entry_base, &func_addr);
-    rom.next_init_inst_addr = entry_end;
+
+    let mut bios_jump = Code::new();
+    bios_jump.jump_abs(entry_base);
+    let bios_jump_addr = rom.next_init_inst_addr;
+    resolve_and_insert(&mut rom, &bios_jump, bios_jump_addr, &func_addr);
+    rom.next_init_inst_addr = bios_jump_addr + 4 * bios_jump.len() as u64;
+
+    // The library goes in after every guest instruction, which it is renumbered to follow.
+    if let Some(library) = library {
+        zisk_riscv::merge_library(&mut rom, library)?;
+    }
 
     rom.optimize_instruction_lookup()?;
 
-    Ok(rom)
+    let mut symbols: Vec<WasmFunctionSymbol> = codes
+        .iter()
+        .enumerate()
+        .map(|(i, code)| WasmFunctionSymbol {
+            name: if i < n_funcs {
+                function_name(&module, i as u32)
+            } else {
+                "wasm memory.fill table".to_string()
+            },
+            address: func_addr[i],
+            size: 4 * code.len() as u64,
+        })
+        .collect();
+    symbols.push(WasmFunctionSymbol {
+        name: "wasm entry routine".to_string(),
+        address: entry_base,
+        size: entry_end - entry_base,
+    });
+
+    Ok((rom, symbols))
+}
+
+/// The name of function `index`: from the `name` section, else `module.name` for an import,
+/// else its export name, else `wasm-function[<index>]`.
+fn function_name(module: &WasmModule, index: u32) -> String {
+    if let Some(name) = module.func_names.get(&index) {
+        return name.clone();
+    }
+    if let Some((import_module, name, _)) = module.imports.get(index as usize) {
+        return format!("{import_module}.{name}");
+    }
+    module
+        .exports
+        .iter()
+        .find(|(_, kind, i)| {
+            *i == index
+                && matches!(
+                    kind,
+                    wasmparser::ExternalKind::Func | wasmparser::ExternalKind::FuncExact
+                )
+        })
+        .map(|(name, _, _)| name.clone())
+        .unwrap_or_else(|| format!("wasm-function[{index}]"))
 }
 
 /// Fails if the module does not fit the machine's fixed runtime areas (see `layout.rs`):
@@ -274,7 +391,7 @@ fn resolve_and_insert(rom: &mut ZiskRom, code: &Code, base: u64, func_addr: &[u6
     }
 }
 
-/// Builds the BIOS entry routine: initialize the runtime, call each of `entry_calls` in order
+/// Builds the entry routine: initialize the runtime, call each of `entry_calls` in order
 /// (the start-section function, then `_start`), then publish output and halt.  Returned as a
 /// [`Code`] so its calls and internal jumps resolve through the same fixup machinery as ordinary
 /// functions.
@@ -308,6 +425,7 @@ fn build_entry_routine(module: &WasmModule, func_addr: &[u64], entry_calls: &[u3
 
     // Linear-memory bound for the access checks (kept in a register, see `REG_MEM_END`).
     code.load_imm_to_reg(REG_MEM_END, WASM_MEM_BASE + module.mem_initial_pages * WASM_PAGE_SIZE);
+    code.set_mem_limits();
 
     code.load_imm_to_reg(REG_FP, WASM_STACK_TOP);
     for &func_index in entry_calls {
@@ -320,18 +438,8 @@ fn build_entry_routine(module: &WasmModule, func_addr: &[u64], entry_calls: &[u3
 }
 
 fn emit_entry_call(code: &mut Code, func_index: u32) {
-    code.load_imm_to_reg(REG_T2, (WASM_STACK_TOP as i64 - ENTRY_FRAME_RESERVE) as u64); // newFP
-                                                                                        // mem[newFP - 16] = caller FP
-    let mut zib = ZiskInstBuilder::new(0);
-    zib.src_a("reg", REG_T2, false);
-    zib.src_b("reg", REG_FP, false);
-    zib.op("copyb").unwrap();
-    zib.ind_width(8);
-    zib.store("ind", FRAME_CALLER_FP_OFF, false, false);
-    zib.j(4, 4);
-
-    code.push_raw(zib, Fixup::None);
-    code.mov_reg(REG_FP, REG_T2);
+    // The callee's frame pointer.  Nothing after the call needs the old one back.
+    code.load_imm_to_reg(REG_FP, (WASM_STACK_TOP as i64 - ENTRY_FRAME_RESERVE) as u64);
     let mut zib = ZiskInstBuilder::new(0);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", 0, false);
@@ -339,6 +447,8 @@ fn emit_entry_call(code: &mut Code, func_index: u32) {
     zib.set_pc();
     zib.store_pc("reg", REG_RA as i64, false);
     zib.j(0, 4);
+    // Profiling metadata: a call linking through ra, like a RISC-V `jal ra`
+    zib.set_meta_rd(REG_RA as u8);
 
     // On return: publish output and halt.
     code.push_raw(zib, Fixup::FuncAddr(func_index));

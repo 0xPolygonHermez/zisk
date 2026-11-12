@@ -47,12 +47,13 @@ impl HashMode {
         }
     }
 
-    /// Whether this mode's proving key can carry a final BN128 SNARK stage.
+    /// Whether this mode's recursivef is a BN128 circuit (proofman's `recursivef` verifier and its
+    /// circom templates), which every final SNARK takes: PLONK, FFLONK and pilfflonk.
     ///
-    /// The wrap recurses the vadcop_final proof into a circom circuit over BN128, and only the
-    /// poseidon families have that path built (proofman's `recursivef` verifier and its circom
-    /// templates). `setup-snark` and the wrap commands refuse a Blake3 key.
-    pub fn supports_snark(&self) -> bool {
+    /// Only the poseidon families have one. A Blake3 key still wraps in a SNARK, but with pilfflonk
+    /// alone: its recursivef is a Goldilocks STARK that pilfflonk's circuit verifies with blake3
+    /// custom gates, and `setup-snark` refuses PLONK and FFLONK for it.
+    pub fn has_bn128_recursivef(&self) -> bool {
         !matches!(self, HashMode::Blake3)
     }
 
@@ -213,12 +214,13 @@ mod tests {
         with_proving_key(Some("not json"), |d| assert!(HashMode::from_proving_key(d).is_err()));
     }
 
-    /// The BN128 wrap is poseidon-only; this must track proofman's `hash_family::supports_snark`.
+    /// Only the poseidon families have a BN128 recursivef; this must track proofman's
+    /// `hash_family::has_bn128_recursivef`.
     #[test]
-    fn only_the_poseidon_modes_support_a_snark() {
-        assert!(!HashMode::Blake3.supports_snark());
-        assert!(HashMode::Poseidon1.supports_snark());
-        assert!(HashMode::Poseidon2.supports_snark());
+    fn only_the_poseidon_modes_have_a_bn128_recursivef() {
+        assert!(!HashMode::Blake3.has_bn128_recursivef());
+        assert!(HashMode::Poseidon1.has_bn128_recursivef());
+        assert!(HashMode::Poseidon2.has_bn128_recursivef());
     }
 
     /// One default, defined in proofman. This enum cannot derive its `#[default]` from that const,

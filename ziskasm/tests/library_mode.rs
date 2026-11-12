@@ -103,3 +103,23 @@ fn rejects_libraries_that_run_past_their_region() {
     // Code that ends exactly at the end of ROM is fine.
     assert!(assemble_library(&parse(code), rom_end - 8, ZISKLIB_RAM_ADDR).is_ok());
 }
+
+#[test]
+fn call_and_ret_carry_call_stack_meta() {
+    // The emulator's call-stack tracking recognizes a call / return by its meta registers,
+    // as the RISC-V transpiler sets them for `jal r1, f` / `jalr r0, r1, 0`.
+    let src = "\
+zisklib_f:
+\tcall zisklib_g
+\tret
+zisklib_g:
+\tret
+";
+    let program = parser::parse_program(src, "lib").expect("parse");
+    let lib = assemble_library(&program, ZISKLIB_ROM_ADDR, ZISKLIB_RAM_ADDR).expect("assemble");
+    let meta = |addr: u64| (lib.insts[&addr].i.meta_rs1, lib.insts[&addr].i.meta_rd);
+
+    assert_eq!(meta(ZISKLIB_ROM_ADDR), (Some(1), Some(1))); // call: writes ra
+    assert_eq!(meta(ZISKLIB_ROM_ADDR + 4), (Some(1), Some(0))); // ret: reads ra, no rd
+    assert_eq!(meta(lib.symbols["zisklib_g"]), (Some(1), Some(0)));
+}

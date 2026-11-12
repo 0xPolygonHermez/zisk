@@ -4,18 +4,6 @@
 ; (each Fp6 = 36 u64). Only frobenius1 + frobenius2 (no frob3). Prefix BLS_F12_.
 ; ============================================================================
 
-; inline-op headers (zopt): precompile parameter blocks
-const u64 ZBLS_FP12_H1[2] = BLS_F12_OUT + 96, BLS_FROBENIUS_GAMMA12
-const u64 ZBLS_FP12_H2[2] = BLS_F12_OUT + 192, BLS_F2_SB
-const u64 ZBLS_FP12_H3[2] = BLS_F12_OUT + 288, BLS_FROBENIUS_GAMMA11
-const u64 ZBLS_FP12_H4[2] = BLS_F12_OUT + 384, BLS_FROBENIUS_GAMMA13
-const u64 ZBLS_FP12_H5[2] = BLS_F12_OUT + 480, BLS_FROBENIUS_GAMMA15
-const u64 ZBLS_FP12_H6[2] = BLS_F12_OUT + 96, BLS_F2_SB
-const u64 ZBLS_FP12_H7[2] = BLS_F12_OUT + 288, BLS_F2_SB
-const u64 ZBLS_FP12_H8[2] = BLS_F12_OUT + 384, BLS_F2_SB
-const u64 ZBLS_FP12_H9[2] = BLS_F12_OUT + 480, BLS_F2_SB
-u64 ZBLS_FP12_H0[2] = BLS_F12_SC1, 0
-
 u64 BLS_F12_PA[1] = 0
 u64 BLS_F12_PB[1] = 0
 u64 BLS_F12_PR[1] = 0
@@ -123,32 +111,32 @@ zisklib_frobenius1_fp12_bls12_381:
 	copyb(0, BLS_F12_TMP2) -> r11
 	call zisklib_conjugate_fp2_bls12_381
 	dma_xmemcpy(BLS_F12_OUT + 96, BLS_F12_TMP2) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_FP12_H1)
+	bls12_381_complex_mul(BLS_F12_OUT + 96, BLS_FROBENIUS_GAMMA12)
 	copyb(0, BLS_F12_IN + 192) -> r10
 	copyb(0, BLS_F12_TMP2) -> r11
 	copyb(0, BLS_F12_OUT + 96) -> r12
 	call zisklib_conjugate_fp2_bls12_381
 	dma_xmemcpy(BLS_F2_SB, BLS_FROBENIUS_GAMMA14) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_F12_OUT + 192, BLS_F12_TMP2) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_FP12_H2)
+	bls12_381_complex_mul(BLS_F12_OUT + 192, BLS_F2_SB)
 	copyb(0, BLS_F12_IN + 288) -> r10
 	copyb(0, BLS_F12_TMP2) -> r11
 	copyb(0, BLS_F12_OUT + 192) -> r12
 	call zisklib_conjugate_fp2_bls12_381
 	dma_xmemcpy(BLS_F12_OUT + 288, BLS_F12_TMP2) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_FP12_H3)
+	bls12_381_complex_mul(BLS_F12_OUT + 288, BLS_FROBENIUS_GAMMA11)
 	copyb(0, BLS_F12_IN + 384) -> r10
 	copyb(0, BLS_F12_TMP2) -> r11
 	copyb(0, BLS_F12_OUT + 288) -> r12
 	call zisklib_conjugate_fp2_bls12_381
 	dma_xmemcpy(BLS_F12_OUT + 384, BLS_F12_TMP2) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_FP12_H4)
+	bls12_381_complex_mul(BLS_F12_OUT + 384, BLS_FROBENIUS_GAMMA13)
 	copyb(0, BLS_F12_IN + 480) -> r10
 	copyb(0, BLS_F12_TMP2) -> r11
 	copyb(0, BLS_F12_OUT + 384) -> r12
 	call zisklib_conjugate_fp2_bls12_381
 	dma_xmemcpy(BLS_F12_OUT + 480, BLS_F12_TMP2) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_FP12_H5)
+	bls12_381_complex_mul(BLS_F12_OUT + 480, BLS_FROBENIUS_GAMMA15)
 	copyb(0, [BLS_F12_PR]) -> r5
 	dma_xmemcpy(r5, BLS_F12_OUT) -> r5, j(576, 4)
 	copyb(0, BLS_F12_OUT) -> r10
@@ -166,19 +154,19 @@ zisklib_frobenius2_fp12_bls12_381:
 	dma_xmemcpy(BLS_F12_OUT, BLS_F12_IN) -> r5, j(96, 4)
 	dma_xmemcpy(BLS_F2_SB, BLS_FROBENIUS_GAMMA22) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_F12_OUT + 96, BLS_F12_IN + 96) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_FP12_H6)
+	bls12_381_complex_mul(BLS_F12_OUT + 96, BLS_F2_SB)
 	dma_xmemcpy(BLS_F2_SB, BLS_FROBENIUS_GAMMA24) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_F12_OUT + 192, BLS_F12_IN + 192) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_FP12_H2)
+	bls12_381_complex_mul(BLS_F12_OUT + 192, BLS_F2_SB)
 	dma_xmemcpy(BLS_F2_SB, BLS_FROBENIUS_GAMMA21) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_F12_OUT + 288, BLS_F12_IN + 288) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_FP12_H7)
+	bls12_381_complex_mul(BLS_F12_OUT + 288, BLS_F2_SB)
 	dma_xmemcpy(BLS_F2_SB, BLS_FROBENIUS_GAMMA23) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_F12_OUT + 384, BLS_F12_IN + 384) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_FP12_H8)
+	bls12_381_complex_mul(BLS_F12_OUT + 384, BLS_F2_SB)
 	dma_xmemcpy(BLS_F2_SB, BLS_FROBENIUS_GAMMA25) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_F12_OUT + 480, BLS_F12_IN + 480) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_FP12_H9)
+	bls12_381_complex_mul(BLS_F12_OUT + 480, BLS_F2_SB)
 	dma_xmemcpy(r11, BLS_F12_OUT) -> r5, j(576, 4)
 	copyb(0, BLS_F12_OUT) -> r10
 	copyb(0, 72) -> r12

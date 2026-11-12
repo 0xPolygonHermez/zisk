@@ -58,14 +58,14 @@ void MemOffsets::inner_allocate(uint32_t pages, uint32_t collapsible_pages) {
 }
 #define MIN_OFFSET_PAGES_INCREMENT 16
 
-void MemOffsets::preallocate(uint32_t first_addr, uint32_t last_addr, uint32_t num_addrs) {
+void MemOffsets::preallocate(uint64_t first_addr, uint64_t last_addr, uint32_t num_addrs) {
     is_preallocated = true;
     if (first_addr == 0 || last_addr == 0 || num_addrs == 0) {
         return;
     }
     
     // Calculate required pages based on address range
-    uint32_t addr_range = (last_addr - first_addr) / 8;
+    uint32_t addr_range = (uint32_t)((last_addr - first_addr) / 8);
     uint32_t required_offset_pages = (addr_range / OFFSET_PAGE_SIZE) + 1;
     
     // Pre-allocate page arrays if needed
@@ -115,7 +115,7 @@ void MemOffsets::realloc_offsets(uint32_t min_size) {
     offsets = (uint32_t *)realloc(offsets, num_offsets * sizeof(uint32_t));
 }
 
-void MemOffsets::add_addr_offset(uint32_t addr, uint32_t offset_value) {
+void MemOffsets::add_addr_offset(uint64_t addr, uint32_t offset_value) {
     if (is_empty) {
         // First call: addr is the origin of the table, always at index 0
         is_empty = false;
@@ -126,7 +126,7 @@ void MemOffsets::add_addr_offset(uint32_t addr, uint32_t offset_value) {
         return;
     }
 
-    uint32_t index = ((addr - first_offset_addr) / 8);
+    uint32_t index = (uint32_t)((addr - first_offset_addr) / 8);
     if (addr == last_offset_addr + 8) {
         // FAST PATH
         uint32_t page = index / OFFSET_PAGE_SIZE;
@@ -159,7 +159,7 @@ void MemOffsets::add_addr_offset(uint32_t addr, uint32_t offset_value) {
     // GENERIC PATH
     uint32_t last_page = index / OFFSET_PAGE_SIZE;
     uint32_t in_page_index = index % OFFSET_PAGE_SIZE;
-    uint32_t last_offset_index = ((last_offset_addr - first_offset_addr) / 8);
+    uint32_t last_offset_index = (uint32_t)((last_offset_addr - first_offset_addr) / 8);
     uint32_t last_offset_page  = last_offset_index / OFFSET_PAGE_SIZE;
 
     if (last_page >= num_offset_pages) {
@@ -228,7 +228,7 @@ void MemOffsets::save_offsets_to_file(const std::string &filename, bool compact)
     }
 
     uint32_t count = 0;
-    uint32_t last_index = ((last_offset_addr - first_offset_addr) / 8);
+    uint32_t last_index = (uint32_t)((last_offset_addr - first_offset_addr) / 8);
     uint32_t last_page = last_index / OFFSET_PAGE_SIZE;
 
     // Iterate through all pages up to the last page with data
@@ -240,17 +240,17 @@ void MemOffsets::save_offsets_to_file(const std::string &filename, bool compact)
             if (compact) {
                 uint32_t next_value = (page < last_page) ? (page_offsets[page + 1] == MEM_OFFSETS_PAGE_ABSENT ? page_values[page + 1] : offsets[page_offsets[page + 1] * OFFSET_PAGE_SIZE]) : 0;
                 if (value != next_value) {
-                    uint32_t addr = (first_offset_addr >> 3) + (page + 1) * OFFSET_PAGE_SIZE - 1;
-                    fprintf(file, "0x%X %d\n", addr * 8, value - 1);
+                    uint64_t addr = (first_offset_addr >> 3) + (page + 1) * OFFSET_PAGE_SIZE - 1;
+                    fprintf(file, "0x%lX %d\n", addr * 8, value - 1);
                     ++count;
                     last_offset = value;
                 }
             } else {
-                uint32_t start_addr = first_offset_addr + (page * OFFSET_PAGE_SIZE * 8);
+                uint64_t start_addr = first_offset_addr + ((uint64_t)page * OFFSET_PAGE_SIZE * 8);
                 uint32_t entries_in_page = (page == last_page) ? ((last_index % OFFSET_PAGE_SIZE) + 1) : OFFSET_PAGE_SIZE;
                 for (uint32_t i = 0; i < entries_in_page; ++i) {
-                    uint32_t addr = start_addr + (i * 8);
-                    fprintf(file, "0x%X %u\n", addr, value);
+                    uint64_t addr = start_addr + (i * 8);
+                    fprintf(file, "0x%lX %u\n", addr, value);
                     ++count;
                 }
             }
@@ -262,8 +262,8 @@ void MemOffsets::save_offsets_to_file(const std::string &filename, bool compact)
             for (uint32_t i = 0; i < entries_in_page; ++i) {
                 uint32_t value = offsets[base + i]; 
                 if (!compact || value != last_offset) {
-                    uint32_t addr = (first_offset_addr >> 3) + (page * OFFSET_PAGE_SIZE + i);
-                    fprintf(file, "0x%X %d\n", addr * 8, value - 1);
+                    uint64_t addr = (first_offset_addr >> 3) + (page * OFFSET_PAGE_SIZE + i);
+                    fprintf(file, "0x%lX %d\n", addr * 8, value - 1);
                     ++count;
                 }
                 last_offset = value;
@@ -279,7 +279,7 @@ void MemOffsets::fill_padding(void) {
         return;
     }
 
-    uint32_t last_index = (last_offset_addr - first_offset_addr) / 8;
+    uint32_t last_index = (uint32_t)((last_offset_addr - first_offset_addr) / 8);
     uint32_t last_page = last_index / OFFSET_PAGE_SIZE;
     uint32_t last_in_page = last_index % OFFSET_PAGE_SIZE;
 
@@ -301,7 +301,7 @@ void MemOffsets::fill_padding(void) {
         offsets[base + i] = last_value;
     }
 }
-void MemOffsets::move_to_paged_offsets(PagedOffsets &paged_offsets, uint32_t &offsets_base_addr) {
+void MemOffsets::move_to_paged_offsets(PagedOffsets &paged_offsets, uint32_t &offsets_base_addr_w) {
     // Move (transfer ownership) internal pointers to PagedOffsets structure
     // PagedOffsets uses different naming:
     //   page_starts = page_offsets
@@ -311,7 +311,7 @@ void MemOffsets::move_to_paged_offsets(PagedOffsets &paged_offsets, uint32_t &of
     fill_padding(); // Ensure the last page is fully filled before calculating stats
 
     // Calculate the actual used range
-    uint32_t last_index = first_offset_addr == 0 ? 0 : ((last_offset_addr - first_offset_addr) / 8);
+    uint32_t last_index = first_offset_addr == 0 ? 0 : (uint32_t)((last_offset_addr - first_offset_addr) / 8);
     uint32_t last_page = last_index / OFFSET_PAGE_SIZE;
     
     // Count present (non-compressed) pages
@@ -328,14 +328,14 @@ void MemOffsets::move_to_paged_offsets(PagedOffsets &paged_offsets, uint32_t &of
     paged_offsets.pages_dense = offsets;
     #ifdef MEM_WARNINGS
     if (last_page >= num_offset_pages) {
-        printf("\x1B[1;31mWARNING!! MemOffsets::move_to_paged_offsets: WARNING - last_page %u exceeds allocated num_offset_pages %u [0x%08X..=0x%08X]\x1B[0m\n", last_page, num_offset_pages,first_offset_addr, last_offset_addr);
+        printf("\x1B[1;31mWARNING!! MemOffsets::move_to_paged_offsets: WARNING - last_page %u exceeds allocated num_offset_pages %u [0x%09lX..=0x%09lX]\x1B[0m\n", last_page, num_offset_pages,first_offset_addr, last_offset_addr);
     }
     #endif
     paged_offsets.num_pages = last_page + 1;
     paged_offsets.present_count = present_count;
     paged_offsets.addr_range_slots = last_index + 1;
     
-    offsets_base_addr = first_offset_addr;
+    offsets_base_addr_w = (uint32_t)(first_offset_addr >> 3);
     
     // Clear internal pointers (ownership transferred)
     page_offsets = nullptr;
@@ -348,6 +348,6 @@ void MemOffsets::move_to_paged_offsets(PagedOffsets &paged_offsets, uint32_t &of
     #ifdef MEM_WARNINGS
     printf("MemOffsets::move_to_paged_offsets: Transferred %u pages (%u present, %u slots) from addr 0x%X\n",
            paged_offsets.num_pages, paged_offsets.present_count, 
-           paged_offsets.addr_range_slots, offsets_base_addr);
+           paged_offsets.addr_range_slots, offsets_base_addr_w * 8);
     #endif
 }

@@ -3,6 +3,7 @@ use colored::Colorize;
 use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::RandomSeedArgs;
 use zisk_prover_backend::{
     AsmOptions, BackendProverOpts, ExecuteClient, ExecuteOutput, GuestProgram, ProverClientBuilder,
 };
@@ -51,7 +52,7 @@ pub(crate) fn hints_backend_error(
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Execute the guest program through the same pipeline that prove command uses but without generating a proof
 pub(crate) struct ExecuteCmd {
-    /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
+    /// Path to the guest program (RISC-V ELF or .wasm). If omitted, it is auto-detected from the current project
     #[arg(short = 'e', long)]
     elf: Option<PathBuf>,
 
@@ -67,6 +68,9 @@ pub(crate) struct ExecuteCmd {
     /// Precompiles hints file path for the guest
     #[arg(long, conflicts_with = "inputs")]
     hints: Option<String>,
+
+    #[command(flatten)]
+    random_seed: RandomSeedArgs,
 
     /// Path to the proving key. Defaults to the standard install location.
     /// Ignored under `--standalone`.
@@ -117,7 +121,7 @@ impl ExecuteCmd {
                 Some(elf) => Some(elf),
                 None => {
                     anyhow::bail!(
-                        "No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf."
+                        "No guest program provided, and could not detect one in the current project. Please pass a RISC-V ELF or .wasm file with --elf."
                     );
                 }
             };
@@ -132,7 +136,7 @@ impl ExecuteCmd {
         if rank_zero {
             print_banner();
             print_banner_command("Execute");
-            print_banner_field("Elf", self.elf.as_ref().unwrap().display());
+            print_banner_field("Program", self.elf.as_ref().unwrap().display());
 
             let inputs_str = self.inputs.clone().unwrap_or_else(|| "None".dimmed().to_string());
             print_banner_field("Input", inputs_str);
@@ -203,7 +207,8 @@ impl ExecuteCmd {
 
         let start = std::time::Instant::now();
         prover.setup(&guest_program, with_hints)?;
-        let result: ExecuteOutput = prover.execute(&guest_program, stdin, hints_stream)?;
+        let result: ExecuteOutput =
+            prover.execute(&guest_program, stdin, hints_stream, self.random_seed.provided())?;
         let total_duration = start.elapsed().as_millis() as u64;
 
         if rank_zero {
@@ -234,6 +239,7 @@ impl ExecuteCmd {
                 result.get_executor_time(),
                 total_duration,
                 result.get_execution_steps(),
+                result.get_random_seed(),
                 if self.standalone { "Setup" } else { "Proofman" },
             );
         }

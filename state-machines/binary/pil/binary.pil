@@ -35,6 +35,7 @@ require "binary_table.pil"
     │ SH1ADD        │   0x56   │   0x56   │                │   X   │                    │    X    │
     │ SH2ADD        │   0x57   │   0x57   │                │   X   │                    │    X    │
     │ SH3ADD        │   0x58   │   0x58   │                │   X   │                    │    X    │
+    │ UNAL8         │   0x5a   │   0x5a   │                │   X   │       X            │    X    │
     ┼───────────────┼──────────┼──────────┼────────────────┼───────┼────────────────────┼─────────┼
     (*) This operation is used by the Arith component
 
@@ -59,7 +60,7 @@ require "binary_table.pil"
 
     mode32 is a free witness, so from any b_op this air can also prove b_op + 0x10. Every opcode
     in the first table therefore reserves opcode+0x10 as well, and the ops with no 32-bit variant
-    (LT_ABS_*, BREV8, ANDN, ORN, XNOR, SHxADD) leave their shadows 0x60-0x68 permanently empty:
+    (LT_ABS_*, BREV8, ANDN, ORN, XNOR, SHxADD, UNAL8) leave their shadows 0x60-0x6a permanently empty:
     handing one of those slots to a different operation would let this air satisfy it with the
     wrong semantics
 
@@ -102,8 +103,9 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64,
     col witness bits(8) free_in_c[lanes_x_row][BYTES];         // output C per byte
     col witness bits(4) carry[lanes_x_row][BYTES];             // per-byte carry chain:
                                             //      (cin[i]=carry[i-1], cout[i]=carry[i])
-                                            // 4 bits to hold SH3ADD's {carry + bits shifted out} in [0,8] and
-                                            // LT_ABS_NP's packed {clt + 2*cneg}, all other ops use only bit 0
+                                            // 4 bits to hold SH3ADD's {carry + bits shifted out} in [0,8],
+                                            // LT_ABS_NP's packed {clt + 2*cneg} and UNAL8's state in {1,2};
+                                            // all other ops use only bit 0
 
     // Flags and helpers, one set per lane
     col witness bits(1) mode32[lanes_x_row];          // 1 if operation is in 32-bit mode; 0 if in 64-bit mode

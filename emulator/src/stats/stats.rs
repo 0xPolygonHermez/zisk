@@ -7,21 +7,23 @@
 
 use proofman_fields::Goldilocks;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fs::File,
     io::{BufWriter, IsTerminal, Write},
 };
 use zisk_core::{
     zisk_ops::{OpStats, OpType, ZiskOp},
-    InstContext, ZiskInst, ZiskOperationType, ZiskRom, RAM_ADDR, REGS_IN_MAIN_TOTAL_NUMBER,
-    ROM_ADDR, ROM_ENTRY, ROM_ENTRY_SIZE, ROM_EXIT, ROM_SIZE, STORE_NONE, SYS_ADDR,
+    InstContext, ZiskInst, ZiskOperationType, ZiskRom, BINARY_ADD_COST, RAM_ADDR,
+    REGS_IN_MAIN_TOTAL_NUMBER, ROM_ADDR, ROM_ENTRY, ROM_ENTRY_SIZE, ROM_EXIT, ROM_SIZE, SRC_IMM,
+    STORE_NONE, SYS_ADDR,
 };
-use zisk_core::{FLOAT_LIB_ROM_ADDR, ZISKLIB_ROM_ADDR};
+use zisk_core::{FLOAT_LIB_ROM_ADDR, ZISKLIB_ROM_ADDR, ZISK_COSTS_VERSION};
 use zisk_pil::RomRomTrace;
 use zisk_riscv::RiscVRegisters;
 use zisk_sm_arith::{ArithFrops, ArithLegacyFrops};
 use zisk_sm_binary::{
-    BinaryBasicFrops, BinaryBasicLegacyFrops, BinaryExtensionFrops, BinaryExtensionLegacyFrops,
+    sh3add_shape, BinaryBasicFrops, BinaryBasicLegacyFrops, BinaryExtensionFrops,
+    BinaryExtensionLegacyFrops, Sh3addShape,
 };
 
 use zisk_definitions::{
@@ -34,9 +36,10 @@ use zisk_definitions::{
 use zisk_core::{STORE_IND, UART_ADDR};
 
 use crate::{
-    CallPathProfiler, MemoryOperationsStats, OpsCosts, OpsCount, RamMonitor, RegionsOfInterest,
-    StatsCosts, StatsCoverageReport, StatsReport, BASE_COST, BINARY_ADD_HI_COST, MAIN_COST,
-    MEM_ACCESS_INVALID, MEM_ACCESS_MONITOR, MEM_WRITE_COST, NO_ROI_ID, ROM_READ_COST,
+    CallPathProfiler, DmaLoopStats, MemDualStats, MemoryOperationsStats, OpsCosts, OpsCount,
+    RamMonitor, RegionsOfInterest, StatsCosts, StatsCoverageReport, StatsReport, BASE_COST,
+    BINARY_ADD_HI_COST, MAIN_COST, MEM_ACCESS_INVALID, MEM_ACCESS_MONITOR, MEM_WRITE_COST,
+    NO_ROI_ID, ROM_READ_COST,
 };
 
 #[derive(Debug, Clone)]
@@ -113,17 +116,26 @@ const RETURN_REGS: [u8; 2] = [REG_RA_IDX, REG_T0_IDX];
 // ------------------------------------------------------------------------------------------------
 // Cheap opcode variants: opcodes whose operands meet a condition that makes them cheaper to prove,
 // counted separately so their reduced cost can be accounted for and shown as a per-opcode
-// breakdown. A general mechanism — currently the BinaryAddHi shapes of ADD:
-//   add_hi0 : hi32(a)=hi32(c)=0 and hi32(b)=0            (both operands fit in 32 bits)
-//   add_hif : hi32(a)=hi32(c)=0 and hi32(b)=0xFFFF_FFFF  (a subtraction encoded as an addition)
+// breakdown. A general mechanism — currently the BinaryAddHi shapes of ADD and the shapes in which
+// the packed add airs also prove SH3ADD:
+//   add_hi0    : hi32(a)=hi32(c)=0 and hi32(b)=0            (both operands fit in 32 bits)
+//   add_hif    : hi32(a)=hi32(c)=0 and hi32(b)=0xFFFF_FFFF  (a subtraction encoded as an addition)
+//   sh3add_hi  : proven by BinaryAddHi  (`Sh3addShape::Hi`, see zisk_sm_binary::sh3add_shape)
+//   sh3add_add : proven by BinaryAdd    (`Sh3addShape::Add`)
 // ------------------------------------------------------------------------------------------------
 const HI32_MASK: u64 = 0xFFFF_FFFF_0000_0000;
 const CHEAP_ADD_HI0: usize = 0;
 const CHEAP_ADD_HIF: usize = 1;
-const CHEAP_VARIANT_COUNT: usize = 2;
+const CHEAP_SH3ADD_HI: usize = 2;
+const CHEAP_SH3ADD_ADD: usize = 3;
+const CHEAP_VARIANT_COUNT: usize = 4;
 /// (base opcode, label, reduced cost) for each cheap variant, indexed by `CHEAP_*`.
-const CHEAP_VARIANTS: [(u8, &str, u64); CHEAP_VARIANT_COUNT] =
-    [(ZiskOp::ADD, "add_hi0", BINARY_ADD_HI_COST), (ZiskOp::ADD, "add_hif", BINARY_ADD_HI_COST)];
+const CHEAP_VARIANTS: [(u8, &str, u64); CHEAP_VARIANT_COUNT] = [
+    (ZiskOp::ADD, "add_hi0", BINARY_ADD_HI_COST),
+    (ZiskOp::ADD, "add_hif", BINARY_ADD_HI_COST),
+    (ZiskOp::SH3ADD, "sh3add_hi", BINARY_ADD_HI_COST),
+    (ZiskOp::SH3ADD, "sh3add_add", BINARY_ADD_COST),
+];
 
 // ------------------------------------------------------------------------------------------------
 // Precompile duplicate analysis: detect precompile calls that repeat the same computation (same
@@ -256,6 +268,10 @@ pub struct Stats {
     /// Log every costly unaligned memory access (double 4B/8B, i.e. `MEM_ACCESS_MONITOR`) with its
     /// execution context. Off by default; enabled by `--log-costly-unaligned`.
     log_costly_unaligned: bool,
+    /// Memory dual-lane occupancy analysis; `None` unless `--mem-duals` was given.
+    mem_duals: Option<Box<MemDualStats>>,
+    /// DMA 64-bit loop occupancy analysis; `None` unless `--dma-stats` was given.
+    dma_loops: Option<Box<DmaLoopStats>>,
     /// PC histogram, i.e. number of times each PC was executed
     pc_histogram: HashMap<u64, u64>,
     previous_pc: u64,
@@ -316,7 +332,9 @@ pub struct Stats {
     ram_monitor: RamMonitor,
     profile_tags_map: HashMap<String, usize>,
     profile_tags: Vec<ProfileStats>,
-    profile_stack: Vec<(usize, u64)>,
+    /// Open profile tags, innermost last: `(tag id, reference, measures steps)`. The reference
+    /// is the step count or the total cost at the START, depending on the mark kind.
+    profile_stack: Vec<(usize, u64, bool)>,
     current_variable_cost: u64,
     /// When set, `on_op` prints a per-instruction execution trace (ziskemu's
     /// `--trace-steps`).
@@ -416,6 +434,8 @@ impl Default for Stats {
             mem_full_stats: false,
             collect_offsets: false,
             log_costly_unaligned: false,
+            mem_duals: None,
+            dma_loops: None,
             ram_monitor: RamMonitor::new(),
             profile_tags_map: HashMap::new(),
             profile_tags: Vec::new(),
@@ -545,6 +565,15 @@ impl Stats {
 
     /// Called every time some data is read from memory, if statistics are enabled
     pub fn on_memory_read(&mut self, address: u64, width: u64) {
+        if let Some(duals) = &mut self.mem_duals {
+            duals.on_access(address, width, false, self.current_step);
+        }
+        self.cost_memory_read(address, width);
+    }
+
+    /// The cost-model side of a memory read: everything [`Self::on_memory_read`] does except
+    /// feeding the occupancy analyses.
+    fn cost_memory_read(&mut self, address: u64, width: u64) {
         if self.collect_offsets && width == 1 {
             self.byte_reads[(address as usize) & 0x7] += 1;
         }
@@ -554,6 +583,7 @@ impl Stats {
 
     /// Called every time some data is written to memory, if statistics are enabled
     pub fn on_memory_write(&mut self, address: u64, width: u64, value: u64) {
+        let step = self.current_step;
         if self.collect_offsets && width == 1 {
             let offset = (address as usize) & 0x7;
             if value < 0x100 {
@@ -561,6 +591,9 @@ impl Stats {
             } else {
                 self.byte_dirty_writes[offset] += 1;
             }
+        }
+        if let Some(duals) = &mut self.mem_duals {
+            duals.on_access(address, width, true, step);
         }
         let status = self.costs.memory_write(address, width, value);
         self.handle_mem_status(status, true, address, width, value);
@@ -1190,43 +1223,12 @@ impl Stats {
         self.debug_stats_trace(pc);
 
         if inst.op == ZiskOp::PROFILE {
-            let p_data = inst_ctx.mem.read(inst_ctx.a, 8);
-            let count = inst_ctx.mem.read(inst_ctx.a + 8, 8);
-            let bytes = inst_ctx.mem.read_slice(p_data, count);
-            let tag = unsafe { std::str::from_utf8_unchecked(bytes) };
-            match inst_ctx.b as u8 {
-                PROFILE_START_COST_ID => {
-                    self.start_profile_tag(tag, false);
-                }
-                PROFILE_START_STEPS_ID => {
-                    self.start_profile_tag(tag, true);
-                }
-                PROFILE_REPORT_START_COST_ID => {
-                    let id = self.start_profile_tag(tag, false);
-                    self.profile_tags[id].report_cost = true;
-                }
-                PROFILE_REPORT_START_STEPS_ID => {
-                    let id = self.start_profile_tag(tag, true);
-                    self.profile_tags[id].report_steps = true;
-                }
-                PROFILE_END_COST_ID => {
-                    println!("[{tag}] {}", self.end_profile_tag(tag, false));
-                }
-                PROFILE_END_STEPS_ID => {
-                    println!("[{tag}] {}", self.end_profile_tag(tag, true));
-                }
-                PROFILE_REPORT_END_COST_ID => {
-                    self.end_profile_tag(tag, false);
-                }
-                PROFILE_REPORT_END_STEPS_ID => {
-                    self.end_profile_tag(tag, true);
-                }
-                _ => panic!("Unknown profile mark type: {}", inst_ctx.b),
+            if let Err(error) = self.on_profile_mark(inst_ctx) {
+                eprintln!(
+                    "WARNING: ignoring PROFILE mark at step {} pc 0x{:x}: {error}",
+                    self.costs.steps, inst_ctx.pc
+                );
             }
-            // println!(
-            //     "##PROFILE MARK## ID: {:08X} TYPE: {} [0x{p_data:08X},{count}] '{s}'",
-            //     inst_ctx.a, inst_ctx.b
-            // );
         }
         if self.store_ops
             && (inst.op_type == ZiskOperationType::Arith
@@ -1333,12 +1335,33 @@ impl Stats {
             false
         };
         let non_rd = if let Some(rd) = inst.meta_rd { rd == 0 } else { false };
-        if !non_rd {
+        if let Some(target) = Self::zisklib_jump_target(inst) {
+            // A zkvmcall's tail-jump into its ZisK library routine (see `emit_zkvmcall_jump`),
+            // or a `jump()` between library functions: ra is untouched and the routine's `ret`
+            // returns to the caller, so it is a tail call when it leaves the ROI.
+            self.is_tail_call = self.check_call(target as i64);
+        } else if !non_rd {
             // CALL path
             match inst.op {
                 ZiskOp::AND
                     if inst.store_pc
                         && inst.set_pc
+                        && self.check_call_return(
+                            inst_ctx.c as i64 + inst.jmp_offset1,
+                            pc as i64 + inst.jmp_offset2,
+                            true,
+                        ) =>
+                {
+                    self.is_call = true;
+                    self.call_return_reg = inst.store_offset as u8;
+                    self.call_return_value = store_value;
+                }
+                // A WebAssembly call: `copyb` of the callee address with set_pc, linking through
+                // ra; the wasm transpiler marks it with meta_rd = ra, as for a RISC-V jal
+                ZiskOp::COPYB
+                    if inst.store_pc
+                        && inst.set_pc
+                        && inst.meta_rd == Some(REG_RA_IDX)
                         && self.check_call_return(
                             inst_ctx.c as i64 + inst.jmp_offset1,
                             pc as i64 + inst.jmp_offset2,
@@ -1389,6 +1412,10 @@ impl Stats {
                                 && inst.set_pc
                                 && self.check_call(inst_ctx.c as i64 + inst.jmp_offset2)
                         }
+                        // A WebAssembly return: `copyb` of the return address with set_pc
+                        ZiskOp::COPYB if inst.set_pc => {
+                            !inst.store_pc && self.check_call(inst_ctx.c as i64 + inst.jmp_offset1)
+                        }
                         ZiskOp::COPYB => {
                             !inst.store_pc
                                 && !inst.set_pc
@@ -1423,45 +1450,123 @@ impl Stats {
         self.previous_pc = pc;
     }
 
+    /// Handles a PROFILE mark. `a` points to a `(ptr, len)` pair describing the tag string and `b`
+    /// selects the mark type. All three values come from the guest, so every memory access is
+    /// bounds-checked and the tag is validated as UTF-8 before use. Returns a description of the
+    /// problem instead of panicking when the mark is malformed.
+    fn on_profile_mark(&mut self, inst_ctx: &InstContext) -> Result<(), String> {
+        let mark = u8::try_from(inst_ctx.b)
+            .map_err(|_| format!("unknown profile mark type {}", inst_ctx.b))?;
+        if !matches!(
+            mark,
+            PROFILE_START_COST_ID
+                | PROFILE_START_STEPS_ID
+                | PROFILE_REPORT_START_COST_ID
+                | PROFILE_REPORT_START_STEPS_ID
+                | PROFILE_END_COST_ID
+                | PROFILE_END_STEPS_ID
+                | PROFILE_REPORT_END_COST_ID
+                | PROFILE_REPORT_END_STEPS_ID
+        ) {
+            return Err(format!("unknown profile mark type {mark}"));
+        }
+
+        let descriptor = inst_ctx
+            .mem
+            .try_read_slice(inst_ctx.a, 16)
+            .ok_or_else(|| format!("tag descriptor at 0x{:x} is not readable", inst_ctx.a))?;
+        let p_data = u64::from_le_bytes(descriptor[0..8].try_into().unwrap());
+        let count = u64::from_le_bytes(descriptor[8..16].try_into().unwrap());
+        let bytes = inst_ctx
+            .mem
+            .try_read_slice(p_data, count)
+            .ok_or_else(|| format!("tag bytes [0x{p_data:x}, {count} bytes] are not readable"))?;
+        let tag = std::str::from_utf8(bytes)
+            .map_err(|e| format!("tag at 0x{p_data:x} is not valid UTF-8 ({e})"))?;
+
+        match mark {
+            PROFILE_START_COST_ID => {
+                self.start_profile_tag(tag, false);
+            }
+            PROFILE_START_STEPS_ID => {
+                self.start_profile_tag(tag, true);
+            }
+            PROFILE_REPORT_START_COST_ID => {
+                let id = self.start_profile_tag(tag, false);
+                self.profile_tags[id].report_cost = true;
+            }
+            PROFILE_REPORT_START_STEPS_ID => {
+                let id = self.start_profile_tag(tag, true);
+                self.profile_tags[id].report_steps = true;
+            }
+            PROFILE_END_COST_ID => {
+                println!("[{tag}] {}", self.end_profile_tag(tag, false)?);
+            }
+            PROFILE_END_STEPS_ID => {
+                println!("[{tag}] {}", self.end_profile_tag(tag, true)?);
+            }
+            PROFILE_REPORT_END_COST_ID => {
+                self.end_profile_tag(tag, false)?;
+            }
+            PROFILE_REPORT_END_STEPS_ID => {
+                self.end_profile_tag(tag, true)?;
+            }
+            _ => unreachable!("mark type validated above"),
+        }
+        Ok(())
+    }
+
     fn start_profile_tag(&mut self, tag: &str, use_steps: bool) -> usize {
         let id = self.profile_tags_map.entry(tag.to_string()).or_insert_with(|| {
             self.profile_tags.push(ProfileStats { tag: tag.to_string(), ..Default::default() });
             self.profile_tags.len() - 1
         });
         if use_steps {
-            self.profile_stack.push((*id, self.costs.steps));
+            self.profile_stack.push((*id, self.costs.steps, true));
             self.profile_tags[*id].steps_calls += 1;
         } else {
-            self.profile_stack.push((*id, self.costs.total_cost()));
+            self.profile_stack.push((*id, self.costs.total_cost(), false));
             self.profile_tags[*id].cost_calls += 1;
         }
         *id
     }
-    fn end_profile_tag(&mut self, tag: &str, use_steps: bool) -> u64 {
-        let (rtag, reference) = self.profile_stack.pop().unwrap();
-        if self.profile_tags.len() > rtag {
-            if self.profile_tags[rtag].tag != tag {
-                panic!(
-                    "Profile tag mismatch: expected '{}', got '{}'",
-                    self.profile_tags[rtag].tag, tag
-                );
-            }
-            if use_steps {
-                let delta = self.costs.steps - reference;
-                self.profile_tags[rtag].total_steps += delta;
-                self.profile_tags[rtag].max_steps = self.profile_tags[rtag].max_steps.max(delta);
-                self.profile_tags[rtag].min_steps = self.profile_tags[rtag].min_steps.min(delta);
-                delta
-            } else {
-                let delta = self.costs.total_cost() - reference;
-                self.profile_tags[rtag].total_cost += delta;
-                self.profile_tags[rtag].max_cost = self.profile_tags[rtag].max_cost.max(delta);
-                self.profile_tags[rtag].min_cost = self.profile_tags[rtag].min_cost.min(delta);
-                delta
-            }
-        } else {
-            panic!("Profile tag index {} not found in profile_tags", rtag);
+
+    /// Closes the innermost open profile tag, which must be `tag` opened with the same kind of
+    /// mark (steps or cost), and returns the steps or cost spent inside it. An END without a
+    /// matching START (empty stack, different tag or different kind) is reported as an error and
+    /// leaves the stack untouched.
+    fn end_profile_tag(&mut self, tag: &str, use_steps: bool) -> Result<u64, String> {
+        let Some(&(rtag, reference, open_use_steps)) = self.profile_stack.last() else {
+            return Err(format!("PROFILE_END '{tag}' without a matching PROFILE_START"));
+        };
+        let open_tag = &self.profile_tags[rtag].tag;
+        if open_tag != tag {
+            return Err(format!("profile tag mismatch: expected '{open_tag}', got '{tag}'"));
         }
+        if open_use_steps != use_steps {
+            let kind = |steps: bool| if steps { "steps" } else { "cost" };
+            return Err(format!(
+                "profile tag '{tag}' was started as a {} mark but ended as a {} mark",
+                kind(open_use_steps),
+                kind(use_steps)
+            ));
+        }
+        self.profile_stack.pop();
+        let stats = &mut self.profile_tags[rtag];
+        let delta = if use_steps {
+            let delta = self.costs.steps - reference;
+            stats.total_steps += delta;
+            stats.max_steps = stats.max_steps.max(delta);
+            stats.min_steps = stats.min_steps.min(delta);
+            delta
+        } else {
+            let delta = self.costs.total_cost() - reference;
+            stats.total_cost += delta;
+            stats.max_cost = stats.max_cost.max(delta);
+            stats.min_cost = stats.min_cost.min(delta);
+            delta
+        };
+        Ok(delta)
     }
     pub fn set_store_ops(&mut self, store: bool) {
         self.store_ops = store;
@@ -2560,6 +2665,7 @@ impl Stats {
         };
 
         let mut s = String::new();
+        s += &format!("COSTS_VERSION;{ZISK_COSTS_VERSION}\n");
         s += &format!("STEPS;{steps}\n\n");
 
         s += "COST;COST DISTRIBUTION;COST;%\n";
@@ -2681,7 +2787,7 @@ impl Stats {
         report.use_thousands_sep = self.use_thousands_sep;
         report.sdk_width = self.sdk_width;
 
-        report.sdk_report_header("REPORT SUMMARY");
+        report.sdk_report_header(&format!("REPORT SUMMARY (cost version {ZISK_COSTS_VERSION})"));
         report.sdk_report_summary_line("STEPS", self.costs.steps);
         report.sdk_report_summary_line("COST", total_cost);
         report.sdk_report_summary_data_line(
@@ -2852,7 +2958,7 @@ impl Stats {
 
         report.set_total_cost(total_cost);
         report.set_steps(total_steps);
-        report.title_cost("REPORT", "");
+        report.title_cost(&format!("REPORT (cost version {ZISK_COSTS_VERSION})"), "");
         report.add_cost("STEPS", total_steps);
 
         report.title_cost_perc("COST DISTRIBUTION", "COST");
@@ -2944,6 +3050,14 @@ impl Stats {
 
         if self.duplicates {
             self.report_duplicates(&mut report, total_cost);
+        }
+
+        if let Some(duals) = &self.mem_duals {
+            duals.report(&mut report);
+        }
+
+        if let Some(dma_loops) = &self.dma_loops {
+            dma_loops.report(&mut report);
         }
 
         if self.reg_step_distance {
@@ -3285,6 +3399,154 @@ impl Stats {
         self.rois.push(roi);
         self.rois_by_pc.insert(from_pc, index);
     }
+
+    /// Adds a ROI for each function of the ZisK library merged into the ROM, which has no
+    /// ELF symbols. The library labels (`ZiskLibrary::symbols`) don't tell functions from
+    /// local labels, so a function is an address the code enters as one: the target of a
+    /// `call`, or of a zkvmcall's jump from the guest (see `emit_zkvmcall_jump`). Its extent
+    /// is the code it reaches without calls (see `zisklib_reach`); entries whose extents
+    /// overlap are one ROI, so a subroutine placed inside a function's body (e.g. `zme_ld32`
+    /// in `ziskasm_zkvm_modexp`) stays part of it, and so do functions that share code
+    /// (e.g. `zbn_g1_encode` in bn254). Each ROI spans up to the next one and is named after
+    /// the labels in `symbols` (the library's, `ZiskLibrary::symbols`) of its first entry and
+    /// its other zkvmcall entries, joined by `|`. Returns the number of ROIs added.
+    pub fn add_zisklib_rois(&mut self, rom: &ZiskRom, symbols: &HashMap<String, u64>) -> usize {
+        let in_lib = |addr: u64| (ZISKLIB_ROM_ADDR..FLOAT_LIB_ROM_ADDR).contains(&addr);
+        let mut entries = BTreeSet::new();
+        let mut zkvmcall_entries = HashSet::new();
+        for (&addr, zib) in &rom.insts {
+            let inst = &zib.i;
+            let (target, zkvmcall) = if inst.op == ZiskOp::FLAG && inst.store_pc && !inst.set_pc {
+                // call: flag is 1, so it jumps to jmp_offset1
+                ((addr as i64 + inst.jmp_offset1) as u64, false)
+            } else if let Some(target) = Self::zisklib_jump_target(inst).filter(|_| !in_lib(addr)) {
+                // static jump into the library from outside it: a zkvmcall
+                (target, true)
+            } else {
+                continue;
+            };
+            if in_lib(target) && rom.insts.contains_key(&target) {
+                entries.insert(target);
+                if zkvmcall {
+                    zkvmcall_entries.insert(target);
+                }
+            }
+        }
+        if entries.is_empty() {
+            return 0;
+        }
+
+        // Extent [lo, hi] of each entry, merged with any it overlaps: (lo, hi, entries).
+        let mut extents: Vec<(u64, u64, u64)> = entries
+            .iter()
+            .map(|&entry| {
+                let (lo, hi) = Self::zisklib_reach(rom, entry, &entries);
+                (lo, hi, entry)
+            })
+            .collect();
+        extents.sort();
+        let mut groups: Vec<(u64, u64, Vec<u64>)> = Vec::new();
+        for (lo, hi, entry) in extents {
+            match groups.last_mut() {
+                Some(group) if lo <= group.1 => {
+                    group.1 = group.1.max(hi);
+                    group.2.push(entry);
+                }
+                _ => groups.push((lo, hi, vec![entry])),
+            }
+        }
+
+        // Label names by address; with several labels at one entry, take the shortest.
+        let mut names: HashMap<u64, &String> = HashMap::new();
+        for (name, addr) in symbols {
+            if entries.contains(addr) {
+                let best = names.entry(*addr).or_insert(name);
+                if (name.len(), name) < (best.len(), *best) {
+                    *best = name;
+                }
+            }
+        }
+
+        let last_pc = *rom.insts.range(ZISKLIB_ROM_ADDR..FLOAT_LIB_ROM_ADDR).next_back().unwrap().0;
+        for (i, (lo, _, group_entries)) in groups.iter().enumerate() {
+            let to_pc = groups.get(i + 1).map_or(last_pc + 3, |next| next.0 - 1);
+            let mut group_entries = group_entries.clone();
+            group_entries.sort();
+            let name = group_entries
+                .iter()
+                .enumerate()
+                .filter(|(k, entry)| *k == 0 || zkvmcall_entries.contains(*entry))
+                .map(|(_, entry)| {
+                    names
+                        .get(entry)
+                        .map_or_else(|| format!("zisklib@0x{entry:08x}"), |n| n.to_string())
+                })
+                .collect::<Vec<_>>()
+                .join("|");
+            self.add_roi(*lo as u32, to_pc as u32, &name);
+        }
+        groups.len()
+    }
+
+    /// Target of a static jump (`copyb` imm + `set_pc`): the next pc is c + jmp_offset1.
+    fn static_jump_target(inst: &ZiskInst) -> u64 {
+        ((inst.b_use_sp_imm1 << 32) | (inst.b_offset_imm0 & 0xffff_ffff))
+            .wrapping_add_signed(inst.jmp_offset1)
+    }
+
+    /// The target of a static jump (`copyb` imm + `set_pc`, no store) into the ZisK library:
+    /// a zkvmcall's jump (see `emit_zkvmcall_jump`) or a library `jump()`. The BIOS's own
+    /// static jumps (to `ROM_EXIT`, or into the float library) are not calls, so they are left
+    /// out.
+    fn zisklib_jump_target(inst: &ZiskInst) -> Option<u64> {
+        (inst.op == ZiskOp::COPYB
+            && inst.set_pc
+            && !inst.store_pc
+            && inst.store == STORE_NONE
+            && inst.b_src == SRC_IMM)
+            .then(|| Self::static_jump_target(inst))
+            .filter(|target| (ZISKLIB_ROM_ADDR..FLOAT_LIB_ROM_ADDR).contains(target))
+    }
+
+    /// The lowest and highest address of the library code reachable from `entry` within
+    /// its function: branches and static jumps are followed, except a jump to another
+    /// function (a tail call), a `call` continues at its return address, and a `ret` (or
+    /// any other dynamic jump) stops.
+    fn zisklib_reach(rom: &ZiskRom, entry: u64, entries: &BTreeSet<u64>) -> (u64, u64) {
+        let (mut lo, mut hi) = (entry, entry);
+        let mut visited = HashSet::new();
+        let mut pending = vec![entry];
+        while let Some(addr) = pending.pop() {
+            let Some(zib) = rom.insts.get(&addr) else {
+                continue;
+            };
+            let inst = &zib.i;
+            // An `end` (e.g. a panic block shared by several functions) never returns, so
+            // it does not extend the function.
+            if inst.end || !visited.insert(addr) {
+                continue;
+            }
+            (lo, hi) = (lo.min(addr), hi.max(addr));
+            let rel = |offset: i64| addr.wrapping_add_signed(offset);
+            if inst.set_pc {
+                if inst.b_src == SRC_IMM && !inst.store_pc {
+                    let target = Self::static_jump_target(inst);
+                    if !entries.contains(&target) {
+                        pending.push(target);
+                    }
+                }
+            } else if inst.op == ZiskOp::FLAG && inst.store_pc {
+                pending.push(rel(inst.jmp_offset2));
+            } else {
+                pending.push(rel(inst.jmp_offset2));
+                // A precompile's jmp_offset1 is a parameter: its flag is always 0.
+                if !inst.is_precompiled {
+                    pending.push(rel(inst.jmp_offset1));
+                }
+            }
+        }
+        (lo, hi)
+    }
     pub fn update_roi_internal_pc_range(
         &mut self,
         roi_index: usize,
@@ -3448,6 +3710,26 @@ impl Stats {
     pub fn set_sdk_top_functions(&mut self, value: bool) {
         self.sdk_top_functions = value;
     }
+    /// Enables the DMA 64-bit loop occupancy analysis (`--dma-stats`) for the given candidate row
+    /// widths (`--dma-ops-x-row`).
+    pub fn set_dma_loops(&mut self, ops_x_row: &[u32]) {
+        self.dma_loops = Some(Box::new(DmaLoopStats::new(ops_x_row)));
+    }
+
+    /// Enables the memory dual-lane occupancy analysis (`--mem-duals`) for `duals` duals per lane and
+    /// a reset period of 2^`reset_bits` steps.
+    pub fn set_mem_duals(&mut self, duals: u32, reset_bits: u32) {
+        self.mem_duals = Some(Box::new(MemDualStats::new(duals, reset_bits)));
+    }
+
+    /// Feeds the memory dual-lane analysis, when enabled, with the initialization writes of the
+    /// data `sections`. Call it before execution starts.
+    pub fn seed_mem_dual_init(&mut self, sections: &dyn zisk_core::MemDataSection) {
+        if let Some(duals) = &mut self.mem_duals {
+            duals.seed_init_writes(sections);
+        }
+    }
+
     pub fn set_mem_stats(&mut self, value: bool) {
         self.mem_stats = value;
     }
@@ -3508,9 +3790,17 @@ impl Stats {
 
     /// Classifies an executed operation into a cheap variant (index into `CHEAP_VARIANTS`), or
     /// `None` if it is a regular operation. Currently the BinaryAddHi shapes of ADD:
-    /// hi32(a)=hi32(c)=0 with hi32(b)=0 (add_hi0) or hi32(b)=0xFFFF_FFFF (add_hif).
+    /// hi32(a)=hi32(c)=0 with hi32(b)=0 (add_hi0) or hi32(b)=0xFFFF_FFFF (add_hif); and SH3ADD as
+    /// the binary state machine routes it, by the same `sh3add_shape` its planner uses.
     #[inline(always)]
     fn cheap_variant(op: u8, a: u64, b: u64, c: u64) -> Option<usize> {
+        if op == ZiskOp::SH3ADD {
+            return match sh3add_shape(a, b) {
+                Sh3addShape::Hi => Some(CHEAP_SH3ADD_HI),
+                Sh3addShape::Add => Some(CHEAP_SH3ADD_ADD),
+                Sh3addShape::Full => None,
+            };
+        }
         if op == ZiskOp::ADD && a & HI32_MASK == 0 && c & HI32_MASK == 0 {
             if b & HI32_MASK == 0 {
                 return Some(CHEAP_ADD_HI0);
@@ -3532,9 +3822,10 @@ impl Stats {
             // In-place operands read directly from `ctx.b`.
             ZiskOp::Keccak => &[Direct { words: 25 }][..],
             ZiskOp::Poseidon1 | ZiskOp::Poseidon2 => &[Direct { words: 16 }][..],
-            ZiskOp::Secp256k1Dbl | ZiskOp::Secp256r1Dbl | ZiskOp::Bn254CurveDbl => {
-                &[Direct { words: 8 }][..]
-            }
+            ZiskOp::Secp256k1Dbl
+            | ZiskOp::Secp256r1Dbl
+            | ZiskOp::Bn254CurveDbl
+            | ZiskOp::Poseidon2KoalaBear => &[Direct { words: 8 }][..],
             ZiskOp::Bls12_381CurveDbl => &[Direct { words: 12 }][..],
             // Indirected operands: `ctx.b` holds pointers to the operand buffers.
             ZiskOp::Sha256 => {
@@ -3567,6 +3858,7 @@ impl Stats {
             ZiskOp::Secp256k1Add
             | ZiskOp::Secp256r1Add
             | ZiskOp::BabyJubJubAdd
+            | ZiskOp::Ed25519Add
             | ZiskOp::Bn254CurveAdd
             | ZiskOp::Bn254ComplexAdd
             | ZiskOp::Bn254ComplexSub
@@ -3674,6 +3966,9 @@ impl Stats {
         }
     }
     pub fn on_finish(&mut self, inst_ctx: &InstContext) {
+        if let Some(duals) = &mut self.mem_duals {
+            duals.flush();
+        }
         self.ram_monitor.on_finish(inst_ctx);
         let ram_usage = self.ram_monitor.ram_used;
         if let Some(profiler) = &mut self.profiler {
@@ -3751,8 +4046,25 @@ impl OpStats for Stats {
             self.on_memory_write(addr + 8 * index as u64, 8, 0);
         }
     }
+    fn mem_cost_read(&mut self, addr: u64, count: usize) {
+        for index in 0..count {
+            self.cost_memory_read(addr + 8 * index as u64, 8);
+        }
+    }
+    fn mem_proof_read(&mut self, addr: u64, count: usize) {
+        if let Some(duals) = &mut self.mem_duals {
+            for index in 0..count {
+                duals.on_access(addr + 8 * index as u64, 8, false, self.current_step);
+            }
+        }
+    }
     fn set_variable_cost(&mut self, cost: u64) {
         self.current_variable_cost = cost;
+    }
+    fn dma_loop(&mut self, kind: u8, loop_count: usize, aligned: bool) {
+        if let Some(dma_loops) = &mut self.dma_loops {
+            dma_loops.on_loop(kind, loop_count, aligned);
+        }
     }
 }
 
@@ -4263,6 +4575,61 @@ mod tests {
     }
 
     #[test]
+    fn profile_end_without_start_is_an_error_and_keeps_the_stack() {
+        let mut stats = Stats::default();
+        assert!(stats.end_profile_tag("orphan", true).is_err());
+        assert!(stats.end_profile_tag("orphan", false).is_err());
+        assert!(stats.profile_stack.is_empty());
+    }
+
+    #[test]
+    fn profile_end_with_a_different_tag_is_an_error_and_keeps_the_open_tag() {
+        let mut stats = Stats::default();
+        stats.start_profile_tag("outer", true);
+        assert!(stats.end_profile_tag("inner", true).is_err());
+        assert_eq!(stats.profile_stack.len(), 1, "the mismatched END must not pop 'outer'");
+        stats.costs.steps += 10;
+        assert_eq!(stats.end_profile_tag("outer", true), Ok(10));
+        assert!(stats.profile_stack.is_empty());
+        assert_eq!(stats.profile_tags[0].total_steps, 10);
+        assert_eq!(stats.profile_tags[0].steps_calls, 1);
+    }
+
+    #[test]
+    fn profile_end_of_a_different_kind_is_an_error_and_keeps_the_open_tag() {
+        let mut stats = Stats::default();
+        // A cost reference is far larger than the step count, so accounting a cost START as a
+        // steps END would underflow; it must be rejected instead.
+        stats.start_profile_tag("tag", false);
+        stats.costs.steps += 1;
+        assert!(stats.end_profile_tag("tag", true).is_err());
+        assert_eq!(stats.profile_stack.len(), 1, "the mismatched END must not pop 'tag'");
+        assert!(stats.end_profile_tag("tag", false).is_ok());
+        assert!(stats.profile_stack.is_empty());
+        // And the other way round
+        stats.start_profile_tag("tag", true);
+        assert!(stats.end_profile_tag("tag", false).is_err());
+        assert_eq!(stats.profile_stack.len(), 1);
+        assert_eq!(stats.end_profile_tag("tag", true), Ok(0));
+    }
+
+    #[test]
+    fn nested_profile_tags_account_steps_to_the_innermost_open_tag() {
+        let mut stats = Stats::default();
+        stats.start_profile_tag("outer", true);
+        stats.costs.steps += 3;
+        stats.start_profile_tag("inner", true);
+        stats.costs.steps += 5;
+        assert_eq!(stats.end_profile_tag("inner", true), Ok(5));
+        stats.costs.steps += 2;
+        assert_eq!(stats.end_profile_tag("outer", true), Ok(10));
+        let inner = stats.profile_tags_map["inner"];
+        let outer = stats.profile_tags_map["outer"];
+        assert_eq!(stats.profile_tags[inner].total_steps, 5);
+        assert_eq!(stats.profile_tags[outer].total_steps, 10);
+    }
+
+    #[test]
     fn flushed_distance_matches_reference() {
         for period in [1u64, 2, 3, 4, 8, 16] {
             for last in 0..40u64 {
@@ -4296,5 +4663,113 @@ mod tests {
         // A flush landing exactly on an access does not create a zero-length gap of its own.
         assert_eq!(Stats::flushed_distance(64, 100, 64), 36);
         assert_eq!(Stats::flushed_distance(50, 128, 64), 64);
+    }
+
+    /// A static jump (`copyb` imm + `set_pc`, no store) at `pc` to `target`, the shape of a
+    /// zkvmcall jump (`emit_zkvmcall_jump`), a library `jump()` and the BIOS's own jumps.
+    fn static_jump(rom: &mut ZiskRom, pc: u64, target: u64) {
+        let mut zib = zisk_core::ZiskInstBuilder::new(pc);
+        zib.src_a("imm", 0, false);
+        zib.src_b("imm", target, false);
+        zib.op("copyb").unwrap();
+        zib.set_pc();
+        zib.j(0, 4);
+        zib.build(rom);
+    }
+
+    #[test]
+    fn zisklib_jump_target_only_takes_jumps_into_the_library() {
+        let mut rom = ZiskRom::default();
+        static_jump(&mut rom, ROM_ADDR, ZISKLIB_ROM_ADDR + 8); // a zkvmcall
+        static_jump(&mut rom, ROM_ENTRY, ROM_EXIT); // BIOS: jump to end
+        static_jump(&mut rom, ROM_ENTRY + 4, FLOAT_LIB_ROM_ADDR); // BIOS: into the float library
+        static_jump(&mut rom, ROM_ADDR + 4, ROM_ADDR + 64); // a jump inside the program
+        let target = |pc: u64| Stats::zisklib_jump_target(&rom.insts[&pc].i);
+
+        assert_eq!(target(ROM_ADDR), Some(ZISKLIB_ROM_ADDR + 8));
+        assert_eq!(target(ROM_ENTRY), None);
+        assert_eq!(target(ROM_ENTRY + 4), None);
+        assert_eq!(target(ROM_ADDR + 4), None);
+    }
+
+    #[test]
+    fn zisklib_rois_follow_functions_not_labels() {
+        // lib_a..lib_d are zkvmcall targets, lib_helper and lib_a_sub are call targets:
+        //  - lib_a_sub sits inside lib_a's body, which carries on after it: one ROI.
+        //  - lib_a and lib_b both branch to the shared panic `end`: it doesn't merge them.
+        //  - lib_c and lib_d share lib_cd_tail: one ROI, named after both entries.
+        let src = "\
+lib_a:
+\tcall lib_helper
+\teq(r10, 0), j(lib_fail)
+\tcall lib_a_sub
+\tjump(lib_a_cont)
+lib_a_sub:
+\tret
+lib_a_cont:
+\tret
+lib_b:
+\teq(r10, 0), j(lib_fail)
+\tret
+lib_c:
+\teq(r10, 0), j(lib_cd_tail)
+\tret
+lib_cd_tail:
+\tcopyb(0, 1) -> r10
+\tret
+lib_d:
+\tjump(lib_cd_tail)
+lib_helper:
+\tret
+lib_fail:
+\tcopyb(0, 0) -> r10, end
+";
+        let program = ziskasm::parser::parse_program(src, "lib").expect("parse");
+        let library =
+            ziskasm::assemble_library(&program, ZISKLIB_ROM_ADDR, zisk_core::ZISKLIB_RAM_ADDR)
+                .expect("assemble");
+        let sym = |name: &str| library.symbols[name];
+
+        let mut rom = ZiskRom { insts: library.insts.clone(), ..Default::default() };
+        for (k, name) in ["lib_a", "lib_b", "lib_c", "lib_d"].iter().enumerate() {
+            static_jump(&mut rom, ROM_ADDR + 4 * k as u64, sym(name));
+        }
+        static_jump(&mut rom, ROM_ENTRY, ROM_EXIT); // not an entry
+
+        let mut stats = Stats::default();
+        let first = stats.rois.len();
+        assert_eq!(stats.add_zisklib_rois(&rom, &library.symbols), 4);
+        let rois: Vec<(u64, u64, &str)> = stats.rois[first..]
+            .iter()
+            .map(|roi| (roi.from_pc as u64, roi.to_pc as u64, roi.name.as_str()))
+            .collect();
+        assert_eq!(
+            rois,
+            [
+                (sym("lib_a"), sym("lib_b") - 1, "lib_a"),
+                (sym("lib_b"), sym("lib_c") - 1, "lib_b"),
+                (sym("lib_c"), sym("lib_helper") - 1, "lib_c|lib_d"),
+                (sym("lib_helper"), sym("lib_fail") + 3, "lib_helper"),
+            ]
+        );
+    }
+
+    /// SH3ADD is charged by the air that proves it: BinaryAddHi or BinaryAdd when its operands
+    /// allow, Binary otherwise. `c` plays no part in the classification of SH3ADD.
+    #[test]
+    fn sh3add_cheap_variant_follows_the_binary_routing() {
+        let sh3add = |a: u64, b: u64| Stats::cheap_variant(ZiskOp::SH3ADD, a, b, 0);
+        // A table index and a 32-bit base: the whole result fits in the low limb.
+        assert_eq!(sh3add(5, 0xA000_0000), Some(CHEAP_SH3ADD_HI));
+        // The low limb carries once into a clean b: BinaryAdd, not BinaryAddHi.
+        assert_eq!(sh3add(0x1FFF_FFFF, 0xFFFF_FFFF), Some(CHEAP_SH3ADD_ADD));
+        // A shifted operand above 32 bits only fits in Binary.
+        assert_eq!(sh3add(0x1_0000_0000, 0), None);
+        assert_eq!(CHEAP_VARIANTS[CHEAP_SH3ADD_HI].2, BINARY_ADD_HI_COST);
+        assert_eq!(CHEAP_VARIANTS[CHEAP_SH3ADD_ADD].2, BINARY_ADD_COST);
+        // Every variant is cheaper than the opcode's own cost, or it would not be a saving.
+        for (op, label, cost) in CHEAP_VARIANTS {
+            assert!(cost < ZiskOp::try_from_code(op).unwrap().cost(), "{label}");
+        }
     }
 }

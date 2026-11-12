@@ -82,4 +82,21 @@ mod tests {
         ])
         .is_err());
     }
+
+    #[test]
+    fn dev_cli_snark_flags_match_the_user_cli() {
+        let parses = |args: &[&str]| {
+            ZiskCliDevCmd::try_parse_from([&["cargo-zisk-dev"], args].concat()).is_ok()
+        };
+        assert!(parses(&["prove", "--pilfflonk"]));
+        assert!(parses(&["prove", "--plonk", "--preload"]));
+        assert!(!parses(&["prove", "--plonk", "--pilfflonk"]));
+        assert!(!parses(&["prove", "--pilfflonk", "--minimal"]));
+        assert!(!parses(&["prove", "--preload"]));
+        assert!(parses(&["wrap-proof", "-p", "p.bin", "--pilfflonk"]));
+        assert!(!parses(&["wrap-proof", "-p", "p.bin", "--plonk", "--minimal"]));
+        assert!(parses(&["check-setup", "--snark", "--proving-key-snark", "k"]));
+        assert!(parses(&["prove", "--proving-key-plonk", "k"]));
+        assert!(parses(&["check-setup", "--plonk"]));
+    }
 }

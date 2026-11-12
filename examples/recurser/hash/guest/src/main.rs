@@ -1,4 +1,4 @@
-//! Leaf guest: reads 12 private u64s, commits only their Poseidon1 digest — so
+//! Leaf guest: reads 12 private u64s, commits only their BLAKE3 digest — so
 //! the proof attests knowledge of a preimage without revealing it.
 #![no_main]
 ziskos::entrypoint!(main);

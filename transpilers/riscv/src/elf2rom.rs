@@ -12,7 +12,7 @@ use zisk_core::rom_layout::{
     add_end_and_lib, add_entry_exit_jmp, normalize_rw_data_sections, InlineBody,
 };
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
-use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR};
+use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_RAM_ADDR_MAX, FLOAT_LIB_ROM_ADDR};
 
 /// Executes the ROM transpilation process: from a RISC-V ELF to Zisk.
 ///
@@ -62,6 +62,9 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
             zkvmcall_ids.extend(zkvmcall_ids_in(section.addr, &section.data)?);
         }
     }
+    // A zkvmcall with no library routine (write_log) is emitted by the transpiler
+    // itself (see add_zisk_code), so it does not need the library
+    zkvmcall_ids.retain(|id| !zisk_definitions::zkvmcall_by_id(*id).unwrap().target.is_empty());
     // zkvmcall ID → library-entry map, filled in below once the library is assembled.
     let mut zkvmcalls: HashMap<u16, u64> = HashMap::new();
     // zkvmcall ID → routine body, for every used inline zkvmcall.
@@ -111,6 +114,8 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // Create an empty ZiskRom instance
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
+    rom.zkvmcalls = zkvmcall_ids.clone();
+
     // Add the end instruction, jumping over it
     add_end_and_lib(&mut rom);
 
@@ -155,10 +160,14 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
             } else if section.addr >= RAM_ADDR
                 && (section.addr + section.data.len() as u64) <= (RAM_ADDR + RAM_SIZE)
             {
-                // If this is a program section, it should not overlap with the float library region
-                // If this is a float library section, it should not overlap with the program region
+                // A program section must not overlap the float library RAM region, and a float
+                // library section must stay inside it (the region sits between the output data
+                // and the program data, see core/src/mem.rs)
+                let end = section.addr + section.data.len() as u64;
+                let overlaps_float_ram =
+                    section.addr <= FLOAT_LIB_RAM_ADDR_MAX && end > FLOAT_LIB_RAM_ADDR;
                 if i == elf_index {
-                    if section.addr + section.data.len() as u64 >= FLOAT_LIB_RAM_ADDR {
+                    if overlaps_float_ram {
                         return Err(format!(
                             "RAM program data section at address 0x{:x} with size {} overlaps with the ZisK float library region",
                             section.addr,
@@ -166,9 +175,9 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
                         )
                         .into());
                     }
-                } else if section.addr < FLOAT_LIB_RAM_ADDR {
+                } else if section.addr < FLOAT_LIB_RAM_ADDR || end > FLOAT_LIB_RAM_ADDR_MAX + 1 {
                     return Err(format!(
-                        "RAM float library data section at address 0x{:x} with size {} overlaps with the ZisK program region",
+                        "RAM float library data section at address 0x{:x} with size {} is outside the ZisK float library region",
                         section.addr,
                         section.data.len()
                     )
@@ -280,8 +289,11 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 }
 
 /// Merges the assembled ZisK library into the guest ROM: its instructions and data
-/// live in the reserved region, disjoint from the guest.
-fn merge_library(rom: &mut ZiskRom, library: ziskasm::ZiskLibrary) -> Result<(), Box<dyn Error>> {
+/// live in the reserved region, disjoint from the guest. Shared with the wasm transpiler.
+pub fn merge_library(
+    rom: &mut ZiskRom,
+    library: ziskasm::ZiskLibrary,
+) -> Result<(), Box<dyn Error>> {
     // The guest linker script reserves ZISKLIB_RAM but not ZISKLIB_ROM, and unlike
     // the float-library region above nothing has fenced these off yet. `extend`
     // would silently overwrite a colliding guest instruction (BTreeMap) or leave
@@ -384,11 +396,12 @@ mod zkvmcall_tests {
         }
     }
 
-    /// Every zkvmcall target exists in the assembled ZisK library.
+    /// Every zkvmcall target exists in the assembled ZisK library (but for the ones the
+    /// transpiler emits itself, which have none).
     #[test]
     fn zkvmcall_targets_exist_in_library() {
         let library = ziskasm::assemble_zisk_library().unwrap();
-        for call in ZKVMCALLS {
+        for call in ZKVMCALLS.iter().filter(|c| !c.target.is_empty()) {
             assert!(
                 library.symbols.contains_key(call.target),
                 "{} targets missing library routine {}",

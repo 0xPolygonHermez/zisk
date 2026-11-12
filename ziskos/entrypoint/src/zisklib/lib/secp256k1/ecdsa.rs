@@ -175,6 +175,38 @@ pub fn ecdsa_recover_secp256k1(
 
 // ==================== C FFI Functions ====================
 
+/// ECDSA signature verification with little-endian u64 limb inputs.
+/// Returns 1 if the signature is valid, 0 otherwise. All inputs are validated by
+/// [ecdsa_verify_secp256k1] (r, s in [1, n−1]; pk canonical, on the curve and not the identity).
+///
+/// # Safety
+/// - `pk_ptr` must point to a valid `[u64; 8]` array (public key x ‖ y, little-endian limbs)
+/// - `z_ptr` must point to a valid `[u64; 4]` array (message hash, little-endian limbs)
+/// - `r_ptr` must point to a valid `[u64; 4]` array (signature r, little-endian limbs)
+/// - `s_ptr` must point to a valid `[u64; 4]` array (signature s, little-endian limbs)
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_ecdsa_verify_secp256k1_c")]
+pub unsafe extern "C" fn ecdsa_verify_secp256k1_c(
+    pk_ptr: *const u64,
+    z_ptr: *const u64,
+    r_ptr: *const u64,
+    s_ptr: *const u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let pk = &*(pk_ptr as *const [u64; 8]);
+    let z = &*(z_ptr as *const [u64; 4]);
+    let r = &*(r_ptr as *const [u64; 4]);
+    let s = &*(s_ptr as *const [u64; 4]);
+    ecdsa_verify_secp256k1(
+        pk,
+        z,
+        r,
+        s,
+        #[cfg(feature = "hints")]
+        hints,
+    ) as u8
+}
+
 /// ECDSA signature verification with big-endian byte inputs.
 ///
 /// # Safety

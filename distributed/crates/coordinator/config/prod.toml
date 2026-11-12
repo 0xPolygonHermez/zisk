@@ -18,3 +18,7 @@ max_total_workers = 5000        # Maximum total registered workers
 phase1_timeout_seconds = 600    # 10 minutes for phase 1
 phase2_timeout_seconds = 1200   # 20 minutes for phase 2
 reconnect_grace_period_ms = 500 # Grace period before failing a disconnected computing worker's job
+# Accept random seeds provided by clients (replays/CI); keep off for untrusted clients
+allow_client_random_seed = false
+# Accept caller-defined key/value metadata on job requests
+allow_job_metadata = true

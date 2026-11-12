@@ -144,7 +144,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     // If is_first_segment means that segment must be 0
     is_first_segment * segment_id === 0;
 
-    col witness bits(29) addr[lanes_x_row];
+    col witness bits(ADDR_W_BITS) addr[lanes_x_row];
     col witness bits(MEM_STEP_BITS) step[lanes_x_row];
     col witness bits(1) addr_changes[lanes_x_row];
 

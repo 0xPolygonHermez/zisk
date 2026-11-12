@@ -12,15 +12,26 @@ pub(crate) struct VerifyCmd {
     #[clap(short = 'p', long)]
     proof: String,
 
-    /// Optional trusted PLONK circuit key (`final.verkey.json`); if omitted, the
-    /// proof's embedded key is used.
+    /// Trusted PLONK circuit key (`final.verkey.json`), required for a PLONK proof: the release
+    /// publishes none, and the key the proof carries is never used.
     #[clap(short = 'k', long = "plonk-vk")]
     plonk_vk: Option<String>,
 
-    /// Optional trusted recursion setup key (`vadcop_final.verkey.json`, a JSON
-    /// array of 4 u64 limbs); if omitted, the proof's embedded key is used.
-    #[clap(long = "setup-vk")]
+    /// Trusted pilfflonk key (`pilfflonk.vkey.json`). If omitted, the key the proof carries is
+    /// used only if it is this release's for the proof's family.
+    #[clap(long = "pilfflonk-vk")]
+    pilfflonk_vk: Option<String>,
+
+    /// Trusted recursion key (a `verkey.json`: JSON array of 4 u64 limbs) of the recurser
+    /// that produced an aggregated proof. If omitted, a plain proof verifies under this
+    /// release's key for its family and stage.
+    #[clap(long = "setup-vk", conflicts_with = "leaf_setup_vk")]
     setup_vk: Option<String>,
+
+    /// Leaf key of a non-release setup: its `vadcop_final.verkey.json`, or
+    /// `vadcop_final_compressed.verkey.json` for a compressed proof.
+    #[clap(long = "leaf-setup-vk")]
+    leaf_setup_vk: Option<String>,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
@@ -42,7 +53,7 @@ impl VerifyCmd {
         let proof = Proof::load(&self.proof)
             .map_err(|e| anyhow::anyhow!("Error loading proof from {}: {}", self.proof, e))?;
 
-        let proof_type = crate::proof::verify_kind_label(proof.kind());
+        let proof_type = crate::proof::verify_kind_label(&proof);
 
         let trusted_plonk_vk =
             match &self.plonk_vk {
@@ -52,28 +63,43 @@ impl VerifyCmd {
                 None => None,
             };
 
-        let trusted_setup_vk: Option<Vec<u64>> = match &self.setup_vk {
-            Some(path) => {
-                let contents = std::fs::read_to_string(path).map_err(|e| {
-                    anyhow::anyhow!("Error reading setup vkey from {}: {}", path, e)
-                })?;
-                Some(serde_json::from_str(&contents).map_err(|e| {
-                    anyhow::anyhow!(
-                        "Error parsing setup vkey from {} (expected a JSON array of u64): {}",
-                        path,
-                        e
-                    )
-                })?)
-            }
+        let trusted_pilfflonk_vk: Option<String> = match &self.pilfflonk_vk {
+            Some(path) => Some(std::fs::read_to_string(path).map_err(|e| {
+                anyhow::anyhow!("Error reading pilfflonk vkey from {}: {}", path, e)
+            })?),
             None => None,
         };
+
+        let trusted_setup_vk: Option<Vec<u64>> =
+            match self.setup_vk.as_ref().or(self.leaf_setup_vk.as_ref()) {
+                Some(path) => {
+                    let contents = std::fs::read_to_string(path).map_err(|e| {
+                        anyhow::anyhow!("Error reading setup vkey from {}: {}", path, e)
+                    })?;
+                    Some(serde_json::from_str(&contents).map_err(|e| {
+                        anyhow::anyhow!(
+                            "Error parsing setup vkey from {} (expected a JSON array of u64): {}",
+                            path,
+                            e
+                        )
+                    })?)
+                }
+                None => None,
+            };
 
         let mut builder = proof.verify_builder();
         if let Some(vkey) = &trusted_plonk_vk {
             builder = builder.with_plonk_vk(vkey);
         }
+        if let Some(vkey) = &trusted_pilfflonk_vk {
+            builder = builder.with_pilfflonk_vkey(vkey);
+        }
         if let Some(vk) = &trusted_setup_vk {
-            builder = builder.with_setup_vk(vk);
+            builder = if self.leaf_setup_vk.is_some() {
+                builder.with_leaf_setup_vk(vk)
+            } else {
+                builder.with_setup_vk(vk)
+            };
         }
         let result = builder.verify();
 

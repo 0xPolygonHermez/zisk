@@ -875,8 +875,8 @@ mod tests {
 
     #[test]
     fn test_simple() {
-        let dst = 0xA011FE70;
-        let src = 0xA011F4D0;
+        let dst = 0xC011FE70;
+        let src = 0xC011F4D0;
         let count = 5;
 
         let encode = DmaInfo::calculate_encode(dst, src, count, false, true);

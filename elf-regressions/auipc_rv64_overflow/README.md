@@ -1,12 +1,12 @@
 # auipc_rv64_overflow - RV64 AUIPC circuit bug
 
-Two tests, same instruction (`auipc a0, 0x7ffff`), different instruction
+Two tests, same instruction (`auipc a0, 0x57fff`), different instruction
 addresses.  The only relevant difference is whether `pc + imm` crosses the
 32-bit limb boundary.
 
 ```
-auipc_rv64_safe/     auipc at PC = 0x80000000  ->  a0 = 0xFFFFFF00   (high limb 0, proving OK)
-auipc_rv64_overflow/ auipc at PC = 0x80001000  ->  a0 = 0x100000000  (high limb 1, proving FAILS)
+auipc_rv64_safe/     auipc at PC = 0xA8000000  ->  a0 = 0xFFFFF000   (high limb 0, proving OK)
+auipc_rv64_overflow/ auipc at PC = 0xA8001000  ->  a0 = 0x100000000  (high limb 1, proving FAILS)
 ```
 
 The overflow case uses `.balign 4096` in the assembly to place `auipc_test` at a
@@ -16,11 +16,11 @@ next page boundary.
 ## The arithmetic
 
 ```
-auipc a0, 0x7ffff
-  offset = 0x7FFFF << 12 = 0x7FFFF000   (largest positive 20-bit AUIPC immediate, bit 19 = 0)
+auipc a0, 0x57fff
+  offset = 0x6FFFF << 12 = 0x57FFF000   (positive 20-bit AUIPC immediate, bit 19 = 0)
 
-At PC = 0x80000000:  0x80000000 + 0x7FFFF000 = 0xFFFFFF00          -> high limb 0
-At PC = 0x80001000:  0x80001000 + 0x7FFFF000 = 0x100000000 = 2^32  -> high limb 1
+At PC = 0xA8000000:  0xA8000000 + 0x57FFF000 = 0xFFFFF000          -> high limb 0
+At PC = 0xA8001000:  0xA8001000 + 0x57FFF000 = 0x100000000 = 2^32  -> high limb 1
 ```
 
 ## Why proving fails
@@ -40,12 +40,16 @@ not match the 64-bit value emitted by the executor/transpiler path and causes
 
 ## ROM setup check
 
-Run this helper to build the overflow fixture and demonstrate that ROM setup
-accepts it:
+Run this helper, from the repository root, to build the overflow fixture and
+demonstrate that ROM setup accepts it:
 
 ```
-./demo-auipc-rom-setup
+./elf-regressions/auipc_rv64_overflow/demo-auipc-rom-setup
 ```
+
+It uses the helpers next to it: `build-elf` assembles a `.s` file into an ELF,
+`rom-setup-elf` runs `cargo-zisk program-setup` on it, and `prove-elf` runs
+`cargo-zisk prove` on it and verifies the proof.
 
 The expected result is a zero exit with `ROM setup successfully completed`.
 This shows the failure is not caught while decoding/transpiling the ELF or

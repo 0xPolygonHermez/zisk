@@ -19,7 +19,7 @@
 ;   ziskemu -z ziskasm/programs/diagnostic -c        (no input needed)
 ; ============================================================================
 
-define OUTPUT_ADDR 0xa0410000
+define OUTPUT_ADDR 0xc0410000
 
 main:
 	copyb(0, r1) -> r9              ; save return address (our `call`s clobber r1)
@@ -95,6 +95,8 @@ endif
 	call flag                       ; 0x30xx (internal: flag)
 	ltu(0, r10), j(_report)
 	call poseidon1                  ; 0x31xx (precompile)
+	ltu(0, r10), j(_report)
+	call unal8                      ; 0x32xx (internal: unal8 alignment predicate)
 	ltu(0, r10), j(_report)
 	; --- add more tests here ---
 	;   call <next_test>

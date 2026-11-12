@@ -1,9 +1,10 @@
 use zisk_precomp_helpers::DmaInfo;
 
+use super::dma_proof_reads::report_dma_src_proof_reads;
 use crate::{
-    zisk_ops::OpStats, EmulationMode, InstContext, DMA_64_ALIGNED_MEMCMP_COST,
-    DMA_64_ALIGNED_MEMCMP_DIVISOR, DMA_PRE_POST_MEMCMP_COST, DMA_UNALIGNED_MEMCMP_COST,
-    EXTRA_PARAMS_ADDR,
+    zisk_ops::{OpStats, DMA_LOOP_MEMCMP},
+    EmulationMode, InstContext, DMA_64_ALIGNED_MEMCMP_COST, DMA_64_ALIGNED_MEMCMP_DIVISOR,
+    DMA_PRE_POST_MEMCMP_COST, DMA_UNALIGNED_MEMCMP_COST, EXTRA_PARAMS_ADDR,
 };
 
 #[inline(always)]
@@ -134,6 +135,7 @@ fn ops_dma_memcmps(ctx: &InstContext, stats: &mut dyn OpStats, extended: bool) {
     let addr_a = ctx.a;
     let addr_b = ctx.b;
     // let _bus_count = if extended { ctx.extended_arg as u64 } else { ctx.mem.read(EXTRA_PARAMS_ADDR, 8) };
+    // Effective count: the bytes the proof compares, up to and including the first different one.
     let count = ctx.stats_hint;
 
     if !extended {
@@ -145,7 +147,15 @@ fn ops_dma_memcmps(ctx: &InstContext, stats: &mut dyn OpStats, extended: bool) {
         return;
     }
 
-    let (_, count_eq) = ctx.mem.memcmp(addr_a, addr_b, count);
+    let (result, count_eq) = ctx.mem.memcmp(addr_a, addr_b, count);
+
+    // The encoding the bus carries for this call. The 64-bit loop and the memory reads the proof
+    // issues come from it, so they follow the planner exactly — including the call that found a
+    // difference and ends on an 8-byte boundary, whose last loop word becomes the tail.
+    let encoded = DmaInfo::encode_memcmp(addr_a, addr_b, count as usize, result);
+    report_memcmp_proof_reads(addr_a, addr_b, encoded, stats);
+
+    // From here on, the cost model.
     let count = if count_eq as u64 == count { count } else { count_eq as u64 + 1 };
     let offset_a = addr_a & 0x07;
     let offset_b = addr_b & 0x07;
@@ -154,9 +164,9 @@ fn ops_dma_memcmps(ctx: &InstContext, stats: &mut dyn OpStats, extended: bool) {
     let pre_count = std::cmp::min((8 - offset_a) & 0x07, count);
 
     if pre_count > 0 {
-        stats.mem_align_read(addr64_a, 1);
-        stats.mem_align_read(addr64_b, 1 + ((offset_b + pre_count) > 8) as usize);
-        stats.mem_align_read(addr64_a, 1);
+        stats.mem_cost_read(addr64_a, 1);
+        stats.mem_cost_read(addr64_b, 1 + ((offset_b + pre_count) > 8) as usize);
+        stats.mem_cost_read(addr64_a, 1);
     }
 
     let post_count = (count - pre_count) & 0x07;
@@ -165,9 +175,9 @@ fn ops_dma_memcmps(ctx: &InstContext, stats: &mut dyn OpStats, extended: bool) {
     let addr64_b_end = (addr_b + count - 1) & !0x07;
     if post_count > 0 {
         let extra_b = (remain_b < post_count) as u64;
-        stats.mem_align_read(addr64_a_end, 1);
-        stats.mem_align_read(addr64_b_end - extra_b * 8, 1 + extra_b as usize);
-        stats.mem_align_read(addr64_a_end, 1);
+        stats.mem_cost_read(addr64_a_end, 1);
+        stats.mem_cost_read(addr64_b_end - extra_b * 8, 1 + extra_b as usize);
+        stats.mem_cost_read(addr64_a_end, 1);
     }
 
     let loop_count = ((count - pre_count - post_count) >> 3) as usize;
@@ -185,8 +195,8 @@ fn ops_dma_memcmps(ctx: &InstContext, stats: &mut dyn OpStats, extended: bool) {
 
         // same alignment
         if addr_a & 0x07 == addr_b & 0x07 {
-            stats.mem_align_read(first_loop_src64 * 8, loop_count);
-            stats.mem_align_read(first_loop_dst64 * 8, loop_count);
+            stats.mem_cost_read(first_loop_src64 * 8, loop_count);
+            stats.mem_cost_read(first_loop_dst64 * 8, loop_count);
             // add information about other machines to demostrate operation
             stats.set_variable_cost(
                 variable_cost
@@ -194,12 +204,28 @@ fn ops_dma_memcmps(ctx: &InstContext, stats: &mut dyn OpStats, extended: bool) {
                         * DMA_64_ALIGNED_MEMCMP_COST,
             );
         } else {
-            stats.mem_align_read(first_loop_src64 * 8, loop_count + 1);
-            stats.mem_align_read(first_loop_dst64 * 8, loop_count);
+            stats.mem_cost_read(first_loop_src64 * 8, loop_count + 1);
+            stats.mem_cost_read(first_loop_dst64 * 8, loop_count);
             // add information about other machines to demostrate operation
             stats.set_variable_cost(
                 variable_cost + (loop_count as u64 + 1) * DMA_UNALIGNED_MEMCMP_COST,
             );
         }
+    }
+}
+
+/// Reports the 64-bit loop and the memory reads the proof issues for one `memcmp` of `dst` against
+/// `src` with the bus `encoded` value, the same reads `generate_dma_memcmp_mem_inputs` sends to the
+/// memory, so the occupancy analyses see what the memory state machine sees.
+///
+/// The cost model keeps its own estimate: it reads the destination of the head and tail twice, as
+/// for a copy, and never moves a loop word to the tail.
+pub fn report_memcmp_proof_reads(dst: u64, src: u64, encoded: u64, stats: &mut dyn OpStats) {
+    report_dma_src_proof_reads(DMA_LOOP_MEMCMP, dst, src, encoded, stats);
+    // Unlike a copy, a compare also reads every destination word of the loop.
+    let pre_count = DmaInfo::get_pre_count(encoded) as u64;
+    let loop_count = DmaInfo::get_loop_count(encoded);
+    if loop_count > 0 {
+        stats.mem_proof_read((dst + pre_count) & !0x07, loop_count);
     }
 }

@@ -1,98 +1,67 @@
-use super::{hints_to_input_kind, stdin_to_input_kind, RemoteClient};
+use super::{job_inputs, JobInputs, RemoteClient};
 
 use crate::execute::ExecuteResult;
 use crate::hints::HintsSource;
 use crate::input_source::InputSource;
-use crate::job_handle::{JobHandle, SubscriberList};
+use crate::job_handle::{InputPushes, JobHandle, SubscriberList};
 use crate::ExecutorKind;
 use crate::SdkError;
 
 use std::collections::BTreeMap;
 use std::time::Duration;
+use zisk_common::RandomSeed;
 use zisk_coordinator_api::dto::{deadline_from_now, DomainExecuteRequest, DomainJobKind};
 use zisk_prover_backend::GuestProgram;
 
 use crate::Result;
 
 impl RemoteClient {
-    /// Submit an execute job over the standard coordinator API.
+    /// Submit an execute job with its caller-defined key/value `metadata` (empty for none).
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn do_execute(
         &self,
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        executor: ExecutorKind,
-        timeout: Option<Duration>,
-        subs: SubscriberList,
-    ) -> Result<JobHandle<ExecuteResult>> {
-        self.submit_execute(program, stdin, hints, executor, timeout, subs, None)
-    }
-
-    /// Submit an execute job over the extended coordinator API, attaching
-    /// job-level `metadata` key/value pairs.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn do_execute_ext(
-        &self,
-        program: &GuestProgram,
-        stdin: InputSource,
-        hints: Option<HintsSource>,
-        executor: ExecutorKind,
+        seed: Option<RandomSeed>,
+        _executor: ExecutorKind, // remote: coordinator uses its configured executor; hint ignored
         timeout: Option<Duration>,
         subs: SubscriberList,
         metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ExecuteResult>> {
-        self.submit_execute(program, stdin, hints, executor, timeout, subs, Some(metadata))
-    }
-
-    /// Shared execute submission. `metadata` selects the transport: `Some` routes
-    /// through the extended API (`submit_job_ext`), `None` through the standard one.
-    #[allow(clippy::too_many_arguments)]
-    fn submit_execute(
-        &self,
-        program: &GuestProgram,
-        stdin: InputSource,
-        hints: Option<HintsSource>,
-        _executor: ExecutorKind, // remote: coordinator uses its configured executor; hint ignored
-        timeout: Option<Duration>,
-        subs: SubscriberList,
-        metadata: Option<BTreeMap<String, String>>,
-    ) -> Result<JobHandle<ExecuteResult>> {
-        let metadata = metadata.filter(|m| !m.is_empty());
-        let (hints, maybe_hints_stream) = hints_to_input_kind(hints)?;
+        let JobInputs { input, input_delivery, hints, hints_delivery } = job_inputs(stdin, hints)?;
 
         let hash_id = program.program_id.hash_id.to_string();
-        let (input, maybe_stream) = stdin_to_input_kind(stdin)?;
         let execute_timeout = timeout.map(deadline_from_now);
 
         // Prepare transports BEFORE submit_job().
-        if let Some(ref stream) = maybe_stream {
-            stream.start()?;
-        }
-        if let Some(ref stream) = maybe_hints_stream {
-            stream.start()?;
-        }
+        input_delivery.start()?;
+        hints_delivery.start()?;
 
-        let job_kind =
-            DomainJobKind::Execute(DomainExecuteRequest { hash_id, input, hints, execute_timeout });
+        let job_kind = DomainJobKind::Execute(DomainExecuteRequest {
+            hash_id,
+            input,
+            hints,
+            random_seed: seed,
+            execute_timeout,
+        });
 
-        let remote_job = match metadata {
-            Some(metadata) => self.gw.submit_job_ext(job_kind, metadata),
-            None => self.gw.submit_job(job_kind),
+        let remote_job = if self.legacy_ext && !metadata.is_empty() {
+            #[allow(deprecated)]
+            self.gw.submit_job_ext(job_kind, metadata)
+        } else {
+            self.gw.submit_job_with_metadata(job_kind, metadata)
         }
         .map_err(SdkError::backend)?;
 
-        // gRPC streams need an InputSender injected after job submission.
-        if let Some(ref stream) = maybe_stream {
-            if stream.is_grpc() {
-                stream.set_input_sender(remote_job.open_input_stream());
-            }
-        }
-        if let Some(ref stream) = maybe_hints_stream {
-            if stream.is_grpc() {
-                stream.set_input_sender(remote_job.open_hints_stream());
-            }
-        }
+        // gRPC streams need an InputSender injected after job submission, and data over the
+        // inline limit is pushed through one, in the background.
+        let mut pushes = InputPushes::default();
+        let stream = input_delivery.complete(&remote_job, false, &mut pushes);
+        let hints_stream = hints_delivery.complete(&remote_job, true, &mut pushes);
 
-        Ok(JobHandle::new_remote(remote_job, subs, timeout, maybe_stream, maybe_hints_stream))
+        let mut handle = JobHandle::new_remote(remote_job, subs, timeout, stream, hints_stream);
+        handle.set_input_pushes(pushes);
+        Ok(handle)
     }
 }

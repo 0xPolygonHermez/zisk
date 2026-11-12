@@ -1,6 +1,6 @@
 //! [`TableWitnessHandler`] — witness compute for `InstanceType::Table` secondary state machines.
 
-use proofman_common::{BufferPool, ProofCtx, SetupCtx};
+use proofman_common::{ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
@@ -19,7 +19,6 @@ impl TableWitnessHandler {
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
         global_id: usize,
-        buffer_pool: &dyn BufferPool<F>,
         stats_scope_id: u64,
     ) -> ExecutorResult<()> {
         let secn_instances = state.instance_set.secn_instances.read_or_poison("secn_instances")?;
@@ -27,18 +26,19 @@ impl TableWitnessHandler {
             secn_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
 
         let instance = &**secn_instance;
-        let collectors = Vec::new(); // Tables have no per-chunk collectors.
-        let trace_buffer = buffer_pool.take_buffer();
-
-        generator.compute_secn_witness(
-            pctx,
-            sctx,
-            state,
-            global_id,
-            instance,
-            collectors,
-            trace_buffer,
-            stats_scope_id,
-        )
+        // Tables have no per-chunk collectors and build their own trace: a pooled buffer would
+        // only be dropped.
+        generator
+            .compute_secn_witness(
+                pctx,
+                sctx,
+                state,
+                global_id,
+                instance,
+                Vec::new(),
+                Vec::new(),
+                stats_scope_id,
+            )
+            .map_err(|(e, _)| e)
     }
 }

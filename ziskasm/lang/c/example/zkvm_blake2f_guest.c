@@ -18,7 +18,7 @@ int main(void) {
                                  (const zkvm_blake2f_offset *)g_t, 1);
     g_h[0] ^= (uint8_t)s;                    /* status EOK=0 -> h unchanged */
     emit32(g_h);                             /* first 32 bytes of updated h */
-    volatile uint32_t *o = (volatile uint32_t *)(0xA0410000ULL + 32);
+    volatile uint32_t *o = (volatile uint32_t *)(0xC0410000ULL + 32);
     for (unsigned i = 0; i < 8; i++)         /* second 32 bytes at OUTPUT+32 */
         o[i] = (uint32_t)g_h[32+4*i] | ((uint32_t)g_h[32+4*i+1]<<8)
              | ((uint32_t)g_h[32+4*i+2]<<16) | ((uint32_t)g_h[32+4*i+3]<<24);

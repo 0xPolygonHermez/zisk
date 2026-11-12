@@ -40,7 +40,7 @@
 # threshold (17) and aggregation arity (3) are identical, so settings tuned for
 # one hold for the other. blake3 gets its own, because none of those three
 # numbers match (24 / 19 / 2) and every setting in the file is read against
-# them — a powBits tuned for poseidon would silently LOWER blake3's grinding,
+# them — a grindingBits tuned for poseidon would silently LOWER blake3's grinding,
 # and a hasCompressor detected under poseidon's 17-bit threshold would force a
 # compressor blake3's 19-bit one does not need. Recursive setup writes
 # auto-detected hasCompressor flags back into this file, so each mode

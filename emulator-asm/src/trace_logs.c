@@ -250,10 +250,12 @@ void log_mem_op(void)
 
         for (uint64_t m=0; m<mem_op_trace_size; m++)
         {
-            uint64_t rest_are_zeros = (chunk[i] >> 49) & 0x1;
-            uint64_t write = (chunk[i] >> 48) & 0x1;
-            uint64_t width = (chunk[i] >> 32) & 0xF;
-            uint64_t address = chunk[i] & 0xFFFFFFFF;
+            // memory-ops header (state-machines/mem-cpp/cpp/mops_format.hpp): the address takes
+            // bits 0-32 and the mode starts at bit 33
+            uint64_t rest_are_zeros = (chunk[i] >> 38) & 0x1;
+            uint64_t write = (chunk[i] >> 37) & 0x1;
+            uint64_t width = (chunk[i] >> 33) & 0xF;
+            uint64_t address = chunk[i] & 0x1FFFFFFFF;
             bool inside_range =
                 ((address >= RAM_ADDR) && (address < (RAM_ADDR + RAM_SIZE))) ||
                 ((address >= ROM_ADDR) && (address < (ROM_ADDR + ROM_SIZE))) ||

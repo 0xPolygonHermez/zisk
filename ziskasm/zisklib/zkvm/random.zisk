@@ -1,0 +1,54 @@
+; ============================================================================
+; zkvm/random.zisk - host randomness for the Ethereum Foundation zkVM standard
+; (zkvm_random.h). Entry point `ziskasm_zkvm_random_u64`, reached from a guest
+; through the zkvmcall of the standard function `zkvm_random_u64`.
+;
+;   uint64_t zkvm_random_u64(void)
+;     returns a0 = 64 random bits.
+;
+; The host provides one 256-bit seed per execution through the FCALL_RANDOM_SEED
+; fcall (4 little-endian words, i.e. the seed's 32 bytes in order), read on the
+; first call. The values returned are the SHAKE256 output stream of those 32
+; bytes, read as consecutive little-endian u64 words: the seed is absorbed once,
+; and every keccak-f squeezes the next 17 words (the 136-byte rate). The seed
+; matches SHAKE256's 256-bit security strength. Like any fcall result, it is a
+; free witness value, and so are the values derived from it. It never comes from
+; the precompile hints: the emulator always provides it itself.
+;
+; ZKVM_RANDOM_PTR is the address of the next word to return:
+;   ZKVM_RANDOM_STATE .. +128   a word of the current block is left
+;   ZKVM_RANDOM_STATE + 136     the block is used up: squeeze the next one
+;   0xFFFFFFFFFFFFFFFF          not seeded yet (the first call)
+; so the common case is a single unsigned comparison.
+; ============================================================================
+
+u64 ZKVM_RANDOM_STATE[25] =
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_RANDOM_PTR[1] = 0xFFFFFFFFFFFFFFFF
+
+ziskasm_zkvm_random_u64:
+	copyb(0, [ZKVM_RANDOM_PTR]) -> r5
+	ltu(r5, ZKVM_RANDOM_STATE + 136), j(zrnd_word)
+	eq(r5, ZKVM_RANDOM_STATE + 136), j(zrnd_squeeze)
+
+	; First call: absorb the seed into the zeroed state, as SHAKE256 pads a
+	; 32-byte message: the seed in bytes 0..31, the 0x1F domain byte in byte 32
+	; and the final 0x80 in byte 135
+	; (each fcall_get stores the current seed word, then moves to the next)
+	fcall(FCALL_RANDOM_SEED, 0)
+	fcall_get(0, [FREE_INPUT]) -> [ZKVM_RANDOM_STATE + 0]
+	fcall_get(0, [FREE_INPUT]) -> [ZKVM_RANDOM_STATE + 8]
+	fcall_get(0, [FREE_INPUT]) -> [ZKVM_RANDOM_STATE + 16]
+	fcall_get(0, [FREE_INPUT]) -> [ZKVM_RANDOM_STATE + 24]
+	copyb(0, 0x1F) -> [ZKVM_RANDOM_STATE + 32]
+	copyb(0, 0x8000000000000000) -> [ZKVM_RANDOM_STATE + 128]
+
+zrnd_squeeze:
+	keccak(0, ZKVM_RANDOM_STATE)
+	copyb(0, ZKVM_RANDOM_STATE) -> r5
+
+zrnd_word:
+	copyb(r5, 8[a + 0]) -> r10
+	add(r5, 8) -> [ZKVM_RANDOM_PTR]
+	ret

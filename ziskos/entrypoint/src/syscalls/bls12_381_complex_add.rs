@@ -8,20 +8,13 @@ use core::arch::asm;
 
 use super::complex::SyscallComplex384;
 
-#[derive(Debug)]
-#[repr(C)]
-pub struct SyscallBls12_381ComplexAddParams<'a> {
-    pub f1: &'a mut SyscallComplex384,
-    pub f2: &'a SyscallComplex384,
-}
-
 /// Performs the addition of two complex field elements on a complex extension of the BLS12-381 base field curve,
 /// storing the result in the first field element.
 ///
 ///
 /// `BLS12_381ComplexAdd` operates on two field elements, each with two coordinates of 384 bits.
 /// Each coordinate is represented as an array of six `u64` elements.
-/// The syscall takes as a parameter the address of a structure containing field elements `f1` and `f2`.
+/// The syscall takes the addresses of field elements `f1` and `f2` as two direct operands (no parameter struct).
 /// The result of the addition is stored in `f1`.
 ///
 /// ### Safety
@@ -37,19 +30,20 @@ pub struct SyscallBls12_381ComplexAddParams<'a> {
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_bls12_381_complex_add")]
 pub extern "C" fn syscall_bls12_381_complex_add(
-    params: &mut SyscallBls12_381ComplexAddParams,
+    f1: &mut SyscallComplex384,
+    f2: &SyscallComplex384,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     #[cfg(zisk_guest)]
-    ziskos_syscall!(zisk_definitions::SYSCALL_BLS12_381_COMPLEX_ADD_ID, params);
+    ziskos_syscall!(zisk_definitions::SYSCALL_BLS12_381_COMPLEX_ADD_ID, a: f1, b: f2);
     #[cfg(not(zisk_guest))]
     {
-        let f1 = [params.f1.x, params.f1.y].concat().try_into().unwrap();
-        let f2 = [params.f2.x, params.f2.y].concat().try_into().unwrap();
+        let f1_coords = [f1.x, f1.y].concat().try_into().unwrap();
+        let f2_coords = [f2.x, f2.y].concat().try_into().unwrap();
         let mut f3: [u64; 12] = [0; 12];
-        zisk_precomp_helpers::bls12_381_complex_add(&f1, &f2, &mut f3);
-        params.f1.x.copy_from_slice(&f3[0..6]);
-        params.f1.y.copy_from_slice(&f3[6..12]);
+        zisk_precomp_helpers::bls12_381_complex_add(&f1_coords, &f2_coords, &mut f3);
+        f1.x.copy_from_slice(&f3[0..6]);
+        f1.y.copy_from_slice(&f3[6..12]);
         #[cfg(feature = "hints")]
         {
             hints.extend_from_slice(&f3);

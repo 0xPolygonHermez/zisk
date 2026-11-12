@@ -1,5 +1,6 @@
 //! Remote dispatch for recurser operations.
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use zisk_common::Proof;
@@ -71,6 +72,7 @@ impl RemoteClient {
         root_c_recurser_agg: Option<[u64; 4]>,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ProveResult>> {
         // Bincode each proof for the wire.
         let vfp_a = proof_a.get_vadcop_final_proof_to_aggregate().map_err(SdkError::backend)?;
@@ -91,7 +93,8 @@ impl RemoteClient {
             free_inputs_b: free_b.to_vec(),
             root_c_recurser_agg,
         });
-        let remote_job = self.gw.submit_job(job_kind).map_err(SdkError::backend)?;
+        let remote_job =
+            self.gw.submit_job_with_metadata(job_kind, metadata).map_err(SdkError::backend)?;
         Ok(JobHandle::new_remote(remote_job, subs, timeout, None, None))
     }
 }

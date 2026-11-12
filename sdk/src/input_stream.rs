@@ -3,6 +3,10 @@ use serde::Serialize;
 use zisk_common::io::ZiskStreamWriter;
 use zisk_coordinator_client::{InputSender, InputSenderPushAdapter};
 
+/// The stream URI of data pushed to the coordinator over gRPC (`PushJobInput`,
+/// `PushJobHintsInput`), which the coordinator does not relay from anywhere.
+pub(crate) const GRPC_PUSH_URI: &str = "grpc://push";
+
 /// Stream transport for delivering stdin/hints data to a ZisK job.
 #[derive(Clone)]
 pub struct ZiskStream {
@@ -58,7 +62,7 @@ impl ZiskStream {
 
     /// gRPC push transport (data pushed to coordinator via `PushJobInput`).
     pub fn grpc() -> Self {
-        Self { writer: ZiskStreamWriter::push("grpc://push".to_string()) }
+        Self { writer: ZiskStreamWriter::push(GRPC_PUSH_URI.to_string()) }
     }
 
     // ── Write / flush ───────────────────────────────────────────────────

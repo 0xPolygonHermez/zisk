@@ -5,7 +5,7 @@ expected results from Python. Covers the degenerate inputs of its 16-entry table
 (R or the public key equal to +-G, +-phi(G), phi^2(G)), zero and equal scalars,
 results at infinity or equal to +-G, R = c*G for small c (equal x coordinates
 inside the ladder), and random recoveries.
-Output: one byte per case at 0xa0410000 (1 = wrong), then 1 once all have run."""
+Output: one byte per case at 0xc0410000 (1 = wrong), then 1 once all have run."""
 import random, sys
 
 P = 2**256 - 2**32 - 977

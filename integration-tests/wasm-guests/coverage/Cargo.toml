@@ -1,0 +1,16 @@
+# Standalone crate: it targets stock wasm32-wasip1, not the Zisk RISC-V toolchain, so it is kept
+# out of the main workspace. The prebuilt module is committed as
+# `integration-tests/tests/data/wasm-coverage.wasm`; rebuild it with:
+#
+#     cargo build --release --target wasm32-wasip1
+#     cp target/wasm32-wasip1/release/wasm-coverage.wasm ../../tests/data/
+[workspace]
+
+[package]
+name = "wasm-coverage"
+version = "0.1.0"
+edition = "2021"
+
+[profile.release]
+opt-level = 3
+panic = "abort"

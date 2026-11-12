@@ -1,10 +1,10 @@
-/* Simple linker script - just start at 0x80001000 instead of 0x80000000 */
+/* Simple linker script - just start at 0xA8001000 instead of 0xA8000000 */
 
 ENTRY(_start)
 
 SECTIONS
 {
-    . = 0x80001000;  /* Start at 0x80001000 instead of default 0x80000000 */
+    . = 0xA8001000;  /* Start at 0xA8001000 instead of default 0xA8000000 */
     
     .text : {
         *(.text)

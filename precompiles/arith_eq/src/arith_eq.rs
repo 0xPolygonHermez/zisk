@@ -31,14 +31,17 @@ pub struct ArithEqSM<F: PrimeField64> {
 #[derive(Debug, Default)]
 struct ArithEqStepAddr {
     main_step: u64,
-    addr_op: u32,
-    addr_x1: u32,
-    addr_y1: u32,
-    addr_x2: u32,
-    addr_y2: u32,
-    addr_x3: u32,
-    addr_y3: u32,
-    addr_ind: [u32; 5],
+    /// Main operand b: the parameter-struct address, or the p2/f2 address of the direct a/b ops.
+    addr_op: u64,
+    /// Main operand a: the p1/f1 address of the ops called with two direct operands, 0 otherwise.
+    addr_a: u64,
+    addr_x1: u64,
+    addr_y1: u64,
+    addr_x2: u64,
+    addr_y2: u64,
+    addr_x3: u64,
+    addr_y3: u64,
+    addr_ind: [u64; 5],
 }
 
 impl<F: PrimeField64> ArithEqSM<F> {
@@ -68,19 +71,31 @@ impl<F: PrimeField64> ArithEqSM<F> {
         }
     }
     fn expand_addr_step_on_trace<R: ArithEqRow<F>>(data: &ArithEqStepAddr, trace: &mut [R]) {
-        trace[0].set_step_addr(data.main_step);
-        trace[1].set_step_addr(data.addr_op as u64);
-        trace[2].set_step_addr(data.addr_x1 as u64);
-        trace[3].set_step_addr(data.addr_y1 as u64);
-        trace[4].set_step_addr(data.addr_x2 as u64);
-        trace[5].set_step_addr(data.addr_y2 as u64);
-        trace[6].set_step_addr(data.addr_x3 as u64);
-        trace[7].set_step_addr(data.addr_y3 as u64);
-        for (i, addr_ind) in data.addr_ind.iter().enumerate() {
-            trace[i + 8].set_step_addr(*addr_ind as u64);
+        // addr_hi is binary on every row and holds the high limb of the addresses in step_addr
+        // (the operands a and b, and the pointers read from the parameter struct on the ADDR_IND
+        // rows): clear it everywhere first
+        for row in trace.iter_mut().take(ARITH_EQ_ROWS_BY_OP) {
+            row.set_addr_hi(false);
         }
-        for i in 0..(ARITH_EQ_ROWS_BY_OP - 8 - data.addr_ind.len()) {
-            trace[i + 8 + data.addr_ind.len()].set_step_addr(0);
+        trace[0].set_step_addr(data.main_step);
+        trace[1].set_step_addr(data.addr_op);
+        trace[1].set_addr_hi(zisk_core::addr_hi(data.addr_op) == 1);
+        trace[2].set_step_addr(data.addr_x1);
+        trace[3].set_step_addr(data.addr_y1);
+        trace[4].set_step_addr(data.addr_x2);
+        trace[5].set_step_addr(data.addr_y2);
+        trace[6].set_step_addr(data.addr_x3);
+        trace[7].set_step_addr(data.addr_y3);
+        for (i, addr_ind) in data.addr_ind.iter().enumerate() {
+            trace[i + 8].set_step_addr(*addr_ind);
+            trace[i + 8].set_addr_hi(zisk_core::addr_hi(*addr_ind) == 1);
+        }
+        // ADDR_A row (right after the indirections) carries the main operand a
+        let addr_a_row = 8 + data.addr_ind.len();
+        trace[addr_a_row].set_step_addr(data.addr_a);
+        trace[addr_a_row].set_addr_hi(zisk_core::addr_hi(data.addr_a) == 1);
+        for row in trace.iter_mut().take(ARITH_EQ_ROWS_BY_OP).skip(addr_a_row + 1) {
+            row.set_step_addr(0);
         }
     }
 
@@ -96,6 +111,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
             &ArithEqStepAddr {
                 main_step: input.step,
                 addr_op: input.addr,
+                addr_a: 0,
                 addr_x1: input.a_addr,
                 addr_y1: input.b_addr,
                 addr_x2: input.c_addr,
@@ -120,6 +136,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
             &ArithEqStepAddr {
                 main_step: input.step,
                 addr_op: input.addr,
+                addr_a: 0,
                 addr_x1: input.a_addr,
                 addr_y1: input.b_addr,
                 addr_x2: input.c_addr,
@@ -148,14 +165,15 @@ impl<F: PrimeField64> ArithEqSM<F> {
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
-                addr_op: input.addr,
+                addr_op: input.p2_addr,
+                addr_a: input.p1_addr,
                 addr_x1: input.p1_addr,
                 addr_y1: input.p1_addr + 32,
                 addr_x2: input.p2_addr,
                 addr_y2: input.p2_addr + 32,
                 addr_x3: input.p1_addr,
                 addr_y3: input.p1_addr + 32,
-                addr_ind: [input.p1_addr, input.p2_addr, 0, 0, 0],
+                addr_ind: [0, 0, 0, 0, 0],
             },
             trace,
         );
@@ -172,6 +190,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
             &ArithEqStepAddr {
                 main_step: input.step,
                 addr_op: input.addr,
+                addr_a: 0,
                 addr_x1: input.addr,
                 addr_y1: input.addr + 32,
                 addr_x2: input.addr,
@@ -195,14 +214,15 @@ impl<F: PrimeField64> ArithEqSM<F> {
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
-                addr_op: input.addr,
+                addr_op: input.p2_addr,
+                addr_a: input.p1_addr,
                 addr_x1: input.p1_addr,
                 addr_y1: input.p1_addr + 32,
                 addr_x2: input.p2_addr,
                 addr_y2: input.p2_addr + 32,
                 addr_x3: input.p1_addr,
                 addr_y3: input.p1_addr + 32,
-                addr_ind: [input.p1_addr, input.p2_addr, 0, 0, 0],
+                addr_ind: [0, 0, 0, 0, 0],
             },
             trace,
         );
@@ -220,6 +240,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
             &ArithEqStepAddr {
                 main_step: input.step,
                 addr_op: input.addr,
+                addr_a: 0,
                 addr_x1: input.addr,
                 addr_y1: input.addr + 32,
                 addr_x2: input.addr,
@@ -243,14 +264,15 @@ impl<F: PrimeField64> ArithEqSM<F> {
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
-                addr_op: input.addr,
+                addr_op: input.f2_addr,
+                addr_a: input.f1_addr,
                 addr_x1: input.f1_addr,
                 addr_y1: input.f1_addr + 32,
                 addr_x2: input.f2_addr,
                 addr_y2: input.f2_addr + 32,
                 addr_x3: input.f1_addr,
                 addr_y3: input.f1_addr + 32,
-                addr_ind: [input.f1_addr, input.f2_addr, 0, 0, 0],
+                addr_ind: [0, 0, 0, 0, 0],
             },
             trace,
         );
@@ -267,14 +289,15 @@ impl<F: PrimeField64> ArithEqSM<F> {
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
-                addr_op: input.addr,
+                addr_op: input.f2_addr,
+                addr_a: input.f1_addr,
                 addr_x1: input.f1_addr,
                 addr_y1: input.f1_addr + 32,
                 addr_x2: input.f2_addr,
                 addr_y2: input.f2_addr + 32,
                 addr_x3: input.f1_addr,
                 addr_y3: input.f1_addr + 32,
-                addr_ind: [input.f1_addr, input.f2_addr, 0, 0, 0],
+                addr_ind: [0, 0, 0, 0, 0],
             },
             trace,
         );
@@ -291,14 +314,15 @@ impl<F: PrimeField64> ArithEqSM<F> {
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
-                addr_op: input.addr,
+                addr_op: input.f2_addr,
+                addr_a: input.f1_addr,
                 addr_x1: input.f1_addr,
                 addr_y1: input.f1_addr + 32,
                 addr_x2: input.f2_addr,
                 addr_y2: input.f2_addr + 32,
                 addr_x3: input.f1_addr,
                 addr_y3: input.f1_addr + 32,
-                addr_ind: [input.f1_addr, input.f2_addr, 0, 0, 0],
+                addr_ind: [0, 0, 0, 0, 0],
             },
             trace,
         );
@@ -315,14 +339,15 @@ impl<F: PrimeField64> ArithEqSM<F> {
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
-                addr_op: input.addr,
+                addr_op: input.p2_addr,
+                addr_a: input.p1_addr,
                 addr_x1: input.p1_addr,
                 addr_y1: input.p1_addr + 32,
                 addr_x2: input.p2_addr,
                 addr_y2: input.p2_addr + 32,
                 addr_x3: input.p1_addr,
                 addr_y3: input.p1_addr + 32,
-                addr_ind: [input.p1_addr, input.p2_addr, 0, 0, 0],
+                addr_ind: [0, 0, 0, 0, 0],
             },
             trace,
         );
@@ -340,6 +365,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
             &ArithEqStepAddr {
                 main_step: input.step,
                 addr_op: input.addr,
+                addr_a: 0,
                 addr_x1: input.addr,
                 addr_y1: input.addr + 32,
                 addr_x2: input.addr,

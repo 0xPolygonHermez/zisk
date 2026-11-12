@@ -17,7 +17,7 @@
 ; otherwise. NOTHING here calls the EF-equivalent *_safe_bn254_c; the heavy work
 ; reuses the shared limb primitives zisklib_add_bn254 / zisklib_scalar_mul_bn254 /
 ; zisklib_pairing_check_bn254 (+ bn254_ltn/eqn, zisklib_is_on_curve_bn254).
-; Labels `zbn_`, data `ZBN_*`. MAX_PAIRS=32 (buffers bounded; larger -> EFAIL).
+; Labels `zbn_`, data `ZBN_*`. Pairing buffers hold the 8 pairs of a Miller-loop batch.
 ; ============================================================================
 
 u64 ZBN_TP0[1]  = 0
@@ -35,8 +35,8 @@ u64 ZBN_PAIRSP[1] = 0
 u64 ZBN_N[1]      = 0
 u64 ZBN_VERP[1]   = 0
 u64 ZBN_PI[1]     = 0
-u64 ZBN_PG1[256]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-u64 ZBN_PG2[512]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZBN_PG1[64] = 0
+u64 ZBN_PG2[128] = 0
 
 ; --- zbn_g1_in(be=r10, limbs=r11): 64B BE G1 -> 8 LE u64 (x‖y) ---
 zbn_g1_in:
@@ -309,67 +309,65 @@ ziskasm_zkvm_bn254_g1_mul:
 ; ============================================================================
 ; zkvm_status zkvm_bn254_pairing(const pairing_pair* pairs, size_t n, bool* ok)
 ;   [r10=pairs(192·n BE), r11=n, r12=ok] -> EOK (with *ok set) / EFAIL.
-;   Each pair = G1(64B) ‖ G2(128B). De-interleave into contiguous limb arrays
-;   ZBN_PG1 (n·8) / ZBN_PG2 (n·16), then zisklib_pairing_check_bn254 (validates
-;   canonical/on-curve/subgroup internally): status 0=accept, 1=reject, >=2=EFAIL.
+;   Each pair = G1(64B) ‖ G2(128B) is converted to limbs into slot [MLB_N] of
+;   ZBN_PG1 / ZBN_PG2, the slot the Miller-loop batch is not holding, and added
+;   to the pairing check, so n is not bounded: add -> 0 or a validation error
+;   (EFAIL), end -> 0 accept / 1 reject.
 ; ============================================================================
 ziskasm_zkvm_bn254_pairing:
 	push r1
 	copyb(0, r10) -> [ZBN_PAIRSP]
 	copyb(0, r11) -> [ZBN_N]
 	copyb(0, r12) -> [ZBN_VERP]
-	; guard n > 32 (buffer cap) -> EFAIL
-	copyb(0, ZBN_VERP) -> r5
-	copyb(0, 32) -> r7
-	ltu(r7, r11), j(zbn_fail)
-	; de-interleave loop i = 0..n
+	call zisklib_pairing_begin_bn254
 	copyb(0, 0) -> [ZBN_PI]
-	copyb(0, ZBN_PI) -> r5
 zbn_pair_loop:
-	copyb(0, ZBN_N) -> r5
 	copyb(0, [ZBN_PI]) -> r13
 	copyb(0, [ZBN_N]) -> r14
 	ltu(r13, r14), j(zbn_pair_body)
 	jump(zbn_pair_done)
 zbn_pair_body:
-	; G1: g1_in(pairs + i*192, ZBN_PG1 + i*64)
+	; G1: g1_in(pairs + i*192, ZBN_PG1 + slot*64)
 	sll(r13, 7) -> r6
 	sll(r13, 6) -> r7
 	add(r6, r7) -> r6
 	copyb(0, [ZBN_PAIRSP]) -> r10
-	add(r10, r6) -> r10                 ; src = pairs + i*192
+	add(r10, r6) -> r10
+	copyb(0, [MLB_N]) -> r13
 	sll(r13, 6) -> r6
 	copyb(0, ZBN_PG1) -> r11
-	add(r11, r6) -> r11                 ; dst = PG1 + i*64
-	copyb(0, ZBN_PAIRSP) -> r5
+	add(r11, r6) -> r11
 	call zbn_g1_in
-	; G2: g2_in(pairs + i*192 + 64, ZBN_PG2 + i*128)
+	; G2: g2_in(pairs + i*192 + 64, ZBN_PG2 + slot*128)
 	copyb(0, [ZBN_PI]) -> r13
 	sll(r13, 7) -> r6
 	sll(r13, 6) -> r7
 	add(r6, r7) -> r6
 	copyb(0, [ZBN_PAIRSP]) -> r10
 	add(r10, r6) -> r10
+	add(r10, 64) -> r10
+	copyb(0, [MLB_N]) -> r13
 	sll(r13, 7) -> r6
 	copyb(0, ZBN_PG2) -> r11
-	add(r11, r6) -> r11                 ; dst = PG2 + i*128
-	copyb(0, ZBN_PAIRSP) -> r5
-	add(r10, 64) -> r10
+	add(r11, r6) -> r11
 	call zbn_g2_in
-	; i++
+	; add(PG1 + slot*64, PG2 + slot*128)
+	copyb(0, [MLB_N]) -> r13
+	sll(r13, 6) -> r6
+	copyb(0, ZBN_PG1) -> r10
+	add(r10, r6) -> r10
+	sll(r13, 7) -> r6
+	copyb(0, ZBN_PG2) -> r11
+	add(r11, r6) -> r11
+	call zisklib_pairing_add_bn254
+	ltu(0, r10), j(zbn_fail)            ; validation error -> EFAIL
 	add([ZBN_PI], 1) -> r6
 	copyb(0, r6) -> [ZBN_PI]
-	copyb(0, ZBN_PI) -> r5
 	jump(zbn_pair_loop)
 zbn_pair_done:
-	copyb(0, ZBN_PG1) -> r10
-	copyb(0, ZBN_PG2) -> r11
-	copyb(0, [ZBN_N]) -> r12
-	call zisklib_pairing_check_bn254    ; r10 = status
+	call zisklib_pairing_end_bn254      ; r10 = 0 accept / 1 reject
 	eq(r10, 0), j(zbn_pair_accept)
-	copyb(0, 1) -> r6
-	eq(r10, r6), j(zbn_pair_reject)
-	jump(zbn_fail)                      ; status >= 2 -> validation error -> EFAIL
+	jump(zbn_pair_reject)
 zbn_pair_accept:
 	copyb(0, [ZBN_VERP]) -> r5
 	copyb(r5, 1) -> 1[a + 0]            ; *verified = true

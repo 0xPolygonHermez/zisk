@@ -13,7 +13,7 @@ OBJS_ASM = $(BDIR)/jump_dest_fast.o \
            $(BDIR)/check_dynamic_mtrace.o \
            $(BDIR)/test_evm_api.o
 
-OBJS = $(OBJS_ASM) test_jump_dest.o test_evm_mock.o
+OBJS = $(OBJS_ASM) $(BDIR)/test_jump_dest.o $(BDIR)/test_evm_mock.o
 
 TARGET = test_jump_dest
 
@@ -31,16 +31,20 @@ $(BDIR)/test_evm_api.o: test_evm_api.asm
 	mkdir -p $(BDIR)
 	as $(ASMFLAGS) -o $@ $<
 
-%.o: %.cpp
+$(BDIR)/%.o: %.cpp
+	mkdir -p $(BDIR)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 $(TARGET): $(OBJS)
 	$(CXX) $(LDFLAGS) -o $@ $^
 
+test-light:
+	$(MAKE) BDIR=build_light TARGET=test_jump_dest_light ASMFLAGS="$(ASMFLAGS) --defsym MOPS_LIGHT=1" CXXFLAGS="$(CXXFLAGS) -DMOPS_LIGHT" test
+
 test: $(TARGET)
 	./$(TARGET)
 
 clean:
-	rm -rf $(BDIR) *.o $(TARGET)
+	rm -rf build build_light test_jump_dest test_jump_dest_light
 
 .PHONY: all test clean

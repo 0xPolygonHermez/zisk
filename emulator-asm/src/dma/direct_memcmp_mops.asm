@@ -11,7 +11,7 @@
 # 2. Performs the actual memory copy from src to dst (with overlap handling)
 #
 # REGISTER USAGE:
-# Uses general-purpose registers: rax, rbx, rcx, rdx, rdi, rsi, r9, r11, r12, r13
+# Uses general-purpose registers: rax, rbx, rcx, rdx, rdi, rsi, r9, r10, r11, r12, r13; reads r14 (step)
 # Does NOT use XMM registers (caller doesn't need to save them)
 # Preserves callee-saved registers (rbx, r12, r13 saved/restored in wrapper)
 #
@@ -51,9 +51,9 @@ direct_dma_memcmp_mops:
     #       r13 = with new mops index (output)
     #       rax = encoded 
 
+    MOPS_STEP_HEADERS
     mov     r9, (MOPS_ALIGNED_READ + EXTRA_PARAMETER_ADDR)
-    mov     [r12 + r13 * 8], r9
-    inc     r13
+    MOPS_REC_READ r9
 
 direct_dma_xmemcmp_mops:
 
@@ -65,6 +65,7 @@ direct_dma_xmemcmp_mops:
     jz      .L_dma_memcmp_mops_count_zero
 
     call    fast_memcmp
+    MOPS_STEP_HEADERS
 
     # in case of original count > 0, the effective count must be > 0 because at least
     # need check one byte to see if are equals or not
@@ -98,7 +99,7 @@ direct_dma_xmemcmp_mops:
     mov     r9, MOPS_ALIGNED_READ      # r9 = flags aligned read
     add     r9, rdi                    # 1 cycle - get original dst
     and     r9, ALIGN_MASK             # 1 cycle - align to 8-byte boundary
-    mov     [r12 + r13 * 8], r9        # ~4 cycles - write dst pre-address to trace
+    MOPS_REC_READ r9
 
     test    rax, DMA_DOUBLE_SRC_PRE_MASK
     jnz     .L_pre_double_src_to_mops
@@ -108,18 +109,15 @@ direct_dma_xmemcmp_mops:
     mov     r9, MOPS_ALIGNED_READ      # r9 = flags aligned read
     add     r9, rsi                    # 1 cycle - get original src
     and     r9, ALIGN_MASK             # 1 cycle - align to 8-byte boundary
-    mov     [r12 + r13 * 8 + 8], r9    # ~4 cycles - write src address
-    jmp     .L_pre_src_inc_mops_index
+    MOPS_REC_READ r9
+    jmp     .L_post_dst_to_mops
 
 .L_pre_double_src_to_mops:
 
     mov     r9, MOPS_ALIGNED_READ_2W   # r9 = flags double read
     add     r9, rsi                    # 1 cycle - get original src
     and     r9, ALIGN_MASK             # 1 cycle - align to 8-byte boundary
-    mov     [r12 + r13 * 8 + 8], r9    # ~4 cycles - write src address
-
-.L_pre_src_inc_mops_index:
-    add     r13, 2                     # add 2 (pre-write, block single/dual src)
+    MOPS_REC_BLOCK r9
 
 .L_post_dst_to_mops:
 
@@ -133,7 +131,7 @@ direct_dma_xmemcmp_mops:
     lea     r9, [rdi + rdx - 1]        # 1 cycle - r9 = dst + count - 1 (last dst byte)
     and     r9, ALIGN_MASK             # 1 cycle - align to 8-byte boundary
     add     r9, rcx                    # 1 cycle - r9 mops with dst aligned address
-    mov     [r12 + r13 * 8], r9        # ~4 cycles - write dst post-value to trace
+    MOPS_REC_READ r9
 
     # preparing post src read, calculating base src address
     mov     r9, rax
@@ -149,18 +147,14 @@ direct_dma_xmemcmp_mops:
     # not double read, load flags and store in mops trace
     mov     rcx, MOPS_ALIGNED_READ     # r9 = flags aligned read
     add     r9, rcx                    # 1 cycle - get original src
-    mov     [r12 + r13 * 8 + 8], r9    # ~4 cycles - write src address
-    jmp     .L_post_src_inc_mops_index
+    MOPS_REC_READ r9
+    jmp     .L_src_to_mops
 
 .L_post_double_src_to_mops:
     # its double read, load flags for double read, and store in mops trace
     mov     rcx, MOPS_ALIGNED_READ_2W  # r9 = flags aligned read
     add     r9, rcx                    # 1 cycle - get original src
-    mov     [r12 + r13 * 8 + 8], r9    # ~4 cycles - write src address
-
-.L_post_src_inc_mops_index:
-    # adding two "slots", because we store pre-write read and source-read
-    add     r13, 2                     # add 2 (pre-write, block single/dual src)
+    MOPS_REC_BLOCK r9
 
 .L_src_to_mops:
     # extract loop count from encoded
@@ -169,27 +163,20 @@ direct_dma_xmemcmp_mops:
     
     # check edge case loop_count = 0
     jz      .L_prepare_result
-    shl     rcx, MOPS_BLOCK_WORDS_RS    # 1 cycle - rcx = loop | 0 (4 bits) | (32 bits)
+    mov     r11, rcx                    # r11 = words of the source block
+    mov     r9, MOPS_ALIGNED_BLOCK_READ    # 1 cycle - r9 = read block
 
     # in case of unaligned loop, add and extra read because each qword verification
     # of dst need part of current read and part of next read.
 
     test    rax, DMA_UNALIGNED_DST_SRC_MASK
-    jnz     .L_src_extra_for_unaligned_loop
-
-    # add flags of aligned block read
-    mov     r9, MOPS_ALIGNED_BLOCK_READ    # 1 cycle - r9 = read block
-    jmp     .L_src_block_before_address
-
-.L_src_extra_for_unaligned_loop:    
-    # add special flags with that add one to current count loop count in r9
-    mov     r9, MOPS_ALIGNED_BLOCK_READ + MOPS_BLOCK_ONE_WORD
+    jz      .L_src_block_before_address
+    inc     r11
 
 .L_src_block_before_address:
-    # at this point in r9 we have flags, and lenght but we need to add the 
-    # base src address. For do it, first we need to know if we need to pass
-    # the first src because it was used only for pre part.
-    add     r9, rcx
+    # at this point in r9 we have the flags but we need to add the base src address.
+    # For do it, first we need to know if we need to pass the first src because it
+    # was used only for pre part.
     test    rax, DMA_SRC64_INC_BY_PRE_MASK
     jnz     .L_src_incr_by_pre
     add     r9, rsi                        # 1 cycle - rcx = first block src address
@@ -203,21 +190,18 @@ direct_dma_xmemcmp_mops:
 .L_src_to_mops_ready:
     # before store all, we need to align them
     and     r9, ALIGN_MASK
-    mov     [r12 + r13 * 8], r9            # ~4 cycles - write first block src read address
+    MOPS_REC_BLOCK_WORDS r9, r11, rbx
 
-    # rcx = loop_count
+    # destination block of rcx = loop_count words
     mov     r9, MOPS_ALIGNED_BLOCK_READ
-    add     rcx, r9
     test    rax, DMA_PRE_COUNT_MASK
     jz      .L_dst_loop_has_not_offset
-    add     rcx, 8
+    add     r9, 8
 
 .L_dst_loop_has_not_offset:
-    add     rcx, rdi
-    and     rcx, ALIGN_MASK
-    mov     [r12 + r13 * 8 + 8], rcx      # ~4 cycles - write first block src read address
-
-    add     r13, 2
+    add     r9, rdi
+    and     r9, ALIGN_MASK
+    MOPS_REC_BLOCK_WORDS r9, rcx, rbx
 
 .L_prepare_result: 
     # how we are in comparation, we don't write pre/post parts because when pre-read

@@ -90,7 +90,7 @@ check_crates() {
     shift 3
     local expected=("$@")
 
-    local metadata publishable expected_list dependencies seen crate dependency
+    local metadata publishable no_description expected_list dependencies seen crate dependency
 
     section \
         "$group crates" \
@@ -103,6 +103,14 @@ check_crates() {
 
     publishable=$(printf '%s' "$metadata" |
         jq -r '.packages[] | select(.publish != []) | .name' | sort)
+
+    # crates.io refuses a crate without a description, and an empty one is no
+    # better.
+    no_description=$(printf '%s' "$metadata" | jq -r '
+        .packages[]
+        | select(.publish != [])
+        | select((.description // "") | test("\\S") | not)
+        | .name' | sort)
 
     expected_list=$(printf '%s\n' "${expected[@]}")
 
@@ -138,6 +146,10 @@ check_crates() {
             fail "$crate is listed twice in $list_name"
         fi
 
+        if listed "$crate" "$no_description"; then
+            fail "$crate has no description in its Cargo.toml"
+        fi
+
         for dependency in $(depends_on "$crate" "$dependencies"); do
             if listed "$dependency" "$expected_list" &&
                ! listed "$dependency" "$seen"; then
@@ -158,7 +170,7 @@ check_crates() {
     done <<< "$publishable"
 
     echo
-    echo "  ✓ $list_name matches the crates the repo publishes, in dependency order"
+    echo "  ✓ $list_name matches the crates the repo publishes, in dependency order, all with a description"
 }
 
 if [ -n "$PROOFMAN_REPO_PATH" ]; then

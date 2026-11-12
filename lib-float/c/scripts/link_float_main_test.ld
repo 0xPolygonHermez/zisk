@@ -3,8 +3,8 @@ OUTPUT_ARCH("riscv")
 ENTRY(_start)
 
 MEMORY {
-  rom   (xa) : ORIGIN = 0x87F00000, LENGTH = 0x100000
-  ram   (wxa) : ORIGIN = 0xa0020000, LENGTH = 0x10000
+  rom   (xa) : ORIGIN = 0xAFF00000, LENGTH = 0x100000
+  ram   (wxa) : ORIGIN = 0xC0020000, LENGTH = 0x10000
 }
 
 PHDRS {

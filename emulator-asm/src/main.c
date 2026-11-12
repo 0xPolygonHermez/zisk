@@ -254,6 +254,30 @@ void process_request(const uint64_t * request, uint64_t * response, bool * bRese
             }
             break;
         }
+        case TYPE_RS_REQUEST:
+        {
+            if (!silent) asm_printf("RESET received\n");
+
+            // Rebuild what a start initializes in the segments every program set up in a
+            // process shares, since another program may have written them since this server
+            // last ran: the control output counters, then RAM and ROM from this binary's own
+            // init data. The client sends this when it switches programs.
+            //
+            // Called directly, not via *bReset: that flag is honoured only after the response has
+            // been written, and the response must mean the memory is ready.
+            //
+            // Not server_reset_trace(): it writes the header of the trace output, which is no
+            // concern of a reset, and server_run() resets the trace itself.
+            server_reset_fast();
+            server_reset_slow();
+
+            response[0] = TYPE_RS_RESPONSE;
+            response[1] = 0;
+            response[2] = 0;
+            response[3] = 0;
+            response[4] = 0;
+            break;
+        }
         case TYPE_SD_REQUEST:
         {
             if (!silent) asm_printf("SHUTDOWN received\n");

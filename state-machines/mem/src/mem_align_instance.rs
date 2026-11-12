@@ -1,7 +1,7 @@
 use crate::{MemAlignCollector, MemAlignSM};
 use zisk_sm_mem_common::MemAlignCheckPoint;
 
-use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
@@ -46,6 +46,34 @@ impl<F: PrimeField64> MemAlignInstance<F> {
     pub fn build_mem_align_collector(&self, chunk_id: ChunkId) -> MemAlignCollector {
         MemAlignCollector::new(&self.checkpoint[&chunk_id])
     }
+
+    /// The instance from the rows the GPU planner built (`ZISK_MEM_GPU_FILL`).
+    fn device_witness(
+        &self,
+        air_id: usize,
+        segment: usize,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> Result<AirInstance<F>, zisk_common::WitnessError<F>> {
+        use crate::mem_device_rows::{align_device_instance, plain_instance};
+        if self.is_large() {
+            align_device_instance::<F, MemAlignTraceRowPacked<F>, LARGE_ROWS, LARGE_AIR_ID>(
+                air_id,
+                segment,
+                trace_buffer,
+                packed,
+                |t, _| plain_instance(t),
+            )
+        } else {
+            align_device_instance::<F, MemAlignTraceRowPacked<F>, ROWS, AIR_ID>(
+                air_id,
+                segment,
+                trace_buffer,
+                packed,
+                |t, _| plain_instance(t),
+            )
+        }
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
@@ -56,7 +84,15 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
         packed: bool,
-    ) -> ProofmanResult<Option<AirInstance<F>>> {
+    ) -> zisk_common::WitnessResult<F> {
+        let air_id = self.ictx.plan.air_id;
+        let segment =
+            usize::from(self.ictx.plan.segment_id.expect("MemAlign plan without segment"));
+        // No collectors: the executor left the rows to the device (a device failure here makes
+        // it collect the instance and come back with collectors for the CPU witness).
+        if collectors.is_empty() {
+            return self.device_witness(air_id, segment, trace_buffer, packed).map(Some);
+        }
         let mut total_rows = 0;
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -70,7 +106,7 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
             .collect();
         let sm = &self.mem_align_sm;
         let used_rows = total_rows as usize;
-        Ok(Some(match (self.is_large(), packed) {
+        let instance = match (self.is_large(), packed) {
             (false, true) => sm.compute_witness::<MemAlignTraceRowPacked<F>, ROWS, AIR_ID>(
                 &inputs,
                 used_rows,
@@ -92,7 +128,18 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
                 used_rows,
                 trace_buffer,
             )?,
-        }))
+        };
+        #[cfg(feature = "mem-witness-test")]
+        if packed {
+            let words = MemAlignTraceRowPacked::<F>::PACKED_WORDS;
+            crate::mem_device_rows::align_dump(
+                air_id,
+                segment,
+                &crate::mem_gpu_fill::rows_as_words(&instance.trace)[..instance.num_rows * words],
+                words,
+            );
+        }
+        Ok(Some(instance))
     }
 
     fn check_point(&self) -> &CheckPoint {

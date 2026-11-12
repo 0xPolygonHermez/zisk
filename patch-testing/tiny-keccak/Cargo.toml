@@ -1,0 +1,23 @@
+[package]
+name = "patch-tiny-keccak"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Standalone workspace: every guest pins its own patch revision, so two
+# versions of the same patched crate can be tested side by side.
+[workspace]
+
+[dependencies]
+ziskos = { path = "../../ziskos/entrypoint" }
+patch-test-common = { path = "../common" }
+tiny-keccak = { version = "=2.0.2", features = ["keccak", "sha3"] }
+
+[patch.crates-io]
+tiny-keccak = { git = "https://github.com/0xPolygonHermez/zisk-patch-tiny-keccak", package = "tiny-keccak", tag = "patch-2.0.2-zisk-0.16.0+" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

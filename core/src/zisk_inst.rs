@@ -35,7 +35,7 @@
 //! | STORE_MEM  | c        | Value is stored in memory at a constant address             |
 //! | STORE_IND  | c        | value is stored in memory at an indirect address a + offset |
 
-use crate::{source_to_str, store_to_str, InstContext};
+use crate::{source_to_str, store_to_str, zisk_ops::ZiskOp, InstContext, BLAKE2B_RD_CHAIN};
 
 /// a or b registers source is the current value of the c register
 pub const SRC_C: u64 = 0;
@@ -84,9 +84,10 @@ pub enum ZiskOperationType {
     ArithEq,
     ArithEq384,
     BigInt,
-    BabyJubJub,
+    TwistedEdwards,
     Blake3,
-    Blake2s, // Note: Add new core operations here
+    Blake2s,
+    Poseidon2KoalaBear, // Note: Add new core operations here
     Evm,
     Dma, // Note: To add extra params to precompiles calls
     // ZisK Free Input Operations
@@ -113,9 +114,10 @@ pub const FCALL_PARAM_OP_TYPE_ID: u32 = ZiskOperationType::FcallParam as u32;
 pub const FCALL_OP_TYPE_ID: u32 = ZiskOperationType::Fcall as u32;
 pub const DMA_OP_TYPE_ID: u32 = ZiskOperationType::Dma as u32;
 pub const BLAKE2B_OP_TYPE_ID: u32 = ZiskOperationType::Blake2b as u32;
-pub const BABYJUBJUB_OP_TYPE_ID: u32 = ZiskOperationType::BabyJubJub as u32;
+pub const TWISTED_EDWARDS_OP_TYPE_ID: u32 = ZiskOperationType::TwistedEdwards as u32;
 pub const BLAKE3_OP_TYPE_ID: u32 = ZiskOperationType::Blake3 as u32;
 pub const BLAKE2S_OP_TYPE_ID: u32 = ZiskOperationType::Blake2s as u32;
+pub const POSEIDON2_KOALABEAR_OP_TYPE_ID: u32 = ZiskOperationType::Poseidon2KoalaBear as u32;
 
 /// ZisK instruction definition
 ///
@@ -162,6 +164,10 @@ pub struct ZiskInst {
     pub external_ref_addr: Option<u64>, // external address of the instruction, if any
     pub meta_rs1: Option<u8>, // meta information used for callstack.
     pub meta_rd: Option<u8>, // meta information used for callstack.
+    /// A write_log call site: a `flag` whose a and b are the text's pointer and length, and
+    /// whose `func` is `opc_write_log`. Not part of the ROM the prover commits to; kept so
+    /// that a ROM saved as ziskbin gets that `func` back
+    pub write_log: bool,
 }
 
 /// Default constructor
@@ -205,11 +211,26 @@ impl Default for ZiskInst {
             external_ref_addr: None,
             meta_rs1: None,
             meta_rd: None,
+            write_log: false,
         }
     }
 }
 
 impl ZiskInst {
+    /// Minimal-trace words a precompile logs: none for a blake2b round fed by the chain once the
+    /// chunk has the chained state (`chain_cached`).
+    #[inline(always)]
+    pub fn min_trace_words(&self, chain_cached: bool) -> u64 {
+        if chain_cached
+            && self.op == ZiskOp::BLAKE2B
+            && self.jmp_offset1 as u64 & BLAKE2B_RD_CHAIN != 0
+        {
+            0
+        } else {
+            (self.input_size + 7) >> 3
+        }
+    }
+
     /// Creates a human-readable string containing the ZisK instruction fields that are not zero.
     /// Used only for debugging.
     pub fn to_text(&self) -> String {
@@ -448,12 +469,12 @@ mod tests {
             ind_width: 8,
             op_str: "copyb",
             store: STORE_MEM,
-            store_offset: 0xa0000000,
+            store_offset: 0xc0000000,
             jmp_offset1: -16,
             jmp_offset2: 4,
             end: true,
             ..Default::default()
         };
-        assert_eq!(inst.to_zisk_asm(), "copyb(r2, 8[a - 8]) -> [0xa0000000], j(-16), end");
+        assert_eq!(inst.to_zisk_asm(), "copyb(r2, 8[a - 8]) -> [0xc0000000], j(-16), end");
     }
 }

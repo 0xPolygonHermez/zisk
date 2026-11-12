@@ -14,8 +14,8 @@ pub fn generate_dma_memcpy_mem_inputs<P: MemProcessor>(
     let dst = data[A];
     let src = data[B];
     let encoded = data[DMA_ENCODED];
-    let dst64 = (dst & !0x07) as u32;
-    let src64 = (src & !0x07) as u32;
+    let dst64 = dst & !0x07;
+    let src64 = src & !0x07;
     let main_step = data[STEP];
     let pre_count = DmaInfo::get_pre_count(encoded) as u64;
     let dst_offset = dst & 0x07;
@@ -27,7 +27,7 @@ pub fn generate_dma_memcpy_mem_inputs<P: MemProcessor>(
 
     if op == ZiskOp::DMA_MEMCPY {
         MemBusHelpers::mem_aligned_read(
-            EXTRA_PARAMS_ADDR as u32,
+            EXTRA_PARAMS_ADDR,
             main_step,
             DmaInfo::get_count(encoded) as u64,
             mem_processors,
@@ -89,8 +89,8 @@ pub fn generate_dma_memcpy_mem_inputs<P: MemProcessor>(
         let src_offset = src & 0x07;
 
         let post_data_offset = DmaInfo::get_post_data_offset(encoded);
-        let src64 = (src as u32 + pre_count as u32 + loop_count as u32 * 8) & !0x07;
-        let dst64 = dst as u32 + pre_count as u32 + loop_count as u32 * 8;
+        let src64 = (src + pre_count + loop_count as u64 * 8) & !0x07;
+        let dst64 = dst + pre_count + loop_count as u64 * 8;
         let read_value = data_ext[post_data_offset];
 
         #[cfg(feature = "debug_dma")]
@@ -142,8 +142,8 @@ pub fn generate_dma_memcpy_mem_inputs<P: MemProcessor>(
     // recalculate values or extract them from scope.
 
     if loop_count > 0 {
-        let loop_src = src as u32 + pre_count as u32;
-        let dst64 = (dst as u32 + pre_count as u32) & !0x07;
+        let loop_src = src + pre_count;
+        let dst64 = (dst + pre_count) & !0x07;
         let src64 = loop_src & !0x07;
         let loop_data_offset = DmaInfo::get_loop_data_offset(encoded);
         let loop_data_count = DmaInfo::get_loop_count(encoded);
@@ -183,7 +183,7 @@ pub fn generate_dma_memcpy_mem_inputs<P: MemProcessor>(
     if let Some(write_value) = post_write_value {
         #[cfg(feature = "debug_dma")]
         println!("DMA: mem_aligned_write@post 0x{dst64:08X} S:{main_step} V:{write_value} (0x{write_value:016X})");
-        let dst64 = dst as u32 + pre_count as u32 + loop_count as u32 * 8;
+        let dst64 = dst + pre_count + loop_count as u64 * 8;
         MemBusHelpers::mem_aligned_write(dst64, main_step, write_value, mem_processors);
     }
 }
@@ -197,12 +197,16 @@ pub fn skip_dma_memcpy_mem_inputs<P: MemProcessor>(data: &[u64], mem_processors:
     // calculate range for dst and src to verify if any of them are included
     // in the memcollector addresses.
 
-    let dst64_from = dst as u32 & !0x07;
-    let src64_from = src as u32 & !0x07;
-    let dst64_to = (dst + count + 7) as u32 & !0x07;
-    let src64_to = (src + count + 7) as u32 & !0x07;
+    let dst64_from = dst & !0x07;
+    let src64_from = src & !0x07;
+    let dst64_to = (dst + count + 7) & !0x07;
+    let src64_to = (src + count + 7) & !0x07;
 
-    mem_processors.skip_addr(EXTRA_PARAMS_ADDR as u32)
+    mem_processors.skip_addr(EXTRA_PARAMS_ADDR)
         && mem_processors.skip_addr_range(dst64_from, dst64_to)
         && mem_processors.skip_addr_range(src64_from, src64_to)
 }
+
+#[cfg(test)]
+#[path = "tests/dma_memcpy_proof_ops_tests.rs"]
+mod tests;

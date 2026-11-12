@@ -1,11 +1,11 @@
 ; ============================================================================
 ; bls12_381/curve.zisk - G1 point arithmetic on E/Fp: y² = x³ + 4. Mirrors
-; ziskos/.../bls12_381/curve.rs. Uses bls12_381_curve_add (header [&p1,&p2] each
+; ziskos/.../bls12_381/curve.rs. Uses bls12_381_curve_add (a=&p1, b=&p2, each
 ; 12 u64, p1+=p2 in place) and bls12_381_curve_dbl (b=&point, in place). G1 point
 ; = 12 u64 (x[6]‖y[6]). Identity = all-zero. Prefixes lcv_/loc_/lsm_/lj2a_.
 ; ============================================================================
 
-; inline-op headers (zopt): precompile parameter blocks
+; inline-op headers (zopt): arith256_mod / arith384_mod parameter blocks
 const u64 ZBLS_CURVE_H3[5] = BLS_OC_X3, BLS_ONE, BLS_E_B, BLS_P, BLS_OC_RHS
 const u64 ZBLS_CURVE_H6[5] = BLS_J2A_ZINV, BLS_J2A_ZINV, BLS_ZERO, BLS_P, BLS_J2A_ZSQ
 u64 ZBLS_CURVE_H0[5] = 0, 0, BLS_ZERO, BLS_P, BLS_OC_LHS
@@ -23,7 +23,6 @@ u64 BLS_OC_X2[6]    = 0, 0, 0, 0, 0, 0
 u64 BLS_OC_X3[6]    = 0, 0, 0, 0, 0, 0
 u64 BLS_OC_RHS[6]   = 0, 0, 0, 0, 0, 0
 
-u64 BLS_ADD_HDR[2]  = 0, 0
 u64 BLS_ADD_P1[1]   = 0
 u64 BLS_ADD_P2[1]   = 0
 u64 BLS_ADD_RES[1]  = 0
@@ -32,7 +31,6 @@ u64 BLS_SM_PPTR[1]  = 0
 u64 BLS_SM_RESPTR[1]= 0
 u64 BLS_SM_K[4]     = 0, 0, 0, 0
 u64 BLS_SM_Q[12]    = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-u64 BLS_SM_HDR[2]   = 0, 0
 
 u64 BLS_J2A_P[1]    = 0
 u64 BLS_J2A_R[1]    = 0
@@ -183,12 +181,9 @@ lcv_add_generic:
 	copyb(0, [BLS_ADD_RES]) -> r11
 	copyb(0, 12) -> r12
 	call bn254_memcpy
-	copyb(0, [BLS_ADD_RES]) -> r6
-	copyb(0, r6) -> [BLS_ADD_HDR]
-	copyb(0, BLS_ADD_HDR) -> r5
+	copyb(0, [BLS_ADD_RES]) -> r5
 	copyb(0, [BLS_ADD_P2]) -> r7
-	copyb(r5, r7) -> 8[a + 8]
-	bls12_381_curve_add(0, r5) -> r14
+	bls12_381_curve_add(r5, r7) -> r14
 	pop r1
 	ret
 
@@ -236,7 +231,6 @@ lcv_ac_add:
 ;   [r10=p, r11=k, r12=result] -> r10 = 1 if result is identity, else 0.
 ;   result = k·p; k reduced mod R first. Reads k bits directly (trusted).
 u64 BLS_SM_P[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-const u64 BLS_SM_HDRC[2] = BLS_SM_Q, BLS_SM_P
 const u64 LSM_TAB[256] = lsm_done, lsm_s1, lsm_s2, lsm_s3, lsm_s4, lsm_s5, lsm_s6, lsm_s7, lsm_s8, lsm_s9, lsm_s10, lsm_s11, lsm_s12, lsm_s13, lsm_s14, lsm_s15, lsm_s16, lsm_s17, lsm_s18, lsm_s19, lsm_s20, lsm_s21, lsm_s22, lsm_s23, lsm_s24, lsm_s25, lsm_s26, lsm_s27, lsm_s28, lsm_s29, lsm_s30, lsm_s31, lsm_s32, lsm_s33, lsm_s34, lsm_s35, lsm_s36, lsm_s37, lsm_s38, lsm_s39, lsm_s40, lsm_s41, lsm_s42, lsm_s43, lsm_s44, lsm_s45, lsm_s46, lsm_s47, lsm_s48, lsm_s49, lsm_s50, lsm_s51, lsm_s52, lsm_s53, lsm_s54, lsm_s55, lsm_s56, lsm_s57, lsm_s58, lsm_s59, lsm_s60, lsm_s61, lsm_s62, lsm_s63, lsm_t64, lsm_s65, lsm_s66, lsm_s67, lsm_s68, lsm_s69, lsm_s70, lsm_s71, lsm_s72, lsm_s73, lsm_s74, lsm_s75, lsm_s76, lsm_s77, lsm_s78, lsm_s79, lsm_s80, lsm_s81, lsm_s82, lsm_s83, lsm_s84, lsm_s85, lsm_s86, lsm_s87, lsm_s88, lsm_s89, lsm_s90, lsm_s91, lsm_s92, lsm_s93, lsm_s94, lsm_s95, lsm_s96, lsm_s97, lsm_s98, lsm_s99, lsm_s100, lsm_s101, lsm_s102, lsm_s103, lsm_s104, lsm_s105, lsm_s106, lsm_s107, lsm_s108, lsm_s109, lsm_s110, lsm_s111, lsm_s112, lsm_s113, lsm_s114, lsm_s115, lsm_s116, lsm_s117, lsm_s118, lsm_s119, lsm_s120, lsm_s121, lsm_s122, lsm_s123, lsm_s124, lsm_s125, lsm_s126, lsm_s127, lsm_t128, lsm_s129, lsm_s130, lsm_s131, lsm_s132, lsm_s133, lsm_s134, lsm_s135, lsm_s136, lsm_s137, lsm_s138, lsm_s139, lsm_s140, lsm_s141, lsm_s142, lsm_s143, lsm_s144, lsm_s145, lsm_s146, lsm_s147, lsm_s148, lsm_s149, lsm_s150, lsm_s151, lsm_s152, lsm_s153, lsm_s154, lsm_s155, lsm_s156, lsm_s157, lsm_s158, lsm_s159, lsm_s160, lsm_s161, lsm_s162, lsm_s163, lsm_s164, lsm_s165, lsm_s166, lsm_s167, lsm_s168, lsm_s169, lsm_s170, lsm_s171, lsm_s172, lsm_s173, lsm_s174, lsm_s175, lsm_s176, lsm_s177, lsm_s178, lsm_s179, lsm_s180, lsm_s181, lsm_s182, lsm_s183, lsm_s184, lsm_s185, lsm_s186, lsm_s187, lsm_s188, lsm_s189, lsm_s190, lsm_s191, lsm_t192, lsm_s193, lsm_s194, lsm_s195, lsm_s196, lsm_s197, lsm_s198, lsm_s199, lsm_s200, lsm_s201, lsm_s202, lsm_s203, lsm_s204, lsm_s205, lsm_s206, lsm_s207, lsm_s208, lsm_s209, lsm_s210, lsm_s211, lsm_s212, lsm_s213, lsm_s214, lsm_s215, lsm_s216, lsm_s217, lsm_s218, lsm_s219, lsm_s220, lsm_s221, lsm_s222, lsm_s223, lsm_s224, lsm_s225, lsm_s226, lsm_s227, lsm_s228, lsm_s229, lsm_s230, lsm_s231, lsm_s232, lsm_s233, lsm_s234, lsm_s235, lsm_s236, lsm_s237, lsm_s238, lsm_s239, lsm_s240, lsm_s241, lsm_s242, lsm_s243, lsm_s244, lsm_s245, lsm_s246, lsm_s247, lsm_s248, lsm_s249, lsm_s250, lsm_s251, lsm_s252, lsm_s253, lsm_s254, lsm_s255
 
 zisklib_scalar_mul_bls12_381:
@@ -1313,1023 +1307,1023 @@ lsm_s255:
 	sll(r15, 1) -> r15
 	jump(lsm_done)
 lsm_a1:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s2)
 lsm_a2:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s3)
 lsm_a3:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s4)
 lsm_a4:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s5)
 lsm_a5:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s6)
 lsm_a6:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s7)
 lsm_a7:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s8)
 lsm_a8:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s9)
 lsm_a9:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s10)
 lsm_a10:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s11)
 lsm_a11:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s12)
 lsm_a12:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s13)
 lsm_a13:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s14)
 lsm_a14:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s15)
 lsm_a15:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s16)
 lsm_a16:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s17)
 lsm_a17:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s18)
 lsm_a18:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s19)
 lsm_a19:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s20)
 lsm_a20:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s21)
 lsm_a21:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s22)
 lsm_a22:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s23)
 lsm_a23:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s24)
 lsm_a24:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s25)
 lsm_a25:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s26)
 lsm_a26:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s27)
 lsm_a27:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s28)
 lsm_a28:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s29)
 lsm_a29:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s30)
 lsm_a30:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s31)
 lsm_a31:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s32)
 lsm_a32:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s33)
 lsm_a33:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s34)
 lsm_a34:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s35)
 lsm_a35:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s36)
 lsm_a36:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s37)
 lsm_a37:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s38)
 lsm_a38:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s39)
 lsm_a39:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s40)
 lsm_a40:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s41)
 lsm_a41:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s42)
 lsm_a42:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s43)
 lsm_a43:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s44)
 lsm_a44:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s45)
 lsm_a45:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s46)
 lsm_a46:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s47)
 lsm_a47:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s48)
 lsm_a48:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s49)
 lsm_a49:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s50)
 lsm_a50:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s51)
 lsm_a51:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s52)
 lsm_a52:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s53)
 lsm_a53:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s54)
 lsm_a54:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s55)
 lsm_a55:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s56)
 lsm_a56:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s57)
 lsm_a57:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s58)
 lsm_a58:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s59)
 lsm_a59:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s60)
 lsm_a60:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s61)
 lsm_a61:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s62)
 lsm_a62:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s63)
 lsm_a63:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_t64)
 lsm_a64:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s65)
 lsm_a65:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s66)
 lsm_a66:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s67)
 lsm_a67:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s68)
 lsm_a68:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s69)
 lsm_a69:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s70)
 lsm_a70:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s71)
 lsm_a71:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s72)
 lsm_a72:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s73)
 lsm_a73:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s74)
 lsm_a74:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s75)
 lsm_a75:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s76)
 lsm_a76:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s77)
 lsm_a77:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s78)
 lsm_a78:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s79)
 lsm_a79:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s80)
 lsm_a80:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s81)
 lsm_a81:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s82)
 lsm_a82:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s83)
 lsm_a83:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s84)
 lsm_a84:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s85)
 lsm_a85:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s86)
 lsm_a86:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s87)
 lsm_a87:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s88)
 lsm_a88:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s89)
 lsm_a89:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s90)
 lsm_a90:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s91)
 lsm_a91:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s92)
 lsm_a92:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s93)
 lsm_a93:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s94)
 lsm_a94:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s95)
 lsm_a95:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s96)
 lsm_a96:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s97)
 lsm_a97:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s98)
 lsm_a98:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s99)
 lsm_a99:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s100)
 lsm_a100:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s101)
 lsm_a101:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s102)
 lsm_a102:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s103)
 lsm_a103:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s104)
 lsm_a104:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s105)
 lsm_a105:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s106)
 lsm_a106:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s107)
 lsm_a107:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s108)
 lsm_a108:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s109)
 lsm_a109:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s110)
 lsm_a110:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s111)
 lsm_a111:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s112)
 lsm_a112:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s113)
 lsm_a113:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s114)
 lsm_a114:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s115)
 lsm_a115:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s116)
 lsm_a116:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s117)
 lsm_a117:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s118)
 lsm_a118:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s119)
 lsm_a119:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s120)
 lsm_a120:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s121)
 lsm_a121:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s122)
 lsm_a122:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s123)
 lsm_a123:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s124)
 lsm_a124:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s125)
 lsm_a125:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s126)
 lsm_a126:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s127)
 lsm_a127:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_t128)
 lsm_a128:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s129)
 lsm_a129:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s130)
 lsm_a130:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s131)
 lsm_a131:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s132)
 lsm_a132:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s133)
 lsm_a133:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s134)
 lsm_a134:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s135)
 lsm_a135:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s136)
 lsm_a136:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s137)
 lsm_a137:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s138)
 lsm_a138:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s139)
 lsm_a139:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s140)
 lsm_a140:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s141)
 lsm_a141:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s142)
 lsm_a142:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s143)
 lsm_a143:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s144)
 lsm_a144:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s145)
 lsm_a145:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s146)
 lsm_a146:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s147)
 lsm_a147:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s148)
 lsm_a148:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s149)
 lsm_a149:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s150)
 lsm_a150:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s151)
 lsm_a151:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s152)
 lsm_a152:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s153)
 lsm_a153:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s154)
 lsm_a154:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s155)
 lsm_a155:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s156)
 lsm_a156:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s157)
 lsm_a157:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s158)
 lsm_a158:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s159)
 lsm_a159:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s160)
 lsm_a160:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s161)
 lsm_a161:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s162)
 lsm_a162:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s163)
 lsm_a163:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s164)
 lsm_a164:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s165)
 lsm_a165:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s166)
 lsm_a166:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s167)
 lsm_a167:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s168)
 lsm_a168:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s169)
 lsm_a169:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s170)
 lsm_a170:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s171)
 lsm_a171:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s172)
 lsm_a172:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s173)
 lsm_a173:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s174)
 lsm_a174:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s175)
 lsm_a175:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s176)
 lsm_a176:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s177)
 lsm_a177:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s178)
 lsm_a178:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s179)
 lsm_a179:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s180)
 lsm_a180:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s181)
 lsm_a181:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s182)
 lsm_a182:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s183)
 lsm_a183:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s184)
 lsm_a184:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s185)
 lsm_a185:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s186)
 lsm_a186:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s187)
 lsm_a187:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s188)
 lsm_a188:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s189)
 lsm_a189:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s190)
 lsm_a190:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s191)
 lsm_a191:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_t192)
 lsm_a192:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s193)
 lsm_a193:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s194)
 lsm_a194:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s195)
 lsm_a195:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s196)
 lsm_a196:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s197)
 lsm_a197:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s198)
 lsm_a198:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s199)
 lsm_a199:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s200)
 lsm_a200:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s201)
 lsm_a201:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s202)
 lsm_a202:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s203)
 lsm_a203:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s204)
 lsm_a204:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s205)
 lsm_a205:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s206)
 lsm_a206:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s207)
 lsm_a207:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s208)
 lsm_a208:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s209)
 lsm_a209:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s210)
 lsm_a210:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s211)
 lsm_a211:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s212)
 lsm_a212:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s213)
 lsm_a213:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s214)
 lsm_a214:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s215)
 lsm_a215:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s216)
 lsm_a216:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s217)
 lsm_a217:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s218)
 lsm_a218:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s219)
 lsm_a219:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s220)
 lsm_a220:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s221)
 lsm_a221:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s222)
 lsm_a222:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s223)
 lsm_a223:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s224)
 lsm_a224:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s225)
 lsm_a225:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s226)
 lsm_a226:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s227)
 lsm_a227:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s228)
 lsm_a228:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s229)
 lsm_a229:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s230)
 lsm_a230:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s231)
 lsm_a231:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s232)
 lsm_a232:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s233)
 lsm_a233:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s234)
 lsm_a234:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s235)
 lsm_a235:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s236)
 lsm_a236:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s237)
 lsm_a237:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s238)
 lsm_a238:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s239)
 lsm_a239:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s240)
 lsm_a240:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s241)
 lsm_a241:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s242)
 lsm_a242:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s243)
 lsm_a243:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s244)
 lsm_a244:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s245)
 lsm_a245:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s246)
 lsm_a246:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s247)
 lsm_a247:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s248)
 lsm_a248:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s249)
 lsm_a249:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s250)
 lsm_a250:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s251)
 lsm_a251:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s252)
 lsm_a252:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s253)
 lsm_a253:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s254)
 lsm_a254:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_s255)
 lsm_a255:
-	bls12_381_curve_add(0, BLS_SM_HDRC)
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
 	sll(r15, 1) -> r15
 	jump(lsm_done)
 lsm_done:

@@ -181,8 +181,8 @@ impl ProverClientBuilder<EmuB> {
         }
 
         let emu = EmuProver::new(
-            self.prover_options.plonk,
-            self.prover_options.preload_plonk,
+            self.prover_options.snark,
+            self.prover_options.preload_snark,
             proving_key,
             proving_key_snark,
             true,
@@ -261,8 +261,8 @@ impl ProverClientBuilder<AsmB> {
         }
 
         let asm = AsmProver::new(
-            self.prover_options.plonk,
-            self.prover_options.preload_plonk,
+            self.prover_options.snark,
+            self.prover_options.preload_snark,
             proving_key,
             proving_key_snark,
             true,

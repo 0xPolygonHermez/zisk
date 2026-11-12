@@ -42,6 +42,7 @@ impl Coordinator {
                 )
                 .await?;
 
+            #[allow(deprecated)] // `metadata` is deprecated and left empty.
             let req = ExecuteTaskRequestDto {
                 worker_id: worker_id.clone(),
                 job_id: job_id.clone(),
@@ -149,6 +150,7 @@ impl Coordinator {
 
         if starting {
             self.fire_job_event(&job_id, CoordinatorJobEvent::Progress(JobPhase::Recurse)).await;
+            crate::metrics::record_job_phase(&job_id, crate::metrics::PHASE_AGGREGATION);
         }
 
         self.dispatch_all(&job_id, dispatches).await

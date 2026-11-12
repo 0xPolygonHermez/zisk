@@ -12,7 +12,7 @@ use crate::{
     Dma64AlignedCollector, Dma64AlignedModule, DmaCheckPoint, DMA_64_ALIGNED_MEMCPY_OPS_BY_ROW,
     DMA_64_ALIGNED_MEMSET_OPS_BY_ROW, DMA_64_ALIGNED_MEM_OPS_BY_ROW, DMA_64_ALIGNED_OPS_BY_ROW,
 };
-use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_common::{ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::sync::Arc;
 use zisk_common::ChunkId;
@@ -112,7 +112,7 @@ impl<F: PrimeField64> Instance<F> for Dma64AlignedInstance<F> {
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
         packed: bool,
-    ) -> ProofmanResult<Option<AirInstance<F>>> {
+    ) -> zisk_common::WitnessResult<F> {
         #[cfg(feature = "save_dma_collectors")]
         let (debug, inputs): (Vec<_>, Vec<_>) = collectors
             .into_iter()

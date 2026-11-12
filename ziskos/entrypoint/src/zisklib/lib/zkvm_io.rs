@@ -140,6 +140,45 @@ unsafe fn write_padded_pending_word() {
     crate::set_output(OUTPUT_WORD_SLOT, u32::from_le_bytes(bytes));
 }
 
+/// Writes `utf8_len` bytes of UTF-8 diagnostic text (draft eth-act PR #27). It is not
+/// part of the public output and does not affect the execution.
+///
+/// On ZisK it is a zkvmcall that the transpiler turns into one step, which ziskemu prints only
+/// when asked to (`ziskemu --write-log`); other executions and proofs ignore it. Natively the
+/// text goes to stdout.
+///
+/// # Safety
+///
+/// If `utf8_len > 0`, `utf8_bytes` must point to at least `utf8_len` readable bytes.
+#[cfg(zisk_guest)]
+#[cfg_attr(not(zisk_staticlib), no_mangle)]
+#[unsafe(naked)]
+pub unsafe extern "C" fn write_log(utf8_bytes: *const u8, utf8_len: usize) {
+    // The transpiler turns the csrs into one step that reads a0, a1, and the `ret` returns
+    core::arch::naked_asm!(
+        "csrs {id}, x0",
+        "ret",
+        id = const zisk_definitions::zkvmcall_id("write_log"),
+    )
+}
+
+/// Writes `utf8_len` bytes of UTF-8 diagnostic text to stdout.
+///
+/// # Safety
+///
+/// If `utf8_len > 0`, `utf8_bytes` must point to at least `utf8_len` readable bytes.
+#[cfg(not(zisk_guest))]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_write_log")]
+pub unsafe extern "C" fn write_log(utf8_bytes: *const u8, utf8_len: usize) {
+    use std::io::Write;
+
+    if utf8_len == 0 {
+        return;
+    }
+    let _ = std::io::stdout().write_all(core::slice::from_raw_parts(utf8_bytes, utf8_len));
+}
+
 #[cfg(not(zisk_guest))]
 pub(crate) fn reset() {
     // Leaked slices are intentionally not freed; each reset() will re-read

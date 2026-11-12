@@ -5,10 +5,6 @@ pub fn diagnostic_bls12_381() {
     // BLS12-381 Add Tests
     //////////////
 
-    let mut p1 = SyscallPoint384 { x: [0, 0, 0, 0, 0, 0], y: [0, 0, 0, 0, 0, 0] };
-    let p2 = SyscallPoint384 { x: [0, 0, 0, 0, 0, 0], y: [0, 0, 0, 0, 0, 0] };
-    let mut params = SyscallBls12_381CurveAddParams { p1: &mut p1, p2: &p2 };
-
     let mut p1 = SyscallPoint384 {
         x: [
             5136610938092865425,
@@ -45,9 +41,7 @@ pub fn diagnostic_bls12_381() {
             149896740736755094,
         ],
     };
-    params.p1 = &mut p1;
-    params.p2 = &p2;
-    syscall_bls12_381_curve_add(&mut params);
+    syscall_bls12_381_curve_add(&mut p1, &p2);
     let p3 = SyscallPoint384 {
         x: [
             8948993161889914149,
@@ -66,8 +60,8 @@ pub fn diagnostic_bls12_381() {
             1699466559831952174,
         ],
     };
-    assert_eq!(params.p1.x, p3.x);
-    assert_eq!(params.p1.y, p3.y);
+    assert_eq!(p1.x, p3.x);
+    assert_eq!(p1.y, p3.y);
 
     //////////////
     // BLS12-381 Dbl Tests
@@ -117,10 +111,6 @@ pub fn diagnostic_bls12_381() {
     // Complex Add Tests
     //////////////
 
-    let mut f1 = SyscallComplex384 { x: [0, 0, 0, 0, 0, 0], y: [0, 0, 0, 0, 0, 0] };
-    let f2 = SyscallComplex384 { x: [0, 0, 0, 0, 0, 0], y: [0, 0, 0, 0, 0, 0] };
-    let mut params = SyscallBls12_381ComplexAddParams { f1: &mut f1, f2: &f2 };
-
     let mut f1 = SyscallComplex384 {
         x: [
             2033884108945432650,
@@ -157,9 +147,7 @@ pub fn diagnostic_bls12_381() {
             464772836338103407,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_add(&mut params);
+    syscall_bls12_381_complex_add(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             5135499144476418804,
@@ -178,14 +166,12 @@ pub fn diagnostic_bls12_381() {
             79694329386620607,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     //////////////
     // Complex Sub Tests
     //////////////
-
-    let mut params = SyscallBls12_381ComplexSubParams { f1: &mut f1, f2: &f2 };
 
     let mut f1 = SyscallComplex384 {
         x: [
@@ -223,9 +209,7 @@ pub fn diagnostic_bls12_381() {
             1274782533051852851,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_sub(&mut params);
+    syscall_bls12_381_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             10229428684776179554,
@@ -244,14 +228,12 @@ pub fn diagnostic_bls12_381() {
             1872503426029827583,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     //////////////
     // Complex Mul Tests
     //////////////
-
-    let mut params = SyscallBls12_381ComplexMulParams { f1: &mut f1, f2: &f2 };
 
     let mut f1 = SyscallComplex384 {
         x: [
@@ -289,9 +271,7 @@ pub fn diagnostic_bls12_381() {
             1118121120435536365,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             18215017252128714127,
@@ -310,6 +290,6 @@ pub fn diagnostic_bls12_381() {
             584542795351976054,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 }

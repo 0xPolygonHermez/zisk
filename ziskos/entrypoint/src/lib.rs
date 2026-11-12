@@ -104,6 +104,32 @@ pub extern "C" fn zkvm_deinit() {
     }
 }
 
+/// Exit code of [`abort`]: 128 + SIGABRT, what a shell reports for an aborted process, so it
+/// is told apart from `main` returning 1
+pub const ABORT_EXIT_CODE: i32 = 134;
+
+/// Ends the execution as a failed termination, as if `main` had returned [`ABORT_EXIT_CODE`]
+/// (EF termination standard, draft eth-act PR #46). Like C's `abort`, it runs no destructors
+/// or exit handlers. `libziskos.a` exports it as `abort`.
+#[cfg(zisk_guest)]
+pub fn abort() -> ! {
+    // The exit dispatch of `_start`, which halts the run as a failed execution
+    unsafe {
+        core::arch::asm!(
+            "li a0, {code}",
+            "j _zisk_exit",
+            code = const ABORT_EXIT_CODE,
+            options(noreturn)
+        )
+    }
+}
+
+/// Natively, a process abort (SIGABRT, which a shell reports as [`ABORT_EXIT_CODE`])
+#[cfg(not(zisk_guest))]
+pub fn abort() -> ! {
+    std::process::abort()
+}
+
 #[cfg(all(not(zisk_guest), zisk_hints, feature = "user-hints"))]
 pub fn zkvm_init_socket(
     socket_path: std::path::PathBuf,
@@ -361,6 +387,9 @@ pub mod ziskos {
 
     #[no_mangle]
     #[link_section = ".text.init"]
+    // `_zisk_exit`, the label `abort` jumps to: `_start` is emitted once, so its asm is never
+    // duplicated, which is what the lint guards against
+    #[allow(named_asm_labels)]
     unsafe extern "C" fn _start() -> ! {
         asm!(
           // before we use the `la` pseudo-instruction for the first time,
@@ -376,6 +405,10 @@ pub mod ziskos {
           // Call into Rust. `_zisk_main` returns `main`'s exit code in a0,
           // which both exit paths below forward to the termination mechanism.
           "call {_zisk_main}",
+
+          // Exit dispatch, with the exit code in a0; `abort` jumps here too
+          ".globl _zisk_exit",
+          "_zisk_exit:",
           "csrr t0, marchid",
           //"li   t1, {_ARCH_ID_ZISK}",
           "li   t1, 0xFFFEEEE",

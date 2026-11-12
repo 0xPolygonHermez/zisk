@@ -132,6 +132,11 @@ impl ZiskEmulator {
             return Err(ZiskEmulatorErr::EmulationNoCompleted);
         }
 
+        // A failed execution has no valid result
+        if let Some((reason, step, pc)) = emu.failure() {
+            return Err(ZiskEmulatorErr::ExecutionFailed { reason, step, pc });
+        }
+
         // Store the duration of the emulation process as a difference vs. the start time
         let duration = start.elapsed();
 
@@ -209,6 +214,10 @@ impl ZiskEmulator {
                     let trace = emu.par_run(inputs.to_owned(), options, &par_emu_options);
                     if !emu.terminated() {
                         return Err(ZiskEmulatorErr::EmulationNoCompleted);
+                    }
+                    // A failed execution must never be proven
+                    if let Some((reason, step, pc)) = emu.failure() {
+                        return Err(ZiskEmulatorErr::ExecutionFailed { reason, step, pc });
                     }
                     Ok(trace)
                 }))
@@ -327,6 +336,15 @@ impl Emulator for ZiskEmulator {
         } else if source_count > 1 {
             return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
                 "ROM (-r), ELF (-e) and ZisK assembly (-z) are mutually exclusive; use only one",
+            )));
+        }
+
+        // A program always executes at least its `end` instruction, so a zero step budget can
+        // never complete an emulation; reject it up front instead of reporting (and, with
+        // statistics, printing a report about) an execution that never started.
+        if options.max_steps == 0 {
+            return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
+                "max steps (-n) must be greater than zero",
             )));
         }
 

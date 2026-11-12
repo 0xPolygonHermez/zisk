@@ -1,15 +1,9 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
-use ziskos::syscalls::{
-    syscall_bls12_381_complex_mul, SyscallBls12_381ComplexMulParams, SyscallComplex384,
-};
+use ziskos::syscalls::{syscall_bls12_381_complex_mul, SyscallComplex384};
 
 fn main() {
-    let mut f1 = SyscallComplex384 { x: [0, 0, 0, 0, 0, 0], y: [0, 0, 0, 0, 0, 0] };
-    let f2 = SyscallComplex384 { x: [0, 0, 0, 0, 0, 0], y: [0, 0, 0, 0, 0, 0] };
-    let mut params = SyscallBls12_381ComplexMulParams { f1: &mut f1, f2: &f2 };
-
     // Test #0: bls12_381_complex_mul
     let mut f1 = SyscallComplex384 {
         x: [
@@ -47,9 +41,7 @@ fn main() {
             1779521080804745031,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             6125751916435298415,
@@ -68,8 +60,8 @@ fn main() {
             1026968756829914718,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #1: bls12_381_complex_mul
     let mut f1 = SyscallComplex384 {
@@ -108,9 +100,7 @@ fn main() {
             1708422922636897196,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             17441363298156901208,
@@ -129,8 +119,8 @@ fn main() {
             1761216867846438959,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #2: bls12_381_complex_mul
     let mut f1 = SyscallComplex384 {
@@ -169,9 +159,7 @@ fn main() {
             878761700268755214,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             16973028705772684340,
@@ -190,8 +178,8 @@ fn main() {
             872406208337924182,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #3: bls12_381_complex_mul
     let mut f1 = SyscallComplex384 {
@@ -230,9 +218,7 @@ fn main() {
             1053188601615863209,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             11914377975025801237,
@@ -251,8 +237,8 @@ fn main() {
             1848490765148096502,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #4: bls12_381_complex_mul
     let mut f1 = SyscallComplex384 {
@@ -291,9 +277,7 @@ fn main() {
             1075710431996412236,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             17527083481960470743,
@@ -312,8 +296,8 @@ fn main() {
             278774220594870854,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #5: bls12_381_complex_mul
     let mut f1 = SyscallComplex384 {
@@ -352,9 +336,7 @@ fn main() {
             162834237301813915,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             13826491121946890654,
@@ -373,8 +355,8 @@ fn main() {
             837612884344158744,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #6: bls12_381_complex_mul
     let mut f1 = SyscallComplex384 {
@@ -413,9 +395,7 @@ fn main() {
             16580051086762329,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             6800447605359366789,
@@ -434,8 +414,8 @@ fn main() {
             96016939766132913,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #7: bls12_381_complex_mul
     let mut f1 = SyscallComplex384 {
@@ -474,9 +454,7 @@ fn main() {
             1541198167037040111,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             1353721708722958776,
@@ -495,8 +473,8 @@ fn main() {
             1589771265899739004,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #8: bls12_381_complex_mul
     let mut f1 = SyscallComplex384 {
@@ -535,9 +513,7 @@ fn main() {
             50886828232508497,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             5905902567574609016,
@@ -556,8 +532,8 @@ fn main() {
             438999020706734722,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #9: bls12_381_complex_mul
     let mut f1 = SyscallComplex384 {
@@ -596,9 +572,7 @@ fn main() {
             737246843190324318,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             18273078894344800827,
@@ -617,8 +591,8 @@ fn main() {
             230555154767901393,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #10: bls12_381_complex_mul
     let mut f1 = SyscallComplex384 {
@@ -657,9 +631,7 @@ fn main() {
             1392880521821443057,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             1586617999487626466,
@@ -678,8 +650,8 @@ fn main() {
             750474420885029577,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #11: bls12_381_complex_mul
     let mut f1 = SyscallComplex384 {
@@ -718,9 +690,7 @@ fn main() {
             1359292216712631995,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             7627989634734485980,
@@ -739,8 +709,8 @@ fn main() {
             160791060729228295,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #12: bls12_381_complex_mul
     let mut f1 = SyscallComplex384 {
@@ -779,9 +749,7 @@ fn main() {
             1310218521172857723,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             11417498103497943298,
@@ -800,8 +768,8 @@ fn main() {
             1661637529969026819,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #13: bls12_381_complex_mul
     let mut f1 = SyscallComplex384 {
@@ -840,9 +808,7 @@ fn main() {
             1827352908053367122,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             10700414209898805254,
@@ -861,8 +827,8 @@ fn main() {
             359817578280265852,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #14: bls12_381_complex_mul
     let mut f1 = SyscallComplex384 {
@@ -901,9 +867,7 @@ fn main() {
             1118121120435536365,
         ],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(&mut f1, &f2);
     let f3 = SyscallComplex384 {
         x: [
             18215017252128714127,
@@ -922,6 +886,6 @@ fn main() {
             584542795351976054,
         ],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 }

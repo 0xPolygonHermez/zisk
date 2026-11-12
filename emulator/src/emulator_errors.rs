@@ -5,7 +5,23 @@ pub enum ZiskEmulatorErr {
     WrongArguments(ErrWrongArguments),
     AddressOutOfRange(u64),
     EmulationNoCompleted,
+    /// The guest execution failed, for `reason`, at the instruction at this step and pc. A
+    /// failed execution must never be proven.
+    ExecutionFailed {
+        reason: FailureReason,
+        step: u64,
+        pc: u64,
+    },
     Unknown(String),
+}
+
+/// Why a guest execution failed
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureReason {
+    /// An illegal instruction: a trap (unimp, ebreak), a write to a read-only CSR, ...
+    Trap,
+    /// The guest exited with this nonzero exit code (the a0 of its exit call)
+    ExitCode(u64),
 }
 
 #[derive(Debug)]
@@ -31,6 +47,16 @@ impl fmt::Display for ZiskEmulatorErr {
                 write!(f, "Address out of range: {addr:#x}")
             }
             ZiskEmulatorErr::EmulationNoCompleted => write!(f, "Emulation not completed"),
+            ZiskEmulatorErr::ExecutionFailed { reason: FailureReason::Trap, step, pc } => {
+                write!(f, "Guest execution failed (trap) at step={step} pc={pc:#x}")
+            }
+            ZiskEmulatorErr::ExecutionFailed {
+                reason: FailureReason::ExitCode(code),
+                step,
+                pc,
+            } => {
+                write!(f, "Guest exited with code {} at step={step} pc={pc:#x}", *code as i64)
+            }
             ZiskEmulatorErr::Unknown(code) => write!(f, "Error code {code}"),
         }
     }
@@ -42,6 +68,7 @@ impl Error for ZiskEmulatorErr {
             ZiskEmulatorErr::WrongArguments(e) => Some(e),
             ZiskEmulatorErr::AddressOutOfRange(_) => None,
             ZiskEmulatorErr::EmulationNoCompleted => None,
+            ZiskEmulatorErr::ExecutionFailed { .. } => None,
             ZiskEmulatorErr::Unknown(_) => None,
         }
     }

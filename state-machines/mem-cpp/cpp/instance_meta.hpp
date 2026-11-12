@@ -63,8 +63,8 @@ static_assert(sizeof(PagedOffsets) == 40,
 //
 //   inst_id            — instance index
 //   kind               — 0 = ROM, 1 = INPUT, 2 = RAM
-//   first_addr         — fist byte address in the instance
-//   last_addr          — last byte address in the instance
+//   first_addr         — first WORD address (byte address / 8) in the instance
+//   last_addr          — last WORD address in the instance
 //   count_per_chunk[c] — instance rows filled from chunk c (length n_chunks)
 //   n_chunks           — total number of chunks
 //   offsets            — paged cumulative-offset table (see PagedOffsets)
@@ -75,8 +75,8 @@ static_assert(sizeof(PagedOffsets) == 40,
 struct InstanceMeta {
     uint32_t inst_id;
     uint32_t kind;
-    uint32_t first_addr;
-    uint32_t last_addr;
+    uint32_t first_addr;   // word address
+    uint32_t last_addr;    // word address
     const uint32_t* count_per_chunk;
     uint32_t        n_chunks;
     PagedOffsets    offsets;

@@ -362,7 +362,7 @@ main() {
     run_example "gcd" "embedded-host" "verified successfully." || return 1
     run_example "gcd" "stark-host"    "verified successfully." || return 1
     run_example "gcd" "minimal-host"  "verified successfully." || return 1
-    # run_example "gcd" "plonk-host"    "verified successfully." || return 1
+    # run_example "gcd" "pilfflonk-host" "verified successfully." || return 1
 
     # collatz (3 binaries)
     run_example "collatz" "single-host"     "verified successfully." || return 1

@@ -97,10 +97,20 @@ zkvm_status zkvm_keccak256(const uint8_t* data, size_t len, zkvm_keccak256_hash*
 /* Keccak-f[1600] permutation, applied in place to the raw 25-word state (no
  * sponge/padding). state: 25 uint64_t words, updated in place. Always returns
  * ZKVM_EOK. On ZisK it is the keccakf precompile (CSR 0x800), inlined; other
- * targets (e.g. host-side tests) only get the prototype. */
+ * targets (e.g. host-side tests) only get the prototype. The precompile halts on
+ * a state that is not 8-byte aligned, so such a state is DMA-copied (CSR 0x813,
+ * one step each way) to an aligned local and back; an aligned one costs one
+ * test, or none when the compiler can see its alignment. */
 #if defined(__riscv)
 static inline zkvm_status zkvm_keccak_f1600(uint64_t* state) {
-    __asm__ volatile("csrs 0x800, %0" : : "r"(state) : "memory");
+    if (__builtin_expect(((uintptr_t)state & 7) == 0, 1)) {
+        __asm__ volatile("csrs 0x800, %0" : : "r"(state) : "memory");
+    } else {
+        uint64_t s[25];
+        __asm__ volatile("csrs 0x813, %1\n\taddi x0, %0, 200" : : "r"(s), "r"(state) : "memory");
+        __asm__ volatile("csrs 0x800, %0" : : "r"(s) : "memory");
+        __asm__ volatile("csrs 0x813, %1\n\taddi x0, %0, 200" : : "r"(state), "r"(s) : "memory");
+    }
     return ZKVM_EOK;
 }
 #else

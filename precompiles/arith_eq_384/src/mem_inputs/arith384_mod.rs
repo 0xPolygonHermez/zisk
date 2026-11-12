@@ -5,6 +5,7 @@ use crate::{executors::Arith384Mod, ARITH_EQ_384_U64S};
 
 pub const ARITH_384_MOD_MEM_CONFIG: ArithEq384MemInputConfig = ArithEq384MemInputConfig {
     indirect_params: 5,
+    direct_ab: false,
     rewrite_params: false,
     read_params: 4,
     write_params: 1,
@@ -12,7 +13,7 @@ pub const ARITH_384_MOD_MEM_CONFIG: ArithEq384MemInputConfig = ArithEq384MemInpu
 };
 
 pub fn generate_arith384_mod_mem_inputs<P: MemProcessor>(
-    addr_main: u32,
+    addr_main: u64,
     step_main: u64,
     data: &[u64],
     only_counters: bool,
@@ -45,7 +46,7 @@ pub fn generate_arith384_mod_mem_inputs<P: MemProcessor>(
 }
 
 pub fn skip_arith384_mod_mem_inputs<P: MemProcessor>(
-    addr_main: u32,
+    addr_main: u64,
     data: &[u64],
     mem_processors: &mut P,
 ) -> bool {

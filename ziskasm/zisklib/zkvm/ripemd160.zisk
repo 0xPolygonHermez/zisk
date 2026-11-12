@@ -24,7 +24,7 @@
 u64 RMD_X[16]    = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 RMD_BLOCK[8] = 0, 0, 0, 0, 0, 0, 0, 0
 
-define RMD_DMA_COUNT 0xa0400f00         ; dma_memcpy reads its byte count here
+define RMD_DMA_COUNT 0xc0400f00         ; dma_memcpy reads its byte count here
 
 ; Registers: r10 = data cursor, r11 = remaining, r12 = output, r13 = len,
 ; h0..h4 = r14, r15, r16, r17, r28; the left line uses r32..r36, the right line

@@ -14,7 +14,7 @@ pub fn generate_dma_inputcpy_mem_inputs<P: MemProcessor>(
     let dst = data[A];
     let dst_offset = dst & 0x07;
     let encoded = data[DMA_ENCODED];
-    let dst64 = (dst & !0x07) as u32;
+    let dst64 = dst & !0x07;
     let main_step = data[STEP];
     let pre_count = DmaInfo::get_pre_count(encoded) as u64;
 
@@ -53,7 +53,7 @@ pub fn generate_dma_inputcpy_mem_inputs<P: MemProcessor>(
 
     let post_value = if post_count > 0 {
         let post_data_offset = DmaInfo::get_post_data_offset(encoded);
-        let dst64 = dst as u32 + pre_count as u32 + loop_count as u32 * 8;
+        let dst64 = dst + pre_count + loop_count as u64 * 8;
 
         // pre-load of write address before unaligned write
         let value_before_write = data_ext[DmaInfo::get_post_write_offset(encoded)];
@@ -72,11 +72,11 @@ pub fn generate_dma_inputcpy_mem_inputs<P: MemProcessor>(
         MemBusHelpers::mem_aligned_write(dst64, main_step, pre_value, mem_processors);
     }
     if let Some(loop_values) = loop_values {
-        let dst64 = (dst as u32 + pre_count as u32) & !0x07;
+        let dst64 = (dst + pre_count) & !0x07;
         MemBusHelpers::mem_aligned_write_from_slice(dst64, main_step, loop_values, mem_processors);
     }
     if let Some(post_value) = post_value {
-        let dst64 = dst as u32 + pre_count as u32 + loop_count as u32 * 8;
+        let dst64 = dst + pre_count + loop_count as u64 * 8;
         MemBusHelpers::mem_aligned_write(dst64, main_step, post_value, mem_processors);
     }
 }
@@ -88,8 +88,8 @@ pub fn skip_dma_inputcpy_mem_inputs<P: MemProcessor>(data: &[u64], mem_processor
     // calculate range for dst and src to verify if any of them are included
     // in the memcollector addresses.
 
-    let dst64_from = dst as u32 & !0x07;
-    let dst64_to = (dst + count + 7) as u32 & !0x07;
+    let dst64_from = dst & !0x07;
+    let dst64_to = (dst + count + 7) & !0x07;
 
     if !mem_processors.skip_addr_range(dst64_from, dst64_to) {
         return false;

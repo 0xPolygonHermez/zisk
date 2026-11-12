@@ -18,8 +18,8 @@ pub fn generate_dma_memcmp_mem_inputs<P: MemProcessor>(
     let dst = data[A];
     let src = data[B];
     let encoded = data[DMA_ENCODED];
-    let dst64 = (dst & !0x07) as u32;
-    let src64 = (src & !0x07) as u32;
+    let dst64 = dst & !0x07;
+    let src64 = src & !0x07;
     let main_step = data[STEP];
     let pre_count = DmaInfo::get_pre_count(encoded) as u64;
     let dst_offset = dst & 0x07;
@@ -31,7 +31,7 @@ pub fn generate_dma_memcmp_mem_inputs<P: MemProcessor>(
 
     if op == ZiskOp::DMA_MEMCMP {
         MemBusHelpers::mem_aligned_read(
-            EXTRA_PARAMS_ADDR as u32,
+            EXTRA_PARAMS_ADDR,
             main_step,
             data[DMA_MEMCMP_COUNT_BUS],
             mem_processors,
@@ -73,8 +73,8 @@ pub fn generate_dma_memcmp_mem_inputs<P: MemProcessor>(
     let post_count = DmaInfo::get_post_count(encoded) as u64;
     let loop_count = DmaInfo::get_loop_count(encoded);
     if loop_count > 0 {
-        let loop_src = src as u32 + pre_count as u32;
-        let dst64 = (dst as u32 + pre_count as u32) & !0x07;
+        let loop_src = src + pre_count;
+        let dst64 = (dst + pre_count) & !0x07;
         let src64 = loop_src & !0x07;
         let loop_data_offset = DmaInfo::get_loop_data_offset(encoded);
         let loop_data_count = DmaInfo::get_loop_count(encoded);
@@ -115,8 +115,8 @@ pub fn generate_dma_memcmp_mem_inputs<P: MemProcessor>(
     }
     if post_count > 0 {
         let post_data_offset = DmaInfo::get_post_data_offset(encoded);
-        let src64 = (src as u32 + pre_count as u32 + loop_count as u32 * 8) & !0x07;
-        let dst64 = dst as u32 + pre_count as u32 + loop_count as u32 * 8;
+        let src64 = (src + pre_count + loop_count as u64 * 8) & !0x07;
+        let dst64 = dst + pre_count + loop_count as u64 * 8;
         let read_value = data_ext[post_data_offset];
 
         #[cfg(feature = "debug_dma")]
@@ -158,17 +158,17 @@ pub fn skip_dma_memcmp_mem_inputs<P: MemProcessor>(data: &[u64], mem_processors:
     // calculate range for dst and src to verify if any of them are included
     // in the memcollector addresses.
 
-    let dst64_from = dst as u32 & !0x07;
-    let dst64_to = (dst + count + 7) as u32 & !0x07;
+    let dst64_from = dst & !0x07;
+    let dst64_to = (dst + count + 7) & !0x07;
     #[cfg(feature = "debug_dma_gen_mem_inputs")]
-    let (_count64, step) = (dst64_to as u64 - dst64_from as u64 + 1, data[STEP]);
+    let (_count64, step) = (dst64_to - dst64_from + 1, data[STEP]);
     #[cfg(feature = "debug_dma_gen_mem_inputs")]
     println!("[dma_memcmp] SKIP DST:[0x{dst64_from:08X}..=0x{dst64_to:08X}] C:{count} S:{step}");
 
     if load_count_from_mem {
         #[cfg(feature = "debug_dma_gen_mem_inputs")]
         println!("[dma_memcmp] SKIP PARAM 0x{EXTRA_PARAMS_ADDR:08X} S:{step}");
-        if !mem_processors.skip_addr(EXTRA_PARAMS_ADDR as u32) {
+        if !mem_processors.skip_addr(EXTRA_PARAMS_ADDR) {
             return false;
         }
     }
@@ -177,10 +177,10 @@ pub fn skip_dma_memcmp_mem_inputs<P: MemProcessor>(data: &[u64], mem_processors:
         return false;
     }
 
-    let src64_from = src as u32 & !0x07;
-    let src64_to = (src + count + 7) as u32 & !0x07;
+    let src64_from = src & !0x07;
+    let src64_to = (src + count + 7) & !0x07;
     #[cfg(feature = "debug_dma_gen_mem_inputs")]
-    let (_count64, step) = (dst64_to as u64 - dst64_from as u64 + 1, data[STEP]);
+    let (_count64, step) = (dst64_to - dst64_from + 1, data[STEP]);
 
     #[cfg(feature = "debug_dma_gen_mem_inputs")]
     println!("[dma_memcmp] SKIP SRC:[0x{src64_from:08X}..=0x{src64_to:08X}] C:{count} S:{step}");
@@ -192,3 +192,7 @@ pub fn skip_dma_memcmp_mem_inputs<P: MemProcessor>(data: &[u64], mem_processors:
     // at mem input data generation.
     true
 }
+
+#[cfg(test)]
+#[path = "tests/dma_memcmp_proof_reads_tests.rs"]
+mod tests;

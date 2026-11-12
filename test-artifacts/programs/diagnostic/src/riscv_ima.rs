@@ -161,7 +161,9 @@ pub fn diagnostic_riscv_ima() {
     riscv_ori();
     riscv_fence();
     riscv_fence_i();
-    riscv_ebreak();
+    // ebreak ends the execution as failed (a breakpoint exception), so it cannot be
+    // exercised here
+    // riscv_ebreak();
     riscv_lr_d();
     riscv_lr_w();
     riscv_sc_d();
@@ -1303,12 +1305,12 @@ fn riscv_fence_i() {
     }
 }
 
-fn riscv_ebreak() {
-    // Use RISCV inline assembly to ensure RISC-V instruction is called
-    unsafe {
-        std::arch::asm!("ebreak",);
-    }
-}
+// fn riscv_ebreak() {
+//     // Use RISCV inline assembly to ensure RISC-V instruction is called
+//     unsafe {
+//         std::arch::asm!("ebreak",);
+//     }
+// }
 
 fn riscv_lr_d() {
     let a: u64 = 0xFFFF_FFFF_0000_0000;

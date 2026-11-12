@@ -8,7 +8,7 @@ use crate::KeccakfSM;
 
 impl<F: PrimeField64> PrecompileMemInputs for KeccakfSM<F> {
     fn generate<P: MemProcessor>(
-        addr_main: u32,
+        addr_main: u64,
         step_main: u64,
         data: &[u64],
         only_counters: bool,
@@ -30,7 +30,7 @@ impl<F: PrimeField64> PrecompileMemInputs for KeccakfSM<F> {
         for iparam in 0..params_count {
             let is_write = iparam >= read_params;
             let param_index = if is_write { iparam - read_params } else { iparam };
-            let param_addr = addr_main + (param_index * 8 * chunks_per_param) as u32;
+            let param_addr = addr_main + (param_index * 8 * chunks_per_param) as u64;
 
             // read/write all chunks of the iparam parameter
             let current_param_offset = if is_write {
@@ -48,7 +48,7 @@ impl<F: PrimeField64> PrecompileMemInputs for KeccakfSM<F> {
                     data[current_param_offset + ichunk]
                 };
                 MemBusHelpers::mem_aligned_op(
-                    param_addr + ichunk as u32 * 8,
+                    param_addr + ichunk as u64 * 8,
                     step_main,
                     chunk_data,
                     is_write,
@@ -58,13 +58,13 @@ impl<F: PrimeField64> PrecompileMemInputs for KeccakfSM<F> {
         }
     }
 
-    fn should_skip<P: MemProcessor>(addr_main: u32, _data: &[u64], mem_processors: &mut P) -> bool {
+    fn should_skip<P: MemProcessor>(addr_main: u64, _data: &[u64], mem_processors: &mut P) -> bool {
         let write_params = 1;
         let chunks_per_param = 25;
         for param_index in 0..write_params {
-            let param_addr = addr_main + (param_index * 8 * chunks_per_param) as u32;
+            let param_addr = addr_main + (param_index * 8 * chunks_per_param) as u64;
             for ichunk in 0..chunks_per_param {
-                let addr = param_addr + ichunk as u32 * 8;
+                let addr = param_addr + ichunk as u64 * 8;
                 if !mem_processors.skip_addr(addr) {
                     return false;
                 }

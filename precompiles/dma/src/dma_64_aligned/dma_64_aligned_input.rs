@@ -6,8 +6,8 @@ use crate::DMA_64_ALIGNED_OPS_BY_ROW;
 
 #[derive(Debug)]
 pub struct Dma64AlignedInput {
-    pub src: u32,
-    pub dst: u32,
+    pub src: u64, // byte address
+    pub dst: u64, // byte address
     pub is_last_instance_input: bool,
     pub op: u8,
     pub trace_offset: u32, // offset inside trace to paralelize
@@ -50,15 +50,15 @@ impl Dma64AlignedInput {
     ) -> Self {
         let op = data[OP] as u8;
         let encoded = data[DMA_ENCODED];
-        let pre_count = DmaInfo::get_pre_count(encoded) as u32;
+        let pre_count = DmaInfo::get_pre_count(encoded) as u64;
         let skip_count = skip_rows * ops_x_rows;
         let data_offset = DmaInfo::get_loop_data_offset(encoded) + skip_count;
         let count = DmaInfo::get_loop_count(encoded) - skip_count;
         let total_rows = DmaInfo::get_loop_count(encoded).div_ceil(ops_x_rows);
         let rows = std::cmp::min(total_rows - skip_rows, max_rows) as u32;
         Self {
-            dst: data[A] as u32 + pre_count,
-            src: data[B] as u32 + pre_count,
+            dst: data[A] + pre_count,
+            src: data[B] + pre_count,
             trace_offset: trace_offset as u32,
             is_last_instance_input: max_rows < (total_rows - skip_rows),
             step: data[STEP],
@@ -87,11 +87,11 @@ impl Dma64AlignedInput {
     ) -> Self {
         let op = data[OP] as u8;
         let encoded = data[DMA_ENCODED];
-        let pre_count = DmaInfo::get_pre_count(encoded) as u32;
+        let pre_count = DmaInfo::get_pre_count(encoded) as u64;
         let total_rows = DmaInfo::get_loop_count(encoded).div_ceil(ops_x_rows);
         let rows = std::cmp::min(total_rows - skip_rows, max_rows) as u32;
         Self {
-            dst: data[A] as u32 + pre_count,
+            dst: data[A] + pre_count,
             src: 0,
             trace_offset: trace_offset as u32,
             is_last_instance_input: max_rows < (total_rows - skip_rows),
@@ -111,11 +111,11 @@ impl Dma64AlignedInput {
         ops_x_rows: usize,
         max_rows: usize,
     ) -> Self {
-        let dst = data[A] as u32;
-        let src = data[B] as u32;
+        let dst = data[A];
+        let src = data[B];
         let op = data[OP] as u8;
         let encoded = data[DMA_ENCODED];
-        let pre_count = DmaInfo::get_pre_count(encoded) as u32;
+        let pre_count = DmaInfo::get_pre_count(encoded) as u64;
         let skip_count = skip_rows * ops_x_rows;
         let data_offset = (pre_count as usize) + skip_count;
         let count = DmaInfo::get_loop_count(encoded) - skip_count;

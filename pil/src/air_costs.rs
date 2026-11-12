@@ -143,8 +143,8 @@ pub const ARITH_EQ_384_INSTANCE_COST: usize = 2007;
 /// had before `zisk.pil` moved it to `2**21`; re-read it from `build/setup.log` on the next setup.
 pub const ARITH_EQ_384_LARGE_INSTANCE_COST: usize = 4025;
 
-/// `BabyJubJub`: 0.60 GB.
-pub const BABY_JUB_JUB_INSTANCE_COST: usize = 614;
+/// `TwistedEdwards`: 0.53 GB.
+pub const TWISTED_EDWARDS_INSTANCE_COST: usize = 543;
 
 /// `Keccakf`: 20.08 GB.
 pub const KECCAKF_INSTANCE_COST: usize = 20562;
@@ -163,6 +163,9 @@ pub const BLAKE_3_F_INSTANCE_COST: usize = 4219;
 
 /// `Blake2s`: 2.46 GB.
 pub const BLAKE_2_S_INSTANCE_COST: usize = 2519;
+
+/// `Poseidon2KoalaBear`: 8.04 GB.
+pub const POSEIDON_2_KOALA_BEAR_INSTANCE_COST: usize = 8233;
 
 /// `Dma`: 3.29 GB.
 pub const DMA_INSTANCE_COST: usize = 3369;
@@ -285,13 +288,14 @@ mod tests {
                     ArithBn254LargeTrace: ArithBn254LargeTraceRow: ARITH_BN_254_LARGE_INSTANCE_COST,
                     ArithEq384Trace: ArithEq384TraceRow: ARITH_EQ_384_INSTANCE_COST,
                     ArithEq384LargeTrace: ArithEq384LargeTraceRow: ARITH_EQ_384_LARGE_INSTANCE_COST,
-                    BabyJubJubTrace: BabyJubJubTraceRow: BABY_JUB_JUB_INSTANCE_COST,
+                    TwistedEdwardsTrace: TwistedEdwardsTraceRow: TWISTED_EDWARDS_INSTANCE_COST,
                     KeccakfTrace: KeccakfTraceRow: KECCAKF_INSTANCE_COST,
                     Sha256fTrace: Sha256fTraceRow: SHA_256_F_INSTANCE_COST,
                     PoseidonTrace: PoseidonTraceRow: POSEIDON_INSTANCE_COST,
                     Blake2brTrace: Blake2brTraceRow: BLAKE_2_BR_INSTANCE_COST,
                     Blake3fTrace: Blake3fTraceRow: BLAKE_3_F_INSTANCE_COST,
                     Blake2sTrace: Blake2sTraceRow: BLAKE_2_S_INSTANCE_COST,
+                    Poseidon2KoalaBearTrace: Poseidon2KoalaBearTraceRow: POSEIDON_2_KOALA_BEAR_INSTANCE_COST,
                     DmaTrace: DmaTraceRow: DMA_INSTANCE_COST,
                     Dma64AlignedTrace: Dma64AlignedTraceRow: DMA_64_ALIGNED_INSTANCE_COST,
                     Dma64AlignedLargeTrace: Dma64AlignedLargeTraceRow: DMA_64_ALIGNED_LARGE_INSTANCE_COST,

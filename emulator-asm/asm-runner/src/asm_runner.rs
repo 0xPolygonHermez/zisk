@@ -32,6 +32,20 @@ pub enum AsmRunError {
     #[error("Child service returned error: {0}")]
     ServiceError(#[source] anyhow::Error),
 
+    /// A service's process has exited, or was stopped. Every later request to it fails with
+    /// this error rather than with whatever the broken pipe would report, until its program's
+    /// next activation starts it again.
+    #[error(
+        "ASM service {service} can serve no more requests ({how}); \
+         it is started again before its program's next job"
+    )]
+    ServiceDied {
+        /// The service, as its binary is named: `mo`, `mt` or `rh`.
+        service: String,
+        /// Why: how its process exited, or why it was stopped.
+        how: String,
+    },
+
     /// Errors related to unexpected conditions, such as unwrapping an `Arc` that has been dropped.
     #[error("Arc unwrap failed")]
     ArcUnwrap,

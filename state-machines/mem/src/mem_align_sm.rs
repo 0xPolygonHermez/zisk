@@ -10,6 +10,7 @@ use crate::{MemAlignInput, MemAlignRomSM, MemOp};
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult};
 use rayon::prelude::*;
 use zisk_pil::{MemAlignTraceRowOps, ZISK_AIRGROUP_ID};
+use zisk_sm_mem_common::MemHelpers;
 
 const RC: usize = 2;
 const CHUNK_NUM: usize = 8;
@@ -17,8 +18,7 @@ const CHUNKS_BY_RC: usize = CHUNK_NUM / RC;
 const CHUNK_BITS: usize = 8;
 const RC_BITS: u64 = (CHUNKS_BY_RC * CHUNK_BITS) as u64;
 const RC_MASK: u64 = (1 << RC_BITS) - 1;
-const OFFSET_MASK: u32 = 0x07;
-const OFFSET_BITS: u32 = 3;
+const OFFSET_MASK: u64 = 0x07;
 const CHUNK_BITS_MASK: u64 = (1 << CHUNK_BITS) - 1;
 
 const fn generate_allowed_offsets() -> [u8; CHUNK_NUM] {
@@ -103,7 +103,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value = input.value;
 
                 // Get the aligned address
-                let addr_read = addr >> OFFSET_BITS;
+                let addr_read = MemHelpers::get_addr_w(addr);
 
                 // Get the aligned value
                 let value_read = input.mem_values[0];
@@ -222,7 +222,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value = input.value;
 
                 // Get the aligned address
-                let addr_read = addr >> OFFSET_BITS;
+                let addr_read = MemHelpers::get_addr_w(addr);
 
                 // Get the aligned value
                 let value_read = input.mem_values[0];
@@ -396,7 +396,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let rem_bytes = (offset + width) % CHUNK_NUM;
 
                 // Get the aligned address
-                let addr_first_read = addr >> OFFSET_BITS;
+                let addr_first_read = MemHelpers::get_addr_w(addr);
                 let addr_second_read = addr_first_read + 1;
 
                 // Get the aligned value
@@ -561,7 +561,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let rem_bytes = (offset + width) % CHUNK_NUM;
 
                 // Get the aligned address
-                let addr_first_read_write = addr >> OFFSET_BITS;
+                let addr_first_read_write = MemHelpers::get_addr_w(addr);
                 let addr_second_read_write = addr_first_read_write + 1;
 
                 // Get the first aligned value

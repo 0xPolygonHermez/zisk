@@ -3,7 +3,10 @@
 
 Symbolically executes straight-line blocks, keeping argument-register setup
 lazy, and replaces calls to the Fp2 leaves (add/sub/mul/dbl/square/neg/
-scalar_mul) and bn254_memcpy with inline DMA + precompile code. Headers for
+scalar_mul) and bn254_memcpy with inline DMA + precompile code. The Fp2
+precompiles take their two pointers directly (a = the in-place operand, b = the
+other one): a static operand is an immediate, a dynamic one a register. The Fp
+leaves (arith256_mod / arith384_mod) still take a 5-pointer header: headers for
 static operands are const ROM data; mixed ones get a per-site RAM header.
 
 Value domain (logical register contents):
@@ -38,8 +41,8 @@ class Opt:
     def __init__(self, pfx):
         self.pfx = pfx
         self.out = []
-        self.consts = {}      # (a, b) -> name  (const headers)
-        self.rams = []        # (name, b)       (RAM headers, slot 0 written per call)
+        self.consts = {}      # 5-pointer Fp header key -> name  (const headers)
+        self.rams = []        # (name, slots...)  (RAM headers, dynamic slots written per call)
         self.nid = 0
         self.stats = dict(inl=0, memcpy=0, kept=0)
         self.reset()
@@ -199,16 +202,6 @@ class Opt:
         raise RuntimeError('no scratch')
 
     # ---------------- inline leaves ----------------
-    def hdr(self, dst, dst_static, b, b_static):
-        if dst_static and b_static:
-            key = (dst, b)
-            if key not in self.consts:
-                self.consts[key] = f'{self.pfx}_H{len(self.consts) + len(self.rams)}'
-            return self.consts[key]
-        name = f'{self.pfx}_H{len(self.consts) + len(self.rams)}'
-        self.rams.append((name, dst if dst_static else '0', b if b_static else '0'))
-        return name
-
     def to_mem(self, v, dest):
         """store address value v into memory [dest] with one instruction."""
         if v[0] == 'sym':
@@ -239,30 +232,24 @@ class Opt:
         # the leaf clobbers the scratch registers anyway
         self.prep_scratch(SCRATCH)
         pre = c['pre']
-        ds = d[0] == 'sym'
         if op == 'neg':
-            bval, bs = c['neg'], True
+            b = ('sym', c['neg'], 0)
         elif op == 'scalar_mul':
-            bval, bs = c['sb'], True
-        else:
-            bs = b[0] == 'sym'
-            bval = self.fmt_sym(b) if bs else None
-        h = self.hdr(self.fmt_sym(d) if ds else None, ds, bval, bs)
-        if not ds:
-            self.to_mem(d, h)
-        if not bs:
-            self.to_mem(b, f'{h} + 8')
-        if op == 'scalar_mul':
             bo, _ = self.operand(b)
             self.emit(f'dma_xmemcpy({c["sb"]}, {bo}) -> r5, j({c["half"]}, 4)')
             self.phys['r5'] = self.log['r5'] = None
+            b = ('sym', c['sb'], 0)
         if d != a:
             so, ss = self.operand(d)
             ao, _ = self.operand(a, avoid=() if ss else (so,))
             self.emit(f'dma_xmemcpy({so}, {ao}) -> r5, j({c["sz"]}, 4)')
+            self.phys['r5'] = self.log['r5'] = None      # the DMA op wrote r5
         kind = {'add': 'add', 'sub': 'sub', 'mul': 'mul', 'dbl': 'add', 'square': 'mul',
                 'neg': 'mul', 'scalar_mul': 'mul'}[op]
-        self.emit(f'{pre}_{kind}(0, {h})')
+        # the precompile takes both pointers directly: a = &f1 (updated in place), b = &f2
+        do, ds = self.operand(d)
+        bo = do if b == d else self.operand(b, avoid=() if ds else (do,))[0]
+        self.emit(f'{pre}_{kind}({do}, {bo})')
         self.after_inline(d)
         return True
 
@@ -553,7 +540,7 @@ def optimize(text, pfx):
         i += 1
     decl = []
     if o.consts or o.rams:
-        decl.append('; inline-op headers (zopt): precompile parameter blocks')
+        decl.append('; inline-op headers (zopt): arith256_mod / arith384_mod parameter blocks')
         for key, n in o.consts.items():
             decl.append(f'const u64 {n}[{len(key)}] = ' + ', '.join(key))
         for n, *slots in o.rams:

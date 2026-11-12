@@ -1,5 +1,6 @@
 //! `client.aggregate_proofs(...)` builder.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -8,7 +9,7 @@ use zisk_common::Proof;
 use crate::job_handle::{subscriber_list_from, JobHandle, Subscriber};
 use crate::prove::{JobEvent, ProveResult};
 use crate::recurser::Recurser;
-use crate::{Client, Result, SdkError};
+use crate::{Client, RemoteClient, Result, SdkError};
 
 /// A proof entering a fold, optionally carrying its per-side free array.
 ///
@@ -57,6 +58,7 @@ pub struct AggregateProofsRequest<'a, C> {
     root_c_recurser_agg: Option<[u64; 4]>,
     timeout: Option<Duration>,
     subscribers: Vec<Subscriber>,
+    metadata: BTreeMap<String, String>,
 }
 
 #[allow(private_bounds)]
@@ -75,6 +77,7 @@ impl<'a, C: Client> AggregateProofsRequest<'a, C> {
             root_c_recurser_agg: None,
             timeout: None,
             subscribers: Vec::new(),
+            metadata: BTreeMap::new(),
         }
     }
 
@@ -148,6 +151,17 @@ impl<'a, C: Client> AggregateProofsRequest<'a, C> {
             self.root_c_recurser_agg,
             self.timeout,
             subs,
+            self.metadata,
         )
+    }
+}
+
+impl AggregateProofsRequest<'_, RemoteClient> {
+    /// Attach a job-level metadata key/value pair for the coordinator to keep with the job.
+    /// Call repeatedly to attach multiple pairs.
+    #[must_use]
+    pub fn metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(key.into(), value.into());
+        self
     }
 }

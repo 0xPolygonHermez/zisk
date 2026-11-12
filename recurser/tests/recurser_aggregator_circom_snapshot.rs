@@ -2,8 +2,8 @@ use zisk_recurser::{gen_recurser, templates::StarkInputBlocks, CircomTemplates, 
 
 mod common;
 use common::{
-    AGGREGATE_0_FREE, AGGREGATE_1_FREE, NORMALIZE_0_FREE, NORMALIZE_1_FREE,
-    NORMALIZE_1_FREE_NO_OUTPUTS,
+    AGGREGATE_0_FREE, AGGREGATE_1_FREE, NORMALIZE_0_FREE, NORMALIZE_0_FREE_INDEXED,
+    NORMALIZE_1_FREE, NORMALIZE_1_FREE_INDEXED, NORMALIZE_1_FREE_NO_OUTPUTS,
 };
 
 fn templates() -> CircomTemplates {
@@ -83,7 +83,7 @@ fn no_normalize_raw_passthrough() {
     assert!(!out.contains("aggFreeA"), "n_free=0 must not emit aggFreeA");
     assert!(!out.contains("aggFreeB"), "n_free=0 must not emit aggFreeB");
 
-    // With an empty allow-list (the VK-agnostic default) none of the optional
+    // With an empty allow-list (`any_program`) none of the optional
     // membership machinery is emitted. See `programs_allowlist_*` for the
     // non-empty case where IsEqualVK / programVKs / isRegisteredProgram appear.
     assert!(!out.contains("programVKs["), "empty allow-list must not bake programVKs");
@@ -454,8 +454,8 @@ fn programs_allowlist_emits_membership_and_hard_reject() {
     );
 }
 
-/// The empty allow-list (default) must emit NONE of the membership machinery —
-/// the guard `{% if n_programs > 0 %}` keeps the VK-agnostic circuit clean.
+/// An empty allow-list (`any_program`) must emit NONE of the membership machinery —
+/// the guard `{% if n_programs > 0 %}` keeps that circuit clean.
 #[test]
 fn empty_allowlist_omits_membership() {
     // `templates()` uses an empty program_vks.
@@ -464,4 +464,103 @@ fn empty_allowlist_omits_membership() {
     assert!(!out.contains("IsEqualVK"), "no allow-list must not emit IsEqualVK");
     assert!(!out.contains("programVKs["), "no allow-list must not bake programVKs");
     assert!(!out.contains("isRegisteredProgram"), "no allow-list must not emit membership");
+}
+
+fn allowlist_templates(normalize: Option<&str>, n_free: usize) -> CircomTemplates {
+    CircomTemplates {
+        normalize: normalize.map(|body| NormalizeCircuit { body: body.to_string() }),
+        aggregate_publics: if n_free > 0 { AGGREGATE_1_FREE } else { AGGREGATE_0_FREE }.to_string(),
+        n_free,
+        n_publics_agg: 6,
+        program_vks: program_vks(),
+    }
+}
+
+/// Several allowed programs: NormalizePublics learns which one produced the leaf.
+#[test]
+fn allowlist_with_normalize_feeds_the_program_index() {
+    for (body, n_free) in [(NORMALIZE_1_FREE_INDEXED, 1), (NORMALIZE_0_FREE_INDEXED, 0)] {
+        let out = gen_recurser(
+            "v.circom",
+            &zisk_vk(),
+            &empty_stark(),
+            &allowlist_templates(Some(body), n_free),
+        )
+        .unwrap();
+        assert!(out.contains("programIndexA"), "n_free={n_free}: no A index\n{out}");
+        assert!(out.contains("normACmp.programIndex <== programIndexA;"), "n_free={n_free}\n{out}");
+        assert!(out.contains("normBCmp.programIndex <== programIndexB;"), "n_free={n_free}\n{out}");
+    }
+}
+
+#[test]
+fn allowlist_without_normalize_has_no_program_index() {
+    let out = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &allowlist_templates(None, 0))
+        .unwrap();
+    assert!(!out.contains("programIndex"), "{out}");
+}
+
+#[test]
+fn allowlist_normalize_must_declare_the_program_index() {
+    let err = gen_recurser(
+        "v.circom",
+        &zisk_vk(),
+        &empty_stark(),
+        &allowlist_templates(Some(NORMALIZE_1_FREE), 1),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("programIndex"), "{err}");
+}
+
+/// The index is a sum over the matches, so it is only well defined if every VK appears once.
+#[test]
+fn duplicate_program_vks_are_rejected() {
+    let mut templates = allowlist_templates(None, 0);
+    templates.program_vks.push(templates.program_vks[0].clone());
+    let err = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates).unwrap_err();
+    assert!(err.to_string().contains("duplicate"), "{err}");
+}
+
+/// One allowed program leaves nothing to tell apart: its normalize keeps the plain interface.
+#[test]
+fn single_program_allowlist_needs_no_program_index() {
+    let mut templates = allowlist_templates(Some(NORMALIZE_1_FREE), 1);
+    templates.program_vks.truncate(1);
+    let out = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates).unwrap();
+    assert!(!out.contains("programIndex"), "{out}");
+}
+
+/// A normalize written for an allow-list keeps working when it shrinks to one program: index 0.
+#[test]
+fn indexed_normalize_with_one_program_gets_index_zero() {
+    let mut templates = allowlist_templates(Some(NORMALIZE_1_FREE_INDEXED), 1);
+    templates.program_vks.truncate(1);
+    let out = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates).unwrap();
+    assert!(out.contains("normACmp.programIndex <== programIndexA;"), "{out}");
+}
+
+/// Without an allow-list there is no position to feed, so declaring one is a setup error, not a circom one.
+#[test]
+fn indexed_normalize_without_allowlist_is_rejected() {
+    let mut templates = allowlist_templates(Some(NORMALIZE_1_FREE_INDEXED), 1);
+    templates.program_vks.clear();
+    let err = templates.validate().unwrap_err();
+    assert!(err.to_string().contains("programIndex"), "{err}");
+}
+
+#[test]
+fn validate_rejects_a_plain_normalize_with_several_programs() {
+    let err = allowlist_templates(Some(NORMALIZE_1_FREE), 1).validate().unwrap_err();
+    assert!(err.to_string().contains("programIndex"), "{err}");
+}
+
+/// Limbs are compared as values: "01" and "1" are the same key.
+#[test]
+fn duplicate_program_vks_are_compared_as_values() {
+    let mut templates = allowlist_templates(None, 0);
+    let mut dup = templates.program_vks[0].clone();
+    dup[0] = format!("0{}", dup[0]);
+    templates.program_vks.push(dup);
+    let err = templates.validate().unwrap_err();
+    assert!(err.to_string().contains("duplicate"), "{err}");
 }

@@ -117,3 +117,7 @@ extern "C" {
         c: *mut ::std::os::raw::c_ulong,
     ) -> ::std::os::raw::c_int;
 }
+
+extern "C" {
+    pub fn poseidon2_koalabear(state: *mut ::std::os::raw::c_ulong) -> ::std::os::raw::c_int;
+}

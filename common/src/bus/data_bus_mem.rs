@@ -23,10 +23,10 @@ pub type MemData = [PayloadType; 4];
 pub struct MemBusData;
 
 impl MemBusData {
-    /// Retrieves the address from the memory bus data.
+    /// Retrieves the (33-bit) byte address from the memory bus data.
     #[inline(always)]
-    pub fn get_addr(data: &[u64]) -> u32 {
-        data[ADDR] as u32
+    pub fn get_addr(data: &[u64]) -> u64 {
+        data[ADDR]
     }
 
     /// Retrieves the operation code from the memory bus data.

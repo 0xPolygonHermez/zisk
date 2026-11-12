@@ -1,0 +1,23 @@
+[package]
+name = "patch-blst"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Standalone workspace: every guest pins its own patch revision, so two
+# versions of the same patched crate can be tested side by side.
+[workspace]
+
+[dependencies]
+ziskos = { path = "../../ziskos/entrypoint" }
+patch-test-common = { path = "../common" }
+blst = { version = "=0.3.16", default-features = false }
+
+[patch.crates-io]
+blst = { git = "https://github.com/0xPolygonHermez/zisk-patch-blst", package = "blst", tag = "patch-0.3.16-zisk-1.4.0" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

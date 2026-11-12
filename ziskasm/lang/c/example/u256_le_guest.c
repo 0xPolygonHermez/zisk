@@ -168,7 +168,7 @@ int main(void) {
     load(1, 2, 0);
     uint8_t ctl0 = !same(&LA, &BB), ctl1 = !same(&LA, &BA);
 
-    volatile uint8_t* out = (volatile uint8_t*)0xA0410000ULL;  /* public output */
+    volatile uint8_t* out = (volatile uint8_t*)0xC0410000ULL;  /* public output */
     uint8_t buf[56];
     for (int i = 0; i < 27; i++) { buf[i] = bad[i]; buf[27 + i] = bad_alias[i]; }
     buf[54] = ctl0; buf[55] = ctl1;

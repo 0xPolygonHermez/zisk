@@ -33,42 +33,52 @@ zisklib_pairing_check_bls12_381:
 	copyb(0, r10) -> [LPC_G1]
 	copyb(0, r11) -> [LPC_G2]
 	copyb(0, r12) -> [LPC_N]
-	; f = 1
-	copyb(0, 1) -> [LPC_F]
-	copyb(0, LPC_F) -> r5
-	copyb(0, 1) -> r6
-lpc_finit:
-	eq(r6, 72), j(lpc_finit_done)
-	sll(r6, 3) -> r7
-	add(r5, r7) -> r7
-	copyb(r7, 0) -> 8[a + 0]
-	add(r6, 1) -> r6
-	jump(lpc_finit)
-lpc_finit_done:
-	call zisklib_ml_batch_reset_bls12_381
-	copyb(0, 0) -> [LPC_CONTRIB]
+	call zisklib_pairing_begin_bls12_381
 	copyb(0, 0) -> [LPC_I]
-	copyb(0, LPC_I) -> r5
 lpc_loop:
-	copyb(0, LPC_N) -> r5
 	copyb(0, [LPC_I]) -> r13
 	copyb(0, [LPC_N]) -> r14
 	ltu(r13, r14), j(lpc_body)
-	jump(lpc_finish)
+	call zisklib_pairing_end_bls12_381
+	pop r1
+	ret
 lpc_body:
-	; p_i = g1 + i*96 ; q_i = g2 + i*192
+	; add(g1 + i*96, g2 + i*192)
 	sll(r13, 6) -> r6
 	sll(r13, 5) -> r7
 	add(r6, r7) -> r6
-	copyb(0, [LPC_G1]) -> r5
-	add(r5, r6) -> r5
-	copyb(0, r5) -> [LPC_PI]
+	copyb(0, [LPC_G1]) -> r10
+	add(r10, r6) -> r10
 	sll(r13, 7) -> r6
 	sll(r13, 6) -> r7
 	add(r6, r7) -> r6
-	copyb(0, [LPC_G2]) -> r5
-	add(r5, r6) -> r5
-	copyb(0, r5) -> [LPC_QI]
+	copyb(0, [LPC_G2]) -> r11
+	add(r11, r6) -> r11
+	call zisklib_pairing_add_bls12_381
+	ltu(0, r10), j(lpc_ret)                ; validation error
+	add([LPC_I], 1) -> r6
+	copyb(0, r6) -> [LPC_I]
+	jump(lpc_loop)
+lpc_ret:
+	pop r1
+	ret
+
+; The same check one pair at a time, for callers that stream the pairs:
+; begin(); add(p, q) per pair -> 0 or the error status; end() -> 0 / 1. The Miller
+; loop batch keeps p and q until it folds (8 pairs), so a caller reusing buffers
+; can store the next pair in slot [N] of the batch, which is never pending.
+zisklib_pairing_begin_bls12_381:
+	push r1
+	call zisklib_ml_batch_reset_bls12_381
+	copyb(0, 0) -> [LPC_CONTRIB]
+	pop r1
+	ret
+
+; u64 zisklib_pairing_add_bls12_381(const u64* p, const u64* q)  [r10=p, r11=q] -> status
+zisklib_pairing_add_bls12_381:
+	push r1
+	copyb(0, r10) -> [LPC_PI]
+	copyb(0, r11) -> [LPC_QI]
 	; --- identity flags: g1inf = (P_i == G1_IDENTITY), g2inf = (Q_i == G2_IDENTITY) ---
 	copyb(0, [LPC_PI]) -> r5
 	dma_xmemcmp(r5, BLS_G1_IDENTITY) -> r5, j(96, 4)
@@ -152,11 +162,13 @@ lpc_after_g2:
 	copyb(0, r6) -> [LPC_CONTRIB]
 	copyb(0, LPC_CONTRIB) -> r5
 lpc_next:
-	add([LPC_I], 1) -> r6
-	copyb(0, r6) -> [LPC_I]
-	copyb(0, LPC_I) -> r5
-	jump(lpc_loop)
-lpc_finish:
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; u64 zisklib_pairing_end_bls12_381() -> 0 if the product of the pairings is 1, else 1
+zisklib_pairing_end_bls12_381:
+	push r1
 	; if contrib == 0 -> product is 1 -> accept
 	copyb(0, LPC_CONTRIB) -> r5
 	copyb(0, [LPC_CONTRIB]) -> r6

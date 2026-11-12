@@ -1,18 +1,24 @@
 use zisk_precomp_common::MemBusHelpers;
 use zisk_precomp_common::MemProcessor;
 
-use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
+use zisk_common::{A, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 
 #[derive(Debug)]
 pub struct ArithEqMemInputConfig {
+    /// Number of parameter addresses read from the parameter struct pointed to by `b`.
     pub indirect_params: usize,
+    /// The op is called with two direct operands: the first parameter lives at `a`, the second at
+    /// `b`, and there is no parameter struct (`indirect_params` must be 0).
+    pub direct_ab: bool,
     pub rewrite_params: bool,
     pub read_params: usize,
     pub write_params: usize,
     pub chunks_per_param: usize,
 }
+/// `addr_main` is the main operand b (the parameter struct address, or the second operand of a
+/// direct a/b op).
 pub fn generate_mem_inputs<P: MemProcessor>(
-    addr_main: u32,
+    addr_main: u64,
     step_main: u64,
     data: &[u64],
     write_data: Option<&[u64]>,
@@ -25,7 +31,7 @@ pub fn generate_mem_inputs<P: MemProcessor>(
 
     for iparam in 0..config.indirect_params {
         MemBusHelpers::mem_aligned_read(
-            addr_main + iparam as u32 * 8,
+            addr_main + iparam as u64 * 8,
             step_main,
             data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + iparam],
             mem_processors,
@@ -39,9 +45,16 @@ pub fn generate_mem_inputs<P: MemProcessor>(
         };
         let param_addr = if config.indirect_params > 0 {
             // read indirect parameters, means stored the address of parameter
-            data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + param_index] as u32
+            data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + param_index]
+        } else if config.direct_ab {
+            // first parameter at a, second at b
+            if param_index == 0 {
+                data[A]
+            } else {
+                addr_main
+            }
         } else {
-            addr_main + (param_index * 8 * config.chunks_per_param) as u32
+            addr_main + (param_index * 8 * config.chunks_per_param) as u64
         };
 
         // read/write all chunks of the iparam parameter
@@ -62,7 +75,7 @@ pub fn generate_mem_inputs<P: MemProcessor>(
                 data[current_param_offset + ichunk]
             };
             MemBusHelpers::mem_aligned_op(
-                param_addr + ichunk as u32 * 8,
+                param_addr + ichunk as u64 * 8,
                 step_main,
                 chunk_data,
                 is_write,
@@ -73,7 +86,7 @@ pub fn generate_mem_inputs<P: MemProcessor>(
 }
 
 pub fn skip_mem_inputs<P: MemProcessor>(
-    addr_main: u32,
+    addr_main: u64,
     data: &[u64],
     config: &ArithEqMemInputConfig,
     mem_processors: &mut P,
@@ -82,7 +95,7 @@ pub fn skip_mem_inputs<P: MemProcessor>(
 
     // Check indirect loads
     for iparam in 0..config.indirect_params {
-        let addr = addr_main + iparam as u32 * 8;
+        let addr = addr_main + iparam as u64 * 8;
         if !mem_processors.skip_addr(addr) {
             return false;
         }
@@ -95,12 +108,18 @@ pub fn skip_mem_inputs<P: MemProcessor>(
             iparam
         };
         let param_addr = if config.indirect_params > 0 {
-            data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + param_index] as u32
+            data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + param_index]
+        } else if config.direct_ab {
+            if param_index == 0 {
+                data[A]
+            } else {
+                addr_main
+            }
         } else {
-            addr_main + (param_index * 8 * config.chunks_per_param) as u32
+            addr_main + (param_index * 8 * config.chunks_per_param) as u64
         };
         for ichunk in 0..config.chunks_per_param {
-            let addr = param_addr + ichunk as u32 * 8;
+            let addr = param_addr + ichunk as u64 * 8;
             if !mem_processors.skip_addr(addr) {
                 return false;
             }

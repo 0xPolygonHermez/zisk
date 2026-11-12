@@ -339,7 +339,7 @@ fi
 if $NO_SERVICE; then
     WORKER_ARGS=(--config "${CONFIG_DST}")
     [[ -n "${PROVING_KEY}" ]] && WORKER_ARGS+=(--proving-key "${PROVING_KEY}")
-    [[ -n "${PROVING_KEY_SNARK}" ]] && WORKER_ARGS+=(--proving-key-snark "${PROVING_KEY_SNARK}")
+    [[ -n "${PROVING_KEY_SNARK}" ]] && WORKER_ARGS+=(--snark --proving-key-snark "${PROVING_KEY_SNARK}")
     [[ -n "${COORDINATOR_URL}" ]] && WORKER_ARGS+=(--coordinator-url "${COORDINATOR_URL}")
     [[ -n "${WORKER_ID}" ]] && WORKER_ARGS+=(--worker-id "${WORKER_ID}")
     [[ -n "${COMPUTE_CAPACITY}" ]] && WORKER_ARGS+=(--compute-capacity "${COMPUTE_CAPACITY}")
@@ -414,6 +414,7 @@ if [[ "$OS_NAME" == "Darwin" ]]; then
             printf '        <string>%s</string>\n' "${PROVING_KEY}"
         fi
         if [[ -n "$PROVING_KEY_SNARK" ]]; then
+            printf '        <string>--snark</string>\n'
             printf '        <string>--proving-key-snark</string>\n'
             printf '        <string>%s</string>\n' "${PROVING_KEY_SNARK}"
         fi
@@ -522,7 +523,7 @@ else
     # wrapper or to bare ExecStart depending on MPI_ENABLED.
     WORKER_ARGS="--config ${CONFIG_DST}"
     [[ -n "$PROVING_KEY" ]]       && WORKER_ARGS+=" --proving-key ${PROVING_KEY}"
-    [[ -n "$PROVING_KEY_SNARK" ]] && WORKER_ARGS+=" --proving-key-snark ${PROVING_KEY_SNARK}"
+    [[ -n "$PROVING_KEY_SNARK" ]] && WORKER_ARGS+=" --snark --proving-key-snark ${PROVING_KEY_SNARK}"
     [[ -n "$COORDINATOR_URL" ]]   && WORKER_ARGS+=" --coordinator-url ${COORDINATOR_URL}"
     [[ -n "$WORKER_ID" ]]         && WORKER_ARGS+=" --worker-id ${WORKER_ID}"
     [[ -n "$COMPUTE_CAPACITY" ]]  && WORKER_ARGS+=" --compute-capacity ${COMPUTE_CAPACITY}"
@@ -539,16 +540,25 @@ else
         # — so the worker's ZiskPaths::from_env() falls back to $HOME/.zisk
         # in the rank's process. Forward HOME alongside as a safety net for
         # the same fallback path.
+        #
+        # Stop: SIGUSR1 to mpirun alone, which forwards it to every rank; each
+        # one kills its ASM services, unlinks their shared memory and exits 0
+        # without MPI_Finalize, which orte_allowed_exit_without_sync (Open MPI
+        # 4) accepts, so mpirun exits 0. SIGTERM would not do: mpirun cannot
+        # forward it, aborts the job on it and exits 1.
         EXEC_START="ExecStart=${MPIRUN_BIN} --report-bindings --allow-run-as-root \\
     -np ${MPI_NP} \\
     -map-by ppr:${MPI_PPR}:numa \\
     --bind-to numa \\
     --rank-by slot \\
+    --mca orte_allowed_exit_without_sync 1 \\
     -x RAYON_NUM_THREADS=${MPI_THREADS} \\
     -x ZISK_HOME \\
     -x ZISK_CACHE_DIR \\
     -x HOME \\
-    ${BINARY_DST} ${WORKER_ARGS}"
+    ${BINARY_DST} ${WORKER_ARGS}
+KillMode=mixed
+KillSignal=SIGUSR1"
     else
         EXEC_START="ExecStart=${BINARY_DST} ${WORKER_ARGS}"
     fi
@@ -597,6 +607,8 @@ Environment=ZISK_CACHE_DIR=${WORK_DIR}/cache
 ${EXEC_START}
 Restart=on-failure
 RestartSec=5
+# A stop takes a few seconds, then the kernel frees the GPUs and pinned memory.
+TimeoutStopSec=60
 
 # Resource limits — large mmap'd ROM regions, deep MPI stacks, many open
 # shm/data files. Use unlimited so the worker is constrained by physical

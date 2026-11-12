@@ -100,20 +100,20 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0xA03FF000 && a < 0xA0400000 && (a & 7) == 0 && b == 0
-            for a in (0xA03FF000..0xA0400000).step_by(8) {
+            // mid_box: a >= 0xC03FF000 && a < 0xc0400000 && (a & 7) == 0 && b == 0
+            for a in (0xC03FF000..0xc0400000).step_by(8) {
                 for b in 0..1 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0xA6847000 && a < 0xA6A5D000 && (a & 7) == 0 && b == 0
-            for a in (0xA6847000..0xA6A5D000).step_by(8) {
+            // mid_box: a >= 0xc6847000 && a < 0xC6A5D000 && (a & 7) == 0 && b == 0
+            for a in (0xc6847000..0xC6A5D000).step_by(8) {
                 for b in 0..1 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0xA841F000 && a < 0xA8969000 && (a & 7) == 0 && b == 0
-            for a in (0xA841F000..0xA8969000).step_by(8) {
+            // mid_box: a >= 0xC841F000 && a < 0xc8969000 && (a & 7) == 0 && b == 0
+            for a in (0xC841F000..0xc8969000).step_by(8) {
                 for b in 0..1 {
                     ops.push([a, b]);
                 }
@@ -129,20 +129,20 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0xA03F1000 && a < 0xA03FF000 && (a & 7) == 0 && b < 2113
-            for a in (0xA03F1000..0xA03FF000).step_by(8) {
+            // mid_box: a >= 0xC03F1000 && a < 0xC03FF000 && (a & 7) == 0 && b < 2113
+            for a in (0xC03F1000..0xC03FF000).step_by(8) {
                 for b in 0..2113 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0xA042F000 && a < 0xA0431000 && (a & 7) == 0 && b >= 40 && b < 217
-            for a in (0xA042F000..0xA0431000).step_by(8) {
+            // mid_box: a >= 0xC042F000 && a < 0xc0431000 && (a & 7) == 0 && b >= 40 && b < 217
+            for a in (0xC042F000..0xc0431000).step_by(8) {
                 for b in 0x28..0xD9 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0xBFFEF000 && a < 0xBFFF0000 && (a & 7) == 0 && b == 8
-            for a in (0xBFFEF000..0xBFFF0000).step_by(8) {
+            // mid_box: a >= 0xC046F000 && a < 0xc0470000 && (a & 7) == 0 && b == 8
+            for a in (0xC046F000..0xc0470000).step_by(8) {
                 for b in 0x8..0x9 {
                     ops.push([a, b]);
                 }
@@ -343,15 +343,15 @@ impl BinaryBasicFrops {
             }
             ZiskOp::EQ => {
                 a < 2051 && b < 260
-                    || a >= 0xA03FF000 && a < 0xA0400000 && (a & 7) == 0 && b == 0
-                    || a >= 0xA6847000 && a < 0xA6A5D000 && (a & 7) == 0 && b == 0
-                    || a >= 0xA841F000 && a < 0xA8969000 && (a & 7) == 0 && b == 0
+                    || a >= 0xC03FF000 && a < 0xc0400000 && (a & 7) == 0 && b == 0
+                    || a >= 0xc6847000 && a < 0xC6A5D000 && (a & 7) == 0 && b == 0
+                    || a >= 0xC841F000 && a < 0xc8969000 && (a & 7) == 0 && b == 0
             }
             ZiskOp::ADD => {
                 a < 4013 && b < 69
-                    || a >= 0xA03F1000 && a < 0xA03FF000 && (a & 7) == 0 && b < 2113
-                    || a >= 0xA042F000 && a < 0xA0431000 && (a & 7) == 0 && b >= 40 && b < 217
-                    || a >= 0xBFFEF000 && a < 0xBFFF0000 && (a & 7) == 0 && b == 8
+                    || a >= 0xC03F1000 && a < 0xC03FF000 && (a & 7) == 0 && b < 2113
+                    || a >= 0xC042F000 && a < 0xc0431000 && (a & 7) == 0 && b >= 40 && b < 217
+                    || a >= 0xC046F000 && a < 0xc0470000 && (a & 7) == 0 && b == 8
             }
             ZiskOp::SUB => {
                 a < 328 && b < 316
@@ -432,12 +432,12 @@ impl BinaryBasicFrops {
             ZiskOp::EQ => {
                 if a < 2051 && b < 260 {
                     (a * 260 + b) as usize
-                } else if a >= 0xA03FF000 && a < 0xA0400000 && (a & 7) == 0 && b == 0 {
-                    ((a - 0xA03FF000) / 8) as usize + 533260
-                } else if a >= 0xA6847000 && a < 0xA6A5D000 && (a & 7) == 0 && b == 0 {
-                    ((a - 0xA6847000) / 8) as usize + 533772
-                } else if a >= 0xA841F000 && a < 0xA8969000 && (a & 7) == 0 && b == 0 {
-                    ((a - 0xA841F000) / 8) as usize + 807180
+                } else if a >= 0xC03FF000 && a < 0xc0400000 && (a & 7) == 0 && b == 0 {
+                    ((a - 0xC03FF000) / 8) as usize + 533260
+                } else if a >= 0xc6847000 && a < 0xC6A5D000 && (a & 7) == 0 && b == 0 {
+                    ((a - 0xc6847000) / 8) as usize + 533772
+                } else if a >= 0xC841F000 && a < 0xc8969000 && (a & 7) == 0 && b == 0 {
+                    ((a - 0xC841F000) / 8) as usize + 807180
                 } else {
                     Self::NO_FROPS
                 }
@@ -445,12 +445,13 @@ impl BinaryBasicFrops {
             ZiskOp::ADD => {
                 if a < 4013 && b < 69 {
                     (a * 69 + b) as usize
-                } else if a >= 0xA03F1000 && a < 0xA03FF000 && (a & 7) == 0 && b < 2113 {
-                    (((a - 0xA03F1000) / 8) * 2113 + b) as usize + 276897
-                } else if a >= 0xA042F000 && a < 0xA0431000 && (a & 7) == 0 && b >= 40 && b < 217 {
-                    (((a - 0xA042F000) / 8) * 177 + (b - 0x28)) as usize + 15422881
-                } else if a >= 0xBFFEF000 && a < 0xBFFF0000 && (a & 7) == 0 && b == 8 {
-                    ((a - 0xBFFEF000) / 8) as usize + 15604129
+                } else if a >= 0xC03F1000 && a < 0xC03FF000 && (a & 7) == 0 && b < 2113 {
+                    (((a - 0xC03F1000) / 8) * 2113 + b) as usize + 276897
+                } else if a >= 0xC042F000 && a < 0xc0431000 && (a & 7) == 0 && b >= 40 && b < 217
+                {
+                    (((a - 0xC042F000) / 8) * 177 + (b - 0x28)) as usize + 15422881
+                } else if a >= 0xC046F000 && a < 0xc0470000 && (a & 7) == 0 && b == 8 {
+                    ((a - 0xC046F000) / 8) as usize + 15604129
                 } else {
                     Self::NO_FROPS
                 }

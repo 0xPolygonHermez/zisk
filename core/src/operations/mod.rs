@@ -2,6 +2,7 @@ mod dma_inputcpy;
 mod dma_memcmp;
 mod dma_memcpy;
 mod dma_memset;
+mod dma_proof_reads;
 mod evm_jump_dest;
 mod profile;
 

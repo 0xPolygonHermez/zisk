@@ -85,7 +85,7 @@ it. In a multi-file assembly (a library, or a `-z <dir>` run) a definition can b
 made visible to **every** file by prefixing it with `pub`:
 
 ```
-pub define FREE_INPUT 0x40000000
+pub define FREE_INPUT 0x20000000
 ```
 
 The assembler gathers all `pub define`s across the sources in a pre-pass and seeds
@@ -382,7 +382,7 @@ If a program does not define `_start`, the assembler synthesizes a launcher auto
 ```
 _start:
     copyb(0, 0) -> r3            ; gp = _global_pointer
-    copyb(0, 0xa0400000) -> r2   ; sp = _init_stack_top (SYS_ADDR)
+    copyb(0, 0xc0400000) -> r2   ; sp = _init_stack_top (SYS_ADDR)
     call main                    ; or _zisk_main
     ret_to_bios
 ```

@@ -1,8 +1,10 @@
 //! AIR classification helpers.
 
 use zisk_pil::{
-    AIR_NAMES, INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
-    ZISK_AIRGROUP_ID,
+    AIR_NAMES, INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS,
+    MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_BYTE_LARGE_AIR_IDS, MEM_ALIGN_LARGE_AIR_IDS,
+    MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_LARGE_AIR_IDS, MEM_ALIGN_WRITE_BYTE_AIR_IDS,
+    ROM_AIR_IDS, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
 use crate::{PRECOMPILE_AIR_IDS, PRECOMPILE_RANK_ASSIGN};
@@ -31,6 +33,24 @@ impl AirClassifier {
                 .iter()
                 .zip(PRECOMPILE_RANK_ASSIGN.iter())
                 .any(|(&id, &assigned)| id == air_id && assigned)
+    }
+
+    /// A memory instance needs no collection from the replay when this block's rows of the memory
+    /// airs come from the GPU planner (on the device, or already in its host memory for the proofs).
+    pub fn mem_collected_on_device(air_id: usize) -> bool {
+        (Self::is_memory_related(air_id) || Self::is_mem_align(air_id))
+            && zisk_common::mem_rows_on_device()
+    }
+
+    /// The seven `MemAlign` airs.
+    pub fn is_mem_align(air_id: usize) -> bool {
+        air_id == MEM_ALIGN_AIR_IDS[0]
+            || air_id == MEM_ALIGN_LARGE_AIR_IDS[0]
+            || air_id == MEM_ALIGN_BYTE_AIR_IDS[0]
+            || air_id == MEM_ALIGN_BYTE_LARGE_AIR_IDS[0]
+            || air_id == MEM_ALIGN_READ_BYTE_AIR_IDS[0]
+            || air_id == MEM_ALIGN_READ_BYTE_LARGE_AIR_IDS[0]
+            || air_id == MEM_ALIGN_WRITE_BYTE_AIR_IDS[0]
     }
 
     /// Checks if the AIR ID corresponds to a memory-related state machine.

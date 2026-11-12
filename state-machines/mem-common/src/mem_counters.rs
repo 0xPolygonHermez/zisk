@@ -8,6 +8,7 @@ use zisk_common::ChunkId;
 use crate::{MemAlignCounters, MemHelpers};
 use std::fmt;
 use zisk_common::{BusDevice, BusId, MemBusData, Metrics, MEM_BUS_DATA_SIZE, MEM_BUS_ID};
+use zisk_core::{RAM_ADDR, ROM_ADDR};
 
 const ST_BITS_OFFSET: u32 = 30;
 const ST_INI: u8 = 0;
@@ -33,14 +34,14 @@ impl fmt::Debug for MemCounters {
             for (mem_index, mem_area) in self.addr_sorted.iter().enumerate() {
                 write!(f, "[MEM_{},#:{} =>", mem_index, mem_area.len())?;
                 for (addr, count) in mem_area {
-                    write!(f, " 0x{:08X}:{}", addr * 8, count)?;
+                    write!(f, " 0x{:08X}:{}", (*addr as u64) * 8, count)?;
                 }
                 write!(f, "]")?;
             }
         } else {
             write!(f, "[HASH,#:{} =>", self.addr.len())?;
             for (addr, count) in self.addr.iter() {
-                write!(f, " 0x{:08X}:{}", addr * 8, count)?;
+                write!(f, " 0x{:08X}:{}", (*addr as u64) * 8, count)?;
             }
             write!(f, "]")?;
         }
@@ -69,10 +70,10 @@ impl MemCounters {
         addr_vector.par_sort_by_key(|(key, _)| *key);
 
         // Divide the original vector into three parts
-        let point = addr_vector.partition_point(|x| x.0 < (0xA000_0000 / 8));
+        let point = addr_vector.partition_point(|x| x.0 < (RAM_ADDR / 8) as u32);
         self.addr_sorted[2] = addr_vector.split_off(point);
 
-        let point = addr_vector.partition_point(|x| x.0 < (0x8000_0000 / 8));
+        let point = addr_vector.partition_point(|x| x.0 < (ROM_ADDR / 8) as u32);
         self.addr_sorted[0] = addr_vector.split_off(point);
 
         self.addr_sorted[1] = addr_vector;
@@ -264,11 +265,13 @@ impl MemCounters {
                     .unwrap(),
             );
         }
+        let addr = MemBusData::get_addr(data);
+        // low 32 bits of the address, then bytes | is_write << 16 | addr_hi << 17
         let values: [u32; 2] = [
-            MemBusData::get_addr(data),
-            // ((MemBusData::get_bytes(data) as u32) << 28)
+            addr as u32,
             MemBusData::get_bytes(data) as u32
-                + ((MemHelpers::is_write(MemBusData::get_op(data)) as u32) << 16),
+                + ((MemHelpers::is_write(MemBusData::get_op(data)) as u32) << 16)
+                + (((addr >> 32) as u32) << 17),
         ];
         let bytes =
             unsafe { slice::from_raw_parts(values.as_ptr() as *const u8, 2 * size_of::<u32>()) };
@@ -324,7 +327,7 @@ impl MemCounters {
             if section.data.is_empty() {
                 continue;
             }
-            let addr = section.addr as u32;
+            let addr = section.addr;
             let mut addr_w = MemHelpers::get_addr_w(addr);
             if MemHelpers::is_dual(addr) {
                 for _value in section.data.iter() {

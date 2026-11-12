@@ -3,8 +3,7 @@
 use crate::{
     syscalls::{
         syscall_bls12_381_complex_add, syscall_bls12_381_complex_mul,
-        syscall_bls12_381_complex_sub, SyscallBls12_381ComplexAddParams,
-        SyscallBls12_381ComplexMulParams, SyscallBls12_381ComplexSubParams, SyscallComplex384,
+        syscall_bls12_381_complex_sub, SyscallComplex384,
     },
     zisklib::{eq, fcall_bls12_381_fp2_inv, fcall_bls12_381_fp2_sqrt, is_one, is_zero, lt},
 };
@@ -53,9 +52,9 @@ pub fn add_fp2_bls12_381(
 ) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(b);
-    let mut params = SyscallBls12_381ComplexAddParams { f1: &mut f1, f2: &f2 };
     syscall_bls12_381_complex_add(
-        &mut params,
+        &mut f1,
+        &f2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -70,9 +69,9 @@ pub fn dbl_fp2_bls12_381(
 ) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(a);
-    let mut params = SyscallBls12_381ComplexAddParams { f1: &mut f1, f2: &f2 };
     syscall_bls12_381_complex_add(
-        &mut params,
+        &mut f1,
+        &f2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -87,9 +86,9 @@ pub fn neg_fp2_bls12_381(
 ) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex_x(&P_MINUS_ONE);
-    let mut params = SyscallBls12_381ComplexMulParams { f1: &mut f1, f2: &f2 };
     syscall_bls12_381_complex_mul(
-        &mut params,
+        &mut f1,
+        &f2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -105,9 +104,9 @@ pub fn sub_fp2_bls12_381(
 ) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(b);
-    let mut params = SyscallBls12_381ComplexSubParams { f1: &mut f1, f2: &f2 };
     syscall_bls12_381_complex_sub(
-        &mut params,
+        &mut f1,
+        &f2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -123,9 +122,9 @@ pub fn mul_fp2_bls12_381(
 ) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(b);
-    let mut params = SyscallBls12_381ComplexMulParams { f1: &mut f1, f2: &f2 };
     syscall_bls12_381_complex_mul(
-        &mut params,
+        &mut f1,
+        &f2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -142,9 +141,9 @@ pub fn scalar_mul_fp2_bls12_381(
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex_x(b);
 
-    let mut params = SyscallBls12_381ComplexMulParams { f1: &mut f1, f2: &f2 };
     syscall_bls12_381_complex_mul(
-        &mut params,
+        &mut f1,
+        &f2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -159,9 +158,9 @@ pub fn square_fp2_bls12_381(
 ) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(a);
-    let mut params = SyscallBls12_381ComplexMulParams { f1: &mut f1, f2: &f2 };
     syscall_bls12_381_complex_mul(
-        &mut params,
+        &mut f1,
+        &f2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -255,9 +254,9 @@ pub fn conjugate_fp2_bls12_381(
     let mut f1 = to_syscall_complex_x(&a[0..6].try_into().unwrap());
     let f2 = to_syscall_complex_y(&a[6..12].try_into().unwrap());
 
-    let mut params = SyscallBls12_381ComplexSubParams { f1: &mut f1, f2: &f2 };
     syscall_bls12_381_complex_sub(
-        &mut params,
+        &mut f1,
+        &f2,
         #[cfg(feature = "hints")]
         hints,
     );

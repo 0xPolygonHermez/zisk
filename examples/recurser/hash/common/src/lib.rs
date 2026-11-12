@@ -1,9 +1,8 @@
-//! Shared layout + hashing for the `hash` example. Poseidon1 works over
-//! Goldilocks field elements (u64); ZisK publics are u32 slots, so a 4-element
+//! Shared layout + hashing for the `hash` example. The hash is BLAKE3 over
+//! Goldilocks field elements (u64), the family of the default proving key; ZisK publics are u32 slots, so a 4-element
 //! digest is committed as 8 u32 limbs and `NormalizePublics` reassembles it.
 
-/// Poseidon1 (width-16) used as a sponge: 12-element rate + 4-element capacity,
-/// digest = first 4 outputs.
+/// 12 secret elements in, a 4-element digest out.
 pub const RATE: usize = 12;
 pub const CAPACITY: usize = 4;
 pub const WIDTH: usize = RATE + CAPACITY; // 16
@@ -15,15 +14,12 @@ pub fn field_from_limbs(low: u32, high: u32) -> u64 {
     (low as u64) | ((high as u64) << 32)
 }
 
-/// Poseidon1 of 12 inputs → 4-element digest. `fields::poseidon1_hash` uses the
-/// precompile on the guest and native Rust on the host, so both agree.
+/// BLAKE3 of 12 inputs → 4-element digest: `Blake3_8::linear_hash`, the leaf hash the BLAKE3
+/// STARK verifier uses, and `LinearHash(12, 2, 1)` in `aggregate.circom` computes the same.
 pub fn hash12(input: &[u64; RATE]) -> [u64; DIGEST] {
-    use proofman_fields::{poseidon1_hash, Goldilocks, Poseidon1_16, PrimeField64};
-    let mut state = [Goldilocks::new(0); WIDTH];
-    for i in 0..RATE {
-        state[i] = Goldilocks::from_u64(input[i]);
-    }
-    let out = poseidon1_hash::<Goldilocks, Poseidon1_16, WIDTH>(&state);
+    use proofman_fields::{Blake3_8, Goldilocks, Hash, PrimeField64};
+    let elems: [Goldilocks; RATE] = core::array::from_fn(|i| Goldilocks::from_u64(input[i]));
+    let out = <Blake3_8 as Hash<Goldilocks>>::linear_hash(&elems);
     core::array::from_fn(|i| out[i].as_canonical_u64())
 }
 

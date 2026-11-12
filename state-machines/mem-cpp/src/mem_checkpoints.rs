@@ -4,8 +4,10 @@ use crate::{bindings, MemPlanner};
 #[derive(Debug)]
 pub struct CppMemCheckPoint {
     pub chunk_id: u32,
+    /// word address (byte address / 8)
     pub from_addr: u32,
     pub from_skip: u32,
+    /// word address (byte address / 8)
     pub to_addr: u32,
     pub to_count: u32,
     pub count: u32,

@@ -48,25 +48,9 @@ pub trait BackendService: Send + Sync + 'static {
         spec: DomainAggregationProgramSpec,
     ) -> ApiResult<String>;
 
-    /// Submit a new job. Returns the job UUID.
-    ///
-    /// Submit a base job. The base API carries no caller metadata.
-    async fn submit_job(&self, kind: DomainJobKind) -> ApiResult<SubmitJobResult> {
-        self.submit_job_with_metadata(kind, None).await
-    }
-
-    /// Submit a job with caller-defined key/value metadata (the extended API).
-    async fn submit_job_ext(
-        &self,
-        kind: DomainJobKind,
-        metadata: std::collections::BTreeMap<String, String>,
-    ) -> ApiResult<SubmitJobResult> {
-        self.submit_job_with_metadata(kind, Some(metadata)).await
-    }
-
-    /// Implementation seam shared by [`submit_job`](Self::submit_job) and
-    /// [`submit_job_ext`](Self::submit_job_ext); backends implement this one.
-    async fn submit_job_with_metadata(
+    /// Submit a new job with the caller's key/value metadata, if any. Returns
+    /// the job UUID.
+    async fn submit_job(
         &self,
         kind: DomainJobKind,
         metadata: Option<std::collections::BTreeMap<String, String>>,
@@ -90,4 +74,10 @@ pub trait BackendService: Send + Sync + 'static {
     /// returns `true` if the job was cancelled, or `false` if it was already
     /// in a terminal state when the request arrived.
     async fn cancel_job(&self, job_id: Uuid) -> ApiResult<bool>;
+
+    /// Prometheus text read from the backend's state when `/metrics` is scraped, appended to
+    /// the recorder's output. Called before the recorder renders, so it can set gauges first.
+    async fn render_metrics(&self) -> String {
+        String::new()
+    }
 }

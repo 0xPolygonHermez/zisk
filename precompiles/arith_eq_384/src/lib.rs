@@ -43,6 +43,9 @@ zisk_precompile! {
 }
 
 #[cfg(test)]
+mod arith_eq_384_mem_inputs_tests;
+
+#[cfg(test)]
 mod arith_eq_384_tests {
     use serial_test::serial;
     use zisk_common::io::ZiskStdin;

@@ -1,0 +1,14 @@
+[package]
+name = "riscv-guest"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+workloads = { path = "../workloads" }
+ziskos = { path = "../../../ziskos/entrypoint" }
+
+[profile.release]
+opt-level = 3
+panic = "abort"
+
+[workspace]

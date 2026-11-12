@@ -37,8 +37,17 @@ pub fn program2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     }
 }
 
+/// Why a guest that uses `zkvm_random_u64` cannot run with hints: the hints are produced by
+/// running the guest natively, where the random values differ from the prover's, so the
+/// precompile calls they record may differ from the ones the prover executes
+pub const HINTS_WITH_RANDOM_ERROR: &str =
+    "the guest uses zkvm_random_u64, which is incompatible with hints: the native run that \
+     produces the hints draws other random values, so its precompile calls may differ from \
+     the prover's. Run it without hints";
+
 /// Transpiles a guest program into a Zisk ROM, like [`program2rom`], and saves the result into
-/// an x86-64 assembly file.
+/// an x86-64 assembly file. With `hints`, fails for a guest that uses `zkvm_random_u64` (see
+/// [`HINTS_WITH_RANDOM_ERROR`]).
 pub fn program2romfile(
     bytes: &[u8],
     asm_file: &Path,
@@ -48,6 +57,9 @@ pub fn program2romfile(
     hints: bool,
 ) -> Result<(), Box<dyn Error>> {
     let rom = program2rom(bytes)?;
+    if hints && rom.uses_random_seed() {
+        return Err(HINTS_WITH_RANDOM_ERROR.into());
+    }
     ZiskRom2Asm::save_to_asm_file(&rom, asm_file, generation_method, log_output, comments, hints);
 
     Ok(())

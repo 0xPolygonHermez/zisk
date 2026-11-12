@@ -34,6 +34,7 @@ pub enum BinaryBasicTableOp {
     Sh1add = ZiskOp::SH1ADD as u16,
     Sh2add = ZiskOp::SH2ADD as u16,
     Sh3add = ZiskOp::SH3ADD as u16,
+    Unal8 = ZiskOp::UNAL8 as u16,
 }
 
 impl BinaryBasicTableOp {

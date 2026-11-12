@@ -90,8 +90,9 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
-# Gracefully drain in-flight work on rolling updates / scale-down. The worker
-# should respond to SIGTERM by finishing the current chunk and exiting.
+# Time allowed on rolling updates / scale-down. On SIGTERM the worker cancels
+# its job in flight (the coordinator reassigns it), stops its ASM services,
+# frees their shared memory and exits with status 0 within seconds.
 terminationGracePeriodSeconds: 300
 
 # Horizontal autoscaling. The CPU-based default is a coarse approximation;

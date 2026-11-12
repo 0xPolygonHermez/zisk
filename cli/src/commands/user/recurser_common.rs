@@ -61,6 +61,9 @@ pub(crate) fn resolve_recurser(aggregation: &Path) -> Result<Recurser> {
         let refs: Vec<&GuestProgram> = guests.iter().collect();
         builder = builder.programs(&refs);
     }
+    if definition.any_program {
+        builder = builder.any_program();
+    }
 
     Ok(builder.build()?)
 }

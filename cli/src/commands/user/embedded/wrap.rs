@@ -7,12 +7,12 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{EmbeddedClientBuilder, Proof};
 
 use crate::common::resolve_output_path;
-use crate::proof::{select_wrap_kind, wrap_kind_label};
+use crate::proof::{select_wrap_kind, wrap_kind_label, SnarkArgs};
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-/// Generate a PLONK/minimal proof from a STARK (VADCOP) proof locally
+/// Generate a SNARK/minimal proof from a STARK (VADCOP) proof locally
 pub(crate) struct ZiskEmbeddedWrap {
     /// Path to the STARK (VADCOP) proof file to wrap
     #[arg(short = 'p', long)]
@@ -26,17 +26,16 @@ pub(crate) struct ZiskEmbeddedWrap {
     #[arg(short = 'k', long)]
     proving_key: Option<PathBuf>,
 
-    /// Path to a precomputed PLONK proving key
-    #[arg(short = 'w', long)]
-    proving_key_plonk: Option<PathBuf>,
+    /// Path to a precomputed SNARK proving key
+    #[arg(short = 'w', long, alias = "proving-key-plonk")]
+    proving_key_snark: Option<PathBuf>,
 
-    /// Smaller STARK proof with reduced size. Mutually exclusive with --plonk
-    #[arg(short = 'c', long, conflicts_with = "plonk")]
+    /// Smaller STARK proof with reduced size. Mutually exclusive with --plonk and --pilfflonk
+    #[arg(short = 'c', long, conflicts_with_all = ["plonk", "pilfflonk"])]
     minimal: bool,
 
-    /// PLONK proof for on-chain verification via the EVM verifier. Mutually exclusive with --minimal
-    #[arg(long, conflicts_with = "minimal")]
-    plonk: bool,
+    #[command(flatten)]
+    snark: SnarkArgs,
 
     /// Use GPU acceleration
     #[cfg(not(feature = "cpu-only"))]
@@ -55,7 +54,7 @@ impl ZiskEmbeddedWrap {
         print_banner_field("Proof", self.proof.display());
         println!();
 
-        let proof_kind = select_wrap_kind(self.plonk, self.minimal)?;
+        let proof_kind = select_wrap_kind(self.snark.protocol(), self.minimal)?;
         let kind_label = wrap_kind_label(proof_kind);
 
         let zisk_proof = Proof::load(&self.proof).map_err(|e| {
@@ -63,8 +62,8 @@ impl ZiskEmbeddedWrap {
         })?;
 
         let mut builder = EmbeddedClientBuilder::default().verbose(self.verbose);
-        if self.plonk {
-            builder = builder.plonk();
+        if let Some(protocol) = self.snark.protocol() {
+            builder = builder.snark(protocol);
         }
         #[cfg(not(feature = "cpu-only"))]
         if self.gpu {
@@ -73,8 +72,8 @@ impl ZiskEmbeddedWrap {
         if let Some(pk) = &self.proving_key {
             builder = builder.proving_key(pk.clone());
         }
-        if let Some(pk) = &self.proving_key_plonk {
-            builder = builder.proving_key_plonk(pk.clone());
+        if let Some(pk) = &self.proving_key_snark {
+            builder = builder.proving_key_snark(pk.clone());
         }
         let client = builder.build()?;
 

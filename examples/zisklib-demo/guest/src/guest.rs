@@ -19,7 +19,7 @@ use zisklib::{
     secp256k1_ecdsa_recover, secp256k1_ecdsa_verify, secp256k1_schnorr_verify,
     secp256r1_ecdsa_verify, sha256, square_mod256, wrapping_add256, wrapping_mul256,
     wrapping_neg256, wrapping_pow256, wrapping_rem256, wrapping_square256, wrapping_sub256,
-    zkvm_zisklib_add,
+    zkvm_keccak_f1600, zkvm_zisklib_add,
 };
 
 // ---- BN254 (alt_bn128) ecPairing vectors: e(G1,G2)·e(-G1,G2) == 1, so the
@@ -442,6 +442,29 @@ fn main() {
         && sha256_matches(b"abc", &SHA256_ABC)
         && sha256_matches(&a56, &SHA256_56A);
 
+    // 2b'. keccak-f[1600] in place: the precompile needs an 8-byte aligned state, so
+    // the binding permutes an unaligned one in an aligned copy. At every byte offset
+    // 0..7 the state must end up as the aligned permutation of the same input.
+    let seed: [u64; 25] =
+        core::array::from_fn(|i| (i as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15));
+    let mut want = seed;
+    // SAFETY: `want` is a writable [u64; 25].
+    unsafe { zkvm_keccak_f1600(want.as_mut_ptr()) };
+    let mut keccakf_ok = want != seed;
+    let mut kbuf = [0u64; 26];
+    for off in 0..8 {
+        let mut got = [0u64; 25];
+        // SAFETY: kbuf holds 208 bytes, so 200 bytes at any offset 0..7 fit; the
+        // copies are bytewise, so the unaligned pointer is never dereferenced as u64.
+        unsafe {
+            let p = (kbuf.as_mut_ptr() as *mut u8).add(off);
+            core::ptr::copy_nonoverlapping(seed.as_ptr() as *const u8, p, 200);
+            zkvm_keccak_f1600(black_box(p as *mut u64));
+            core::ptr::copy_nonoverlapping(p as *const u8, got.as_mut_ptr() as *mut u8, 200);
+        }
+        keccakf_ok &= got == want;
+    }
+
     // 2c. BLAKE2b compression: one final compression of the empty message
     // reproduces blake2b512("") = 786a02f7...9be2ce, checking the state ends up
     // equal to that digest's eight little-endian words.
@@ -644,6 +667,7 @@ fn main() {
         && odd_ok
         && sha_ok
         && blake2b_ok
+        && keccakf_ok
         && inv_ok
         && noinv_ok
         && addsub_ok
@@ -659,6 +683,6 @@ fn main() {
         && bn_pair_ok;
     ziskos::io::commit(&ok);
     println!(
-        "add=0x{sum:x} keccak(empty)={empty_ok} keccak(144B)={big_ok} keccak(13B)={odd_ok} sha256={sha_ok} blake2b={blake2b_ok} inv256={inv_ok} noinv={noinv_ok} addsub={addsub_ok} mul={mul_ok} div={div_ok} mod={mod_ok} invmod={invmod_ok} pow={pow_ok} k1_ecdsa={k1_ecdsa_ok} k1_recover={k1_recover_ok} k1_schnorr={k1_schnorr_ok} r1_ecdsa={r1_ecdsa_ok} bn254_pairing={bn_pair_ok} bls_pairing={bls_pair_ok} bls_map={bls_map_ok} bls_htc={bls_htc_ok} bls_sig={bls_sig_ok} bls_kzg={bls_kzg_ok} modexp={modexp_ok} => ok={ok}"
+        "add=0x{sum:x} keccak(empty)={empty_ok} keccak(144B)={big_ok} keccak(13B)={odd_ok} sha256={sha_ok} blake2b={blake2b_ok} keccakf={keccakf_ok} inv256={inv_ok} noinv={noinv_ok} addsub={addsub_ok} mul={mul_ok} div={div_ok} mod={mod_ok} invmod={invmod_ok} pow={pow_ok} k1_ecdsa={k1_ecdsa_ok} k1_recover={k1_recover_ok} k1_schnorr={k1_schnorr_ok} r1_ecdsa={r1_ecdsa_ok} bn254_pairing={bn_pair_ok} bls_pairing={bls_pair_ok} bls_map={bls_map_ok} bls_htc={bls_htc_ok} bls_sig={bls_sig_ok} bls_kzg={bls_kzg_ok} modexp={modexp_ok} => ok={ok}"
     );
 }

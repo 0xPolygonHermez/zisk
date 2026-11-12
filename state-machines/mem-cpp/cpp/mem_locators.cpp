@@ -4,7 +4,7 @@
 MemLocators::MemLocators() {
 }
 
-void MemLocators::push_locator(uint32_t thread_index, uint32_t offset, uint32_t cpos, uint32_t skip, uint32_t previous_addr) {
+void MemLocators::push_locator(uint32_t thread_index, uint32_t offset, uint32_t cpos, uint32_t skip, uint64_t previous_addr) {
     size_t pos = write_pos.load(std::memory_order_relaxed);
     assert(pos < MAX_LOCATORS);
     locators[pos].thread_index = thread_index;

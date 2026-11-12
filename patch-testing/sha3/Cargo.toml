@@ -1,0 +1,23 @@
+[package]
+name = "patch-sha3"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Standalone workspace: every guest pins its own patch revision, so two
+# versions of the same patched crate can be tested side by side.
+[workspace]
+
+[dependencies]
+ziskos = { path = "../../ziskos/entrypoint" }
+patch-test-common = { path = "../common" }
+sha3 = "=0.10.8"
+
+[patch.crates-io]
+sha3 = { git = "https://github.com/0xPolygonHermez/zisk-patch-hashes", package = "sha3", tag = "patch-sha3-0.10.8-zisk-0.16.0+" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

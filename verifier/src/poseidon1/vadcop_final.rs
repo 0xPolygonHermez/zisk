@@ -5267,14 +5267,11 @@ fn verifier_info() -> VerifierInfo {
         n_fri_queries: 54,
         n_fri_steps: 5,
         n_challenges: 6,
-        n_challenges_total: 12,
+        n_challenges_total: 11,
         fri_steps: vec![20, 16, 12, 8, 5],
         hash_commits: true,
         last_level_verification: 2,
         pow_bits: 22,
-        num_vals: vec![48, 12, 21],
-        opening_points: vec![-2, -1, 0, 1, 2],
-        boundaries: vec![Boundary { name: "everyRow".to_string(), offset_min: None, offset_max: None }],
         fri_ev_groups: vec![
             FriEvalGroup { opening: 0, refs: vec![FriEvalRef::new(0, 34, 1, 0), FriEvalRef::new(0, 35, 1, 1), FriEvalRef::new(0, 43, 1, 2)] },
             FriEvalGroup { opening: 1, refs: vec![FriEvalRef::new(0, 34, 1, 0), FriEvalRef::new(0, 35, 1, 1), FriEvalRef::new(0, 43, 1, 2), FriEvalRef::new(2, 0, 3, 3)] },
@@ -5282,6 +5279,9 @@ fn verifier_info() -> VerifierInfo {
             FriEvalGroup { opening: 3, refs: vec![FriEvalRef::new(0, 36, 1, 38), FriEvalRef::new(0, 45, 1, 46), FriEvalRef::new(1, 0, 1, 47), FriEvalRef::new(1, 1, 1, 48), FriEvalRef::new(1, 2, 1, 49), FriEvalRef::new(1, 3, 1, 50), FriEvalRef::new(1, 4, 1, 51), FriEvalRef::new(1, 5, 1, 52), FriEvalRef::new(1, 15, 1, 62), FriEvalRef::new(1, 16, 1, 63), FriEvalRef::new(1, 17, 1, 64), FriEvalRef::new(1, 18, 1, 65), FriEvalRef::new(1, 19, 1, 66), FriEvalRef::new(1, 20, 1, 67), FriEvalRef::new(1, 21, 1, 68), FriEvalRef::new(1, 22, 1, 69), FriEvalRef::new(1, 23, 1, 70), FriEvalRef::new(1, 24, 1, 71), FriEvalRef::new(1, 25, 1, 72), FriEvalRef::new(1, 26, 1, 73), FriEvalRef::new(1, 27, 1, 74), FriEvalRef::new(1, 28, 1, 75), FriEvalRef::new(1, 29, 1, 76), FriEvalRef::new(1, 30, 1, 77), FriEvalRef::new(1, 31, 1, 78)] },
             FriEvalGroup { opening: 4, refs: vec![FriEvalRef::new(1, 15, 1, 62)] }
         ],
+        num_vals: vec![48, 12, 21],
+        opening_points: vec![-2, -1, 0, 1, 2],
+        boundaries: vec![Boundary { name: "everyRow".to_string(), offset_min: None, offset_max: None }],
         q_deg: 7,
         q_index: 105,
     }
@@ -5307,4 +5307,10 @@ pub fn verify_u64(proof: &[u64], vk: &[u64]) -> bool {
 
 pub fn expected_proof_bytes() -> usize {
     proofman_verifier::expected_proof_size_bytes(&verifier_info())
+}
+
+// Appended by `cargo-zisk-dev release-artifacts install`: the stage's proof length, from
+// whichever function the generator emits.
+pub fn proof_size() -> crate::ProofSize {
+    crate::ProofSize::Exact(expected_proof_bytes())
 }

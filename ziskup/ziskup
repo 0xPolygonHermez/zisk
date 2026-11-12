@@ -22,7 +22,9 @@ ASSUME_YES=false
 FORCE=false
 WITH_SNARK=false
 UNINSTALL=false
-HASH_MODE="Poseidon1"
+# Bundle names in the bucket: the blake3 key, the default, has no suffix; the
+# Poseidon1 one carries "-poseidon1" after the version.
+HASH_MODE="blake3"
 HASH_SUFFIX=""
 
 # Bundle metadata file written into ${ZISK_DIR}. Single file, key=value
@@ -125,7 +127,11 @@ main() {
       ;;
     --blake3)
       HASH_MODE="blake3"
-      HASH_SUFFIX="-blake3"
+      HASH_SUFFIX=""
+      ;;
+    --poseidon1)
+      HASH_MODE="Poseidon1"
+      HASH_SUFFIX="-poseidon1"
       ;;
     --uninstall)
       UNINSTALL=true
@@ -174,12 +180,13 @@ main() {
     err "--with-snark requires --system (use 'ziskup setup_snark' for user-mode SNARK key)"
     exit 1
   fi
-  # No SNARK/PLONK setup is published for blake3: the BN128 wrap has no blake3
-  # path, so the bucket only ever holds a Poseidon1 plonk key — which would not
-  # match the blake3 proving key installed next to it.
-  if $WITH_SNARK && [[ "$HASH_MODE" == "blake3" ]]; then
-    err "--with-snark is not available with --blake3 (no SNARK setup is published for blake3)"
-    exit 1
+  if $WITH_SNARK; then
+    case "$(tolower "${ZISKUP_PLATFORM:-$(uname -s)}")" in
+      darwin | mac*)
+        err "--with-snark is not supported on macOS"
+        exit 1
+        ;;
+    esac
   fi
   if [[ -n "$PREFIX" ]]; then
     ZISK_DIR="$PREFIX"
@@ -630,11 +637,13 @@ OPTIONS:
                    bundle is already at the requested version. Default is to
                    short-circuit (avoids re-download when worker + coordinator
                    install on the same host).
-    --with-snark   Only works with --system. Download and install the SNARK proving key.
+    --with-snark   Only works with --system. Download and install the SNARK proving key
+                   (pilfflonk) of the same hash mode as the proving key.
                    Skipped if already present unless --force is also given.
-    --blake3       Install the blake3 proving/verify key instead of the default
-                   Poseidon1 one. Not compatible with --with-snark / setup_snark:
-                   no SNARK setup is published for blake3.
+    --poseidon1    Install the Poseidon1 proving/verify key instead of the default
+                   blake3 one. With --with-snark / setup_snark, the SNARK key is
+                   the Poseidon1 one.
+    --blake3       Install the blake3 proving/verify key (the default).
     --uninstall    Remove the ZisK bundle. Only the subdirs ziskup tracked at install
                    time are deleted (operator-supplied files in the prefix survive).
                    Combine with --system for the system bundle. With --system also
@@ -643,7 +652,7 @@ OPTIONS:
                    a ZisK service is still installed unless --force is given.
 
 COMMANDS:
-    setup_snark     Install SNARK proving key (provingKeySnark)
+    setup_snark     Install SNARK proving key (provingKeySnark). Not supported on macOS.
 EOF
 }
 
@@ -858,6 +867,15 @@ ensure_silent() {
 }
 
 # Downloads $1 into $2
+# url_exists URL: whether the server has URL (a HEAD request, nothing downloaded).
+url_exists() {
+  if check_cmd curl; then
+    curl -fsIL -o /dev/null "$1"
+  else
+    wget -q --spider "$1"
+  fi
+}
+
 download() {
   say $1
   if check_cmd curl; then
@@ -892,12 +910,8 @@ install_setup() {
     local CONST_TREE=$2
     local KEY_FILE="zisk-${KEY_TYPE}key-${SETUP_VERSION}${HASH_SUFFIX}.tar.gz"
 
-    if [[ "${HASH_MODE}" == "blake3" ]]; then
-      step "Downloading ${KEY_TYPE} key (${HASH_MODE}) version ${SETUP_VERSION}..."
-    else
-      step "Downloading ${KEY_TYPE} key version ${SETUP_VERSION}..."
-    fi
-    
+    step "Downloading ${KEY_TYPE} key (${HASH_MODE}) version ${SETUP_VERSION}..."
+
     ensure download "${BUCKET_URL}/${KEY_FILE}" "${KEY_FILE}"
     ensure download "${BUCKET_URL}/${KEY_FILE}.md5" "${KEY_FILE}.md5"
 
@@ -946,7 +960,11 @@ install_setup() {
 
 # Install the SNARK proving key
 install_setup_snark() {
-    local KEY_FILE="zisk-provingkey-plonk-${SETUP_VERSION}.tar.gz"
+    # The final SNARK is pilfflonk, published per hash mode like the proving key (HASH_SUFFIX).
+    local KEY_FILE="zisk-provingkey-pilfflonk-${SETUP_VERSION}${HASH_SUFFIX}.tar.gz"
+    if ! url_exists "${BUCKET_URL}/${KEY_FILE}" && [[ "${HASH_MODE}" != "blake3" ]]; then
+      KEY_FILE="zisk-provingkey-plonk-${SETUP_VERSION}.tar.gz"
+    fi
 
     step "Downloading SNARK proving key version ${SETUP_VERSION}. This may take a while..."
     ensure download "${BUCKET_URL}/${KEY_FILE}" "${KEY_FILE}"
@@ -1110,15 +1128,6 @@ setup_snark_command() {
   # Print banner
   banner
 
-  # Args are not parsed on this path; reject the one flag that would silently
-  # install a key of the wrong mode (see the --with-snark guard in main).
-  for arg in "$@"; do
-    if [[ "$arg" == "--blake3" ]]; then
-      err "setup_snark has no blake3 variant (no SNARK setup is published for blake3)"
-      exit 1
-    fi
-  done
-
   # Resolve install root (setup_snark uses the user-mode default).
   ZISK_DIR="$DEFAULT_USER_ZISK_DIR"
   ZISK_BIN_DIR="${ZISK_DIR}/bin"
@@ -1131,7 +1140,10 @@ setup_snark_command() {
 
   case "${PLATFORM}" in
     linux) ;;
-    darwin | mac*) ;;
+    darwin | mac*)
+      err "setup_snark is not supported on macOS"
+      exit 1
+      ;;
     *)
       err "unsupported platform ${PLATFORM}"
       exit 1
@@ -1149,7 +1161,14 @@ setup_snark_command() {
   # Parse version to get setup version
   SETUP_VERSION="$(cat "${ZISK_DIR}/setup_version" 2>/dev/null || echo "${ZISK_VERSION#v}")"
 
-  step "Installing SNARK proving key for ZisK version ${ZISK_VERSION}..."
+  # Args are not parsed on this path: the SNARK key is of the hash mode of the key installed
+  # (a bundle that records none is Poseidon1), whatever flag was passed.
+  HASH_MODE="$(bundle_get hash_mode)"
+  HASH_MODE="${HASH_MODE:-Poseidon1}"
+  HASH_SUFFIX=""
+  [[ "${HASH_MODE}" == "Poseidon1" ]] && HASH_SUFFIX="-poseidon1"
+
+  step "Installing SNARK proving key for ZisK version ${ZISK_VERSION} (${HASH_MODE})..."
 
   # Install the SNARK proving key
   install_setup_snark

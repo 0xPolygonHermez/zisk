@@ -20,12 +20,9 @@ pub(crate) struct MemoryOperationsResponse {
 }
 
 impl FromResponsePayload for MemoryOperationsResponse {
+    const RESPONSE_ID: u64 = CMD_MO_RESPONSE_ID;
+
     fn from_response_payload(payload: ResponseData) -> Self {
-        assert!(
-            payload[0] == CMD_MO_RESPONSE_ID,
-            "Expected CMD_MO_RESPONSE_ID but got {}",
-            payload[0]
-        );
         MemoryOperationsResponse {
             result: payload[1] as u8,
             allocated_len: payload[2],

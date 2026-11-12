@@ -56,16 +56,29 @@ airtemplate BigIntAdd(const int N = 2**21, const int bits = 256, const int opera
     col witness bits(1) cout[N_RC][RC];
 
     // address of struct with params
-    col witness bits(32) addr_params;
+    col witness bits(ADDR_BITS) addr_params;
 
     // address of a chunks
-    col witness bits(32) addr_a;
+    col witness bits(ADDR_BITS) addr_a;
 
     // address of b chunks
-    col witness bits(32) addr_b;
+    col witness bits(ADDR_BITS) addr_b;
 
     // address of c chunks
-    col witness bits(32) addr_c;
+    col witness bits(ADDR_BITS) addr_c;
+
+    // The pointer to the parameter struct arrives on the operation bus, and the pointers a, b and
+    // c are read from that struct, as two 32-bit limbs. This machine is the one that joins them
+    // into 33-bit addresses, so it checks that each high limb is a bit: the low limb is
+    // addr_x - 2^32 * addr_x_hi and the address cannot wrap the field.
+    col witness bits(1) addr_params_hi;
+    addr_params_hi * (1 - addr_params_hi) === 0;
+    col witness bits(1) addr_a_hi;
+    col witness bits(1) addr_b_hi;
+    col witness bits(1) addr_c_hi;
+    addr_a_hi * (1 - addr_a_hi) === 0;
+    addr_b_hi * (1 - addr_b_hi) === 0;
+    addr_c_hi * (1 - addr_c_hi) === 0;
 
     // main step of the operation
     col witness bits(40) step;
@@ -122,17 +135,17 @@ airtemplate BigIntAdd(const int N = 2**21, const int bits = 256, const int opera
 
     // load parameters from struct
     // load addr_a from addr_params[0]
-    precompiled_mem_load(addr: addr_params, main_step: step, value: [addr_a, 0], sel: sel);
+    precompiled_mem_load(addr: addr_params, main_step: step, value: [addr_a - 2**32 * addr_a_hi, addr_a_hi], sel: sel);
     // load addr_b from addr_params[1]
-    precompiled_mem_load(addr: addr_params + 8, main_step: step, value: [addr_b, 0], sel: sel);
+    precompiled_mem_load(addr: addr_params + 8, main_step: step, value: [addr_b - 2**32 * addr_b_hi, addr_b_hi], sel: sel);
     // load cin from addr_params[2]
     precompiled_mem_load(addr: addr_params + 16, main_step: step, value: [cin, 0], sel: sel);
     // load addr_c from addr_params[3]
-    precompiled_mem_load(addr: addr_params + 24, main_step: step, value: [addr_c, 0], sel: sel);
+    precompiled_mem_load(addr: addr_params + 24, main_step: step, value: [addr_c - 2**32 * addr_c_hi, addr_c_hi], sel: sel);
 
     const expr final_cout = cout[N_RC-1][RC-1];
 
     // proves the operation lauched by main, c = flag = carry_out
-    proves_operation(op: operation_code, a:[0, 0], b:[addr_params, 0], c:[final_cout, 0], 
+    proves_operation(op: operation_code, a:[0, 0], b:[addr_params - 2**32 * addr_params_hi, addr_params_hi], c:[final_cout, 0], 
                      flag:0, main_step: step, mul:sel);
 }

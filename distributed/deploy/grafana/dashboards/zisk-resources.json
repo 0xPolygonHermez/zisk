@@ -1,0 +1,997 @@
+{
+ "uid": "zisk-resources",
+ "title": "ZisK — Worker resources",
+ "description": "Memory, shared memory, processes and CPU of the workers (as they report) and the coordinator",
+ "tags": [
+  "zisk"
+ ],
+ "schemaVersion": 39,
+ "time": {
+  "from": "now-1h",
+  "to": "now"
+ },
+ "refresh": "5s",
+ "timepicker": {
+  "refresh_intervals": [
+   "1s",
+   "2s",
+   "5s",
+   "10s",
+   "30s",
+   "1m",
+   "5m",
+   "15m",
+   "30m",
+   "1h"
+  ]
+ },
+ "timezone": "utc",
+ "links": [
+  {
+   "title": "🔴 LIVE",
+   "type": "link",
+   "url": "/d/zisk-live",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "Overview",
+   "type": "link",
+   "url": "/d/zisk-overview",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "Executions & proofs",
+   "type": "link",
+   "url": "/d/zisk-proofs",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "Cancellations & recovery",
+   "type": "link",
+   "url": "/d/zisk-recovery",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "Worker resources",
+   "type": "link",
+   "url": "/d/zisk-resources",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "GPUs",
+   "type": "link",
+   "url": "/d/zisk-gpus",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "Host",
+   "type": "link",
+   "url": "/d/zisk-host",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  }
+ ],
+ "editable": true,
+ "panels": [
+  {
+   "type": "row",
+   "title": "Worker memory · ${coordinator_name} · ${coordinator_environment} · v${coordinator_version}",
+   "id": 1,
+   "collapsed": false,
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Worker peak memory",
+   "description": "cgroup memory.peak since the worker's service started, as the worker reports",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "coordinator_worker_cgroup_memory_bytes{job=\"zisk-coordinator\",cluster=~\"$cluster\",kind=\"peak\"}",
+     "legendFormat": "worker {{worker_id}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": -1e+300
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto"
+   },
+   "id": 2,
+   "gridPos": {
+    "x": 0,
+    "y": 1,
+    "w": 6,
+    "h": 4
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Worker memory now",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "coordinator_worker_cgroup_memory_bytes{job=\"zisk-coordinator\",cluster=~\"$cluster\",kind=\"current\"}",
+     "legendFormat": "worker {{worker_id}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": -1e+300
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto"
+   },
+   "id": 3,
+   "gridPos": {
+    "x": 6,
+    "y": 1,
+    "w": 6,
+    "h": 4
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "ZisK shared memory now",
+   "description": "Allocated pages of every ZISK_* segment in /dev/shm on the workers' hosts",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum(coordinator_worker_shm_bytes{job=\"zisk-coordinator\",cluster=~\"$cluster\"})",
+     "legendFormat": "allocated",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": -1e+300
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto"
+   },
+   "id": 4,
+   "gridPos": {
+    "x": 12,
+    "y": 1,
+    "w": 6,
+    "h": 4
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Stale shared memory",
+   "description": "ZISK_* segments whose owner process no longer exists: held until the next worker start",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum(coordinator_worker_shm_bytes{job=\"zisk-coordinator\",cluster=~\"$cluster\",owner_alive=\"false\"}) or vector(0)",
+     "legendFormat": "owner gone",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": -1e+300
+       },
+       {
+        "color": "red",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto"
+   },
+   "id": 5,
+   "gridPos": {
+    "x": 18,
+    "y": 1,
+    "w": 6,
+    "h": 4
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Worker cgroup memory",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "coordinator_worker_cgroup_memory_bytes{job=\"zisk-coordinator\",cluster=~\"$cluster\",kind=~\"current|peak\"}",
+     "legendFormat": "worker {{worker_id}} {{kind}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 6,
+   "gridPos": {
+    "x": 0,
+    "y": 5,
+    "w": 12,
+    "h": 9
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Worker memory by type (memory.stat)",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "coordinator_worker_cgroup_memory_bytes{job=\"zisk-coordinator\",cluster=~\"$cluster\",kind=~\"anon|file|shmem\"}",
+     "legendFormat": "worker {{worker_id}} {{kind}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 7,
+   "gridPos": {
+    "x": 12,
+    "y": 5,
+    "w": 12,
+    "h": 9
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Shared memory (/dev/shm)",
+   "id": 8,
+   "collapsed": false,
+   "gridPos": {
+    "x": 0,
+    "y": 14,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "ZisK shared memory by segment kind",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (kind) (coordinator_worker_shm_bytes{job=\"zisk-coordinator\",cluster=~\"$cluster\"})",
+     "legendFormat": "{{kind}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 9,
+   "gridPos": {
+    "x": 0,
+    "y": 15,
+    "w": 12,
+    "h": 9
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "ZisK shared memory segments",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (kind, owner_alive) (coordinator_worker_shm_segments{job=\"zisk-coordinator\",cluster=~\"$cluster\"})",
+     "legendFormat": "{{kind}} (owner alive: {{owner_alive}})",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 10,
+   "gridPos": {
+    "x": 12,
+    "y": 15,
+    "w": 12,
+    "h": 9
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Processes",
+   "id": 11,
+   "collapsed": false,
+   "gridPos": {
+    "x": 0,
+    "y": 24,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "RSS by process",
+   "description": "rankN = a zisk-worker MPI rank; asm-<svc>-rankN = its ASM service",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (role) (coordinator_worker_process_memory_bytes{job=\"zisk-coordinator\",cluster=~\"$cluster\",kind=\"rss\"})",
+     "legendFormat": "{{role}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 12,
+   "gridPos": {
+    "x": 0,
+    "y": 25,
+    "w": 12,
+    "h": 10
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "bargauge",
+   "title": "RSS now: anonymous and shared, by process",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "coordinator_worker_process_memory_bytes{job=\"zisk-coordinator\",cluster=~\"$cluster\",kind=~\"anon|shmem\"}",
+     "legendFormat": "{{role}} {{kind}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "instant": true,
+     "range": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "min": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "gradient",
+    "showUnfilled": true,
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    }
+   },
+   "id": 13,
+   "gridPos": {
+    "x": 12,
+    "y": 25,
+    "w": 12,
+    "h": 10
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "row",
+   "title": "CPU and host",
+   "id": 14,
+   "collapsed": false,
+   "gridPos": {
+    "x": 0,
+    "y": 35,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "CPU cores in use per unit",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "rate(coordinator_worker_cgroup_cpu_seconds_total{job=\"zisk-coordinator\",cluster=~\"$cluster\"}[1m])",
+     "legendFormat": "worker {{worker_id}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "rate(process_cpu_seconds_total{job=\"zisk-coordinator\",cluster=~\"$cluster\"}[1m])",
+     "legendFormat": "coordinator",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 15,
+   "gridPos": {
+    "x": 0,
+    "y": 36,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Host memory",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "node_memory_MemTotal_bytes{host=~\"$host\"} - node_memory_MemAvailable_bytes{host=~\"$host\"}",
+     "legendFormat": "{{host}} used",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "node_memory_Shmem_bytes{host=~\"$host\"}",
+     "legendFormat": "{{host}} shared (all tmpfs and shm)",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "C",
+     "expr": "node_memory_MemAvailable_bytes{host=~\"$host\"}",
+     "legendFormat": "{{host}} available",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 16,
+   "gridPos": {
+    "x": 12,
+    "y": 36,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  }
+ ],
+ "templating": {
+  "list": [
+   {
+    "type": "query",
+    "name": "cluster",
+    "label": "Cluster",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "hide": 2,
+    "query": {
+     "query": "label_values(coordinator_info, cluster)",
+     "refId": "cluster"
+    },
+    "definition": "label_values(coordinator_info, cluster)",
+    "refresh": 2,
+    "includeAll": true,
+    "allValue": ".*",
+    "multi": false,
+    "current": {
+     "text": "All",
+     "value": "$__all"
+    }
+   },
+   {
+    "type": "query",
+    "name": "coordinator_name",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "hide": 2,
+    "query": {
+     "query": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, name)",
+     "refId": "name"
+    },
+    "definition": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, name)",
+    "refresh": 2
+   },
+   {
+    "type": "query",
+    "name": "coordinator_environment",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "hide": 2,
+    "query": {
+     "query": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, environment)",
+     "refId": "environment"
+    },
+    "definition": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, environment)",
+    "refresh": 2
+   },
+   {
+    "type": "query",
+    "name": "coordinator_version",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "hide": 2,
+    "query": {
+     "query": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, version)",
+     "refId": "version"
+    },
+    "definition": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, version)",
+    "refresh": 2
+   },
+   {
+    "type": "query",
+    "name": "host",
+    "label": "Host",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "hide": 2,
+    "query": {
+     "query": "label_values(up{job=\"node\",cluster=~\"$cluster\"}, host)",
+     "refId": "host"
+    },
+    "definition": "label_values(up{job=\"node\",cluster=~\"$cluster\"}, host)",
+    "refresh": 2,
+    "includeAll": true,
+    "multi": true,
+    "current": {
+     "text": "All",
+     "value": "$__all"
+    }
+   }
+  ]
+ },
+ "annotations": {
+  "list": []
+ }
+}

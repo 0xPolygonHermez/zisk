@@ -13,11 +13,11 @@ use zisk_definitions::{
     SYSCALL_BLS12_381_CURVE_ADD_ID, SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID,
     SYSCALL_BN254_COMPLEX_MUL_ID, SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID,
     SYSCALL_BN254_CURVE_DBL_ID, SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID,
-    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID,
-    SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID, SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID,
-    SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID,
-    SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END, ZKVMCALL_ADDR_START, ZKVMCALL_ARG_ADDR_END,
-    ZKVMCALL_ARG_ADDR_START,
+    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_ED25519_ADD_ID, SYSCALL_JUMP_DEST_ID,
+    SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID, SYSCALL_POSEIDON2_KOALABEAR_ID,
+    SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID,
+    SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END,
+    ZKVMCALL_ADDR_START, ZKVMCALL_ARG_ADDR_END, ZKVMCALL_ARG_ADDR_START,
 };
 
 use zisk_core::rom_layout::InlineBody;
@@ -38,7 +38,7 @@ use zisk_core::{FREG_F0, FREG_INST, FREG_RA, MTVEC, REG_X0};
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 // Important: The order should be the same as in such file.
-const CSR_PRECOMPILED: [&str; 32] = [
+const CSR_PRECOMPILED: [&str; 34] = [
     "keccak",
     "arith256",
     "arith256_mod",
@@ -71,6 +71,8 @@ const CSR_PRECOMPILED: [&str; 32] = [
     "babyjubjub_add",
     "blake3",
     "blake2s",
+    "ed25519_add",
+    "poseidon2_koalabear",
 ];
 const CSR_PRECOMPILED_ADDR_START: u16 = SYSCALL_KECCAKF_ID;
 const CSR_FCALL_ADDR_START: u16 = 0x8C0;
@@ -241,7 +243,15 @@ impl<'a> Riscv2ZiskContext<'a> {
 
             // I.6 Privileged & System Instructions (Part of I Base)
             RiscvInstName::Ecall => self.ecall(riscv_instruction),
-            RiscvInstName::Ebreak => self.nop(riscv_instruction, 4),
+            // ebreak raises a breakpoint exception: the execution fails there. GCC emits it
+            // for __builtin_trap, which C's abort() reaches.
+            RiscvInstName::Ebreak => self.halt_with_error(riscv_instruction, 4),
+            // A write to a read-only CSR is an illegal instruction, so the execution
+            // fails there. `unimp` (`csrrw x0, cycle, x0`) is one: compilers emit it
+            // for every trap (core::intrinsics::abort, Rust's __rust_abort, llvm.trap).
+            _ if writes_read_only_csr(riscv_instruction) => {
+                self.halt_with_error(riscv_instruction, 4)
+            }
             RiscvInstName::Csrrw => self.csrrw(riscv_instruction),
             RiscvInstName::Csrrs => self.csrrs(riscv_instruction, next_instructions),
             RiscvInstName::Csrrc => self.csrrc(riscv_instruction),
@@ -415,7 +425,7 @@ impl<'a> Riscv2ZiskContext<'a> {
 
             // C.I.6.Privileged & System Instructions
             #[cfg(feature = "compressed")]
-            RiscvInstName::CEbreak => self.nop(riscv_instruction, 2),
+            RiscvInstName::CEbreak => self.halt_with_error(riscv_instruction, 2),
 
             // C.D: Double-Precision Floating-Point (needs both `float` and `compressed`):
             #[cfg(all(feature = "float", feature = "compressed"))]
@@ -436,7 +446,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             // F: Single-Precision Floating-Point
             /////////////////////////////////////
             #[cfg(feature = "float")]
-            RiscvInstName::Flw => self.load_op(riscv_instruction, "signextend_w", 4, 4),
+            RiscvInstName::Flw => self.flw(riscv_instruction),
             #[cfg(feature = "float")]
             RiscvInstName::Fsw => self.store_op(riscv_instruction, "signextend_w", 4, 4),
             #[cfg(feature = "float")]
@@ -1152,7 +1162,6 @@ impl<'a> Riscv2ZiskContext<'a> {
         zib.op(op).unwrap();
         #[cfg(feature = "float")]
         let reg_offset: i64 = if i.inst_name == RiscvInstName::Fld
-            || i.inst_name == RiscvInstName::Flw
             || i.inst_name == RiscvInstName::CFld
             || i.inst_name == RiscvInstName::CFldsp
         {
@@ -1167,6 +1176,43 @@ impl<'a> Riscv2ZiskContext<'a> {
         zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&format!("{} r{}, 0x{:x}(r{})", i.inst_name, i.rd, i.imm, i.rs1));
         zib.build(self.rom);
+    }
+
+    // flw rd, imm(rs1)
+    //    copyb_w([%rs1], [a + imm]) -> [%f_rd]
+    //    or([%f_rd], 0xFFFFFFFF00000000) -> [%f_rd]
+
+    /// Loads a single-precision value into a float register and NaN-boxes it: the RISC-V spec
+    /// requires the upper 32 bits of a narrower value in a 64-bit float register to be all 1s, and
+    /// the float library reads any other value as the canonical NaN
+    #[cfg(feature = "float")]
+    pub fn flw(&mut self, i: &RiscvInst) {
+        let freg = i.rd as u64 + ((FREG_F0 - REG_X0) >> 3);
+        let internal_address = self.rom.get_internal_address();
+        {
+            let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
+            zib.src_a("reg", i.rs1 as u64, false);
+            zib.ind_width(4);
+            zib.src_b("ind", i.imm as u64, false);
+            zib.op("copyb").unwrap();
+            zib.store("reg", freg as i64, false, false);
+            zib.set_next_internal_address(internal_address);
+            let jump_address = internal_address as i64 - i.rom_address as i64;
+            zib.j(jump_address, jump_address);
+            zib.verbose(&format!("{} f{}, 0x{:x}(r{})", i.inst_name, i.rd, i.imm, i.rs1));
+            zib.build(self.rom);
+        }
+        {
+            let mut zib = ZiskInstBuilder::new_internal(internal_address, i.rom_address);
+            zib.src_a("reg", freg, false);
+            zib.src_b("imm", 0xFFFF_FFFF_0000_0000, false);
+            zib.op("or").unwrap();
+            zib.store("reg", freg as i64, false, false);
+            let jump_address = i.rom_address as i64 + 4 - internal_address as i64;
+            zib.j(jump_address, jump_address);
+            zib.verbose(&format!("internal 1 flw: NaN-box f{}", i.rd));
+            zib.build(self.rom);
+        }
     }
 
     // sb rs2, imm(rs1)
@@ -1330,6 +1376,42 @@ impl<'a> Riscv2ZiskContext<'a> {
             }
 
             return;
+        }
+
+        // auipc rd followed by addi rd, rd, imm (the `la`/`lla` pair GCC emits for the address
+        // of a global): rd = pc + auipc_imm + addi_imm is a constant, so one copyb writes it and
+        // jumps past the addi. The addi keeps its own ROM entry, so a jump that lands on it
+        // directly still runs it. Same idea as the auipc + jalr fusion above.
+        if let Some(next) = next_instructions.first() {
+            let next_size = match next.inst_name {
+                RiscvInstName::Addi => 4,
+                RiscvInstName::CAddi => 2,
+                _ => 0,
+            };
+            if next_size != 0
+                && i.rd != 0
+                && next.rd == i.rd
+                && next.rs1 == i.rd
+                && next.rom_address == i.rom_address + 4
+            {
+                let value = (i.rom_address as i64)
+                    .wrapping_add(i.imm as i64) // already shifted << 12 at decoding time
+                    .wrapping_add(next.imm as i64) as u64;
+                let skip = 4 + next_size;
+                let mut zib =
+                    ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
+                zib.src_a("imm", 0, false);
+                zib.src_b("imm", value, false);
+                zib.op("copyb").unwrap();
+                zib.store("reg", i.rd as i64, false, false);
+                zib.j(skip, skip);
+                zib.verbose(&format!(
+                    "auipc r{}, 0x{:x} + addi r{}, r{}, {:#x} = 0x{:x}",
+                    i.rd, i.imm, next.rd, next.rs1, next.imm, value
+                ));
+                zib.build(self.rom);
+                return;
+            }
         }
 
         let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
@@ -1581,6 +1663,25 @@ impl<'a> Riscv2ZiskContext<'a> {
         zib.set_pc();
         zib.j(0, 4);
         zib.verbose(&format!("zkvmcall -> 0x{lib_addr:x}"));
+        zib.build(self.rom);
+    }
+
+    /// A write_log call site, its `csrs` sequence from `at_addr` to before `next_addr`: one
+    /// `flag` that reads the text's pointer and length from `regs` and jumps past the sequence.
+    /// The prover sees a no-op; ziskemu prints the text when asked to (`opc_write_log`)
+    pub fn emit_write_log(&mut self, at_addr: u64, next_addr: u64, regs: &[u32]) {
+        let mut zib = ZiskInstBuilder::new_from_riscv(at_addr, "zkvmcall".to_string());
+        // x0 is not a main-trace register: read it as the immediate 0
+        let src = |reg: u32| if reg == 0 { ("imm", 0) } else { ("reg", reg as u64) };
+        let ((a_src, a), (b_src, b)) = (src(regs[0]), src(regs[1]));
+        zib.src_a(a_src, a, false);
+        zib.src_b(b_src, b, false);
+        zib.op("flag").unwrap();
+        zib.i.write_log = true;
+        zib.i.func = zisk_core::opc_write_log;
+        let jmp = next_addr as i64 - at_addr as i64;
+        zib.j(jmp, jmp);
+        zib.verbose(&format!("write_log r{}, r{}", regs[0], regs[1]));
         zib.build(self.rom);
     }
 
@@ -1853,6 +1954,12 @@ impl<'a> Riscv2ZiskContext<'a> {
                 assert!(!next_instructions.is_empty());
                 return self.transpile_dma_memset_pattern(i, next_instructions);
             }
+            // add256 returns its carry-out in rd, so it is recognised whatever rd is:
+            // rd == rs1 (a compiler may reuse the parameter-block register for the
+            // carry) and rd == 0 (carry discarded) too, not only rd != rs1.
+            SYSCALL_ADD256_ID if i.rs1 != 0 => {
+                return self.transpile_add256(i, next_instructions);
+            }
             _ => {}
         }
         if i.rd == i.rs1 {
@@ -1921,31 +2028,41 @@ impl<'a> Riscv2ZiskContext<'a> {
                     assert!(!next_instructions.is_empty());
                     self.transpile_profile_pattern(i, next_instructions);
                 }
-                SYSCALL_KECCAKF_ID
-                | SYSCALL_ARITH256_ID
-                | SYSCALL_ARITH256_MOD_ID
-                | SYSCALL_SECP256K1_ADD_ID
-                | SYSCALL_SECP256K1_DBL_ID
-                | SYSCALL_SHA256F_ID
+                // Precompiles called with two direct operands (see transpile_precompiled_ab_pattern)
+                SYSCALL_SECP256K1_ADD_ID
+                | SYSCALL_SECP256R1_ADD_ID
                 | SYSCALL_BN254_CURVE_ADD_ID
-                | SYSCALL_BN254_CURVE_DBL_ID
                 | SYSCALL_BN254_COMPLEX_ADD_ID
                 | SYSCALL_BN254_COMPLEX_SUB_ID
                 | SYSCALL_BN254_COMPLEX_MUL_ID
-                | SYSCALL_ARITH384_MOD_ID
                 | SYSCALL_BLS12_381_CURVE_ADD_ID
-                | SYSCALL_BLS12_381_CURVE_DBL_ID
                 | SYSCALL_BLS12_381_COMPLEX_ADD_ID
                 | SYSCALL_BLS12_381_COMPLEX_SUB_ID
                 | SYSCALL_BLS12_381_COMPLEX_MUL_ID
+                | SYSCALL_BABYJUBJUB_ADD_ID
+                | SYSCALL_SHA256F_ID
+                | SYSCALL_BLAKE3F_ID
+                | SYSCALL_BLAKE2SF_ID
+                | SYSCALL_ED25519_ADD_ID => {
+                    let precompiled =
+                        CSR_PRECOMPILED[i.csr as usize - CSR_PRECOMPILED_ADDR_START as usize];
+                    self.transpile_precompiled_ab_pattern(i, next_instructions, precompiled);
+                }
+                // Two direct operands plus a static argument (the round index)
+                SYSCALL_BLAKE2B_ROUND_ID => {
+                    self.transpile_precompiled_abx_pattern(i, next_instructions, "blake2b");
+                }
+                SYSCALL_KECCAKF_ID
+                | SYSCALL_ARITH256_ID
+                | SYSCALL_ARITH256_MOD_ID
+                | SYSCALL_SECP256K1_DBL_ID
+                | SYSCALL_BN254_CURVE_DBL_ID
+                | SYSCALL_ARITH384_MOD_ID
+                | SYSCALL_BLS12_381_CURVE_DBL_ID
                 | SYSCALL_POSEIDON2_ID
                 | SYSCALL_POSEIDON1_ID
-                | SYSCALL_SECP256R1_ADD_ID
-                | SYSCALL_SECP256R1_DBL_ID
-                | SYSCALL_BLAKE2B_ROUND_ID
-                | SYSCALL_BABYJUBJUB_ADD_ID
-                | SYSCALL_BLAKE3F_ID
-                | SYSCALL_BLAKE2SF_ID => {
+                | SYSCALL_POSEIDON2_KOALABEAR_ID
+                | SYSCALL_SECP256R1_DBL_ID => {
                     let mut zib =
                         ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                     zib.src_b("reg", i.rs1 as u64, false);
@@ -2020,18 +2137,6 @@ impl<'a> Riscv2ZiskContext<'a> {
             let jmp_offset = next_instructions[0].rom_address as i64 - rom_address as i64;
             zib.j(jmp_offset, jmp_offset);
             zib.build(self.rom);
-        } else if i.csr == SYSCALL_ADD256_ID as u32 {
-            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
-            zib.src_a("imm", 0, false);
-            zib.src_b("reg", i.rs1 as u64, false);
-            zib.op("add256").unwrap();
-            zib.verbose("add256");
-            zib.store("reg", i.rd as i64, false, false);
-            assert!(!next_instructions.is_empty());
-            let jmp_offset = next_instructions[0].rom_address as i64 - rom_address as i64;
-            // jmp_offset1 is used for extended static parameter, which is not used in this case
-            zib.j(0, jmp_offset);
-            zib.build(self.rom);
         } else {
             let internal_address_1 = self.rom.get_internal_address();
             {
@@ -2061,6 +2166,25 @@ impl<'a> Riscv2ZiskContext<'a> {
                 zib.build(self.rom);
             }
         }
+    }
+
+    /// `csrrs rd, 0x811, rs1`: the add256 precompile on the parameter block at rs1,
+    /// carry-out to rd (dropped when rd is x0). One instruction; the precompile reads
+    /// rs1 before rd is written, so rd may equal rs1.
+    fn transpile_add256(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
+        zib.src_a("imm", 0, false);
+        zib.src_b("reg", i.rs1 as u64, false);
+        zib.op("add256").unwrap();
+        zib.verbose("add256");
+        if i.rd != 0 {
+            zib.store("reg", i.rd as i64, false, false);
+        }
+        assert!(!next_instructions.is_empty());
+        let jmp_offset = next_instructions[0].rom_address as i64 - i.rom_address as i64;
+        // jmp_offset1 is used for extended static parameter, which is not used in this case
+        zib.j(0, jmp_offset);
+        zib.build(self.rom);
     }
 
     /*
@@ -2729,6 +2853,75 @@ impl<'a> Riscv2ZiskContext<'a> {
         );
     }
 
+    /// Precompiles that take two operands directly in registers (no parameter struct in memory):
+    /// the first one is the operand that receives the result. The guest emits `csrs port, reg(p1)`
+    /// followed by `add x0, reg(p2), x0`, and both are folded into a single precompiled instruction
+    /// with a = reg(p1) and b = reg(p2), skipping the `add`.
+    fn transpile_precompiled_ab_pattern(
+        &mut self,
+        i: &RiscvInst,
+        next_instructions: &[RiscvInst],
+        op: &str,
+    ) {
+        if i.imme == 0
+            && next_instructions.len() > 1
+            && next_instructions[0].inst_name == RiscvInstName::Add
+            && next_instructions[0].rd == 0
+            && next_instructions[0].rs2 == 0
+        {
+            // precompiled a,b transpilation pattern:
+            //
+            //  csrs  0x81x, reg(p1)          ===>  precompiled reg(p1), reg(p2) ─┐
+            //  add   x0, reg(p2), x0               add x0, reg(p2), x0           │ jmp+8
+            //  ..........                          ..........   <───────────────┘
+            let p1 = i.rs1;
+            let p2 = next_instructions[0].rs1;
+            let next_pc = next_instructions[1].rom_address;
+            self.create_extended_precompiles_op(i, op, p1, p2 as u64, 0, 0, false, next_pc);
+            return;
+        }
+        let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
+        panic!(
+            "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as {op} with a \
+                        consecutive add x0, reg, x0 (next[0]:{})",
+            i.csr, i.rom_address, next_0
+        );
+    }
+
+    /// Like `transpile_precompiled_ab_pattern` with a static argument on top: the guest emits
+    /// `csrs port, reg(p1)` followed by `addi x0, reg(p2), imm`, folded into one precompiled
+    /// instruction with a = reg(p1), b = reg(p2) and extended_arg = imm.
+    fn transpile_precompiled_abx_pattern(
+        &mut self,
+        i: &RiscvInst,
+        next_instructions: &[RiscvInst],
+        op: &str,
+    ) {
+        if i.imme == 0
+            && next_instructions.len() > 1
+            && next_instructions[0].inst_name == RiscvInstName::Addi
+            && next_instructions[0].rd == 0
+        {
+            // precompiled a,b,x transpilation pattern:
+            //
+            //  csrs  0x81x, reg(p1)          ===>  precompiled reg(p1), reg(p2), imm ─┐
+            //  addi  x0, reg(p2), imm              addi x0, reg(p2), imm              │ jmp+8
+            //  ..........                          ..........   <────────────────────┘
+            let p1 = i.rs1;
+            let p2 = next_instructions[0].rs1;
+            let imm = next_instructions[0].imm as i64;
+            let next_pc = next_instructions[1].rom_address;
+            self.create_extended_precompiles_op(i, op, p1, p2 as u64, 0, imm, false, next_pc);
+            return;
+        }
+        let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
+        panic!(
+            "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as {op} with a \
+                        consecutive addi x0, reg, imm (next[0]:{})",
+            i.csr, i.rom_address, next_0
+        );
+    }
+
     fn transpile_dma_inputcpy_pattern(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
         if i.imme == 0 && next_instructions.len() > 1 {
             let next_pc = next_instructions[1].rom_address;
@@ -2873,6 +3066,15 @@ pub fn add_zisk_code(
                 skip_until = next_addr;
                 continue;
             }
+            // write_log has no library routine: one step that prints when asked to
+            if id == WRITE_LOG_ID {
+                let site = inline_zkvmcall_site(&riscv_instructions[i..])
+                    .unwrap_or_else(|e| panic!("{e}"));
+                let next_addr = inst_addr + 4 * site.len as u64;
+                ctx.emit_write_log(inst_addr, next_addr, &site.regs);
+                skip_until = next_addr;
+                continue;
+            }
             let lib_addr = *zkvmcalls.get(&id).unwrap_or_else(|| {
                 panic!("zkvmcall 0x{id:X} at 0x{inst_addr:x} has no library entry")
             });
@@ -2887,6 +3089,10 @@ pub fn add_zisk_code(
         ctx.convert(riscv_instruction, next_instructions);
     }
 }
+
+/// The zkvmcall of `write_log` (diagnostic text), which the transpiler emits itself (see
+/// `Riscv2ZiskContext::emit_write_log`)
+pub const WRITE_LOG_ID: u16 = zisk_definitions::zkvmcall_id("write_log");
 
 /// Returns the zkvmcall ID of `inst` if it is a zkvmcall (`csrs <id>, rs` with `id`
 /// in the zkvmcall CSR range; `rs` is x0 but for an inline one).
@@ -3123,5 +3329,104 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
             "add_zisk_init_data() exceeded max rom address: next_init_inst_addr={:#x} max={:#x}",
             rom.next_init_inst_addr, MAX_ZISK_OS_ROM_ADDR
         );
+    }
+}
+
+/// Whether `i` is a CSR instruction that writes a read-only CSR (address bits 11:10 =
+/// 0b11), which RISC-V defines as an illegal instruction. CSRRW/CSRRWI always write;
+/// CSRRS/CSRRC write only when rs1 != x0, and CSRRSI/CSRRCI only when uimm != 0, so
+/// a plain read (`csrr`) of a read-only CSR, such as marchid or the fcall result
+/// 0xFFE, stays legal.
+fn writes_read_only_csr(i: &RiscvInst) -> bool {
+    let writes = match i.inst_name {
+        RiscvInstName::Csrrw | RiscvInstName::Csrrwi => true,
+        RiscvInstName::Csrrs | RiscvInstName::Csrrc => i.rs1 != 0,
+        RiscvInstName::Csrrsi | RiscvInstName::Csrrci => i.imme != 0,
+        _ => false,
+    };
+    writes && (i.csr >> 10) & 0b11 == 0b11
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ADDR, SRC_REG, STORE_NONE, STORE_REG};
+
+    /// `csrrs rd, 0x811, rs1` must become one add256 on the block at rs1, its carry stored in
+    /// rd, for every register combination: a C compiler may give the carry the same register
+    /// as the block pointer, and a caller that ignores the carry writes it to x0.
+    #[test]
+    fn csrrs_add256_is_the_precompile_for_any_rd() {
+        let add256 = ZiskOp::try_from_name("add256").unwrap().code();
+        for (rd, rs1) in [(15, 15), (10, 15), (0, 15)] {
+            let inst = RiscvInst {
+                rom_address: ROM_ADDR,
+                inst_name: RiscvInstName::Csrrs,
+                rd,
+                rs1,
+                csr: SYSCALL_ADD256_ID as u32,
+                ..Default::default()
+            };
+            let next = RiscvInst { rom_address: ROM_ADDR + 4, ..Default::default() };
+
+            let mut rom = ZiskRom::default();
+            Riscv2ZiskContext::new(&mut rom).csrrs(&inst, &[next]);
+
+            assert_eq!(rom.insts.len(), 1, "rd={rd} rs1={rs1}: one instruction");
+            let zi = &rom.insts[&ROM_ADDR].i;
+            assert_eq!(zi.op, add256, "rd={rd} rs1={rs1}: add256, not a CSR write");
+            assert_eq!((zi.b_src, zi.b_offset_imm0), (SRC_REG, rs1 as u64), "rd={rd} rs1={rs1}");
+            if rd == 0 {
+                assert_eq!(zi.store, STORE_NONE, "rs1={rs1}: carry discarded");
+            } else {
+                assert_eq!((zi.store, zi.store_offset), (STORE_REG, rd as i64), "rd={rd}");
+            }
+            assert_eq!((zi.jmp_offset1, zi.jmp_offset2), (0, 4), "rd={rd} rs1={rs1}");
+        }
+    }
+
+    /// `auipc rd` + `addi rd, rd, imm` (or `c.addi`) becomes one copyb of the constant
+    /// pc + auipc_imm + addi_imm into rd that jumps past the addi; any other follower, or an
+    /// addi that reads or writes a different register, leaves the auipc on its own.
+    #[test]
+    fn auipc_addi_same_rd_is_one_constant() {
+        let copyb = ZiskOp::try_from_name("copyb").unwrap().code();
+        let auipc = RiscvInst {
+            rom_address: ROM_ADDR,
+            inst_name: RiscvInstName::Auipc,
+            rd: 5,
+            imm: 0x10012 << 12,
+            ..Default::default()
+        };
+        let addi = |name, rd, rs1, imm| RiscvInst {
+            rom_address: ROM_ADDR + 4,
+            inst_name: name,
+            rd,
+            rs1,
+            imm,
+            ..Default::default()
+        };
+        let base = ROM_ADDR as i64 + (0x10012 << 12);
+        // (follower, fused value or None, jump past)
+        let cases = [
+            (addi(RiscvInstName::Addi, 5, 5, -400), Some(base - 400), 8),
+            (addi(RiscvInstName::CAddi, 5, 5, 12), Some(base + 12), 6),
+            (addi(RiscvInstName::Addi, 6, 5, -400), None, 4), // writes another register
+            (addi(RiscvInstName::Addi, 5, 6, -400), None, 4), // reads another register
+            (addi(RiscvInstName::Add, 5, 5, 0), None, 4),     // not an addi
+        ];
+        for (next, fused, skip) in cases {
+            let mut rom = ZiskRom::default();
+            Riscv2ZiskContext::new(&mut rom).auipc(&auipc, std::slice::from_ref(&next));
+
+            assert_eq!(rom.insts.len(), 1, "{next:?}: one instruction");
+            let zi = &rom.insts[&ROM_ADDR].i;
+            assert_eq!(zi.op, copyb, "{next:?}");
+            let value = fused.unwrap_or(base) as u64;
+            assert_eq!((zi.b_src, zi.b_offset_imm0), (SRC_IMM, value & 0xffff_ffff), "{next:?}");
+            assert_eq!(zi.b_use_sp_imm1, value >> 32, "{next:?}");
+            assert_eq!((zi.store, zi.store_offset), (STORE_REG, 5), "{next:?}");
+            assert_eq!((zi.jmp_offset1, zi.jmp_offset2), (skip, skip), "{next:?}");
+        }
     }
 }

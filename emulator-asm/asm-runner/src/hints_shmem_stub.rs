@@ -27,15 +27,15 @@ impl HintsShmem {
         );
     }
 
-    pub fn unbind_semaphores(&self) {
-        unreachable!(
-            "HintsShmem::unbind_semaphores() is not supported on this platform. Only Linux x86_64 is supported."
-        );
-    }
-
     pub fn set_active_services(&self, _active_services: &[AsmService]) -> Result<()> {
         unreachable!(
             "HintsShmem::set_active_services() is not supported on this platform. Only Linux x86_64 is supported."
+        );
+    }
+
+    pub fn is_active_consumer(&self, _service: AsmService) -> bool {
+        unreachable!(
+            "HintsShmem::is_active_consumer() is not supported on this platform. Only Linux x86_64 is supported."
         );
     }
 }

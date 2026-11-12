@@ -18,7 +18,7 @@ cd ${ZISK_RUST_DIR}
 
 # Check if we are in ZISK_RUST_DIR directory
 if [ "$(pwd)" != "$ZISK_RUST_DIR" ]; then
-    log_err "\e[1;31mError changing directory to '${ZISK_RUST_DIR}'"
+    log_err "Error changing directory to '${ZISK_RUST_DIR}'"
     exit 1
 fi
 

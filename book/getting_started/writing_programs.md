@@ -310,6 +310,8 @@ In this command:
 * `<num_threads_per_process>` sets the number of threads used by each process via the `OMP_NUM_THREADS` and `RAYON_NUM_THREADS` environment variables.
 * `--bind-to none` prevents binding processes to specific cores, allowing the operating system to schedule them dynamically for better load balancing.
 
+To provide a random seed to a multi-process run, pass it as `--random-seed <HEX>`: every process receives the same command line. If you use the `ZISK_RANDOM_SEED` environment variable instead, export it to every process with `-x ZISK_RANDOM_SEED`, since processes on other servers do not inherit it. Processes that see no seed, or a different one, make the run hang or diverge.
+
 Running a Zisk proof with multiple processes enables efficient workload distribution across multiple servers. **On a single server with many cores, splitting execution into smaller subsets of cores generally improves performance by increasing concurrency**. As a general rule, `<num_processes>` * `<num_threads_per_process>` should match the number of available CPU cores or double that if hyperthreading is enabled.
 
 The total memory requirement increases proportionally with the number of processes. If each process requires approximately 25GB of memory, running P processes will require roughly (25 * P)GB of memory. Ensure that the system has sufficient available memory to accommodate all running processes.

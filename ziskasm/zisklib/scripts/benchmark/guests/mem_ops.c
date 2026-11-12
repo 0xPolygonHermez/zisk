@@ -6,7 +6,7 @@
    of src/zkvm_mem.s, and the JUMPDEST bitmap of pseudo-random bytecode (full of
    PUSHes) against a software walk, including the cases the precompile refuses
    (unaligned, empty), which must write nothing.
-   Output: one byte per test group at 0xa0410000, 1 = a failure in that group, and
+   Output: one byte per test group at 0xc0410000, 1 = a failure in that group, and
    1 in the byte after the last group once all have run. check.sh compares it with a
    golden snapshot. Build with -march=rv64ima_zicsr. */
 #include <stddef.h>

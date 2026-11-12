@@ -4,6 +4,7 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::RandomSeedArgs;
 use zisk_sdk::{AsmOptions, EmbeddedClientBuilder, GuestProgram, ZiskHints, ZiskStdin};
 
 use super::validate_asm_hints;
@@ -14,7 +15,7 @@ use crate::ux::{print_execute_output, print_job_banner};
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Execute a guest program locally
 pub(crate) struct ZiskEmbeddedExecute {
-    /// Path to the guest ELF file. If omitted, the ELF is auto-detected from the current project
+    /// Path to the guest program (RISC-V ELF or .wasm). If omitted, it is auto-detected from the current project
     #[arg(short = 'e', long)]
     elf: Option<PathBuf>,
 
@@ -38,6 +39,9 @@ pub(crate) struct ZiskEmbeddedExecute {
     /// - `unix://path/to/socket` → Unix domain socket stream
     #[arg(long)]
     hints: Option<String>,
+
+    #[command(flatten)]
+    random_seed: RandomSeedArgs,
 
     /// Use the ASM emulator instead of the default Rust emulator
     #[arg(short = 'a', long)]
@@ -91,7 +95,7 @@ impl ZiskEmbeddedExecute {
 
         client.setup(&program, hints.is_some())?;
 
-        let result = client.execute(&program, stdin, hints)?;
+        let result = client.execute(&program, stdin, hints, self.random_seed.provided())?;
 
         info!("{}", "--- EXECUTE SUMMARY -----------".bright_green().bold());
         print_execute_output(&result);

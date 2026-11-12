@@ -2,11 +2,12 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
-const ALIGN_MASK: u32 = 0xFFFF_FFF8;
-const RAM_ADDR: u32 = 0xA000_0000;
+const ALIGN_MASK: u64 = !0x7;
+/// core/src/mem.rs (addresses are 33 bits wide)
+const RAM_ADDR: u64 = 0xC000_0000;
 
 // MOPS flags (from mem_config.hpp)
 #[allow(dead_code)]
@@ -23,6 +24,8 @@ const MOPS_WRITE_2: u32 = 0x12;
 const MOPS_WRITE_1: u32 = 0x11;
 
 const MOPS_CWRITE_1: u32 = 0x31;
+/// An aligned 8-byte read that carries its value (the free-input word).
+const MOPS_READ_8_VALUE: u32 = 0x28;
 
 const MOPS_BLOCK_READ: u32 = 0x0A;
 const MOPS_BLOCK_WRITE: u32 = 0x0B;
@@ -30,20 +33,71 @@ const MOPS_ALIGNED_READ: u32 = 0x0C;
 const MOPS_ALIGNED_WRITE: u32 = 0x0D;
 const MOPS_ALIGNED_BLOCK_READ: u32 = 0x0E;
 const MOPS_ALIGNED_BLOCK_WRITE: u32 = 0x0F;
+/// Stream layout: state-machines/mem-cpp/cpp/mops_format.hpp.
+const MOPS_BLOCK_VALUES: u32 = 0x07;
+/// Light form: a single write with this bit carries no value; a block record with the payload bit
+/// carries no step word.
+const MOPS_NO_VALUE_BIT: u64 = 59;
+const MOPS_NO_PAYLOAD_BIT: u64 = 62;
+/// Header layout (mops_format.hpp): the byte address takes bits 0-32, the mode starts at bit 33
+/// and a block's word count at bit 37.
+const MOPS_ADDR_MASK: u64 = (1 << 33) - 1;
+const MOPS_MODE_SHIFT: u64 = 33;
+const MOPS_BLOCK_COUNT_SHIFT: u64 = 37;
+
+/// Words of the record whose header word is `hdr` (bit 63 is the header tag).
+fn mops_record_len(hdr: u64) -> usize {
+    let mode = ((hdr >> MOPS_MODE_SHIFT) & 0x3F) as u32;
+    let low = mode & 0x0F;
+    let single = matches!(low, 1 | 2 | 4 | 8);
+    if low == MOPS_ALIGNED_READ || (mode != MOPS_READ_8_VALUE && single && (mode & MOPS_WRITE_FLAG) == 0) {
+        1
+    } else if single || low == MOPS_ALIGNED_WRITE {
+        if (hdr >> MOPS_NO_VALUE_BIT) & 1 == 1 { 1 } else { 2 }
+    } else if low == MOPS_BLOCK_VALUES {
+        2 + ((hdr >> MOPS_BLOCK_COUNT_SHIFT) & 63) as usize
+    } else if (hdr >> MOPS_NO_PAYLOAD_BIT) & 1 == 1 {
+        1
+    } else {
+        2
+    }
+}
+
+/// Decodes the record at `w`; a value block becomes an aligned block write of its words.
+fn mops_decode_record(w: &[u64]) -> MemCountersBusData {
+    let hdr = w[0];
+    let mut flags = ((hdr >> MOPS_MODE_SHIFT) & 0x1FFF_FFFF) as u32;
+    if flags & 0x0F == MOPS_BLOCK_VALUES {
+        flags = MOPS_ALIGNED_BLOCK_WRITE
+            | ((((hdr >> MOPS_BLOCK_COUNT_SHIFT) & 63) as u32) << MOPS_BLOCK_COUNT_SBITS);
+    }
+    MemCountersBusData { addr: hdr & MOPS_ADDR_MASK, flags }
+}
+
+/// The records of a chunk's word stream.
+fn decode_stream(words: &[u64]) -> Vec<MemCountersBusData> {
+    let mut out = Vec::with_capacity(words.len() / 2);
+    let mut w = 0;
+    while w < words.len() {
+        out.push(mops_decode_record(&words[w..]));
+        w += mops_record_len(words[w]);
+    }
+    out
+}
 
 const MOPS_BLOCK_COUNT_SBITS: u32 = 4;
 
-/// MemCountersBusData: 8 bytes packed (addr: u32, flags: u32)
+/// MemCountersBusData: packed (addr: u64, flags: u32), as mem_types.hpp
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
 struct MemCountersBusData {
-    addr: u32,
+    addr: u64,
     flags: u32,
 }
 
 /// Tracks free_read_available state across chunks, matching MemCounterSingle logic.
 struct MopsExpander {
-    free_read_available: HashMap<u32, bool>,
+    free_read_available: HashMap<u64, bool>,
     dual_count: usize,
     ram_read_count: usize,
     ram_write_count: usize,
@@ -63,7 +117,7 @@ impl MopsExpander {
     /// For RAM: if free_read_available is true, consumes it (no push).
     ///          If false, sets true and pushes addr once.
     /// For non-RAM: always pushes addr.
-    fn add_aligned_read(&mut self, addr: u32, output: &mut Vec<u32>) {
+    fn add_aligned_read(&mut self, addr: u64, output: &mut Vec<u64>) {
         let is_ram = addr >= RAM_ADDR;
         if is_ram {
             self.ram_read_count += 1;
@@ -82,7 +136,7 @@ impl MopsExpander {
     /// Mirrors MemCounterSingle::add_aligned_write.
     /// For RAM: sets free_read_available to true.
     /// Always pushes addr.
-    fn add_aligned_write(&mut self, addr: u32, output: &mut Vec<u32>) {
+    fn add_aligned_write(&mut self, addr: u64, output: &mut Vec<u64>) {
         let is_ram = addr >= RAM_ADDR;
         if is_ram {
             self.ram_write_count += 1;
@@ -97,7 +151,7 @@ impl MopsExpander {
     ///          If free_read_available is true, pushes addr (write only),
     ///          free_read_available stays true.
     /// For non-RAM: pushes addr twice (read + write).
-    fn add_aligned_read_write(&mut self, addr: u32, output: &mut Vec<u32>) {
+    fn add_aligned_read_write(&mut self, addr: u64, output: &mut Vec<u64>) {
         let is_ram = addr >= RAM_ADDR;
         if is_ram {
             self.ram_read_count += 1;
@@ -116,9 +170,9 @@ impl MopsExpander {
     }
 
     /// Expand one chunk of mops trace entries, maintaining free_read_available state.
-    fn expand_chunk(&mut self, data: &[MemCountersBusData]) -> Vec<u32> {
+    fn expand_chunk(&mut self, data: &[MemCountersBusData]) -> Vec<u64> {
         self.free_read_available.clear();
-        let mut output: Vec<u32> = Vec::with_capacity(data.len() * 2);
+        let mut output: Vec<u64> = Vec::with_capacity(data.len() * 2);
 
         for entry in data {
             let addr = entry.addr;
@@ -187,8 +241,8 @@ impl MopsExpander {
                     }
                 }
 
-                // Aligned read
-                MOPS_ALIGNED_READ => {
+                // Aligned read, with or without the value (the free-input word carries it)
+                MOPS_ALIGNED_READ | MOPS_READ_8_VALUE => {
                     self.add_aligned_read(addr, &mut output);
                 }
                 // Aligned write
@@ -200,14 +254,14 @@ impl MopsExpander {
                 m if (m & 0x0F) == MOPS_BLOCK_READ || (m & 0x0F) == MOPS_ALIGNED_BLOCK_READ => {
                     let count = flags >> MOPS_BLOCK_COUNT_SBITS;
                     for i in 0..count {
-                        self.add_aligned_read(addr + i * 8, &mut output);
+                        self.add_aligned_read(addr + i as u64 * 8, &mut output);
                     }
                 }
                 // Block write / Aligned block write
                 m if (m & 0x0F) == MOPS_BLOCK_WRITE || (m & 0x0F) == MOPS_ALIGNED_BLOCK_WRITE => {
                     let count = flags >> MOPS_BLOCK_COUNT_SBITS;
                     for i in 0..count {
-                        self.add_aligned_write(addr + i * 8, &mut output);
+                        self.add_aligned_write(addr + i as u64 * 8, &mut output);
                     }
                 }
 
@@ -303,36 +357,19 @@ fn stats_chunk(chunk_id: u32, data: &[MemCountersBusData]) -> ChunkMemAlignCount
     s
 }
 
-/// Read a chunk binary file into a Vec<MemCountersBusData>
+/// Read a chunk binary file (the chunk's stream words) into decoded records
 fn read_chunk_file(path: &Path) -> Result<Vec<MemCountersBusData>> {
     let data = fs::read(path).with_context(|| format!("reading {}", path.display()))?;
-    let entry_size = std::mem::size_of::<MemCountersBusData>();
-    if data.len() % entry_size != 0 {
-        bail!(
-            "File {} size {} is not a multiple of entry size {}",
-            path.display(),
-            data.len(),
-            entry_size
-        );
+    if data.len() % 8 != 0 {
+        bail!("File {} size {} is not a multiple of 8", path.display(), data.len());
     }
-    let count = data.len() / entry_size;
-    let mut entries = Vec::with_capacity(count);
-    let mut cursor = &data[..];
-    for _ in 0..count {
-        let mut addr_bytes = [0u8; 4];
-        let mut flags_bytes = [0u8; 4];
-        cursor.read_exact(&mut addr_bytes)?;
-        cursor.read_exact(&mut flags_bytes)?;
-        entries.push(MemCountersBusData {
-            addr: u32::from_le_bytes(addr_bytes),
-            flags: u32::from_le_bytes(flags_bytes),
-        });
-    }
-    Ok(entries)
+    let words: Vec<u64> =
+        data.chunks_exact(8).map(|b| u64::from_le_bytes(b.try_into().unwrap())).collect();
+    Ok(decode_stream(&words))
 }
 
-/// Write expanded addresses as a binary file of little-endian u32 values
-fn write_output_file(path: &Path, addresses: &[u32]) -> Result<()> {
+/// Write expanded addresses as a binary file, one 64-bit little-endian word per aligned address
+fn write_output_file(path: &Path, addresses: &[u64]) -> Result<()> {
     let mut file =
         fs::File::create(path).with_context(|| format!("creating {}", path.display()))?;
     for &addr in addresses {
@@ -588,5 +625,75 @@ fn main() -> Result<()> {
         Command::Expand(expand_args) => cmd_expand(expand_args),
         Command::Count(count_args) => cmd_count(count_args),
         Command::MemAlignCount(mac_args) => cmd_mem_align_count(mac_args),
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One record of every kind of both forms, heavy and light. The same words and expectations
+    /// are in state-machines/mem-cpp/cpp/test/test_mops_format.cpp.
+    const WORDS: &[u64] = &[
+        0x8091a282a0000003, 0xc091a2b0a0000010, 0x0000000000000001, 0x88000028a0000006,
+        0x8091a2e2a0000001, 0x000000000000005a, 0x8091a29880001000, 0x8091a29aa0002000,
+        0x0000000000000007, 0x8800001aa0002008, 0x800000b440000008, 0x0091a28000000000,
+        0x80000c9c40001000, 0x0091a28000000000, 0xc00000f440002000, 0xc0000076a0003000,
+        0xc000019ea0004000, 0x8000013ea0005000, 0x0091a28000000000, 0xd5e6f7eea0100000,
+        0x0000000000000020, 0x0000000000000000, 0x0101010101010101, 0x0202020202020202,
+        0x0303030303030303, 0x0404040404040404, 0x0505050505050505, 0x0606060606060606,
+        0x0707070707070707, 0x0808080808080808, 0x0909090909090909, 0x0a0a0a0a0a0a0a0a,
+        0x0b0b0b0b0b0b0b0b, 0x0c0c0c0c0c0c0c0c, 0x0d0d0d0d0d0d0d0d, 0x0e0e0e0e0e0e0e0e,
+        0x0f0f0f0f0f0f0f0f, 0x1010101010101010, 0x1111111111111111, 0x1212121212121212,
+        0x1313131313131313, 0x1414141414141414, 0x1515151515151515, 0x1616161616161616,
+        0x1717171717171717, 0x1818181818181818, 0x1919191919191919, 0x1a1a1a1a1a1a1a1a,
+        0x1b1b1b1b1b1b1b1b, 0x1c1c1c1c1c1c1c1c, 0x1d1d1d1d1d1d1d1d, 0x1e1e1e1e1e1e1e1e,
+        0x1f1f1f1f1f1f1f1f, 0x2020202020202020, 0x2121212121212121, 0x2222222222222222,
+        0x2323232323232323, 0x2424242424242424, 0x2525252525252525, 0x2626262626262626,
+        0x2727272727272727, 0x2828282828282828, 0x2929292929292929, 0x2a2a2a2a2a2a2a2a,
+        0x2b2b2b2b2b2b2b2b, 0x2c2c2c2c2c2c2c2c, 0x2d2d2d2d2d2d2d2d, 0x2e2e2e2e2e2e2e2e,
+        0x2f2f2f2f2f2f2f2f, 0x3030303030303030, 0x3131313131313131, 0x3232323232323232,
+        0x3333333333333333, 0x3434343434343434, 0x3535353535353535, 0x3636363636363636,
+        0x3737373737373737, 0x3838383838383838, 0x3939393939393939, 0x3a3a3a3a3a3a3a3a,
+        0x3b3b3b3b3b3b3b3b, 0x3c3c3c3c3c3c3c3c, 0x3d3d3d3d3d3d3d3d, 0x3e3e3e3e3e3e3e3e,
+        0xd5e6f02ea0200000, 0x0000000000000000, 0x0000000000000042, 0xc091a2d010000000,
+        0x0000000000000042, 0x8800005010000000,
+    ];
+    const EXPECT: &[(usize, u64, u32, i64, &str)] = &[
+        (1, 0xa0000003, 0x01, -1, "read_1 unaligned"),
+        (2, 0xa0000010, 0x18, -1, "write_8 aligned, bit 63 value"),
+        (1, 0xa0000006, 0x14, -1, "write_4 no value"),
+        (2, 0xa0000001, 0x31, -1, "cwrite_1 with value"),
+        (1, 0x80001000, 0x0c, -1, "aligned read"),
+        (2, 0xa0002000, 0x0d, -1, "aligned write with value"),
+        (1, 0xa0002008, 0x0d, -1, "aligned write no value"),
+        (2, 0x40000008, 0x0a, 5, "block read 5"),
+        (2, 0x40001000, 0x0e, 100, "aligned block read 100"),
+        (1, 0x40002000, 0x0a, 7, "block read 7, no payload"),
+        (1, 0xa0003000, 0x0b, 3, "block write 3, no payload"),
+        (1, 0xa0004000, 0x0f, 12, "aligned block write 12, no payload"),
+        (2, 0xa0005000, 0x0f, 9, "aligned block write 9 with step payload"),
+        (65, 0xa0100000, 0x0f, 63, "value block 63"),
+        (3, 0xa0200000, 0x0f, 1, "value block 1"),
+        (2, 0x10000000, 0x28, -1, "free-input read with value"),
+        (1, 0x10000000, 0x28, -1, "free-input read, light"),
+    ];
+
+    #[test]
+    fn decoders_agree_with_the_table() {
+        let mut k = 0;
+        for &(len, addr, mode, count, name) in EXPECT {
+            assert!(k < WORDS.len(), "{name}: stream ended");
+            let got_len = mops_record_len(WORDS[k]);
+            let d = mops_decode_record(&WORDS[k..]);
+            let low = d.flags & 0x0F;
+            let block = low >= 0x0A && low != 0x0C && low != 0x0D;
+            let got_count = if block { (d.flags >> MOPS_BLOCK_COUNT_SBITS) as i64 } else { -1 };
+            let got_mode = if block { low } else { d.flags & 0x3F };
+            assert_eq!((got_len, d.addr, got_mode, got_count), (len, addr, mode, count), "{name}");
+            k += got_len;
+        }
+        assert_eq!(k, WORDS.len(), "words consumed");
     }
 }

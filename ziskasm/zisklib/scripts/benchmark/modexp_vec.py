@@ -1,5 +1,5 @@
 """modexp_vec.py [OUT.c]: self-checking zkvm_modexp guest (moduli up to 64 bytes and
-edge cases), expected values from Python pow. Output byte i at 0xa0410000 = 1 if case
+edge cases), expected values from Python pow. Output byte i at 0xc0410000 = 1 if case
 i failed; the byte after the last case is 1."""
 import random, sys
 random.seed(7)

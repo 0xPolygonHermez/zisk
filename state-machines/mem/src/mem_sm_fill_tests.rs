@@ -451,3 +451,56 @@ fn a_padding_covering_the_whole_segment_is_rejected() {
     let max = (lanes_x_row() * MemTrace::<Row>::NUM_ROWS - 1) as u32;
     split_padding_size(max + 1, max);
 }
+
+/// A failed device fill hands the trace buffer back, so the CPU fallback reuses the pooled buffer
+/// instead of taking a second one.
+#[test]
+fn a_failed_device_fill_hands_the_buffer_back() {
+    use proofman_common::trace::TraceRow;
+    let len = MemTrace::<MemTraceRowPacked<Goldilocks>>::NUM_ROWS
+        * MemTraceRowPacked::<Goldilocks>::ROW_SIZE;
+    let sm = MemSM::<Goldilocks>::new();
+    for packed in [false, true] {
+        let buffer = vec![Goldilocks::default(); len];
+        let ptr = buffer.as_ptr();
+        // No GPU planner is registered here, so the device fill fails.
+        let err = sm
+            .compute_witness_gpu_arena(SegmentId(0), true, buffer, packed)
+            .expect_err("the device fill has no planner");
+        let back = err.trace_buffer.expect("the buffer comes back with the error");
+        assert_eq!((back.as_ptr(), back.len()), (ptr, len), "packed={packed}");
+    }
+}
+
+/// The planner's scalars are checked before the air values are built from them: a lane count
+/// beyond the instance, or a continuation past the last lane, is an error like any device
+/// failure, never a wrapped subtraction and a panic.
+#[test]
+fn impossible_device_scalars_are_an_error() {
+    use crate::mem_gpu_fill::{check_scalars, mem_report};
+    use zisk_sm_mem_common::{RAM_W_ADDR_END, RAM_W_ADDR_INIT};
+    use zisk_sm_mem_planner::MemFillResult;
+    let n_rows = MemTrace::<MemTraceRowPacked<Goldilocks>>::NUM_ROWS;
+    let num_slots = n_rows * lanes_x_row();
+    let good = MemFillResult {
+        status: 0,
+        n_lanes: num_slots as u32,
+        prev_addr_w: RAM_W_ADDR_INIT,
+        last_addr_w: RAM_W_ADDR_END,
+        ..Default::default()
+    };
+    assert!(check_scalars(&good, num_slots).is_ok());
+    assert!(mem_report(&good, n_rows).is_ok());
+
+    let too_many = MemFillResult { n_lanes: num_slots as u32 + 1, ..good };
+    assert!(check_scalars(&too_many, num_slots).is_err(), "a lane count beyond the instance");
+    assert!(mem_report(&too_many, n_rows).is_err());
+
+    let none = MemFillResult { n_lanes: 0, ..good };
+    assert!(check_scalars(&none, num_slots).is_err(), "an instance without lanes");
+
+    let backwards =
+        MemFillResult { prev_addr_w: RAM_W_ADDR_END, last_addr_w: RAM_W_ADDR_INIT, ..good };
+    assert!(check_scalars(&backwards, num_slots).is_err(), "a continuation past the last lane");
+    assert!(mem_report(&backwards, n_rows).is_err());
+}

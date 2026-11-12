@@ -99,8 +99,18 @@ impl HintsShmem {
 
     /// Open per-service semaphores for the given program's `sem_prefix`.
     /// Replaces any previously bound semaphores.
+    ///
+    /// Both semaphores are swept to zero as they are bound: `sem_open` does not
+    /// reset an existing name's count, so an aborted run's unconsumed posts would
+    /// otherwise survive until this program next ran.
+    ///
+    /// Sweeping is safe because nothing waits on or posts these semaphores while
+    /// they are bound: a program's semaphores are bound only by
+    /// `AsmServices::activate`, once the services that used them have gone quiet.
+    /// The authority on progress is the pair of positions in the control
+    /// segments, which `submit` re-reads after every wake.
     pub fn bind_semaphores(&self, sem_prefix: &str) -> Result<()> {
-        let sems = AsmServices::SERVICES
+        let mut sems = AsmServices::SERVICES
             .iter()
             .map(|service| {
                 let avail_name = sem_prec_available_name(sem_prefix, *service);
@@ -115,26 +125,39 @@ impl HintsShmem {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
+
+        let swept: u64 = sems
+            .iter_mut()
+            .map(|sem| {
+                crate::drain_semaphore(&mut sem.sem_available)
+                    + crate::drain_semaphore(&mut sem.sem_read)
+            })
+            .sum();
+        if swept != 0 {
+            debug!("Swept {swept} unconsumed precompile post(s) on '{sem_prefix}'");
+        }
+
         *self.separate_sem.lock().expect("separate_sem mutex poisoned") = Some(sems);
         Ok(())
     }
 
-    /// Drop the semaphore handles (does not unlink — the binary owns the names).
-    pub fn unbind_semaphores(&self) {
-        *self.separate_sem.lock().expect("separate_sem mutex poisoned") = None;
-    }
-
-    /// Update the number of active ASM services notified on each submit.
+    /// Update the number of active ASM services notified on each submit. They must be
+    /// the first of [`AsmServices::SERVICES`], since only their number is kept.
     pub fn set_active_services(&self, services: &[AsmService]) -> Result<()> {
-        if services.len() > AsmServices::SERVICES.len() {
+        if AsmServices::SERVICES.get(..services.len()) != Some(services) {
             return Err(anyhow::anyhow!(
-                "active_services count {} exceeds allocated separate resources {}",
-                services.len(),
-                AsmServices::SERVICES.len()
+                "active services {services:?} are not the first of {:?}",
+                AsmServices::SERVICES
             ));
         }
         self.active_count.store(services.len(), Ordering::SeqCst);
         Ok(())
+    }
+
+    /// Whether `service` is one of the hints' consumers, which a submit waits for and
+    /// wakes. The active services are always the first of [`AsmServices::SERVICES`].
+    pub fn is_active_consumer(&self, service: AsmService) -> bool {
+        service.as_index() < self.active_count.load(Ordering::SeqCst)
     }
 
     fn create_unified(
@@ -269,8 +292,8 @@ impl StreamSink for HintsShmem {
         if let Some(sems) = self.separate_sem.lock().expect("separate_sem mutex poisoned").as_mut()
         {
             for res in sems.iter_mut() {
-                while res.sem_available.try_wait().is_ok() {}
-                while res.sem_read.try_wait().is_ok() {}
+                crate::drain_semaphore(&mut res.sem_available);
+                crate::drain_semaphore(&mut res.sem_read);
             }
         }
     }

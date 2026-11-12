@@ -10,14 +10,15 @@
 // Address map
 // There definitions must match the ZisK rust code ones at core/src/mem.rs used to generate the
 // assembly code, and that are used by the assembly code to access memory and generate the trace
-#define ROM_ADDR          (uint64_t)0x80000000
+#define ROM_ADDR          (uint64_t)0xA8000000
 #define ROM_SIZE          (uint64_t)0x08000000 // 128MB
-#define INPUT_ADDR        (uint64_t)0x40000000
-#define MAX_INPUT_SIZE    (uint64_t)0x40000000 // 1024MB = 1GB
+#define INPUT_ADDR        (uint64_t)0x20000000
+#define MAX_INPUT_SIZE    (uint64_t)0x80000000 // 2048MB = 2GB
 #define LOCKED_INPUT_SIZE (uint64_t)0x08000000 // 128MB, the part of the input that is mapped with MAP_LOCKED to ensure it is always resident in RAM
-#define RAM_ADDR          (uint64_t)0xA0000000
-#define RAM_SIZE          (uint64_t)0x20000000 // 512MB
-#define SYS_ADDR          (uint64_t)0xA0400000
+// The RAM crosses the 4GB boundary (addresses are 33 bits wide)
+#define RAM_ADDR          (uint64_t)0xC0000000
+#define RAM_SIZE          (uint64_t)0x80000000 // 2GB
+#define SYS_ADDR          (uint64_t)0xC0400000
 // Guard span between the top of ROM and the bottom of the stack (= RAM_ADDR).
 // EF zkVM standard 6 requires a >=4 kB region immediately below the stack bottom that
 // is not mapped readable or writable and whose access aborts; see STACK_GUARD_ADDR in
@@ -26,8 +27,8 @@
 // check -- an out-of-range guest access faults only because the host has nothing
 // mapped there -- so server_setup() reserves the whole span PROT_NONE to stop a
 // casual mmap(NULL, ...) or large malloc from being placed inside it.
-#define GUARD_ADDR        (ROM_ADDR + ROM_SIZE)   // 0x88000000
-#define GUARD_SIZE        (RAM_ADDR - GUARD_ADDR) // 0x18000000 = 384MB
+#define GUARD_ADDR        (ROM_ADDR + ROM_SIZE)   // 0xB0000000
+#define GUARD_SIZE        (RAM_ADDR - GUARD_ADDR) // 0x10000000 = 256MB
 #define SYS_SIZE          (uint64_t)0x10000
 #define OUTPUT_ADDR       (SYS_ADDR + SYS_SIZE)
 
@@ -47,7 +48,9 @@
    Only the size actually needed is allocated and zeroed, see trace_get_chunk_size(). */
 #define TRACE_INITIAL_SIZE_RH (uint64_t)(0x20000000 + 0x1000) /* 512MB + 4kB (header) */
 
-#define TRACE_ADDR         (uint64_t)0xd0000000
+// The trace window sits above the end of the RAM (0x1_4000_0000); core/src/zisk_rom_2_asm.rs
+// TRACE_ADDR_NUMBER and the .zisk_region of the Makefile follow it.
+#define TRACE_ADDR         (uint64_t)0x200000000
 #define TRACE_MAX_SIZE     (uint64_t)0x800000000 // 32GB
 #define TRACE_NUMBER_OF_CHUNKS (((TRACE_MAX_SIZE - TRACE_INITIAL_SIZE) / TRACE_DELTA_SIZE) + 1)
 #define TRACE_SIZE_GRANULARITY (1014*1014) // ROM histogram trace size is round up to a multiple of this granularity
@@ -59,9 +62,23 @@
 // precompile results.  Assembly code waits when the number of read fields is not lower than the
 // number of written fields, and client waits when the number of written fields would exceed the
 // number of read fields plus the available precompile shared memory size, which is a circular buffer
-#define CONTROL_INPUT_ADDR (uint64_t)0x70000000
+// The generated assembly addresses these pages with absolute 32-bit displacements (see
+// CONTROL_INPUT_ADDR in core/src/zisk_rom_2_asm.rs), so they must lie below 2GB, and outside the
+// guest data regions (input, ROM data, RAM). Below 2GB that leaves only the BIOS ROM span
+// [0x1000, 0x10000000), which the guest fetches instructions from but never accesses as data: they
+// sit at its top, above this executable, which is linked at 0x400000 in the
+// same span and must end below them (see the .zisk_region in the Makefile). As with the executable
+// itself, this emulator does no software bounds check, so a guest load or store there is not
+// trapped; it is rejected by the Rust emulator and cannot be proven, as no Mem area covers it.
+#define CONTROL_INPUT_ADDR (uint64_t)0x0FF00000
 #define CONTROL_INPUT_SIZE (uint64_t)0x1000 // 4kB
-#define CONTROL_OUTPUT_ADDR (uint64_t)0x70001000
+
+// Control input u64 slots carrying the seed of zkvm_random_u64 for the next execution: the
+// seed's 4 little-endian words, and a flag set to 1 once they are written (0 = no seed). Must
+// match ControlShmemOffsets in asm-runner/src/control_shmem.rs
+#define CONTROL_INPUT_RANDOM_SEED_INDEX 4
+#define CONTROL_INPUT_RANDOM_SEED_SET_INDEX 8
+#define CONTROL_OUTPUT_ADDR (uint64_t)0x0FF01000
 #define CONTROL_OUTPUT_SIZE (uint64_t)0x1000 // 4kB
 #define CONTROL_RETRY_DELAY_US 1000 // 1ms
 #define CONTROL_NUMBER_OF_RETRIES 1000 // 1s max total
@@ -72,7 +89,8 @@
 
 // Assembly service request/response types
 // Only the methods supported by the configured generation method will be implemented by the server,
-// e.g. gen_method=1 => PING, MT and SHUTDOWN; the rest will fail with an error response.
+// e.g. gen_method=1 => PING, MT, RESET and SHUTDOWN; the rest will fail with an error response.
+// PING, RESET and SHUTDOWN are served under every generation method.
 #define TYPE_PING 1 // Ping
 #define TYPE_PONG 2
 #define TYPE_MT_REQUEST 3 // Minimal trace
@@ -81,6 +99,10 @@
 #define TYPE_RH_RESPONSE 6
 #define TYPE_MO_REQUEST 7 // Memory opcode
 #define TYPE_MO_RESPONSE 8
+// 19/20, not the next free ids: every lower id has served another request (9/10 was TYPE_MA), and
+// an older binary must reject this one as unknown rather than take it for something else
+#define TYPE_RS_REQUEST 19 // Reset RAM and ROM, see main.c
+#define TYPE_RS_RESPONSE 20
 #define TYPE_FA_REQUEST 13 // Fast mode, do not generate any trace
 #define TYPE_FA_RESPONSE 14
 #define TYPE_SD_REQUEST 1000000 // Shutdown
@@ -113,8 +135,22 @@
 #define MT_CHUNK_END_INDEX (4 + MT_CHUNK_REGS + 1)
 #define MAX_TRACE_CHUNK_INFO (((MT_CHUNK_HEADER_WORDS + 3)*8) + 32)
 #define MAX_BYTES_DIRECT_MTRACE 256
+#ifdef TRACE_TARGET_MO
+// The memory-ops emulators (TRACE_TARGET=MO in the Makefile, both the heavy and the light form).
+// The room the chunk loop keeps before the end of the trace mapping, checked at every chunk end
+// (trace_address_threshold): one chunk's worst case. A heavy-form step can write far more than
+// a main-trace step (a write is two 8-byte words, a precompile's outputs are one write per word:
+// keccak is one block read plus 25 writes, 416 bytes), hence 1024 bytes per step instead of the
+// 312 of the other targets. The initialised data of the ELF is written once, one record per
+// word, at the ROM entry inside chunk 0 and before the first check, hence the fixed margin on
+// top. The runner keeps the same threshold (asm_mo_runner.rs, from zisk_core::MAX_MO_*).
+#define MAX_BYTES_MTRACE_STEP 1024
+#define MAX_MO_INIT_DATA_MARGIN (64ull << 20)
+#define MAX_CHUNK_TRACE_SIZE ((CHUNK_SIZE * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO + MAX_MO_INIT_DATA_MARGIN)
+#else
 #define MAX_BYTES_MTRACE_STEP (MAX_BYTES_DIRECT_MTRACE + MAX_MTRACE_REGS_ACCESS_SIZE)
 #define MAX_CHUNK_TRACE_SIZE ((CHUNK_SIZE * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO)
+#endif
 
 // Maximum precompile results share memory size
 // It is a circular buffer

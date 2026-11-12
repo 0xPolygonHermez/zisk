@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
+use zisk_common::{RandomSeed, SnarkProtocol};
 
 /// Convert a [`Duration`] into a future deadline.
 ///
@@ -81,8 +82,8 @@ pub enum DomainProofKind {
     Stark,
     /// Minimal STARK proof.
     StarkMinimal,
-    /// PLONK/SNARK proof.
-    Plonk,
+    /// Final SNARK proof, of the protocol of the workers' SNARK proving key.
+    Snark,
 }
 
 impl From<zisk_common::ProofKind> for DomainProofKind {
@@ -90,7 +91,7 @@ impl From<zisk_common::ProofKind> for DomainProofKind {
         match pk {
             zisk_common::ProofKind::VadcopFinal => DomainProofKind::Stark,
             zisk_common::ProofKind::VadcopFinalMinimal => DomainProofKind::StarkMinimal,
-            zisk_common::ProofKind::Plonk => DomainProofKind::Plonk,
+            zisk_common::ProofKind::Snark => DomainProofKind::Snark,
         }
     }
 }
@@ -141,6 +142,9 @@ pub struct DomainProof {
     pub started_at: Option<DateTime<Utc>>,
     /// When proving completed, if known.
     pub completed_at: Option<DateTime<Utc>>,
+    /// Host randomness seed of the execution the proof attests to, the same one `data` carries.
+    /// Set in responses (`None` for aggregates); not used in requests.
+    pub random_seed: Option<RandomSeed>,
 }
 
 /// The kind of job being submitted.
@@ -192,10 +196,15 @@ pub struct DomainProveRequest {
     pub input: DomainInputKind,
     /// Optional precompile hints input.
     pub hints: Option<DomainInputKind>,
+    /// Host randomness seed to use instead of drawing a fresh one (replays). A coordinator that
+    /// does not allow client random seeds rejects the job rather than run it with a different seed.
+    pub random_seed: Option<RandomSeed>,
     /// Optional deadline for the proof.
     pub proof_timeout: Option<DateTime<Utc>>,
     /// The desired output proof kind.
     pub proof_dest: DomainProofKind,
+    /// The protocol a [`DomainProofKind::Snark`] proof must be of; `None` takes the workers'.
+    pub snark_protocol: Option<SnarkProtocol>,
 }
 
 /// Request to wrap an existing proof into another kind.
@@ -205,6 +214,8 @@ pub struct DomainWrapRequest {
     pub proof: DomainProof,
     /// The desired output proof kind.
     pub proof_dest: DomainProofKind,
+    /// The protocol a [`DomainProofKind::Snark`] proof must be of; `None` takes the workers'.
+    pub snark_protocol: Option<SnarkProtocol>,
     /// Optional deadline for the wrap.
     pub wrap_timeout: Option<DateTime<Utc>>,
 }
@@ -218,6 +229,9 @@ pub struct DomainExecuteRequest {
     pub input: DomainInputKind,
     /// Optional precompile hints input.
     pub hints: Option<DomainInputKind>,
+    /// Host randomness seed to use instead of drawing a fresh one (replays). A coordinator that
+    /// does not allow client random seeds rejects the job rather than run it with a different seed.
+    pub random_seed: Option<RandomSeed>,
     /// Optional deadline for the execution.
     pub execute_timeout: Option<DateTime<Utc>>,
 }
@@ -331,6 +345,11 @@ pub enum DomainJobKindResponse {
         stats: DomainExecutionStats,
         /// The program's public outputs.
         public_outputs: Vec<u8>,
+        /// The host randomness seed the execution ran with, which decided the values the guest got
+        /// from `zkvm_random_u64`. Sending it back as the request's `random_seed` reproduces the
+        /// run, if the coordinator accepts client random seeds. `None` only in a response from a
+        /// coordinator that predates this field.
+        random_seed: Option<RandomSeed>,
     },
     /// Aggregation-program setup result.
     SetupAggregationProgram {

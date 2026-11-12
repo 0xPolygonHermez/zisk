@@ -20,7 +20,7 @@ use crate::{
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Clean the zisk cache directory for a specific program or the entire cache
 pub(crate) struct ZiskCleanCache {
-    /// Path of the program ELF file to clean cache for. If omitted, the ELF is auto-detected from the current project
+    /// Path of the guest program (RISC-V ELF or .wasm) to clean cache for. If omitted, it is auto-detected from the current project
     #[arg(short = 'e', long, conflicts_with = "all")]
     elf: Option<PathBuf>,
 
@@ -58,7 +58,7 @@ impl ZiskCleanCache {
                         Some(elf) => Some(elf),
                         None => {
                             anyhow::bail!(
-                                "No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf."
+                                "No guest program provided, and could not detect one in the current project. Please pass a RISC-V ELF or .wasm file with --elf."
                             );
                         }
                     };

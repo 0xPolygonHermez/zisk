@@ -2,7 +2,7 @@
 
 ## Overview
 
-ZisK is a zero-knowledge virtual machine (zkVM).  This section describes the high-level architecture of ZisK.
+ZisK is a zero-knowledge virtual machine (zkVM).  This section describes the high-level architecture of ZisK.  For the full specification, see the [ZisK Whitepaper](https://github.com/0xPolygonHermez/zisk-papers/releases).
 
 ## Guest program generation
 
@@ -315,9 +315,9 @@ This is the ZisK high-level address map:
 |From|To|Usage|
 |---|---|---|
 |0x1000|0x0FFFFFFF|ziskos ROM|
-|0x40000000|0x7FFFFFFF|Input data|
-|0x80000000|0x87FFFFFF|ROM|
-|0xA0000000|0xBFFFFFFF|RAM|
+|0x20000000|0x9FFFFFFF|Input data|
+|0xA8000000|0xAFFFFFFF|ROM|
+|0xC0000000|0x13FFFFFFF|RAM (2 GB; addresses are 33 bits wide)|
 
 
 ZisK code is the result of the RISC-V code transpilation, but it also contains some additional ziskos code that implements some infrastructure tasks.  The following tables describe the different address ranges and their usage.
@@ -329,19 +329,23 @@ ROM address map:
 |0x1000|ROM_ENTRY.  Initial execution address.  It simply jumps to the program launcher code.|
 |0x1004|ROM_EXIT. Final execution address.  It exits the program.|
 |0x1008|FLOAT_HANDLER_ADDR.  Saves RISC-V registers, calls the float library, and restores the saved registers.  Called when an F or D extension instruction is transpiled.|
-|0x1110|Program launcher code.  It writes initial values of ROM and RAM globals.  It saves some data and jumps to the first program instruction at 0x80000000.  Syscall trap handler, including the exit sequence to make output public and jump to the ROM_EXIT address.  This address corresponds to a float-enabled build; when ZisK is built without the `float` feature there is no float handler and the launcher starts at 0x1008 instead.|
-|0x80000000|Program code.  When done, a syscall is called to end the execution.|
-|0x87F00000|Float soft library code|
+|0x1110|Program launcher code.  It writes initial values of ROM and RAM globals.  It saves some data and jumps to the first program instruction at 0xA8000000.  Syscall trap handler, including the exit sequence to make output public and jump to the ROM_EXIT address.  This address corresponds to a float-enabled build; when ZisK is built without the `float` feature there is no float handler and the launcher starts at 0x1008 instead.|
+|0xA8000000|Program code.  When done, a syscall is called to end the execution.|
+|0xAFE00000|ZisK library code|
+|0xAFF00000|Float soft library code|
 
 RAM address map:
 
 |Address|Usage|
 |---|---|
-|0xA0000000|RAM_ADDR, also STACK_ADDR.  Program stack (4 MB).|
-|0xA0400000|SYS_ADDR.  ziskos system RAM (64 KB).  Its first 320 bytes, from +0x0, are the register file: the 32 RISC-V general registers followed by 8 extra registers (r32..r39) that only ZisK code uses. All of them except x0 are kept in the main trace, not in RAM. Next come the UART at +0x200, the float registers at +0x1000, and the CSRs at +0x8000.|
-|0xA0410000|OUTPUT_ADDR.  Program output RAM data (128 KB).|
-|0xA0430000|Program RAM: .data, .bss and heap.|
-|0xBFFF0000|Float soft library RAM (64 KB).|
+|0xC000_0000|RAM_ADDR, also STACK_ADDR.  Program stack (4 MB).|
+|0xC040_0000|SYS_ADDR.  ziskos system RAM (64 KB).  Its first 320 bytes, from +0x0, are the register file: the 32 RISC-V general registers followed by 8 extra registers (r32..r39) that only ZisK code uses. All of them except x0 are kept in the main trace, not in RAM. Next come the UART at +0x200, the float registers at +0x1000, and the CSRs at +0x8000.|
+|0xC041_0000|OUTPUT_ADDR.  Program output RAM data (128 KB).|
+|0xC043_0000|Float soft library RAM (64 KB).|
+|0xC044_0000|ZisK library RAM (192 KB).|
+|0xC047_0000|Program RAM: .data, .bss and heap, up to the end of the RAM at 0x1_40000000.|
+
+Addresses are 33 bits wide: the RAM crosses the 4 GB boundary. The guest is linked with the `medium` code model, so its code (at 0xA8000000) reaches PC-relative addresses only up to 0x1_27FFFFFF: `.data`, `.bss` and the system regions sit at the bottom of the RAM, the rest of the RAM is reached through pointers (the heap).
 
 
 ## Emulation

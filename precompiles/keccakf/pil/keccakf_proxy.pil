@@ -32,13 +32,19 @@ airtemplate KeccakfProxy(const int N = 2**19) {
     col witness bits(1) is_replica;                    // 1 when the permutation was proven for an earlier row
     col witness bits(24) replicas;                     // originals only: number of replica rows of this permutation
     col witness bits(40) step;                         // main step of the invocation
-    col witness bits(32) addr;                         // address of the state (read, then overwritten)
+    col witness bits(ADDR_BITS) addr;                  // address of the state (read, then overwritten)
+    col witness bits(1) addr_hi;                       // high limb (bit 32) of addr
     col witness bits(32) state_in[LIMBS_PER_STATE];    // input lanes, as 32-bit limbs
     col witness bits(32) state_out[LIMBS_PER_STATE];   // output lanes, as 32-bit limbs
 
     in_use * (1 - in_use) === 0;
     is_replica * (1 - is_replica) === 0;
     is_replica * (1 - in_use) === 0;
+
+    // The operation bus carries the address as two 32-bit limbs and this machine is the one that
+    // joins them into a 33-bit address, so it is the one that checks the high limb is a bit: the
+    // address is then below 2^33 and cannot wrap the field.
+    addr_hi * (1 - addr_hi) === 0;
 
     // Only an original in use may republish: replicas = 0 on replica rows and on unused rows
     replicas * (1 - in_use + is_replica) === 0;
@@ -73,6 +79,6 @@ airtemplate KeccakfProxy(const int N = 2**19) {
                               value: [state_out[LIMBS_PER_LANE * i], state_out[LIMBS_PER_LANE * i + 1]], sel: in_use);
     }
 
-    // The operation carries the state address as its b operand
-    proves_operation(op: OP_KECCAK, b: [addr, 0], main_step: step, mul: in_use);
+    // The operation carries the state address as its b operand, as two 32-bit limbs
+    proves_operation(op: OP_KECCAK, b: [addr - 2**32 * addr_hi, addr_hi], main_step: step, mul: in_use);
 }

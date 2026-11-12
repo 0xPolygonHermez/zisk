@@ -1,3 +1,5 @@
+mod dma_loop_stats;
+mod mem_dual_stats;
 mod mem_operations_stats;
 mod name_shortener;
 mod ops_costs;
@@ -10,6 +12,8 @@ mod stats;
 mod stats_costs;
 mod stats_coverage_report;
 mod stats_report;
+pub use dma_loop_stats::*;
+pub use mem_dual_stats::*;
 pub use mem_operations_stats::*;
 pub use name_shortener::*;
 pub use ops_costs::*;

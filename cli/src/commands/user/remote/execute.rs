@@ -5,6 +5,7 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::{JobMetadataArgs, RandomSeedArgs};
 use zisk_sdk::{setup_logger, GuestProgram, RemoteClient, ZiskHints, ZiskStdin};
 
 use crate::common::{reject_quic_hints, resolve_elf, ElfSelectorArgs};
@@ -16,7 +17,7 @@ use crate::ux::{print_execute_output, print_job_banner};
 ///
 /// The program must already be registered and set up (run `remote setup` first).
 pub(crate) struct ZiskRemoteExecute {
-    /// Path to the guest ELF file. If omitted, the ELF is auto-detected from the current project
+    /// Path to the guest program (RISC-V ELF or .wasm). If omitted, it is auto-detected from the current project
     #[arg(short = 'e', long)]
     elf: Option<PathBuf>,
 
@@ -34,6 +35,12 @@ pub(crate) struct ZiskRemoteExecute {
     /// supported from the CLI.
     #[arg(long)]
     hints: Option<String>,
+
+    #[command(flatten)]
+    random_seed: RandomSeedArgs,
+
+    #[command(flatten)]
+    metadata: JobMetadataArgs,
 
     /// Execute timeout in seconds (0 = no timeout)
     #[arg(long, default_value_t = 0)]
@@ -63,10 +70,12 @@ impl ZiskRemoteExecute {
         if let Some(hints) = hints {
             request = request.hints(hints);
         }
-        if self.timeout != 0 {
-            request = request.timeout(Duration::from_secs(self.timeout));
+        request = request.random_seed(self.random_seed.provided());
+        for (key, value) in self.metadata.to_map() {
+            request = request.metadata(key, value);
         }
-        let result = request.run()?.await?;
+        let timeout = (self.timeout != 0).then(|| Duration::from_secs(self.timeout));
+        let result = super::await_job(request.run()?, timeout).await?;
 
         info!("{}", "--- EXECUTE SUMMARY -----------".bright_green().bold());
         print_execute_output(result.output());

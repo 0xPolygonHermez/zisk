@@ -49,6 +49,7 @@ impl ZiskProofmanCompilePil {
             fixed_dir: self.fixed_dir.clone(),
             fixed_to_file: self.fixed_to_file,
             no_proto_fixed_data: self.no_proto_fixed_data,
+            ..Default::default()
         };
         run_compile_pil(&opts)
     }

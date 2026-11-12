@@ -16,11 +16,18 @@ impl Coordinator {
     /// Launch a wrap job: compress/reduce an existing vadcop proof to minimal or SNARK format.
     ///
     /// Selects any single idle worker, sends a WRAP task to it, and returns the job ID.
-    /// The proof data must be a bincode-encoded `Proof`.
+    /// The proof data must be `Proof::to_bincode`; `metadata` is the caller's, if any.
     pub async fn launch_wrap(
         &self,
         request: LaunchWrapRequestDto,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
+        let metadata = self.admit_job_metadata(metadata)?;
+        // Before any worker is reserved, as in `launch_proof`.
+        if ProofKind::from(request.proof_dest) == ProofKind::Snark {
+            self.ensure_snark_available(request.snark_protocol).await?;
+        }
+
         // Atomic single-worker reservation under one pool write lock —
         // prevents two concurrent launch_wrap calls from double-booking.
         let job_id = JobId::new();
@@ -38,7 +45,7 @@ impl Coordinator {
             vec![worker_id.clone()],
             vec![],
             JobExecutionMode::Standard,
-            None,
+            metadata,
             false,
             ProofKind::VadcopFinal,
         );
@@ -50,8 +57,10 @@ impl Coordinator {
         self.fire_job_event(&job_id, CoordinatorJobEvent::Queued).await;
         self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
 
-        crate::metrics::record_job_started();
+        crate::metrics::record_job_started(&job_id, crate::metrics::KIND_WRAP, 1);
+        crate::metrics::record_job_phase(&job_id, crate::metrics::PHASE_AGGREGATION);
 
+        #[allow(deprecated)] // `metadata` is deprecated and left empty.
         let req = ExecuteTaskRequestDto {
             worker_id: worker_id.clone(),
             job_id: job_id.clone(),
@@ -120,25 +129,42 @@ impl Coordinator {
             ));
         };
 
-        let zisk_proof = bincode::serde::decode_from_slice::<Proof, _>(
-            &wrap_result.proof_data,
-            bincode::config::standard(),
-        )
-        .map(|(v, _)| v)
-        .map_err(|e| {
-            CoordinatorError::Internal(format!("Failed to deserialize wrap proof: {}", e))
-        })?;
+        // A proof that does not decode, or cannot be saved (which would complete the job with
+        // no proof for its webhook), fails the job.
+        let zisk_proof = match Proof::from_bincode(&wrap_result.proof_data)
+            .and_then(|p| p.ensure_saveable().map(|()| p))
+        {
+            Ok(p) => p,
+            Err(e) => {
+                drop(job);
+                let reason = format!("Wrap proof from worker {worker_id} is malformed: {e}");
+                let _ = self.fail_job(job_id, &reason).await;
+                return Err(CoordinatorError::Internal(reason));
+            }
+        };
+        let seed = zisk_proof.random_seed;
         job.proof = Some(zisk_proof);
         job.change_state(JobState::Completed);
 
         // Pairs with launch_wrap's record_job_started.
-        crate::metrics::record_job_terminal(
-            crate::metrics::OUTCOME_SUCCESS,
-            &job.workers,
-            job.phase_start_time(&JobPhase::Recurse),
-        );
+        crate::metrics::record_job_terminal(crate::metrics::JobOutcome {
+            job_id,
+            outcome: crate::metrics::OUTCOME_SUCCESS,
+            reason: None,
+            workers: &job.workers,
+            contributions_started: job.phase_start_time(&JobPhase::Recurse),
+            duration: job.duration_ms.map(|ms| ms as f64 / 1000.0),
+            phases: None,
+            steps: None,
+            instances: None,
+            costs: None,
+        });
 
-        tracing::info!("[Wrap] Job {} completed successfully", job_id);
+        tracing::info!(
+            "[Wrap] Job {} completed successfully{}",
+            job_id,
+            Self::format_job_metadata(job.metadata.as_ref())
+        );
 
         drop(job);
 
@@ -146,6 +172,7 @@ impl Coordinator {
             job_id,
             CoordinatorJobEvent::Completed(CoordinatorJobResult::Wrap {
                 proof_bytes: wrap_result.proof_data,
+                random_seed: seed,
             }),
         )
         .await;

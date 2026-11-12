@@ -21,10 +21,10 @@ protected:
     int diff_dst_src;
     uint64_t bus_count;
     bool execute_single_test(void);
-    bool check_mop(size_t index, uint64_t expected, const char *tag);
 public:
     TestDmaMemCmpMops(size_t max_count = 1024);
     void run(void);
+    void run_long(void);
 };
 
 TestDmaMemCmpMops::TestDmaMemCmpMops(size_t max_count):
@@ -58,14 +58,22 @@ void TestDmaMemCmpMops::run(void) {
     printf("\nAll %ld tests are [\x1B[1;32mOK\x1B[0m]\n", total_tests);
 }
 
-bool TestDmaMemCmpMops::check_mop(size_t index, uint64_t expected, const char *tag) {
-    if (mtrace[index] != expected) {
-        printf("\nERROR: %s expected: 0x%016lX (%s) found: mtrace[%ld]:%016lX (%s)\n", tag, expected, 
-                decode(expected).c_str(), index, mtrace[index], decode(mtrace[index]).c_str());
-        return false;
+void TestDmaMemCmpMops::run_long(void) {
+    map_low(0x140000000);
+    fill_pattern(src, data_size, 3013102105130209);
+    const uint64_t words = (uint64_t)MOPS_BLOCK_COUNT_MAX + 5;
+    diff_dst_src = 0;
+    const struct { uint64_t dst_offset, src_offset, count; } cases[] = {{0, 0, words * 8}, {0, 3, words * 8 + 2}};
+    for (const auto &c : cases) {
+        dst_offset = c.dst_offset; src_offset = c.src_offset; count = c.count; bus_count = count;
+        if (!execute_single_test()) {
+            printf("\nTest is [\x1B[1;31mFAIL\x1B[0m]\n");
+            return;
+        }
     }
-    return true;
+    printf("\nAll %ld long tests are [\x1B[1;32mOK\x1B[0m]\n", sizeof(cases) / sizeof(cases[0]));
 }
+
 bool TestDmaMemCmpMops::execute_single_test(void) {
     memset(test_trace, 0, trace_size);
     fill_pattern(dst, data_size, 1821904675);
@@ -89,23 +97,22 @@ bool TestDmaMemCmpMops::execute_single_test(void) {
                   cmp_res, res, byte_dst, byte_src);
         return false;                   
     }
-    if (mtrace[0] != encode_aligned_read(EXTRA_PARAMETER_ADDR)) {
+    size_t index = 0;
+    if (!check_record(index, encode_aligned_read(EXTRA_PARAMETER_ADDR), "EXTRA param read")) {
         printf("\nERROR: not found valid param read\n");
         return false;
     } 
     // uint64_t encode = calculate_encode((uint64_t)p_dst, (uint64_t)p_src, count);
-    size_t index = 1;
     size_t pre_count = (dst_offset > 0 && count > 0) ? 8 - dst_offset : 0;
     if (pre_count > count) {
         pre_count = count;
     }
     if (pre_count > 0) {
         size_t src_blocks = 1 + ((src_offset + pre_count) > 8);
-        if (!check_mop(index, encode_aligned_read((uint64_t)dst), "PRE pre write") ||
-            !check_mop(index + 1, encode_aligned_x_read((uint64_t)src, src_blocks), "PRE src read")) {
+        if (!check_record(index, encode_aligned_read((uint64_t)dst), "PRE pre write") ||
+            !check_record(index, encode_aligned_x_read((uint64_t)src, src_blocks), "PRE src read")) {
                 return false;
         }
-        index += 2;
     }
     size_t loop_count = (count - pre_count) >> 3;
     size_t post_count = (count - pre_count) & 0x07;
@@ -117,27 +124,25 @@ bool TestDmaMemCmpMops::execute_single_test(void) {
         uint64_t src_post = ((uint64_t)src + src_offset + pre_count + loop_count * 8) & ~0x07;
         uint64_t dst_post = ((uint64_t)dst + dst_offset + pre_count + loop_count * 8) & ~0x07;
         size_t src_blocks = 1 + ((((src_offset + pre_count) & 0x07) + post_count) > 8);
-        if (!check_mop(index, encode_aligned_read((uint64_t)dst_post), "POST pre write") ||
-            !check_mop(index + 1, encode_aligned_x_read((uint64_t)src_post, src_blocks), "POST src read")) {
+        if (!check_record(index, encode_aligned_read((uint64_t)dst_post), "POST pre write") ||
+            !check_record(index, encode_aligned_x_read((uint64_t)src_post, src_blocks), "POST src read")) {
                 return false;
         }
-        index += 2;
     }
     if (loop_count > 0) {
         uint64_t src_loop = ((uint64_t)src + src_offset + pre_count) & ~0x07;
         uint64_t dst_loop = pre_count > 0 ? (uint64_t)dst + 8 : (uint64_t)dst;
         size_t src_count = dst_offset == src_offset ? loop_count : (loop_count + 1);
 
-        if (!check_mop(index, encode_aligned_block_read(src_loop, src_count), "LOOP src read")) {
+        if (!check_aligned_block_read(index, src_loop, src_count, "LOOP src read")) {
             return false;
         }
-        if (!check_mop(index+1, encode_aligned_block_read(dst_loop, loop_count), "LOOP dst read (cmp)")) {
+        if (!check_aligned_block_read(index, dst_loop, loop_count, "LOOP dst read (cmp)")) {
             return false;
         }
-        index += 2;
     }
     if (trace_count != index) {
-        printf("ERROR: invalid mtrace len expected:%ld vs found:%ld\n", index, trace_count);
+        printf("ERROR: invalid mtrace len expected:%ld words vs found:%ld\n", index, trace_count);
         return false;
     }
     return true;
@@ -147,5 +152,7 @@ bool TestDmaMemCmpMops::execute_single_test(void) {
 void test_dma_memcmp_mops() {
     printf("\x1B[1;34mTEST DMA MEMCMP MOPS =================================================\x1B[0m\n");
     TestDmaMemCmpMops test(1024);
-    test.run();    
+    test.run();
+    TestDmaMemCmpMops long_test((size_t)MOPS_BLOCK_COUNT_MAX + 64);
+    long_test.run_long();
 }

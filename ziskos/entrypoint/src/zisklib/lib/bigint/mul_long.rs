@@ -1,8 +1,3 @@
-#[cfg(zisk_guest)]
-use crate::alloc_extern::vec;
-#[cfg(zisk_guest)]
-use crate::alloc_extern::vec::Vec;
-
 use crate::syscalls::{
     syscall_add256, syscall_arith256, SyscallAdd256Params, SyscallArith256Params,
 };
@@ -166,22 +161,24 @@ pub fn mul_long(
     }
 }
 
-/// Multiplies two large numbers and reduces modulo a large modulus
+/// Multiplies two large numbers and reduces modulo a large modulus: out = (a · b) mod modulus
 ///
 /// # Assumptions
 /// - `len(modulus) > 0`
 /// - `modulus > 0`
 /// - `modulus` has no leading zeros
+/// - `out` has at least `len(modulus)` limbs
 ///
 /// # Returns
-/// The remainder: `(a · b) mod modulus`
+/// The number of limbs in the result
 pub fn mul_and_reduce_long(
     a: &[U256],
     b: &[U256],
     modulus: &[U256],
     scratch: &mut LongScratch,
+    out: &mut [U256],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> Vec<U256> {
+) -> usize {
     #[cfg(debug_assertions)]
     {
         let len_m = modulus.len();
@@ -211,6 +208,7 @@ pub fn mul_and_reduce_long(
         &scratch.mul[..mul_len],
         modulus,
         &mut scratch.rem,
+        out,
         #[cfg(feature = "hints")]
         hints,
     )

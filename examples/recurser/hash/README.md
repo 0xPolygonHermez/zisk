@@ -1,8 +1,8 @@
 # Recurser example: private-vector hash folding
 
-Each leaf knows **12 secret `u64` values** and proves only their Poseidon1 hash —
+Each leaf knows **12 secret `u64` values** and proves only their BLAKE3 hash —
 the preimage stays private. The recurser folds proofs by **element-wise summing**
-the secret vectors and exposing `Poseidon1(sum)` as the folded public.
+the secret vectors and exposing `BLAKE3(sum)` as the folded public.
 
 ```
 secret va ──prove──▶ H(va)          secret vb ──prove──▶ H(vb)
@@ -19,7 +19,7 @@ cargo run --release -p recurser-hash-host
 ```
 
 It proves three leaves, folds them, and at each step checks the exposed digest
-equals the host's own `Poseidon1(sum)` — then verifies the final folded proof.
+equals the host's own `BLAKE3(sum)` — then verifies the final folded proof.
 
 ### Running the same steps from the CLI
 
@@ -69,13 +69,13 @@ $CARGO_ZISK prove -e "$ELF" -i file://b.bin -o b.proof
 $CARGO_ZISK prove -e "$ELF" -i file://c.bin -o c.proof
 
 # 5. Fold A + B. Each side's free input is its own secret vector; the aggregate
-#    binds Poseidon1(free) === the proof's digest, then outputs Poseidon1(va+vb).
+#    binds BLAKE3(free) === the proof's digest, then outputs BLAKE3(va+vb).
 $CARGO_ZISK aggregate --aggregation guest/aggregations/hash.toml \
   --proof-a a.proof --proof-b b.proof --output ab.proof \
   --free-inputs-a "1,2,3,4,5,6,7,8,9,10,11,12" \
   --free-inputs-b "100,101,102,103,104,105,106,107,108,109,110,111"
 
-# 6. Fold AB + C. AB is an aggregated proof; its digest is Poseidon1(va+vb), so
+# 6. Fold AB + C. AB is an aggregated proof; its digest is BLAKE3(va+vb), so
 #    its free input is the running sum va+vb. C's free input is vc.
 $CARGO_ZISK aggregate --aggregation guest/aggregations/hash.toml \
   --proof-a ab.proof --proof-b c.proof --output abc.proof \
@@ -83,9 +83,9 @@ $CARGO_ZISK aggregate --aggregation guest/aggregations/hash.toml \
   --free-inputs-b "1000,1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,1011"
 ```
 
-`abc.proof` now commits `Poseidon1(va + vb + vc)`. The host adds what the CLI
+`abc.proof` now commits `BLAKE3(va + vb + vc)`. The host adds what the CLI
 doesn't: it **computes** those running sums (here you type them in) and **checks**
-each folded digest against a native `Poseidon1(sum)`. To watch the binding fail,
+each folded digest against a native `BLAKE3(sum)`. To watch the binding fail,
 rerun step 5 with a `--free-inputs-a` that doesn't hash to A's digest (bump the
 first value to `2`): the fold becomes unsatisfiable and `aggregate` errors.
 
@@ -93,7 +93,7 @@ first value to `2`): the fold becomes unsatisfiable and `aggregate` errors.
 
 It exercises the two recurser features the [l2 example](../l2/README.md) doesn't:
 
-1. **`NormalizePublics` as a real transform** — Poseidon works over Goldilocks
+1. **`NormalizePublics` as a real transform** — the hash works over Goldilocks
    field elements (`u64`), but ZisK publics are `u32` slots. The leaf commits its
    4-element digest as 8 `u32` limbs; `NormalizePublics` reassembles them into
    4 field elements so the fold works over the native representation
@@ -101,10 +101,11 @@ It exercises the two recurser features the [l2 example](../l2/README.md) doesn't
 2. **Free inputs** — the 12-element secret vector is carried into each fold as a
    *free input* (`free-inputs = 12`), off the public output. See
    [circuits/aggregate.circom](guest/aggregations/circuits/aggregate.circom),
-   which sums the two vectors and hashes them **in-circuit** with the
-   `Poseidon` custom template — the same Poseidon1 the guest computes (both go
-   through `fields::poseidon1_hash`, which uses the `syscall_poseidon1`
-   precompile on the guest), so the digests agree.
+   which sums the two vectors and hashes them **in-circuit** with
+   `LinearHash(12, 2, 1)` from `hash/blake3/linearhash.circom` — the same BLAKE3
+   the guest computes (both go through `fields::Blake3_8::linear_hash`, the BLAKE3
+   STARK verifier's leaf hash), so the digests agree. The in-circuit hash has to be
+   the proving key's family: the recurser's AIR only carries that family's gates.
 
 ## How the digest fits into ZisK publics
 
@@ -129,7 +130,7 @@ A free input is host-supplied, so `AggregatePublics` binds each side's vector to
 its proof's committed digest:
 
 ```
-Poseidon1(free_inputs_a) === a.digest      // and same for b
+BLAKE3(free_inputs_a) === a.digest      // and same for b
 ```
 
 This holds at every level (leaf: `H(v)`; aggregated: `H(sum)`), so the prover
@@ -145,5 +146,5 @@ tampered vector and confirms the fold is rejected.
 | [`common/`](common/src/lib.rs) | Layout constants, `hash12` / `add_vecs`, and `secret_vectors` (the leaf values), shared by guest, host, and `gen-inputs`. `hash12` uses the precompile on the guest, native Rust on the host. |
 | [`guest/aggregations/hash.toml`](guest/aggregations/hash.toml) | allow-list, `n-publics-agg = 4`, `free-inputs = 12`, normalize + aggregate circuits. |
 | [`guest/aggregations/circuits/normalize.circom`](guest/aggregations/circuits/normalize.circom) | u32-limbs → field-elements reassembly. |
-| [`guest/aggregations/circuits/aggregate.circom`](guest/aggregations/circuits/aggregate.circom) | sum the free vectors, `Poseidon(4)` → folded digest. |
-| [`host/`](host/src/main.rs) | Proves the leaves, folds, checks each digest against native `Poseidon1(sum)`. |
+| [`guest/aggregations/circuits/aggregate.circom`](guest/aggregations/circuits/aggregate.circom) | sum the free vectors, `LinearHash(12, 2, 1)` → folded digest. |
+| [`host/`](host/src/main.rs) | Proves the leaves, folds, checks each digest against native `BLAKE3(sum)`. |

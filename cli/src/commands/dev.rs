@@ -13,6 +13,7 @@ mod export_solidity_calldata;
 mod program_setup;
 mod proofman_setup;
 mod prove;
+mod release_artifacts;
 mod stats;
 mod verify_constraints;
 mod wrap;
@@ -24,6 +25,7 @@ pub(crate) use export_solidity_calldata::*;
 pub(crate) use program_setup::*;
 pub(crate) use proofman_setup::*;
 pub(crate) use prove::*;
+pub(crate) use release_artifacts::*;
 pub(crate) use stats::*;
 pub(crate) use verify_constraints::*;
 pub(crate) use wrap::*;
@@ -53,6 +55,7 @@ pub(crate) enum ZiskCliDevCmd {
     Prove(ProveCmd),
     ProgramSetup(ProgramSetupCmd),
     ProofmanSetup(ProofmanSetupCmd),
+    ReleaseArtifacts(ReleaseArtifactsCmd),
     Stats(StatsCmd),
     VerifyConstraints(VerifyConstraintsCmd),
 }
@@ -67,6 +70,7 @@ impl ZiskCliDevCmd {
             ZiskCliDevCmd::WrapProof(cmd) => cmd.run(),
             ZiskCliDevCmd::ProgramSetup(mut cmd) => cmd.run(),
             ZiskCliDevCmd::ProofmanSetup(mut cmd) => cmd.run(),
+            ZiskCliDevCmd::ReleaseArtifacts(cmd) => cmd.run(),
             ZiskCliDevCmd::Stats(mut cmd) => cmd.run(),
             ZiskCliDevCmd::Execute(mut cmd) => cmd.run(),
             ZiskCliDevCmd::ExportSolidityCalldata(cmd) => cmd.run(),

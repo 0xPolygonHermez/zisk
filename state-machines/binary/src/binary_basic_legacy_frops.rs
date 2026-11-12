@@ -21,8 +21,8 @@ const LTU_OP_B_LT_ONE_FROM: u64 = -128i64 as u64;
 
 // LT
 
-const LT_FROM_ADDR: u64 = 0xA010_0000;
-const LT_TO_ADDR: u64 = 0xA012_0000;
+const LT_FROM_ADDR: u64 = 0xc010_0000;
+const LT_TO_ADDR: u64 = 0xc012_0000;
 const LT_DELTA: u64 = 8;
 const LT_LOW_DISTANCE_1: u64 = 16; // 0 - 15
 const LT_HIGH_DISTANCE_8: u64 = 240; // 16,24,32,40,.....
@@ -37,16 +37,16 @@ const LT_ZERO_TO_B: u64 = 0x10000;
 const MAX_ADD_MINUS_ONE: u64 = 24628;
 const MAX_ADD_MINUS_A: u64 = 1024;
 const MAX_ADD_MINUS_B: u64 = 8;
-const ADD_ONE_FROM_ADDR: u64 = 0xA010_0000; // address
-const ADD_ONE_TO_ADDR: u64 = 0xA020_0000;
-const ADD_EIGHT_FROM_ADDR: u64 = 0xA010_0000; // address
-const ADD_EIGHT_TO_ADDR: u64 = 0xA020_0000;
-const ADD_EIGHT_FROM_CODE: u64 = 0x8000_0000; // address
-const ADD_EIGHT_TO_CODE: u64 = 0x8080_0000;
+const ADD_ONE_FROM_ADDR: u64 = 0xc010_0000; // address
+const ADD_ONE_TO_ADDR: u64 = 0xc020_0000;
+const ADD_EIGHT_FROM_ADDR: u64 = 0xc010_0000; // address
+const ADD_EIGHT_TO_ADDR: u64 = 0xc020_0000;
+const ADD_EIGHT_FROM_CODE: u64 = 0xa800_0000; // address
+const ADD_EIGHT_TO_CODE: u64 = 0xa880_0000;
 const ADD_EIGHT_STEP: u64 = 8;
 
-const ADD_ZERO_FROM_ADDR: u64 = 0xA010_0000; // address
-const ADD_ZERO_TO_ADDR: u64 = 0xA020_0000;
+const ADD_ZERO_FROM_ADDR: u64 = 0xc010_0000; // address
+const ADD_ZERO_TO_ADDR: u64 = 0xc020_0000;
 const ADD_ZERO_STEP: u64 = 8;
 
 const ADD_MINUS_ONE_SIZE: usize = MAX_ADD_MINUS_ONE as usize;
@@ -67,16 +67,16 @@ const ADD_EIGHT_CODE_OFFSET: usize = ADD_EIGHT_ADDR_OFFSET + ADD_EIGHT_ADDR_SIZE
 const ADD_ZERO_ADDR_OFFSET: usize = ADD_EIGHT_CODE_OFFSET + ADD_EIGHT_CODE_SIZE;
 
 // AND
-const AND_CODE_ADDR_FROM: u64 = 0x8000_0000;
-const AND_CODE_ADDR_TO: u64 = 0x8090_0000; // address
+const AND_CODE_ADDR_FROM: u64 = 0xa800_0000;
+const AND_CODE_ADDR_TO: u64 = 0xa890_0000; // address
 const AND_CODE_ADDR_STEP: u64 = 4;
 const AND_CODE_ADDR_MASK: u64 = 0xFFFF_FFFF_FFFF_FFFC;
 
 const AND_RESET_LAST_THREE_BITS_B: u64 = 0xFFFF_FFFF_FFFF_FFF8;
 const AND_RESET_LAST_THREE_BITS_A_TO: u64 = 1024;
 const AND_GET_LAST_THREE_BITS_B: u64 = 0x7;
-const AND_GET_LAST_THREE_BITS_FROM: u64 = 0xA010_0000;
-const AND_GET_LAST_THREE_BITS_TO: u64 = 0xA020_0000;
+const AND_GET_LAST_THREE_BITS_FROM: u64 = 0xc010_0000;
+const AND_GET_LAST_THREE_BITS_TO: u64 = 0xc020_0000;
 const AND_GET_LAST_THREE_BITS_STEP: u64 = 8;
 
 const AND_CODE_ADDR_OFFSET: usize = LOW_VALUE_SIZE;
@@ -92,7 +92,7 @@ const AND_GET_LAST_THREE_BITS_OFFSET: usize =
 const OR_TO_A: u64 = 0x1000;
 const OR_TO_B: u64 = 16;
 
-const SUB_W_ADDR_FROM: u64 = 0xA010_0000;
+const SUB_W_ADDR_FROM: u64 = 0xc010_0000;
 
 const SUB_TO_A: u64 = 4192;
 const SUB_TO_B: u64 = 8;
@@ -149,7 +149,7 @@ impl BinaryBasicLegacyFrops {
     fn is_frequent_lt(a: u64, b: u64) -> bool {
         if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
             true
-        } else if a <= b && b & 0xFFFF_FFFF_FFFE_0007 == 0xA010_0000 {
+        } else if a <= b && b & 0xFFFF_FFFF_FFFE_0007 == 0xc010_0000 {
             // 256 / 8 = 32 (5 bits)
             let dist = b - a;
             if dist < LT_LOW_DISTANCE_1 {
@@ -168,13 +168,13 @@ impl BinaryBasicLegacyFrops {
     #[inline(always)]
     fn get_lt_offset(a: u64, b: u64) -> usize {
         const_assert!(LT_DELTA == 8);
-        const_assert!(LT_FROM_ADDR == 0xA010_0000);
-        const_assert!(LT_TO_ADDR == 0xA012_0000);
+        const_assert!(LT_FROM_ADDR == 0xc010_0000);
+        const_assert!(LT_TO_ADDR == 0xc012_0000);
 
         if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
             Self::get_low_values_offset(a, b)
         // TODO_ASSERT
-        } else if a <= b && (b & 0xFFFF_FFFF_FFFE_0007) == 0xA010_0000 {
+        } else if a <= b && (b & 0xFFFF_FFFF_FFFE_0007) == 0xc010_0000 {
             // 256 / 8 = 32 (5 bits)
             let addr_offset = ((b - LT_FROM_ADDR) >> 3) * LT_LOW_HIGH_DISTANCES;
             let dist = b - a;
@@ -291,13 +291,13 @@ impl BinaryBasicLegacyFrops {
 
     #[inline(always)]
     fn is_frequent_sub_w(a: u64, b: u64) -> bool {
-        (a == 0 && ((b & 0xFFFF_FFFF_FFF0_0003 == 0xA010_0000) || b < MAX_B_LOW_VALUE))
+        (a == 0 && ((b & 0xFFFF_FFFF_FFF0_0003 == 0xc010_0000) || b < MAX_B_LOW_VALUE))
             || (a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE)
     }
     #[inline(always)]
     fn get_sub_w_offset(a: u64, b: u64) -> usize {
         if a == 0 {
-            if b & 0xFFFF_FFFF_FFF0_0003 == 0xA010_0000 {
+            if b & 0xFFFF_FFFF_FFF0_0003 == 0xc010_0000 {
                 LOW_VALUE_SIZE + ((b - SUB_W_ADDR_FROM) >> 2) as usize
             } else if b < MAX_B_LOW_VALUE {
                 Self::get_low_values_offset(0, b)

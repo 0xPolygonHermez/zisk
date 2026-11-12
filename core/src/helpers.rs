@@ -3,6 +3,9 @@ use sha2::compress256;
 #[allow(deprecated)]
 use sha2::digest::generic_array::{typenum::U64, GenericArray};
 
+pub use ::zisk_definitions::{
+    BLAKE2B_GAP_SHIFT, BLAKE2B_RD_CHAIN, BLAKE2B_ROUND_MASK, BLAKE2B_WR_CHAIN,
+};
 use zisk_precomp_helpers::{blake2b_round, blake2s_f, blake3_f};
 
 #[allow(deprecated)]
@@ -15,7 +18,7 @@ pub fn sha256f(state: &mut [u64; 4], input: &[u64; 8]) {
 
 #[allow(deprecated)]
 pub fn blake2br(index: u64, state: &mut [u64; 16], input: &[u64; 16]) {
-    blake2b_round(state, input, index as u32);
+    blake2b_round(state, input, (index & BLAKE2B_ROUND_MASK) as u32);
 }
 
 /// Blake3 permutation (7 rounds of G-mixing, no feed-forward) over the 16-u32 state,

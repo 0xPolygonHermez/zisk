@@ -17,9 +17,6 @@ const u64 LCA_P2 =
 	0x61b8663eac81bafe, 0x18dca99bfc20cd21, 0x64390d4b8b90f987, 0xc3e2b10f48dc938a,
 	0xb87205c3757b6efe, 0x49f488572a6b449c, 0xd341df69810e7773, 0x13d1214763353f6f
 
-u64 LCA_HDR =
-	0x0000000000000000, 0x0000000000000000
-
 const u64 LCA_EXP =
 	0x2275d364d196ffee, 0x7c76a00abd8bab57, 0xb2b62d0993cccfe5, 0xd53aa3207a32db36,
 	0xadd33fb97412f966, 0x038169c1081deedc, 0x7b4a9db651ad839f, 0x8368d504271d6806,
@@ -45,9 +42,6 @@ const u64 LXA_P2 =
 	0xaf0ba0d27f196d6b, 0x09fa590f23d8c505, 0xb52686c7e15549ad, 0x7215c062bf54cbce,
 	0xe90f8248b031e26f, 0x359973046fc996a7, 0xc118dbfd7b6160e5, 0x145200378344ced5
 
-u64 LXA_HDR =
-	0x0000000000000000, 0x0000000000000000
-
 const u64 LXA_EXP =
 	0x9f6731798be27ae3, 0x5b64c7edb28c4bc7, 0x7141d6c713ad0ad8, 0x19637cc83cc19713,
 	0x4b3da415bb412328, 0x01af7b6ea85d4035, 0x0a10c8f8be40167a, 0x3cc8a749ab1507ef,
@@ -63,9 +57,6 @@ const u64 LXS_P2 =
 	0xb1aa4c52db262e34, 0x08b2fa702546ea36, 0x12b5903056959203, 0xcee4103bf194421c,
 	0x7143d70a10a72560, 0x6ebca5dbfd5ec928, 0x89c19d211bf2ce87, 0x0925a28950231be2
 
-u64 LXS_HDR =
-	0x0000000000000000, 0x0000000000000000
-
 const u64 LXS_EXP =
 	0xafd5edbef303529c, 0xb0685d208d57bac0, 0xfa44fc21b8faacc1, 0x00cb2d4aa3634cbf,
 	0x54eed5300aad95ae, 0x14b3fb01341584e5, 0x86f90da2148366bd, 0x6c3ba154057cce49,
@@ -80,9 +71,6 @@ const u64 LXM_P2 =
 	0x570a5890449cfe97, 0x02d5453d817aa15a, 0xdd19e0f30d6f08d0, 0x0221265c4ea88789,
 	0xdaab98119aa10259, 0x130badf19beae098, 0x6c2b195e5c7f84d8, 0x7415010b41515b52,
 	0xfb15df8f0adfdd97, 0xe8c4a46b5c572475, 0x7f9ac2a0c9cf654e, 0x18b220fea3af9f47
-
-u64 LXM_HDR =
-	0x0000000000000000, 0x0000000000000000
 
 const u64 LXM_EXP =
 	0x55030ae9914b586f, 0x76996657be113a34, 0x03f210e740dde436, 0xd8c5e9ec1b8c369f,
@@ -119,12 +107,7 @@ const u64 A384_EXP =
 
 bls12_381:
 	; bls12_381_curve_add
-	copyb(0, LCA_HDR) -> r8
-	copyb(0, LCA_P1) -> r7
-	copyb(r8, r7) -> 8[a + 0]
-	copyb(0, LCA_P2) -> r7
-	copyb(r8, r7) -> 8[a + 8]
-	bls12_381_curve_add(0, r8) -> r13
+	bls12_381_curve_add(LCA_P1, LCA_P2) -> r13     ; a = &LCA_P1 (result), b = &LCA_P2
 	copyb(0, LCA_P1) -> r7
 	copyb(0, LCA_EXP) -> r5
 	copyb(0, 12) -> r6
@@ -161,12 +144,7 @@ LCD_next:
 	jump(LCD_loop)
 LCD_ok:
 	; bls12_381_complex_add
-	copyb(0, LXA_HDR) -> r8
-	copyb(0, LXA_P1) -> r7
-	copyb(r8, r7) -> 8[a + 0]
-	copyb(0, LXA_P2) -> r7
-	copyb(r8, r7) -> 8[a + 8]
-	bls12_381_complex_add(0, r8) -> r13
+	bls12_381_complex_add(LXA_P1, LXA_P2) -> r13     ; a = &LXA_P1 (result), b = &LXA_P2
 	copyb(0, LXA_P1) -> r7
 	copyb(0, LXA_EXP) -> r5
 	copyb(0, 12) -> r6
@@ -184,12 +162,7 @@ LXA_next:
 	jump(LXA_loop)
 LXA_ok:
 	; bls12_381_complex_sub
-	copyb(0, LXS_HDR) -> r8
-	copyb(0, LXS_P1) -> r7
-	copyb(r8, r7) -> 8[a + 0]
-	copyb(0, LXS_P2) -> r7
-	copyb(r8, r7) -> 8[a + 8]
-	bls12_381_complex_sub(0, r8) -> r13
+	bls12_381_complex_sub(LXS_P1, LXS_P2) -> r13     ; a = &LXS_P1 (result), b = &LXS_P2
 	copyb(0, LXS_P1) -> r7
 	copyb(0, LXS_EXP) -> r5
 	copyb(0, 12) -> r6
@@ -207,12 +180,7 @@ LXS_next:
 	jump(LXS_loop)
 LXS_ok:
 	; bls12_381_complex_mul
-	copyb(0, LXM_HDR) -> r8
-	copyb(0, LXM_P1) -> r7
-	copyb(r8, r7) -> 8[a + 0]
-	copyb(0, LXM_P2) -> r7
-	copyb(r8, r7) -> 8[a + 8]
-	bls12_381_complex_mul(0, r8) -> r13
+	bls12_381_complex_mul(LXM_P1, LXM_P2) -> r13     ; a = &LXM_P1 (result), b = &LXM_P2
 	copyb(0, LXM_P1) -> r7
 	copyb(0, LXM_EXP) -> r5
 	copyb(0, 12) -> r6

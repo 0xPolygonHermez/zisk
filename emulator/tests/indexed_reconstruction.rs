@@ -71,7 +71,6 @@ fn indexed_reconstruction_matches_full_packing() {
                 );
             }
             assert_eq!(full.get_flag(lane), compact.get_flag(lane), "flag @{at}");
-            assert_eq!(full.get_addr1(lane), compact.get_addr1(lane), "addr1 @{at}");
             assert_eq!(
                 full.get_a_reg_prev_mem_step(lane),
                 compact.get_a_reg_prev_mem_step(lane),
@@ -128,7 +127,7 @@ fn indexed_descriptor_covers_every_column() {
     assert_eq!(Ix::LANES, MAIN_LANES);
     assert_eq!(Ix::INDEX_BITS, 32);
     assert_eq!(Ix::COL_SOURCE.len(), Ix::COL_LANE.len());
-    // 25 of the 34 declared fields are instruction-derived, one column per lane each.
+    // 25 of the 33 declared fields are instruction-derived, one column per lane each.
     assert_eq!(Ix::COL_SOURCE.iter().filter(|&&s| s == 1).count(), 25 * MAIN_LANES);
     // Every column names a lane the row carries, and runtime columns name lane 0.
     assert!(Ix::COL_LANE.iter().all(|&l| (l as usize) < MAIN_LANES));

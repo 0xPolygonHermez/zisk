@@ -29,7 +29,7 @@ airtemplate MemAlignByte(const int N = 2**10, const int read = 1, const int writ
     col witness bits(8) value_8b;
     col witness bits(8) byte_value;
 
-    col witness bits(29) addr_w;
+    col witness bits(ADDR_W_BITS) addr_w;
     col witness bits(40) step;
 
     sel_high_4b * (1 - sel_high_4b) === 0;

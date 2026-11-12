@@ -4,6 +4,7 @@
 # dependents can `use ziskasm::...` unchanged (dependents alias it via the
 # workspace dependency's `package = "zisk-asm"`).
 name = "zisk-asm"
+description = "Parser and assembler that turns ZisK assembly (.zisk) source into ROMs for the ZisK zkVM"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

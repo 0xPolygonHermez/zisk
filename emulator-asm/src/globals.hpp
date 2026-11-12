@@ -137,6 +137,11 @@ extern volatile uint64_t * precompile_exit_address;
 extern volatile uint64_t * input_written_address;
 extern volatile uint64_t * precompile_reset_address;
 
+// Seed of zkvm_random_u64 given with --random_seed (4 little-endian words): written into the
+// control input by the client, or used by the server when the control input carries none
+extern uint64_t random_seed_argument[4];
+extern bool random_seed_argument_set;
+
 // Control output shared memory
 extern int shmem_control_output_fd;
 extern uint64_t * shmem_control_output_address;

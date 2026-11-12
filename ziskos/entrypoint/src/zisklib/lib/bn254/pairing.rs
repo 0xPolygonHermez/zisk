@@ -3,7 +3,7 @@
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
-use crate::zisklib::lib::utils::{eq, is_one, lt};
+use crate::zisklib::lib::utils::{eq, is_one, lt, slice_from_ffi};
 
 use super::{
     constants::{G1_IDENTITY, G2_IDENTITY, P},
@@ -127,6 +127,25 @@ pub fn pairing_check_safe_bn254(
     g2_points: &[[u64; 16]],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Result<bool, u8> {
+    let pairing = pairing_batch_safe_bn254(
+        g1_points,
+        g2_points,
+        #[cfg(feature = "hints")]
+        hints,
+    )?;
+
+    // Check whether e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) == 1
+    Ok(is_one(&pairing))
+}
+
+/// BN254 batch pairing with validation: checks that every point has canonical coordinates,
+/// lies on its curve and (for G2) in the prime-order subgroup, then returns
+/// e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) ∈ GT. Identity points are allowed.
+pub fn pairing_batch_safe_bn254(
+    g1_points: &[[u64; 8]],
+    g2_points: &[[u64; 16]],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> Result<[u64; 48], u8> {
     assert_eq!(g1_points.len(), g2_points.len(), "Number of G1 and G2 points must be equal");
 
     // Validate every point pair
@@ -179,18 +198,53 @@ pub fn pairing_check_safe_bn254(
     }
 
     // Compute batch pairing e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ)
-    let pairing = pairing_batch_bn254(
+    Ok(pairing_batch_bn254(
         g1_points,
         g2_points,
         #[cfg(feature = "hints")]
         hints,
-    );
-
-    // Check whether e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) == 1
-    Ok(is_one(&pairing))
+    ))
 }
 
 // ==================== C FFI Functions ====================
+
+/// BN254 batch pairing with validation, over little-endian `u64` limbs:
+/// `result = e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ)`.
+///
+/// # Safety
+/// - `g1_ptr` must point to `num_points` `[u64; 8]` affine G1 points (x ‖ y)
+/// - `g2_ptr` must point to `num_points` `[u64; 16]` affine G2 points (x_r ‖ x_i ‖ y_r ‖ y_i)
+/// - `result_ptr` must point to a writable `[u64; 48]` array (Fq12)
+///
+/// # Returns
+/// - [PAIRING_CHECK_SUCCESS] = success, the product is written to `result_ptr`
+/// - [PAIRING_CHECK_ERR_G1_NOT_CANONICAL] .. [PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP] = an invalid
+///   input point; `result_ptr` is left untouched
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_pairing_batch_safe_bn254_c")]
+pub unsafe extern "C" fn pairing_batch_safe_bn254_c(
+    g1_ptr: *const u64,
+    g2_ptr: *const u64,
+    num_points: usize,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let g1_points = slice_from_ffi(g1_ptr as *const [u64; 8], num_points);
+    let g2_points = slice_from_ffi(g2_ptr as *const [u64; 16], num_points);
+
+    match pairing_batch_safe_bn254(
+        g1_points,
+        g2_points,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        Ok(pairing) => {
+            *(result_ptr as *mut [u64; 48]) = pairing;
+            PAIRING_CHECK_SUCCESS
+        }
+        Err(code) => code,
+    }
+}
 
 /// BN254 pairing check with big-endian byte format
 ///

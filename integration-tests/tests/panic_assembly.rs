@@ -20,7 +20,7 @@ use zisk_test_artifacts::ELF_PANIC_MODES;
 fn execute_with_input(client: &EmbeddedExecuteOnlyClient, input: u64) -> anyhow::Result<()> {
     let stdin = ZiskStdin::new();
     stdin.write(&input);
-    client.execute(&ELF_PANIC_MODES, stdin, None)?;
+    client.execute(&ELF_PANIC_MODES, stdin, None, None)?;
     Ok(())
 }
 

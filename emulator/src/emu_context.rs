@@ -56,12 +56,16 @@ impl EmuContext {
         }
 
         ctx.inst_ctx.input_len = input.len() as u64;
+        ctx.inst_ctx.random_seed = options.random_seed.map(|seed| seed.to_le_words());
 
         // Skip memory data allocation when in chunk mode, since memory reads are obtained from the
         // minimal traces, not from memory
         if !options.with_memory_data {
             return ctx;
         }
+
+        // write_log text is read from memory, so it is printed only here
+        ctx.inst_ctx.write_log = options.write_log;
 
         let free_input = 0u64;
         ctx.inst_ctx.mem.add_read_section(INPUT_ADDR, &free_input.to_le_bytes());

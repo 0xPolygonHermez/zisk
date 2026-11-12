@@ -9,7 +9,7 @@ const int END_PC_ADDR = 0x1004;
 const int INITIAL_SP = 0;
 const int END_SP = 0;
 const int MAX_RANGE = (1 << 24) - 1;
-const int REG_BASE_ADDR = 0xA040_0000;
+const int REG_BASE_ADDR = 0xC040_0000;
 
 airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, 
                  const int REGS_IN_MAIN_FROM = 1, const int REGS_IN_MAIN_TO = 39,
@@ -201,32 +201,37 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     // Some of these values are expressions while others are witness + constraint. The expressions
     // are "converted" to witness to avoid increase the degree on stage 2 with extension.
 
+    // Addresses are 33 bits wide (ADDR_BITS, see config.pil) and travel on the memory bus as a
+    // single field element. A constant address (a_src_mem, b_src_mem, store_mem) is the ROM
+    // operand itself. The pointer of an indirect access (b_src_ind, store_ind) is the 64-bit value
+    // of a, a[0] + 2^32 * a[1], whose high limb must be 0 or 1: a larger register would wrap
+    // modulo the field and could alias a valid address. A negative offset is p - |offset|, so the
+    // sum is the address only when it does not wrap in 64 bits; otherwise it is a huge field
+    // element that no memory instance can prove, as the real machine would trap.
+    const expr ind_ptr[lanes_x_row];
+    for (int lane = 0; lane < lanes_x_row; ++lane) {
+        ind_ptr[lane] = a[lane][0] + 2**32 * a[lane][1];
+        (store_ind[lane] + b_src_ind[lane]) * a[lane][1] * (1 - a[lane][1]) === 0;
+    }
+
     if (stack_enabled) {
-        col witness bits(32) air.addr0[lanes_x_row];
-        col witness bits(32) air.addr1[lanes_x_row];
-        col witness bits(32) air.addr2[lanes_x_row];
+        col witness bits(ADDR_BITS) air.addr0[lanes_x_row];
+        col witness bits(ADDR_BITS) air.addr1[lanes_x_row];
+        col witness bits(ADDR_BITS) air.addr2[lanes_x_row];
 
         for (int lane = 0; lane < lanes_x_row; ++lane) {
             addr0[lane] === a_offset_imm0[lane] + a_use_sp_imm1[lane] * sp[lane];
-            addr1[lane] === b_offset_imm0[lane] + b_src_ind[lane] * a[lane][0] +  b_use_sp_imm1[lane] * sp[lane];
-            addr2[lane] === store_offset[lane] + store_ind[lane] * a[lane][0] + store_use_sp[lane] * sp[lane];
-
-            // to avoid the addr1 overflow when a[0] has high value, this is not problem
-            // because use address of 32-bits
-            (store_ind[lane] + b_src_ind[lane]) * a[lane][1] === 0;
+            addr1[lane] === b_offset_imm0[lane] + b_src_ind[lane] * ind_ptr[lane] +  b_use_sp_imm1[lane] * sp[lane];
+            addr2[lane] === store_offset[lane] + store_ind[lane] * ind_ptr[lane] + store_use_sp[lane] * sp[lane];
         }
     } else {
         const expr air.addr0[lanes_x_row];
-        col witness bits(32) air.addr1[lanes_x_row];
+        const expr air.addr1[lanes_x_row];
         const expr air.addr2[lanes_x_row];
         for (int lane = 0; lane < lanes_x_row; ++lane) {
             addr0[lane] = a_offset_imm0[lane];
-            addr1[lane] === b_offset_imm0[lane] + b_src_ind[lane] * a[lane][0];
-            addr2[lane] = store_offset[lane] + store_ind[lane] * a[lane][0];
-
-            // to avoid the addr1 overflow when a[0] has high value, this is not problem
-            // because use address of 32-bits
-            (store_ind[lane] + b_src_ind[lane]) * a[lane][1] === 0;
+            addr1[lane] = b_offset_imm0[lane] + b_src_ind[lane] * ind_ptr[lane];
+            addr2[lane] = store_offset[lane] + store_ind[lane] * ind_ptr[lane];
         }
     }
 
@@ -377,7 +382,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         store_value[lane][0] = store_pc[lane]*(pc[lane] + jmp_offset2[lane] - c[lane][0]) + c[lane][0];
         // BUG(rv64-auipc): when store_pc=1 (AUIPC), store_value[1] is forced to 0, dropping the
         // carry out of bit 31 of (pc + jmp_offset2).  For pc + jmp_offset2 >= 2^32 - valid in RV64I,
-        // e.g. auipc rd, 0x7ffff at PC >= 0x80001000 - this no longer matches the 64-bit value
+        // e.g. auipc rd, 0x6ffff at PC >= 0x90001000 - this no longer matches the 64-bit value
         // that the memory/register bus represents as two 32-bit limbs.
         // Reproducer: elf-regressions/auipc_rv64_overflow/
         store_value[lane][1] = (1 - store_pc[lane]) * c[lane][1];
@@ -477,7 +482,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         // The selectors flag an set_pc are disjoint, meaning they cannot be active simultaneously.
         flag[lane] * set_pc[lane] === 0;
 
-        // A user program lives in [0x8000_0000, 0x8000_0000 + 128MB), so any valid address plus a
+        // A user program lives in [0xA800_0000, 0xA800_0000 + 128MB), so any valid address plus a
         // valid 12-bit (or 32-bit) offset is guaranteed to fit within a Goldilocks field element.
         // If the result is "negative" or falls outside this range, proof generation will fail,
         // because the program will have jumped to a non-existent address and the ROM lookup will fail.

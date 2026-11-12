@@ -3,7 +3,6 @@
 use crate::{
     syscalls::{
         syscall_bn254_complex_add, syscall_bn254_complex_mul, syscall_bn254_complex_sub,
-        SyscallBn254ComplexAddParams, SyscallBn254ComplexMulParams, SyscallBn254ComplexSubParams,
         SyscallComplex256,
     },
     zisklib::{eq, fcall_bn254_fp2_inv, is_one, is_zero, lt},
@@ -46,9 +45,9 @@ pub fn add_fp2_bn254(
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(b);
 
-    let mut params = SyscallBn254ComplexAddParams { f1: &mut f1, f2: &f2 };
     syscall_bn254_complex_add(
-        &mut params,
+        &mut f1,
+        &f2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -61,9 +60,9 @@ pub fn dbl_fp2_bn254(a: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(a);
 
-    let mut params = SyscallBn254ComplexAddParams { f1: &mut f1, f2: &f2 };
     syscall_bn254_complex_add(
-        &mut params,
+        &mut f1,
+        &f2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -76,9 +75,9 @@ pub fn neg_fp2_bn254(a: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex_x(&P_MINUS_ONE);
 
-    let mut params = SyscallBn254ComplexMulParams { f1: &mut f1, f2: &f2 };
     syscall_bn254_complex_mul(
-        &mut params,
+        &mut f1,
+        &f2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -95,9 +94,9 @@ pub fn sub_fp2_bn254(
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(b);
 
-    let mut params = SyscallBn254ComplexSubParams { f1: &mut f1, f2: &f2 };
     syscall_bn254_complex_sub(
-        &mut params,
+        &mut f1,
+        &f2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -114,9 +113,9 @@ pub fn mul_fp2_bn254(
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(b);
 
-    let mut params = SyscallBn254ComplexMulParams { f1: &mut f1, f2: &f2 };
     syscall_bn254_complex_mul(
-        &mut params,
+        &mut f1,
+        &f2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -133,9 +132,9 @@ pub fn scalar_mul_fp2_bn254(
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex_x(b);
 
-    let mut params = SyscallBn254ComplexMulParams { f1: &mut f1, f2: &f2 };
     syscall_bn254_complex_mul(
-        &mut params,
+        &mut f1,
+        &f2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -148,9 +147,9 @@ pub fn square_fp2_bn254(a: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(a);
 
-    let mut params = SyscallBn254ComplexMulParams { f1: &mut f1, f2: &f2 };
     syscall_bn254_complex_mul(
-        &mut params,
+        &mut f1,
+        &f2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -198,9 +197,9 @@ pub fn conjugate_fp2_bn254(
     let mut f1 = to_syscall_complex_x(&a[0..4].try_into().unwrap());
     let f2 = to_syscall_complex_y(&a[4..8].try_into().unwrap());
 
-    let mut params = SyscallBn254ComplexSubParams { f1: &mut f1, f2: &f2 };
     syscall_bn254_complex_sub(
-        &mut params,
+        &mut f1,
+        &f2,
         #[cfg(feature = "hints")]
         hints,
     );

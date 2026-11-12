@@ -2,7 +2,10 @@
 ; uint256/add.zisk - 256-bit addition / subtraction. Mirrors
 ; ziskos/entrypoint/src/zisklib/lib/uint256/add.rs (the checked/saturating/
 ; wrapping/neg variants are Rust wrappers over these two overflowing cores).
-; Shared data lives in common.zisk. Internal labels: `us_`.
+; Shared data lives in common.zisk. Internal labels: `ua_` (add), `us_` (sub).
+;
+; add256 needs &c 8-byte aligned; an unaligned result goes through U256_UNAL
+; (one `unal8` test on the aligned path, see common.zisk).
 ; ============================================================================
 
 ; RAM scratch: the add256 pointer header [&a, &b, cin, &c] and, for subtraction,
@@ -21,8 +24,15 @@ zisklib_overflowing_add256:
 	copyb(r5, r10) -> 8[a + 0]         ; &a
 	copyb(r5, r11) -> 8[a + 8]         ; &b
 	copyb(r5, 0) -> 8[a + 16]          ; cin = 0
+	unal8(r12, 0), j(ua_unal)          ; result not 8-aligned -> via scratch
 	copyb(r5, r12) -> 8[a + 24]        ; &c = result
 	add256(0, r5) -> r10               ; carry-out -> return value
+	ret
+ua_unal:
+	copyb(0, U256_UNAL) -> r7
+	copyb(r5, r7) -> 8[a + 24]         ; &c = U256_UNAL
+	add256(0, r5) -> r10               ; carry-out -> return value
+	dma_xmemcpy(r12, U256_UNAL) -> r7, j(32, 4)
 	ret
 
 ; ----------------------------------------------------------------------------
@@ -51,8 +61,10 @@ us_add:
 	copyb(0, U256_NOTB) -> r7
 	copyb(r5, r7) -> 8[a + 8]          ; &not_b
 	copyb(r5, 1) -> 8[a + 16]          ; cin = 1
+	unal8(r12, 0), j(us_unal)          ; result not 8-aligned -> via scratch
 	copyb(r5, r12) -> 8[a + 24]        ; &c = result
 	add256(0, r5) -> r6                ; carry-out
+us_carry:
 	; borrow = (carry-out == 0)
 	eq(r6, 0), j(us_borrow)
 	copyb(0, 0) -> r10                 ; carry-out != 0 -> no borrow
@@ -60,3 +72,9 @@ us_add:
 us_borrow:
 	copyb(0, 1) -> r10                 ; carry-out == 0 -> borrow
 	ret
+us_unal:
+	copyb(0, U256_UNAL) -> r7
+	copyb(r5, r7) -> 8[a + 24]         ; &c = U256_UNAL
+	add256(0, r5) -> r6                ; carry-out
+	dma_xmemcpy(r12, U256_UNAL) -> r7, j(32, 4)
+	jump(us_carry)

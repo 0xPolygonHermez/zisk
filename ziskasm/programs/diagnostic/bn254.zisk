@@ -13,9 +13,6 @@ const u64 BCA_P2 =
 	0x1d9bcbe21ce01516, 0xcc7815061a484148, 0xd6aaab22a4076b7a, 0x1d76765321373a53,
 	0xd0dbc25dfe72d5fd, 0x7a0e631e979bbb7b, 0xb28a55c849fe53c4, 0x1533a9189589de91
 
-u64 BCA_HDR =
-	0x0000000000000000, 0x0000000000000000
-
 const u64 BCA_EXP =
 	0xae0abd6da7c27dd3, 0xe3c28bbc5495c4d8, 0x5650948565d3fb7b, 0x26f64f2fd6fc2655,
 	0x38410d00d9e0f202, 0x0b56d3885a3c7a35, 0x661febef9f288626, 0x2d2af10608b33f79
@@ -36,9 +33,6 @@ const u64 BXA_P2 =
 	0x40120fccb7825bce, 0x9be56a690221ca6d, 0xd635d44b149f6ce5, 0x03926b8207ed1e9e,
 	0xe6a435edec136b89, 0x96f366e85ff5baae, 0x94e468cf89b5a460, 0x0302667e88a9dd2a
 
-u64 BXA_HDR =
-	0x0000000000000000, 0x0000000000000000
-
 const u64 BXA_EXP =
 	0xc857c920e2b41f59, 0x36ffd2e58a08953b, 0xe5a439717016010a, 0x0a33db968010b199,
 	0x9d9af98d24ce5cfd, 0x21bdfe1590099744, 0x0aac129dbd4904da, 0x246b6599bccdb28f
@@ -50,9 +44,6 @@ u64 BXS_P1 =
 const u64 BXS_P2 =
 	0x40120fccb7825bce, 0x9be56a690221ca6d, 0xd635d44b149f6ce5, 0x03926b8207ed1e9e,
 	0xe6a435edec136b89, 0x96f366e85ff5baae, 0x94e468cf89b5a460, 0x0302667e88a9dd2a
-
-u64 BXS_HDR =
-	0x0000000000000000, 0x0000000000000000
 
 const u64 BXS_EXP =
 	0x4833a98773af67bd, 0xff34fe1385c50061, 0x393890db46d7273e, 0x030f04927036745c,
@@ -66,21 +57,13 @@ const u64 BXM_P2 =
 	0x40120fccb7825bce, 0x9be56a690221ca6d, 0xd635d44b149f6ce5, 0x03926b8207ed1e9e,
 	0xe6a435edec136b89, 0x96f366e85ff5baae, 0x94e468cf89b5a460, 0x0302667e88a9dd2a
 
-u64 BXM_HDR =
-	0x0000000000000000, 0x0000000000000000
-
 const u64 BXM_EXP =
 	0xad8d68812202ae35, 0x2ce0243ddc56f167, 0xbded7ca47b5dc864, 0x20a795cf7b79cb53,
 	0x54218a8a58e7a9d2, 0x028a6acbadde782b, 0xe5161b372ad9f6ea, 0x0c713da2a7288593
 
 bn254:
 	; bn254_curve_add
-	copyb(0, BCA_HDR) -> r8
-	copyb(0, BCA_P1) -> r7
-	copyb(r8, r7) -> 8[a + 0]
-	copyb(0, BCA_P2) -> r7
-	copyb(r8, r7) -> 8[a + 8]
-	bn254_curve_add(0, r8) -> r13
+	bn254_curve_add(BCA_P1, BCA_P2) -> r13     ; a = &BCA_P1 (result), b = &BCA_P2
 	copyb(0, BCA_P1) -> r7
 	copyb(0, BCA_EXP) -> r5
 	copyb(0, 8) -> r6
@@ -117,12 +100,7 @@ BCD_next:
 	jump(BCD_loop)
 BCD_ok:
 	; bn254_complex_add
-	copyb(0, BXA_HDR) -> r8
-	copyb(0, BXA_P1) -> r7
-	copyb(r8, r7) -> 8[a + 0]
-	copyb(0, BXA_P2) -> r7
-	copyb(r8, r7) -> 8[a + 8]
-	bn254_complex_add(0, r8) -> r13
+	bn254_complex_add(BXA_P1, BXA_P2) -> r13     ; a = &BXA_P1 (result), b = &BXA_P2
 	copyb(0, BXA_P1) -> r7
 	copyb(0, BXA_EXP) -> r5
 	copyb(0, 8) -> r6
@@ -140,12 +118,7 @@ BXA_next:
 	jump(BXA_loop)
 BXA_ok:
 	; bn254_complex_sub
-	copyb(0, BXS_HDR) -> r8
-	copyb(0, BXS_P1) -> r7
-	copyb(r8, r7) -> 8[a + 0]
-	copyb(0, BXS_P2) -> r7
-	copyb(r8, r7) -> 8[a + 8]
-	bn254_complex_sub(0, r8) -> r13
+	bn254_complex_sub(BXS_P1, BXS_P2) -> r13     ; a = &BXS_P1 (result), b = &BXS_P2
 	copyb(0, BXS_P1) -> r7
 	copyb(0, BXS_EXP) -> r5
 	copyb(0, 8) -> r6
@@ -163,12 +136,7 @@ BXS_next:
 	jump(BXS_loop)
 BXS_ok:
 	; bn254_complex_mul
-	copyb(0, BXM_HDR) -> r8
-	copyb(0, BXM_P1) -> r7
-	copyb(r8, r7) -> 8[a + 0]
-	copyb(0, BXM_P2) -> r7
-	copyb(r8, r7) -> 8[a + 8]
-	bn254_complex_mul(0, r8) -> r13
+	bn254_complex_mul(BXM_P1, BXM_P2) -> r13     ; a = &BXM_P1 (result), b = &BXM_P2
 	copyb(0, BXM_P1) -> r7
 	copyb(0, BXM_EXP) -> r5
 	copyb(0, 8) -> r6

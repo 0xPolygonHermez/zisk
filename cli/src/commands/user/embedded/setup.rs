@@ -15,7 +15,7 @@ use crate::ux::{print_banner, print_banner_command, print_banner_field};
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Generate the proving setup for a guest or aggregation program locally
 pub(crate) struct ZiskEmbeddedSetup {
-    /// Path to the guest ELF file. If omitted (and no `--aggregation`), the ELF
+    /// Path to the guest program (RISC-V ELF or .wasm). If omitted (and no `--aggregation`), it
     /// is auto-detected from the current project
     #[arg(short = 'e', long, conflicts_with = "aggregation")]
     elf: Option<PathBuf>,
@@ -26,7 +26,7 @@ pub(crate) struct ZiskEmbeddedSetup {
     /// SDK-managed `~/.zisk/recurser/<recurser-id>`.
     #[arg(
         long,
-        conflicts_with_all = ["bin", "asm", "hints", "proving_key_plonk", "unlock_mapped_memory"]
+        conflicts_with_all = ["bin", "asm", "hints", "proving_key_snark", "unlock_mapped_memory"]
     )]
     aggregation: Option<PathBuf>,
 
@@ -45,9 +45,9 @@ pub(crate) struct ZiskEmbeddedSetup {
     #[arg(short = 'k', long)]
     proving_key: Option<PathBuf>,
 
-    /// Path to a precomputed PLONK proving key
-    #[arg(short = 'w', long)]
-    proving_key_plonk: Option<PathBuf>,
+    /// Path to a precomputed SNARK proving key
+    #[arg(short = 'w', long, alias = "proving-key-plonk")]
+    proving_key_snark: Option<PathBuf>,
 
     /// Unlock the memory map for the ROM file. Only applies with `--asm`.
     #[arg(short = 'u', long, requires = "asm")]
@@ -89,7 +89,7 @@ impl ZiskEmbeddedSetup {
 
         print_banner();
         print_banner_command(format!("{} Setup", "EMBEDDED".bold()));
-        print_banner_field("Elf", elf.display());
+        print_banner_field("Program", elf.display());
         println!();
 
         setup_logger(VerboseMode::from(self.verbose));
@@ -103,8 +103,8 @@ impl ZiskEmbeddedSetup {
         if let Some(pk) = &self.proving_key {
             builder = builder.proving_key(pk.clone());
         }
-        if let Some(pk) = &self.proving_key_plonk {
-            builder = builder.proving_key_plonk(pk.clone());
+        if let Some(pk) = &self.proving_key_snark {
+            builder = builder.proving_key_snark(pk.clone());
         }
         // `--unlock-mapped-memory` requires `--asm` (clap-enforced), so the
         // Assembly executor is set above and `asm_options` won't panic at build.

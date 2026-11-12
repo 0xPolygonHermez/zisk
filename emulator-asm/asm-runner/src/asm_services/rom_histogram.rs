@@ -22,8 +22,9 @@ pub(crate) struct RomHistogramResponse {
 }
 
 impl FromResponsePayload for RomHistogramResponse {
+    const RESPONSE_ID: u64 = CMD_RH_RESPONSE_ID;
+
     fn from_response_payload(payload: ResponseData) -> Self {
-        assert!(payload[0] == CMD_RH_RESPONSE_ID,);
         RomHistogramResponse {
             result: payload[1] as u8,
             allocated_len: payload[2],

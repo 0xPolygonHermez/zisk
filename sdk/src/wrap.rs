@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use crate::Result;
@@ -5,7 +6,7 @@ use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
 
 use crate::job_handle::{new_subscriber_list, JobHandle};
 use crate::prove::ProveResult;
-use crate::{Client, ClientSync};
+use crate::{Client, ClientSync, RemoteClient};
 
 /// Builder for a proof wrapping/conversion request.
 ///
@@ -17,6 +18,7 @@ pub struct WrapRequest<'a, C> {
     override_publics: Option<PublicValues>,
     override_program_vk: Option<ProgramVK>,
     timeout: Option<Duration>,
+    metadata: BTreeMap<String, String>,
 }
 
 #[allow(private_bounds)]
@@ -29,6 +31,7 @@ impl<'a, C: Client> WrapRequest<'a, C> {
             override_publics: None,
             override_program_vk: None,
             timeout: None,
+            metadata: BTreeMap::new(),
         }
     }
 
@@ -63,7 +66,18 @@ impl<'a, C: Client> WrapRequest<'a, C> {
             self.override_program_vk,
             self.timeout,
             subs,
+            self.metadata,
         )
+    }
+}
+
+impl WrapRequest<'_, RemoteClient> {
+    /// Attach a job-level metadata key/value pair for the coordinator to keep with the job.
+    /// Call repeatedly to attach multiple pairs.
+    #[must_use]
+    pub fn metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(key.into(), value.into());
+        self
     }
 }
 

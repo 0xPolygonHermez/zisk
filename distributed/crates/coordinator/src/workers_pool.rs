@@ -124,6 +124,23 @@ impl WorkersPool {
         self.workers.read().await.len()
     }
 
+    /// Whether any worker is connected. A disconnected entry, waiting for the stale-disconnected
+    /// sweep, does not count.
+    pub async fn has_live_worker(&self) -> bool {
+        self.workers.read().await.values().any(|worker| worker.state != WorkerState::Disconnected)
+    }
+
+    /// The workers other than `worker_id` that are connected. A disconnected entry, waiting for
+    /// the stale-disconnected sweep, does not count: it holds no live prover and no connection.
+    pub async fn live_workers_other_than(&self, worker_id: &WorkerId) -> usize {
+        self.workers
+            .read()
+            .await
+            .iter()
+            .filter(|(id, worker)| *id != worker_id && worker.state != WorkerState::Disconnected)
+            .count()
+    }
+
     /// Returns the IDs of all currently connected workers.
     pub async fn connected_worker_ids(&self) -> Vec<WorkerId> {
         self.workers.read().await.keys().cloned().collect()
@@ -361,13 +378,14 @@ impl WorkersPool {
 
         drop(workers);
 
-        if is_new_worker {
-            metrics::gauge!("coordinator_workers_connected").increment(1.0);
-        }
-
         let action = if is_new_worker { "Registered" } else { "Reconnected" };
         let (total, cc, acc) = self.pool_stats().await;
         info!("{} worker: {} (total: {} CC: {} ACC: {})", action, worker_id, total, cc, acc);
+        crate::metrics::record_worker_registered(
+            &worker_id,
+            !is_new_worker,
+            (total, cc.compute_units, acc.compute_units),
+        );
 
         Ok(())
     }
@@ -444,7 +462,6 @@ impl WorkersPool {
             Some(_) => {
                 let total = workers.len(); // Get count from the current HashMap
                 drop(workers); // Release the lock before logging
-                metrics::gauge!("coordinator_workers_connected").decrement(1.0);
                 info!(
                     "Unregistered worker: {} (total: {} CC: {} ACC: {})",
                     worker_id,
@@ -471,8 +488,7 @@ impl WorkersPool {
         drop(workers);
         let disconnected = result?;
         if disconnected {
-            let (total, cc, acc) = self.pool_stats().await;
-            info!("Disconnected worker: {} (total: {} CC: {} ACC: {})", worker_id, total, cc, acc);
+            self.log_disconnected(worker_id).await;
         }
         Ok(disconnected)
     }
@@ -493,10 +509,24 @@ impl WorkersPool {
         drop(workers);
         let disconnected = result?;
         if disconnected {
-            let (total, cc, acc) = self.pool_stats().await;
-            info!("Disconnected worker: {} (total: {} CC: {} ACC: {})", worker_id, total, cc, acc);
+            self.log_disconnected(worker_id).await;
         }
         Ok(disconnected)
+    }
+
+    /// Log and record a worker's disconnection, with the pool as it is after it.
+    async fn log_disconnected(&self, worker_id: &WorkerId) {
+        let (total, cc, acc) = self.pool_stats().await;
+        info!("Disconnected worker: {} (total: {} CC: {} ACC: {})", worker_id, total, cc, acc);
+        crate::metrics::record_worker_disconnected(
+            worker_id,
+            (total, cc.compute_units, acc.compute_units),
+        );
+    }
+
+    /// Each worker in the pool and its state.
+    pub async fn worker_states(&self) -> Vec<(WorkerId, WorkerState)> {
+        self.workers.read().await.iter().map(|(id, w)| (id.clone(), w.state.clone())).collect()
     }
 
     /// Core disconnect logic. Returns `Ok(true)` if the worker was disconnected,
