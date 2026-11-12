@@ -1,0 +1,9 @@
+[package]
+name = "zisk-test-noop"
+version = "0.0.0"
+edition = "2021"
+publish = false
+[lib]
+crate-type = ["cdylib"]
+[dependencies]
+solana-program = "=2.3.0"

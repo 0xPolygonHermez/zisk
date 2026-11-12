@@ -1,0 +1,147 @@
+{
+  "queried_at_utc": "2026-11-09T07:29:30.299570+00:00",
+  "rpc": "https://api.mainnet-beta.solana.com",
+  "cli": "solana-cli 2.2.21",
+  "note": "Mainnet feature status as visible to Agave 2.2.21. Reproduces known feature gates in the local validator, not newer runtime behavior or full mainnet equivalence.",
+  "inactive": [
+    {
+      "id": "1ncomp1ete111111111111111111111111111111111",
+      "description": "use memory regions to map account data into the rbpf vm instead of copying the data",
+      "status": "inactive"
+    },
+    {
+      "id": "2aQJYqER2aKyb3cZw22v4SL2xMX7vwXBRWfvS4pTrtED",
+      "description": "Enable Loader-v4 SIMD-0167",
+      "status": "inactive"
+    },
+    {
+      "id": "2oMRZEDWT2tqtYMofhmmfQ8SsjqUFzT6sYXppQDavxwz",
+      "description": "Enable ExtendProgramChecked instruction",
+      "status": "inactive"
+    },
+    {
+      "id": "51VCKU5eV6mcTc9q9ArfWELU2CqDoi13hdAjr6fHMdtv",
+      "description": "Verify retransmitter signature #1840",
+      "status": "inactive"
+    },
+    {
+      "id": "5TuppMutoyzhUSfuYdhgzD47F92GL1g89KpCZQKqedxP",
+      "description": "enable the remaining_compute_units syscall",
+      "status": "inactive"
+    },
+    {
+      "id": "8aXvSuopd1PUj7UhehfXJRg6619RHp8ZvwTyyJHdUYsj",
+      "description": "fail libsecp256k1_verify if count appears wrong",
+      "status": "inactive"
+    },
+    {
+      "id": "9LZdXeKGeBV6hRLdxS1rHbHoEUsKqesCC2ZAPTPKJAbK",
+      "description": "increase tx account lock limit to 128 #27241",
+      "status": "inactive"
+    },
+    {
+      "id": "9bn2vTJUsUcnpiZWbu2woSKtTGW3ErZC9ERv88SDqQjK",
+      "description": "enable partitioned rewards at epoch boundary #32166",
+      "status": "inactive"
+    },
+    {
+      "id": "9onWzzvCzNC2jfhxxeqRgs5q7nFAAKpCUvkj6T6GJK9i",
+      "description": "Raise minimum stake delegation to 1.0 SOL #24357",
+      "status": "inactive"
+    },
+    {
+      "id": "C8XZNs1bfzaiT3YDeXZJ7G5swQWQv7tVzDnCxtHvnSpw",
+      "description": "SIMD-0178, SIMD-0179 and SIMD-0189: Enable deployment and execution of SBPFv3 programs",
+      "status": "inactive"
+    },
+    {
+      "id": "DT4n6ABDqs6w4bnfwrXT9rsprcPf6cdDga1egctaPkLC",
+      "description": "full inflation on devnet and testnet",
+      "status": "inactive"
+    },
+    {
+      "id": "EBq48m8irRKuE7ZnMTLvLg2UuGSqhe8s8oMqnmja1fJw",
+      "description": "add big_mod_exp syscall #28503",
+      "status": "inactive"
+    },
+    {
+      "id": "EaQpmC6GtRssaZ3PCUM5YksGqUdMLeZ46BQXYtHYakDS",
+      "description": "include transaction loaded accounts data size in base fee calculation #30657",
+      "status": "inactive"
+    },
+    {
+      "id": "G6ANXD6ptCSyNd9znZm7j4dEczAJCfx7Cy43oBx3rKHJ",
+      "description": "stakes must be at least the minimum delegation to earn rewards",
+      "status": "inactive"
+    },
+    {
+      "id": "HTW2pSyErTj4BV6KBM9NZ9VBUJVxt7sacNWcf76wtzb3",
+      "description": "blake3 syscall",
+      "status": "inactive"
+    },
+    {
+      "id": "HcW8ZjBezYYgvcbxNJwqv1t484Y2556qJsfNDWvJGZRH",
+      "description": "Lift the restriction in CPI that the caller must have the callee as an instruction account #2202",
+      "status": "inactive"
+    },
+    {
+      "id": "RfEcA95xnhuwooVAhUUksEJLZBF7xKCLuqrJoqk4Zph",
+      "description": "vote only on retransmitter signed fec sets",
+      "status": "inactive"
+    },
+    {
+      "id": "TestFeature11111111111111111111111111111111",
+      "description": "SIMD-0161: Disables execution of SBPFv0 programs",
+      "status": "inactive"
+    },
+    {
+      "id": "TestFeature21111111111111111111111111111111",
+      "description": "Re-enables execution of SBPFv0 programs",
+      "status": "inactive"
+    },
+    {
+      "id": "chaie9S2zVfuxJKNRGkyTDokLwWxx6kD2ZLsqQHaDD8",
+      "description": "generate duplicate proofs for chained merkle root conflicts",
+      "status": "inactive"
+    },
+    {
+      "id": "depVvnQ2UysGrhwdiwU42tCadZL8GcBb1i2GYhMopQv",
+      "description": "Deprecate legacy vote instructions",
+      "status": "inactive"
+    },
+    {
+      "id": "turbRpTzBzDU6PJmWvRTbcJXXGxUs19CvQamUrRD9bN",
+      "description": "enable turbine extended fanout experiments #",
+      "status": "inactive"
+    },
+    {
+      "id": "zk1snxsc6Fh3wsGNbbHAJNHiJoYgF29mMnTSusGx5EJ",
+      "description": "enable Zk Token proof program and syscalls",
+      "status": "inactive"
+    },
+    {
+      "id": "zkNLP7EQALfC1TYeB3biDU7akDckj8iPkvh9y2Mt2K3",
+      "description": "enable Zk Token proof program transfer with fee",
+      "status": "inactive"
+    },
+    {
+      "id": "zkemPXcuM3G4wpMDZ36Cpw34EjUpvm1nuioiSGbGZPR",
+      "description": "Re-enables zk-elgamal-proof program",
+      "status": "inactive"
+    },
+    {
+      "id": "zkiTNuzBKxrCLMKehzuQeKZyLtX2yvFcEKMML8nExU8",
+      "description": "Enable zk token proof program to read proof from accounts instead of instruction data #34750",
+      "status": "inactive"
+    }
+  ],
+  "sbpf_v3_gate_check": {
+    "legacy_2_2_21_id": "C8XZNs1bfzaiT3YDeXZJ7G5swQWQv7tVzDnCxtHvnSpw",
+    "agave_4_2_2_id": "5cC3foj77CWun58pC51ebHFUWavHWKarWyR5UUik7dnC",
+    "source": "https://docs.rs/agave-feature-set/4.2.2/src/agave_feature_set/lib.rs.html",
+    "activation_slots": {
+      "mainnet": 428976000,
+      "devnet": 461808000
+    }
+  }
+}

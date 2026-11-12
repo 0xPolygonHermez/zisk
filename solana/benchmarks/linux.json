@@ -1,0 +1,61 @@
+{
+  "date": "2026-11-09",
+  "source_commit": "8d6fb62d91afa5a9d4b2c874dd4791d89b228a46",
+  "environment": "Fresh Ubuntu 24.04.5 x86_64 container, Docker emulation on Apple silicon; not a GitHub Actions run",
+  "tools": {
+    "rust": "1.95.0",
+    "node": "26.12.1",
+    "foundry": "1.5.1",
+    "cargo-build-sbf": "4.6.0",
+    "platform-tools": "v1.57",
+    "sbpf": "v3",
+    "cargo-fuzz": "0.13.1",
+    "fuzz_toolchain": "nightly-2026-02-12"
+  },
+  "runtime": "LiteSVM0.16.0 / Agave4.2.2, default features and syscall costs",
+  "checks": {
+    "bash scripts/check.sh": "passed",
+    "bash scripts/fuzz.sh 60": "passed"
+  },
+  "measurements": {
+    "valid_cu": 1385858,
+    "late_invalid_cu": 1385885,
+    "consumer_valid_cu": 1388559,
+    "consumer_invalid_cu": 1388017,
+    "largest_upload_tx_bytes": 1150
+  },
+  "hashes": {
+    "target/deploy/zisk_solana_program.so": "2feab68d8d7fd5f56e8e36e9b7da7c4bef057f6d73c964dc73228e002279a1cd",
+    "target/deploy/zisk_consumer_example.so": "e0f12a2c604d2a244a563ca28cf37fd86bf37f62f1bee5032bf11a00be723735",
+    "Cargo.lock": "cce9a2d75ccb7a0cadfa99d466366d743cab9f3f0fd51f9b9cfcf7c996028c5c",
+    "runtime-tests/Cargo.lock": "6195956b7524c2f00f3417c6f2d81868c6a716cabd7c8cefbaa43ed016f97742",
+    "package-lock.json": "8f434872c206aeaef03478c716fb37ccf2650b59b6b17434852dd956c46fba75"
+  },
+  "fuzz": {
+    "verify": {
+      "executions": 161067,
+      "elapsed_seconds": 61,
+      "seed": 17012026,
+      "cov": 2840,
+      "ft": 4274
+    },
+    "buffer_state": {
+      "executions": 359026,
+      "elapsed_seconds": 61,
+      "seed": 17012026,
+      "cov": 562,
+      "ft": 3310
+    }
+  },
+  "logs_sha256": {
+    "run.log": "d472748026f966d6adb57397c5e13ef0dcc9d01de2dc70ea76776ef4162918a0",
+    "runtime.log": "84eb099d3bda28644455554dc69e857655cd5b08e6346753b8e155bba185c7e8",
+    "fuzz-verify.log": "b586a26f54d33b5ac1bdc6c12b661ad695b6851ee0238598749263bd8f184d1e",
+    "fuzz-buffer_state.log": "77ab65d6c648e1328079d5d074ba9f70a600e6a11046e7d766827bf5086319a5"
+  },
+  "limitations": [
+    "One independently generated real proof; public seed corpus used for fuzzing.",
+    "Verifier ELF matches the macOS build; consumer ELF differs with the same size and measured CUs.",
+    "No GitHub Actions run, live RPC submission, public-cluster deployment or external cryptographic audit."
+  ]
+}

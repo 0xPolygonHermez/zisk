@@ -1,0 +1,54 @@
+name: Solana Pilfflonk verifier
+on:
+  pull_request:
+    paths:
+      - 'solana/**'
+      - 'zisk-contracts/blake3/**'
+      - 'zisk-contracts/test/blake3_pilfflonk.bin'
+      - '.github/workflows/solana-verifier.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: solana-verifier-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  verifier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+        working-directory: solana
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.12.1'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.95.0'
+          components: rustfmt, clippy
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.5.1
+      - name: Install pinned SBF and fuzz tools
+        run: |
+          cargo install cargo-build-sbf --version 4.6.0 --locked --root .cache/build-tools
+          cargo install cargo-fuzz --version 0.13.1 --locked --root .cache/fuzz-tools
+          rustup toolchain install nightly-2026-02-12 --profile minimal
+      - name: Oracles, host tests, actual SBF and CU regression check
+        run: bash scripts/check.sh
+      - name: Fuzz both proof arithmetic and upload state transitions
+        run: bash scripts/fuzz.sh 60
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: solana-verifier-evidence
+          include-hidden-files: true
+          path: |
+            solana/.cache/benchmark.json
+            solana/.cache/runtime.log
+            solana/.cache/fuzz-*.log
+            solana/fuzz/artifacts/
+            solana/target/deploy/*.so

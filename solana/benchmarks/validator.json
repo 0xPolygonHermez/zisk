@@ -1,0 +1,21 @@
+{
+  "validator": "solana-test-validator 2.2.21 (src:23e01995; feat:3073396398, client:Agave)",
+  "feature_snapshot": "benchmarks/validator-features.json",
+  "note": "Local validator with recorded Agave 2.2.21 feature gates; not full live-cluster equivalence.",
+  "measurements": {
+    "record_valid": 1375268,
+    "verify_valid": 1374713,
+    "verify_wrong_guest": 219229,
+    "consumer_upgradeable_rejected": 3785,
+    "consumer_wrong_outputs": 11030,
+    "consumer_cpi": 1388512,
+    "consumer_recorded": 12468,
+    "consumer_replay": 6412
+  },
+  "largest_transaction_bytes": 1149,
+  "hashes": {
+    "target/deploy/zisk_solana_program.so": "34b35da49930e6691385e1869d17cd381bfa5cdfcab609ec2eb6fba684afe0da",
+    "target/deploy/zisk_consumer_example.so": "6a873e4dcff6eedc7038c402d0e54560ae1fbdf5964b9b29d2d7e25037c219ba",
+    "benchmarks/validator-features.json": "b068fe0def871417fb1da756895076f2c2a382087758edc07ac2cfc65b412a1b"
+  }
+}

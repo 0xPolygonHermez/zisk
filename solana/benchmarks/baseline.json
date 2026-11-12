@@ -1,0 +1,17 @@
+{
+  "stage": "minimal verifier entrypoint before upload/CPI integration",
+  "valid_cu": 1385784,
+  "late_invalid_cu": 1385807,
+  "transaction_ceiling": 1400000,
+  "target_cu": 1000000,
+  "target_met": false,
+  "runtime": "LiteSVM 0.16.0, Agave 4.2.2, default feature set and syscall costs",
+  "builder": "solana-cargo-build-sbf 2.2.21, platform-tools v1.57, Rust 1.95.0-dev (ae660768a), SBPF v0",
+  "profile_cus": false,
+  "hashes": {
+    "target/deploy/zisk_solana_program.so": "135038c88da0b6c8c183beb4a7f712f5c7c0d266f914cc98f7257ea38256051e",
+    "Cargo.lock": "f58a4f52f32b42988ae8e514507d4dd79abcd15489a2499ad4f9de70b3cdddee",
+    "runtime-tests/Cargo.lock": "b4ffff68644db4c72d19c4978d0b2416181d61c5b40493bccc37ed35aa88d7e1",
+    "../zisk-contracts/blake3/PilfflonkVerifier.sol": "a531f5bed7c5e8c85f0ab96e54706d718c42c003cc3c1c900f0eb118d9a70155"
+  }
+}
