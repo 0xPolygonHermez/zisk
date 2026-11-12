@@ -72,9 +72,25 @@ ziskemu -e ../../target/elf/riscv64ima-zisk-zkvm-elf/release/llama2-guest -i /tm
 
 ### From text to text
 
-```text
-"Once upon a time"   →  tokenizer  →  [1, …]  →  model, one token at a time  →  [token ids]  →  tokenizer  →  text
-     (host)                 (host)                      (native or guest)                         (host)
+```mermaid
+flowchart TD
+    prompt(["&quot;Once upon a time&quot;"])
+    text([text])
+
+    subgraph host1 [host]
+        encode[tokenizer]
+    end
+    subgraph run [native or guest]
+        model[model, one token at a time]
+    end
+    subgraph host2 [host]
+        decode[tokenizer]
+    end
+
+    prompt --> encode
+    encode -- "[1, …]" --> model
+    model -- "[token ids]" --> decode
+    decode --> text
 ```
 
 1. **Tokenize (host).** The prompt becomes token ids with llama2.c's byte-pair-encoding tokenizer, starting with BOS (`1`).
