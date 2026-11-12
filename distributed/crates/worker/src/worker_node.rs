@@ -2844,9 +2844,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let job_id = JobId::from(request.job_id.clone());
 
         // Idempotency guard, as for `prove` and `aggregate`: a wrap sent again for the job
-        // it runs, as a replay could, must not start a second one, whose handle would
-        // detach the first's. The running wrap answers.
-        if computes(self.worker.state(), &job_id) && self.worker.has_live_computation() {
+        // it runs, as a replay could, must not start a second one. Found by the state, which
+        // stays until the first wrap's response is handled: its task may have returned with
+        // the response still queued, and a second wrap would then be taken for the first's.
+        if computes(self.worker.state(), &job_id) {
             error!(
                 "[DUPLICATE-DISPATCH] Wrap for {job_id} received while it is still running — \
                  ignoring"
@@ -3243,7 +3244,7 @@ mod recovery_tests {
         WorkerMessage { payload: None }
     }
 
-    /// A wrap still running ends with its result. One the worker has moved on from, as a
+    /// A wrap still running ends with its result. A wrap the worker has moved on from, as a
     /// reconnection without a current job lets it, leaves the newer job and that job's
     /// computation alone; with no newer work, only the late wrap's own handle goes.
     #[test]
