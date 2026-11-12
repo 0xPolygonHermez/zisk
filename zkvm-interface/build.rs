@@ -8,11 +8,12 @@ fn main() {
     println!("cargo:rerun-if-changed={}", accelerators_ext_header);
     println!("cargo:rerun-if-changed={}", io_header);
 
-    // A target without an OS, such as a guest's `riscv64ima-zisk-zkvm-elf`, needs only the
-    // builtin headers of the libclang bindgen loads. Detecting include paths would add those of
-    // the first `clang` executable found, which can be another version: with no system
-    // `stdint.h` to defer to, the two versions' `stdint.h` share one include guard and neither
-    // defines `uint8_t`.
+    // A target without an OS, such as a guest's `riscv64ima-zisk-zkvm-elf`, is freestanding.
+    // Saying so matters when bindgen's include path detection runs a `clang` of another version
+    // than the libclang it loads, as on a host with several LLVM versions: both versions'
+    // builtin headers are then on the search path, and a hosted `stdint.h` defers to the next
+    // one with `#include_next`, which shares its include guard and so defines nothing. A
+    // freestanding `stdint.h` defines the types itself.
     let bare_metal =
         matches!(std::env::var("CARGO_CFG_TARGET_OS").as_deref(), Ok("none") | Ok("zkvm"));
 
@@ -21,7 +22,7 @@ fn main() {
         .header(&accelerators_ext_header)
         .header(&io_header)
         .clang_arg("-std=c11")
-        .detect_include_paths(!bare_metal)
+        .clang_args(bare_metal.then_some("-ffreestanding"))
         .use_core()
         .allowlist_type("zkvm_.*")
         .allowlist_var("ZKVM_.*")
