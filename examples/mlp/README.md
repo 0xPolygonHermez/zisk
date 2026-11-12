@@ -183,3 +183,76 @@ Default emulator backend, CPU only, 128 cores:
 ¹ Measured on an earlier base branch, whose runtime used 26 more steps than this one. The difference is negligible for the timing.
 
 At this size the proof is likely dominated by fixed costs, so the larger models are needed to see the real slope.
+
+## Making it faster
+
+Three ways to lower the cost of the inner loop, from cheapest to most effective:
+
+| Option | Steps / MAC | Changes needed |
+|---|---|---|
+| Today | 7 | — |
+| Unroll the loop ×4 | ≈ 4.75 | Guest code only (`chunks_exact(4)`) |
+| Wider operand modes in ZisK instructions | 5–6 | Main state machine, transpiler |
+| Dot-product precompile | ≈ 0 in Main; 1 precompile row per 8 MACs | New precompile |
+
+### Wider operand modes
+
+Today an indirect memory operand is only possible for `b` (and for the store of `c`), and its address is always `a + offset`. The register that holds the pointer therefore also takes the `a` operand slot, so an indirect load can only feed ops that ignore `a`, such as `copyb` or `signextend_b`. That is why each `lb` is a separate instruction.
+
+- Letting `b` be read from `mem[reg + offset]` with a register *other than* `a` would allow `mul(r_w, u8[a4])`: 6 steps per MAC.
+- Also allowing `a` to be read from memory would allow `mul(s8[a1], s8[a4])`: 5 steps per MAC.
+
+The gain is limited. The two memory reads, the `mul` and the loop bookkeeping all remain. Only 2 Main rows and the 2 `signextend_b` operations go away. The cost of the change is also high: a second address register and memory read per instruction make *every* Main row wider in *every* program, and the transpiler would have to fuse `lb; lb; mul` sequences, which needs liveness and branch-target analysis.
+
+### Dot-product precompile
+
+A precompile only pays off when one call does a lot of work, so its fixed cost is spread out. A precompile for a single multiply-add would not help: each call is still at least one ZisK instruction plus argument setup, and the loop already does the multiply-add in 2 instructions (`mul`, `add`). The natural unit is the **dot product**, the whole inner loop `Σ w[i]·x[i]` over one row:
+
+```rust
+// guest side, one call per neuron
+acc = bias + syscall_dot_i8(row.as_ptr(), x.as_ptr(), n);
+```
+
+**Circuit sketch.**
+
+- Each row of the precompile's state machine reads one 64-bit word from each vector (8 weights and 8 activations), so 8 MACs per row.
+- It splits each word into 8 bytes, range-checks them as signed bytes, and checks `acc' = acc + Σ a_i·b_i`, which is a single degree-2 constraint.
+- The arithmetic fits easily in the Goldilocks field: each product is below 2^14, so even a 2^40-element vector cannot overflow. The exact sum taken mod 2^32 equals Rust's wrapping `i32` sum, so the semantics match the current code.
+
+**Cost per 8 MACs:**
+
+| | Today (8 × the 7-instruction loop) | Dot-product precompile |
+|---|---|---|
+| Main rows | 56 | ≈ 0 (one step per neuron, not per MAC) |
+| Memory accesses | 16 byte-sized reads | 2 aligned 64-bit reads |
+| Arith (`mul`) | 8 | 0 |
+| BinaryE (`signextend_b`) | 16 | 0 |
+| BinaryAdd + Binary | 32 | 0 |
+| Precompile rows | 0 | 1 |
+
+That is a 10–50× reduction in trace work for the hot loop. The actual gain in proving time has to be measured, on models large enough that fixed costs do not dominate.
+
+**Starting point: DMA `memcmp`.** `memcmp` has the same shape: two variable-length buffers streamed from memory and reduced to one number. The [DMA precompile](../../precompiles/dma/README.md) already provides:
+
+- the guest-side call mechanism (a CSR write plus a fused opcode; see `dma_memcmp`, `0xd1`, in [`zisk_ops.rs`](../../core/src/zisk_ops.rs));
+- an aligned 64-bit path that handles up to 8 words per row and continues across rows ([`dma_64_aligned.pil`](../../precompiles/dma/pil/dma_64_aligned.pil));
+- separate paths for unaligned head and tail bytes.
+
+A `dot_i8` precompile would reuse most of this, with a different per-row constraint (sum of products instead of compare) and a different result. A first version can stay small by requiring 8-byte-aligned pointers and lengths that are a multiple of 8. The model blob would then pad each layer width and weight row to a multiple of 8 on the host side, which avoids the unaligned path.
+
+**Work involved:**
+
+1. A new opcode and syscall ID, the `ziskos` wrapper with a native fallback for the host, and the emulator implementation (including `emulator-asm`).
+2. The PIL AIR, witness generation, and generation of the memory inputs (modeled on `dma_gen_memcmp_mem_inputs.rs`).
+3. Integration with the planner and the instance builder.
+
+### Larger models
+
+- **The precompile still applies.** In a transformer almost all the work is matrix multiplication, which is dot products, so the same precompile covers it as long as the model is quantized to int8. If the model uses int4 or int16 weights, the precompile could take a width parameter; that is easy to design in from the start and harder to add later.
+- **The bottleneck moves.** Once dot products are nearly free, the remaining operations dominate: softmax, layer normalization, activation functions and requantization, which stay as RISC-V code. A real model should be profiled before deciding what to accelerate next.
+
+### Suggested order
+
+1. Unroll the loop in this example: cheap, and possible today.
+2. Prove the larger models (4.7 M and 14.8 M steps) to get the real growth rate of proving time.
+3. Use those numbers to decide whether the `dot_i8` precompile is worth building.
