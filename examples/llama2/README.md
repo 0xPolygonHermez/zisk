@@ -133,13 +133,46 @@ llama2/
 
 ## Measured cost
 
-`stories260K`, prompt "Once upon a time" (5 tokens), 20 generated tokens, `ziskemu -X --sdk --top-functions`:
+### Where the steps go
 
-- **210.9 M steps**, about **8.4 M steps per token**;
-- the integer multiply-accumulates in the matrix multiplications are 259 K per token, about 1.8 M steps at 7 steps each, so **only about 20% of the steps**;
-- most of the rest is software floating point: `f32` multiply and add (`__mulsf3`, `__addsf3`, about half of the cost, mostly the per-group scale multiplications in `matmul` and the attention), `expf` (14%, softmax and SiLU), division and rounding in activation quantization.
+These are profiles from `ziskemu -X --sdk --top-functions`, with the prompt "Once upon a time":
 
-End to end, with `llama2-zisk`:
+- `stories260K`, 20 generated tokens: **210.9 M steps**.
+- `stories15M`, 6 generated tokens: **2.10 G steps**.
+
+The profiler reports the cost of each function, including the routines it calls, but not of each loop. Almost all the cost is in [`matmul`](common/src/forward.rs), which has two loops:
+
+```rust
+for (g, …) in row.chunks_exact(gs)… {                  // per group
+    for (&a, &b) in wg.iter().zip(xg) {                // (A) integer multiply-add, ~7 steps each
+        ival += a as i32 * b as i32;
+    }
+    val += ival as f32 * row_scales[g] * x.scales[g];  // (B) 4 software-float calls, ~170 steps per group
+}
+```
+
+- **(A)** is the int8 dot product, the same loop as in the [`mlp`](../mlp/) example.
+- **(B)** runs once per group. It converts the integer sum to `f32` (`__floatsisf`) and does two multiplies (`__mulsf3`) and one add (`__addsf3`), each through a software routine.
+
+So how much (B) costs depends on the group size. Below, the function totals are measured. The split between (A) and (B) is estimated from the number of multiply-adds and groups per token.
+
+| Share of the cost | `stories15M` | `stories260K` |
+|---|---|---|
+| `matmul` in total (measured) | **94%** | **60%** |
+| (A) integer multiply-adds (estimated) | ~55–60% | ~20% |
+| (B) float step per group (estimated) | ~35% | ~40% |
+| `expf`, in softmax and SiLU (measured) | 2% | 14% |
+| `quantize`, of the activations (measured) | 1.4% | 7% |
+| `rmsnorm`, attention and the rest | ~2% | ~15% |
+
+1. **For `stories15M`, the main cost is the integer dot product (A).** This is the case that matters as models grow. Its groups have 32 values (`dim`) or 64 values (`hidden_dim`), so step (B) adds roughly 5 steps per multiply-add on top of the 7.
+2. **The output classifier (`wcls`) is the largest matrix.** It gives a score for each of the 32,000 vocabulary entries. That is 9.2 M of the 15.2 M multiply-adds per token, about 60% of `matmul`, and it runs once per token.
+3. **`stories260K` is skewed by its group size.** Its `hidden_dim` is 172, so `w2` gets groups of only 4 values. `w2` then has 81% of all groups, and step (B) runs once every 4 multiply-adds, outweighing (A). Padding `hidden_dim` to a multiple of 32 or 64 would avoid this.
+4. **Attention and `expf` matter only for the tiny model.** Their cost grows with the position in the sequence, though, so they come back with long generations.
+
+### End to end
+
+These runs use `llama2-zisk`:
 
 | Model | Tokens (prompt + generated) | ziskemu steps | Steps per token | ziskemu time | Native speed |
 |---|---|---|---|---|---|
@@ -150,6 +183,7 @@ Steps per token grow with the position in the sequence, because attention looks 
 
 ## Next steps
 
-1. **Fixed-point instead of `f32`.** Replacing the scales, norms, softmax, SiLU and RoPE with integer fixed-point arithmetic would remove most of the steps above, and is needed anyway for a fully integer model. The cost is that the output would no longer match llama2.c's float math exactly, so accuracy must be measured.
-2. **Bind the model** in the commitment with a hash of the blob, using the SHA-256 or Keccak precompile.
-3. **Prove** a short generation with `cargo-zisk prove`, and measure proving time per token.
+1. **Speed up the dot product (A)**, which takes most of the cost for larger models. This could be done with tighter code, or with a dot-product precompile as described in the [`mlp` README](../mlp/README.md#dot-product-precompile).
+2. **Fixed-point instead of `f32`.** Doing the per-group step (B), and then the norms, softmax, SiLU and RoPE, with integer fixed-point arithmetic would remove the software-float calls. This is needed anyway for a fully integer model. The cost is that the output would no longer match llama2.c's float math exactly, so accuracy must be measured.
+3. **Bind the model** in the commitment with a hash of the blob, using the SHA-256 or Keccak precompile.
+4. **Prove** a short generation with `cargo-zisk prove`, and measure proving time per token.
