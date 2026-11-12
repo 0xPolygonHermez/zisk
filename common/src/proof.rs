@@ -820,8 +820,9 @@ pub struct Proof {
     pub body: ProofBody,
     /// The program verification key.
     ///
-    /// A copy of the one the publics commit to: [`Proof::verify`] and [`Proof::save`]
-    /// refuse a proof whose copy differs. Read the program a proof attests to with
+    /// A copy of the one the publics commit to: [`Proof::save`], and [`Proof::verify`] without
+    /// a program VK override ([`with_program_vk`](ZiskVerifyBuilder::with_program_vk)), refuse a
+    /// proof whose copy differs. Read the program a proof attests to with
     /// [`Proof::get_program_vk`].
     pub program_vk: ProgramVK,
     /// Host randomness seed of the execution this proof attests to.
