@@ -8,11 +8,20 @@ fn main() {
     println!("cargo:rerun-if-changed={}", accelerators_ext_header);
     println!("cargo:rerun-if-changed={}", io_header);
 
+    // A target without an OS, such as a guest's `riscv64ima-zisk-zkvm-elf`, needs only the
+    // builtin headers of the libclang bindgen loads. Detecting include paths would add those of
+    // the first `clang` executable found, which can be another version: with no system
+    // `stdint.h` to defer to, the two versions' `stdint.h` share one include guard and neither
+    // defines `uint8_t`.
+    let bare_metal =
+        matches!(std::env::var("CARGO_CFG_TARGET_OS").as_deref(), Ok("none") | Ok("zkvm"));
+
     let bindings = bindgen::Builder::default()
         .header(&accelerators_header)
         .header(&accelerators_ext_header)
         .header(&io_header)
         .clang_arg("-std=c11")
+        .detect_include_paths(!bare_metal)
         .use_core()
         .allowlist_type("zkvm_.*")
         .allowlist_var("ZKVM_.*")
