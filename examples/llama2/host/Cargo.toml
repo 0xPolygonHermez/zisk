@@ -1,0 +1,19 @@
+[package]
+name = "llama2-host"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "llama2-native"
+path = "src/bin/native.rs"
+
+[[bin]]
+name = "llama2-zisk"
+path = "src/bin/zisk.rs"
+
+[dependencies]
+llama2-common = { path = "../common" }
+sha2 = "0.10.9"
+
+[build-dependencies]
+zisk-sdk = { workspace = true }
