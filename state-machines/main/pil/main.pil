@@ -380,11 +380,15 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         // Calculate the value to store in memory
 
         store_value[lane][0] = store_pc[lane]*(pc[lane] + jmp_offset2[lane] - c[lane][0]) + c[lane][0];
-        // BUG(rv64-auipc): when store_pc=1 (AUIPC), store_value[1] is forced to 0, dropping the
-        // carry out of bit 31 of (pc + jmp_offset2).  For pc + jmp_offset2 >= 2^32 - valid in RV64I,
-        // e.g. auipc rd, 0x6ffff at PC >= 0x90001000 - this no longer matches the 64-bit value
-        // that the memory/register bus represents as two 32-bit limbs.
-        // Reproducer: elf-regressions/auipc_rv64_overflow/
+        // When store_pc=1 the stored value is pc + jmp_offset2 as a single limb: store_value[1] is
+        // forced to 0, so the carry out of bit 31 is dropped and a result >= 2^32 would not match
+        // the two 32-bit limbs of the memory/register bus. No transpiled program reaches that case:
+        // store_pc is only used to save a return address (pc + 4 of jal/jalr, and of the WASM
+        // calls), which is a ROM address and therefore below 2^32. In particular AUIPC does not use
+        // store_pc: the RISC-V transpiler turns it into a copyb of the constant pc + imm, whose two
+        // limbs are both carried, so an AUIPC result above 2^32 is proven correctly (see
+        // elf-regressions/auipc_rv64_overflow/). A new use of store_pc must keep its result below
+        // 2^32, or this expression has to carry the high limb.
         store_value[lane][1] = (1 - store_pc[lane]) * c[lane][1];
 
         // Memory function to prove that previous register store_offset access.
