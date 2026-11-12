@@ -134,6 +134,14 @@ pub struct ZiskStream<P: StreamProcessor> {
     /// Keeps a retired background thread away from the processor.
     gate: Arc<Gate>,
 
+    /// How long retiring a source thread waits for a batch it already passed to the
+    /// processor: [`RETIRE_TIMEOUT`].
+    retire_timeout: Duration,
+
+    /// A reset gave up waiting for the old source's last batch: the processor is reset again
+    /// once that batch has left, before a new source feeds it.
+    reset_pending: bool,
+
     initialized: AtomicBool,
 }
 
@@ -158,6 +166,8 @@ impl<P: StreamProcessor> ZiskStream<P> {
             tx: None,
             thread_handle: None,
             gate: Arc::default(),
+            retire_timeout: RETIRE_TIMEOUT,
+            reset_pending: false,
             initialized: AtomicBool::new(false),
         }
     }
@@ -165,20 +175,24 @@ impl<P: StreamProcessor> ZiskStream<P> {
     /// Retire the current background thread, if any, so it never feeds the processor again.
     ///
     /// The thread is detached, not joined: it may be blocked reading a source that stays
-    /// open, and joining it would wait for that source's producer. Returns whether it still
-    /// has a batch in the processor.
+    /// open, and joining it would wait for that source's producer. The stream has no source
+    /// until [`Self::set_stream_src`] gives it one. Returns whether the thread still has a
+    /// batch in the processor.
     fn retire_thread(&mut self) -> bool {
         if let Some(tx) = self.tx.take() {
             let _ = tx.send(ThreadCommand::Shutdown);
         }
         self.thread_handle.take();
+        self.initialized.store(false, Ordering::SeqCst);
         self.gate.advance()
     }
 
     /// Set a new StreamSource for the pipeline and spawn a background thread to process data.
     ///
     /// This retires any existing background thread and starts a new one with the new stream.
-    /// The old thread is not waited for, unless it still has a batch in the processor.
+    /// The old thread is not waited for, unless it still has a batch in the processor. If an
+    /// earlier [`Self::reset`] gave up waiting for such a batch, the processor is reset again
+    /// first.
     ///
     /// # Arguments
     /// * `stream` - The new StreamSource for reading data.
@@ -186,12 +200,17 @@ impl<P: StreamProcessor> ZiskStream<P> {
     /// # Errors
     ///
     /// Returns [`StreamError::Transport`] if the old thread's batch is still in the processor
-    /// after a few seconds: two sources would feed it at once.
+    /// after a few seconds: two sources would feed it at once. The stream is then left
+    /// without a source.
     pub fn set_stream_src(&mut self, mut stream: StreamSource) -> Result<()> {
-        if self.retire_thread() && !self.gate.wait_idle(RETIRE_TIMEOUT) {
+        if self.retire_thread() && !self.gate.wait_idle(self.retire_timeout) {
             return Err(StreamError::Transport(format!(
-                "the previous stream source still feeds the processor after {RETIRE_TIMEOUT:?}"
+                "the previous stream source still feeds the processor after {:?}",
+                self.retire_timeout
             )));
+        }
+        if std::mem::take(&mut self.reset_pending) {
+            self.hints_processor.reset();
         }
 
         // Create a new channel for communication with the thread
@@ -279,21 +298,19 @@ impl<P: StreamProcessor> ZiskStream<P> {
     /// Reset the ZiskStream state, retiring the background thread and resetting the processor.
     ///
     /// Data the old source delivers afterwards is dropped. A batch the old thread already
-    /// passed to the processor is waited for (a few seconds at most), then reset as well.
+    /// passed to the processor is waited for (a few seconds at most) before the processor is
+    /// reset, so the reset never runs alongside it. If the batch is still inside after that,
+    /// the processor is reset anyway, and again before the next source starts.
     pub fn reset(&mut self) {
-        let in_flight = self.retire_thread();
-        self.hints_processor.reset();
-        if in_flight {
-            if self.gate.wait_idle(RETIRE_TIMEOUT) {
-                self.hints_processor.reset();
-            } else {
-                tracing::warn!(
-                    "ZiskStream::reset: a batch of the old stream source is still in the \
-                     processor after {RETIRE_TIMEOUT:?}"
-                );
-            }
+        if self.retire_thread() && !self.gate.wait_idle(self.retire_timeout) {
+            tracing::warn!(
+                "ZiskStream::reset: a batch of the old stream source is still in the processor \
+                 after {:?}; it is reset again before the next source starts",
+                self.retire_timeout
+            );
+            self.reset_pending = true;
         }
-        self.initialized.store(false, Ordering::SeqCst);
+        self.hints_processor.reset();
     }
 
     /// Trigger the background thread to process hints asynchronously.
@@ -535,8 +552,8 @@ mod tests {
         assert_eq!(recorder.events(), ["batch"]);
     }
 
-    /// A batch the old source already passed to the processor is waited for, and what it
-    /// wrote is reset too.
+    /// A batch the old source already passed to the processor is waited for, and only then is
+    /// the processor reset: never alongside the batch, and after what it wrote.
     #[test]
     fn reset_waits_for_a_batch_in_the_processor_and_resets_after_it() {
         let recorder = Arc::new(Recorder::default());
@@ -563,7 +580,59 @@ mod tests {
         // More data from the retired source is dropped.
         producer.send(one_word()).unwrap();
         thread::sleep(Duration::from_millis(100));
-        assert_eq!(recorder.events(), ["batch", "reset", "batch-done", "reset"]);
+        assert_eq!(recorder.events(), ["batch", "batch-done", "reset"]);
+    }
+
+    /// Holds the recorder's first batch in the processor; returns what lets it go.
+    fn hold_first_batch(recorder: &Recorder) -> (mpsc::Receiver<()>, mpsc::Sender<()>) {
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        *recorder.hold.lock().unwrap() = Some((entered_tx, release_rx));
+        (entered_rx, release_tx)
+    }
+
+    /// A reset that gives up waiting for the old source's batch resets the processor again
+    /// once the batch has left, before the next source feeds it.
+    #[test]
+    fn a_reset_that_gives_up_on_a_batch_resets_again_before_the_next_source() {
+        let recorder = Arc::new(Recorder::default());
+        let (entered, release) = hold_first_batch(&recorder);
+        let mut stream = ZiskStream::from_arc(Arc::clone(&recorder));
+        stream.retire_timeout = Duration::from_millis(100);
+        let (source, producer) = StreamSource::channel();
+        stream.set_stream_src(source).unwrap();
+        stream.start_stream().unwrap();
+        producer.send(one_word()).unwrap();
+        entered.recv_timeout(Duration::from_secs(5)).unwrap();
+
+        stream.reset();
+        release.send(()).unwrap();
+        thread::sleep(Duration::from_millis(100));
+
+        stream.set_stream_src(StreamSource::from_vec(vec![0u8; 8])).unwrap();
+        stream.start_stream().unwrap();
+        thread::sleep(Duration::from_millis(100));
+        assert_eq!(recorder.events(), ["batch", "reset", "batch-done", "reset", "batch"]);
+    }
+
+    /// A new source refused because the old one's batch is still in the processor leaves the
+    /// stream without a source, and says so.
+    #[test]
+    fn a_refused_source_leaves_the_stream_uninitialized() {
+        let recorder = Arc::new(Recorder::default());
+        let (entered, release) = hold_first_batch(&recorder);
+        let mut stream = ZiskStream::from_arc(Arc::clone(&recorder));
+        stream.retire_timeout = Duration::from_millis(100);
+        let (source, producer) = StreamSource::channel();
+        stream.set_stream_src(source).unwrap();
+        stream.start_stream().unwrap();
+        producer.send(one_word()).unwrap();
+        entered.recv_timeout(Duration::from_secs(5)).unwrap();
+
+        assert!(stream.set_stream_src(StreamSource::from_vec(vec![0u8; 8])).is_err());
+        assert!(!stream.is_initialized());
+        assert!(stream.start_stream().is_err());
+        release.send(()).unwrap();
     }
 
     /// A batch that panics kills its thread, as before, and must not leave the next source
