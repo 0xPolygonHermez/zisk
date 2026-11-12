@@ -117,6 +117,7 @@ impl<F: PrimeField64> Add256SM<F> {
         trace.set_addr_a(input.addr_a);
         trace.set_addr_b(input.addr_b);
         trace.set_addr_c(input.addr_c);
+        trace.set_addr_params_hi(zisk_core::addr_hi(input.addr_main) == 1);
         trace.set_addr_a_hi(zisk_core::addr_hi(input.addr_a) == 1);
         trace.set_addr_b_hi(zisk_core::addr_hi(input.addr_b) == 1);
         trace.set_addr_c_hi(zisk_core::addr_hi(input.addr_c) == 1);

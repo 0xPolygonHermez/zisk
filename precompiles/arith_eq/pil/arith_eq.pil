@@ -538,9 +538,11 @@ airtemplate ArithEq (const int N = 2**18, const int equations = EQ_ALL_256) {
 
     col witness bits(40) step_addr;
 
-    // High limb (bit 32) of the indirect addresses read from the parameter struct at the
-    // ADDR_IND_* clocks: step_addr holds the whole 33-bit address and the memory value is two
-    // 32-bit limbs, so the low limb is step_addr - 2^32 * addr_hi.
+    // High limb (bit 32) of the addresses held in step_addr: the operands a and b (ADDR_A, ADDR_OP)
+    // arrive on the operation bus, and the indirect addresses (ADDR_IND_*) are read from the
+    // parameter struct, as two 32-bit limbs. This machine is the one that joins them into a 33-bit
+    // address, so it checks the high limb is a bit: the low limb is step_addr - 2^32 * addr_hi and
+    // the address cannot wrap the field.
     col witness bits(1) addr_hi;
     addr_hi * (1 - addr_hi) === 0;
 
@@ -795,7 +797,8 @@ airtemplate ArithEq (const int N = 2**18, const int equations = EQ_ALL_256) {
 
     // a is the first operand address for the direct a/b ops (0 for the rest), b the parameter
     // struct address or the second (or only) operand address.
-    proves_operation(op: bus_op, a:[step_addr'(ADDR_A), 0], b:[step_addr'(ADDR_OP), 0], c:[0, 0], flag:0,
+    proves_operation(op: bus_op, a: [step_addr'(ADDR_A) - 2**32 * addr_hi'(ADDR_A), addr_hi'(ADDR_A)],
+                     b: [step_addr'(ADDR_OP) - 2**32 * addr_hi'(ADDR_OP), addr_hi'(ADDR_OP)], c:[0, 0], flag:0,
                      main_step: step_addr'(MAIN_STEP), mul: in_use_clk0);
 
     // selclk0 is the clock 0 for dedicated to one operation

@@ -68,6 +68,8 @@ impl<F: PrimeField64> Dma64AlignedMemSetSM<F> {
             // calculate the first aligned address
             // if dst is aligned is same address if not it's addr + 8
             row.set_dst64(dst64);
+            // bit 32 of the byte address is bit 29 of the word address
+            row.set_dst_addr_hi((dst64 >> 29) & 1 == 1);
             dst64 += addr_incr_by_row;
 
             row.set_count64(count64 as u32);

@@ -103,7 +103,9 @@ impl<F: PrimeField64> Blake3SM<F> {
         // Fill the step_addr
         trace[0].set_step_addr(lane, input.step_main); // STEP_MAIN
         trace[1].set_step_addr(lane, input.state_addr); // ADDR_STATE (main operand a)
+        trace[1].set_addr_hi(lane, zisk_core::addr_hi(input.state_addr) == 1);
         trace[2].set_step_addr(lane, input.input_addr); // ADDR_INPUT (main operand b)
+        trace[2].set_addr_hi(lane, zisk_core::addr_hi(input.input_addr) == 1);
 
         // View the state and the message block as 16 little-endian u32 words each
         let mut v = [0u32; 16];

@@ -106,6 +106,7 @@ impl<F: PrimeField64> PoseidonSM<F> {
         // Fill step and addr
         trace[0].set_step_addr(input.step_main);
         trace[1].set_step_addr(input.addr_main);
+        trace[1].set_addr_hi(zisk_core::addr_hi(input.addr_main) == 1);
 
         // Fill in_use
         for item in trace.iter_mut().take(CLOCKS) {

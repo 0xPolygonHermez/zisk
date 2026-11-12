@@ -112,11 +112,11 @@ airtemplate Dma(int N = 2**21,
     // l_count                       9
     // count_diff_chunks            16 <===
 
-    // h_dst64                      23
+    // h_dst64                      22
     // l_dst64                       7
     // dst_offset                    3
 
-    // h_src64                      23
+    // h_src64                      22
     // l_src64                       7
     // src_offset                    3
     // src_offset_after_pre          3
@@ -286,23 +286,30 @@ airtemplate Dma(int N = 2**21,
     // src_offset range verified with dma_rom table
 
 
-    // 33 bit address (ADDR_BITS)
-    // 23 bits RC +  7 bits RC + 3 bits T
-    col witness bits(23) h_dst64;
+    // 33 bit address (ADDR_BITS): a low limb of 32 bits plus the bit 32 (dst_addr_hi)
+    // 22 bits RC +  7 bits RC + 3 bits T
+    col witness bits(22) h_dst64;
     col witness bits(7) l_dst64;
     col witness bits(3) dst_offset;
+
+    // The operation bus carries a pointer as two 32-bit limbs and this machine is the one that
+    // joins them into an address, so it checks that the high limb it uses is a bit: dst64 is then
+    // below 2^33 and cannot wrap the field.
+    col witness bits(1) dst_addr_hi;
+    dst_addr_hi * (1 - dst_addr_hi) === 0;
+
     const expr dst = h_dst64 * 2**10 + l_dst64 * 2**3 + dst_offset;
-    const expr dst64 = h_dst64 * 2**10 + l_dst64 * 2**3;
+    const expr dst64 = h_dst64 * 2**10 + l_dst64 * 2**3 + 2**32 * dst_addr_hi;
     // dst_offset range verified with dma_rom table
 
     col witness bits(MAIN_STEP_BITS) main_step;
 
-    range_check(expression: h_dst64, min: 0, max: 2**24-1, sel: sel);
+    range_check(expression: h_dst64, min: 0, max: 2**22-1, sel: sel);
 
-    // 33 bit address (ADDR_BITS)
-    // 23 bits RC + 7 bits RC + 3 bits T
+    // 33 bit address (ADDR_BITS): a low limb of 32 bits plus the bit 32 (src_addr_hi)
+    // 22 bits RC + 7 bits RC + 3 bits T
     if (has_src) {
-        col witness bits(23) air.h_src64;
+        col witness bits(22) air.h_src64;
         col witness bits(7) air.l_src64;
         col witness bits(3) air.src_offset;
         col witness bits(3) air.src_offset_after_pre;
@@ -310,20 +317,25 @@ airtemplate Dma(int N = 2**21,
         col witness bits(1) air.src64_inc_by_pre;   // src64 increment after apply memcpy_pre operation
         src64_inc_by_pre * (1 - src64_inc_by_pre) === 0;
 
+        // Bit 32 of the source address, see dst_addr_hi.
+        col witness bits(1) air.src_addr_hi;
+        src_addr_hi * (1 - src_addr_hi) === 0;
+
         const expr air.src = h_src64 * 2**10 + l_src64 * 2**3 + src_offset;
-        const expr air.src64 = h_src64 * 2**10 + l_src64 * 2**3;
+        const expr air.src64 = h_src64 * 2**10 + l_src64 * 2**3 + 2**32 * src_addr_hi;
         if (enable_memset) {
             (sel_memset + sel_inputcpy) * src_offset_after_pre === 0;
         }
 
-        range_check(expression: h_src64, min: 0, max: 2**24-1, sel: sel);
+        range_check(expression: h_src64, min: 0, max: 2**22-1, sel: sel);
         lookup_assumes(DUAL_RANGE_7_BITS_ID, expressions: [l_src64, l_dst64], sel: sel, sel_is_binary: 1);
 
-        // High 32 bits of the source address, see dst_hi below.
+        // High limb of the source operand beyond the address, see dst_hi below.
         col witness bits(32) air.src_hi;
 
         src_hi * count * sel === 0;
         (sel_inputcpy + sel_memset) * src_hi === 0;
+        (sel_inputcpy + sel_memset) * src_addr_hi === 0;
     } else {    
         const expr air.src = 0;
         const expr air.src64 = 0;
@@ -331,12 +343,14 @@ airtemplate Dma(int N = 2**21,
         const expr air.src64_inc_by_pre = 0;
         const expr air.src_offset_after_pre = 0;
         const expr air.src_hi = 0;
+        const expr air.src_addr_hi = 0;
         range_check(expression: l_dst64, min: 0, max: 0x7F, sel: sel);
     }
 
-    // High 32 bits of the destination address. An operation with count == 0 touches no memory,
-    // so only then may the address carry bits above 32; for any other count the constraint below
-    // pins the word to zero. Declared here because bus_result reads dst_hi.
+    // What the high limb of the destination operand holds beyond the address bit dst_addr_hi. An
+    // operation with count == 0 touches no memory, so only then may the operand be something
+    // other than an address; for any other count the constraint below pins the word to zero.
+    // Declared here because bus_result reads dst_hi.
     col witness bits(32) dst_hi;
 
     dst_hi * count * sel === 0;
@@ -378,7 +392,7 @@ airtemplate Dma(int N = 2**21,
         col witness bits(32) air.bus_post_result[2];
 
         bus_result[0] = bus_pre_result[0] + bus_post_result[0] + dst * (1 - sel_memcmp);
-        bus_result[1] = bus_pre_result[1] + bus_post_result[1] + dst_hi * (1 - sel_memcmp);
+        bus_result[1] = bus_pre_result[1] + bus_post_result[1] + (dst_hi + dst_addr_hi) * (1 - sel_memcmp);
 
         (bus_pre_result[0] + bus_pre_result[1]) * (bus_post_result[0] + bus_post_result[1]) === 0;
 
@@ -413,7 +427,7 @@ airtemplate Dma(int N = 2**21,
         result_nz = 0;
         // return dst address, the full 64 bits: main sends c = dst unmasked
         bus_result[0] = dst;
-        bus_result[1] = dst_hi;
+        bus_result[1] = dst_hi + dst_addr_hi;
         const int air.post_result_nz = 0;
         const int air.pre_result_nz = 0;
         const int air.bus_pre_result[2] = [0, 0];
@@ -479,9 +493,17 @@ airtemplate Dma(int N = 2**21,
     // OP_DMA_XMEMEQ             (dst, 0,   src, 0, 0, 0, 0, main_step, count, src_offset_after_pre)
     // OP_DMA_XMEMSET            (dst, 0, count, 0, 0, 0, 0, main_step, value, src_offset_after_pre)
 
-    assumes_operation(op: loop_op, a: [loop_dst, 0], 
-                                   b: [loop_b0, 0],  
-                                   c: [loop_dst, 0],
+    // The loop machines prove these operations in the two-limb format of the operation bus, since
+    // main may call them directly. Any split of an address with a binary high limb names the same
+    // address, so the limbs here only have to agree with the ones the loop machine proves.
+    col witness bits(1) loop_dst_hi;
+    col witness bits(1) loop_b0_hi;
+    loop_dst_hi * (1 - loop_dst_hi) === 0;
+    loop_b0_hi * (1 - loop_b0_hi) === 0;
+
+    assumes_operation(op: loop_op, a: [loop_dst - 2**32 * loop_dst_hi, loop_dst_hi], 
+                                   b: [loop_b0 - 2**32 * loop_b0_hi, loop_b0_hi],  
+                                   c: [loop_dst - 2**32 * loop_dst_hi, loop_dst_hi],
                                    main_step:,
                                    extended_arg: loop_extended_arg,
                                    extra_args: [src_offset_after_pre], 
@@ -546,11 +568,10 @@ airtemplate Dma(int N = 2**21,
     // OP_DMA_XMEMCMP  (dst, 0, src,   0, 0, R0, R1, main_step, count)
     // OP_DMA_XMEMSET  (dst, 0, count, 0, 0,  0,  0, main_step, value)
 
-    // Main sends the operands of a precompiled operation as single field elements (see main.pil).
     proves_operation(op: bus_op, 
-                     a: [dst + 2**32 * dst_hi, 0], 
-                     b: [src * (sel_memcpy + sel_memcmp) + count * (sel_inputcpy + sel_memset) + 2**32 * src_hi, 0], 
-                     c: [bus_result[0] + 2**32 * bus_result[1], 0],
+                     a: [dst, dst_hi + dst_addr_hi], 
+                     b: [src * (sel_memcpy + sel_memcmp) + count * (sel_inputcpy + sel_memset), src_hi + src_addr_hi], 
+                     c: bus_result,
                      flag: 0, 
                      main_step:, 
                      extended_arg: static_count * (sel_memcpy + sel_memcmp) + fill_byte * sel_memset,

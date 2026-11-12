@@ -47,8 +47,13 @@ impl<F: PrimeField64> TwistedEdwardsSM<F> {
         data: &TwistedEdwardsStepAddr,
         trace: &mut [R],
     ) {
+        // addr_hi is binary on every row and holds the high limb of the operands a and b
+        for row in trace.iter_mut().take(TWISTED_EDWARDS_ROWS_BY_OP) {
+            row.set_addr_hi(false);
+        }
         trace[0].set_step_addr(data.main_step);
         trace[1].set_step_addr(data.addr_op);
+        trace[1].set_addr_hi(zisk_core::addr_hi(data.addr_op) == 1);
         trace[2].set_step_addr(data.addr_x1);
         trace[3].set_step_addr(data.addr_y1);
         trace[4].set_step_addr(data.addr_x2);
@@ -56,6 +61,7 @@ impl<F: PrimeField64> TwistedEdwardsSM<F> {
         trace[6].set_step_addr(data.addr_x3);
         trace[7].set_step_addr(data.addr_y3);
         trace[8].set_step_addr(data.addr_a);
+        trace[8].set_addr_hi(zisk_core::addr_hi(data.addr_a) == 1);
         for row in trace.iter_mut().take(TWISTED_EDWARDS_ROWS_BY_OP).skip(9) {
             row.set_step_addr(0);
         }

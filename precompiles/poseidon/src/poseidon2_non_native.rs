@@ -94,6 +94,7 @@ macro_rules! poseidon2_non_native_sm {
                     if let Some((step_main, addr_main)) = active {
                         trace[0].set_step_addr(step_main);
                         trace[1].set_step_addr(addr_main);
+                        trace[1].set_addr_hi(zisk_core::addr_hi(addr_main) == 1);
                         for t in trace.iter_mut() {
                             t.set_in_use(true);
                         }

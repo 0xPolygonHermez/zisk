@@ -78,10 +78,13 @@
 //! ## Addresses above 32 bits
 //! * Addresses are 33 bits wide ([`ADDR_BITS`], [`MAX_ADDR`]) and the proof system handles them as
 //!   single field elements: the memory bus carries the whole byte address and the memory airs
-//!   hold 30-bit word addresses. BIOS, input and ROM live below 4GB; the RAM crosses it. A
-//!   pointer register used by an indirect access must be inside the address space (its high
-//!   limb 0 or 1, see main.pil), and a 64-bit value that is split in two 32-bit limbs in memory
-//!   (the pointers of a parameter struct) is rebuilt as lo + 2^32 * hi.
+//!   hold 30-bit word addresses. BIOS, input and ROM live below 4GB; the RAM crosses it.
+//!   Registers, memory values and the operands on the operation bus are two 32-bit limbs, and
+//!   nothing says that such a value is a pointer. So the machine that joins the limbs into an
+//!   address, lo + 2^32 * hi, is the one that checks the high limb is a bit, which keeps the
+//!   address below 2^33 and unable to wrap the field: Main for the pointer of an indirect
+//!   access, and each precompile for its address operands and for the pointers it reads from a
+//!   parameter struct.
 //! * The guest is linked with the `medium` code model (PC-relative, +-2GiB), so from the ROM at
 //!   `ROM_ADDR` it can only reach RAM up to `ROM_ADDR + 2GiB` = 0x1_2800_0000 ([`PC_REACH_END`]):
 //!   .data/.bss and the system regions must stay below it; the rest of the RAM is reached

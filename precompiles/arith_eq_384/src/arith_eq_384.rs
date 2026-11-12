@@ -98,13 +98,15 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         data: &ArithEq384StepAddr,
         trace: &mut [R],
     ) {
-        // addr_hi is binary on every row and holds the high limb of the pointers read from the
-        // parameter struct on the ADDR_IND rows: clear it everywhere first
+        // addr_hi is binary on every row and holds the high limb of the addresses in step_addr
+        // (the operands a and b, and the pointers read from the parameter struct on the ADDR_IND
+        // rows): clear it everywhere first
         for row in trace.iter_mut().take(ARITH_EQ_384_ROWS_BY_OP) {
             row.set_addr_hi(false);
         }
         trace[0].set_step_addr(data.main_step);
         trace[1].set_step_addr(data.addr_op);
+        trace[1].set_addr_hi(zisk_core::addr_hi(data.addr_op) == 1);
         trace[2].set_step_addr(data.addr_x1);
         trace[3].set_step_addr(data.addr_y1);
         trace[4].set_step_addr(data.addr_x2);
@@ -118,6 +120,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         // ADDR_A row (right after the indirections) carries the main operand a
         let addr_a_row = 8 + data.addr_ind.len();
         trace[addr_a_row].set_step_addr(data.addr_a);
+        trace[addr_a_row].set_addr_hi(zisk_core::addr_hi(data.addr_a) == 1);
         for row in trace.iter_mut().take(ARITH_EQ_384_ROWS_BY_OP).skip(addr_a_row + 1) {
             row.set_step_addr(0);
         }

@@ -138,6 +138,9 @@ impl<F: PrimeField64> JumpDestSM<F> {
     fn set_cursor<R: JumpDestTraceRowOps<F>>(row: &mut R, cursor: &Cursor) {
         row.set_src64(cursor.src64);
         row.set_dst64(cursor.dst64);
+        // bit 32 of the byte address is bit 29 of the word address
+        row.set_src_addr_hi((cursor.src64 >> 29) & 1 == 1);
+        row.set_dst_addr_hi((cursor.dst64 >> 29) & 1 == 1);
         row.set_main_step(cursor.main_step);
         row.set_count(cursor.count);
     }

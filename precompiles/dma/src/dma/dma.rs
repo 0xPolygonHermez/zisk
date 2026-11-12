@@ -26,15 +26,16 @@ impl<F: PrimeField64> DmaSM<F> {
         Arc::new(Self { _phantom: PhantomData })
     }
 
-    /// A pointer register as the Dma air represents it: `(dst, dst_hi)` with the register equal
-    /// to `dst + 2^32 * dst_hi`. A 33-bit address keeps `dst_hi = 0`; a larger value (legal only
-    /// for an operation with count == 0, which touches no memory) is split at bit 32.
+    /// A pointer register as the Dma air represents it: `(dst, dst_addr_hi, dst_hi)` with the
+    /// register equal to `dst + 2^32 * (dst_addr_hi + dst_hi)`. A 33-bit address is its low limb
+    /// and its bit 32, with `dst_hi = 0`; a larger value (legal only for an operation with
+    /// count == 0, which touches no memory) keeps its whole high limb in `dst_hi`.
     #[inline(always)]
-    fn split_pointer(value: u64) -> (u64, u32) {
+    fn split_pointer(value: u64) -> (u32, bool, u32) {
         if value <= zisk_core::MAX_ADDR {
-            (value, 0)
+            (value as u32, (value >> 32) != 0, 0)
         } else {
-            (value & 0xFFFF_FFFF, (value >> 32) as u32)
+            (value as u32, false, (value >> 32) as u32)
         }
     }
 
@@ -60,17 +61,15 @@ impl<F: PrimeField64> DmaSM<F> {
         let l_count = (count & 0xFF) as u16 + 256 * count_ge_256 as u16;
         trace.set_l_count(l_count);
 
-        // The operation bus carries each pointer register as dst + 2^32 * dst_hi (see dma.pil):
-        // a 33-bit address with dst_hi = 0, or, when count == 0 and no memory is touched, any
-        // 64-bit value split at bit 32.
-        let (src, src_hi) = Self::split_pointer(input.src);
-        let (dst, dst_hi) = Self::split_pointer(input.dst);
-        let h_src64 = (src >> 10) as u32;
-        let h_dst64 = (dst >> 10) as u32;
+        let (src, src_addr_hi, src_hi) = Self::split_pointer(input.src);
+        let (dst, dst_addr_hi, dst_hi) = Self::split_pointer(input.dst);
+        let h_src64 = src >> 10;
+        let h_dst64 = dst >> 10;
         let l_src64 = (src >> 3) as u8 & 0x7F;
         let l_dst64 = (dst >> 3) as u8 & 0x7F;
 
         trace.set_src_hi(src_hi);
+        trace.set_src_addr_hi(src_addr_hi);
         trace.set_h_src64(h_src64);
         trace.set_l_src64(l_src64);
         let src_offset = src as u8 & 0x07;
@@ -79,6 +78,7 @@ impl<F: PrimeField64> DmaSM<F> {
         trace.set_h_dst64(h_dst64);
         trace.set_l_dst64(l_dst64);
         trace.set_dst_hi(dst_hi);
+        trace.set_dst_addr_hi(dst_addr_hi);
         trace.set_dst_offset(dst as u8 & 0x07);
 
         trace.set_main_step(input.step);
@@ -98,6 +98,18 @@ impl<F: PrimeField64> DmaSM<F> {
         let use_src = input.op != ZiskOp::DMA_INPUTCPY && input.op != ZiskOp::DMA_XMEMSET;
         if use_src {
             trace.set_src_offset_after_pre((src_offset + pre_count) % 8);
+        }
+
+        // High limb of the operands of the loop operation, as the loop machine proves them: the
+        // bit 32 of the first aligned destination and source addresses.
+        if loop_count > 0 {
+            let loop_dst = (input.dst & !0x07) + if pre_count > 0 { 8 } else { 0 };
+            trace.set_loop_dst_hi(zisk_core::addr_hi(loop_dst) == 1);
+            if use_src {
+                let inc_by_pre = DmaInfo::get_src64_inc_by_pre(input.encoded) > 0;
+                let loop_src = (input.src & !0x07) + if inc_by_pre { 8 } else { 0 };
+                trace.set_loop_b0_hi(zisk_core::addr_hi(loop_src) == 1);
+            }
         }
         match input.op {
             ZiskOp::DMA_MEMCPY => trace.set_sel_memcpy(true),

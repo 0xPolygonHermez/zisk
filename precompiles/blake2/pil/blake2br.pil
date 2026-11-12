@@ -210,6 +210,13 @@ airtemplate Blake2br(const int N = 2**20) {
     // Operation step and address
     col witness bits(40) step_addr;
 
+    // High limb (bit 32) of the addresses held in step_addr. The operation bus carries an operand
+    // as two 32-bit limbs and this machine is the one that joins them into a 33-bit address, so it
+    // is the one that checks the high limb is a bit: the address is then below 2^33 and cannot
+    // wrap the field.
+    col witness bits(1) addr_hi;
+    addr_hi * (1 - addr_hi) === 0;
+
     const int STEP_MAIN = 0;
 
     // Per-call discriminator
@@ -484,7 +491,8 @@ airtemplate Blake2br(const int N = 2**20) {
 
     // The round index and chain mode are the static argument of the instruction (extended_arg),
     // latched over the cycle, so their values at the first clock are the ones Main sent.
-    proves_operation(op: OP_BLAKE2B, a: [step_addr'(ADDR_STATE), 0], b: [step_addr'(ADDR_INPUT), 0],
+    proves_operation(op: OP_BLAKE2B, a: [step_addr'(ADDR_STATE) - 2**32 * addr_hi'(ADDR_STATE), addr_hi'(ADDR_STATE)],
+                     b: [step_addr'(ADDR_INPUT) - 2**32 * addr_hi'(ADDR_INPUT), addr_hi'(ADDR_INPUT)],
                      main_step: step_addr'(STEP_MAIN), extended_arg: round_idx + 16 * rd_chain + 32 * wr_chain + 64 * gap,
                      mul: in_use_clk_0);
 

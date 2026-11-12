@@ -67,8 +67,12 @@ airtemplate BigIntAdd(const int N = 2**21, const int bits = 256, const int opera
     // address of c chunks
     col witness bits(ADDR_BITS) addr_c;
 
-    // The pointers a, b and c are read from the parameter struct as two 32-bit limbs; their high
-    // limb (bit 32 of a 33-bit address) is a witness and the low limb addr_x - 2^32 * addr_x_hi.
+    // The pointer to the parameter struct arrives on the operation bus, and the pointers a, b and
+    // c are read from that struct, as two 32-bit limbs. This machine is the one that joins them
+    // into 33-bit addresses, so it checks that each high limb is a bit: the low limb is
+    // addr_x - 2^32 * addr_x_hi and the address cannot wrap the field.
+    col witness bits(1) addr_params_hi;
+    addr_params_hi * (1 - addr_params_hi) === 0;
     col witness bits(1) addr_a_hi;
     col witness bits(1) addr_b_hi;
     col witness bits(1) addr_c_hi;
@@ -142,6 +146,6 @@ airtemplate BigIntAdd(const int N = 2**21, const int bits = 256, const int opera
     const expr final_cout = cout[N_RC-1][RC-1];
 
     // proves the operation lauched by main, c = flag = carry_out
-    proves_operation(op: operation_code, a:[0, 0], b:[addr_params, 0], c:[final_cout, 0], 
+    proves_operation(op: operation_code, a:[0, 0], b:[addr_params - 2**32 * addr_params_hi, addr_params_hi], c:[final_cout, 0], 
                      flag:0, main_step: step, mul:sel);
 }

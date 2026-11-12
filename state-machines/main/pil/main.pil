@@ -434,14 +434,10 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         // The flag m32 is used to avoid send "garbage" values to bus, to simplify the other state
         // state machines and to increase the hits to FROPS (frequent operations).
 
-        // A precompiled operation takes its operands as single field elements (a[0] + 2^32 * a[1]):
-        // their pointers are 33-bit addresses. m32 and is_precompiled are exclusive, so the high
-        // limb factors stay linear.
-        m32[lane] * is_precompiled[lane] === 0;
         assumes_operation(op: op[lane],
-                          a: [a[lane][0] + is_precompiled[lane] * 2**32 * a[lane][1], (1 - m32[lane] - is_precompiled[lane]) * a[lane][1]], 
-                          b: [b[lane][0] + is_precompiled[lane] * 2**32 * b[lane][1], (1 - m32[lane] - is_precompiled[lane]) * b[lane][1]], 
-                          c: [c[lane][0] + is_precompiled[lane] * 2**32 * c[lane][1], (1 - is_precompiled[lane]) * c[lane][1]], 
+                          a: [a[lane][0], (1 - m32[lane]) * a[lane][1]], 
+                          b: [b[lane][0], (1 - m32[lane]) * b[lane][1]], 
+                          c: c[lane], 
                           flag: flag[lane], 
                           main_step: STEP[lane] * is_precompiled[lane], 
                           extended_arg: jmp_offset1[lane] * is_precompiled[lane],

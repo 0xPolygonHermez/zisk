@@ -269,9 +269,11 @@ impl<F: PrimeField64> KeccakfSM<F> {
         // Fill step and addr of both ops
         trace[0].set_step_addr(input_a.step_main);
         trace[1].set_step_addr(input_a.addr_main);
+        trace[1].set_addr_hi(zisk_core::addr_hi(input_a.addr_main) == 1);
         if let Some(input_b) = input_b {
             trace[2].set_step_addr(input_b.step_main);
             trace[3].set_step_addr(input_b.addr_main);
+            trace[3].set_addr_hi(zisk_core::addr_hi(input_b.addr_main) == 1);
         }
 
         // Fill the activation flags
