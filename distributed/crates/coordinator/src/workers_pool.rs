@@ -837,16 +837,21 @@ impl WorkersPool {
     ///
     /// - `worker_id`: Unique identifier for the worker.
     pub async fn update_last_heartbeat(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
-        if let Some(worker) = self.workers.write().await.get_mut(worker_id) {
-            let gap = Utc::now().signed_duration_since(worker.last_heartbeat);
-            worker.update_last_heartbeat();
-            crate::metrics::record_worker_heartbeat_gap(gap);
-            Ok(())
-        } else {
-            let msg = format!("Worker {worker_id} not found for heartbeat update");
-            warn!("{}", msg);
-            Err(CoordinatorError::NotFoundOrInaccessible)
-        }
+        let gap = match self.workers.write().await.get_mut(worker_id) {
+            Some(worker) => {
+                let gap = Utc::now().signed_duration_since(worker.last_heartbeat);
+                worker.update_last_heartbeat();
+                gap
+            }
+            None => {
+                let msg = format!("Worker {worker_id} not found for heartbeat update");
+                warn!("{}", msg);
+                return Err(CoordinatorError::NotFoundOrInaccessible);
+            }
+        };
+        // Recorded once the pool's lock is released: every worker's heartbeat takes it.
+        crate::metrics::record_worker_heartbeat_gap(gap);
+        Ok(())
     }
 
     /// Atomically selects workers for a new job AND transitions them to
