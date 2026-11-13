@@ -22,12 +22,19 @@ fn random_inputs(count: usize, mut seed: u64) -> Vec<KeccakfInput> {
                 seed ^= seed << 8;
                 *lane = seed;
             }
-            KeccakfInput {
-                step_main: 0x0000_00ab_cdef_0000 + i as u64,
-                addr_main: 0xFFFF_F000 + (i as u64) * 200,
+            // every other op is a `keccak_xor`, so the kernel is fed XORed states too
+            let mut input = KeccakfInput::permutation(
+                0x0000_00ab_cdef_0000 + i as u64,
+                0xFFFF_F000 + (i as u64) * 200,
                 state,
-                dedup_word: 0,
+                0,
+            );
+            if i % 2 == 1 {
+                input.is_xor = true;
+                input.block_addr = 0xC100_0000;
+                input.block = core::array::from_fn(|l| state[24 - l].rotate_left(7));
             }
+            input
         })
         .collect()
 }

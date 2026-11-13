@@ -21,7 +21,9 @@ pub const ARITHAM32_COST: u64 = 97;
 // A Keccak-f takes half a 135-clock Keccakf slot (two permutations per slot) plus one KeccakfProxy
 // row. A Keccak-f that repeats an earlier permutation only takes the proxy row, which a static
 // cost cannot tell, so this is the cost of one that does not.
-pub const KECCAK_COST: u64 = (608 * 135_u64).div_ceil(2) + 196;
+pub const KECCAK_COST: u64 = (608 * 135_u64).div_ceil(2) + 318;
+// A keccak_xor is a Keccak-f plus the XOR of the 17 lanes of the block, which Binary proves.
+pub const KECCAK_XOR_COST: u64 = KECCAK_COST + 17 * BINARY_COST;
 pub const SHA256_COST: u64 = 72 * 122;
 pub const POSEIDON_COST: u64 = 14 * 392;
 pub const ARITH_EQ_COST: u64 = 90 * 16; // ArithEq (all equations), only air proving secp256r1

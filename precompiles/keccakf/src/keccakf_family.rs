@@ -29,18 +29,18 @@ use zisk_common::{
     plan_ladder, BusDevice, BusDeviceMetrics, BusDeviceMode, BusId, CheckPoint, ChunkId,
     CollectSkipper, ComponentBuilder, ComponentPlanBuilder, ExtOperationData, InstCount, Instance,
     InstanceCtx, InstanceType, Metrics, PayloadType, Plan, Planner, StatsType, B, OPERATION_BUS_ID,
-    OPERATION_PRECOMPILED_BUS_DATA_SIZE, OP_TYPE, STEP,
+    OP_TYPE, STEP,
 };
-use zisk_core::{
-    keccakf_dedup_index, keccakf_dedup_is_replica, ZiskOperationType, KECCAKF_DEDUP_STATE_WORDS,
-};
+use zisk_core::{keccakf_dedup_index, keccakf_dedup_is_replica, ZiskOperationType};
 use zisk_pil::{
     KeccakfProxyTrace, KeccakfProxyTraceRow, KeccakfProxyTraceRowPacked, KeccakfTrace,
     KeccakfTraceRow, KeccakfTraceRowPacked, ZISK_AIRGROUP_ID,
 };
 use zisk_precomp_common::{MemProcessor, PrecompileMemInputs};
 
-use crate::{keccakf_constants::*, KeccakfInput, KeccakfProxySM, KeccakfSM};
+use crate::{
+    keccakf_constants::*, KeccakfInput, KeccakfProxySM, KeccakfSM, KECCAKF_PAYLOAD_DEDUP_WORD,
+};
 
 /// Air of the unique permutations.
 pub const KECCAKF_AIR_ID: usize = KeccakfTrace::<()>::AIR_ID;
@@ -57,8 +57,8 @@ pub const KECCAKF_OPS_PER_INSTANCE: usize = OPS_PER_SLOT * (KeccakfTrace::<()>::
 /// Invocations one `KeccakfProxy` instance holds: one per row.
 pub const KECCAKF_PROXY_OPS_PER_INSTANCE: usize = KeccakfProxyTrace::<()>::NUM_ROWS;
 
-/// Position of the dedup word in the operation-bus payload of a Keccak-f: after the input state.
-const DEDUP_WORD: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + KECCAKF_DEDUP_STATE_WORDS;
+/// Position of the dedup word in the operation-bus payload of a Keccak-f.
+const DEDUP_WORD: usize = KECCAKF_PAYLOAD_DEDUP_WORD;
 
 // ============================================================================
 // CounterInputGen — counts invocations and replicas, drives the mem-input generation.

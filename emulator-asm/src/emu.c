@@ -590,6 +590,30 @@ extern uint64_t _opcode_keccak_mt(uint64_t address)
     return dedup_word;
 }
 
+// One absorb step of the Keccak sponge: XORs the 17-lane block into the state and permutes it
+#define KECCAKF_XOR_LANES 17
+
+extern int _opcode_keccak_xor(uint64_t * state, const uint64_t * block)
+{
+    for (uint64_t i=0; i<KECCAKF_XOR_LANES; i++)
+    {
+        state[i] ^= block[i];
+    }
+    return _opcode_keccak((uint64_t)state);
+}
+
+// keccak_xor as called by the minimal-trace emulator: the generated assembly has already copied the
+// state and the block to the minimal trace, and appends the dedup word this returns, which is
+// the one of the permutation of the XORed state (see _opcode_keccak_mt)
+extern uint64_t _opcode_keccak_xor_mt(uint64_t * state, const uint64_t * block)
+{
+    for (uint64_t i=0; i<KECCAKF_XOR_LANES; i++)
+    {
+        state[i] ^= block[i];
+    }
+    return _opcode_keccak_mt((uint64_t)state);
+}
+
 // Called with two direct operands: state (receives the result) and input, no parameter struct
 extern int _opcode_sha256(uint64_t * state, uint64_t * input)
 {

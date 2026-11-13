@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "a141356e660a1d2b3844538cf65a5a5ddf70152aa480c8bc9fcee02c6195c071";
+pub const PILOUT_HASH: &str = "d0c90075211d6157bb6f1a043877398f6141bb918975ff542fb79480678ca21f";
 
 //AIRGROUP CONSTANTS
 
@@ -591,7 +591,7 @@ trace_row!(KeccakfProxyFixedRow<F> {
 pub type KeccakfProxyFixed<F> = GenericTrace<KeccakfProxyFixedRow<F>, 524288, 0, 37>;
 
 trace_row!(KeccakfProxyTraceRow<F> {
- in_use:bit, is_replica:bit, replicas:ubit(24), step:ubit(40), addr:ubit(33), addr_hi:bit, state_in:[u32; 50], state_out:[u32; 50],
+ in_use:bit, is_replica:bit, replicas:ubit(24), step:ubit(40), addr:ubit(33), addr_hi:bit, state_in:[u32; 50], state_out:[u32; 50], is_xor:bit, blk_addr:ubit(33), blk_addr_hi:bit, block:[u32; 34], perm_in:[u32; 34],
 });
 
 pub type KeccakfProxyTrace<R> = GenericTrace<R, 524288, 0, 37>;
@@ -1323,8 +1323,8 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     }),
     (0, 37, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 52,
-        unpack_info: &[1, 1, 24, 40, 33, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32],
+        num_packed_words: 87,
+        unpack_info: &[1, 1, 24, 40, 33, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1, 33, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32],
     }),
     (0, 38, PackedInfoConst {
         is_packed: true,

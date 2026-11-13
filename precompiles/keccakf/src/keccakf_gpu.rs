@@ -6,7 +6,8 @@
 
 use super::KeccakfInput;
 
-/// One operation as the kernel consumes it. Mirrors `KeccakfGpuOp` in the `.cu`.
+/// One operation as the kernel consumes it: the input of the permutation, i.e. the state with
+/// the block of a `keccak_xor` already XORed in. Mirrors `KeccakfGpuOp` in the `.cu`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct GpuOp {
@@ -18,7 +19,7 @@ unsafe impl ::proofman_common::GpuWitnessOp for GpuOp {}
 
 impl From<&KeccakfInput> for GpuOp {
     fn from(input: &KeccakfInput) -> Self {
-        Self { state: input.state }
+        Self { state: input.perm_in() }
     }
 }
 

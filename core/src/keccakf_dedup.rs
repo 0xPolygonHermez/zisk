@@ -23,6 +23,17 @@ pub const KECCAKF_MT_WORDS: usize = KECCAKF_DEDUP_STATE_WORDS + 1;
 /// Bytes a Keccak-f adds to the minimal trace, i.e. the input size of the instruction.
 pub const KECCAKF_MT_BYTES: u64 = (KECCAKF_MT_WORDS * 8) as u64;
 
+/// Lanes of the block a `keccak_xor` XORs into the state before the permutation: the rate of
+/// keccak256, 136 bytes.
+pub const KECCAKF_XOR_LANES: usize = 17;
+
+/// Number of 64-bit words a `keccak_xor` adds to the minimal trace: the state before the XOR,
+/// the block and the dedup word of the permutation, whose input is the XORed state.
+pub const KECCAKF_XOR_MT_WORDS: usize = KECCAKF_DEDUP_STATE_WORDS + KECCAKF_XOR_LANES + 1;
+
+/// Bytes a `keccak_xor` adds to the minimal trace, i.e. the input size of the instruction.
+pub const KECCAKF_XOR_MT_BYTES: u64 = (KECCAKF_XOR_MT_WORDS * 8) as u64;
+
 /// Flag of the dedup word of a Keccak-f that repeats the input state of an earlier one.
 pub const KECCAKF_DEDUP_REPLICA_FLAG: u64 = 1 << 63;
 

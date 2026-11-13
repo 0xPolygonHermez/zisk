@@ -36,10 +36,28 @@ const COMPLEX_OVER_384_BITS_SIZE: usize = 2 * DATA_384_BITS_SIZE;
 
 // use OPERATION_BUS_DATA_SIZE because a = step, b = addr
 
-/// Keccakf operation data size: the 25 words of the input state followed by the dedup word of
-/// the Keccak-f (see `zisk_core::keccakf_dedup`).
+/// Keccakf operation data size, the same for `keccak` and `keccak_xor`: the 25 words of the
+/// state read from memory, the 17 words of the absorbed block (zeros for `keccak`) and the dedup
+/// word of the Keccak-f (see `zisk_core::keccakf_dedup`).
 pub const OPERATION_BUS_KECCAKF_DATA_SIZE: usize =
-    OPERATION_PRECOMPILED_BUS_DATA_SIZE + zisk_core::KECCAKF_MT_WORDS;
+    OPERATION_PRECOMPILED_BUS_DATA_SIZE + zisk_core::KECCAKF_XOR_MT_WORDS;
+
+/// Lays the minimal-trace words of a Keccak-f instruction out as its bus payload (see
+/// [`OPERATION_BUS_KECCAKF_DATA_SIZE`]). `keccak` has no block in the minimal trace: its dedup
+/// word follows the state there, and the block of the payload is left at zero.
+#[inline(always)]
+fn keccakf_payload(input_data: &[u64], payload: &mut [u64]) {
+    const STATE: usize = zisk_core::KECCAKF_DEDUP_STATE_WORDS;
+    debug_assert_eq!(payload.len(), zisk_core::KECCAKF_XOR_MT_WORDS);
+    if input_data.len() == zisk_core::KECCAKF_MT_WORDS {
+        payload[..STATE].copy_from_slice(&input_data[..STATE]);
+        payload[STATE..STATE + zisk_core::KECCAKF_XOR_LANES].fill(0);
+        payload[STATE + zisk_core::KECCAKF_XOR_LANES] = input_data[STATE];
+    } else {
+        payload.copy_from_slice(input_data);
+    }
+}
+
 /// Poseidon2 operation data size.
 pub const OPERATION_BUS_POSEIDON_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 16;
 /// SHA256F operation data size.
@@ -139,7 +157,12 @@ pub const OPERATION_BUS_DMA_INPUTCPY_DATA_SIZE: usize = OPERATION_PRECOMPILED_BU
 pub const OPERATION_BUS_DMA_XMEMSET_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 1;
 
 /// The maximum size of the operation data payload, which is determined by the largest precompiled operation data size.
-pub const MAX_OPERATION_DATA_SIZE: usize = OPERATION_BUS_BLAKE2B_DATA_SIZE;
+pub const MAX_OPERATION_DATA_SIZE: usize =
+    if OPERATION_BUS_KECCAKF_DATA_SIZE > OPERATION_BUS_BLAKE2B_DATA_SIZE {
+        OPERATION_BUS_KECCAKF_DATA_SIZE
+    } else {
+        OPERATION_BUS_BLAKE2B_DATA_SIZE
+    };
 
 /// Index of the operation value in the operation data payload.
 pub const OP: usize = 0;
@@ -309,7 +332,7 @@ impl<D: Copy + Into<u64>> TryFrom<&[D]> for ExtOperationData<D> {
         }
         let op = data[OP].into();
         match op as u8 {
-            ZiskOp::KECCAK => {
+            ZiskOp::KECCAK | ZiskOp::KECCAK_XOR => {
                 let array: OperationKeccakData<D> =
                     data.try_into().map_err(|_| "Invalid OperationKeccakData size")?;
                 Ok(ExtOperationData::OperationKeccakData(array))
@@ -533,8 +556,10 @@ impl OperationBusData<u64> {
                 let mut data = [0u64; OPERATION_BUS_KECCAKF_DATA_SIZE];
                 data[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
                     .copy_from_slice(&[op, op_type, a, b, step]);
-                data[OPERATION_PRECOMPILED_BUS_DATA_SIZE..]
-                    .copy_from_slice(&ctx.precompiled.input_data);
+                keccakf_payload(
+                    &ctx.precompiled.input_data,
+                    &mut data[OPERATION_PRECOMPILED_BUS_DATA_SIZE..],
+                );
                 ExtOperationData::OperationKeccakData(data)
             }
 
@@ -839,11 +864,13 @@ impl OperationBusData<u64> {
 
         match inst.op_type {
             ZiskOperationType::Keccak => {
-                debug_assert_eq!(ctx.precompiled.input_data.len(), 25);
                 buffer[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
                     .copy_from_slice(&[op, op_type, a, b, step]);
-                buffer[OPERATION_PRECOMPILED_BUS_DATA_SIZE..OPERATION_BUS_KECCAKF_DATA_SIZE]
-                    .copy_from_slice(&ctx.precompiled.input_data);
+                keccakf_payload(
+                    &ctx.precompiled.input_data,
+                    &mut buffer
+                        [OPERATION_PRECOMPILED_BUS_DATA_SIZE..OPERATION_BUS_KECCAKF_DATA_SIZE],
+                );
                 &buffer[..OPERATION_BUS_KECCAKF_DATA_SIZE]
             }
 

@@ -1,7 +1,9 @@
 //! Witness of the `KeccakfProxy` air: one row per Keccak-f invocation.
 //!
 //! `Keccakf` proves every *unique* permutation of the execution once; this air proves the
-//! invocations, i.e. the memory accesses and the operation the main processor sees. A row is an
+//! invocations, i.e. the memory accesses and the operation the main processor sees: `keccak`,
+//! the permutation of the state, or `keccak_xor`, which first XORs a block read from memory
+//! into the state. The permutation of a row is the one of the XORed state. A row is an
 //! *original* (the first invocation of its permutation) or a *replica* (a later invocation with
 //! the same input state). An original takes its permutation from `Keccakf` and offers it to its
 //! replicas, so it carries how many replicas there are: that count is only known once the whole
@@ -14,13 +16,16 @@ use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use tiny_keccak::keccakf;
-use zisk_core::{addr_hi, keccakf_dedup_index, keccakf_dedup_is_replica};
+use zisk_core::{addr_hi, keccakf_dedup_index, keccakf_dedup_is_replica, KECCAKF_XOR_LANES};
 use zisk_pil::{KeccakfProxyTraceRowOps, ZISK_AIRGROUP_ID};
 
 use crate::{keccakf_constants::LANES, KeccakfInput};
 
 /// 32-bit limbs of a state: two per lane, low limb first.
 const LIMBS_PER_STATE: usize = 2 * LANES;
+
+/// 32-bit limbs of the block of a `keccak_xor`, and of the lanes of the state it changes.
+const XOR_LIMBS: usize = 2 * KECCAKF_XOR_LANES;
 
 /// The `KeccakfProxySM` struct encapsulates the logic of the KeccakfProxy State Machine.
 pub struct KeccakfProxySM<F: PrimeField64> {
@@ -54,7 +59,8 @@ impl<F: PrimeField64> KeccakfProxySM<F> {
         replicas: u32,
     ) {
         let is_replica = keccakf_dedup_is_replica(input.dedup_word);
-        let mut state_out = input.state;
+        let perm_in = input.perm_in();
+        let mut state_out = perm_in;
         keccakf(&mut state_out);
 
         row.set_in_use(true);
@@ -65,6 +71,18 @@ impl<F: PrimeField64> KeccakfProxySM<F> {
         row.set_addr_hi(addr_hi(input.addr_main) == 1);
         row.set_all_state_in(&state_limbs(&input.state));
         row.set_all_state_out(&state_limbs(&state_out));
+
+        // The first lanes of the permutation input are always committed: without the XOR they
+        // repeat the state, with it they are state ^ block, which Binary proves
+        let block_limbs: [u32; XOR_LIMBS] =
+            core::array::from_fn(|i| (input.block[i / 2] >> (32 * (i % 2))) as u32);
+        let perm_in_limbs: [u32; XOR_LIMBS] =
+            core::array::from_fn(|i| (perm_in[i / 2] >> (32 * (i % 2))) as u32);
+        row.set_is_xor(input.is_xor);
+        row.set_blk_addr(input.block_addr);
+        row.set_blk_addr_hi(addr_hi(input.block_addr) == 1);
+        row.set_all_block(&block_limbs);
+        row.set_all_perm_in(&perm_in_limbs);
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
@@ -132,14 +150,9 @@ mod tests {
         let mut output = state;
         keccakf(&mut output);
 
-        let original =
-            KeccakfInput { step_main: 77, addr_main: 0x1_2345_6780, state, dedup_word: 3 };
-        let replica = KeccakfInput {
-            step_main: 99,
-            addr_main: 0xc000_1000,
-            state,
-            dedup_word: 3 | KECCAKF_DEDUP_REPLICA_FLAG,
-        };
+        let original = KeccakfInput::permutation(77, 0x1_2345_6780, state, 3);
+        let replica =
+            KeccakfInput::permutation(99, 0xc000_1000, state, 3 | KECCAKF_DEDUP_REPLICA_FLAG);
 
         let mut row = KeccakfProxyTraceRow::<Goldilocks>::default();
         KeccakfProxySM::<Goldilocks>::process_input(&mut row, &original, 5);
@@ -153,5 +166,41 @@ mod tests {
         assert!(row.get_in_use() && row.get_is_replica() && !row.get_addr_hi());
         assert_eq!((row.get_replicas(), row.get_step(), row.get_addr()), (0, 99, 0xc000_1000));
         assert_eq!(row.get_all_state_out(), state_limbs(&output));
+        assert!(!row.get_is_xor());
+        assert_eq!(row.get_all_perm_in()[..], state_limbs(&state)[..XOR_LIMBS]);
+        assert_eq!((row.get_blk_addr(), row.get_all_block()), (0, [0; XOR_LIMBS]));
+    }
+
+    #[test]
+    fn a_keccak_xor_row_carries_the_block_and_the_xored_state() {
+        let state: [u64; LANES] = core::array::from_fn(|i| 0x1111_2222_3333_4444 * (i as u64 + 1));
+        let block: [u64; KECCAKF_XOR_LANES] =
+            core::array::from_fn(|i| 0xfedc_ba98_7654_3210 ^ (i as u64) << 17);
+        let mut input = KeccakfInput::permutation(5, 0xc100_0000, state, 0);
+        input.is_xor = true;
+        input.block_addr = 0x1_0000_0008;
+        input.block = block;
+
+        let mut xored = state;
+        for (lane, b) in xored.iter_mut().zip(&block) {
+            *lane ^= *b;
+        }
+        let mut output = xored;
+        keccakf(&mut output);
+
+        let mut row = KeccakfProxyTraceRow::<Goldilocks>::default();
+        KeccakfProxySM::<Goldilocks>::process_input(&mut row, &input, 0);
+        assert!(row.get_is_xor() && row.get_blk_addr_hi() && !row.get_addr_hi());
+        assert_eq!((row.get_addr(), row.get_blk_addr()), (0xc100_0000, 0x1_0000_0008));
+        // memory still sees the state before the XOR; the permutation runs on the XORed one
+        assert_eq!(row.get_all_state_in(), state_limbs(&state));
+        assert_eq!(row.get_all_perm_in()[..], state_limbs(&xored)[..XOR_LIMBS]);
+        assert_eq!(row.get_all_state_out(), state_limbs(&output));
+        let block_lanes: Vec<u64> = row
+            .get_all_block()
+            .chunks(2)
+            .map(|limbs| limbs[0] as u64 | (limbs[1] as u64) << 32)
+            .collect();
+        assert_eq!(block_lanes, block);
     }
 }
