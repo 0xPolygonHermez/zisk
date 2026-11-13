@@ -3,7 +3,8 @@
 # dashboards' Cluster and Host selectors read them, so give each deployment and host its own.
 #
 # Point a single Prometheus at a coordinator: its timestamped series (one sample per proof) hand
-# each sample to the next scrape, so two scrapers would split them.
+# each sample to the next Prometheus scrape, so two Prometheus would split them. A second one that
+# should only read them sets `params: {take: ["0"]}`; curl and browsers never take samples.
 global:
   scrape_interval: 5s
   evaluation_interval: 5s

@@ -11,9 +11,11 @@
 //! setup and worker lifecycle events, never on a proving path, and read when `/metrics` is
 //! scraped.
 //!
-//! Timed series carry an explicit timestamp, one sample per scrape and per series. A scrape
-//! takes the next queued sample, so they expect a single Prometheus scraping this coordinator:
-//! two would split the samples between them.
+//! Timed series carry an explicit timestamp, one sample per scrape and per series. A scrape that
+//! takes samples (a Prometheus scrape; see `Coordinator::render_metrics`) moves its series on to
+//! the next queued sample, so they expect a single Prometheus taking them from this coordinator:
+//! two would split the samples between them. Any other reader is shown the same sample without
+//! taking it. Queued samples older than [`MAX_SAMPLE_AGE`] are dropped rather than exposed.
 
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Mutex, MutexGuard};
@@ -31,6 +33,12 @@ pub(crate) const RECENT_EVENTS: usize = 30;
 pub(crate) const RECENT_FAILURES: usize = 100;
 /// Samples a timed series holds while nothing scrapes it; the oldest are dropped past this.
 pub(crate) const MAX_PENDING_SAMPLES: usize = 600;
+/// How old a queued timed sample may be and still be exposed. Prometheus appends a sample only if
+/// it is newer than its head block's lower bound, about an hour behind its newest data (half its
+/// two-hour block range), so one that started after this coordinator would reject an older
+/// backlog, one sample per scrape. Half that, plus [`TIMED_EXPOSURE`], keeps every exposed sample
+/// inside it.
+const MAX_SAMPLE_AGE: Duration = Duration::from_secs(1800);
 /// How long the last job that ended stays in `coordinator_job_now_seconds` while none runs.
 const JUST_ENDED: Duration = Duration::from_secs(120);
 /// How long a timed sample stays exposed once it becomes its series' current one: long enough to
@@ -157,19 +165,50 @@ impl TimedSeries {
     fn push(&mut self, value: f64, at: DateTime<Utc>) {
         if self.pending.len() == MAX_PENDING_SAMPLES {
             self.pending.pop_front();
+            count_dropped("full", 1);
         }
         self.pending.push_back((value, at.timestamp_millis()));
     }
 
-    /// The sample to expose on this scrape: the next queued one, else the current one while it
-    /// is fresh.
-    fn next(&mut self, now: Instant) -> Option<(f64, i64)> {
+    /// The sample to expose on this scrape at `now` (`now_ms` on the wall clock): the next queued
+    /// one, else the current one while it is fresh. A scrape that `take`s it makes it the current
+    /// one, which moves the series on; any other is shown it and leaves the series as it was.
+    fn next(&mut self, now: Instant, now_ms: i64, take: bool) -> Option<(f64, i64)> {
+        self.drop_stale(now_ms);
+        if !take {
+            return self.pending.front().copied().or_else(|| self.fresh_current(now));
+        }
         if let Some((value, at)) = self.pending.pop_front() {
             self.current = Some((value, at, now));
         }
+        self.fresh_current(now)
+    }
+
+    /// The current sample while it is fresh.
+    fn fresh_current(&self, now: Instant) -> Option<(f64, i64)> {
         self.current
             .filter(|(_, _, since)| now.duration_since(*since) <= TIMED_EXPOSURE)
             .map(|(value, at, _)| (value, at))
+    }
+
+    /// Drop the queued samples older than [`MAX_SAMPLE_AGE`] at `now_ms`, which Prometheus would
+    /// reject.
+    fn drop_stale(&mut self, now_ms: i64) {
+        let oldest = now_ms - MAX_SAMPLE_AGE.as_millis() as i64;
+        let queued = self.pending.len();
+        while self.pending.front().is_some_and(|&(_, at)| at < oldest) {
+            self.pending.pop_front();
+        }
+        count_dropped("stale", queued - self.pending.len());
+    }
+}
+
+/// Count `dropped` timed samples that were never exposed, by why: the queue was `full`, or they
+/// were `stale`.
+fn count_dropped(reason: &'static str, dropped: usize) {
+    if dropped > 0 {
+        metrics::counter!("coordinator_timed_samples_dropped_total", "reason" => reason)
+            .increment(dropped as u64);
     }
 }
 
@@ -335,9 +374,11 @@ impl Journal {
         }
     }
 
-    /// Append the journal's series to a `/metrics` body.
-    pub(crate) fn render(&self, out: &mut String) {
+    /// Append the journal's series to a `/metrics` body. A scrape that `take`s the timed series'
+    /// samples moves them on; any other is shown the same samples (see the module documentation).
+    pub(crate) fn render(&self, out: &mut String, take: bool) {
         let now = Instant::now();
+        let now_ms = Utc::now().timestamp_millis();
         let mut state = self.state();
 
         family(out, "coordinator_job_now_seconds", "The jobs in flight (seconds since each started) or, while none runs and for two minutes after it ended, the last one (its duration)");
@@ -474,7 +515,7 @@ impl Journal {
 
         family(out, "coordinator_proof_seconds", "Each proof's duration per phase (1 contributions, 2 prove, 3 aggregation) and in total, at the time it ended");
         for (phase, series) in state.proof_seconds.iter_mut() {
-            if let Some((value, at)) = series.next(now) {
+            if let Some((value, at)) = series.next(now, now_ms, take) {
                 sample(out, "coordinator_proof_seconds", &[("phase", phase)], value, Some(at));
             }
         }
@@ -485,7 +526,7 @@ impl Journal {
             "Each failed or cancelled job's time from its start to its end, at the time it ended",
         );
         for (outcome, series) in state.unsuccessful_seconds.iter_mut() {
-            if let Some((value, at)) = series.next(now) {
+            if let Some((value, at)) = series.next(now, now_ms, take) {
                 sample(
                     out,
                     "coordinator_job_unsuccessful_seconds",
@@ -501,7 +542,7 @@ impl Journal {
             "coordinator_proof_input_bytes",
             "Each proof's input size, at the time it ended (as coordinator_proof_seconds)",
         );
-        if let Some((value, at)) = state.proof_input_bytes.next(now) {
+        if let Some((value, at)) = state.proof_input_bytes.next(now, now_ms, take) {
             sample(out, "coordinator_proof_input_bytes", &[], value, Some(at));
         }
 
@@ -510,7 +551,7 @@ impl Journal {
             "coordinator_proof_steps",
             "Each proof's steps, at the time it ended (as coordinator_proof_seconds)",
         );
-        if let Some((value, at)) = state.proof_steps.next(now) {
+        if let Some((value, at)) = state.proof_steps.next(now, now_ms, take) {
             sample(out, "coordinator_proof_steps", &[], value, Some(at));
         }
     }
@@ -581,7 +622,7 @@ mod tests {
 
     fn rendered(journal: &Journal) -> String {
         let mut out = String::new();
-        journal.render(&mut out);
+        journal.render(&mut out, true);
         out
     }
 
@@ -748,12 +789,78 @@ mod tests {
         let t0 = Utc::now();
         series.push(1.0, t0);
         series.push(2.0, t0 + chrono::Duration::seconds(1));
-        let now = Instant::now();
-        assert_eq!(series.next(now).map(|s| s.0), Some(1.0));
-        assert_eq!(series.next(now).map(|s| s.0), Some(2.0));
+        let (now, now_ms) = (Instant::now(), t0.timestamp_millis());
+        assert_eq!(series.next(now, now_ms, true).map(|s| s.0), Some(1.0));
+        assert_eq!(series.next(now, now_ms, true).map(|s| s.0), Some(2.0));
         // Nothing queued: the current sample stays while it is fresh, then goes.
-        assert_eq!(series.next(now + TIMED_EXPOSURE).map(|s| s.0), Some(2.0));
-        assert_eq!(series.next(now + TIMED_EXPOSURE + Duration::from_secs(1)), None);
+        assert_eq!(series.next(now + TIMED_EXPOSURE, now_ms, true).map(|s| s.0), Some(2.0));
+        let later = now + TIMED_EXPOSURE + Duration::from_secs(1);
+        assert_eq!(series.next(later, now_ms, true), None);
+    }
+
+    /// A reader that does not take samples (anything but a Prometheus scrape) is shown the one a
+    /// Prometheus scrape would take, and leaves it for it.
+    #[test]
+    fn a_reader_that_does_not_take_samples_leaves_them_queued() {
+        let mut series = TimedSeries::default();
+        let t0 = Utc::now();
+        series.push(1.0, t0);
+        series.push(2.0, t0 + chrono::Duration::seconds(1));
+        let (now, now_ms) = (Instant::now(), t0.timestamp_millis());
+
+        let looked = [series.next(now, now_ms, false), series.next(now, now_ms, false)];
+        assert_eq!(looked.map(|s| s.map(|s| s.0)), [Some(1.0), Some(1.0)]);
+        assert_eq!(series.next(now, now_ms, true).map(|s| s.0), Some(1.0));
+        assert_eq!(series.next(now, now_ms, false).map(|s| s.0), Some(2.0));
+        assert_eq!(series.next(now, now_ms, true).map(|s| s.0), Some(2.0));
+        // Nothing queued: the current one, for both.
+        assert_eq!(series.next(now, now_ms, false).map(|s| s.0), Some(2.0));
+        assert_eq!(series.next(now, now_ms, true).map(|s| s.0), Some(2.0));
+    }
+
+    /// Queued samples Prometheus would reject as too old are dropped, the rest kept in order.
+    #[test]
+    fn stale_queued_samples_are_dropped_and_the_rest_kept_in_order() {
+        let mut series = TimedSeries::default();
+        let now_at = Utc::now();
+        let age = |secs: u64| now_at - chrono::Duration::seconds(secs as i64);
+        let max = MAX_SAMPLE_AGE.as_secs();
+        for (value, secs) in [(1.0, max + 600), (2.0, max + 1), (3.0, max - 1), (4.0, 60)] {
+            series.push(value, age(secs));
+        }
+        let (now, now_ms) = (Instant::now(), now_at.timestamp_millis());
+
+        assert_eq!(series.next(now, now_ms, false).map(|s| s.0), Some(3.0));
+        assert_eq!(series.pending.len(), 2, "the two stale samples are gone");
+        assert_eq!(series.next(now, now_ms, true).map(|s| s.0), Some(3.0));
+        assert_eq!(series.next(now, now_ms, true).map(|s| s.0), Some(4.0));
+    }
+
+    /// The journal shows the same proof to readers that do not take samples, and the next one to
+    /// a scrape that does.
+    #[test]
+    fn only_a_scrape_that_takes_samples_moves_the_proof_series_on() {
+        let journal = Journal::default();
+        for steps in [100, 200] {
+            let job = JobId::new();
+            journal.job_started(&job, "prove", 1);
+            journal.job_ended(&JobEnded {
+                phases: Some([1.0, 2.0, 0.5]),
+                steps: Some(steps),
+                ..ended(&job, OUTCOME_SUCCESS)
+            });
+        }
+        let steps = |take: bool| {
+            let mut out = String::new();
+            journal.render(&mut out, take);
+            let line = samples(&out, "coordinator_proof_steps").first().map(|s| s.to_string());
+            line.and_then(|l| l.split(' ').nth(1).map(str::to_owned))
+        };
+
+        assert_eq!(steps(false).as_deref(), Some("100"));
+        assert_eq!(steps(false).as_deref(), Some("100"));
+        assert_eq!(steps(true).as_deref(), Some("100"));
+        assert_eq!(steps(true).as_deref(), Some("200"));
     }
 
     #[test]
@@ -764,7 +871,8 @@ mod tests {
             series.push(i as f64, t0);
         }
         assert_eq!(series.pending.len(), MAX_PENDING_SAMPLES);
-        assert_eq!(series.next(Instant::now()).map(|s| s.0), Some(3.0));
+        let next = series.next(Instant::now(), t0.timestamp_millis(), true);
+        assert_eq!(next.map(|s| s.0), Some(3.0));
     }
 
     #[test]
