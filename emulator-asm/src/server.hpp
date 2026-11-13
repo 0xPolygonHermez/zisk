@@ -11,6 +11,8 @@ extern uint64_t frops_length;   // FROPS multiplicity counters, one per FROPS ta
 void server_setup (void);
 void server_reset_fast (void);
 void server_reset_slow (void);
+void server_release_init_data (void);
+void server_acquire_init_data (void);
 void server_reset_trace (void);
 void server_run (void);
 void server_cleanup (void);
