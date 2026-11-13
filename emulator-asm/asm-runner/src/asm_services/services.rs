@@ -689,19 +689,20 @@ impl AsmServicesInner {
         Ok(())
     }
 
-    /// Unlink the semaphores this program owns.
+    /// Unlink the semaphores and the fork-join task trace objects this program owns.
     ///
-    /// Only the semaphores: they carry the program hash, so they are this
-    /// program's to remove. The shmem segments are shared with every other
-    /// program on the same prefix, and unlinking those is `SharedSegments`' job
-    /// once the last of them is gone.
-    fn cleanup_my_semaphores(&self) {
-        super::janitor::cleanup_sem_prefix(&self.sem_prefix);
+    /// Only those: they carry the program hash, so they are this program's to
+    /// remove. A task trace object is left only by a service that died during a
+    /// run. The shmem segments are shared with every other program on the same
+    /// prefix, and unlinking those is `SharedSegments`' job once the last of them
+    /// is gone.
+    fn cleanup_my_names(&self) {
+        super::janitor::cleanup_program(&self.sem_prefix);
     }
 }
 
 impl Drop for AsmServicesInner {
-    /// RAII teardown for this program's services and semaphores. The shared
+    /// RAII teardown for this program's services and the names it owns. The shared
     /// segments outlive it unless it was their last owner: its `segments`,
     /// dropped after this body, decides.
     ///
@@ -717,7 +718,7 @@ impl Drop for AsmServicesInner {
                 e
             );
         }
-        self.cleanup_my_semaphores();
+        self.cleanup_my_names();
     }
 }
 

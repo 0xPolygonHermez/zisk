@@ -4,14 +4,18 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use ziskos::zisklib::{FCALL_INPUT_READY_ID, FCALL_RANDOM_SEED_ID};
+use ziskos::zisklib::{
+    FCALL_INPUT_READY_ID, FCALL_PAR_BOUNDARY_ID, FCALL_PAR_FORK_ID, FCALL_PAR_PAD_ID,
+    FCALL_RANDOM_SEED_ID,
+};
 
 use crate::{
     frops_asm::{self, FropsCallSite, FropsOperand, FropsSpec},
+    is_par_marker,
     zisk_ops::ZiskOp,
-    ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR, INPUT_ADDR, M64,
-    REGS_IN_MAIN_TO, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
-    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR, ZISKLIB_ROM_ADDR,
+    ZiskInst, ZiskRom, CHUNK_SIZE, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR,
+    INPUT_ADDR, M64, REGS_IN_MAIN_TO, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
+    SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR, ZISKLIB_ROM_ADDR,
 };
 use crate::{
     zisk_ops::blake2b_gap_is_provable, BLAKE2B_RD_CHAIN, BLAKE2B_ROUND_MASK, BLAKE2B_WR_CHAIN,
@@ -5933,6 +5937,23 @@ impl ZiskRom2Asm {
                 // Get result from precompile results data
                 if ctx.a.constant_value == FCALL_INPUT_READY_ID as u64 {
                     Self::wait_for_input_ready(ctx, code, unusual_code);
+                } else if is_par_marker(ctx.a.constant_value) {
+                    // Fork-join markers: nothing to return; free input = 0. The chunked traces
+                    // (minimal trace and memory operations) may run tasks apart, so they tell the
+                    // emulator about the region
+                    *code += &ctx.full_line_comment("Fork-join marker".to_string());
+                    if ctx.minimal_trace() || ctx.mem_op() {
+                        Self::par_marker_call(ctx, code, ctx.a.constant_value);
+                    }
+                    *code += &format!(
+                        "\tmov qword {}[{} + {}*8], 0 {}\n",
+                        ctx.ptr,
+                        ctx.fcall_ctx,
+                        FCALL_RESULT_SIZE,
+                        ctx.comment_str("ctx.result_size = 0")
+                    );
+                } else if ctx.a.constant_value == FCALL_PAR_PAD_ID as u64 {
+                    Self::par_pad_call(ctx, code);
                 } else {
                     // Store a (function id) in context
                     assert!(ctx.a.is_constant);
@@ -8619,6 +8640,97 @@ impl ZiskRom2Asm {
         ctx.wait_for_prec_counter += 1;
     }
 
+    /// Tells the emulator's fork-join runtime (emulator-asm/src/par.c) about a region marker:
+    /// FORK opens the region, with the task list still in the fcall parameters, and every
+    /// BOUNDARY may run the region's tasks apart. A BOUNDARY is the first step of its chunk, which
+    /// the runtime checks with the step count down. The runtime leaves the open chunk where it
+    /// is, so the memory reads registers, which the C calling convention preserves, still hold.
+    /// TASK_END and JOIN tell it nothing.
+    fn par_marker_call(ctx: &mut ZiskAsmContext, code: &mut String, function_id: u64) {
+        if function_id == FCALL_PAR_FORK_ID as u64 {
+            Self::push_internal_registers(ctx, code, false);
+            *code += "\tcall _par_fork\n";
+            Self::pop_internal_registers(ctx, code, false);
+        } else if function_id == FCALL_PAR_BOUNDARY_ID as u64 {
+            Self::push_internal_registers(ctx, code, false);
+            *code += &format!(
+                "\tmov rdi, {REG_MEM_READS_SIZE} {}\n",
+                ctx.comment_str("rdi = mem_reads_size")
+            );
+            *code +=
+                &format!("\tmov rsi, {REG_STEP} {}\n", ctx.comment_str("rsi = step_count_down"));
+            *code += "\tcall _par_boundary\n";
+            Self::pop_internal_registers(ctx, code, false);
+        }
+    }
+
+    /// The fork-join padding fcall: returns, as its one result word and as the free input, how
+    /// many steps are left in the chunk after this one (`crate::par_pad_steps`), then joins the
+    /// common fcall epilogue. Every generation method must return the same value for the same step,
+    /// since it decides how many steps the guest's padding takes.
+    fn par_pad_call(ctx: &mut ZiskAsmContext, code: &mut String) {
+        *code += &ctx.full_line_comment("Fork-join padding: steps left in the chunk".to_string());
+
+        // value = this instruction's step
+        if ctx.minimal_trace() || ctx.mem_op() {
+            // The step count down starts every chunk at chunk_size and the total step is updated
+            // at each chunk end, so step = total step + chunk_size - step count down
+            *code += &format!(
+                "\tmov {}, {} {}\n",
+                REG_VALUE,
+                ctx.mem_step,
+                ctx.comment_str("value = step at chunk start")
+            );
+            *code += &format!(
+                "\tadd {}, chunk_size {}\n",
+                REG_VALUE,
+                ctx.comment_str("value += chunk_size")
+            );
+            *code += &format!(
+                "\tsub {}, {} {}\n",
+                REG_VALUE,
+                REG_STEP,
+                ctx.comment_str("value -= step count down")
+            );
+        } else {
+            // The fast and ROM histogram methods count the steps up from 0
+            *code +=
+                &format!("\tmov {}, {} {}\n", REG_VALUE, REG_STEP, ctx.comment_str("value = step"));
+        }
+
+        // value = (CHUNK_SIZE - 1) - (step % CHUNK_SIZE), CHUNK_SIZE being a power of two
+        *code += &format!("\tnot {} {}\n", REG_VALUE, ctx.comment_str("value = !step"));
+        *code += &format!(
+            "\tand {}, 0x{:x} {}\n",
+            REG_VALUE,
+            CHUNK_SIZE - 1,
+            ctx.comment_str("value &= CHUNK_SIZE - 1")
+        );
+
+        *code += &format!(
+            "\tmov qword {}[{} + {}*8], {} {}\n",
+            ctx.ptr,
+            ctx.fcall_ctx,
+            FCALL_RESULT,
+            REG_VALUE,
+            ctx.comment_str("ctx.result[0] = value")
+        );
+        *code += &format!(
+            "\tmov qword {}[{} + {}*8], 1 {}\n",
+            ctx.ptr,
+            ctx.fcall_ctx,
+            FCALL_RESULT_SIZE,
+            ctx.comment_str("ctx.result_size = 1")
+        );
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            ctx.mem_free_input,
+            REG_VALUE,
+            ctx.comment_str("free_input = value")
+        );
+        *code += &format!("\tjmp pc_{:x}_fcall_result_done\n", ctx.pc);
+    }
+
     // Waits for the requested reg_address input address (and previous) to be available, waiting
     // if necessary address in reg_address,
     fn wait_for_input_ready(
@@ -9607,5 +9719,161 @@ mod tests {
             "the store address must be a + store_offset:\n{}",
             block.join("\n")
         );
+    }
+
+    const ALL_METHODS: [AsmGenerationMethod; 5] = [
+        AsmGenerationMethod::AsmFast,
+        AsmGenerationMethod::AsmMinimalTraces,
+        AsmGenerationMethod::AsmRomHistogram,
+        AsmGenerationMethod::AsmMemOp,
+        AsmGenerationMethod::AsmMemOpLight,
+    ];
+
+    /// The assembly `method` emits for `fcall(function_id)`, as the transpiler builds it from a
+    /// `csrwi` to an fcall port, up to the first internal label: the fcall's common epilogue
+    /// (free input and counters) starts with one
+    fn fcall_block(
+        function_id: u16,
+        method: AsmGenerationMethod,
+        precompile_results: bool,
+    ) -> Vec<String> {
+        let pc = ROM_ADDR;
+        let mut zib = crate::ZiskInstBuilder::new(pc);
+        zib.src_a("imm", function_id as u64, false);
+        zib.src_b("imm", 0, false);
+        zib.op("fcall").unwrap();
+        zib.j(4, 4);
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
+        zib.build(&mut rom);
+        rom.optimize_instruction_lookup().unwrap();
+
+        let mut asm = String::new();
+        ZiskRom2Asm::save_to_asm(&rom, &mut asm, method, false, false, precompile_results);
+        let block: Vec<String> = asm
+            .lines()
+            .skip_while(|l| !l.starts_with(&format!("pc_{pc:x}:")))
+            .skip(1)
+            .take_while(|l| !l.starts_with("pc_"))
+            .map(|l| l.trim().to_string())
+            .collect();
+        assert!(!block.is_empty(), "no code emitted for pc {pc:#x}");
+        block
+    }
+
+    /// The fork-join markers never call the emulator's fcalls nor read the precompile hints, and
+    /// return nothing, whatever the generation method. Only the chunked traces (minimal trace and
+    /// memory operations), which may run the tasks apart, tell the emulator's fork-join runtime
+    /// about FORK and BOUNDARY
+    #[test]
+    fn par_markers_return_nothing() {
+        use ziskos::zisklib::{FCALL_PAR_JOIN_ID, FCALL_PAR_TASK_END_ID};
+        let result_size_0 = format!("mov qword ptr [fcall_ctx + {FCALL_RESULT_SIZE}*8], 0");
+        for method in ALL_METHODS {
+            for precompile_results in [false, true] {
+                for id in [
+                    FCALL_PAR_FORK_ID,
+                    FCALL_PAR_BOUNDARY_ID,
+                    FCALL_PAR_TASK_END_ID,
+                    FCALL_PAR_JOIN_ID,
+                ] {
+                    let block = fcall_block(id, method, precompile_results);
+                    let code = block.join("\n");
+                    let at = format!("{method:?}, hints {precompile_results}, id {id}");
+                    assert!(!code.contains("_opcode_fcall"), "{at}: calls the emulator\n{code}");
+                    assert!(
+                        !code.contains(&format!("fcall_ctx + {FCALL_FUNCTION_ID}*8")),
+                        "{at}: sets up a call\n{code}"
+                    );
+                    assert!(block.contains(&result_size_0), "{at}: result not empty\n{code}");
+                    let chunked = matches!(
+                        method,
+                        AsmGenerationMethod::AsmMinimalTraces
+                            | AsmGenerationMethod::AsmMemOp
+                            | AsmGenerationMethod::AsmMemOpLight
+                    );
+                    let tells_the_runtime =
+                        chunked && (id == FCALL_PAR_FORK_ID || id == FCALL_PAR_BOUNDARY_ID);
+                    assert_eq!(
+                        code.contains("call _par_"),
+                        tells_the_runtime,
+                        "{at}: calls the fork-join runtime\n{code}"
+                    );
+                }
+            }
+        }
+        // The test sees the calls it is looking for: an ordinary fcall still makes one
+        let block = fcall_block(19, AsmGenerationMethod::AsmMinimalTraces, false);
+        assert!(block.contains(&"call _opcode_fcall".to_string()));
+    }
+
+    /// At a BOUNDARY the trace gives the runtime the reads written so far and the step count
+    /// down, and keeps its memory reads registers: the runtime leaves the open chunk where it is
+    #[test]
+    fn par_boundary_passes_the_reads_and_the_step_count_down() {
+        for method in [
+            AsmGenerationMethod::AsmMinimalTraces,
+            AsmGenerationMethod::AsmMemOp,
+            AsmGenerationMethod::AsmMemOpLight,
+        ] {
+            for precompile_results in [false, true] {
+                let block = fcall_block(FCALL_PAR_BOUNDARY_ID, method, precompile_results);
+                let code = block.join("\n");
+                let call = block
+                    .iter()
+                    .position(|l| l == "call _par_boundary")
+                    .unwrap_or_else(|| panic!("{method:?}: no call to the runtime\n{code}"));
+                assert_eq!(block[call - 2], format!("mov rdi, {REG_MEM_READS_SIZE}"), "{code}");
+                assert_eq!(block[call - 1], format!("mov rsi, {REG_STEP}"), "{code}");
+                assert!(
+                    !block[call..]
+                        .iter()
+                        .any(|l| l.starts_with(&format!("mov {REG_MEM_READS_ADDRESS},"))
+                            || l.starts_with(&format!("lea {REG_MEM_READS_ADDRESS},"))),
+                    "{method:?}: the memory reads address is rewritten after the call\n{code}"
+                );
+            }
+        }
+    }
+
+    /// The padding fcall computes this instruction's step the way each method counts steps and
+    /// returns, as its result and free input, how many are left in the chunk
+    #[test]
+    fn par_pad_returns_the_steps_left_in_the_chunk() {
+        let tail = [
+            format!("not {REG_VALUE}"),
+            format!("and {REG_VALUE}, 0x{:x}", CHUNK_SIZE - 1),
+            format!("mov qword ptr [fcall_ctx + {FCALL_RESULT}*8], {REG_VALUE}"),
+            format!("mov qword ptr [fcall_ctx + {FCALL_RESULT_SIZE}*8], 1"),
+            format!("mov qword ptr [MEM_FREE_INPUT], {REG_VALUE}"),
+            format!("jmp pc_{ROM_ADDR:x}_fcall_result_done"),
+        ];
+        for method in ALL_METHODS {
+            for precompile_results in [false, true] {
+                let block = fcall_block(FCALL_PAR_PAD_ID, method, precompile_results);
+                let code = block.join("\n");
+                let at = format!("{method:?}, hints {precompile_results}");
+                assert!(!code.contains("_opcode_fcall"), "{at}: calls the emulator\n{code}");
+
+                // Counting down from chunk_size in the chunked methods, up from 0 in the others
+                let step = match method {
+                    AsmGenerationMethod::AsmMinimalTraces
+                    | AsmGenerationMethod::AsmMemOp
+                    | AsmGenerationMethod::AsmMemOpLight => vec![
+                        format!("mov {REG_VALUE}, qword ptr [MEM_STEP]"),
+                        format!("add {REG_VALUE}, chunk_size"),
+                        format!("sub {REG_VALUE}, {REG_STEP}"),
+                    ],
+                    AsmGenerationMethod::AsmFast | AsmGenerationMethod::AsmRomHistogram => {
+                        vec![format!("mov {REG_VALUE}, {REG_STEP}")]
+                    }
+                };
+                let expected: Vec<String> = step.into_iter().chain(tail.iter().cloned()).collect();
+                let start = block
+                    .iter()
+                    .position(|l| *l == expected[0])
+                    .unwrap_or_else(|| panic!("{at}: no step computation\n{code}"));
+                assert_eq!(block[start..start + expected.len()], expected[..], "{at}\n{code}");
+            }
+        }
     }
 }

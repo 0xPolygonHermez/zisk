@@ -38,6 +38,7 @@ const PROGRAMS: &[&str] = &[
     "diagnostic-hints",
     "ed25519_verify",
     "fib_mod",
+    "fork_join",
     "hashes",
     "input_2gb",
     "keccak",

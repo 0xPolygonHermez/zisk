@@ -1,7 +1,7 @@
 use named_sem::NamedSemaphore;
 use zisk_common::{stats_begin, stats_end, stats_mark, AsmExecutionInfo};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use zisk_common::{ChunkId, EmuTrace, ExecutorStatsHandle};
+use zisk_common::{EmuTrace, ExecutorStatsHandle};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::atomic::{fence, Ordering};
@@ -12,8 +12,9 @@ use tracing::{error, info, warn};
 
 use crate::{
     sem_chunk_done_name, shmem_output_name, AsmMTChunk, AsmMTHeader, AsmMultiShmem, AsmRunError,
-    AsmService, AsmServices, MAX_TRACE_CHUNK_INFO, SEM_CHUNK_DONE_WAIT_DURATION, TRACE_DELTA_SIZE,
-    TRACE_INITIAL_SIZE, TRACE_MAX_SIZE,
+    AsmService, AsmServices, ChunkEvent, EventsShmem, RegionReader, TaskChunkRead, TaskTraces,
+    MAX_TRACE_CHUNK_INFO, SEM_CHUNK_DONE_WAIT_DURATION, TRACE_DELTA_SIZE, TRACE_INITIAL_SIZE,
+    TRACE_MAX_SIZE,
 };
 
 use anyhow::{Context, Result};
@@ -21,6 +22,11 @@ use anyhow::{Context, Result};
 /// Reads the minimal traces the MT service writes to its shared output segment.
 pub struct MTShmemReader {
     pub(crate) output_shmem: AsmMultiShmem<AsmMTHeader>,
+    /// The service's chunk events: one per post of its `chunk_done` semaphore, which says what
+    /// the post is for. The service creates them with its output, at its setup
+    pub(crate) events: EventsShmem,
+    /// The trace objects of the fork-join regions the last run ran apart: its chunks borrow them
+    pub(crate) task_traces: TaskTraces,
 }
 
 impl MTShmemReader {
@@ -37,7 +43,11 @@ impl MTShmemReader {
             false,
         )?;
 
-        Ok(Self { output_shmem })
+        // Without them the reader could not tell a fork-join task's chunk from a main one
+        let events = EventsShmem::open(shm_prefix, AsmService::MT)
+            .context("Failed to open the MT chunk events")?;
+
+        Ok(Self { output_shmem, events, task_traces: TaskTraces::default() })
     }
 }
 
@@ -59,6 +69,11 @@ impl AsmRunnerMT {
     /// order, with every chunk published so far (`idx` is the last) and whether
     /// `idx` ends the execution. Returning `Err` aborts the run: the ASM
     /// children are signalled and the error is propagated to the caller.
+    ///
+    /// The chunks of a fork-join region the service runs apart come out of order, as its tasks
+    /// produce them. They are held until every task before theirs is done, and then handed on in
+    /// chunk order with the steps of those tasks added to their step: `on_chunk` sees exactly the
+    /// chunks a sequential run publishes.
     #[allow(clippy::too_many_arguments)]
     pub fn run_and_count<F, R>(
         preloaded: &mut MTShmemReader,
@@ -75,7 +90,13 @@ impl AsmRunnerMT {
     {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MT_RUNNER", 0);
 
+        // The previous run's chunks are gone (the executor clears them before it executes), and
+        // with them the borrows of its regions' trace objects
+        preloaded.task_traces.clear();
+
         let sem_chunk_done_name = sem_chunk_done_name(asm_services.sem_prefix(), AsmService::MT);
+        // The program's prefix, which its fork-join task trace objects carry
+        let program_prefix = asm_services.sem_prefix().to_string();
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -99,8 +120,6 @@ impl AsmRunnerMT {
 
             (result, start.elapsed())
         });
-
-        let mut chunk_id = ChunkId(0);
 
         // Get the pointer to the data in the shared memory.
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMTChunk;
@@ -131,6 +150,10 @@ impl AsmRunnerMT {
 
         // Pre-allocate reasonable initial capacity to avoid early reallocations
         let mut emu_traces: Vec<Arc<EmuTrace>> = Vec::with_capacity(1024);
+        let mut next_event = 0usize;
+        // The fork-join regions the service runs apart, whose chunks it hands on in chunk order
+        let mut regions =
+            RegionReader::<EmuTrace>::new(AsmService::MT, &program_prefix, chunk_size);
 
         let mut on_runner_failure = Some(on_runner_failure);
         let mut signal_runner_failure = || {
@@ -153,41 +176,87 @@ impl AsmRunnerMT {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
 
-                    // Check if we need to map additional shared memory files.
-                    if data_ptr >= threshold {
-                        match preloaded.output_shmem.check_size_changed() {
-                            Ok(true) => {
-                                // Update threshold based on new total mapped size
-                                threshold = unsafe {
-                                    preloaded.output_shmem.mapped_ptr().add(
-                                        preloaded.output_shmem.total_mapped_size()
-                                            - threshold_bytes,
-                                    ) as *const AsmMTChunk
-                                };
+                    let event = match preloaded.events.read(next_event, || handle.is_finished()) {
+                        Ok(Some(event)) => event,
+                        Ok(None) => {
+                            // The service ended the run with this event's slot reserved but never
+                            // written (a task's process stopped while publishing it): the stream
+                            // stopped, and the header says how the run failed
+                            error!(
+                                "MT chunk stream on '{sem_chunk_done_name}' stopped: the service ended the run with chunk event {next_event} never written"
+                            );
+                            signal_runner_failure();
+                            break Ok(crate::stopped_stream_exit_code(
+                                preloaded.output_shmem.map_header().exit_code,
+                            ));
+                        }
+                        Err(e) => {
+                            signal_runner_failure();
+                            break Err(e.context("Failed to read the MT chunk events"));
+                        }
+                    };
+                    next_event += 1;
+
+                    let handled: Result<bool> = (|| {
+                        match event {
+                            ChunkEvent::Main => {
+                                if regions.in_region() {
+                                    anyhow::bail!("a main chunk inside a fork-join region");
+                                }
+                                // Check if we need to map additional shared memory files.
+                                if data_ptr >= threshold
+                                    && preloaded.output_shmem.check_size_changed().context(
+                                        "Failed to check and map new shared memory files for MT trace",
+                                    )?
+                                {
+                                    // Update threshold based on new total mapped size
+                                    threshold = unsafe {
+                                        preloaded.output_shmem.mapped_ptr().add(
+                                            preloaded.output_shmem.total_mapped_size()
+                                                - threshold_bytes,
+                                        ) as *const AsmMTChunk
+                                    };
+                                }
+
+                                let emu_trace = Arc::new(AsmMTChunk::to_emu_trace(&mut data_ptr));
+                                let should_exit = emu_trace.end;
+                                emu_traces.push(emu_trace);
+                                on_chunk(emu_traces.len() - 1, &emu_traces, should_exit)
+                                    .context("MT chunk callback failed")?;
+                                Ok(should_exit)
                             }
-                            Ok(false) => {}
-                            Err(e) => {
-                                signal_runner_failure();
-                                break Err(e).context(
-                                    "Failed to check and map new shared memory files for MT trace",
-                                );
+                            // A region's chunk, handed on in chunk order with the steps of the
+                            // tasks before its task added to its step, and the next `ChunkId`
+                            region_event => {
+                                regions.follow(
+                                    region_event,
+                                    &mut preloaded.task_traces,
+                                    |at| {
+                                        let mut chunk = at as *const AsmMTChunk;
+                                        let emu_trace = AsmMTChunk::to_emu_trace(&mut chunk);
+                                        let end = emu_trace.end;
+                                        TaskChunkRead { item: emu_trace, end }
+                                    },
+                                    |shift, mut emu_trace| {
+                                        emu_trace.start_state.step += shift;
+                                        emu_traces.push(Arc::new(emu_trace));
+                                        on_chunk(emu_traces.len() - 1, &emu_traces, false)
+                                            .context("MT chunk callback failed")
+                                    },
+                                )?;
+                                Ok(false)
                             }
                         }
-                    }
+                    })();
 
-                    let emu_trace = Arc::new(AsmMTChunk::to_emu_trace(&mut data_ptr));
-                    let should_exit = emu_trace.end;
-
-                    emu_traces.push(emu_trace);
-                    if let Err(e) = on_chunk(chunk_id.0, &emu_traces, should_exit) {
-                        signal_runner_failure();
-                        break Err(e.context("MT chunk callback failed"));
+                    match handled {
+                        Ok(true) => break Ok(0),
+                        Ok(false) => {}
+                        Err(e) => {
+                            signal_runner_failure();
+                            break Err(e);
+                        }
                     }
-
-                    if should_exit {
-                        break Ok(0);
-                    }
-                    chunk_id.0 += 1;
                 }
                 Err(stop) => {
                     error!("MT chunk stream on '{sem_chunk_done_name}' stopped: {stop}");
@@ -199,10 +268,9 @@ impl AsmRunnerMT {
                     // report success. The header's code is preferred when it says
                     // the child failed, but an unpopulated (or "fine") header must
                     // not turn a truncated run into `Ok`.
-                    break Ok(match preloaded.output_shmem.map_header().exit_code {
-                        0 => 1,
-                        exit_code => exit_code,
-                    });
+                    break Ok(crate::stopped_stream_exit_code(
+                        preloaded.output_shmem.map_header().exit_code,
+                    ));
                 }
             }
         };
@@ -221,7 +289,7 @@ impl AsmRunnerMT {
                     format!("MT stream ended before its last chunk (exit code {exit_code})")
                 });
             }
-            return Err(AsmRunError::ExitCode(exit_code as u32))
+            return Err(AsmRunError::from_exit_code(exit_code, preloaded.events.report().failure))
                 .context("Child process returned error");
         }
 
@@ -235,7 +303,7 @@ impl AsmRunnerMT {
         // never false-fire.
         {
             let header_chunks = preloaded.output_shmem.map_header().num_chunks;
-            let consumed = chunk_id.0 as u64 + 1;
+            let consumed = emu_traces.len() as u64;
             if header_chunks != 0 && header_chunks != consumed {
                 error!(
                     "[CHUNK-DESYNC] MT consumed {consumed} chunks but header reports {header_chunks} — likely a stale chunk_done post from a prior run shifted the stream (wrong minimal trace)"
@@ -245,8 +313,25 @@ impl AsmRunnerMT {
 
         let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
         let mhz = (total_steps as f64 / elapsed.as_secs_f64()) / 1_000_000.0;
-        let asm_execution_info = AsmExecutionInfo { time: elapsed.as_secs_f32(), mhz: mhz as f32 };
-        info!("··· Assembly execution speed: {}MHz ({:2?})", mhz.round(), elapsed);
+        // What the service says of the regions it did not run apart
+        let report = preloaded.events.report();
+        report.log_sequential();
+        let asm_execution_info = AsmExecutionInfo {
+            time: elapsed.as_secs_f32(),
+            mhz: mhz as f32,
+            fork_join_regions_apart: regions.regions_apart(),
+            fork_join_regions_sequential: report.regions_sequential,
+        };
+        let regions_apart = regions.regions_apart();
+        if regions_apart > 0 {
+            info!(
+                "··· Assembly execution speed: {}MHz ({:2?}), {regions_apart} fork-join region(s) run apart",
+                mhz.round(),
+                elapsed
+            );
+        } else {
+            info!("··· Assembly execution speed: {}MHz ({:2?})", mhz.round(), elapsed);
+        }
 
         let response = handle.map_err(AsmRunError::ServiceError)?;
 
@@ -335,6 +420,19 @@ done
     /// Runs a minimal trace of `program` on rank `rank`'s segments, as a job does, and
     /// returns its error and how long the run took to fail.
     fn failed_run(program: &FakeProgram, rank: i32) -> (anyhow::Error, Duration) {
+        failed_run_with(program, rank, 0, None)
+    }
+
+    /// As [`failed_run`], with `exit_code` in the output's header, where the service leaves
+    /// it before it answers, and, `post` after the run starts, a post of the `chunk_done`
+    /// semaphore whose event is never written, as a task's process killed while it publishes
+    /// one leaves it.
+    fn failed_run_with(
+        program: &FakeProgram,
+        rank: i32,
+        exit_code: u64,
+        post: Option<Duration>,
+    ) -> (anyhow::Error, Duration) {
         let (services, _claim) = AsmServices::new(
             0,
             rank,
@@ -356,16 +454,40 @@ done
             assert_eq!(libc::ftruncate(fd, size as libc::off_t), 0);
             libc::close(fd);
         }
-        crate::ShmemWriter::new(&name, size, true)
-            .unwrap()
+        let header = crate::ShmemWriter::new(&name, size, true).unwrap();
+        header
             .write_u64_at(std::mem::offset_of!(AsmMTHeader, shmem_allocated_size), size as u64)
+            .unwrap();
+        header.write_u64_at(std::mem::offset_of!(AsmMTHeader, exit_code), exit_code).unwrap();
+        drop(header);
+        // The chunk events the MT service creates at its setup; this run publishes none
+        let events = crate::shmem_events_name(services.shm_prefix(), AsmService::MT);
+        let events_c = std::ffi::CString::new(events.as_str()).unwrap();
+        unsafe {
+            let fd = libc::shm_open(events_c.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600);
+            assert!(fd >= 0);
+            assert_eq!(libc::ftruncate(fd, crate::PAR_EVENTS_BYTES as libc::off_t), 0);
+            libc::close(fd);
+        }
+        crate::ShmemWriter::new(&events, crate::PAR_EVENTS_BYTES, true)
+            .unwrap()
+            .write_u64_at(0, crate::PAR_EVENTS_VERSION)
             .unwrap();
         let output = shmem_output_name(services.shm_prefix(), AsmService::MT, None);
         let mut reader = MTShmemReader {
             output_shmem: AsmMultiShmem::open_and_map(&output, size, size, size * 4, true, false)
                 .unwrap(),
+            events: EventsShmem::open(services.shm_prefix(), AsmService::MT).unwrap(),
+            task_traces: TaskTraces::default(),
         };
 
+        let poster = post.map(|after| {
+            let name = sem_chunk_done_name(services.sem_prefix(), AsmService::MT);
+            std::thread::spawn(move || {
+                std::thread::sleep(after);
+                NamedSemaphore::create(name, 0).unwrap().post().unwrap();
+            })
+        });
         let start = Instant::now();
         let Err(error) = AsmRunnerMT::run_and_count(
             &mut reader,
@@ -378,6 +500,10 @@ done
         ) else {
             panic!("a run that publishes no chunk must fail");
         };
+        if let Some(poster) = poster {
+            poster.join().unwrap();
+        }
+        unsafe { libc::shm_unlink(events_c.as_ptr()) };
         (error, start.elapsed())
     }
 
@@ -396,6 +522,28 @@ done
             error
                 .chain()
                 .any(|e| matches!(e.downcast_ref::<AsmRunError>(), Some(AsmRunError::ExitCode(1)))),
+            "{error:#}"
+        );
+    }
+
+    /// A run the service answers with an event it posted never written, as when a task's
+    /// process is killed between reserving its slot and filling it, fails with what the
+    /// service's header says, here the guest ending inside a fork-join task, and as soon as it
+    /// is answered.
+    #[test]
+    fn a_run_answered_with_an_event_never_written_keeps_its_failure() {
+        let program = FakeProgram::new(
+            "unwritten",
+            r"sleep 0.6; printf '\004'; head -c 7 /dev/zero; printf '\001'; head -c 31 /dev/zero",
+        );
+        let post = Some(Duration::from_millis(200));
+        let (error, took) = failed_run_with(&program, 113, crate::PAR_ABORT_TASK_ENDED, post);
+        assert!(took < SEM_CHUNK_DONE_WAIT_DURATION / 5, "failed after {took:?}: {error:#}");
+        assert!(
+            error.chain().any(|e| matches!(
+                e.downcast_ref::<AsmRunError>(),
+                Some(AsmRunError::ForkJoinTask { failure: crate::TaskFailure::Ended, .. })
+            )),
             "{error:#}"
         );
     }

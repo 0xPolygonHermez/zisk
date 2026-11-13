@@ -6,6 +6,30 @@ static mut HEAP_POS: usize = 0;
 #[export_name = "ZISK_BUMP_HEAP_TOP"]
 static mut HEAP_TOP: usize = 0;
 
+/// The bump allocator's free region, `[HEAP_POS, HEAP_TOP)`.
+#[cfg(zisk_guest)]
+pub fn bump_heap() -> (usize, usize) {
+    unsafe { (HEAP_POS, HEAP_TOP) }
+}
+
+/// Makes the bump allocator allocate from `[bottom, top)`.
+///
+/// A fork-join task calls it before anything else touches the allocator (see `crate::par`): it
+/// writes the allocator's state and never reads it, so the task does not depend on what the task
+/// before it left there.
+///
+/// # Safety
+///
+/// `[bottom, top)` must be memory nothing else uses, and nothing may still be allocated from the
+/// region it replaces.
+#[cfg(zisk_guest)]
+pub unsafe fn set_bump_heap(bottom: usize, top: usize) {
+    unsafe {
+        HEAP_POS = bottom;
+        HEAP_TOP = top;
+    }
+}
+
 #[cfg(zisk_guest)]
 #[no_mangle]
 #[warn(dead_code)]

@@ -48,6 +48,7 @@ char shmem_output_name[128] = {0};
 char shmem_precompile_name[128] = {0};
 char shmem_rom_name[128] = {0};
 char shmem_ram_name[128] = {0};
+char shmem_events_name[128] = {0};
 
 // Semaphore names
 char sem_prec_avail_name[128] = {0};

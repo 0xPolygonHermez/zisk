@@ -464,10 +464,11 @@ fn domain_stats_to_executor_time(stats: &DomainExecutionStats) -> zisk_common::Z
         execution_duration: et.execution_duration,
         count_and_plan_duration: et.count_and_plan_duration,
         count_and_plan_mo_duration: et.count_and_plan_mo_duration,
-        asm_execution_duration: et
-            .asm
-            .as_ref()
-            .map(|a| zisk_common::AsmExecutionInfo { time: a.time, mhz: a.mhz }),
+        asm_execution_duration: et.asm.as_ref().map(|a| zisk_common::AsmExecutionInfo {
+            time: a.time,
+            mhz: a.mhz,
+            ..Default::default()
+        }),
     }
 }
 

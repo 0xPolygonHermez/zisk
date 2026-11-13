@@ -14,6 +14,7 @@
 # Developer Guide
 - [Architecture](./developer/intro.md)
 - [Limits](./developer/limits.md)
+- [Parallel Execution](./developer/parallel_execution.md)
 - [Ziskof](./developer/ziskof.md)
 - [Profiling Programs](./developer/profiling.md)
 - [EF zkEVM Standards Conformance](./developer/ef_requirements.md)

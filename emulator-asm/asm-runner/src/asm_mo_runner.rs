@@ -13,7 +13,8 @@ use crate::TRACE_INITIAL_SIZE;
 use crate::TRACE_MAX_SIZE;
 use crate::{
     sem_chunk_done_name, shmem_output_name, AsmMOChunk, AsmMOHeader, AsmMultiShmem, AsmRunError,
-    AsmService, AsmServices, GpuBufferSource, OwnedMemInstances,
+    AsmService, AsmServices, ChunkEvent, EventsShmem, GpuBufferSource, OwnedMemInstances,
+    RegionReader, TaskChunkRead, TaskTraces,
 };
 #[cfg(gpu)]
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
@@ -53,6 +54,10 @@ fn register_mo_shmem_pinned(
         *registered = usize::MAX; // give up; do not retry
     }
 }
+
+/// A fork-join task's chunk as the MO reader keeps it until the frontier reaches it: its records
+/// and how many words
+type TaskChunkRef = (*const c_void, u64);
 
 /// The planner, and whether the setup gave the device memory witness its room (the planner then
 /// retains every block's accesses); without it the run keeps the CPU witness, logged once here.
@@ -125,6 +130,12 @@ fn input_image(shm_prefix: &str) -> std::result::Result<crate::ShmemReader, Stri
 /// This struct manages the shared memory and synchronization primitives for reading memory operation traces from the C++ side.
 pub struct MOShmemReader {
     pub(crate) output_shmem: AsmMultiShmem<AsmMOHeader>,
+    /// The service's chunk events: one per post of its `chunk_done` semaphore, which says what
+    /// the post is for. The service creates them with its output, at its setup
+    events: EventsShmem,
+    /// The trace objects of the fork-join regions the last run ran apart: the planner reads its
+    /// chunks there, so they are kept until the next run
+    task_traces: TaskTraces,
     mem_planner: Option<MemPlanner>,
     handle_mo: Option<std::thread::JoinHandle<MemPlanner>>,
     #[cfg(gpu)]
@@ -162,8 +173,14 @@ impl MOShmemReader {
         #[cfg(not(gpu))]
         let _ = buffer_source;
 
+        // Without them the reader could not tell a fork-join task's chunk from a main one
+        let events = EventsShmem::open(shm_prefix, AsmService::MO)
+            .context("Failed to open the MO chunk events")?;
+
         Ok(Self {
             output_shmem: output_shared_memory,
+            events,
+            task_traces: TaskTraces::default(),
             mem_planner: Some(MemPlanner::new()),
             handle_mo: None,
             #[cfg(gpu)]
@@ -357,7 +374,12 @@ impl AsmRunnerMO {
     {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MO_RUNNER", 0);
 
+        // The previous run's plan is done with its regions' chunks
+        preloaded.task_traces.clear();
+
         let sem_chunk_done_name = sem_chunk_done_name(asm_services.sem_prefix(), AsmService::MO);
+        // The program's prefix, which its fork-join task trace objects carry
+        let program_prefix = asm_services.sem_prefix().to_string();
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -459,6 +481,34 @@ impl AsmRunnerMO {
             }
         };
 
+        // The planners number the chunks by the order they get them, and the plan needs the MT
+        // chunk ids: the sequential order. Every chunk goes to the planner in that order, a
+        // fork-join region's when the frontier reaches it.
+        let feed = |records: *const c_void, n: u64| {
+            #[cfg(gpu)]
+            if let Some(ref gpu_count_and_plan) = gpu_count_and_plan_opt {
+                fed_chunks.push((records, n));
+                if !gpu_count_and_plan.add_chunk(n, records) {
+                    tracing::warn!(
+                        "[gpu] the planner rejected chunk {} (n={n}); the block is planned on the CPU",
+                        fed_chunks.len() - 1
+                    );
+                }
+            } else {
+                mem_planner.add_chunk(n, records);
+            }
+            #[cfg(not(gpu))]
+            mem_planner.add_chunk(n, records);
+        };
+        #[allow(unused_mut)]
+        let mut feed = feed;
+
+        let mut next_event = 0usize;
+        // The fork-join regions the service runs apart: their chunks' records (where they start,
+        // how many words), kept until their turn in chunk order
+        let mut regions =
+            RegionReader::<TaskChunkRef>::new(AsmService::MO, &program_prefix, chunk_size);
+
         let loop_result: Result<u64> = loop {
             match crate::wait_for_chunk(
                 &mut sem_chunk_done,
@@ -469,64 +519,106 @@ impl AsmRunnerMO {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
 
-                    // Check if we need to map additional shared memory files.
-                    if data_ptr >= threshold {
-                        match preloaded.output_shmem.check_size_changed() {
-                            Ok(true) => {
-                                // Update threshold based on new total mapped size
-                                threshold = unsafe {
-                                    preloaded.output_shmem.mapped_ptr().add(
-                                        preloaded.output_shmem.total_mapped_size()
-                                            - threshold_bytes,
-                                    ) as *const AsmMOChunk
-                                };
-                                #[cfg(gpu)]
-                                if let Some(ref gpu_count_and_plan) = gpu_count_and_plan_opt {
-                                    register_mo_shmem_pinned(
-                                        gpu_count_and_plan,
-                                        &preloaded.output_shmem,
-                                        &mut preloaded.registered_bytes,
-                                    );
-                                }
-                            }
-                            Ok(false) => {}
-                            Err(e) => {
-                                signal_runner_failure();
-                                break Err(e).context(
-                                    "Failed to check and map new shared memory files for MO trace",
-                                );
-                            }
+                    let event = match preloaded.events.read(next_event, || handle.is_finished()) {
+                        Ok(Some(event)) => event,
+                        Ok(None) => {
+                            // The service ended the run with this event's slot reserved but never
+                            // written (a task's process stopped while publishing it): the stream
+                            // stopped, and the header says how the run failed
+                            error!(
+                                "MO chunk stream on '{sem_chunk_done_name}' stopped: the service ended the run with chunk event {next_event} never written"
+                            );
+                            signal_runner_failure();
+                            break Ok(crate::stopped_stream_exit_code(
+                                preloaded.output_shmem.map_header().exit_code,
+                            ));
                         }
-                    }
-
-                    let chunk = unsafe { std::ptr::read(data_ptr) };
-
-                    data_ptr = unsafe { data_ptr.add(1) };
-
-                    stats_mark!(_stats, &_runner_scope, "MO_CHUNK_DONE", 0);
-
-                    // Feed this chunk to whichever planner is active
-                    #[cfg(gpu)]
-                    if let Some(ref gpu_count_and_plan) = gpu_count_and_plan_opt {
-                        fed_chunks.push((data_ptr as *const c_void, chunk.mem_ops_size));
-                        if !gpu_count_and_plan
-                            .add_chunk(chunk.mem_ops_size, data_ptr as *const c_void)
-                        {
-                            tracing::warn!("[gpu] the planner rejected chunk {} (n={}); the block is planned on the CPU", fed_chunks.len() - 1, chunk.mem_ops_size);
+                        Err(e) => {
+                            signal_runner_failure();
+                            break Err(e.context("Failed to read the MO chunk events"));
                         }
-                    } else {
-                        mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
-                    }
-                    #[cfg(not(gpu))]
-                    mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
-
-                    if chunk.end == 1 {
-                        break Ok(0);
-                    }
-
-                    data_ptr = unsafe {
-                        (data_ptr as *mut u64).add(chunk.mem_ops_size as usize) as *const AsmMOChunk
                     };
+                    next_event += 1;
+
+                    let handled: Result<bool> = (|| {
+                        match event {
+                            ChunkEvent::Main => {
+                                if regions.in_region() {
+                                    anyhow::bail!("a main chunk inside a fork-join region");
+                                }
+                                // Check if we need to map additional shared memory files.
+                                if data_ptr >= threshold
+                                    && preloaded.output_shmem.check_size_changed().context(
+                                        "Failed to check and map new shared memory files for MO trace",
+                                    )?
+                                {
+                                    // Update threshold based on new total mapped size
+                                    threshold = unsafe {
+                                        preloaded.output_shmem.mapped_ptr().add(
+                                            preloaded.output_shmem.total_mapped_size()
+                                                - threshold_bytes,
+                                        ) as *const AsmMOChunk
+                                    };
+                                    #[cfg(gpu)]
+                                    if let Some(ref gpu_count_and_plan) = gpu_count_and_plan_opt {
+                                        register_mo_shmem_pinned(
+                                            gpu_count_and_plan,
+                                            &preloaded.output_shmem,
+                                            &mut preloaded.registered_bytes,
+                                        );
+                                    }
+                                }
+
+                                let chunk = unsafe { std::ptr::read(data_ptr) };
+                                data_ptr = unsafe { data_ptr.add(1) };
+
+                                stats_mark!(_stats, &_runner_scope, "MO_CHUNK_DONE", 0);
+
+                                feed(data_ptr as *const c_void, chunk.mem_ops_size);
+
+                                if chunk.end == 1 {
+                                    return Ok(true);
+                                }
+
+                                data_ptr = unsafe {
+                                    (data_ptr as *mut u64).add(chunk.mem_ops_size as usize)
+                                        as *const AsmMOChunk
+                                };
+                                Ok(false)
+                            }
+                            // A region's chunk, fed to the planner in chunk order
+                            region_event => {
+                                regions.follow(
+                                    region_event,
+                                    &mut preloaded.task_traces,
+                                    |at| {
+                                        let chunk_ptr = at as *const AsmMOChunk;
+                                        let chunk = unsafe { std::ptr::read(chunk_ptr) };
+                                        stats_mark!(_stats, &_runner_scope, "MO_CHUNK_DONE", 0);
+                                        let records = unsafe { chunk_ptr.add(1) } as *const c_void;
+                                        TaskChunkRead {
+                                            item: (records, chunk.mem_ops_size),
+                                            end: chunk.end == 1,
+                                        }
+                                    },
+                                    |_, (records, n)| {
+                                        feed(records, n);
+                                        Ok(())
+                                    },
+                                )?;
+                                Ok(false)
+                            }
+                        }
+                    })();
+
+                    match handled {
+                        Ok(true) => break Ok(0),
+                        Ok(false) => {}
+                        Err(e) => {
+                            signal_runner_failure();
+                            break Err(e);
+                        }
+                    }
                 }
                 Err(stop) => {
                     error!("MO chunk stream on '{sem_chunk_done_name}' stopped: {stop}");
@@ -536,10 +628,9 @@ impl AsmRunnerMO {
                     // A stream that never reached its last chunk must not plan the block, even
                     // if the header, which a run that never started leaves as the previous
                     // run's, says the run went fine.
-                    break Ok(match preloaded.output_shmem.map_header().exit_code {
-                        0 => 1,
-                        exit_code => exit_code,
-                    });
+                    break Ok(crate::stopped_stream_exit_code(
+                        preloaded.output_shmem.map_header().exit_code,
+                    ));
                 }
             }
         };
@@ -634,8 +725,11 @@ impl AsmRunnerMO {
                         format!("MO stream ended before its last chunk (exit code {exit_code})")
                     });
                 }
-                return Err(AsmRunError::ExitCode(exit_code as u32))
-                    .context("Child process returned error");
+                return Err(AsmRunError::from_exit_code(
+                    exit_code,
+                    preloaded.events.report().failure,
+                ))
+                .context("Child process returned error");
             }
 
             let response =

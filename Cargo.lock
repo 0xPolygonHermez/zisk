@@ -2988,6 +2988,7 @@ dependencies = [
  "serial_test",
  "tokio",
  "wat",
+ "zisk-asm-runner",
  "zisk-common",
  "zisk-prover-backend",
  "zisk-sdk",

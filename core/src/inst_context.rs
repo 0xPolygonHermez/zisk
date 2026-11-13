@@ -7,7 +7,8 @@
 use ziskos::zisklib::{keccakf_cache::KeccakfCache, RANDOM_SEED_WORDS};
 
 use crate::{
-    Mem, FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
+    Mem, ParRegion, FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE, REGS_IN_MAIN_TOTAL_NUMBER,
+    ROM_ENTRY,
 };
 
 /// Zisk precompiled emulation mode
@@ -155,6 +156,9 @@ pub struct InstContext {
     /// Print the text of every write_log call site (see `opc_write_log`). Only for a run that
     /// holds the memory, which the text is read from
     pub write_log: bool,
+
+    /// The fork-join region the execution is in, if any (see `par_marker`)
+    pub par: Option<ParRegion>,
 }
 
 /// RisK instruction context implementation
@@ -189,6 +193,7 @@ impl InstContext {
             input_len: 0,
             random_seed: None,
             write_log: false,
+            par: None,
         }
     }
 

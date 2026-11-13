@@ -41,6 +41,25 @@ pub const FCALL_RANDOM_SEED_ID: u16 = 27;
 /// Size of the host randomness seed in 64-bit words (256 bits).
 pub const RANDOM_SEED_WORDS: usize = 4;
 
+// Fork-join markers. A parallel region always runs, and is proven, as if its tasks ran one after
+// another; these fcalls only tell the emulator where the region starts, where each pass through
+// its task loop begins and where it ends, so that it can run the tasks at the same time and stitch
+// their traces in order. They carry no hint: the emulators resolve them, they never reach
+// `Fcall()` and they are never part of the precompile hints.
+
+/// Start of a parallel region.
+pub const FCALL_PAR_FORK_ID: u16 = 28;
+/// First step of each pass through a region's task loop; always on a chunk boundary.
+pub const FCALL_PAR_BOUNDARY_ID: u16 = 29;
+/// End of one task, before the padding that takes the loop to the next chunk boundary.
+pub const FCALL_PAR_TASK_END_ID: u16 = 30;
+/// Returns, as its one result word, how many steps are left in the current chunk after this one,
+/// so that the caller can pad up to the next chunk boundary. A free input that only decides how
+/// many steps the padding takes, never what the program computes.
+pub const FCALL_PAR_PAD_ID: u16 = 31;
+/// End of a parallel region.
+pub const FCALL_PAR_JOIN_ID: u16 = 32;
+
 /// Returned by [`fcall_get_keccakf_cache_index`] when the executor has not cached the state.
 /// Reserved: it cannot be used as a cache index.
 pub const KECCAKF_CACHE_INDEX_NOT_FOUND: u64 = u64::MAX;

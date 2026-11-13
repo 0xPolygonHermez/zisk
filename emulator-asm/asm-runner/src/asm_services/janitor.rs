@@ -101,6 +101,22 @@ pub(super) fn cleanup_shm_prefix(shm_prefix: &str) {
     });
 }
 
+/// Unlink everything one program names: its semaphores, `sem.{sem_prefix}*`, and its fork-join
+/// task trace objects, `{sem_prefix}_*` (see `shmem_task_trace_name`), which a service that died
+/// during a run leaves behind. Nothing else begins with a program's prefix: the segments' prefix
+/// has no program hash in it.
+pub(super) fn cleanup_program(sem_prefix: &str) {
+    let sem_marker = format!("sem.{sem_prefix}");
+    let shm_marker = format!("{sem_prefix}_");
+    for_each_dev_shm_entry(|name| {
+        if name.starts_with(&sem_marker) {
+            unlink_sem_file(name);
+        } else if name.starts_with(&shm_marker) {
+            let _ = unlink_shmem(name);
+        }
+    });
+}
+
 /// Unlink every `/dev/shm/sem.{sem_prefix}*` semaphore.
 pub(super) fn cleanup_sem_prefix(sem_prefix: &str) {
     let sem_marker = format!("sem.{sem_prefix}");
@@ -329,6 +345,37 @@ mod tests {
             "the semaphore must be unlinked"
         );
         assert!(neighbour_segment_kept, "another process's segment must be left alone");
+    }
+
+    /// A program's teardown unlinks its semaphores and the task trace objects a service of its
+    /// left, and spares another program's on the same segments, and the segments themselves.
+    #[test]
+    fn cleaning_up_a_program_spares_the_other_programs_and_the_segments() {
+        // Pids above Linux's limit, apart from the other tests', so no real name is touched.
+        let pid = 440_000_000 + std::process::id();
+        let ours = crate::sem_prefix_for(pid, &"a".repeat(64), 0, false);
+        let theirs = crate::sem_prefix_for(pid, &"b".repeat(64), 0, false);
+        let our_task = crate::shmem_task_trace_name(&ours, crate::AsmService::MT, 0, 3);
+        let their_task = crate::shmem_task_trace_name(&theirs, crate::AsmService::MT, 0, 3);
+        let segment = format!("{}_MT_output", crate::shm_prefix_for(pid, 0, false));
+        [&our_task, &their_task, &segment].into_iter().for_each(|name| shm_create(name));
+        let our_semaphore = format!("{ours}_MT_chunk_done");
+        let _semaphore = named_sem::NamedSemaphore::create(format!("/{our_semaphore}"), 0).unwrap();
+
+        cleanup_program(&ours);
+
+        let (task_gone, semaphore_gone) = (
+            !shm_exists(&our_task),
+            !std::path::Path::new(&format!("/dev/shm/sem.{our_semaphore}")).exists(),
+        );
+        let (their_task_kept, segment_kept) = (shm_exists(&their_task), shm_exists(&segment));
+        for name in [&our_task, &their_task, &segment] {
+            let _ = unlink_shmem(name);
+        }
+        assert!(task_gone, "{our_task} must be unlinked");
+        assert!(semaphore_gone, "{our_semaphore} must be unlinked");
+        assert!(their_task_kept, "another program's {their_task} must be left alone");
+        assert!(segment_kept, "the shared {segment} must be left alone");
     }
 
     #[test]

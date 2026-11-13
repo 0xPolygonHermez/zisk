@@ -16,4 +16,8 @@ void server_run (void);
 void server_cleanup (void);
 void server_signal_handler (void);
 
+// Aborts the running emulation from code it calls (e.g. a fork-join region, see par.c) through the
+// same recovery path as a caught signal, with MEM_ERROR = error
+void server_abort_emulation (int error) __attribute__((noreturn));
+
 #endif // EMULATOR_ASM_SERVER_HPP

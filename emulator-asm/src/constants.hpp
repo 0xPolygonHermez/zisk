@@ -130,6 +130,12 @@
 #define MT_CHUNK_REGS 39
 #define MT_CHUNK_HEADER_WORDS (4 + MT_CHUNK_REGS + 4)
 #define MT_CHUNK_END_INDEX (4 + MT_CHUNK_REGS + 1)
+#define MT_CHUNK_STEP_INDEX 3                            // the step the chunk starts at
+#define MT_CHUNK_REG_INDEX(reg) (3 + (reg))              // register reg (1..MT_CHUNK_REGS) at its start
+#define MT_CHUNK_START_WORDS (MT_CHUNK_HEADER_WORDS - 4) // what the state at its start determines
+// Memory-operations chunk header: its end flag and its records' size (asm_mo.rs). The last word of
+// a chunk's header, MT or MO, is its size after the header, in words
+#define MO_CHUNK_HEADER_WORDS 2
 #define MAX_TRACE_CHUNK_INFO (((MT_CHUNK_HEADER_WORDS + 3)*8) + 32)
 #define MAX_BYTES_DIRECT_MTRACE 256
 #ifdef TRACE_TARGET_MO
