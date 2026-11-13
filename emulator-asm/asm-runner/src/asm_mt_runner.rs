@@ -87,6 +87,8 @@ impl AsmRunnerMT {
             );
         }
 
+        let data_waits = crate::DataWaits::open(asm_services.shm_prefix(), AsmService::MT);
+
         // Capture parent id for thread
         let _parent_id = _runner_scope.id();
         let _thread_stats = _stats.clone();
@@ -145,6 +147,7 @@ impl AsmRunnerMT {
             match crate::wait_for_chunk(
                 &mut sem_chunk_done,
                 || handle.is_finished(),
+                || data_waits.as_ref().is_some_and(crate::DataWaits::waiting),
                 SEM_CHUNK_DONE_WAIT_DURATION,
             ) {
                 Ok(()) => {
