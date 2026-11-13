@@ -19,9 +19,9 @@ use crate::{
     ARITH_SECP256K1_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST, BLAKE2B_COST, BLAKE2S_COST,
     BLAKE3_COST, DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST,
     DMA_MEMCPY_COST, DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR,
-    FCALL_COST, INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64, MAX_INPUT_SIZE,
-    POSEIDON2_KOALABEAR_COST, POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST,
-    SLL_U_W_COST, SYS_ADDR, TWISTED_EDWARDS_COST,
+    FCALL_COST, INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAKF_MT_BYTES, KECCAKF_MT_WORDS,
+    KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON2_KOALABEAR_COST, POSEIDON_COST, REG_A0, SHA256_COST,
+    SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR, TWISTED_EDWARDS_COST,
 };
 use crate::{BLAKE2B_GAP_SHIFT, BLAKE2B_RD_CHAIN, BLAKE2B_WR_CHAIN};
 use paste::paste;
@@ -601,7 +601,7 @@ define_ops! {
     (Add256, "add256", BigInt, ADD256_COST, 0xf0, 104, 32, opc_add256, op_add256, ops_add256),
     (BabyJubJubAdd, "babyjubjub_add", TwistedEdwards, TWISTED_EDWARDS_COST, 0xed, 128, 64, opc_babyjubjub_add, op_babyjubjub_add, ops_babyjubjub_add),
     (Ed25519Add, "ed25519_add", TwistedEdwards, TWISTED_EDWARDS_COST, 0xe1, 128, 64, opc_ed25519_add, op_ed25519_add, ops_ed25519_add),
-    (Keccak, "keccak", Keccak, KECCAK_COST, 0xf1, 200, 200, opc_keccak, op_keccak, ops_keccak),
+    (Keccak, "keccak", Keccak, KECCAK_COST, 0xf1, KECCAKF_MT_BYTES, 200, opc_keccak, op_keccak, ops_keccak),
     (Arith256, "arith256", ArithEq, ARITH_256_COST, 0xf2, 136, 64, opc_arith256, op_arith256, ops_arith256),
     (Arith256Mod, "arith256_mod", ArithEq, ARITH_256_COST, 0xf3, 168, 32, opc_arith256_mod, op_arith256_mod, ops_arith256_mod),
     (Secp256k1Add, "secp256k1_add", ArithEq, ARITH_SECP256K1_COST, 0xf4, 128, 64, opc_secp256k1_add, op_secp256k1_add, ops_secp256k1_add),
@@ -684,8 +684,11 @@ pub fn opc_keccak(ctx: &mut InstContext) {
                 ctx.keccakf_cache.store(&data, index);
             }
 
-            // Call keccakf
-            keccakf(&mut data);
+            // Call keccakf, unless an earlier one had the same input state and its output is
+            // already known. The dedup word says which unique permutation this one is and
+            // whether it is a replica; it follows the input state in the minimal trace
+            let dedup_word = ctx.keccakf_dedup.run(&mut data, keccakf);
+            ctx.precompiled.input_data.push(dedup_word);
 
             // Write data to the memory address
             for (i, d) in data.iter().enumerate() {
@@ -699,12 +702,12 @@ pub fn opc_keccak(ctx: &mut InstContext) {
             }
         }
         EmulationMode::ConsumeMemReads => {
-            // Check input data has the expected length
-            if ctx.precompiled.input_data.len() != WORDS {
+            // Check input data has the expected length: the input state and the dedup word
+            if ctx.precompiled.input_data.len() != KECCAKF_MT_WORDS {
                 panic!(
                     "opc_keccak() found ctx.precompiled.input_data.len={} != {}",
                     ctx.precompiled.input_data.len(),
-                    WORDS
+                    KECCAKF_MT_WORDS
                 );
             }
         }

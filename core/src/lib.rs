@@ -57,6 +57,7 @@ pub mod frops_asm;
 pub mod frops_regions;
 pub mod helpers;
 pub mod inst_context;
+pub mod keccakf_dedup;
 pub mod mem;
 mod operations;
 /// Exported for the parity tests against the DMA memory-input generators.
@@ -80,6 +81,7 @@ pub use fcall::*;
 pub use frops::*;
 pub use helpers::*;
 pub use inst_context::*;
+pub use keccakf_dedup::*;
 pub use mem::*;
 pub use ops_core_context::opc_write_log;
 pub use rom_layout::*;

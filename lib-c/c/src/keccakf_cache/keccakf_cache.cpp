@@ -1,4 +1,5 @@
 #include "keccakf_cache.hpp"
+#include "keccakf_fingerprint.hpp"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,56 +37,11 @@ static struct KeccakfCacheEntry * entries = NULL;
 static uint64_t entries_size = 0; // capacity
 static uint64_t entries_used = 0; // number of cached states
 
-// Multipliers for mix(); odd 64-bit constants taken from wyhash
-static const uint64_t MIX_KEYS[5] =
-{
-    0xa0761d6478bd642fULL,
-    0xe7037ed1a0b428dbULL,
-    0x8ebc6af09c88c6e3ULL,
-    0x589965cc75374cc3ULL,
-    0x1d8e4e27c47d124fULL
-};
-
-// Folds a 128-bit product back into 64 bits
-static inline uint64_t mix (uint64_t a, uint64_t b)
-{
-    __uint128_t r = (__uint128_t)a * (__uint128_t)b;
-    return (uint64_t)r ^ (uint64_t)(r >> 64);
-}
-
-// Fingerprints a 25-word state into a 64-bit value. The state is folded through four
-// independent lanes so the multiplies pipeline instead of forming one 25-long dependency chain.
-// The low bits select the first probed slot, and the top 7 bits make the tag
-static inline uint64_t keccakf_cache_fingerprint (const uint64_t * state)
-{
-    uint64_t l0 = MIX_KEYS[0];
-    uint64_t l1 = MIX_KEYS[1];
-    uint64_t l2 = MIX_KEYS[2];
-    uint64_t l3 = MIX_KEYS[3];
-
-    for (uint64_t i = 0; i < (uint64_t)(KECCAKF_STATE_WORDS - 1); i += 4)
-    {
-        l0 = mix(l0 ^ state[i],     MIX_KEYS[1]);
-        l1 = mix(l1 ^ state[i + 1], MIX_KEYS[2]);
-        l2 = mix(l2 ^ state[i + 2], MIX_KEYS[3]);
-        l3 = mix(l3 ^ state[i + 3], MIX_KEYS[4]);
-    }
-
-    return mix(l0 ^ l1, l2 ^ l3) ^
-           mix(state[KECCAKF_STATE_WORDS - 1] ^ MIX_KEYS[0], MIX_KEYS[4]);
-}
-
-// Tag of a fingerprint: its top 7 bits, with the top bit set so that it is never 0 (empty)
-static inline uint8_t keccakf_cache_tag (uint64_t hash)
-{
-    return (uint8_t)((hash >> 57) | 0x80);
-}
-
 // Returns the slot holding state, or the empty slot where it would be inserted
 static inline uint64_t keccakf_cache_find (const uint64_t * state, uint64_t hash, bool * found)
 {
     uint64_t mask = slots_size - 1;
-    uint8_t tag = keccakf_cache_tag(hash);
+    uint8_t tag = keccakf_fingerprint_tag(hash);
     uint64_t s = hash & mask;
     for (;;)
     {
@@ -133,7 +89,7 @@ static void keccakf_cache_grow_slots (void)
     {
         uint64_t s = entries[i].hash & mask;
         while (tags[s] != 0) s = (s + 1) & mask;
-        tags[s] = keccakf_cache_tag(entries[i].hash);
+        tags[s] = keccakf_fingerprint_tag(entries[i].hash);
         slot_entries[s] = (uint32_t)i;
     }
 }
@@ -168,7 +124,7 @@ void keccakf_cache_store (const uint64_t * state, uint64_t index)
     // Keep the load factor at or below 1/2 so probe runs stay short
     if ((entries_used + 1) * 2 > slots_size) keccakf_cache_grow_slots();
 
-    uint64_t hash = keccakf_cache_fingerprint(state);
+    uint64_t hash = keccakf_fingerprint(state);
     bool found;
     uint64_t s = keccakf_cache_find(state, hash, &found);
     if (found)
@@ -184,7 +140,7 @@ void keccakf_cache_store (const uint64_t * state, uint64_t index)
     e->index = index;
     memcpy(e->state, state, KECCAKF_STATE_WORDS * sizeof(uint64_t));
 
-    tags[s] = keccakf_cache_tag(hash);
+    tags[s] = keccakf_fingerprint_tag(hash);
     slot_entries[s] = (uint32_t)entries_used;
     entries_used++;
 }
@@ -193,7 +149,7 @@ uint64_t keccakf_cache_get_index (const uint64_t * state)
 {
     if (slots_size == 0) return KECCAKF_CACHE_INDEX_NOT_FOUND;
 
-    uint64_t hash = keccakf_cache_fingerprint(state);
+    uint64_t hash = keccakf_fingerprint(state);
     bool found;
     uint64_t s = keccakf_cache_find(state, hash, &found);
     return found ? entries[slot_entries[s]].index : KECCAKF_CACHE_INDEX_NOT_FOUND;

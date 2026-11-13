@@ -146,8 +146,11 @@ pub const ARITH_EQ_384_LARGE_INSTANCE_COST: usize = 4025;
 /// `TwistedEdwards`: 0.53 GB.
 pub const TWISTED_EDWARDS_INSTANCE_COST: usize = 543;
 
-/// `Keccakf`: 20.08 GB.
-pub const KECCAKF_INSTANCE_COST: usize = 20562;
+/// `Keccakf`: 19.85 GB.
+pub const KECCAKF_INSTANCE_COST: usize = 20326;
+
+/// `KeccakfProxy`: 1.72 GB.
+pub const KECCAKF_PROXY_INSTANCE_COST: usize = 1761;
 
 /// `Sha256f`: 0.74 GB.
 pub const SHA_256_F_INSTANCE_COST: usize = 758;
@@ -290,6 +293,7 @@ mod tests {
                     ArithEq384LargeTrace: ArithEq384LargeTraceRow: ARITH_EQ_384_LARGE_INSTANCE_COST,
                     TwistedEdwardsTrace: TwistedEdwardsTraceRow: TWISTED_EDWARDS_INSTANCE_COST,
                     KeccakfTrace: KeccakfTraceRow: KECCAKF_INSTANCE_COST,
+                    KeccakfProxyTrace: KeccakfProxyTraceRow: KECCAKF_PROXY_INSTANCE_COST,
                     Sha256fTrace: Sha256fTraceRow: SHA_256_F_INSTANCE_COST,
                     PoseidonTrace: PoseidonTraceRow: POSEIDON_INSTANCE_COST,
                     Blake2brTrace: Blake2brTraceRow: BLAKE_2_BR_INSTANCE_COST,

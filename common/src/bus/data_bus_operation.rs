@@ -36,8 +36,10 @@ const COMPLEX_OVER_384_BITS_SIZE: usize = 2 * DATA_384_BITS_SIZE;
 
 // use OPERATION_BUS_DATA_SIZE because a = step, b = addr
 
-/// Keccakf operation data size.
-pub const OPERATION_BUS_KECCAKF_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 25;
+/// Keccakf operation data size: the 25 words of the input state followed by the dedup word of
+/// the Keccak-f (see `zisk_core::keccakf_dedup`).
+pub const OPERATION_BUS_KECCAKF_DATA_SIZE: usize =
+    OPERATION_PRECOMPILED_BUS_DATA_SIZE + zisk_core::KECCAKF_MT_WORDS;
 /// Poseidon2 operation data size.
 pub const OPERATION_BUS_POSEIDON_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 16;
 /// SHA256F operation data size.

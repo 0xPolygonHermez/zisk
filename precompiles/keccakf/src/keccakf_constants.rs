@@ -25,7 +25,11 @@ pub(crate) const CLOCKS: usize = GROUPS * ROWS_PER_STATE;
 /// First rows of the slot's groups
 pub(crate) const GROUP_IN_A: usize = 0;
 pub(crate) const GROUP_ROUND_0: usize = ROWS_PER_STATE;
+pub(crate) const GROUP_ROUND_LAST: usize = (1 + ROUNDS) * ROWS_PER_STATE;
 pub(crate) const GROUP_OUT_A: usize = (2 + ROUNDS) * ROWS_PER_STATE;
+
+/// 32-bit limbs each trace row commits for its lanes
+pub(crate) const LIMBS_PER_ROW: usize = 2 * LANES_PER_ROW;
 
 /// The packed χ-row lookup input: rc·28⁵ + Σ_x (tA_x + 8·tB_x)·28ˣ
 /// (base 28 since a sliced θ-output digit reaches 3 + 8·3 = 27)
