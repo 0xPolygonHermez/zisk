@@ -15,14 +15,44 @@
 //! per layer l (dims[l] -> dims[l+1]):
 //!   u32 shift           right shift applied before ReLU (unused on the last layer)
 //!   i32 bias[out]
+//!   u8  pad[0..8]       zeros, so the weights start at a multiple of 8 bytes
 //!   i8  weight[out][in] row-major: one row per output neuron
 //! ```
+//!
+//! The padding keeps the weight rows 8-byte aligned (when `in` is a multiple
+//! of 8), as the experimental `dot_i8` precompile requires.
 
 #![no_std]
 
 extern crate alloc;
 
+use alloc::vec;
 use alloc::vec::Vec;
+
+/// Computes the dot product of two int8 vectors of the same length, as a
+/// wrapping `i32` sum. [`infer_with`] calls it once per neuron.
+pub type DotFn = fn(&[i8], &[i8]) -> i32;
+
+/// The dot product in plain Rust.
+///
+/// It sums in `i64` and saturates to `i32` at the end. With 32-bit sums the
+/// compiler uses `addw`, which ZisK proves with the Binary machine instead of
+/// the cheaper BinaryAdd, and it narrows an `i64` sum back to `addw` when the
+/// result is just truncated. Each product is at most 2^14 in absolute value,
+/// so the result only saturates, instead of wrapping like the `dot_i8`
+/// precompile, for vectors longer than 131,072 elements.
+pub fn dot_soft(x: &[i8], y: &[i8]) -> i32 {
+    let mut acc: i64 = 0;
+    for (&a, &b) in x.iter().zip(y) {
+        acc += a as i64 * b as i64;
+    }
+    acc.clamp(i32::MIN as i64, i32::MAX as i64) as i32
+}
+
+/// Zero bytes that bring `offset` to a multiple of 8.
+fn padding(offset: usize) -> usize {
+    offset.next_multiple_of(8) - offset
+}
 
 /// Seed used by the examples so every run builds the same model and input.
 pub const DEFAULT_SEED: u64 = 0x5A15_4D4C_5000_0001;
@@ -44,13 +74,11 @@ impl Layer<'_> {
 
     /// Dot product of output neuron `j`'s weight row with `x`, plus its bias.
     #[inline(always)]
-    fn neuron(&self, j: usize, x: &[i8]) -> i32 {
+    fn neuron(&self, j: usize, x: &[i8], dot: DotFn) -> i32 {
         let row = &self.weights[j * self.inputs..(j + 1) * self.inputs];
-        let mut acc = self.bias(j);
-        for (&w, &a) in row.iter().zip(x) {
-            acc += (w as i8 as i32) * (a as i32);
-        }
-        acc
+        // SAFETY: i8 and u8 have the same size and alignment.
+        let row: &[i8] = unsafe { core::slice::from_raw_parts(row.as_ptr().cast(), row.len()) };
+        self.bias(j).wrapping_add(dot(row, x))
     }
 }
 
@@ -73,6 +101,7 @@ fn take_u32(blob: &mut &[u8]) -> u32 {
 impl<'a> Model<'a> {
     /// Parses a model blob. Panics if the blob is malformed.
     pub fn parse(mut blob: &'a [u8]) -> Self {
+        let total = blob.len();
         let n_dims = take_u32(&mut blob) as usize;
         assert!(n_dims >= 2, "a model needs at least an input and an output width");
         let dims: Vec<usize> = (0..n_dims).map(|_| take_u32(&mut blob) as usize).collect();
@@ -81,6 +110,8 @@ impl<'a> Model<'a> {
             let (inputs, outputs) = (w[0], w[1]);
             let shift = take_u32(&mut blob);
             let bias = take(&mut blob, 4 * outputs);
+            let pad = padding(total - blob.len());
+            take(&mut blob, pad);
             let weights = take(&mut blob, inputs * outputs);
             layers.push(Layer { inputs, outputs, shift, bias, weights });
         }
@@ -99,20 +130,51 @@ impl<'a> Model<'a> {
     }
 }
 
+/// An activation vector, stored in `u64` words so it is 8-byte aligned, as
+/// the `dot_i8` precompile requires.
+struct Activations {
+    words: Vec<u64>,
+    n: usize,
+}
+
+impl Activations {
+    fn new(n: usize) -> Self {
+        Activations { words: vec![0; n.div_ceil(8)], n }
+    }
+
+    fn get(&self) -> &[i8] {
+        // SAFETY: the words hold at least `n` bytes, and any byte is a valid i8.
+        unsafe { core::slice::from_raw_parts(self.words.as_ptr().cast(), self.n) }
+    }
+
+    fn get_mut(&mut self) -> &mut [i8] {
+        // SAFETY: as in `get`, and `&mut self` makes the borrow unique.
+        unsafe { core::slice::from_raw_parts_mut(self.words.as_mut_ptr().cast(), self.n) }
+    }
+}
+
 /// Runs the network on `input` and returns the logits of the last layer.
 pub fn infer(model: &Model, input: &[i8]) -> Vec<i32> {
+    infer_with(model, input, dot_soft)
+}
+
+/// [`infer`], with `dot` as the dot product of each neuron.
+pub fn infer_with(model: &Model, input: &[i8], dot: DotFn) -> Vec<i32> {
     let first = model.layers.first().expect("model has no layers");
     assert_eq!(input.len(), first.inputs, "input width does not match the model");
 
-    let mut x: Vec<i8> = input.to_vec();
+    let mut x = Activations::new(input.len());
+    x.get_mut().copy_from_slice(input);
     let last = model.layers.len() - 1;
     for (l, layer) in model.layers.iter().enumerate() {
         if l == last {
-            return (0..layer.outputs).map(|j| layer.neuron(j, &x)).collect();
+            return (0..layer.outputs).map(|j| layer.neuron(j, x.get(), dot)).collect();
         }
-        x = (0..layer.outputs)
-            .map(|j| (layer.neuron(j, &x) >> layer.shift).clamp(0, 127) as i8)
-            .collect();
+        let mut next = Activations::new(layer.outputs);
+        for (j, out) in next.get_mut().iter_mut().enumerate() {
+            *out = (layer.neuron(j, x.get(), dot) >> layer.shift).clamp(0, 127) as i8;
+        }
+        x = next;
     }
     unreachable!()
 }
@@ -171,6 +233,7 @@ pub fn generate_model(dims: &[u32], seed: u64) -> Vec<u8> {
             let bias = (rng.next_u64() >> 52) as i32 - 2048;
             blob.extend_from_slice(&bias.to_le_bytes());
         }
+        blob.resize(blob.len() + padding(blob.len()), 0);
         for _ in 0..inputs * outputs {
             blob.push(rng.next_i8() as u8);
         }
