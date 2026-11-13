@@ -136,8 +136,10 @@ fn computes(state: &WorkerState, job_id: &JobId) -> bool {
 /// from. A wrap, a recurser setup or prove and a prove job's final wrap run off the loop and
 /// cannot be stopped, so one can end after the worker has moved on: a reconnection
 /// registers a worker without a current job as free, and a new job waits only
-/// `COMPUTE_DRAIN_TIMEOUT` for the task before it starts. Every other result comes from the
-/// current computation.
+/// `COMPUTE_DRAIN_TIMEOUT` for the task before it starts. Any other result is taken as the
+/// current computation's. A cancelled computation is also waited for only
+/// `COMPUTE_DRAIN_TIMEOUT`, so one that outlives it and the recovery after it would end after
+/// the worker has moved on too; nothing here tells its result apart yet.
 fn still_runs(
     result: &ComputationResult,
     state: &WorkerState,
@@ -776,8 +778,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ComputationResult::RecurserAck { job_id, ack }
             | ComputationResult::WrapResponse { job_id, response: ack } => {
                 // Ack already built by the blocking handler; just forward it, even from a
-                // task the worker no longer runs: the coordinator ignores a late one. Only
-                // the worker's own task ends here, not the work it took since.
+                // task the worker no longer runs. The coordinator ignores a late wrap
+                // response, but a late recurser prove ack still sets the worker Ready there,
+                // even once it has moved on. Only the worker's own task ends here, not the
+                // work it took since.
                 if let Err(e) = message_sender.send(ack) {
                     warn!("Failed to send the response of job {job_id}: {e}");
                 }
