@@ -17,6 +17,7 @@ max_workers_per_job = 20        # Maximum workers per single proof job
 max_total_workers = 5000        # Maximum total registered workers
 phase1_timeout_seconds = 600    # 10 minutes for phase 1
 phase2_timeout_seconds = 1200   # 20 minutes for phase 2
+input_idle_timeout_seconds = 60 # Fail a job whose client stops streaming its input or hints
 reconnect_grace_period_ms = 500 # Grace period before failing a disconnected computing worker's job
 # A worker heartbeats every 5 s and is dropped once it has missed heartbeat_max_missed
 # of them: 30 s. Keep that at least 3x the longest gap between a worker's heartbeats under
