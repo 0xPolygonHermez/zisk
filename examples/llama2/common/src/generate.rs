@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 
 use crate::BOS;
-use crate::forward::{RunState, forward, softmax};
+use crate::forward::{DotFn, RunState, dot_soft, forward, softmax};
 use crate::model::Model;
 use crate::params::GenParams;
 
@@ -58,10 +58,20 @@ fn sample(logits: &mut [f32], temperature: f32, rng: &mut Rng) -> u32 {
 /// Calls `on_token` with each generated token as soon as it is chosen, and
 /// returns all of them. Generation stops early at a BOS token, which starts a
 /// new story, or when the context window is full.
-pub fn generate(model: &Model, p: &GenParams, mut on_token: impl FnMut(u32)) -> Vec<u32> {
+pub fn generate(model: &Model, p: &GenParams, on_token: impl FnMut(u32)) -> Vec<u32> {
+    generate_with(model, p, dot_soft, on_token)
+}
+
+/// [`generate`], with `dot` as the dot product of the matrix multiplications.
+pub fn generate_with(
+    model: &Model,
+    p: &GenParams,
+    dot: DotFn,
+    mut on_token: impl FnMut(u32),
+) -> Vec<u32> {
     assert!(!p.prompt.is_empty(), "the prompt must contain at least BOS");
     let seq_len = model.config.seq_len;
-    let mut state = RunState::new(model);
+    let mut state = RunState::with_dot(model, dot);
     let mut rng = Rng(p.seed | 1);
     let mut out = Vec::new();
 

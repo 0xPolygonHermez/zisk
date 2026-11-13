@@ -5,15 +5,50 @@ use alloc::vec::Vec;
 
 use crate::model::{Model, QMatrixView};
 
+/// Computes the dot product of two int8 vectors of the same length, as a
+/// wrapping `i32` sum. [`forward`] calls it once per group in every matrix
+/// multiplication.
+pub type DotFn = fn(&[i8], &[i8]) -> i32;
+
+/// The dot product in plain Rust (llama2.c's inner loop).
+///
+/// It sums in `i64` and saturates to `i32` at the end. With 32-bit sums the
+/// compiler uses `addw`, which ZisK proves with the Binary machine instead of
+/// the cheaper BinaryAdd, and it narrows an `i64` sum back to `addw` when the
+/// result is just truncated. Each product is at most 2^14 in absolute value,
+/// so the result only saturates, instead of wrapping like the `dot_i8`
+/// precompile, for vectors longer than 131,072 elements.
+pub fn dot_soft(x: &[i8], y: &[i8]) -> i32 {
+    let mut acc: i64 = 0;
+    for (&a, &b) in x.iter().zip(y) {
+        acc += a as i64 * b as i64;
+    }
+    acc.clamp(i32::MIN as i64, i32::MAX as i64) as i32
+}
+
 /// An activation vector quantized to int8 in groups, like a matrix row.
+///
+/// The int8 values are stored in `u64` words, so they are 8-byte aligned, as
+/// the `dot_i8` precompile requires.
 struct QVec {
-    q: Vec<i8>,
+    words: Vec<u64>,
+    n: usize,
     scales: Vec<f32>,
 }
 
 impl QVec {
     fn new(n: usize) -> Self {
-        QVec { q: vec![0; n], scales: vec![0.0; n] }
+        QVec { words: vec![0; n.div_ceil(8)], n, scales: vec![0.0; n] }
+    }
+
+    fn q(&self) -> &[i8] {
+        // SAFETY: the words hold at least `n` bytes, and any byte is a valid i8.
+        unsafe { core::slice::from_raw_parts(self.words.as_ptr().cast::<i8>(), self.n) }
+    }
+
+    fn q_mut(&mut self) -> &mut [i8] {
+        // SAFETY: as in `q`, and `&mut self` makes the borrow unique.
+        unsafe { core::slice::from_raw_parts_mut(self.words.as_mut_ptr().cast::<i8>(), self.n) }
     }
 
     /// Quantizes `x` in groups of `gs` (llama2.c's `quantize`).
@@ -22,26 +57,25 @@ impl QVec {
             let wmax = group.iter().fold(0.0f32, |m, &v| m.max(libm::fabsf(v)));
             let scale = wmax / 127.0;
             self.scales[g] = scale;
-            for (i, &v) in group.iter().enumerate() {
+            let q = &mut self.q_mut()[g * gs..(g + 1) * gs];
+            for (qi, &v) in q.iter_mut().zip(group) {
                 let qv = if scale == 0.0 { 0.0 } else { libm::roundf(v / scale) };
-                self.q[g * gs + i] = qv as i8;
+                *qi = qv as i8;
             }
         }
     }
 }
 
 /// `out = W x`, with integer dot products per group (llama2.c's `matmul`).
-fn matmul(out: &mut [f32], x: &QVec, w: &QMatrixView) {
+fn matmul(out: &mut [f32], x: &QVec, w: &QMatrixView, dot: DotFn) {
     let (n, gs) = (w.cols, w.gs);
+    let xq = x.q();
     for (i, o) in out.iter_mut().enumerate().take(w.rows) {
         let row = &w.q[i * n..(i + 1) * n];
         let row_scales = &w.scales[i * n / gs..(i + 1) * n / gs];
         let mut val = 0.0f32;
-        for (g, (wg, xg)) in row.chunks_exact(gs).zip(x.q.chunks_exact(gs)).enumerate() {
-            let mut ival: i32 = 0;
-            for (&a, &b) in wg.iter().zip(xg) {
-                ival += a as i32 * b as i32;
-            }
+        for (g, (wg, xg)) in row.chunks_exact(gs).zip(xq.chunks_exact(gs)).enumerate() {
+            let ival = dot(wg, xg);
             val += ival as f32 * row_scales[g] * x.scales[g];
         }
         *o = val;
@@ -94,10 +128,17 @@ pub struct RunState {
     rope_freq: Vec<f32>,
     rope_cos: Vec<f32>,
     rope_sin: Vec<f32>,
+    /// The dot product used by the matrix multiplications.
+    dot: DotFn,
 }
 
 impl RunState {
+    /// Uses the plain-Rust dot product, [`dot_soft`].
     pub fn new(model: &Model) -> Self {
+        Self::with_dot(model, dot_soft)
+    }
+
+    pub fn with_dot(model: &Model, dot: DotFn) -> Self {
         let c = &model.config;
         let (dim, kv_dim, hidden, hs) = (c.dim, c.kv_dim(), c.hidden_dim, c.head_size());
         let rope_freq =
@@ -120,6 +161,7 @@ impl RunState {
             rope_freq,
             rope_cos: vec![0.0; hs / 2],
             rope_sin: vec![0.0; hs / 2],
+            dot,
         }
     }
 }
@@ -151,9 +193,9 @@ pub fn forward(model: &Model, s: &mut RunState, token: u32, pos: usize) {
         // Attention.
         rmsnorm(&mut s.xb, &s.x, &model.rms_att[l * dim..(l + 1) * dim]);
         s.xq.quantize(&s.xb, gs_dim);
-        matmul(&mut s.q, &s.xq, &model.wq.rows(l * dim, dim));
-        matmul(&mut s.k, &s.xq, &model.wk.rows(l * kv_dim, kv_dim));
-        matmul(&mut s.v, &s.xq, &model.wv.rows(l * kv_dim, kv_dim));
+        matmul(&mut s.q, &s.xq, &model.wq.rows(l * dim, dim), s.dot);
+        matmul(&mut s.k, &s.xq, &model.wk.rows(l * kv_dim, kv_dim), s.dot);
+        matmul(&mut s.v, &s.xq, &model.wv.rows(l * kv_dim, kv_dim), s.dot);
 
         for i in (0..dim).step_by(2) {
             let j = (i % hs) / 2;
@@ -196,7 +238,7 @@ pub fn forward(model: &Model, s: &mut RunState, token: u32, pos: usize) {
         }
 
         s.xq.quantize(&s.xb, gs_dim);
-        matmul(&mut s.xb2, &s.xq, &model.wo.rows(l * dim, dim));
+        matmul(&mut s.xb2, &s.xq, &model.wo.rows(l * dim, dim), s.dot);
         for (x, &d) in s.x.iter_mut().zip(&s.xb2) {
             *x += d;
         }
@@ -204,15 +246,15 @@ pub fn forward(model: &Model, s: &mut RunState, token: u32, pos: usize) {
         // Feed-forward: w2(silu(w1 x) * w3 x).
         rmsnorm(&mut s.xb, &s.x, &model.rms_ffn[l * dim..(l + 1) * dim]);
         s.xq.quantize(&s.xb, gs_dim);
-        matmul(&mut s.hb, &s.xq, &model.w1.rows(l * hidden, hidden));
-        matmul(&mut s.hb2, &s.xq, &model.w3.rows(l * hidden, hidden));
+        matmul(&mut s.hb, &s.xq, &model.w1.rows(l * hidden, hidden), s.dot);
+        matmul(&mut s.hb2, &s.xq, &model.w3.rows(l * hidden, hidden), s.dot);
         for (h, &h2) in s.hb.iter_mut().zip(&s.hb2) {
             let mut val = *h;
             val *= 1.0 / (1.0 + libm::expf(-val));
             *h = val * h2;
         }
         s.hq.quantize(&s.hb, gs_hidden);
-        matmul(&mut s.xb, &s.hq, &model.w2.rows(l * dim, dim));
+        matmul(&mut s.xb, &s.hq, &model.w2.rows(l * dim, dim), s.dot);
         for (x, &d) in s.x.iter_mut().zip(&s.xb) {
             *x += d;
         }
@@ -221,5 +263,5 @@ pub fn forward(model: &Model, s: &mut RunState, token: u32, pos: usize) {
     let x = s.x.clone();
     rmsnorm(&mut s.x, &x, &model.rms_final);
     s.xq.quantize(&s.x, gs_dim);
-    matmul(&mut s.logits, &s.xq, &model.wcls().all());
+    matmul(&mut s.logits, &s.xq, &model.wcls().all(), s.dot);
 }

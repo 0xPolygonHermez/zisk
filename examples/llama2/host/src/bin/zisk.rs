@@ -4,9 +4,14 @@
 //!
 //! ```text
 //! cargo run --release --bin llama2-zisk -- [OPTIONS] [--ziskemu PATH] [--save-input PATH]
+//!     [--dot-product soft|precompile]
 //! ```
 //!
 //! `--save-input PATH` writes the guest input for the first prompt and exits.
+//!
+//! `--dot-product precompile` makes the guest use the experimental `dot_i8`
+//! precompile, which needs a `ziskemu` built from this repository (see
+//! `--ziskemu`) and cannot be proven yet. The default, `soft`, is plain Rust.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -36,18 +41,29 @@ struct EmuRun {
     secs: f64,
 }
 
-/// The guest's input file: the model blob, then the generation parameters.
-fn guest_input(blob: &[u8], params: &GenParams) -> Vec<u8> {
+/// Guest option flag: use the `dot_i8` precompile (see the guest).
+const USE_DOT_I8: u64 = 1;
+
+/// The guest's input file: the model blob, the generation parameters, then
+/// the guest option flags.
+fn guest_input(blob: &[u8], params: &GenParams, flags: u64) -> Vec<u8> {
     let mut input = Vec::with_capacity(blob.len() + 4096);
     push_record(&mut input, blob);
     push_record(&mut input, &params.to_bytes());
+    push_record(&mut input, &flags.to_le_bytes());
     input
 }
 
-fn run_ziskemu(ziskemu: &str, blob: &[u8], params: &GenParams, dir: &Path) -> Result<EmuRun> {
+fn run_ziskemu(
+    ziskemu: &str,
+    blob: &[u8],
+    params: &GenParams,
+    flags: u64,
+    dir: &Path,
+) -> Result<EmuRun> {
     let input_path = dir.join("input.bin");
     let output_path = dir.join("output.bin");
-    std::fs::write(&input_path, guest_input(blob, params))?;
+    std::fs::write(&input_path, guest_input(blob, params, flags))?;
 
     let start = Instant::now();
     let out = Command::new(ziskemu)
@@ -93,22 +109,30 @@ fn parse_steps(text: &str) -> Option<u64> {
 }
 
 fn main() -> Result<()> {
-    let o = parse_options(&["--ziskemu", "--save-input"])?;
+    let o = parse_options(&["--ziskemu", "--save-input", "--dot-product"])?;
     let extra = |name: &str| o.extra.iter().find(|(n, _)| n == name).map(|(_, v)| v.clone());
     let ziskemu = extra("--ziskemu").unwrap_or_else(|| "ziskemu".to_string());
+    let flags = match extra("--dot-product").as_deref() {
+        None | Some("soft") => 0,
+        Some("precompile") => USE_DOT_I8,
+        Some(v) => return Err(format!("--dot-product must be soft or precompile, not {v}").into()),
+    };
     let l = load(&o)?;
 
     // Write the guest input for the first prompt and exit, for running the
     // guest with cargo-zisk or ziskemu directly.
     if let Some(path) = extra("--save-input") {
         let text = prompts(&o).next().unwrap_or_default();
-        std::fs::write(&path, guest_input(&l.blob, &gen_params(&o, &l.tokenizer, &text)))?;
+        std::fs::write(&path, guest_input(&l.blob, &gen_params(&o, &l.tokenizer, &text), flags))?;
         println!("Saved guest input to {path}");
         return Ok(());
     }
 
     print_model_info(&o, &l);
     println!("Guest ELF {GUEST_ELF}");
+    if flags & USE_DOT_I8 != 0 {
+        println!("Dot products: dot_i8 precompile (experimental, emulator only)");
+    }
     let model = Model::parse(&l.blob);
     let dir: PathBuf = std::env::temp_dir().join(format!("llama2-zisk-{}", std::process::id()));
     std::fs::create_dir_all(&dir)?;
@@ -116,7 +140,7 @@ fn main() -> Result<()> {
     for text in prompts(&o) {
         let params = gen_params(&o, &l.tokenizer, &text);
         println!("[running on ziskemu...]");
-        let run = match run_ziskemu(&ziskemu, &l.blob, &params, &dir) {
+        let run = match run_ziskemu(&ziskemu, &l.blob, &params, flags, &dir) {
             Ok(run) => run,
             Err(e) => {
                 std::fs::remove_dir_all(&dir).ok();
