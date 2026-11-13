@@ -419,6 +419,11 @@ pub unsafe extern "C" fn zkvm_blake2f(
     f: u8,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> zkvm_status {
+    // EIP-152: the final block indicator flag must be 0 or 1.
+    if f > 1 {
+        return ZKVM_EFAIL;
+    }
+
     #[cfg(feature = "hints")]
     {
         super::blake2b_compress_c(
