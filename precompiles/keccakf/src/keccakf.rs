@@ -18,6 +18,9 @@ pub struct KeccakfInput {
     pub step_main: u64,
     pub addr_main: u64,
     pub state: [u64; 25],
+    /// Dedup word of this Keccak-f: the index of its unique permutation, plus
+    /// `zisk_core::KECCAKF_DEDUP_REPLICA_FLAG` when an earlier Keccak-f had the same input state.
+    pub dedup_word: u64,
 }
 
 impl KeccakfInput {
@@ -26,6 +29,7 @@ impl KeccakfInput {
             step_main: values[4],
             addr_main: values[3],
             state: values[5..30].try_into().unwrap(),
+            dedup_word: values[30],
         }
     }
 }
@@ -257,7 +261,12 @@ impl<F: PrimeField64> KeccakfSM<F> {
     /// output bits; op B has none, the AIR reads its bits as (v - a) / 8 off the
     /// round-0 and round-24 groups. The round groups hold the SLICED states
     /// a + 8·b together with the sliced column parities c. When op B is absent,
-    /// its half runs Keccak-f of the zero state (its memory and bus flags stay off).
+    /// its half runs Keccak-f of the zero state (its bus flag stays off).
+    ///
+    /// The four groups the AIR reads lanes from also commit them as 32-bit limbs: op A's
+    /// input and output at its boundary groups, op B's at the round-0 and round-24 groups.
+    /// The AIR ties the limbs to the bits on every row, so op B's limbs are written even
+    /// when it is absent.
     #[inline(always)]
     #[allow(clippy::needless_range_loop)]
     fn process_slot<R: KeccakfTraceWriter<F>>(
@@ -266,16 +275,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
         input_a: &KeccakfInput,
         input_b: Option<&KeccakfInput>,
     ) {
-        // Fill step and addr of both ops
-        trace[0].set_step_addr(input_a.step_main);
-        trace[1].set_step_addr(input_a.addr_main);
-        trace[1].set_addr_hi(zisk_core::addr_hi(input_a.addr_main) == 1);
-        if let Some(input_b) = input_b {
-            trace[2].set_step_addr(input_b.step_main);
-            trace[3].set_step_addr(input_b.addr_main);
-            trace[3].set_addr_hi(zisk_core::addr_hi(input_b.addr_main) == 1);
-        }
-
         // Fill the activation flags
         for i in 0..CLOCKS {
             trace[i].set_in_use_a(true);
@@ -289,6 +288,8 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
         // Boundary input group: op A's plain bits
         Self::set_lane_group(trace, GROUP_IN_A, &state_a);
+        Self::set_limb_group(trace, GROUP_IN_A, &state_a);
+        Self::set_limb_group(trace, GROUP_ROUND_0, &state_b);
 
         // Round groups
         let mut ta = [0u8; 5];
@@ -374,6 +375,26 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
         // Boundary output group: op A's plain bits of the final state
         Self::set_lane_group(trace, GROUP_OUT_A, &state_a);
+        Self::set_limb_group(trace, GROUP_OUT_A, &state_a);
+        Self::set_limb_group(trace, GROUP_ROUND_LAST, &state_b);
+    }
+
+    /// Writes the lanes of a state as 32-bit limbs, low limb first, along one group.
+    #[inline(always)]
+    fn set_limb_group<R: KeccakfTraceWriter<F>>(
+        trace: &mut [R],
+        first_row: usize,
+        state: &LaneState,
+    ) {
+        for row in 0..ROWS_PER_STATE {
+            let mut limbs = [0u32; LIMBS_PER_ROW];
+            for lane in 0..LANES_PER_ROW {
+                let value = state[row * LANES_PER_ROW + lane];
+                limbs[2 * lane] = value as u32;
+                limbs[2 * lane + 1] = (value >> 32) as u32;
+            }
+            trace[first_row + row].set_all_limbs(&limbs);
+        }
     }
 
     /// Writes a clean (bit-valued) state into one boundary group.
@@ -424,10 +445,11 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let num_rows_needed = num_slots_needed * CLOCKS;
 
         tracing::debug!(
-            "··· Creating Keccakf instance [{} / {} rows filled {:.2}%]",
+            "··· Creating Keccakf instance [{} / {} rows filled {:.2}%] [{} unique permutations]",
             num_rows_needed,
             num_rows,
-            num_rows_needed as f64 / num_rows as f64 * 100.0
+            num_rows_needed as f64 / num_rows as f64 * 100.0,
+            num_inputs,
         );
 
         timer_start_trace!(KECCAKF_TRACE);
@@ -540,8 +562,10 @@ mod tests {
                 seed
             })
         };
-        let input_a = KeccakfInput { step_main: 1, addr_main: 0x1000, state: lanes() };
-        let input_b = KeccakfInput { step_main: 2, addr_main: 0x2000, state: lanes() };
+        let input_a =
+            KeccakfInput { step_main: 1, addr_main: 0x1000, state: lanes(), dedup_word: 0 };
+        let input_b =
+            KeccakfInput { step_main: 2, addr_main: 0x2000, state: lanes(), dedup_word: 0 };
         let (mut out_a, mut out_b) = (input_a.state, input_b.state);
         tiny_keccak::keccakf(&mut out_a);
         tiny_keccak::keccakf(&mut out_b);
@@ -586,6 +610,39 @@ mod tests {
                 }
             }
         }
+
+        // The four groups commit their lanes as limbs: op A's at the boundary groups, op B's at
+        // the round-0 and round-24 groups; every other row commits zeros
+        let limbs = |group: usize| -> [u64; 25] {
+            core::array::from_fn(|lane| {
+                let row = rows[group + lane / LANES_PER_ROW].get_all_limbs();
+                let l = 2 * (lane % LANES_PER_ROW);
+                row[l] as u64 | ((row[l + 1] as u64) << 32)
+            })
+        };
+        assert_eq!(limbs(GROUP_IN_A), input_a.state);
+        assert_eq!(limbs(GROUP_ROUND_0), input_b.state);
+        assert_eq!(limbs(GROUP_ROUND_LAST), out_b);
+        assert_eq!(limbs(GROUP_OUT_A), out_a);
+        for row in &rows[GROUP_ROUND_0 + ROWS_PER_STATE..GROUP_ROUND_LAST] {
+            assert_eq!(row.get_all_limbs(), [0; LIMBS_PER_ROW]);
+        }
+
+        // Without op B its half is Keccak-f of the zero state, limbs included
+        let mut rows = vec![KeccakfTraceRow::<Goldilocks>::default(); CLOCKS];
+        KeccakfSM::<Goldilocks>::new().process_slot(&mut rows, &input_a, None);
+        let limbs = |group: usize| -> [u64; 25] {
+            core::array::from_fn(|lane| {
+                let row = rows[group + lane / LANES_PER_ROW].get_all_limbs();
+                let l = 2 * (lane % LANES_PER_ROW);
+                row[l] as u64 | ((row[l + 1] as u64) << 32)
+            })
+        };
+        let mut out_zero = [0u64; 25];
+        tiny_keccak::keccakf(&mut out_zero);
+        assert_eq!(limbs(GROUP_ROUND_0), [0; 25]);
+        assert_eq!(limbs(GROUP_ROUND_LAST), out_zero);
+        assert!(!rows[0].get_in_use_b());
     }
 
     #[test]
@@ -608,7 +665,6 @@ mod tests {
             for row in [&mut expected, &mut actual] {
                 row.set_in_use_a(true);
                 row.set_in_use_b(true);
-                row.set_step_addr(0x00ab_cdef_1234);
             }
 
             for row in 0..ROWS_PER_STATE {

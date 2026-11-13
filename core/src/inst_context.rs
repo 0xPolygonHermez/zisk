@@ -7,7 +7,8 @@
 use ziskos::zisklib::{keccakf_cache::KeccakfCache, RANDOM_SEED_WORDS};
 
 use crate::{
-    Mem, FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
+    KeccakfDedup, Mem, FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE, REGS_IN_MAIN_TOTAL_NUMBER,
+    ROM_ENTRY,
 };
 
 /// Zisk precompiled emulation mode
@@ -130,6 +131,10 @@ pub struct InstContext {
     /// this context, i.e. as long as the execution it belongs to
     pub keccakf_cache: KeccakfCache,
 
+    /// Distinct Keccak-f permutations seen while generating the minimal trace, which give every
+    /// Keccak-f its dedup word. Lives as long as this context, as the cache above
+    pub keccakf_dedup: KeccakfDedup,
+
     /// Output state and m of the last blake2b round handed to the chain, valid once cached in the
     /// current minimal-trace chunk, and the step of the last blake2b round
     pub blake2b_chain: [u64; 32],
@@ -180,6 +185,7 @@ impl InstContext {
             precompiled: PrecompiledInstContext::default(),
             fcall: FcallInstContext::default(),
             keccakf_cache: KeccakfCache::default(),
+            keccakf_dedup: KeccakfDedup::default(),
             blake2b_chain: [0; 32],
             blake2b_chain_cached: false,
             blake2b_step: 0,

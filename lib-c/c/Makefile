@@ -88,6 +88,7 @@ OTHER_OBJS = $(BUILD_DIR)/alt_bn128.o \
              $(BUILD_DIR)/bls12_381.o \
              $(BUILD_DIR)/fcall.o \
              $(BUILD_DIR)/keccakf_cache.o \
+             $(BUILD_DIR)/keccakf_dedup.o \
              $(BUILD_DIR)/arith256.o \
              $(BUILD_DIR)/arith384.o \
              $(BUILD_DIR)/add256.o \
@@ -230,7 +231,10 @@ $(BUILD_DIR)/bls12_381.o: $(SRC_DIR)/bls12_381/bls12_381.cpp $(SRC_DIR)/bls12_38
 $(BUILD_DIR)/fcall.o: $(SRC_DIR)/fcall/fcall.cpp $(SRC_DIR)/fcall/fcall.hpp $(SRC_DIR)/keccakf_cache/keccakf_cache.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
-$(BUILD_DIR)/keccakf_cache.o: $(SRC_DIR)/keccakf_cache/keccakf_cache.cpp $(SRC_DIR)/keccakf_cache/keccakf_cache.hpp | $(BUILD_DIR)
+$(BUILD_DIR)/keccakf_cache.o: $(SRC_DIR)/keccakf_cache/keccakf_cache.cpp $(SRC_DIR)/keccakf_cache/keccakf_cache.hpp $(SRC_DIR)/keccakf_cache/keccakf_fingerprint.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/keccakf_dedup.o: $(SRC_DIR)/keccakf_cache/keccakf_dedup.cpp $(SRC_DIR)/keccakf_cache/keccakf_dedup.hpp $(SRC_DIR)/keccakf_cache/keccakf_fingerprint.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/arith256.o: $(SRC_DIR)/arith256/arith256.cpp $(SRC_DIR)/arith256/arith256.hpp | $(BUILD_DIR)

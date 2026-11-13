@@ -725,6 +725,7 @@ impl ZiskRom2Asm {
         *code += ".extern print_char\n";
         *code += ".extern print_step\n";
         *code += ".extern opcode_keccak\n";
+        *code += ".extern opcode_keccak_mt\n";
         *code += ".extern opcode_sha256\n";
         *code += ".extern opcode_poseidon2\n";
         *code += ".extern opcode_poseidon1\n";
@@ -5226,7 +5227,33 @@ impl ZiskRom2Asm {
 
                 // Get result from precompile results data
                 if ctx.precompile_results_keccak() {
+                    // The minimal trace carries the dedup word of every Keccak-f, which only
+                    // _opcode_keccak_mt() computes
+                    assert!(
+                        !ctx.minimal_trace(),
+                        "Keccak-f precompile results are not supported by the minimal trace"
+                    );
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 25);
+                } else if ctx.minimal_trace() {
+                    // Call the keccak function, which returns the dedup word of this Keccak-f:
+                    // the index of its unique permutation and whether it repeats an earlier one
+                    Self::push_internal_registers(ctx, code, false);
+                    *code += "\tcall _opcode_keccak_mt\n";
+
+                    // Append the dedup word to the 25 input words already in mem_reads. The
+                    // mem_reads registers are callee-saved, and rax is restored by the pop below
+                    *code += &format!(
+                        "\tmov [{} + {}*8], rax {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads[25] = keccak dedup word")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                    Self::pop_internal_registers(ctx, code, false);
                 } else {
                     // Call the keccak function
                     Self::push_internal_registers(ctx, code, false);

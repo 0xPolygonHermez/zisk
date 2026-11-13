@@ -1,17 +1,20 @@
 mod keccakf;
 mod keccakf_chi_table;
 mod keccakf_constants;
+mod keccakf_family;
 #[cfg(gpu)]
 pub mod keccakf_gpu;
 mod keccakf_mem_inputs;
+mod keccakf_proxy;
 mod keccakf_xor5_table;
 
 pub use keccakf::*;
+pub use keccakf_family::*;
+pub use keccakf_proxy::*;
 
 /// Operations one full Keccakf air instance can hold. The GPU witness declaration
 /// sizes its staging from this: it is the most ops a single instance can stage.
-pub const MAX_OPS_PER_INSTANCE: usize = keccakf_constants::OPS_PER_SLOT
-    * (::zisk_pil::KeccakfTrace::<()>::NUM_ROWS / keccakf_constants::CLOCKS);
+pub const MAX_OPS_PER_INSTANCE: usize = KECCAKF_OPS_PER_INSTANCE;
 
 /// This crate's GPU witness declaration, or `None` when the build has no kernel.
 ///
@@ -41,22 +44,6 @@ pub fn gpu_witness_air() -> Option<::proofman_common::GpuWitnessAir> {
 use keccakf_chi_table::*;
 use keccakf_constants::*;
 pub use keccakf_xor5_table::*;
-
-zisk_common::zisk_precompile! {
-    name = Keccakf,
-    op_type = Keccak,
-    trace = KeccakfTrace,
-    num_available = {
-        OPS_PER_SLOT * (::zisk_pil::KeccakfTrace::<()>::NUM_ROWS / CLOCKS)
-    },
-    cost = ::zisk_pil::KECCAKF_INSTANCE_COST,
-    ops = [
-        (OperationKeccakData, KeccakfInput),
-    ],
-    // The packed witness is built on the device when the prover registers the
-    // kernel; `GpuOp` is what it consumes, staged from `KeccakfInput`.
-    gpu_witness = { op = crate::keccakf_gpu::GpuOp },
-}
 
 #[cfg(test)]
 mod keccakf_tests {
