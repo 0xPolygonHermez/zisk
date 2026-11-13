@@ -1,0 +1,4 @@
+; A precompile writing its result over the input: it can read it, not write it.
+main:
+	keccak(0, 0x10000100) -> r5
+	ret

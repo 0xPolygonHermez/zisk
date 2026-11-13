@@ -1,0 +1,5 @@
+; A read that starts in the RAM and ends past it.
+main:
+	copyb(0, 0xbffffffc) -> r4
+	copyb(r4, 8[a + 0]) -> r5
+	ret

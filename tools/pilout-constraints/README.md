@@ -1,0 +1,299 @@
+# pilout-constraints
+
+Reads the AIR constraints out of a `.pilout` and writes them as a JSON IR, as
+Lean 4 definitions, or as a listing.
+
+Its Lean output is for proving that ZisK's circuits implement the Sail model.
+The first such proofs, against an earlier 8-op model, lived in `sail/`, which
+has since been removed: they are at the tag `sail-air-v0`. The model has moved
+on to [`sail-zisk/`](../../sail-zisk/README.md), and the proofs will move to it
+once it is complete; until then nothing in the tree builds this tool's Lean.
+
+```
+                    ┌─→ Main.json   the IR: constraints, columns, expression DAG
+  zisk.pilout ────→ ├─→ Pil/Main.lean   Lean definitions, one per constraint
+                    └─→ Main.txt    a listing, to read and to diff
+```
+
+## Why the pilout and not the `.pil` sources
+
+The `.pilout` is the pil2 compiler's output, and it is the only place the
+constraints exist in fully resolved form. Re-parsing `state-machines/*/pil/*.pil`
+would mean reimplementing the compiler: the templates, the `std` library's
+lookup and permutation arguments, constant folding, and the intermediate
+columns it introduces. The pilout has all of that already done, and it carries
+three things that make it a better source than the text:
+
+- **The expression DAG**, with sharing intact. Main is 713 constraints over an
+  11376-node pool, 8092 of which the constraints reach.
+- **Resolved names.** A witness operand is `(stage, colIdx, rowOffset)` in the
+  protobuf, and `PilOut.symbols` maps that back to `a[0]` or `b_src_ind` — the
+  same names the Sail model's `zisk_inst` record uses.
+- **A `debugLine` per constraint**: the `.pil` file and line it came from, plus
+  the constraint as the source spells it. Every generated constraint keeps it,
+  so the output can always be checked against what a person wrote.
+
+It is also the same artifact `pil-helpers` reads to generate
+`pil/src/pil_helpers/traces.rs`, so the columns here and the trace layout the
+witness computation uses cannot disagree.
+
+## Getting a pilout
+
+`*.pilout` is a build artifact and is gitignored. To produce `pil/zisk.pilout`:
+
+```sh
+tools/test-env/setup_build.sh --compile-pil
+```
+
+## Use
+
+```sh
+cargo run -p zisk-pilout-constraints -- list --pilout pil/zisk.pilout
+
+# One AIR to stdout, or every AIR to a directory.
+cargo run -p zisk-pilout-constraints -- text    --pilout pil/zisk.pilout --air Main
+cargo run -p zisk-pilout-constraints -- extract --pilout pil/zisk.pilout --air Main --out build/pil
+cargo run -p zisk-pilout-constraints -- lean    --pilout pil/zisk.pilout --all  --out build/pil
+```
+
+`--air` defaults to `Main`; `--all` takes every AIR in the pilout. `--airgroup`
+disambiguates if a pilout ever has more than one.
+
+## What the listing looks like
+
+```
+  [1] every row  main/pil/main.pil:224
+       pil: addr1[0]-(b_offset_imm0[0]+(b_src_ind[0]*a[0][0]))
+       0 = addr1[0] - (b_offset_imm0[0] + b_src_ind[0] * a[0][0])
+```
+
+The first two lines are the pilout's; the third is this tool rendering the DAG.
+They should say the same thing, which is the cheapest available check that the
+walker is faithful.
+
+## What the Lean looks like
+
+```lean
+/-- `main/pil/main.pil:224` — `addr1[0]-(b_offset_imm0[0]+(b_src_ind[0]*a[0][0]))` -/
+def c1 (x : Ctx F) (t : Trace F) (i : Int) : Prop :=
+  (t i).addr1 0 - ((t i).b_offset_imm0 0 + (t i).b_src_ind 0 * (t i).a 0 0) = 0
+```
+
+Main packs four instructions into each row, which is why every column is
+indexed: `addr1 0` is the first of the row's four slots, and the same `.pil`
+line produces four constraints. Six decisions shape the output.
+
+**The ring is abstract, and is Lean's own.** A pil2 constraint is a polynomial
+identity, so what it needs is a commutative ring. Lean's core ships one —
+`Lean.Grind.CommRing` — with the laws attached and the `grind` tactic able to
+reason with it, so `Pil/Prelude.lean` declares `PilField F p` as that ring
+with characteristic `p` (`Lean.Grind.IsCharP`), and **no Mathlib is needed**,
+for the AIRs or for proofs about them. The characteristic is there because the
+compiler folds `-k` into the field element `p - k` and the output prints it
+back as `-k`, which is the same element only where `p = 0`.
+
+Leaving the ring abstract also sidesteps a question the pilout does not answer:
+stage-2 columns and the challenges are elements of the cubic extension, while
+stage-1 columns and constants are base field elements embedded in it. Stated
+over any commutative ring of characteristic `p`, one definition covers both.
+
+**A row index is an `Int`, and the trace is asserted periodic.** Row offsets in
+the ZisK pilout run from `-50400` to `+1008`, and PIL offsets wrap around the
+trace. With `Fin numRows` every offset would carry a modular-arithmetic
+obligation; with `Int` plus `cyclic t : ∀ i, t (i + numRows) = t i`, `t (i - 1)`
+is just subtraction.
+
+**`Row` and `Ctx` are separate.** `Row` holds what varies per row (committed,
+fixed, periodic and custom-commit columns); `Ctx` holds what does not (air
+values, challenges, publics, proof values, airgroup values). Splitting them
+keeps `t` a function of the row index alone.
+
+**Shared subexpressions get names, the rest are inlined.** One definition per
+node would be unreadable, and inlining everything would duplicate the shared
+half of the DAG. So a node gets its own definition when the PIL named it, when
+more than one place uses it, or when its inlined form would exceed
+`print::MAX_INLINE` nodes; everything else is folded into its user. That is why
+`c1` above reads like the PIL line it came from.
+
+**A PIL array is one field of function type, not one field per element.**
+`Row` and `Ctx` declare a field per PIL *symbol*: `a : Nat → Nat → F` for
+`a[4][2]`, so `a[2][0]` reads as `(t i).a 2 0`. The reason is not cosmetic.
+Lean's structure elaboration is superlinear in the field count, and flattening
+arrays gave Keccakf 599 fields across the two structures, which took **over ten
+minutes** to elaborate before a single constraint was reached; grouped, that
+AIR declares 32 fields and the file elaborates in 42 seconds. The index type is
+`Nat` rather than `Fin n` because only in-range indices are ever generated, and
+`Nat` keeps them plain numerals instead of coercions — the tool's own check
+verifies every emitted index against the declared extent.
+
+**Names are the PIL's, mangled only as far as Lean forces.**
+`Main.last_reg_value` keeps its name and takes its three indices as arguments,
+`__L1__` stays `__L1__`, and `next_pc'` keeps its apostrophe because Lean
+allows it and it is the PIL's own notation. The compiler can emit two
+intermediates with the same name — an earlier pilout had two
+`Main.previous_c`, one per limb of `c` — so a duplicated name gets its pilout
+expression index appended (`Main_previous_c_e22`). The current pilout happens
+to have no duplicates.
+
+## Typechecking the output
+
+At `sail-air-v0`, the generated Lean was checked by the lake package in
+`sail/lean`, which pointed at `sail/build/pil` rather than holding sources of
+its own (`make pil`, then `make pil-build`, from `sail/`). Needs a Lean
+toolchain — install [elan](https://lean-lang.org/install/). All 54
+AIRs of the ZisK pilout elaborate: about 87s for the set from cold, the two
+widest taking about 49s (Keccakf) and 30s (Main) each on their own. That is the check that matters for this tool — an expression
+printed with the wrong precedence, a reference to a column that was never
+declared, or a name Lean will not accept all fail here.
+
+The generated files raise `maxHeartbeats`, `maxRecDepth` and
+`linter.unusedVariables`, the same three options sail's own Lean output sets.
+The first is not optional: at the default limit the wider AIRs exhaust their
+heartbeats while elaborating, and because the failure lands on `Row` itself,
+every later field access fails with it — 2 real errors became 16520.
+
+## What the output can prove
+
+Elaborating is not the same as being usable, so `sail/lean/Proofs/Main.lean`, at
+the tag `sail-air-v0`, proves six things from the generated Main and nothing
+else. The first proof that relates Main to the Sail model, a single slot
+against a single step, is `Proofs/Slot.lean` there.
+
+```lean
+/-- `main.pil:224` determines `addr1`, so the column can be eliminated. -/
+theorem addr1_eq (h : c1 x t i) :
+    (t i).addr1 0 = (t i).b_offset_imm0 0 + (t i).b_src_ind 0 * (t i).a 0 0 := by
+  unfold c1 at h; grind
+```
+
+They cover the three moves a correspondence proof needs constantly: turning a
+vanishing polynomial into an equation, combining constraints, and reaching one
+constraint out of `holds` without unfolding the other 712. All go through by
+`grind` alone, in under a second.
+
+**Reaching one constraint.** `everyRow` is the conjunction of every constraint,
+and for each one the generator also writes an accessor, so a proof names what
+it uses:
+
+```lean
+theorem everyRow.c46 {x : Ctx F} {t : Trace F} {i : Int} (h : everyRow x t i) : c46 x t i := h.1.1.1.2.1.1.1.2.1
+```
+
+**Booleanity, by column.** A constraint of the shape `s*(1-s)` or `s*(s-1)`
+on one column — either factor possibly behind an intermediate — also gets an
+accessor named after the column rather than the constraint, stated in one form:
+
+```lean
+theorem everyRow.bool_sel_arith256 {x : Ctx F} {t : Trace F} {i : Int} (h : everyRow x t i) :
+    (t i).sel_arith256 * (1 - (t i).sel_arith256) = 0
+```
+
+A proof that needs a selector to be a bit names the column, so it survives a
+renumbering of the constraints. The ZisK pilout has 621 of them.
+
+`everyRow` is built as a balanced tree of `∧` rather than a right-nested chain,
+so each accessor is a path of about log2(n) projections. With a chain, the
+accessors alone took Main from 21s to 89s to elaborate; balanced, they cost
+about 13s. Searching the conjunction instead is not an option: `grind` runs
+out of recursion depth on it.
+
+The constraint names (`c46`) are positions in the pilout, so they are stable
+only as long as the AIR is: a regenerated pilout that adds a constraint ahead
+of it renumbers it. A proof that uses one then fails to elaborate rather than
+silently proving something else, since the definition it unfolds changes, and
+each name's doc comment carries the `.pil` line to find it again.
+
+Two limits surfaced while writing them, both worth knowing before planning a
+larger proof:
+
+- **Booleanity is a constraint; range is not.** Main asserts each one-bit
+  selector boolean explicitly (`main.pil:544`–`567`), so `a_src_mem * (1 -
+  a_src_mem) = 0` is available. A wider declared range, such as a `bits(32)`
+  limb, is a lookup argument that lives in the hints, which this tool does not
+  extract, so a proof that needs a limb below `2^32` must take it as a
+  hypothesis.
+- **Ring laws are not field laws.** Mutual exclusion of two selectors follows
+  from the constraints only up to a factor of two, because dividing by two
+  needs `2 ≠ 0`. A proof needing that instantiates `F` at the concrete field.
+  What the ring does carry is the pilout's characteristic (`PilField F p`), as
+  the generated constraints print the compiler's `p - k` as `-k`; every
+  generated AIR also records it as `basePrime`.
+
+## The IR
+
+`extract` writes one JSON file per AIR:
+
+| Field | What it holds |
+|-------|---------------|
+| `pilout` | Name, file, blake3, base field, stage count. The blake3 is the digest `pil-helpers` stamps as `PILOUT_HASH` in `pil/src/pil_helpers/traces.rs`, so an IR from a different compile is recognizable. |
+| `air` | Airgroup and AIR name and id, row count, committed width per stage. |
+| `columns` | Witness, fixed, periodic and custom-commit columns, one entry per scalar slot, plus the named intermediates. |
+| `globals` | Air values, airgroup values, publics, proof values, challenges. |
+| `expressions` | The expression pool. **Indices are the pilout's own**, including nodes no constraint reaches — those belong to hints and to the global constraint. `Ir::reachable` gives the subset the constraints use. |
+| `constraints` | Kind (`every_row`, `first_row`, `last_row`, `every_frame`), the expression index asserted to vanish, and the `debugLine`. |
+| `hints` | The AIR's hints, each a name and a tree of named fields whose leaves are strings or operands into the same pool. The `text` listing prints them after the constraints. |
+
+PIL arrays are flattened the way the pilout numbers them: consecutive ids,
+row-major. `Main.last_reg_value` is `[4][31][2]`, so it covers 248 air value
+slots, ids 9 to 256, and the next symbol (`Main.last_reg_mem_step`) starts at
+257. The IR keeps one entry per scalar; the Lean backend regroups them.
+
+## Bus arguments
+
+The constraints of an AIR say nothing, on their own, about the lookups,
+permutations and range checks that tie it to other AIRs: those are enforced
+jointly, by every AIR on a bus, through gsum columns. What each argument
+*means* survives in the pilout as a hint, `gsum_debug_data`, which the `std`
+library writes for every argument it builds: the kind (`name_piop`: Lookup,
+Permutation, Range Check, Direct, …), which way the tuple goes (`type_piop`:
+assumes, proves, or free — a count of its own sign), the bus (`busid`, with
+`opids` listing the buses it may use, since a range check can pick per row),
+how many times (`num_reps`: a selector or a multiplicity column), and the
+tuple, field by field with the names the PIL gave them.
+
+The Lean backend emits each of these as data, a `BusArg` per hint and
+`busArgs` per AIR:
+
+```lean
+/-- Lookup on bus 7890, assumes: `(pc[1], a_offset_imm0[1], …, rom_flags[1])` -/
+def bus87 : BusArg F (Ctx F) (Trace F) where
+  opids := [7890]
+  bus := fun x t i => 7890
+  piop := .lookup
+  side := .assumes
+  reps := fun x t i => 1
+  tuple := [
+    fun x t i => (t i).pc 1 + 0,
+    …
+```
+
+They are data, not constraints: what an argument guarantees is stated by the
+proof that relies on it, in terms of these. The ranges the range checks use come
+the same way, from the `range_def` hints, as a `ranges` list per AIR: bus 104
+is `[0, 65535]`, for instance. A bound can stand for a negative number (its
+flag is set and the bound is its field element), as on bus 107. `sail/lean/Proofs/Rom.lean`, at
+the tag `sail-air-v0`, does that for the ROM lookup. All 1629 such hints in the ZisK pilout are extracted;
+one whose shape is not the expected one would be listed in a comment rather
+than guessed at. The columns a bus tuple names are declared in `Row`/`Ctx` even
+when no constraint uses them.
+
+## Known limits
+
+- **CI does not typecheck the generated Lean.** `make pil-build` does, but it
+  needs a Lean toolchain that the PR workflow does not install. Until it does,
+  the check is one a person has to remember to run.
+- **`every_frame` is untested.** All 4188 constraints in the ZisK pilout are
+  `every_row`; boundary conditions are expressed with fixed selector columns
+  such as `__L1__` instead. The other three kinds are
+  implemented and carry their frame bounds through, but nothing has exercised
+  them.
+- **Fixed column *values* are not extracted.** ZisK compiles with
+  `--no-proto-fixed-data`, which keeps them out of the protobuf entirely (they
+  go to `tmp/fixed/`), so only the columns' names and identities are available
+  here.
+- **Global hints and global constraints are not extracted.** Of the pilout's
+  4451 hints, the 4362 that belong to an AIR are in the IR, and its 1629
+  `gsum_debug_data` hints become Lean bus arguments; the 89 global hints and
+  the 12 global constraints, which close each bus's sum across AIRs, are not
+  read. A proof relying on a bus therefore states its guarantee as a
+  hypothesis rather than deriving it from the gsum columns.

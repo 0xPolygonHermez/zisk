@@ -1,0 +1,11 @@
+; A chained blake2b round whose step before was no blake2b round.
+u64 S[16] =
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 M[16] =
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+main:
+	blake2b(S, M) -> r7, j(0x20, 4)
+	copyb(0, 1) -> r8
+	blake2b(S, M) -> r7, j(0x51, 4)
+	ret
