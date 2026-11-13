@@ -1,0 +1,215 @@
+/* Native control tests for the same C helper linked into the RISC-V ROM. */
+#include "runtime.h"
+#undef NDEBUG
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <setjmp.h>
+#include <brotli/encode.h>
+#include "stylus-dictionary.h"
+
+static uint8_t *mem;
+static jmp_buf trapped;
+static int expect_trap;
+void runtime_trap(void) { if (expect_trap) longjmp(trapped, 1); abort(); }
+uint8_t *runtime_checked_range(uint64_t off, uint64_t n, uint64_t end) {
+    off = (uint32_t)off;
+    if (off > end - NITRO_WASM_BASE || n > end - NITRO_WASM_BASE - off) runtime_trap();
+    return mem + off;
+}
+extern size_t runtime_arena_highwater(void);
+static const uint64_t end = NITRO_WASM_BASE + 1048576;
+/* Batch-sized controls address the whole mapping; the others keep a 1 MiB memory end. */
+#define BIG_MEM (48u << 20)
+static const uint64_t big_end = NITRO_WASM_BASE + BIG_MEM;
+static uint64_t call_until(uint64_t mem_end, uint64_t op, uint32_t input, uint32_t len,
+                           uint32_t output, uint32_t outlen, uint32_t level, uint32_t window,
+                           uint32_t dict) {
+    uint64_t args[8] = {input, len, output, outlen, level, window, dict};
+    return runtime_brotli(op, args, mem_end);
+}
+static uint64_t call(uint64_t op, uint32_t input, uint32_t len, uint32_t output,
+                     uint32_t outlen, uint32_t level, uint32_t window, uint32_t dict) {
+    return call_until(end, op, input, len, output, outlen, level, window, dict);
+}
+static void length(uint32_t n) { memcpy(mem + 16, &n, 4); }
+static uint32_t result_length(void) { uint32_t n; memcpy(&n, mem + 16, 4); return n; }
+static size_t reference_compress(const uint8_t *input, size_t len, uint8_t *output, size_t capacity, uint32_t quality, int dictionary) {
+    BrotliEncoderState *state = BrotliEncoderCreateInstance(0, 0, 0);
+    assert(state);
+    assert(BrotliEncoderSetParameter(state, BROTLI_PARAM_QUALITY, quality));
+    assert(BrotliEncoderSetParameter(state, BROTLI_PARAM_LGWIN, 22));
+    BrotliEncoderPreparedDictionary *prepared = 0;
+    if (dictionary) {
+        assert(quality == 11);
+        prepared = BrotliEncoderPrepareDictionary(BROTLI_SHARED_DICTIONARY_RAW,
+            sizeof(stylus_dictionary), stylus_dictionary, 11, 0, 0, 0);
+        assert(prepared && BrotliEncoderAttachPreparedDictionary(state, prepared));
+    }
+    const uint8_t *in = input;
+    uint8_t *out = output;
+    size_t count = 0;
+    assert(BrotliEncoderCompressStream(state, BROTLI_OPERATION_FINISH, &len, &in, &capacity, &out, &count));
+    assert(BrotliEncoderIsFinished(state));
+    BrotliEncoderDestroyInstance(state);
+    if (prepared) BrotliEncoderDestroyPreparedDictionary(prepared);
+    return count;
+}
+int main(void) {
+    mem = mmap(0, BIG_MEM, PROT_READ|PROT_WRITE,
+               MAP_PRIVATE|MAP_ANON, -1, 0);
+    assert(mem != MAP_FAILED);
+    const uint8_t hello[] = {0x0b, 0x02, 0x80, 'h', 'e', 'l', 'l', 'o', 0x03};
+    memcpy(mem + 128, hello, sizeof(hello));
+    length(UINT32_MAX);
+    assert(call(20, 128, sizeof(hello), 2048, 16, 0, 0, 0) == 1);
+    assert(result_length() == 5 && memcmp(mem + 2048, "hello", 5) == 0);
+    const char text[] = "Nitro Brotli native runtime: input input input input";
+    memcpy(mem + 128, text, sizeof(text));
+    length(512);
+    assert(call(21, 128, sizeof(text), 1024, 16, 11, 22, 0) == 1);
+    uint32_t compressed = result_length();
+    assert(compressed > 0 && compressed < sizeof(text));
+    size_t peak = runtime_arena_highwater();
+    length(512);
+    assert(call(20, 1024, compressed, 2048, 16, 0, 0, 0) == 1);
+    assert(result_length() == sizeof(text));
+    assert(memcmp(mem + 2048, text, sizeof(text)) == 0);
+    /* Canonical dictionary preparation uses quality 11 and the complete raw prefix. */
+    uint8_t stylus_reference[512];
+    size_t stylus_len = reference_compress(stylus_dictionary, 256, stylus_reference,
+                                         sizeof(stylus_reference), 11, 1);
+    assert(stylus_len < 32);
+    memcpy(mem + 4096, stylus_dictionary, 256);
+    length(512);
+    assert(call(21, 4096, 256, 8192, 16, 11, 22, 1) == 1);
+    assert(result_length() == stylus_len && !memcmp(mem + 8192, stylus_reference, stylus_len));
+    length(512);
+    assert(call(20, 8192, stylus_len, 16384, 16, 257, 0, 0) == 1);
+    assert(result_length() == 256 && !memcmp(mem + 16384, stylus_dictionary, 256));
+    length(512);
+    assert(call(20, 8192, stylus_len, 8192, 16, 1, 0, 0) == 1);
+    assert(result_length() == 256 && !memcmp(mem + 8192, stylus_dictionary, 256));
+    memcpy(mem + 8192, stylus_reference, stylus_len);
+    for (unsigned quality = 10; quality <= 12; quality += 2) {
+        memset(mem + 16384, 0x5a, 512);
+        length(512);
+        assert(call(21, 4096, 256, 16384, 16, quality, 22, 1) == 0);
+        assert(result_length() == 512 && mem[16384] == 0x5a);
+    }
+    length(255);
+    assert(call(20, 8192, stylus_len, 16384, 16, 1, 0, 0) == 0);
+    assert(result_length() == 255 && mem[16384] == 0x5a);
+    length(512);
+    assert(call(20, 8192, stylus_len - 1, 16384, 16, 1, 0, 0) == 0);
+    assert(result_length() == 512 && mem[16384] == 0x5a);
+    expect_trap = 1;
+    if (!setjmp(trapped)) {
+        call(20, 8192, stylus_len, 16384, 16, 2, 0, 0);
+        assert(!"unknown dictionary must trap");
+    }
+    expect_trap = 0;
+    /* Publishing through overlapping buffers must preserve the copied input. */
+    length(512);
+    assert(call(20, 1024, compressed, 1024, 16, 0, 0, 0) == 1);
+    assert(memcmp(mem + 1024, text, sizeof(text)) == 0);
+    length(512);
+    assert(call(21, 128, sizeof(text), 1024, 16, 11, 22, 0) == 1);
+    compressed = result_length();
+    memset(mem + 2048, 0x5a, 512);
+    length(1);
+    assert(call(20, 1024, compressed, 2048, 16, 0, 0, 0) == 0);
+    assert(result_length() == 1 && mem[2048] == 0x5a);
+    length(512);
+    assert(call(20, 1024, compressed - 1, 2048, 16, 0, 0, 0) == 0);
+    assert(result_length() == 512 && mem[2048] == 0x5a);
+    memset(mem + 1024, 0xff, compressed);
+    assert(call(20, 1024, compressed, 2048, 16, 0, 0, 0) == 0);
+    /* Failed decoding does not touch an invalid output pointer. */
+    assert(call(20, 1024, compressed, UINT32_MAX, 16, 0, 0, 0) == 0);
+    length(512);
+    assert(call(21, 128, sizeof(text), 1024, 16, 11, 22, 0) == 1);
+    compressed = result_length();
+    length(512);
+    expect_trap = 1;
+    if (!setjmp(trapped)) {
+        call(20, 1024, compressed, 1048570, 16, 0, 0, 0);
+        assert(!"successful decoding must check output bounds");
+    }
+    expect_trap = 0;
+    /* Large reserved capacity must not allocate bytes the codec never produces. */
+    length(UINT32_MAX);
+    assert(call(21, 128, sizeof(text), 2048, 16, 11, 22, 0) == 1);
+    assert(result_length() == compressed);
+    for (uint32_t i = 0, x = 7; i < 65536; i++) {
+        x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+        mem[4096 + i] = (uint8_t)x;
+    }
+    length(70000);
+    assert(call(21, 4096, 65536, 131072, 16, 11, 22, 0) == 1);
+    size_t large_peak = runtime_arena_highwater();
+    compressed = result_length();
+    assert(compressed > 65536); /* Forces the encoder to grow beyond its first scratch buffer. */
+    uint8_t *reference = malloc(70000);
+    assert(reference);
+    size_t reference_len = reference_compress(mem + 4096, 65536, reference, 70000, 11, 0);
+    assert(reference_len == compressed && !memcmp(reference, mem + 131072, compressed));
+    free(reference);
+    length(65536);
+    assert(call(20, 131072, compressed, 524288, 16, 0, 0, 0) == 1);
+    assert(result_length() == 65536 && !memcmp(mem + 4096, mem + 524288, 65536));
+    for (uint32_t i = 0, x = 17; i < 131072; i++) {
+        x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+        mem[4096 + i] = (uint8_t)x;
+    }
+    compressed = reference_compress(mem + 4096, 131072, mem + 200000, 150000, 0, 0);
+    length(UINT32_MAX);
+    assert(call(20, 200000, compressed, 524288, 16, 0, 0, 0) == 1);
+    assert(result_length() == 131072 && !memcmp(mem + 4096, mem + 524288, 131072));
+    memset(mem + 524288, 0x5a, 131072);
+    length(65537);
+    assert(call(20, 200000, compressed, 524288, 16, 0, 0, 0) == 0);
+    assert(result_length() == 65537);
+    for (uint32_t i = 0; i < 131072; i++) assert(mem[524288 + i] == 0x5a);
+    /* Nitro's default 16 MiB batch limit fits with the largest standard window, whether the
+     * batch is compressible or not. */
+    const uint32_t batch = 16u << 20, batch_output = 24u << 20;
+    uint8_t *plain = malloc(batch), *packed = malloc(BrotliEncoderMaxCompressedSize(batch));
+    assert(plain && packed);
+    for (int dense = 0; dense < 2; dense++) {
+        for (uint32_t i = 0, x = 29; i < batch; i++) {
+            x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+            plain[i] = dense || i % 64 == 0 ? (uint8_t)x : (uint8_t)(i >> 6);
+        }
+        size_t packed_len = BrotliEncoderMaxCompressedSize(batch);
+        assert(BrotliEncoderCompress(1, 24, BROTLI_MODE_GENERIC, batch, plain, &packed_len, packed));
+        assert(4096 + packed_len <= batch_output);
+        memcpy(mem + 4096, packed, packed_len);
+        length(batch);
+        assert(call_until(big_end, 20, 4096, packed_len, batch_output, 16, 0, 0, 0) == 1);
+        assert(result_length() == batch && !memcmp(mem + batch_output, plain, batch));
+    }
+    free(plain);
+    free(packed);
+    /* Actual encoder working memory can still exceed the bounded arena. */
+    for (uint32_t i = 0, x = 23; i < (2u << 20); i++) {
+        x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+        mem[4096 + i] = (uint8_t)x;
+    }
+    length(3u << 20);
+    expect_trap = 1;
+    if (!setjmp(trapped)) {
+        call_until(big_end, 21, 4096, 2u << 20, batch_output, 16, 11, 22, 0);
+        assert(!"internal codec allocation exhaustion must trap");
+    }
+    expect_trap = 0;
+    length(512);
+    memcpy(mem + 128, hello, sizeof(hello));
+    assert(call(20, 128, sizeof(hello), 2048, 16, 0, 0, 0) == 1);
+    printf("brotli large quality11 peak arena %zu bytes\n", large_peak);
+    printf("brotli controls passed; quality11 peak arena %zu bytes\n", peak);
+    return 0;
+}

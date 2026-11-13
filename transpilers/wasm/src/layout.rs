@@ -135,6 +135,14 @@ pub const WASM_RNG_WARNED_ADDR: u64 = WASM_CTRL_ADDR + 40;
 pub const WASM_PRECOMPILE_BLOCK_ADDR: u64 = WASM_CTRL_ADDR + 64;
 pub const WASM_PRECOMPILE_BLOCK_SLOTS: u64 = 8;
 
+/// Saved Wasm registers while a native crypto routine owns r2 (SP instead of FP).
+pub const WASM_NATIVE_FP_ADDR: u64 = WASM_CTRL_ADDR + 48;
+pub const WASM_NATIVE_MEM_END_ADDR: u64 = WASM_CTRL_ADDR + 56;
+/// Aligned scratch for native typed crypto buffers, disjoint from guest-addressable memory.
+pub const WASM_CRYPTO_HASH_ADDR: u64 = WASM_CTRL_ADDR + 0x100;
+pub const WASM_CRYPTO_SIG_ADDR: u64 = WASM_CTRL_ADDR + 0x120;
+pub const WASM_CRYPTO_OUTPUT_ADDR: u64 = WASM_CTRL_ADDR + 0x160;
+
 /// Base of wasm linear memory: wasm address 0 maps here.
 /// It sits 192 KiB lower than the 0xa100_0000 it started at, so that reserving the ZisK library
 /// RAM above the call stack took that room from the gap after the control cells, not from the

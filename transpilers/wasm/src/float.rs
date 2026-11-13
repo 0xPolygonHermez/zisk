@@ -37,7 +37,7 @@ const FLOAT_LIB_ELF: &[u8] = include_bytes!("../../../lib-float/c/lib/ziskfloat.
 pub fn link_float_lib(rom: &mut ZiskRom) -> Result<(), Box<dyn Error>> {
     let payload = collect_elf_payload_from_bytes(FLOAT_LIB_ELF)?;
     // The library is plain soft-float C: it must not reach for the ZisK library through
-    // zkvmcalls, which the wasm machine does not link.
+    // zkvmcalls; linking it must not introduce native calls implicitly.
     let no_zkvmcalls = std::collections::HashMap::new();
     let no_inline_zkvmcalls = std::collections::HashMap::new();
     for section in &payload.exec {

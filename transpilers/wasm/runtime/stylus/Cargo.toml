@@ -1,0 +1,39 @@
+[package]
+name = "nitro-stylus-runtime"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# nitro_tools stylus prepares this package beside an archived, pinned Nitro source tree.
+[workspace]
+
+[patch.crates-io]
+target-lexicon = { path = "../target-lexicon" }
+sha3 = { path = "../sha3-patch/sha3" }
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+arbutil = { path = "../nitro/crates/arbutil" }
+prover = { path = "../nitro/crates/prover", default-features = false, features = ["interpreter"] }
+eyre = "=0.6.12"
+fnv = "=1.0.7"
+
+[build-dependencies]
+wat = "=1.245.1"
+
+[dev-dependencies]
+wat = "=1.245.1"
+
+[target.'cfg(target_os = "zkvm")'.dependencies]
+dlmalloc = { version = "=0.2.11", default-features = false }
+
+[target.'cfg(not(target_os = "zkvm"))'.dependencies]
+prover = { path = "../nitro/crates/prover", default-features = false, features = ["cc_brotli"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
