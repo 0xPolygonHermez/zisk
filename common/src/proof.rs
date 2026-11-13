@@ -819,6 +819,11 @@ pub struct Proof {
     /// The data of the proof.
     pub body: ProofBody,
     /// The program verification key.
+    ///
+    /// A copy of the one the publics commit to: [`Proof::save`], and [`Proof::verify`] without
+    /// a program VK override ([`with_program_vk`](ZiskVerifyBuilder::with_program_vk)), refuse a
+    /// proof whose copy differs. Read the program a proof attests to with
+    /// [`Proof::get_program_vk`].
     pub program_vk: ProgramVK,
     /// Host randomness seed of the execution this proof attests to.
     ///
@@ -1015,20 +1020,28 @@ impl<'a> ZiskVerifyBuilder<'a> {
 
     /// Verify the proof using the configured parameters.
     ///
-    /// This method uses the overridden values if provided, otherwise falls back
-    /// to the values stored in the proof, except for the setup key: see
-    /// [`with_setup_vk`](Self::with_setup_vk).
+    /// This method uses the overridden values if provided, otherwise the statement the
+    /// proof's publics commit to, except for the setup key: see
+    /// [`with_setup_vk`](Self::with_setup_vk). Without a program VK override, the proof's
+    /// stored [`program_vk`](Proof::program_vk) must be the one its publics commit to.
     ///
     /// # Errors
     ///
     /// - [`CommonError::NotVerified`] if the proof is well-formed but does not verify.
-    /// - [`CommonError::InvalidProof`] if the proof is malformed or its hash family
-    ///   does not match the verification key.
+    /// - [`CommonError::InvalidProof`] if the proof is malformed, its hash family
+    ///   does not match the verification key, or, with no program VK override, its stored
+    ///   `program_vk` differs from the one its publics commit to.
     /// - [`CommonError::Serialization`] if the PLONK key cannot be serialized (Plonk).
     pub fn verify(self) -> Result<()> {
         // A successful verify() is the signal callers trust before reading
         // `publics()`, and `Proof::new` builds bodies the ingest checks never see.
         ensure_stored_body(&self.proof_with_values.body)?;
+        // The statement below takes its key from the publics, never from the stored copy,
+        // which travels in bincode as a public field. A copy that differs would verify
+        // while naming another program to a caller that reads it afterwards.
+        if self.override_program_vk.is_none() {
+            self.proof_with_values.ensure_program_vk_committed()?;
+        }
 
         let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_values.program_vk);
 
@@ -2147,9 +2160,10 @@ mod tests {
         }
     }
 
-    /// A flag-free Vadcop proof whose publics are well-shaped, for the guard tests.
+    /// A flag-free Vadcop proof whose publics are well-shaped, for the guard tests. Its
+    /// `program_vk` is the one the publics commit to, as every producer builds it.
     fn vadcop_proof(kind: VadcopKind, publics_full: Vec<u64>) -> Proof {
-        Proof::new(
+        let mut proof = Proof::new(
             ProofBody::Vadcop {
                 proof: vec![0u64; 8],
                 zisk_vk: vec![1, 2, 3, 4],
@@ -2157,8 +2171,34 @@ mod tests {
                 hash: "Poseidon2".to_string(),
                 publics_full,
             },
-            ProgramVK::new_from_publics_with_mode(&[1, 2, 3, 4], HashMode::Poseidon2),
-        )
+            ProgramVK { vk: vec![], hash_mode: HashMode::Poseidon2 },
+        );
+        proof.program_vk = proof.get_program_vk();
+        proof
+    }
+
+    /// `program_vk` travels in bincode as a public field, outside the statement verified.
+    /// Without an override, a copy that differs from the committed key must not verify.
+    #[test]
+    fn verify_rejects_a_stored_program_vk_the_publics_do_not_commit_to() {
+        let mut proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
+        proof.program_vk.vk[0] ^= 1;
+        let proof = Proof::from_bincode(&proof.to_bincode().unwrap()).unwrap();
+
+        let err = proof.verify().unwrap_err();
+        assert!(
+            matches!(&err, CommonError::InvalidProof(m) if m.contains("program_vk differs")),
+            "got: {err:?}"
+        );
+
+        // An override names the key to verify, so the stored copy is not consulted:
+        // the proof gets past the check and fails later, at the (dummy) STARK.
+        let committed = proof.get_program_vk();
+        let err = proof.with_program_vk(&committed).verify().unwrap_err();
+        assert!(
+            !matches!(&err, CommonError::InvalidProof(m) if m.contains("program_vk differs")),
+            "got: {err:?}"
+        );
     }
 
     fn flag_free_publics(vk: [u64; PROGRAM_VK_LEN]) -> Vec<u64> {
@@ -2440,8 +2480,9 @@ mod tests {
         assert!(err.to_string().contains("recurser's key"), "got: {err}");
     }
 
+    /// Its `program_vk` is the one the publics commit to, as every producer builds it.
     fn plonk_proof(publics_full: Vec<u64>, rootc: Vec<u64>, hash_mode: HashMode) -> Proof {
-        Proof::new(
+        let mut proof = Proof::new(
             ProofBody::Plonk {
                 proof_bytes: vec![5; PLONK_PROOF_BYTES],
                 plonk_vk: Box::new(PlonkVkBlob {
@@ -2452,8 +2493,10 @@ mod tests {
                 publics_full,
                 rootc,
             },
-            ProgramVK { vk: vec![0u64; PROGRAM_VK_LEN], hash_mode },
-        )
+            ProgramVK { vk: vec![], hash_mode },
+        );
+        proof.program_vk = proof.get_program_vk();
+        proof
     }
 
     /// The release publishes no PLONK key, so a PLONK proof needs the caller's.

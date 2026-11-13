@@ -19,3 +19,20 @@ fn verify_defaults_to_the_release_key_not_the_proofs_own() {
     }
     assert!(matches!(proof.verify().unwrap_err(), CommonError::NotVerified));
 }
+
+/// A real proof whose `program_vk` was swapped in transit (bincode, the coordinator ↔ client
+/// encoding) must not verify while naming a program its publics do not commit to.
+#[test]
+fn verify_rejects_a_program_vk_swapped_in_bincode() {
+    let bytes = include_bytes!("../../verifier/tests/fixtures/poseidon2_leaf.bin");
+    let mut proof = Proof::from_bytes(bytes).unwrap();
+    proof.verify().unwrap();
+
+    proof.program_vk.vk[0] ^= 1;
+    let proof = Proof::from_bincode(&proof.to_bincode().unwrap()).unwrap();
+    let err = proof.verify().unwrap_err();
+    assert!(
+        matches!(&err, CommonError::InvalidProof(m) if m.contains("program_vk differs")),
+        "got: {err:?}"
+    );
+}
