@@ -1128,13 +1128,9 @@ impl ZiskRom2Asm {
         Self::push_external_registers(&mut ctx, code);
 
         // Initialize ROM data from rom.ro_data
-        for i in 0..rom.ro_data_64.len() {
-            for (j, value) in rom.ro_data_64[i].data.iter().enumerate() {
-                *code += &format!(
-                    "\tmov {}, 0x{:x}\n",
-                    REG_ADDRESS,
-                    rom.ro_data_64[i].addr + (j as u64) * 8
-                );
+        for section in &rom.ro_data_64 {
+            for (j, value) in section.data.iter().enumerate() {
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, section.addr + (j as u64) * 8);
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
                 *code += &format!("\tmov qword {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE);
             }
@@ -1154,13 +1150,9 @@ impl ZiskRom2Asm {
         Self::push_external_registers(&mut ctx, code);
 
         // Initialize ROM data from rom.rw_data_64
-        for i in 0..rom.rw_data_64.len() {
-            for (j, value) in rom.rw_data_64[i].data.iter().enumerate() {
-                *code += &format!(
-                    "\tmov {}, 0x{:x}\n",
-                    REG_ADDRESS,
-                    rom.rw_data_64[i].addr + (j as u64) * 8
-                );
+        for section in &rom.rw_data_64 {
+            for (j, value) in section.data.iter().enumerate() {
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, section.addr + (j as u64) * 8);
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
                 *code += &format!("\tmov qword {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE);
             }

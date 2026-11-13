@@ -493,8 +493,8 @@ mod tests {
 
         let air = RomInstance::compute_witness_from_rust::<F>(&rom, &stats, buf);
 
-        for i in 0..10 {
-            assert_eq!(air.trace[i], sentinel);
+        for &value in &air.trace[..10] {
+            assert_eq!(value, sentinel);
         }
     }
 

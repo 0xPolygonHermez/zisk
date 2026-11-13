@@ -410,9 +410,7 @@ impl MemDebug {
             let mut chunk_info: Vec<ChunkInfo> = vec![ChunkInfo::default(); chunk_count];
             let first_row = instance * rows;
             let last_row = std::cmp::min((instance + 1) * rows - 1, count - 1);
-            for i_row in first_row..=last_row {
-                let row = &self.ops[i_row];
-
+            for row in &self.ops[first_row..=last_row] {
                 for step in [row.step, row.step_dual] {
                     if step == 0 {
                         break;
@@ -432,8 +430,7 @@ impl MemDebug {
                     }
                 }
             }
-            for i_row in first_row..=last_row {
-                let row = &self.ops[i_row];
+            for row in &self.ops[first_row..=last_row] {
                 let addr = row.addr;
                 let chunk_id = usize::from(MemHelpers::mem_step_to_chunk(row.step));
                 assert!(
