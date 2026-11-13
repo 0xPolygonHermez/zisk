@@ -2,6 +2,8 @@
 
 use crate::syscalls::syscall_keccak_f;
 
+use super::utils::slice_from_ffi;
+
 #[cfg(zisk_hints_debug)]
 use core::ffi::c_char;
 
@@ -106,7 +108,7 @@ fn xor_block_into_state(state: &mut [u64; 25], block: &[u8]) {
 /// C-compatible wrapper for Keccak-256 hash
 ///
 /// # Safety
-/// - `input` must point to at least `input_len` bytes
+/// - `input` must point to at least `input_len` bytes; it may be null when `input_len` is 0
 /// - `output` must point to a writable buffer of at least 32 bytes
 #[inline]
 pub(crate) unsafe fn keccak256_c(
@@ -115,7 +117,7 @@ pub(crate) unsafe fn keccak256_c(
     output: *mut u8,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    let input_slice = core::slice::from_raw_parts(input, input_len);
+    let input_slice = slice_from_ffi(input, input_len);
     let hash = keccak256(
         input_slice,
         #[cfg(feature = "hints")]
@@ -128,7 +130,7 @@ pub(crate) unsafe fn keccak256_c(
 /// Native keccak256 implementation for external callers
 ///
 /// # Safety
-/// - `bytes` must point to at least `len` bytes
+/// - `bytes` must point to at least `len` bytes; it may be null when `len` is 0
 /// - `output` must point to a writable buffer of at least 32 bytes
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_native_keccak256_c")]
@@ -138,7 +140,7 @@ pub unsafe extern "C" fn native_keccak256(bytes: *const u8, len: usize, output: 
 
     #[cfg(zisk_hints_debug)]
     {
-        let input_bytes = unsafe { core::slice::from_raw_parts(bytes, len) };
+        let input_bytes = unsafe { slice_from_ffi(bytes, len) };
         hint_log(format!("hint_keccak256 (bytes: {:?}, len: {})", input_bytes, len));
     }
 
@@ -159,7 +161,7 @@ pub unsafe extern "C" fn native_keccak256(bytes: *const u8, len: usize, output: 
         const OUT_LEN: usize = 32;
 
         let (input_bytes, out) = unsafe {
-            let input_bytes = core::slice::from_raw_parts(bytes, len);
+            let input_bytes = slice_from_ffi(bytes, len);
             let out = core::slice::from_raw_parts_mut(output, OUT_LEN);
             (input_bytes, out)
         };
