@@ -329,6 +329,8 @@ struct SetupResponse {
 }
 ```
 
+The coordinator forgets its setups when it restarts, but keeps the programs registered with it. A job for a registered program that is no longer set up sets it up again before it runs, in the job's hints mode, from the workers' caches only: a worker sets it up only if its cache already holds the program's setup for the proving key it runs, so the program's verification key cannot change. If no worker can (a new proving key, an emptied cache), the job fails with `PROGRAM_NOT_SETUP` and an explicit setup is needed. Jobs for the same program share one such setup, which waits for workers that are computing.
+
 ### `Prove`
 
 Creates a proof job against a registered program. Use `WatchJob` or `WaitJobResult` to observe the job.
@@ -452,8 +454,8 @@ All RPC methods may return `ApiError`. Common error codes:
 | Code | Name |  Description |
 |------|------|-------------|
 | 1001 | `JOB_NOT_FOUND` | Invalid `job_id` |
-| 1002 | `PROGRAM_NOT_FOUND` | Unknown `hash_id` |
-| 1003 | `PROGRAM_NOT_SETUP` | Program exists but setup not completed |
+| 1002 | `PROGRAM_NOT_FOUND` | Unknown `hash_id`: no program registered with it |
+| 1003 | `PROGRAM_NOT_SETUP` | Program registered but not set up, and the workers' caches could not set it up again; run a setup |
 | 1004 | `INVALID_JOB_STATE` | Operation not valid for current job state (e.g., `PushJobInput` on non-input job) |
 | 1005 | `INVALID_PROOF_CONVERSION` | Unsupported `proof_dest` for given `proof_kind` |
 | 1006 | `CLIENT_RANDOM_SEED_NOT_ALLOWED` | Request provided a random seed and the coordinator does not allow client random seeds |
