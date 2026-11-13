@@ -22,6 +22,9 @@
 //! - [`syscall_poseidon2_koalabear`] — Poseidon2 permutation over KoalaBear, width 16
 //! - [`syscall_sha256_f`] — SHA-256 compression function
 //!
+//! ### Experimental (emulator only, cannot be proven yet)
+//! - [`syscall_dot_i8`] — Dot product of two int8 vectors
+//!
 //! ### Elliptic curve (secp256k1)
 //! - [`syscall_secp256k1_add`] — Point addition on secp256k1
 //! - [`syscall_secp256k1_dbl`] — Point doubling on secp256k1
@@ -61,6 +64,7 @@ mod bn254_complex_sub;
 mod bn254_curve_add;
 mod bn254_curve_dbl;
 mod complex;
+mod dot_i8;
 mod ed25519_add;
 mod keccakf;
 mod point;
@@ -92,6 +96,7 @@ pub use bn254_complex_sub::*;
 pub use bn254_curve_add::*;
 pub use bn254_curve_dbl::*;
 pub use complex::*;
+pub use dot_i8::*;
 pub use ed25519_add::*;
 pub use keccakf::*;
 pub use point::*;

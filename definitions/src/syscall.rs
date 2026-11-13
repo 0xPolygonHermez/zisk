@@ -36,6 +36,8 @@ pub const SYSCALL_BLAKE3F_ID: u16 = 0x81E;
 pub const SYSCALL_BLAKE2SF_ID: u16 = 0x81F;
 pub const SYSCALL_ED25519_ADD_ID: u16 = 0x820;
 pub const SYSCALL_POSEIDON2_KOALABEAR_ID: u16 = 0x821;
+/// Experimental: emulator only, no state machine proves it yet.
+pub const SYSCALL_DOT_I8_ID: u16 = 0x822;
 
 /// blake2b `extended_arg`: round index (bits 0..3), state and m from the previous round of the
 /// call (`BLAKE2B_RD_CHAIN`), to the next one (`BLAKE2B_WR_CHAIN`), steps back to it (bits 6..).

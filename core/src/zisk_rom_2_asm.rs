@@ -5447,6 +5447,9 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
+            ZiskOp::DotI8 => {
+                panic!("dot_i8 is experimental and only supported by the Rust emulator (ziskemu)");
+            }
             ZiskOp::Poseidon2 | ZiskOp::Poseidon1 | ZiskOp::Poseidon2KoalaBear => {
                 // In-place state of input_size bytes, handled by _opcode_<name>
                 let pname = zisk_op.name();

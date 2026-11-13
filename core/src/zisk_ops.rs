@@ -18,10 +18,10 @@ use crate::{
     ARITHAM32_COST, ARITH_256_COST, ARITH_BN254_COST, ARITH_EQ_384_COST, ARITH_EQ_COST,
     ARITH_SECP256K1_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST, BLAKE2B_COST, BLAKE2S_COST,
     BLAKE3_COST, DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST,
-    DMA_MEMCPY_COST, DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR,
-    FCALL_COST, INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64, MAX_INPUT_SIZE,
-    POSEIDON2_KOALABEAR_COST, POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST,
-    SLL_U_W_COST, SYS_ADDR, TWISTED_EDWARDS_COST,
+    DMA_MEMCPY_COST, DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, DOT_I8_COST,
+    EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64,
+    MAX_INPUT_SIZE, POSEIDON2_KOALABEAR_COST, POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST,
+    SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR, TWISTED_EDWARDS_COST,
 };
 use crate::{BLAKE2B_GAP_SHIFT, BLAKE2B_RD_CHAIN, BLAKE2B_WR_CHAIN};
 use paste::paste;
@@ -73,6 +73,7 @@ pub enum OpType {
     Blake3,
     Blake2s,
     Poseidon2KoalaBear,
+    DotI8,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -98,6 +99,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::Blake3 => ZiskOperationType::Blake3,
             OpType::Blake2s => ZiskOperationType::Blake2s,
             OpType::Poseidon2KoalaBear => ZiskOperationType::Poseidon2KoalaBear,
+            OpType::DotI8 => ZiskOperationType::DotI8,
         }
     }
 }
@@ -127,6 +129,7 @@ impl Display for OpType {
             Self::Blake3 => write!(f, "Blake3"),
             Self::Blake2s => write!(f, "Blake2s"),
             Self::Poseidon2KoalaBear => write!(f, "Poseidon2KoalaBear"),
+            Self::DotI8 => write!(f, "DotI8"),
         }
     }
 }
@@ -157,6 +160,7 @@ impl FromStr for OpType {
             "b3" => Ok(Self::Blake3),
             "b2s" => Ok(Self::Blake2s),
             "p2kb" => Ok(Self::Poseidon2KoalaBear),
+            "doti8" => Ok(Self::DotI8),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -578,7 +582,10 @@ define_ops! {
     // source words), followed by the loaded words themselves via data_ext_len.
     (JumpDest, "jump_dest", Evm, JUMP_DEST_COST, 0xc0, 8, 0, opc_jump_dest, op_jump_dest, ops_jump_dest),
     (Poseidon2KoalaBear, "poseidon2_koalabear", Poseidon2KoalaBear, POSEIDON2_KOALABEAR_COST, 0xc1, 64, 64, opc_poseidon2_koalabear, op_poseidon2_koalabear, ops_poseidon2_koalabear),
-    // opcodes 0xc2-0xcf are available
+    // Experimental, emulator only: no state machine proves it yet (see operations/dot_i8.rs).
+    // input_size = 24: the parameter block (a pointer, b pointer, length).
+    (DotI8, "dot_i8", DotI8, DOT_I8_COST, 0xc2, 24, 0, opc_dot_i8, op_dot_i8, ops_dot_i8),
+    // opcodes 0xc3-0xcf are available
 
     (DmaMemCpy, "dma_memcpy", Dma, DMA_MEMCPY_COST, 0xd0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
     (DmaMemCmp, "dma_memcmp", Dma, DMA_MEMCMP_COST, 0xd1, 16, 0, opc_dma_memcmp, op_dma_memcmp, ops_dma_memcmp),

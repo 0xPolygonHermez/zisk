@@ -13,11 +13,12 @@ use zisk_definitions::{
     SYSCALL_BLS12_381_CURVE_ADD_ID, SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID,
     SYSCALL_BN254_COMPLEX_MUL_ID, SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID,
     SYSCALL_BN254_CURVE_DBL_ID, SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID,
-    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_ED25519_ADD_ID, SYSCALL_JUMP_DEST_ID,
-    SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID, SYSCALL_POSEIDON2_KOALABEAR_ID,
-    SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID,
-    SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END,
-    ZKVMCALL_ADDR_START, ZKVMCALL_ARG_ADDR_END, ZKVMCALL_ARG_ADDR_START,
+    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_DOT_I8_ID, SYSCALL_ED25519_ADD_ID,
+    SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID,
+    SYSCALL_POSEIDON2_KOALABEAR_ID, SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID,
+    SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID,
+    SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END, ZKVMCALL_ADDR_START, ZKVMCALL_ARG_ADDR_END,
+    ZKVMCALL_ARG_ADDR_START,
 };
 
 use zisk_core::rom_layout::InlineBody;
@@ -38,7 +39,7 @@ use zisk_core::{FREG_F0, FREG_INST, FREG_RA, MTVEC, REG_X0};
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 // Important: The order should be the same as in such file.
-const CSR_PRECOMPILED: [&str; 34] = [
+const CSR_PRECOMPILED: [&str; 35] = [
     "keccak",
     "arith256",
     "arith256_mod",
@@ -73,6 +74,7 @@ const CSR_PRECOMPILED: [&str; 34] = [
     "blake2s",
     "ed25519_add",
     "poseidon2_koalabear",
+    "dot_i8",
 ];
 const CSR_PRECOMPILED_ADDR_START: u16 = SYSCALL_KECCAKF_ID;
 const CSR_FCALL_ADDR_START: u16 = 0x8C0;
@@ -1958,7 +1960,11 @@ impl<'a> Riscv2ZiskContext<'a> {
             // rd == rs1 (a compiler may reuse the parameter-block register for the
             // carry) and rd == 0 (carry discarded) too, not only rd != rs1.
             SYSCALL_ADD256_ID if i.rs1 != 0 => {
-                return self.transpile_add256(i, next_instructions);
+                return self.transpile_precompiled_ret(i, next_instructions, "add256");
+            }
+            // dot_i8 returns the dot product in rd (experimental, emulator only)
+            SYSCALL_DOT_I8_ID if i.rs1 != 0 => {
+                return self.transpile_precompiled_ret(i, next_instructions, "dot_i8");
             }
             _ => {}
         }
@@ -2171,12 +2177,19 @@ impl<'a> Riscv2ZiskContext<'a> {
     /// `csrrs rd, 0x811, rs1`: the add256 precompile on the parameter block at rs1,
     /// carry-out to rd (dropped when rd is x0). One instruction; the precompile reads
     /// rs1 before rd is written, so rd may equal rs1.
-    fn transpile_add256(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
+    /// A precompile called as `csrrs rd, port, rs1`: b = rs1 (its parameter block) and the result
+    /// c is stored in rd, unless rd is x0.
+    fn transpile_precompiled_ret(
+        &mut self,
+        i: &RiscvInst,
+        next_instructions: &[RiscvInst],
+        precompiled: &str,
+    ) {
         let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("imm", 0, false);
         zib.src_b("reg", i.rs1 as u64, false);
-        zib.op("add256").unwrap();
-        zib.verbose("add256");
+        zib.op(precompiled).unwrap();
+        zib.verbose(precompiled);
         if i.rd != 0 {
             zib.store("reg", i.rd as i64, false, false);
         }
