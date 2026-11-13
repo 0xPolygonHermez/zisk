@@ -237,8 +237,8 @@ impl ArithOperationTest {
             bus_res_high, expected_res_high,
             "bus_c_high: 0x{bus_res_high:X}({bus_res_high}) vs 0x{expected_res_high:X}({expected_res_high}) (expected)"
         );
-        for i in 0..7 {
-            ArithRangeTableHelpers::get_row_carry_range_check(aop.carry[i]);
+        for carry in aop.carry {
+            ArithRangeTableHelpers::get_row_carry_range_check(carry);
         }
 
         ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab, aop.a[3] as u64);
@@ -299,11 +299,11 @@ impl ArithOperationTest {
 fn test() {
     let mut test = ArithOperationTest::new();
     test.test();
-    for i in 0..16 {
-        if test.fail_by_op[i] == 0 {
+    for (i, &fails) in test.fail_by_op.iter().enumerate() {
+        if fails == 0 {
             continue;
         }
-        println!("fail_by_op[0x{:X}]: {}", i + 0xb0, test.fail_by_op[i]);
+        println!("fail_by_op[0x{:X}]: {}", i + 0xb0, fails);
     }
     assert_eq!(test.fail, 0);
 }
