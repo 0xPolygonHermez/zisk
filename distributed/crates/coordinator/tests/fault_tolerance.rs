@@ -375,7 +375,7 @@ async fn test_reconnect_idle_no_directive() {
         compute_capacity: ComputeCapacity::from(1u32),
         previous_exit: None,
     };
-    let (accepted, _msg, _setup) =
+    let (accepted, _msg, _setup, _generation) =
         coordinator.handle_stream_registration(req, Box::new(sender)).await;
 
     assert!(accepted);
@@ -400,7 +400,7 @@ async fn test_reconnect_unknown_job_gets_cancel() {
         compute_capacity: ComputeCapacity::from(1u32),
         last_known_job_id: Some(JobId::from("nonexistent-job".to_string())),
     };
-    let (accepted, _msg, directive, _setup) =
+    let (accepted, _msg, directive, _setup, _generation) =
         coordinator.handle_stream_reconnection(req, Box::new(sender)).await;
 
     assert!(accepted);
@@ -429,7 +429,7 @@ async fn test_reconnect_terminal_job_gets_cancel() {
         compute_capacity: ComputeCapacity::from(1u32),
         last_known_job_id: Some(s.job_id.clone()),
     };
-    let (accepted, _msg, directive, _setup) =
+    let (accepted, _msg, directive, _setup, _generation) =
         s.coordinator.handle_stream_reconnection(req, Box::new(sender)).await;
 
     assert!(accepted);
@@ -464,7 +464,7 @@ async fn test_reconnect_active_job_resumes() {
         compute_capacity: ComputeCapacity::from(1u32),
         last_known_job_id: Some(s.job_id.clone()),
     };
-    let (accepted, _msg, directive, _setup) =
+    let (accepted, _msg, directive, _setup, _generation) =
         s.coordinator.handle_stream_reconnection(req, Box::new(sender)).await;
 
     assert!(accepted);
@@ -490,7 +490,7 @@ async fn test_reconnect_no_stale_job_no_directive() {
         compute_capacity: ComputeCapacity::from(1u32),
         last_known_job_id: None,
     };
-    let (accepted, _msg, directive, _setup) =
+    let (accepted, _msg, directive, _setup, _generation) =
         coordinator.handle_stream_reconnection(req, Box::new(sender)).await;
 
     assert!(accepted);

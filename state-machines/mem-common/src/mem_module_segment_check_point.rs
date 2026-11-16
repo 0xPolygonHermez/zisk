@@ -344,11 +344,12 @@ mod add_addr_offset_tests {
         }
 
         // Each page is genuinely uniform iff stored as absent.
-        for p in 0..seg.num_pages as usize {
+        assert_eq!(seg.page_starts.len(), seg.num_pages as usize);
+        for (p, &page_start) in seg.page_starts.iter().enumerate() {
             let start = p * MEM_OFFSETS_PAGE_SIZE as usize;
             let end = ((p + 1) * MEM_OFFSETS_PAGE_SIZE as usize).min(dense.len());
             let uniform = dense[start..end].iter().all(|&v| v == dense[start]);
-            let is_absent = seg.page_starts[p] == MEM_OFFSETS_PAGE_ABSENT;
+            let is_absent = page_start == MEM_OFFSETS_PAGE_ABSENT;
             assert_eq!(is_absent, uniform, "page {p} compression mismatch");
         }
 
