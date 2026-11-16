@@ -447,8 +447,7 @@ impl BinaryBasicFrops {
                     (a * 69 + b) as usize
                 } else if a >= 0xC03F1000 && a < 0xC03FF000 && (a & 7) == 0 && b < 2113 {
                     (((a - 0xC03F1000) / 8) * 2113 + b) as usize + 276897
-                } else if a >= 0xC042F000 && a < 0xc0431000 && (a & 7) == 0 && b >= 40 && b < 217
-                {
+                } else if a >= 0xC042F000 && a < 0xc0431000 && (a & 7) == 0 && b >= 40 && b < 217 {
                     (((a - 0xC042F000) / 8) * 177 + (b - 0x28)) as usize + 15422881
                 } else if a >= 0xC046F000 && a < 0xc0470000 && (a & 7) == 0 && b == 8 {
                     ((a - 0xC046F000) / 8) as usize + 15604129
