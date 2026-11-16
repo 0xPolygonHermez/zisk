@@ -489,8 +489,10 @@ airtemplate ArithEq384(const int N) {
     sel_direct_ab * clock_eq(step_addr, ADDR_X1, ADDR_A) === 0;
     sel_direct_ab * clock_eq(step_addr, ADDR_Y1, ADDR_A, 48) === 0;
 
-    // The other ops are called with a = 0
+    // The other ops are called with a = 0. Both columns are pinned: with step_addr alone,
+    // addr_hi = 1 would publish a = [-2^32, 1], which only a canonical caller cannot match.
     (in_use - sel_direct_ab) * FIRST_CLK * step_addr'(ADDR_A) === 0;
+    (in_use - sel_direct_ab) * FIRST_CLK * addr_hi'(ADDR_A) === 0;
 
     sel_bls12_381_curve_dbl * clock_eq(step_addr, ADDR_X1, ADDR_OP) === 0;
     sel_bls12_381_curve_dbl * clock_eq(step_addr, ADDR_Y1, ADDR_OP, 48) === 0;

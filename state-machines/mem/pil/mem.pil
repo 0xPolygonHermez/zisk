@@ -18,8 +18,8 @@ require "opids.pil"
 
 
     - Allows to define a memory on a region. Initially the distance between address could up
-      to 2^(36+3) bits = 2^39 = 512 GB, but executor use only 32 bits for address, so the maximum
-      memory size is 4 GB
+      to 2^(36+3) bits = 2^39 = 512 GB, but addresses are 33 bits (a 32-bit low part and a
+      high bit), so the address space is 8 GB
       - Inside this component the address are mem-byte address, to translate internal adress to
       external need to multiply by bytes.    
       - The memory regions must be exclusive, to avoid collisions between different memories.
@@ -520,7 +520,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
             l_increment[lane] + 2**22 * h_increment[lane] + 1 === addr_changes[lane] * (delta_addr[lane] - delta_step[lane]) + delta_step[lane];
 
-            // addr_change == 1 => 22 + 16 = 38 bits + 3 => 41 bits => 2 TB (limit address 32 bits)
+            // addr_change == 1 => 22 + 16 = 38 bits + 3 => 41 bits => 2 TB (limit address 33 bits)
             // addr_change == 0 => 22 + 16 = 38 bits => 4 slots => 2^36 => 32 GB steps (16K main instances)
             // 38 bits x 2^22 = 2^60 + 2^32 address = 2^61 secure.
             // using control in the middle of instance, reduce to 2^60

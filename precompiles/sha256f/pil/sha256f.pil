@@ -209,7 +209,6 @@ airtemplate Sha256f(const int N = 2**22) {
                    CLK[4] * w_spacked' + CLK[5] * w_spacked'2 + CLK[6] * w_spacked'3 + CLK[7] * w_spacked'4 +
                    CLK[8] * w_spacked'5 + CLK[9] * w_spacked'6 + CLK[10] * w_spacked'7 + CLK[11] * w_spacked'8 +
                    CLK[12] * a_packed'58 + CLK[13] * a_packed'55 + CLK[14] * e_packed'56 + CLK[15] * e_packed'53;
-                   // addresses are 32-bit values
 
     const expr mem_addr = clock_map(step_addr, ADDR_STATE, start: 0,  end: 3,  delta: 8) +
                           clock_map(step_addr, ADDR_INPUT, start: 4,  end: 11, delta: 8) +
