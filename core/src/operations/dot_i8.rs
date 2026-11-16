@@ -7,7 +7,17 @@
 //! Both addresses must be 8-byte aligned and `n` a multiple of 8, so the planned state machine can
 //! read one 64-bit word of each vector per row (8 multiply-adds). There is no state machine yet:
 //! the operation runs in the emulator and its cost is estimated, but a program using it cannot be
-//! proven, and the modes that generate proof inputs panic.
+//! proven, and the modes of this emulator that generate or consume proof inputs panic.
+//!
+//! The assembly emulator also runs it (`emulator-asm/src/dot_i8/dot_i8.asm`), in the fast, ROM
+//! histogram and minimal trace modes, so its execution can be timed. Its minimal trace for one
+//! call is a header of `input_size` = 4 words, the parameter block and then the result (as
+//! `dma_memcmp` puts its result in its header, so a replay does not need the data to get `c`),
+//! followed by `2·n/8` words, as for the variable-length DMA operations (`data_ext_len`):
+//!
+//! ```text
+//! x address, y address, n, c, x[0..n/8] as words, y[0..n/8] as words
+//! ```
 
 use crate::{zisk_ops::OpStats, EmulationMode, InstContext, DOT_I8_MACS_PER_ROW, DOT_I8_ROW_COST};
 

@@ -583,8 +583,9 @@ define_ops! {
     (JumpDest, "jump_dest", Evm, JUMP_DEST_COST, 0xc0, 8, 0, opc_jump_dest, op_jump_dest, ops_jump_dest),
     (Poseidon2KoalaBear, "poseidon2_koalabear", Poseidon2KoalaBear, POSEIDON2_KOALABEAR_COST, 0xc1, 64, 64, opc_poseidon2_koalabear, op_poseidon2_koalabear, ops_poseidon2_koalabear),
     // Experimental, emulator only: no state machine proves it yet (see operations/dot_i8.rs).
-    // input_size = 24: the parameter block (a pointer, b pointer, length).
-    (DotI8, "dot_i8", DotI8, DOT_I8_COST, 0xc2, 24, 0, opc_dot_i8, op_dot_i8, ops_dot_i8),
+    // input_size = 32: the minimal-trace header (x address, y address, length, result), followed
+    // by both vectors via data_ext_len.
+    (DotI8, "dot_i8", DotI8, DOT_I8_COST, 0xc2, 32, 0, opc_dot_i8, op_dot_i8, ops_dot_i8),
     // opcodes 0xc3-0xcf are available
 
     (DmaMemCpy, "dma_memcpy", Dma, DMA_MEMCPY_COST, 0xd0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
