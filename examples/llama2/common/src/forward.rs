@@ -38,17 +38,44 @@ pub enum Scales {
     Fixed,
 }
 
+/// Computes one output of a matrix multiplication with fixed-point scales:
+/// `Σ_g dot(w_g, x_g) · w_scales[g] · x_scales[g]` over the groups of `gs`
+/// values of a row `w` and the vector `x`, exactly in `i64` (see
+/// [`crate::fixed`]).
+pub type RowFixedFn = fn(w: &[i8], x: &[i8], gs: usize, w_scales: &[i32], x_scales: &[i32]) -> i64;
+
+/// [`RowFixedFn`] in plain Rust, with [`dot_soft`] per group.
+pub fn row_fixed_soft(w: &[i8], x: &[i8], gs: usize, w_scales: &[i32], x_scales: &[i32]) -> i64 {
+    let mut acc: i64 = 0;
+    for ((wg, xg), (&ws, &xs)) in
+        w.chunks_exact(gs).zip(x.chunks_exact(gs)).zip(w_scales.iter().zip(x_scales))
+    {
+        acc += dot_soft(wg, xg) as i64 * (ws as i64 * xs as i64);
+    }
+    acc
+}
+
 /// How the matrix multiplications are computed.
 #[derive(Clone, Copy)]
 pub struct MatmulMode {
+    /// The dot product of one group, used with [`Scales::Float`].
     pub dot: DotFn,
+    /// One output, used with [`Scales::Fixed`].
+    pub row_fixed: RowFixedFn,
     pub scales: Scales,
+}
+
+impl MatmulMode {
+    /// Plain Rust, with the given scales.
+    pub fn soft(scales: Scales) -> Self {
+        MatmulMode { dot: dot_soft, row_fixed: row_fixed_soft, scales }
+    }
 }
 
 impl Default for MatmulMode {
     /// llama2.c's: [`dot_soft`] and [`Scales::Float`].
     fn default() -> Self {
-        MatmulMode { dot: dot_soft, scales: Scales::Float }
+        Self::soft(Scales::Float)
     }
 }
 
@@ -107,7 +134,7 @@ impl QVec {
 fn matmul(out: &mut [f32], x: &QVec, w: &QMatrixView, mode: MatmulMode) {
     match mode.scales {
         Scales::Float => matmul_float(out, x, w, mode.dot),
-        Scales::Fixed => matmul_fixed(out, x, w, mode.dot),
+        Scales::Fixed => matmul_fixed(out, x, w, mode.row_fixed),
     }
 }
 
@@ -128,19 +155,14 @@ fn matmul_float(out: &mut [f32], x: &QVec, w: &QMatrixView, dot: DotFn) {
 }
 
 /// [`matmul`] with fixed-point scales: no float operation per group.
-fn matmul_fixed(out: &mut [f32], x: &QVec, w: &QMatrixView, dot: DotFn) {
+fn matmul_fixed(out: &mut [f32], x: &QVec, w: &QMatrixView, row_fixed: RowFixedFn) {
     let (n, gs) = (w.cols, w.gs);
     let xq = x.q();
     let x_scales = &x.fixed_scales[..n / gs];
     for (i, o) in out.iter_mut().enumerate().take(w.rows) {
         let row = &w.q[i * n..(i + 1) * n];
         let row_scales = &w.fixed_scales[i * n / gs..(i + 1) * n / gs];
-        let mut acc: i64 = 0;
-        for ((wg, xg), (&ws, &xs)) in
-            row.chunks_exact(gs).zip(xq.chunks_exact(gs)).zip(row_scales.iter().zip(x_scales))
-        {
-            acc += dot(wg, xg) as i64 * (ws as i64 * xs as i64);
-        }
+        let acc = row_fixed(row, xq, gs, row_scales, x_scales);
         *o = fixed::fixed_to_f32(acc, w.row_shift[i] + x.shift);
     }
 }

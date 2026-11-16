@@ -6,7 +6,7 @@
 
 use std::time::Instant;
 
-use llama2_common::forward::{MatmulMode, dot_soft};
+use llama2_common::forward::MatmulMode;
 use llama2_common::generate::generate_with;
 use llama2_common::model::Model;
 use llama2_host::{
@@ -53,7 +53,7 @@ fn main() -> Result<()> {
         // computed: the plain-Rust integer dot product, and the scales in
         // `f32` or fixed point (`--scales`). The ZisK guest can use the
         // `dot_i8` precompile instead of `dot_soft`; natively there is none.
-        let mode = MatmulMode { dot: dot_soft, scales: o.scales };
+        let mode = MatmulMode::soft(o.scales);
 
         // The generation loop. For each position it runs the model once
         // ("forward pass") on the current token, which gives a score for

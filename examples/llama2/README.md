@@ -60,6 +60,7 @@ Options, for both programs:
 | `--max-new N` | 128 | Tokens to generate |
 | `--temperature T` | 0 | 0 always picks the most likely token; higher values sample |
 | `--seed S` | 42 | Sampler seed, used when `T > 0` |
+| `--group-size N` | llama2.c's: a power of two up to 64 | Quantize in groups of at most `N` values: the largest multiple of 8 that divides the row (see [below](#cheaper-calls-and-larger-groups)) |
 | `--scales float\|fixed` | `float` | How matrix multiplications apply the group scales: in `f32` like llama2.c, or in fixed point (see [below](#with-fixed-point-scales)) |
 
 `llama2-zisk` also takes:
@@ -393,10 +394,59 @@ Where the cost goes for `stories15M` with `fixed` and `precompile`:
 3. **The calls are now worth reducing.** A row-level precompile, which computes a whole row of groups per call, scales included, would remove most of the loop and the call costs, about 57% of the cost here.
 4. **Loading the model is now 7.5% of the cost** of this short run, half of it for the weight scales. It is paid once per run, so it matters less with more tokens. It could also be removed by storing the fixed-point scales in the blob.
 
+### Cheaper calls and larger groups
+
+With fixed-point scales and the precompile, about 57% of the cost of `stories15M` was spent around the `dot_i8` calls rather than in them: the loop over the groups and the calls themselves. Two changes reduce it without changing ZisK.
+
+**A cheaper call site.** Before, each group of each row cost about 34 instructions besides the precompile:
+- an indirect call through the dot-product function pointer;
+- a length check, a stack frame and a new 3-word parameter block in `dot_precompile`;
+- the call to `syscall_dot_i8`;
+- the loop itself.
+
+Now, with fixed-point scales, the guest computes each output with `row_fixed_precompile` ([`guest/src/main.rs`](guest/src/main.rs)). It writes the parameter block once per row, and for each group only advances its two addresses and issues the `csrrs` inline. That is 16 instructions per group, scales included. To make this possible, [`MatmulMode`](common/src/forward.rs) takes one function per output row (`row_fixed`) for fixed-point scales, instead of one per group. Rows that do not meet the precompile's alignment rules use plain Rust.
+
+**Larger groups.** Most of the remaining cost is still paid once per group, and a group's size is a choice made when quantizing. llama2.c uses the largest power of two up to 64 that divides the row: 32 for `stories15M`'s `dim` of 288, and 64 for its `hidden_dim` of 768. `--group-size N` uses the largest multiple of 8 up to `N` that divides the row instead, for example 48, 96 or 144 for 288. Larger groups mean fewer calls and fewer scales, but each scale then covers more values, so the quantization is coarser. The group sizes are stored in the model blob, so the guest needs no change. `stories260K` is not affected: its `dim` of 64 already uses groups of 64, and its `hidden_dim` of 172 has no divisor that is a multiple of 8.
+
+#### Accuracy of larger groups
+
+This is measured as for the fixed-point scales (teacher forcing, the same 5 prompts, 200 positions each). The reference is the `float` mode with groups of 8, a much finer quantization that is closer to the original float model. Comparing against llama2.c's own groups would mostly measure noise: even groups of 16, which are more accurate, differ from them at 1.4% of positions.
+
+| `stories15M`, compared with groups of 8 | Groups (`dim` / `hidden_dim`) | Top-1 token differs | Largest logit difference | Mean of (largest difference / logit range) |
+|---|---|---|---|---|
+| `float`, llama2.c's groups | 32 / 64 | 1.6% | 0.72 | 1.30% |
+| `fixed`, llama2.c's groups | 32 / 64 | 1.0% | 0.74 | 1.31% |
+| `fixed`, `--group-size 48` | 48 / 48 | 1.3% | 0.80 | 1.38% |
+| `fixed`, `--group-size 96` | 96 / 96 | 1.9% | 1.10 | 1.67% |
+| `fixed`, `--group-size 144` | 144 / 128 | 1.8% | 1.06 | 1.85% |
+| `fixed`, `--group-size 288` | 288 / 256 | 2.1% | 1.54 | 2.17% |
+
+The top-1 counts are small and noisy, so the last column is the better guide. Groups of 48 are about as accurate as llama2.c's. The error then grows steadily: groups of 144 are about 40% further from the reference than llama2.c's groups, and one group per row is about 65% further.
+
+#### Results
+
+`stories15M` with `fixed` scales and the precompile. The first row is the earlier call site, from [With fixed-point scales](#with-fixed-point-scales). Every run produces the same tokens as the native run with the same options, and the committed hash matches:
+
+| Call site | Groups | Profile steps | Profile cost | vs. before | End-to-end steps (5 + 20 tokens) | ziskemu time |
+|---|---|---|---|---|---|---|
+| Before | 32 / 64 | 350 M | 35.8 G | | 888 M | 19.4 s |
+| New | 32 / 64 | 276 M | 30.1 G | −16% | 710 M | 16.3 s |
+| New | 48 / 48 | 246 M | 26.8 G | −25% | 650 M | 15.4 s |
+| New | 96 / 96 | 212 M | 22.9 G | −36% | 580 M | 14.9 s |
+| New | 144 / 128 | 201 M | 21.7 G | −39% | 557 M | 14.1 s |
+| New | 288 / 256 | 189 M | 20.4 G | −43% | 533 M | 13.8 s |
+
+The other modes barely change. Without the precompile, `fixed` costs 150.9 G instead of 153.8 G, from the restructured loop. `stories260K` with `fixed` and the precompile costs 11.46 G instead of 11.80 G.
+
+1. **The cheaper call site saves 16% for free.** It does not change the results.
+2. **Groups of 48 save another 11% at about the same accuracy.** Larger groups save more, at a growing accuracy cost. Groups of 144 save 39% in total.
+3. **Larger groups also make loading faster**, since there are fewer scales to convert.
+4. **The matrix multiplications are no longer the largest part.** With groups of 144, `matmul` is 37% of the cost, including the per-group loop with its calls (`row_fixed_precompile`, 20%) and the conversion of each output to `f32` (6%). The rest is float code: `expf` 18%, `quantize` 14%, and the float operations of RMSNorm, attention and RoPE. The `dot_i8` operation itself is under 4%.
+
 ## Next steps
 
-1. **A row-level `dot_i8`.** With fixed-point scales, a precompile that computes `Σ_g dot(w_g, x_g) · w_fixed[g] · x_fixed[g]` for a whole row would replace the loop and most of the calls, about 57% of the remaining cost of `stories15M`. It needs the same state machine work as `dot_i8`.
-2. **Fixed point in the rest of the model.** RMSNorm, softmax, `expf`, SiLU, RoPE and `quantize` still use software floats, about 36% of the remaining cost. Moving them to fixed point would make the model fully integer, which a proof-friendly model needs anyway. Accuracy has to be measured as above.
+1. **Fixed point in the rest of the model.** After [cheaper calls and larger groups](#cheaper-calls-and-larger-groups), the float code outside the matrix multiplications is the largest part of the cost: `expf`, `quantize`, RMSNorm, attention and RoPE. Moving it to fixed point would also make the model fully integer, which a proof-friendly model needs anyway. Accuracy has to be measured as above. A cheap first step is `quantize`, which divides every value by its scale with software floats.
+2. **Fewer calls per row, if still worth it.** With groups of 144, the per-group loop and its calls are about 20% of the cost. A `dot_i8` variant that takes a group size and writes one `i32` per group to memory would allow one call per row, at a small extra cost in the state machine. A variant that also applies the scales would remove the loop as well, but its state machine is much more expensive to build.
 3. **Make `dot_i8` provable.** It needs a state machine (the PIL, witness generation, the memory inputs and the planner), as described in the [`mlp` README](../mlp/README.md#dot-product-precompile). That would also replace the estimated costs above with measured ones.
 4. **Bind the model** in the commitment with a hash of the blob, using the SHA-256 or Keccak precompile. Storing the fixed-point scales in the blob would also remove their conversion when loading.
 5. **Prove** a short generation with `cargo-zisk prove`, and measure proving time per token.

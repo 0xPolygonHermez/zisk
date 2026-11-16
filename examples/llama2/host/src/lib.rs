@@ -5,7 +5,7 @@ use std::error::Error;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
-use llama2_common::checkpoint::{Config, quantize_checkpoint, read_config};
+use llama2_common::checkpoint::{Config, quantize_checkpoint_with, read_config};
 use llama2_common::forward::Scales;
 use llama2_common::params::GenParams;
 use llama2_common::tokenizer::Tokenizer;
@@ -23,7 +23,10 @@ Options:
   --temperature T      0 = always the most likely token (default: 0)
   --seed S             sampler seed when temperature > 0 (default: 42)
   --scales float|fixed how matrix multiplications apply the group scales:
-                       f32 as llama2.c, or fixed point (default: float)";
+                       f32 as llama2.c, or fixed point (default: float)
+  --group-size N       quantize in groups of at most N values, a multiple of 8
+                       that divides the row (default: llama2.c's, a power of
+                       two up to 64)";
 
 pub struct Options {
     pub model: PathBuf,
@@ -33,6 +36,7 @@ pub struct Options {
     pub temperature: f32,
     pub seed: u64,
     pub scales: Scales,
+    pub max_group: Option<usize>,
     /// Options this program knows and the shared parser does not.
     pub extra: Vec<(String, String)>,
 }
@@ -49,6 +53,7 @@ pub fn parse_options(extra: &[&str]) -> Result<Options> {
         temperature: 0.0,
         seed: 42,
         scales: Scales::Float,
+        max_group: None,
         extra: Vec::new(),
     };
     let mut args = std::env::args().skip(1);
@@ -65,6 +70,7 @@ pub fn parse_options(extra: &[&str]) -> Result<Options> {
             "--max-new" => o.max_new = value.parse()?,
             "--temperature" => o.temperature = value.parse()?,
             "--seed" => o.seed = value.parse()?,
+            "--group-size" => o.max_group = Some(value.parse()?),
             "--scales" => {
                 o.scales = match value.as_str() {
                     "float" => Scales::Float,
@@ -97,7 +103,7 @@ pub fn load(o: &Options) -> Result<Loaded> {
     };
     let checkpoint = read(&o.model)?;
     let (config, _) = read_config(&checkpoint)?;
-    let blob = quantize_checkpoint(&checkpoint)?;
+    let blob = quantize_checkpoint_with(&checkpoint, o.max_group)?;
     let tokenizer_path = o.tokenizer.clone().unwrap_or_else(|| {
         let name = if config.vocab_size == 512 { "tok512.bin" } else { "tokenizer.bin" };
         o.model.with_file_name(name)
@@ -177,9 +183,12 @@ pub fn print_model_info(o: &Options, l: &Loaded) {
         c.seq_len
     );
     println!(
-        "  {} int8 weights, {} integer MACs per token in matrix multiplications",
+        "  {} int8 weights, {} integer MACs per token in matrix multiplications, \
+         groups of {} (dim) and {} (hidden_dim)",
         model.params(),
-        model.matmul_macs_per_token()
+        model.matmul_macs_per_token(),
+        model.wq.gs,
+        model.w2.gs
     );
 }
 

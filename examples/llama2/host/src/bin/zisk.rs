@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
-use llama2_common::forward::{MatmulMode, Scales, dot_soft};
+use llama2_common::forward::{MatmulMode, Scales};
 use llama2_common::generate::generate_with;
 use llama2_common::model::Model;
 use llama2_common::params::GenParams;
@@ -164,7 +164,7 @@ fn main() -> Result<()> {
         println!();
 
         let digest_ok = run.committed.get(..32) == Some(&output_digest(&params, &run.tokens)[..]);
-        let mode = MatmulMode { dot: dot_soft, scales: o.scales };
+        let mode = MatmulMode::soft(o.scales);
         let native = generate_with(&model, &params, mode, |_| {});
         let steps = run.steps.map_or_else(|| "? steps".to_string(), |s| format!("{s} steps"));
         println!(

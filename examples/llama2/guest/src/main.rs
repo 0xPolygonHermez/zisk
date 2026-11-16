@@ -20,13 +20,13 @@ ziskos::entrypoint!(main);
 
 use core::fmt::Write;
 
-use llama2_common::forward::{DotFn, MatmulMode, Scales, dot_soft};
+use llama2_common::forward::{DotFn, MatmulMode, RowFixedFn, Scales, dot_soft, row_fixed_soft};
 use llama2_common::generate::generate_with;
 use llama2_common::model::Model;
 use llama2_common::params::GenParams;
 use sha2::{Digest, Sha256};
 
-use ziskos::syscalls::{SyscallDotI8Params, syscall_dot_i8};
+use ziskos::syscalls::{SYSCALL_DOT_I8_ID, SyscallDotI8Params, syscall_dot_i8};
 
 /// Guest option: use the `dot_i8` precompile.
 const USE_DOT_I8: u64 = 1;
@@ -46,6 +46,28 @@ fn dot_precompile(x: &[i8], y: &[i8]) -> i32 {
     unsafe { syscall_dot_i8(&params) }
 }
 
+/// One output of a fixed-point matrix multiplication with the `dot_i8`
+/// precompile. The parameter block is written once per row; for each group
+/// only its two addresses advance, and the `csrrs` is issued inline instead of
+/// through a function call. Rows that do not meet the precompile's alignment
+/// rules use the plain-Rust loop.
+fn row_fixed_precompile(w: &[i8], x: &[i8], gs: usize, w_scales: &[i32], x_scales: &[i32]) -> i64 {
+    if (w.as_ptr() as usize | x.as_ptr() as usize | gs) % 8 != 0 {
+        return row_fixed_soft(w, x, gs, w_scales, x_scales);
+    }
+    let mut params = SyscallDotI8Params { x: w.as_ptr(), y: x.as_ptr(), n: gs as u64 };
+    let mut acc: i64 = 0;
+    for (&ws, &xs) in w_scales.iter().zip(x_scales) {
+        let addr = &params as *const SyscallDotI8Params as u64;
+        // The asm block may read memory, so `params` is stored before it.
+        let dot = ziskos::ziskos_syscall_ret_u64!(SYSCALL_DOT_I8_ID, addr) as i32;
+        acc += dot as i64 * (ws as i64 * xs as i64);
+        params.x = params.x.wrapping_add(gs);
+        params.y = params.y.wrapping_add(gs);
+    }
+    acc
+}
+
 fn main() {
     let blob = ziskos::io::read_slice();
     let params_bytes = ziskos::io::read_slice();
@@ -55,9 +77,13 @@ fn main() {
     let model = Model::parse(&blob);
     let params = GenParams::from_bytes(&params_bytes);
 
-    let dot: DotFn = if flags & USE_DOT_I8 != 0 { dot_precompile } else { dot_soft };
     let scales = if flags & FIXED_SCALES != 0 { Scales::Fixed } else { Scales::Float };
-    let tokens = generate_with(&model, &params, MatmulMode { dot, scales }, |_| {});
+    let mut mode = MatmulMode::soft(scales);
+    if flags & USE_DOT_I8 != 0 {
+        mode.dot = dot_precompile as DotFn;
+        mode.row_fixed = row_fixed_precompile as RowFixedFn;
+    }
+    let tokens = generate_with(&model, &params, mode, |_| {});
 
     let mut line = String::from("tokens:");
     for t in &tokens {

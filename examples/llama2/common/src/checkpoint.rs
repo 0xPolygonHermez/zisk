@@ -60,13 +60,21 @@ impl Config {
     }
 }
 
-/// Largest power-of-two group size, at most 64, that divides `n`.
+/// Largest power-of-two group size, at most 64, that divides `n` (llama2.c's
+/// choice).
 pub fn group_size(n: usize) -> usize {
     let mut gs = 64;
     while n % gs != 0 {
         gs /= 2;
     }
     gs
+}
+
+/// Largest group size, at most `max`, that divides `n` and is a multiple of 8,
+/// as the `dot_i8` precompile needs. Falls back to [`group_size`] when there
+/// is none.
+pub fn group_size_at_most(n: usize, max: usize) -> usize {
+    (8..=max.min(n)).rev().find(|&d| d % 8 == 0 && n % d == 0).unwrap_or(group_size(n))
 }
 
 /// Quantizes `w` in groups of `gs`: each group gets `scale = max|w| / 127`
@@ -143,11 +151,22 @@ pub fn read_config(bytes: &[u8]) -> Result<(Config, bool), &'static str> {
     Ok((config, h[5] > 0))
 }
 
-/// Quantizes a llama2.c float32 checkpoint into a model blob.
+/// Quantizes a llama2.c float32 checkpoint into a model blob, with llama2.c's
+/// group sizes ([`group_size`]).
 pub fn quantize_checkpoint(bytes: &[u8]) -> Result<Vec<u8>, &'static str> {
+    quantize_checkpoint_with(bytes, None)
+}
+
+/// [`quantize_checkpoint`], with groups of at most `max_group` values chosen by
+/// [`group_size_at_most`] when it is given.
+pub fn quantize_checkpoint_with(
+    bytes: &[u8],
+    max_group: Option<usize>,
+) -> Result<Vec<u8>, &'static str> {
     let (c, shared) = read_config(bytes)?;
     let (dim, hidden, layers, kv_dim) = (c.dim, c.hidden_dim, c.n_layers, c.kv_dim());
-    let (gs_dim, gs_hidden) = (group_size(dim), group_size(hidden));
+    let gs = |n| max_group.map_or_else(|| group_size(n), |m| group_size_at_most(n, m));
+    let (gs_dim, gs_hidden) = (gs(dim), gs(hidden));
 
     let mut r = Reader { bytes, pos: 28 };
     let embedding = r.floats(c.vocab_size * dim)?;
@@ -201,6 +220,16 @@ mod tests {
         assert_eq!(group_size(288), 32);
         assert_eq!(group_size(768), 64);
         assert_eq!(group_size(172), 4);
+    }
+
+    #[test]
+    fn group_size_at_most_is_a_multiple_of_8() {
+        assert_eq!(group_size_at_most(288, 64), 48);
+        assert_eq!(group_size_at_most(288, 144), 144);
+        assert_eq!(group_size_at_most(288, 100), 96);
+        assert_eq!(group_size_at_most(768, 144), 128);
+        assert_eq!(group_size_at_most(64, 144), 64);
+        assert_eq!(group_size_at_most(172, 144), 4);
     }
 
     #[test]
