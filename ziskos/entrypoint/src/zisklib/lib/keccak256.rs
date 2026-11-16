@@ -1,6 +1,6 @@
 //! Keccak-256 hash function.
 
-use crate::syscalls::syscall_keccak_f;
+use crate::syscalls::{syscall_keccak_xor, KECCAK_XOR_LANES};
 
 #[cfg(zisk_hints_debug)]
 use core::ffi::c_char;
@@ -38,19 +38,34 @@ pub fn hint_log<S: AsRef<str>>(msg: S) {
 const KECCAK256_RATE: usize = 136;
 
 /// Keccak-256 hash function. For reference: https://keccak.team/keccak_specs_summary.html
+///
+/// Every block is absorbed with one `syscall_keccak_xor` (XOR + Keccak-f), which reads the block
+/// as 17 aligned 64-bit words. A full block is read in place when the input is 8-byte aligned;
+/// otherwise it goes through an aligned copy, as the padded final block always does.
 pub fn keccak256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u8; 32] {
     let mut state = [0u64; 25];
     let input_len = input.len();
+    let aligned = (input.as_ptr() as usize) % core::mem::align_of::<u64>() == 0;
 
     // Absorb phase: process complete rate-sized blocks
     let mut offset = 0;
     while offset + KECCAK256_RATE <= input_len {
-        // XOR block into state
-        xor_block_into_state(&mut state, &input[offset..offset + KECCAK256_RATE]);
-        // Apply Keccak-f permutation
-        unsafe {
-            syscall_keccak_f(
+        let block = &input[offset..offset + KECCAK256_RATE];
+        if aligned {
+            // SAFETY: the block is 136 readable bytes at an 8-byte aligned address (the input is
+            // aligned and the rate is a multiple of 8). Lanes are little-endian, as the target.
+            unsafe {
+                syscall_keccak_xor(
+                    &mut state,
+                    block.as_ptr() as *const [u64; KECCAK_XOR_LANES],
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
+            }
+        } else {
+            absorb_block(
                 &mut state,
+                block,
                 #[cfg(feature = "hints")]
                 hints,
             );
@@ -70,17 +85,13 @@ pub fn keccak256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -
     final_block[remaining] = 0x01;
     final_block[KECCAK256_RATE - 1] |= 0x80;
 
-    // XOR final padded block into state
-    xor_block_into_state(&mut state, &final_block);
-
-    // Final permutation
-    unsafe {
-        syscall_keccak_f(
-            &mut state,
-            #[cfg(feature = "hints")]
-            hints,
-        );
-    }
+    // Absorb the final padded block
+    absorb_block(
+        &mut state,
+        &final_block,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // Squeeze phase: extract first 32 bytes (256 bits) from state
     let mut result = [0u8; 32];
@@ -93,13 +104,30 @@ pub fn keccak256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -
     result
 }
 
-/// XOR a rate-sized block into the state (first 136 bytes = 17 u64 words)
+/// Absorbs a rate-sized block of bytes at any alignment: copies it into aligned lanes and hands
+/// those to `syscall_keccak_xor`.
 #[inline]
-fn xor_block_into_state(state: &mut [u64; 25], block: &[u8]) {
-    // XOR block bytes into state, interpreting as little-endian u64s
-    for i in 0..KECCAK256_RATE / 8 {
-        let word = u64::from_le_bytes(block[i * 8..(i + 1) * 8].try_into().unwrap());
-        state[i] ^= word;
+fn absorb_block(
+    state: &mut [u64; 25],
+    block: &[u8],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    debug_assert_eq!(block.len(), KECCAK256_RATE);
+    let mut lanes = [0u64; KECCAK_XOR_LANES];
+    // SAFETY: both regions are 136 bytes and do not overlap; a byte copy into the lanes is their
+    // little-endian reading on the (little-endian) target.
+    unsafe {
+        core::ptr::copy_nonoverlapping(
+            block.as_ptr(),
+            lanes.as_mut_ptr() as *mut u8,
+            KECCAK256_RATE,
+        );
+        syscall_keccak_xor(
+            state,
+            &lanes,
+            #[cfg(feature = "hints")]
+            hints,
+        );
     }
 }
 
