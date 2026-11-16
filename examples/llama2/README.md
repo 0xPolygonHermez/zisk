@@ -102,6 +102,73 @@ flowchart TD
 2. **Generate (native or guest).** Each step runs one forward pass of the transformer on one token, producing a score (logit) for every vocabulary entry. During the prompt, the next input is the next prompt token. After it, the next token is the highest-scoring one (temperature 0) or a random draw weighted by the scores. Generation stops after `--max-new` tokens, at a BOS (the start of a new story) or when the context is full.
 3. **Decode (host).** Token ids become text again.
 
+### The native program, step by step
+
+[`llama2-native`](host/src/bin/native.rs) is the shortest path through the code, so it is a good place to start reading. Its `main()` does five things:
+
+1. **Reads the options** (`parse_options`): which model to use, the prompt, how many tokens to generate, and how to pick them.
+2. **Loads the model and the tokenizer** (`load`).
+   - **The model** is a long list of numbers, its *weights*, learned during training. The llama2.c checkpoint stores them as 32-bit floats. `load` converts them to 8-bit integers plus one float *scale* per group of values. This is called *quantization*, and it is the format the ZisK guest uses. The result is a single byte buffer, the *model blob*.
+   - **The tokenizer** converts between text and *tokens*. A token is a word or part of a word, identified by a number. The model only reads and writes these numbers.
+3. **Parses the model** (`Model::parse`): it reads the sizes and finds each weight matrix inside the blob, without copying the int8 weights.
+4. **For each prompt**, from `--prompt` or typed by the user:
+   - **Builds the request** (`gen_params`): the prompt as tokens, and the settings. The first token is BOS ("beginning of sequence", here the start of a story). Temperature 0 always picks the most likely next token.
+   - **Starts printing** (`TextPrinter`): it prints the prompt, and then each new token as text as soon as it is generated.
+   - **Chooses how to compute** (`MatmulMode`). Almost all of the work is matrix multiplications. Natively they use the plain-Rust integer dot product, with the scales in `f32` or fixed point (`--scales`). The ZisK guest can use the `dot_i8` precompile instead.
+   - **Generates** (`generate_with`, in [`generate.rs`](common/src/generate.rs)). For each position, it runs the model once on the current token: a *forward pass* ([`forward`](common/src/forward.rs)). That gives a score for every token of the vocabulary as the possible next one. During the prompt, the next token is simply the next prompt token. After the prompt, the next token is chosen from those scores and fed back in. Generation stops after `--max-new` tokens, at a BOS (a new story would start), or when the model's context is full.
+5. **Prints the timing**: the prompt and generated token counts, the time, and the tokens per second.
+
+`llama2-zisk` does the same steps 1 to 4, except that the guest runs the generation on ziskemu. The host then also runs it natively to check that the tokens match.
+
+### How the whole prompt is taken into account: the KV cache
+
+Each forward pass takes a single token as input. The new tokens still depend on the whole prompt, and on everything generated so far, because the model keeps a record of every token it has seen:
+
+1. **Every prompt token goes through the model.** [`generate_with`](common/src/generate.rs) calls `forward` once per position, including every prompt position. During the prompt, the scores it produces are ignored, because the next token is simply the next prompt token. Those passes matter for what they leave behind.
+2. **Each pass stores a summary of its token, in every layer.** These are a *key* and a *value*: vectors computed from the token, in the context of everything before it. [`forward`](common/src/forward.rs) stores them in the *KV cache* (`key_cache` and `value_cache`) at that token's position.
+3. **Attention looks back at all earlier positions.** In every layer, the current token's *query* is compared with the key of every position from 0 to `pos`. The resulting weights then mix the stored values. This is how each position's output depends on the whole sequence so far.
+
+So when the first new token is chosen, the input of the forward pass is the last prompt token. But in each layer, attention reads the keys and values of all the prompt tokens. Each generated token is added to the cache the same way.
+
+- **The context limit is the cache size.** The cache has room for `seq_len` positions: 512 for `stories260K` and 256 for `stories15M`. Generation stops when it is full.
+- **This is why the steps per token grow along the sequence** (see [End to end](#end-to-end)): attention at position `pos` reads `pos + 1` cache entries.
+
+The cache saves time without changing the result. Without it, the model would have to run every previous token again at each step to rebuild the same keys and values.
+
+### The layers
+
+The model is a stack of layers, each with its own trained weights: 5 in `stories260K` and 6 in `stories15M`. A layer is one round of "look at the context, then process what was found". All of it is in [`forward`](common/src/forward.rs).
+
+**The vector that flows through the layers.** The model represents the current token as a vector `x` of `dim` numbers: 64 in `stories260K`, 288 in `stories15M`.
+
+1. **Embedding.** At the start, `x` is read from a table with one row per vocabulary token, so it depends only on the token.
+2. **Each layer adds a correction to `x`** instead of replacing it (`x += …`). What earlier layers found is kept, and each layer refines it. This running vector is often called the *residual stream*.
+3. **At the end**, `x` is normalized and multiplied by the classifier matrix (`wcls`). That gives one score (*logit*) per vocabulary token.
+
+Over the layers, `x` goes from "this is the word *upon*" to something like "this is the position after *Once upon a*, and the next word should be *time*".
+
+**Inside one layer, there are two blocks.**
+
+1. **Attention: collect information from other positions.** This is the only place where tokens see each other.
+   - `rmsnorm` rescales `x` to a standard size, so the numbers stay in a stable range from layer to layer.
+   - Three matrix multiplications turn `x` into a *query* (`wq`: what this position is looking for), a *key* (`wk`: what it offers) and a *value* (`wv`: what it hands over if selected).
+   - RoPE rotates the query and the key by an angle that depends on the position, so comparing them also takes into account how far apart two tokens are.
+   - The key and value go into the [KV cache](#how-the-whole-prompt-is-taken-into-account-the-kv-cache). The query is compared, with a dot product, with the key of every position so far.
+   - `softmax` turns those scores into weights that add up to 1, and the output is the weighted mix of the values. A position about to write a pronoun, for example, can put most of its weight on the position that holds the character's name.
+   - This is done in parallel by several *heads* (6 in `stories15M`), each on its own slice of the vector, so each can learn a different kind of lookup. In `stories260K`, pairs of heads share their keys and values to save memory.
+   - One more matrix (`wo`) mixes the outputs of the heads, and the result is added to `x`.
+2. **Feed-forward: process each position on its own.**
+   - `x` is normalized again.
+   - Two matrices (`w1`, `w3`) expand it to a wider vector of `hidden_dim` values (768 in `stories15M`).
+   - `silu(w1·x) * (w3·x)` lets one of them act as a soft on/off switch for the other. Besides softmax, this is the only non-linear step, and it is what lets the model do more than linear algebra.
+   - A third matrix (`w2`) brings the vector back to `dim`, and the result is added to `x`.
+
+A common simplification: attention is "communicate", and feed-forward is "think". Much of what the model knows about language and stories is stored in the feed-forward weights.
+
+**Why stack several layers.** All layers run the same code, but each has its own weights, so each learns a different job. Nobody assigns those jobs; they come out of training. Roughly, earlier layers handle local things, such as grammar and word pieces, and later ones handle meaning and the plot. Each layer reads what the earlier ones added to `x`, so it can build on their results. More layers and a wider `x` make a more capable model, at a proportional cost.
+
+**What this means for ZisK.** Each layer does 7 matrix multiplications (`wq`, `wk`, `wv`, `wo`, `w1`, `w2`, `w3`). With the final classifier, these are the matmuls that dominate the step counts below. Attention, softmax, SiLU and RoPE are most of the remaining float code.
+
 ### The model: int8 like llama2.c's `runq.c`
 
 [`common/`](common/src/lib.rs) is a Rust port of the int8 path of llama2.c (`runq.c`):
