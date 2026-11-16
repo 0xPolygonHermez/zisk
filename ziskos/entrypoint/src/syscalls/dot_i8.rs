@@ -6,6 +6,10 @@ use core::arch::asm;
 #[cfg(zisk_guest)]
 use crate::ziskos_syscall_ret_u64;
 
+/// The CSR port of `dot_i8`, for callers that issue the `csrrs` inline with
+/// [`crate::ziskos_syscall_ret_u64`] instead of calling [`syscall_dot_i8`].
+pub use zisk_definitions::SYSCALL_DOT_I8_ID;
+
 #[derive(Debug)]
 #[repr(C)]
 pub struct SyscallDotI8Params {
