@@ -17,7 +17,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
-use llama2_common::generate::generate;
+use llama2_common::forward::{MatmulMode, Scales, dot_soft};
+use llama2_common::generate::generate_with;
 use llama2_common::model::Model;
 use llama2_common::params::GenParams;
 use llama2_host::{
@@ -41,8 +42,10 @@ struct EmuRun {
     secs: f64,
 }
 
-/// Guest option flag: use the `dot_i8` precompile (see the guest).
+/// Guest option flags (see the guest): use the `dot_i8` precompile, and use
+/// fixed-point scales.
 const USE_DOT_I8: u64 = 1;
+const FIXED_SCALES: u64 = 2;
 
 /// The guest's input file: the model blob, the generation parameters, then
 /// the guest option flags.
@@ -112,11 +115,14 @@ fn main() -> Result<()> {
     let o = parse_options(&["--ziskemu", "--save-input", "--dot-product"])?;
     let extra = |name: &str| o.extra.iter().find(|(n, _)| n == name).map(|(_, v)| v.clone());
     let ziskemu = extra("--ziskemu").unwrap_or_else(|| "ziskemu".to_string());
-    let flags = match extra("--dot-product").as_deref() {
+    let mut flags = match extra("--dot-product").as_deref() {
         None | Some("soft") => 0,
         Some("precompile") => USE_DOT_I8,
         Some(v) => return Err(format!("--dot-product must be soft or precompile, not {v}").into()),
     };
+    if o.scales == Scales::Fixed {
+        flags |= FIXED_SCALES;
+    }
     let l = load(&o)?;
 
     // Write the guest input for the first prompt and exit, for running the
@@ -132,6 +138,9 @@ fn main() -> Result<()> {
     println!("Guest ELF {GUEST_ELF}");
     if flags & USE_DOT_I8 != 0 {
         println!("Dot products: dot_i8 precompile (experimental, emulator only)");
+    }
+    if o.scales == Scales::Fixed {
+        println!("Scales: fixed point");
     }
     let model = Model::parse(&l.blob);
     let dir: PathBuf = std::env::temp_dir().join(format!("llama2-zisk-{}", std::process::id()));
@@ -155,7 +164,8 @@ fn main() -> Result<()> {
         println!();
 
         let digest_ok = run.committed.get(..32) == Some(&output_digest(&params, &run.tokens)[..]);
-        let native = generate(&model, &params, |_| {});
+        let mode = MatmulMode { dot: dot_soft, scales: o.scales };
+        let native = generate_with(&model, &params, mode, |_| {});
         let steps = run.steps.map_or_else(|| "? steps".to_string(), |s| format!("{s} steps"));
         println!(
             "[ziskemu: {} prompt + {} generated tokens, {steps}, {:.2} s]",

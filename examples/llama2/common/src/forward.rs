@@ -3,6 +3,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
+use crate::fixed;
 use crate::model::{Model, QMatrixView};
 
 /// Computes the dot product of two int8 vectors of the same length, as a
@@ -26,6 +27,31 @@ pub fn dot_soft(x: &[i8], y: &[i8]) -> i32 {
     acc.clamp(i32::MIN as i64, i32::MAX as i64) as i32
 }
 
+/// How the matrix multiplications combine each group's dot product with the
+/// group's two scales.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Scales {
+    /// In `f32`, as llama2.c: `val += ival · w_scale · x_scale` per group.
+    Float,
+    /// In fixed point (see [`crate::fixed`]): an exact `i64` sum per row,
+    /// converted to `f32` once.
+    Fixed,
+}
+
+/// How the matrix multiplications are computed.
+#[derive(Clone, Copy)]
+pub struct MatmulMode {
+    pub dot: DotFn,
+    pub scales: Scales,
+}
+
+impl Default for MatmulMode {
+    /// llama2.c's: [`dot_soft`] and [`Scales::Float`].
+    fn default() -> Self {
+        MatmulMode { dot: dot_soft, scales: Scales::Float }
+    }
+}
+
 /// An activation vector quantized to int8 in groups, like a matrix row.
 ///
 /// The int8 values are stored in `u64` words, so they are 8-byte aligned, as
@@ -34,11 +60,16 @@ struct QVec {
     words: Vec<u64>,
     n: usize,
     scales: Vec<f32>,
+    /// The scales in fixed point, `scales[g] ≈ fixed_scales[g] · 2^-shift`,
+    /// when quantized for [`Scales::Fixed`].
+    fixed_scales: Vec<i32>,
+    shift: i32,
 }
 
 impl QVec {
     fn new(n: usize) -> Self {
-        QVec { words: vec![0; n.div_ceil(8)], n, scales: vec![0.0; n] }
+        let words = vec![0; n.div_ceil(8)];
+        QVec { words, n, scales: vec![0.0; n], fixed_scales: vec![0; n], shift: 0 }
     }
 
     fn q(&self) -> &[i8] {
@@ -51,8 +82,9 @@ impl QVec {
         unsafe { core::slice::from_raw_parts_mut(self.words.as_mut_ptr().cast::<i8>(), self.n) }
     }
 
-    /// Quantizes `x` in groups of `gs` (llama2.c's `quantize`).
-    fn quantize(&mut self, x: &[f32], gs: usize) {
+    /// Quantizes `x` in groups of `gs` (llama2.c's `quantize`), and converts
+    /// the scales to fixed point for [`Scales::Fixed`].
+    fn quantize(&mut self, x: &[f32], gs: usize, scales: Scales) {
         for (g, group) in x.chunks_exact(gs).enumerate() {
             let wmax = group.iter().fold(0.0f32, |m, &v| m.max(libm::fabsf(v)));
             let scale = wmax / 127.0;
@@ -63,11 +95,24 @@ impl QVec {
                 *qi = qv as i8;
             }
         }
+        if scales == Scales::Fixed {
+            let groups = x.len() / gs;
+            self.shift =
+                fixed::scales_to_fixed(&self.scales[..groups], &mut self.fixed_scales[..groups]);
+        }
     }
 }
 
 /// `out = W x`, with integer dot products per group (llama2.c's `matmul`).
-fn matmul(out: &mut [f32], x: &QVec, w: &QMatrixView, dot: DotFn) {
+fn matmul(out: &mut [f32], x: &QVec, w: &QMatrixView, mode: MatmulMode) {
+    match mode.scales {
+        Scales::Float => matmul_float(out, x, w, mode.dot),
+        Scales::Fixed => matmul_fixed(out, x, w, mode.dot),
+    }
+}
+
+/// [`matmul`] with `f32` scales.
+fn matmul_float(out: &mut [f32], x: &QVec, w: &QMatrixView, dot: DotFn) {
     let (n, gs) = (w.cols, w.gs);
     let xq = x.q();
     for (i, o) in out.iter_mut().enumerate().take(w.rows) {
@@ -79,6 +124,24 @@ fn matmul(out: &mut [f32], x: &QVec, w: &QMatrixView, dot: DotFn) {
             val += ival as f32 * row_scales[g] * x.scales[g];
         }
         *o = val;
+    }
+}
+
+/// [`matmul`] with fixed-point scales: no float operation per group.
+fn matmul_fixed(out: &mut [f32], x: &QVec, w: &QMatrixView, dot: DotFn) {
+    let (n, gs) = (w.cols, w.gs);
+    let xq = x.q();
+    let x_scales = &x.fixed_scales[..n / gs];
+    for (i, o) in out.iter_mut().enumerate().take(w.rows) {
+        let row = &w.q[i * n..(i + 1) * n];
+        let row_scales = &w.fixed_scales[i * n / gs..(i + 1) * n / gs];
+        let mut acc: i64 = 0;
+        for ((wg, xg), (&ws, &xs)) in
+            row.chunks_exact(gs).zip(xq.chunks_exact(gs)).zip(row_scales.iter().zip(x_scales))
+        {
+            acc += dot(wg, xg) as i64 * (ws as i64 * xs as i64);
+        }
+        *o = fixed::fixed_to_f32(acc, w.row_shift[i] + x.shift);
     }
 }
 
@@ -128,17 +191,17 @@ pub struct RunState {
     rope_freq: Vec<f32>,
     rope_cos: Vec<f32>,
     rope_sin: Vec<f32>,
-    /// The dot product used by the matrix multiplications.
-    dot: DotFn,
+    /// How the matrix multiplications are computed.
+    mode: MatmulMode,
 }
 
 impl RunState {
-    /// Uses the plain-Rust dot product, [`dot_soft`].
+    /// Computes the matrix multiplications as llama2.c ([`MatmulMode::default`]).
     pub fn new(model: &Model) -> Self {
-        Self::with_dot(model, dot_soft)
+        Self::with_mode(model, MatmulMode::default())
     }
 
-    pub fn with_dot(model: &Model, dot: DotFn) -> Self {
+    pub fn with_mode(model: &Model, mode: MatmulMode) -> Self {
         let c = &model.config;
         let (dim, kv_dim, hidden, hs) = (c.dim, c.kv_dim(), c.hidden_dim, c.head_size());
         let rope_freq =
@@ -161,7 +224,7 @@ impl RunState {
             rope_freq,
             rope_cos: vec![0.0; hs / 2],
             rope_sin: vec![0.0; hs / 2],
-            dot,
+            mode,
         }
     }
 }
@@ -192,10 +255,10 @@ pub fn forward(model: &Model, s: &mut RunState, token: u32, pos: usize) {
     for l in 0..c.n_layers {
         // Attention.
         rmsnorm(&mut s.xb, &s.x, &model.rms_att[l * dim..(l + 1) * dim]);
-        s.xq.quantize(&s.xb, gs_dim);
-        matmul(&mut s.q, &s.xq, &model.wq.rows(l * dim, dim), s.dot);
-        matmul(&mut s.k, &s.xq, &model.wk.rows(l * kv_dim, kv_dim), s.dot);
-        matmul(&mut s.v, &s.xq, &model.wv.rows(l * kv_dim, kv_dim), s.dot);
+        s.xq.quantize(&s.xb, gs_dim, s.mode.scales);
+        matmul(&mut s.q, &s.xq, &model.wq.rows(l * dim, dim), s.mode);
+        matmul(&mut s.k, &s.xq, &model.wk.rows(l * kv_dim, kv_dim), s.mode);
+        matmul(&mut s.v, &s.xq, &model.wv.rows(l * kv_dim, kv_dim), s.mode);
 
         for i in (0..dim).step_by(2) {
             let j = (i % hs) / 2;
@@ -237,24 +300,24 @@ pub fn forward(model: &Model, s: &mut RunState, token: u32, pos: usize) {
             }
         }
 
-        s.xq.quantize(&s.xb, gs_dim);
-        matmul(&mut s.xb2, &s.xq, &model.wo.rows(l * dim, dim), s.dot);
+        s.xq.quantize(&s.xb, gs_dim, s.mode.scales);
+        matmul(&mut s.xb2, &s.xq, &model.wo.rows(l * dim, dim), s.mode);
         for (x, &d) in s.x.iter_mut().zip(&s.xb2) {
             *x += d;
         }
 
         // Feed-forward: w2(silu(w1 x) * w3 x).
         rmsnorm(&mut s.xb, &s.x, &model.rms_ffn[l * dim..(l + 1) * dim]);
-        s.xq.quantize(&s.xb, gs_dim);
-        matmul(&mut s.hb, &s.xq, &model.w1.rows(l * hidden, hidden), s.dot);
-        matmul(&mut s.hb2, &s.xq, &model.w3.rows(l * hidden, hidden), s.dot);
+        s.xq.quantize(&s.xb, gs_dim, s.mode.scales);
+        matmul(&mut s.hb, &s.xq, &model.w1.rows(l * hidden, hidden), s.mode);
+        matmul(&mut s.hb2, &s.xq, &model.w3.rows(l * hidden, hidden), s.mode);
         for (h, &h2) in s.hb.iter_mut().zip(&s.hb2) {
             let mut val = *h;
             val *= 1.0 / (1.0 + libm::expf(-val));
             *h = val * h2;
         }
-        s.hq.quantize(&s.hb, gs_hidden);
-        matmul(&mut s.xb, &s.hq, &model.w2.rows(l * dim, dim), s.dot);
+        s.hq.quantize(&s.hb, gs_hidden, s.mode.scales);
+        matmul(&mut s.xb, &s.hq, &model.w2.rows(l * dim, dim), s.mode);
         for (x, &d) in s.x.iter_mut().zip(&s.xb) {
             *x += d;
         }
@@ -262,6 +325,6 @@ pub fn forward(model: &Model, s: &mut RunState, token: u32, pos: usize) {
 
     let x = s.x.clone();
     rmsnorm(&mut s.x, &x, &model.rms_final);
-    s.xq.quantize(&s.x, gs_dim);
-    matmul(&mut s.logits, &s.xq, &model.wcls().all(), s.dot);
+    s.xq.quantize(&s.x, gs_dim, s.mode.scales);
+    matmul(&mut s.logits, &s.xq, &model.wcls().all(), s.mode);
 }

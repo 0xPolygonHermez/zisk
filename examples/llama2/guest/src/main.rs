@@ -5,7 +5,9 @@
 //! 2. the generation parameters (`llama2_common::params::GenParams`);
 //! 3. guest options, one `u64` of flags: bit 0 ([`USE_DOT_I8`]) computes the
 //!    dot products of the matrix multiplications with the experimental
-//!    `dot_i8` precompile, which ZisK's emulator runs but cannot prove yet.
+//!    `dot_i8` precompile, which ZisK's emulator runs but cannot prove yet;
+//!    bit 1 ([`FIXED_SCALES`]) applies the group scales in fixed point
+//!    instead of `f32`.
 //!
 //! Prints the generated token ids on one line, `tokens: <id> <id> ...`, for
 //! the host to decode, and commits `sha256(params || generated tokens)` as
@@ -18,7 +20,7 @@ ziskos::entrypoint!(main);
 
 use core::fmt::Write;
 
-use llama2_common::forward::{DotFn, dot_soft};
+use llama2_common::forward::{DotFn, MatmulMode, Scales, dot_soft};
 use llama2_common::generate::generate_with;
 use llama2_common::model::Model;
 use llama2_common::params::GenParams;
@@ -28,6 +30,9 @@ use ziskos::syscalls::{SyscallDotI8Params, syscall_dot_i8};
 
 /// Guest option: use the `dot_i8` precompile.
 const USE_DOT_I8: u64 = 1;
+
+/// Guest option: fixed-point scales in the matrix multiplications.
+const FIXED_SCALES: u64 = 2;
 
 /// The dot product with the `dot_i8` precompile, which needs 8-byte aligned
 /// vectors and a length that is a multiple of 8. Groups of other sizes (4 in
@@ -51,7 +56,8 @@ fn main() {
     let params = GenParams::from_bytes(&params_bytes);
 
     let dot: DotFn = if flags & USE_DOT_I8 != 0 { dot_precompile } else { dot_soft };
-    let tokens = generate_with(&model, &params, dot, |_| {});
+    let scales = if flags & FIXED_SCALES != 0 { Scales::Fixed } else { Scales::Float };
+    let tokens = generate_with(&model, &params, MatmulMode { dot, scales }, |_| {});
 
     let mut line = String::from("tokens:");
     for t in &tokens {

@@ -4,6 +4,7 @@
 use alloc::vec::Vec;
 
 use crate::checkpoint::{Config, MAGIC, VERSION};
+use crate::fixed;
 use crate::{read_f32, read_u32};
 
 /// An int8 matrix of `rows` x `cols`, quantized in groups of `gs` along each row.
@@ -13,6 +14,10 @@ pub struct QMatrix<'a> {
     pub gs: usize,
     pub q: &'a [i8],
     pub scales: Vec<f32>,
+    /// The scales in fixed point (see [`crate::fixed`]): `scales[g] ≈
+    /// fixed_scales[g] · 2^-row_shift[row]`.
+    pub fixed_scales: Vec<i32>,
+    pub row_shift: Vec<i32>,
 }
 
 impl QMatrix<'_> {
@@ -24,6 +29,9 @@ impl QMatrix<'_> {
             gs: self.gs,
             q: &self.q[first * self.cols..(first + n) * self.cols],
             scales: &self.scales[first * self.cols / self.gs..(first + n) * self.cols / self.gs],
+            fixed_scales: &self.fixed_scales
+                [first * self.cols / self.gs..(first + n) * self.cols / self.gs],
+            row_shift: &self.row_shift[first..first + n],
         }
     }
 
@@ -39,6 +47,8 @@ pub struct QMatrixView<'a> {
     pub gs: usize,
     pub q: &'a [i8],
     pub scales: &'a [f32],
+    pub fixed_scales: &'a [i32],
+    pub row_shift: &'a [i32],
 }
 
 /// The parsed model. Per-layer matrices are stacked: layer `l` of `wq` is
@@ -84,7 +94,14 @@ impl<'a> Cursor<'a> {
         let q = unsafe { core::slice::from_raw_parts(bytes.as_ptr().cast::<i8>(), n) };
         self.pos += n;
         let scales = self.floats(n / gs);
-        QMatrix { rows, cols, gs, q, scales }
+        assert!(cols <= fixed::MAX_LEN, "matrix rows of {cols} values are too long");
+        let mut fixed_scales = alloc::vec![0; n / gs];
+        let row_shift = scales
+            .chunks_exact(cols / gs)
+            .zip(fixed_scales.chunks_exact_mut(cols / gs))
+            .map(|(s, f)| fixed::scales_to_fixed(s, f))
+            .collect();
+        QMatrix { rows, cols, gs, q, scales, fixed_scales, row_shift }
     }
 }
 

@@ -6,7 +6,8 @@
 
 use std::time::Instant;
 
-use llama2_common::generate::generate;
+use llama2_common::forward::{MatmulMode, dot_soft};
+use llama2_common::generate::generate_with;
 use llama2_common::model::Model;
 use llama2_host::{
     Result, TextPrinter, gen_params, load, parse_options, print_model_info, prompts,
@@ -22,7 +23,8 @@ fn main() -> Result<()> {
         let params = gen_params(&o, &l.tokenizer, &text);
         let mut printer = TextPrinter::start(&l.tokenizer, &text, &params.prompt);
         let start = Instant::now();
-        let tokens = generate(&model, &params, |t| printer.token(t));
+        let mode = MatmulMode { dot: dot_soft, scales: o.scales };
+        let tokens = generate_with(&model, &params, mode, |t| printer.token(t));
         let secs = start.elapsed().as_secs_f64();
         println!();
         println!(

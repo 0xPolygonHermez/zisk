@@ -60,6 +60,7 @@ Options, for both programs:
 | `--max-new N` | 128 | Tokens to generate |
 | `--temperature T` | 0 | 0 always picks the most likely token; higher values sample |
 | `--seed S` | 42 | Sampler seed, used when `T > 0` |
+| `--scales float\|fixed` | `float` | How matrix multiplications apply the group scales: in `f32` like llama2.c, or in fixed point (see [below](#with-fixed-point-scales)) |
 
 `llama2-zisk` also takes:
 
@@ -106,7 +107,7 @@ flowchart TD
 [`common/`](common/src/lib.rs) is a Rust port of the int8 path of llama2.c (`runq.c`):
 
 - When loading, the host **quantizes** the float32 checkpoint: each matrix row is split into groups of up to 64 values, and each group is stored as int8 values plus one `f32` scale (`max|w| / 127`).
-- Every **matrix multiplication** quantizes its input vector the same way and computes an `i32` dot product per group, which is then multiplied by the two scales. These integer dot products are the same kind of loop as in the [`mlp`](../mlp/) example.
+- Every **matrix multiplication** quantizes its input vector the same way and computes an `i32` dot product per group, which is then multiplied by the two scales. These integer dot products are the same kind of loop as in the [`mlp`](../mlp/) example. With `--scales fixed`, the scales are applied in fixed point instead (see [below](#with-fixed-point-scales)).
 - **RMSNorm, attention, softmax, SiLU and RoPE** use `f32`.
 
 The guest target (`riscv64ima`) has no floating-point instructions, so the compiler turns `f32` operations into calls to software routines made of integer instructions. Those can be executed and proven by ZisK like any other code, just slowly. Basic IEEE operations are correctly rounded both natively and in those routines, and `exp`, `sin`, `cos`, `pow` and `sqrt` come from the `libm` crate on both sides. So the native run and the ZisK run produce **the same tokens**, which `llama2-zisk` checks every time.
@@ -117,7 +118,7 @@ The guest target (`riscv64ima`) has no floating-point instructions, so the compi
 |---|---|
 | Input record 1 | The quantized model blob, used in place by the guest (layout in [`checkpoint.rs`](common/src/checkpoint.rs)) |
 | Input record 2 | The generation parameters: prompt tokens, `max_new`, temperature, seed ([`params.rs`](common/src/params.rs)) |
-| Input record 3 | Guest options, one `u64` of flags. Bit 0 selects the `dot_i8` precompile. |
+| Input record 3 | Guest options, one `u64` of flags. Bit 0 selects the `dot_i8` precompile, bit 1 fixed-point scales. |
 | Printed | `tokens: <id> <id> …`, the generated tokens |
 | Committed | `sha256(parameters ‖ generated tokens)` |
 
@@ -246,9 +247,89 @@ Where the cost goes for `stories15M` with the precompile:
 3. **`stories260K` gains little.** Its cost was mostly floats and `expf` to begin with, and 81% of its groups are in `w2`, with only 4 values each, so they still use `dot_soft`.
 4. **Each call still costs Main steps.** The guest writes the parameter block to memory and makes the call, which is about 6% of the cost here. A variant that does a whole matrix row per call, writing one `i32` per group, would spread that over the row.
 
+### With fixed-point scales
+
+With `--scales fixed`, step (B) uses integers instead of software floats ([`fixed.rs`](common/src/fixed.rs)).
+
+**How it works.** The scales of each matrix row, and those of each quantized vector, become 15-bit integers that share one power-of-two exponent. The largest scale becomes an integer between 2^14 and 2^15:
+
+```text
+w_scale[g] ≈ w_fixed[g] · 2^-w_shift      x_scale[g] ≈ x_fixed[g] · 2^-x_shift
+out[i]     = 2^-(w_shift + x_shift) · Σ_g ival[g] · w_fixed[g] · x_fixed[g]
+```
+
+- The sum is exact in `i64`. Each term is below 2^44 per value, so rows of up to 2^19 values cannot overflow.
+- Only the final sum of each row becomes an `f32`, with one conversion (`__floatdisf`). Dividing by the power of two then only changes the float's exponent bits.
+- The weight scales are converted when the model is loaded, and the activation scales in `quantize`. Both conversions work on the `f32` bits with integer instructions only.
+- The native run and the ZisK run still produce the same tokens.
+
+Loading always converts the weight scales, even with `--scales float`. That adds about 1.4 G of cost for `stories15M`, so the `float` numbers below are up to 1.3% above those in the previous sections.
+
+#### Accuracy
+
+The scales lose precision: each is rounded to 2^-15 of the largest scale it shares an exponent with. That is far below the error of the int8 quantization itself, about 2^-8 of each group's largest value. But greedy generation is sensitive to any change. When the two best tokens score almost the same, a tiny difference in the logits picks the other one, and the story then goes another way. With the prompts below, the `float` and `fixed` texts are the same for the first 60 to 700 characters, and then differ.
+
+To measure the difference, I fed both modes the same tokens: the prompt, then the `float` choice at each position (teacher forcing). I then compared the logits at every position. As a baseline, I did the same between `float` and a `float` variant that only adds the groups in reverse order. Its results differ only by `f32` rounding.
+
+5 prompts ("Once upon a time", "Lily and Tom went to the park", "The little dog was sad because", "One day, a bird", "There was a big red ball"):
+
+| | Positions | Top-1 token differs | Largest logit difference | Mean of (largest difference / logit range) |
+|---|---|---|---|---|
+| `stories15M`: `fixed` vs `float` | 1,000 | 13 (1.3%) | 0.68 | 1.0% |
+| `stories15M`: reversed `float` vs `float` | 1,000 | 12 (1.2%) | 0.46 | 0.75% |
+| `stories260K`: `fixed` vs `float` | 1,280 | 15 (1.2%) | 0.56 | 0.85% |
+| `stories260K`: reversed `float` vs `float` | 1,280 | 0 | 0.34 | 0.05% |
+
+1. **For `stories15M`, fixed point is about as close to `float` as `float` is to itself.** Reordering the float additions changes the top-1 token about as often. Each disagreement is a near tie: the `float` scores of the two tokens differ by at most 0.15.
+2. **The differences come from the int8 quantization of the activations, not from the scales.** A tiny change can move a value to the next int8 step, and that grows from layer to layer, whatever caused the change.
+3. **The `stories260K` baseline is not comparable.** Most of its rows have a single group, so reversing the order changes little. Its `fixed` results are close to the `stories15M` ones.
+
+Neither mode is more exact than the other in a meaningful way. Both are int8 approximations of the float model.
+
+#### Results
+
+End to end, with `llama2-zisk` and the prompt "Once upon a time". Every run produces the same tokens as the native run in the same mode, and the committed hash matches:
+
+| Model | Tokens | `float` `soft` | `float` `precompile` | `fixed` `soft` | `fixed` `precompile` |
+|---|---|---|---|---|---|
+| `stories260K` | 5 + 80 | 1.101 G steps, 23.9 s | 0.986 G, 22.3 s | 0.868 G, 19.2 s | **0.753 G, 17.7 s** |
+| `stories15M` | 5 + 20 | 5.26 G steps, 92.9 s | 2.77 G, 58.5 s | 3.37 G, 53.8 s | **0.888 G, 19.4 s** |
+
+Cost profiles, with `-X --sdk --top-functions` and the same runs as in [Where the steps go](#where-the-steps-go):
+
+| | Steps | Cost | Main | Opcodes | Precompiles | Memory |
+|---|---|---|---|---|---|---|
+| `stories15M` `float` `soft` | 2.171 G | 229.4 G | 134.6 G | 79.1 G | ~0 | 15.5 G |
+| `stories15M` `float` `precompile` | 1.135 G | 111.5 G | 70.3 G | 36.7 G | 1.05 G | 3.1 G |
+| `stories15M` `fixed` `soft` | 1.386 G | 153.8 G (−33%) | 85.9 G | 52.0 G | ~0 | 15.5 G |
+| `stories15M` `fixed` `precompile` | **0.350 G** | **35.8 G (−68%)** | 21.7 G | 9.6 G | 1.05 G | 3.2 G |
+| `stories260K` `float` `soft` | 216.3 M | 22.02 G | 13.41 G | 7.49 G | ~0 | 0.84 G |
+| `stories260K` `float` `precompile` | 183.4 M | 18.22 G | 11.37 G | 6.11 G | 0.03 G | 0.43 G |
+| `stories260K` `fixed` `soft` | 149.7 M | 15.60 G (−29%) | 9.28 G | 5.18 G | ~0 | 0.85 G |
+| `stories260K` `fixed` `precompile` | **116.8 M** | **11.80 G (−35%)** | 7.24 G | 3.80 G | 0.03 G | 0.45 G |
+
+The percentages compare each `fixed` row with the `float` row that uses the same dot product.
+
+Where the cost goes for `stories15M` with `fixed` and `precompile`:
+
+| Share of the cost | `stories15M` `fixed` `precompile` |
+|---|---|
+| `matmul`, without the dot products: the loop, the integer scaling and one `f32` conversion per row | ~36% |
+| Calling `dot_i8`: the parameter block and the call (`dot_precompile`) | ~21% |
+| `expf`, in softmax and SiLU | 11% |
+| `quantize`, of the activations | 8.7% |
+| Loading the model (`Model::parse`), including converting the weight scales | 7.5% |
+| The rest: RMSNorm, attention, RoPE, all in `f32` | ~16% |
+
+1. **Combined with the precompile, fixed point makes `stories15M` 6.4 times cheaper than plain code.** The cost drops from 229.4 G to 35.8 G, and end to end it takes 5.9 times fewer steps. Each improvement alone cuts the cost by a third (fixed point) or by half (the precompile). Together they remove both halves of the matmul.
+2. **There is no longer a single bottleneck.** What remains is the matmul loop around the calls (~36%), the calls themselves (~21%) and the other `f32` code (~36%: `expf`, `quantize`, RMSNorm, attention, RoPE).
+3. **The calls are now worth reducing.** A row-level precompile, which computes a whole row of groups per call, scales included, would remove most of the loop and the call costs, about 57% of the cost here.
+4. **Loading the model is now 7.5% of the cost** of this short run, half of it for the weight scales. It is paid once per run, so it matters less with more tokens. It could also be removed by storing the fixed-point scales in the blob.
+
 ## Next steps
 
-1. **Fixed-point instead of `f32`.** With the dot products in a precompile, the per-group float step (B) is 77% of the cost of `stories15M`. Doing (B), and then the norms, softmax, SiLU and RoPE, with integer fixed-point arithmetic would remove the software-float calls. This is needed anyway for a fully integer model. The cost is that the output would no longer match llama2.c's float math exactly, so accuracy must be measured.
-2. **Make `dot_i8` provable.** It needs a state machine (the PIL, witness generation, the memory inputs and the planner), as described in the [`mlp` README](../mlp/README.md#dot-product-precompile). That would also replace the estimated costs above with measured ones.
-3. **Bind the model** in the commitment with a hash of the blob, using the SHA-256 or Keccak precompile.
-4. **Prove** a short generation with `cargo-zisk prove`, and measure proving time per token.
+1. **A row-level `dot_i8`.** With fixed-point scales, a precompile that computes `Σ_g dot(w_g, x_g) · w_fixed[g] · x_fixed[g]` for a whole row would replace the loop and most of the calls, about 57% of the remaining cost of `stories15M`. It needs the same state machine work as `dot_i8`.
+2. **Fixed point in the rest of the model.** RMSNorm, softmax, `expf`, SiLU, RoPE and `quantize` still use software floats, about 36% of the remaining cost. Moving them to fixed point would make the model fully integer, which a proof-friendly model needs anyway. Accuracy has to be measured as above.
+3. **Make `dot_i8` provable.** It needs a state machine (the PIL, witness generation, the memory inputs and the planner), as described in the [`mlp` README](../mlp/README.md#dot-product-precompile). That would also replace the estimated costs above with measured ones.
+4. **Bind the model** in the commitment with a hash of the blob, using the SHA-256 or Keccak precompile. Storing the fixed-point scales in the blob would also remove their conversion when loading.
+5. **Prove** a short generation with `cargo-zisk prove`, and measure proving time per token.

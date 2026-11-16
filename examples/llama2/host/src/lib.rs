@@ -6,6 +6,7 @@ use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
 use llama2_common::checkpoint::{Config, quantize_checkpoint, read_config};
+use llama2_common::forward::Scales;
 use llama2_common::params::GenParams;
 use llama2_common::tokenizer::Tokenizer;
 use sha2::{Digest, Sha256};
@@ -20,7 +21,9 @@ Options:
   --prompt TEXT        generate once for TEXT instead of asking
   --max-new N          tokens to generate (default: 128)
   --temperature T      0 = always the most likely token (default: 0)
-  --seed S             sampler seed when temperature > 0 (default: 42)";
+  --seed S             sampler seed when temperature > 0 (default: 42)
+  --scales float|fixed how matrix multiplications apply the group scales:
+                       f32 as llama2.c, or fixed point (default: float)";
 
 pub struct Options {
     pub model: PathBuf,
@@ -29,6 +32,7 @@ pub struct Options {
     pub max_new: u32,
     pub temperature: f32,
     pub seed: u64,
+    pub scales: Scales,
     /// Options this program knows and the shared parser does not.
     pub extra: Vec<(String, String)>,
 }
@@ -44,6 +48,7 @@ pub fn parse_options(extra: &[&str]) -> Result<Options> {
         max_new: 128,
         temperature: 0.0,
         seed: 42,
+        scales: Scales::Float,
         extra: Vec::new(),
     };
     let mut args = std::env::args().skip(1);
@@ -60,6 +65,13 @@ pub fn parse_options(extra: &[&str]) -> Result<Options> {
             "--max-new" => o.max_new = value.parse()?,
             "--temperature" => o.temperature = value.parse()?,
             "--seed" => o.seed = value.parse()?,
+            "--scales" => {
+                o.scales = match value.as_str() {
+                    "float" => Scales::Float,
+                    "fixed" => Scales::Fixed,
+                    v => return Err(format!("--scales must be float or fixed, not {v}").into()),
+                }
+            }
             n if extra.contains(&n) => o.extra.push((name, value)),
             _ => return Err(format!("unknown option {name}\n{USAGE}").into()),
         }

@@ -6,7 +6,9 @@
 //!
 //! - every matrix multiplication uses int8 weights and int8 activations,
 //!   quantized in groups, with an `i32` dot product per group;
-//! - the per-group scales, RMSNorm, softmax, SiLU and RoPE use `f32`.
+//! - the per-group scales use `f32`, as in llama2.c, or fixed point (see
+//!   [`fixed`]), which is much cheaper on ZisK;
+//! - RMSNorm, softmax, SiLU and RoPE use `f32`.
 //!
 //! All `f32` math goes through the `libm` crate and the basic IEEE operations,
 //! which are correctly rounded both on x86-64 and in the software float
@@ -18,6 +20,7 @@
 //!   model blob;
 //! - [`model`]: parses the blob without copying the int8 weights;
 //! - [`forward`]: the transformer forward pass;
+//! - [`fixed`]: fixed-point scales for the matrix multiplications;
 //! - [`generate`]: the generation loop and the sampler;
 //! - [`tokenizer`]: llama2.c's BPE tokenizer (host side only);
 //! - [`params`]: the generation request sent to the guest.
@@ -27,6 +30,7 @@
 extern crate alloc;
 
 pub mod checkpoint;
+pub mod fixed;
 pub mod forward;
 pub mod generate;
 pub mod model;
