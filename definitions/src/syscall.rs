@@ -1,6 +1,7 @@
 // Syscall 0x800 - 0x84F (80 syscalls)
 
-// Important: Syscalls should be contiguous and in the same order as in riscv2zisk_context.rs
+// Existing contiguous syscall IDs match riscv2zisk_context.rs. New provisional
+// IDs with reserved gaps are dispatched explicitly, outside that legacy table.
 
 pub const SYSCALL_KECCAKF_ID: u16 = 0x800;
 pub const SYSCALL_ARITH256_ID: u16 = 0x801;
@@ -38,6 +39,15 @@ pub const SYSCALL_ED25519_ADD_ID: u16 = 0x820;
 pub const SYSCALL_POSEIDON2_KOALABEAR_ID: u16 = 0x821;
 /// Experimental: emulator only, no state machine proves it yet.
 pub const SYSCALL_DOT_I8_ID: u16 = 0x822;
+/// Experimental `floatdot`: FP32-accumulating ordered dot with FP32, BF16 or FP16 inputs;
+/// requires the matching proof setup.
+/// Assembly and hints execution remain unsupported.
+// Provisional: coordinate upstream allocation before integration.
+pub const SYSCALL_FLOATDOT_ID: u16 = 0x823;
+pub const FLOATDOT_MAX_LEN: usize = 4096;
+/// Legacy FP32-dot names for existing callers; same ID and limit as `floatdot`.
+pub const SYSCALL_FP32_DOT_ID: u16 = SYSCALL_FLOATDOT_ID;
+pub const FP32_DOT_MAX_LEN: usize = FLOATDOT_MAX_LEN;
 
 /// blake2b `extended_arg`: round index (bits 0..3), state and m from the previous round of the
 /// call (`BLAKE2B_RD_CHAIN`), to the next one (`BLAKE2B_WR_CHAIN`), steps back to it (bits 6..).

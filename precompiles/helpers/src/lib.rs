@@ -22,3 +22,16 @@ pub use keccak::{
     keccakf_state_from_linear, KeccakState,
 };
 pub use poseidon2::{Poseidon2Params, POSEIDON2_KOALABEAR};
+
+mod fp32;
+pub use fp32::{
+    bf16_to_fp32, fp16_to_fp32, fp32_add, fp32_dot, fp32_mul, Fp32Result, FLOATDOT_MAX_LEN,
+};
+
+mod floatdot_call;
+pub use floatdot_call::{
+    FloatDotCall, FloatDotCallHeader, FloatDotDescriptor, FloatDotFormat, FloatDotMemoryRead,
+};
+
+mod fp32_witness;
+pub use fp32_witness::{Fp32Witness, FP32_WITNESS_COLUMNS};

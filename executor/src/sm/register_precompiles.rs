@@ -17,6 +17,7 @@
 //! * `air`    — `*_AIR_IDS` slice from `zisk_pil`. Drives planner/collector dispatch.
 //! * `rank_assign` — `true` if instances need `pctx.add_instance_assign` (rank-owned)
 //!   rather than the default `pctx.add_instance` (distributed). Today only `Keccakf` uses `true`.
+//! * `extended: true` — optional opt-in to `process_data_ext` for split operation payloads.
 //!
 //! Per-precompile types derived via `paste!`: `${Name}Manager<F>`,
 //! `${Name}CounterInputGen<F>`, `${Name}Instance<F>`, `${Name}Collector`.
@@ -41,7 +42,7 @@ macro_rules! register_precompiles {
             $variant:ident [
                 op: $op:expr,
                 air: $air:expr,
-                rank_assign: $rank_assign:expr $(,)?
+                rank_assign: $rank_assign:expr $(, extended: $extended:ident)? $(,)?
             ] => $mgr:ty
         ),* $(,)?
     ) => {
@@ -181,6 +182,7 @@ macro_rules! register_precompiles {
                     op_type: ::std::primitive::u32,
                     bus_id: &::zisk_common::BusId,
                     data: &[::zisk_common::PayloadType],
+                    data_ext: &[::zisk_common::PayloadType],
                     mem_counter: ::std::option::Option<&mut ::zisk_sm_mem_common::MemCounters>,
                 ) -> ::std::primitive::bool {
                     $(
@@ -190,10 +192,9 @@ macro_rules! register_precompiles {
                         ::zisk_precomp_common::MemCounterProcessor::new(mem_counter);
                     match op_type {
                         $(
-                            [<__ $variant:upper _OP>] => self.[<$variant:snake>].1.process_data(
-                                bus_id,
-                                data,
-                                &mut mem_processor,
+                            [<__ $variant:upper _OP>] => $crate::register_precompiles!(
+                                @counter [$( $extended )?], self.[<$variant:snake>].1,
+                                bus_id, data, data_ext, &mut mem_processor
                             ),
                         )*
                         _ => true,
@@ -327,6 +328,7 @@ macro_rules! register_precompiles {
                     op_type: ::std::primitive::u32,
                     bus_id: &::zisk_common::BusId,
                     data: &[::zisk_common::PayloadType],
+                    data_ext: &[::zisk_common::PayloadType],
                     mem_collector: &mut ::std::vec::Vec<(
                         ::std::primitive::usize,
                         ::zisk_sm_mem::MemModuleCollector,
@@ -343,15 +345,17 @@ macro_rules! register_precompiles {
                         $(
                             [<__ $variant:upper _OP>] => {
                                 for (_, c) in &mut self.[<$variant:snake _collector>] {
-                                    c.process_data(bus_id, data);
+                                    $crate::register_precompiles!(
+                                        @collector [$( $extended )?], c, bus_id, data, data_ext
+                                    );
                                 }
-                                self.[<$variant:snake _inputs_generator>].process_data(
-                                    bus_id,
-                                    data,
+                                $crate::register_precompiles!(
+                                    @counter [$( $extended )?], self.[<$variant:snake _inputs_generator>],
+                                    bus_id, data, data_ext,
                                     &mut ::zisk_precomp_common::MemCollectorProcessor::new(
                                         mem_collector,
                                         mem_align_collector,
-                                    ),
+                                    )
                                 );
                                 true
                             }
@@ -385,5 +389,19 @@ macro_rules! register_precompiles {
                 }
             }
         }
+    };
+    (@counter [], $device:expr, $bus:expr, $data:expr, $ext:expr, $mem:expr) => {{
+        let _ = $ext;
+        $device.process_data($bus, $data, $mem)
+    }};
+    (@counter [true], $device:expr, $bus:expr, $data:expr, $ext:expr, $mem:expr) => {
+        $device.process_data_ext($bus, $data, $ext, $mem)
+    };
+    (@collector [], $device:expr, $bus:expr, $data:expr, $ext:expr) => {{
+        let _ = $ext;
+        $device.process_data($bus, $data)
+    }};
+    (@collector [true], $device:expr, $bus:expr, $data:expr, $ext:expr) => {
+        $device.process_data_ext($bus, $data, $ext)
     };
 }

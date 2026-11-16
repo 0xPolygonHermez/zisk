@@ -1,0 +1,6 @@
+require "../pil/arithmetic.pil"
+airtemplate Fp32Arithmetic(int N=8) {
+    col witness a[32],b[32],is_mul,result[32],flags[5];
+    fp32_arithmetic(a,b,is_mul,result,flags);
+}
+airgroup Fp32Arithmetic { Fp32Arithmetic(); }

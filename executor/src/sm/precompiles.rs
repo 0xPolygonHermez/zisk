@@ -15,13 +15,14 @@
 use zisk_common::ComponentBuilder;
 use zisk_core::{
     ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, BIG_INT_OP_TYPE_ID, BLAKE2B_OP_TYPE_ID,
-    BLAKE2S_OP_TYPE_ID, BLAKE3_OP_TYPE_ID, KECCAK_OP_TYPE_ID, POSEIDON2_KOALABEAR_OP_TYPE_ID,
-    POSEIDON_OP_TYPE_ID, SHA256_OP_TYPE_ID, TWISTED_EDWARDS_OP_TYPE_ID,
+    BLAKE2S_OP_TYPE_ID, BLAKE3_OP_TYPE_ID, FLOATDOT_OP_TYPE_ID, KECCAK_OP_TYPE_ID,
+    POSEIDON2_KOALABEAR_OP_TYPE_ID, POSEIDON_OP_TYPE_ID, SHA256_OP_TYPE_ID,
+    TWISTED_EDWARDS_OP_TYPE_ID,
 };
 use zisk_pil::{
     ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_384_LARGE_AIR_IDS, BLAKE_2_BR_AIR_IDS,
-    BLAKE_2_S_AIR_IDS, BLAKE_3_F_AIR_IDS, KECCAKF_AIR_IDS, POSEIDON_2_KOALA_BEAR_AIR_IDS,
-    POSEIDON_AIR_IDS, SHA_256_F_AIR_IDS, TWISTED_EDWARDS_AIR_IDS,
+    BLAKE_2_S_AIR_IDS, BLAKE_3_F_AIR_IDS, FLOAT_DOT_AIR_IDS, KECCAKF_AIR_IDS,
+    POSEIDON_2_KOALA_BEAR_AIR_IDS, POSEIDON_AIR_IDS, SHA_256_F_AIR_IDS, TWISTED_EDWARDS_AIR_IDS,
 };
 
 /// Every height of the `ArithEq384` air, which the planner sizes as one ladder. Keep in step with
@@ -42,6 +43,9 @@ use zisk_precomp_blake2::{
     Blake2sCounterInputGen, Blake2sInstance, Blake2sManager,
 };
 use zisk_precomp_blake3::{Blake3Collector, Blake3CounterInputGen, Blake3Instance, Blake3Manager};
+use zisk_precomp_floatdot::{
+    FloatDotCollector, FloatDotCounterInputGen, FloatDotInstance, FloatDotManager,
+};
 use zisk_precomp_keccakf::{
     KeccakfCollector, KeccakfCounterInputGen, KeccakfInstance, KeccakfManager,
 };
@@ -50,6 +54,7 @@ use zisk_precomp_poseidon::{
     Poseidon2KoalaBearManager, PoseidonCollector, PoseidonCounterInputGen, PoseidonInstance,
     PoseidonManager,
 };
+
 use zisk_precomp_sha256f::{
     Sha256fCollector, Sha256fCounterInputGen, Sha256fInstance, Sha256fManager,
 };
@@ -109,6 +114,12 @@ crate::register_precompiles! {
         air: ADD_256_AIR_IDS,
         rank_assign: false,
     ] => Add256Manager<F>,
+    FloatDot [
+        op: FLOATDOT_OP_TYPE_ID,
+        air: FLOAT_DOT_AIR_IDS,
+        rank_assign: false,
+        extended: true,
+    ] => FloatDotManager<F>,
     TwistedEdwards [
         op: TWISTED_EDWARDS_OP_TYPE_ID,
         air: TWISTED_EDWARDS_AIR_IDS,
@@ -135,6 +146,12 @@ mod tests {
     /// builtin, not a precompile) and the `ArithEq384` ones, which are their own precompile: its
     /// aliases are named after the equations they cover (`Arith256X`, `ArithSecp256K1`,
     /// `ArithBn254`), not after the config air.
+    #[test]
+    fn fp32_air_is_registered() {
+        assert_eq!(FLOAT_DOT_AIR_IDS, family(|n| n == "FloatDot"));
+        assert!(PRECOMPILE_AIR_IDS.contains(&FLOAT_DOT_AIR_IDS[0]));
+    }
+
     #[test]
     fn every_arith_eq_air_in_the_pilout_has_a_state_machine() {
         let mut registered = ARITH_EQ_CONFIG_AIR_IDS.to_vec();

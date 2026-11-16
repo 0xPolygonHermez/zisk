@@ -74,11 +74,13 @@ pub enum OpType {
     Blake2s,
     Poseidon2KoalaBear,
     DotI8,
+    FloatDot,
 }
 
 impl From<OpType> for ZiskOperationType {
     fn from(op_type: OpType) -> Self {
         match op_type {
+            OpType::FloatDot => ZiskOperationType::FloatDot,
             OpType::Internal => ZiskOperationType::Internal,
             OpType::Arith | OpType::ArithA32 | OpType::ArithAm32 => ZiskOperationType::Arith,
             OpType::Binary => ZiskOperationType::Binary,
@@ -107,6 +109,7 @@ impl From<OpType> for ZiskOperationType {
 impl Display for OpType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::FloatDot => write!(f, "FloatDot"),
             Self::Internal => write!(f, "i"),
             Self::Arith => write!(f, "a"),
             Self::ArithA32 => write!(f, "a32"),
@@ -139,6 +142,7 @@ impl FromStr for OpType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
+            "floatdot" => Ok(Self::FloatDot),
             "i" => Ok(Self::Internal),
             "a" => Ok(Self::Arith),
             "a32" => Ok(Self::ArithA32),
@@ -585,7 +589,10 @@ define_ops! {
     // Experimental, emulator only: no state machine proves it yet (see operations/dot_i8.rs).
     // input_size = 24: the parameter block (a pointer, b pointer, length).
     (DotI8, "dot_i8", DotI8, DOT_I8_COST, 0xc2, 24, 0, opc_dot_i8, op_dot_i8, ops_dot_i8),
-    // opcodes 0xc3-0xcf are available
+    // Experimental: zero is a placeholder, not a measured cost; ops_floatdot rejects profiling.
+    // Six fixed replay words (five descriptor words and synthesized result), then data_ext_len words.
+    (FloatDot, "floatdot", FloatDot, 0, 0xc3, 48, 0, opc_floatdot, op_floatdot, ops_floatdot),
+    // opcodes 0xc4-0xcf are available; FloatDot allocation is provisional.
 
     (DmaMemCpy, "dma_memcpy", Dma, DMA_MEMCPY_COST, 0xd0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
     (DmaMemCmp, "dma_memcmp", Dma, DMA_MEMCMP_COST, 0xd1, 16, 0, opc_dma_memcmp, op_dma_memcmp, ops_dma_memcmp),

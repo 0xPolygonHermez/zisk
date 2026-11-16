@@ -149,6 +149,8 @@ const int OP_REM_W = 0xBF;
 const int OP_JUMP_DEST = 0xC0;
 
 const int OP_POSEIDON2_KOALABEAR = 0xC1;
+// Provisional FloatDot allocation; 0xc2 is the emulator-only integer dot opcode.
+const int OP_FLOATDOT = 0xC3;
 
 const int OP_DMA_MEMCPY = 0xD0;
 const int OP_DMA_MEMCMP = 0xD1;

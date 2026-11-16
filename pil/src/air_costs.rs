@@ -152,6 +152,10 @@ pub const KECCAKF_INSTANCE_COST: usize = 20562;
 /// `Sha256f`: 0.74 GB.
 pub const SHA_256_F_INSTANCE_COST: usize = 758;
 
+/// `FloatDot` at 2^14 rows: setup reports 0.68 GiB (blake3), rounded to MiB.
+/// This is prover geometry; process peak RSS is measured separately by the proof run.
+pub const FLOATDOT_INSTANCE_COST: usize = 696;
+
 /// `Poseidon`: 0.86 GB.
 pub const POSEIDON_INSTANCE_COST: usize = 881;
 
@@ -291,6 +295,7 @@ mod tests {
                     TwistedEdwardsTrace: TwistedEdwardsTraceRow: TWISTED_EDWARDS_INSTANCE_COST,
                     KeccakfTrace: KeccakfTraceRow: KECCAKF_INSTANCE_COST,
                     Sha256fTrace: Sha256fTraceRow: SHA_256_F_INSTANCE_COST,
+                    FloatDotTrace: FloatDotTraceRow: FLOATDOT_INSTANCE_COST,
                     PoseidonTrace: PoseidonTraceRow: POSEIDON_INSTANCE_COST,
                     Blake2brTrace: Blake2brTraceRow: BLAKE_2_BR_INSTANCE_COST,
                     Blake3fTrace: Blake3fTraceRow: BLAKE_3_F_INSTANCE_COST,

@@ -1,0 +1,163 @@
+// FP32 arithmetic building blocks. Not a complete FP32 AIR or a VM registration.
+// All packed integers here are at most 48 bits, below the Goldilocks modulus.
+function fp32_pack(expr bits[]): expr {
+    assert(length(bits) <= 48);
+    expr value = 0;
+    for (int i=0; i<length(bits); i++) {
+        bits[i] * (1-bits[i]) === 0;
+        value = value + bits[i] * 2**i;
+    }
+    return value;
+}
+
+function fp32_mul_significands(expr a[], expr b[], expr product[]) {
+    assert(length(a)==24 && length(b)==24 && length(product)==48);
+    fp32_pack(a) * fp32_pack(b) === fp32_pack(product);
+}
+
+// The caller must select the larger magnitude before subtraction.
+function fp32_add_significands(expr a[], expr b[], expr subtract, expr result[]) {
+    assert(length(a)==27 && length(b)==27 && length(result)==28);
+    subtract * (1-subtract) === 0;
+    fp32_pack(a) + (1-2*subtract)*fp32_pack(b) === fp32_pack(result);
+}
+
+// sig = 24 retained bits, guard, round, sticky. The carry remains in rounded bit 24.
+function fp32_rne(expr sig[], expr rounded[], expr inexact) {
+    assert(length(sig)==27 && length(rounded)==25);
+    const expr packed = fp32_pack(sig);
+    const expr discarded = sig[0] + 2*sig[1] + 4*sig[2];
+    const expr tail_or_odd = 1-(1-sig[0])*(1-sig[1])*(1-sig[3]);
+    8*fp32_pack(rounded) === packed-discarded + 8*sig[2]*tail_or_odd;
+    inexact === 1-(1-sig[0])*(1-sig[1])*(1-sig[2]);
+}
+
+// A 48-bit barrel shifter with jamming, for shifts 0..63, including shifts >=48.
+// sticky[j][k] is the OR of bits 0..k before stage j. It includes output bit 0.
+function fp32_shift_jam(expr input[], expr amount[], expr stages[][], expr sticky[][]) {
+    assert(length(input)==48 && length(amount)==6 && length(stages)==6 && length(sticky)==6);
+    fp32_pack(input);
+    fp32_pack(amount);
+    expr previous[48];
+    for (int k=0;k<48;k++) { previous[k]=input[k]; }
+    for (int j=0;j<6;j++) {
+        assert(length(stages[j])==48 && length(sticky[j])==33);
+        const int distance=2**j;
+        sticky[j][0] === previous[0];
+        for (int k=1;k<=distance;k++) {
+            sticky[j][k] === sticky[j][k-1]+previous[k]-sticky[j][k-1]*previous[k];
+        }
+        for (int k=distance+1;k<33;k++) { sticky[j][k] === 0; }
+        stages[j][0] === (1-amount[j])*previous[0]+amount[j]*sticky[j][distance];
+        for (int k=1;k<48;k++) {
+            if (k+distance<48) {
+                stages[j][k] === (1-amount[j])*previous[k]+amount[j]*previous[k+distance];
+            } else {
+                stages[j][k] === (1-amount[j])*previous[k];
+            }
+        }
+        for (int k=0;k<48;k++) { previous[k]=stages[j][k]; }
+    }
+}
+
+function fp32_decode(expr raw[],expr sig[],expr sign,expr exponent,expr classes[],
+                     expr exp_zero[],expr exp_ones[],expr frac_zero[]) {
+    assert(length(raw)==32 && length(sig)==24 && length(classes)==6);
+    assert(length(exp_zero)==9 && length(exp_ones)==9 && length(frac_zero)==24);
+    fp32_pack(raw);
+    sign === raw[31];
+    expr packed_exp=0;
+    exp_zero[0] === 1;
+    exp_ones[0] === 1;
+    for(int i=0;i<8;i++) {
+        packed_exp = packed_exp + raw[23+i]*2**i;
+        exp_zero[i+1] === exp_zero[i]*(1-raw[23+i]);
+        exp_ones[i+1] === exp_ones[i]*raw[23+i];
+    }
+    exponent === packed_exp;
+    frac_zero[0] === 1;
+    for(int i=0;i<23;i++) {
+        sig[i] === raw[i];
+        frac_zero[i+1] === frac_zero[i]*(1-raw[i]);
+    }
+    sig[23] === 1-exp_zero[8];
+    // Class order: zero, subnormal, normal, infinity, quiet NaN, signaling NaN.
+    classes[0] === exp_zero[8]*frac_zero[23];
+    classes[1] === exp_zero[8]*(1-frac_zero[23]);
+    classes[2] === (1-exp_zero[8])*(1-exp_ones[8]);
+    classes[3] === exp_ones[8]*frac_zero[23];
+    classes[4] === exp_ones[8]*(1-frac_zero[23])*raw[22];
+    classes[5] === exp_ones[8]*(1-frac_zero[23])*(1-raw[22]);
+}
+
+// Normalize a 48-bit nonnegative integer to bit 47; zero stays zero with index 0.
+function fp32_normalize(expr raw[],expr normalized[],expr high_index[],expr prefix[],expr leading[]) {
+    assert(length(raw)==48 && length(normalized)==48 && length(high_index)==6);
+    assert(length(prefix)==49 && length(leading)==48);
+    fp32_pack(raw);
+    prefix[48] === 1;
+    expr index=0;
+    for(int k=0;k<48;k++) {
+        const int i=47-k;
+        prefix[i] === prefix[i+1]*(1-raw[i]);
+        leading[i] === prefix[i+1]*raw[i];
+        index=index+i*leading[i];
+    }
+    fp32_pack(high_index) === index;
+    for(int j=0;j<48;j++) {
+        expr bit=0;
+        for(int i=47-j;i<48;i++) { bit=bit+leading[i]*raw[j-47+i]; }
+        normalized[j] === bit;
+    }
+}
+
+// Normalize/round composition uses exponent biased by 512, in [-298,255].
+function fp32_round_pack(expr sig[],expr exponent[],expr sign,expr exp_lower[],expr exp_upper[],
+    expr under_diff[],expr tiny_diff[],expr shift_amount[],expr shift_bits[],expr stages[][],
+    expr sticky[][],expr rounded[],expr inexact,expr top_ones[],expr overflow_diff[],expr result[],expr flags[]) {
+    assert(length(sig)==27 && length(exponent)==10 && length(exp_lower)==10 && length(exp_upper)==10);
+    assert(length(under_diff)==11 && length(tiny_diff)==11 && length(shift_amount)==8 && length(shift_bits)==6);
+    assert(length(rounded)==25 && length(top_ones)==26 && length(overflow_diff)==11 && length(result)==32 && length(flags)==5);
+    fp32_pack(sig);
+    sign*(1-sign) === 0;
+    // Nonzero inputs must be normalized, with their leading bit at position 26.
+    for(int i=0;i<26;i++) { (1-sig[26])*sig[i] === 0; }
+    const expr e=fp32_pack(exponent);
+    fp32_pack(exp_lower) === e-214;
+    fp32_pack(exp_upper) === 767-e;
+    fp32_pack(under_diff) === e-386+1024;
+    fp32_pack(tiny_diff) === e-385+1024;
+    const expr under=1-under_diff[10];
+    fp32_pack(shift_amount) === under*(386-e);
+    const expr saturate=1-(1-shift_amount[6])*(1-shift_amount[7]);
+    for(int i=0;i<6;i++) { shift_bits[i] === saturate+(1-saturate)*shift_amount[i]; }
+    expr shift_input[48];
+    for(int i=0;i<48;i++) {
+        if(i<27) { shift_input[i]=sig[i]; } else { shift_input[i]=0; }
+    }
+    fp32_shift_jam(shift_input,shift_bits,stages,sticky);
+    expr round_sig[27];
+    for(int i=0;i<27;i++) { round_sig[i]=stages[5][i]; }
+    fp32_rne(round_sig,rounded,inexact);
+    top_ones[0] === 1;
+    for(int i=0;i<25;i++) { top_ones[i+1] === top_ones[i]*sig[i+2]; }
+    const expr tiny=under*(1-tiny_diff[10]*top_ones[25]);
+    const expr carry=rounded[24];
+    fp32_pack(overflow_diff) === e+carry-640+1024;
+    const expr overflow=overflow_diff[10]*sig[26];
+    const expr normal=1-(1-rounded[23])*(1-carry);
+    const expr effective_e=(1-under)*e+under*386;
+    fp32_pack(result);
+    result[31] === sign;
+    expr out_exp=0;
+    for(int i=0;i<8;i++) { out_exp=out_exp+result[23+i]*2**i; }
+    out_exp === overflow*255+(1-overflow)*normal*(effective_e-385+carry);
+    for(int i=0;i<23;i++) {
+        result[i] === (1-overflow)*((1-carry)*rounded[i]+carry*rounded[i+1]);
+    }
+    flags[0] === overflow+inexact-overflow*inexact;
+    flags[1] === (1-overflow)*tiny*inexact;
+    flags[2] === overflow;
+    flags[3] === 0;
+    flags[4] === 0;
+}

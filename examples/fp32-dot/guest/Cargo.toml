@@ -1,0 +1,11 @@
+[package]
+name = "fp32-dot-guest"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ziskos = { workspace = true }
+zisk-definitions = { path = "../../../definitions" }
+
+[features]
+software = []
