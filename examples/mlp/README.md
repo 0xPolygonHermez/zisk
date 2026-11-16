@@ -259,7 +259,7 @@ A `dot_i8` precompile would reuse most of this, with a different per-row constra
 
 ### Measured with the experimental `dot_i8`
 
-Step 1 is now done, without `emulator-asm`, as an experiment: ZisK has an operation `dot_i8` (opcode `0xc2`, syscall `0x822`) that runs in the operation table and the emulator. **No state machine proves it yet**, so a program that uses it cannot be proven. The SDK's execution cannot run it either, because it also prepares proof inputs; it runs in `ziskemu`. The [`llama2` README](../llama2/README.md#with-the-experimental-dot_i8-precompile) describes the operation and its estimated costs.
+Step 1 is now done as an experiment: ZisK has an operation `dot_i8` (opcode `0xc2`, syscall `0x822`) that runs in the operation table, the emulator and, except for the memory-operations mode, `emulator-asm`. **No state machine proves it yet**, so a program that uses it cannot be proven. The SDK's execution cannot run it either, because it also prepares proof inputs; it runs in `ziskemu`. The [`llama2` README](../llama2/README.md#with-the-experimental-dot_i8-precompile) describes the operation and its estimated costs.
 
 In this example:
 

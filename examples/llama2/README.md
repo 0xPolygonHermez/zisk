@@ -66,7 +66,7 @@ Options, for both programs:
 `llama2-zisk` also takes:
 
 - `--ziskemu PATH`: the `ziskemu` to run.
-- `--dot-product soft|precompile`: how the guest computes the dot products. The default, `soft`, is plain Rust. `precompile` uses the experimental `dot_i8` precompile, which needs a `ziskemu` built from this repository and cannot be proven yet (see [below](#with-the-experimental-dot_i8-precompile)).
+- `--dot-product soft|precompile`: how the guest computes the dot products. The default, `soft`, is plain Rust. `precompile` uses the experimental `dot_i8` precompile, which needs a `ziskemu` built from this repository and cannot be proven yet (see [below](#with-the-experimental-dot_i8-precompile)). An older `ziskemu`, such as an installed release, does not report an error: the run produces wrong tokens, and the last line says `same tokens as native: NO`. Pass the repository's build with `--ziskemu ../../../target/release/ziskemu`.
 - `--save-input PATH`: writes the guest input for the first prompt and exits, to run the guest directly:
 
 ```bash
@@ -253,11 +253,13 @@ These runs use `llama2-zisk`:
 
 Steps per token grow with the position in the sequence, because attention looks at every earlier token, so the longer `stories260K` run has a higher average.
 
+The native speeds are from the first measurement. Measured again later on the same, nearly idle machine, the native `float` speed is about 143 tokens/s for `stories15M` and about 2,430 tokens/s for `stories260K`; the cause of the difference is not known. [Native and ZisK, at the beginning and now](#native-and-zisk-at-the-beginning-and-now) uses the newer measurements.
+
 These numbers were measured before the dot product became a separate function (`dot_soft`, called through a function pointer so the guest can swap it). The current code takes 2–3% more steps in `soft` mode, because the loop is no longer inlined and its `i64` sum is saturated to `i32` at the end of each call (see `dot_soft`). The comparison below uses the current code for both modes.
 
 ### With the experimental `dot_i8` precompile
 
-To measure what a dot-product precompile would save, ZisK has an experimental `dot_i8` operation. It is implemented in the operation table and the emulator only: **`ziskemu` runs it, but no state machine proves it, so a program that uses it cannot be proven yet.**
+To measure what a dot-product precompile would save, ZisK has an experimental `dot_i8` operation. It is implemented in the operation table, `ziskemu` and the assembly emulator: **both emulators run it, but no state machine proves it, so a program that uses it cannot be proven yet.** The assembly emulator runs it in its fast, ROM histogram and minimal trace modes, but not in the memory-operations mode, which only a proof needs.
 
 **What it does.** The guest passes the address of a block of three `u64`: the address of `x`, the address of `y` and the length `n`. It gets back `Σ x[i]·y[i]` over signed bytes, as a wrapping `i32` sum, which is what `dot_soft` computes. Both addresses must be 8-byte aligned and `n` a multiple of 8, so the planned state machine can read one 64-bit word of each vector per row, that is 8 multiply-adds per row.
 
@@ -442,6 +444,65 @@ The other modes barely change. Without the precompile, `fixed` costs 150.9 G ins
 2. **Groups of 48 save another 11% at about the same accuracy.** Larger groups save more, at a growing accuracy cost. Groups of 144 save 39% in total.
 3. **Larger groups also make loading faster**, since there are fewer scales to convert.
 4. **The matrix multiplications are no longer the largest part.** With groups of 144, `matmul` is 37% of the cost, including the per-group loop with its calls (`row_fixed_precompile`, 20%) and the conversion of each output to `f32` (6%). The rest is float code: `expf` 18%, `quantize` 14%, and the float operations of RMSNorm, attention and RoPE. The `dot_i8` operation itself is under 4%.
+
+### Native and ZisK, at the beginning and now
+
+This compares the first version of the guest (`float` scales, plain-Rust dot products) with the current one (`fixed` scales and the `dot_i8` precompile), and both with the native program. The prompt is "Once upon a time".
+
+ZisK times are for executing the guest, not for proving it, on two emulators:
+
+- **`ziskemu`**, the Rust emulator that `llama2-zisk` runs.
+- **The assembly emulator** ([`emulator-asm`](../../emulator-asm/)), which the prover uses: the guest is translated to x86-64 code. It is timed while it generates the minimal trace (`--gen=1`), which is what a proof needs first. The time is its own report (`Duration`), the median of 3 runs, without starting the server or loading the input.
+
+The table also has the current guest without the precompile (`fixed`, `soft`), to separate what fixed-point scales and the precompile each bring.
+
+The assembly emulator runs `dot_i8` with a hand-written routine ([`emulator-asm/src/dot_i8/dot_i8.asm`](../../emulator-asm/src/dot_i8/dot_i8.asm)). For each call, it writes the parameter block, the result and both vectors to the minimal trace, the data that a `dot_i8` state machine would need (see [`dot_i8.rs`](../../core/src/operations/dot_i8.rs)).
+
+All the runs below were measured again for this comparison, with the current code:
+- The native times are the median of 3 runs.
+- Every ZisK run produces the same tokens as the native run with the same options. On both emulators, the runs take the same number of steps.
+- Native has no `dot_i8`, so it always uses the plain-Rust dot product.
+
+**`stories15M`, 5 prompt + 20 generated tokens**
+
+| | Native | ZisK at the beginning: `float`, `soft` | ZisK now, without the precompile: `fixed`, `soft` | ZisK now: `fixed`, `precompile` | ZisK now, `--group-size 144` |
+|---|---|---|---|---|---|
+| Steps | | 5.26 G (210 M per token) | 3.29 G | 710 M (28 M per token) | 557 M (22 M per token) |
+| Time on `ziskemu` | | 92.9 s | 52.5 s | 16.1 s | 14.0 s |
+| Time on the assembly emulator, minimal trace | | 3.59 s | 1.94 s | 0.54 s | 0.43 s |
+| Native time | 0.175 s (`float`), 0.163 s (`fixed`) | | | | |
+| Slower than native, `ziskemu` | | **~530×** | ~320× | **~99×** | **~94×** |
+| Slower than native, assembly emulator | | **~21×** | **~12×** | **~3.3×** | **~2.9×** |
+
+**`stories260K`, 5 prompt + 80 generated tokens**
+
+| | Native | ZisK at the beginning: `float`, `soft` | ZisK now, without the precompile: `fixed`, `soft` | ZisK now: `fixed`, `precompile` |
+|---|---|---|---|---|
+| Steps | | 1.10 G | 859 M | 737 M |
+| Time on `ziskemu` | | 23.9 s | 18.8 s | 18.0 s |
+| Time on the assembly emulator, minimal trace | | 0.81 s | 0.61 s | 0.54 s |
+| Native time | 0.035 s (`float`), 0.031 s (`fixed`) | | | |
+| Slower than native, `ziskemu` | | **~680×** | ~610× | **~580×** |
+| Slower than native, assembly emulator | | **~23×** | **~20×** | **~17×** |
+
+Without the precompile, the assembly emulator runs about 1.3–1.7 G steps per second, 25–30 times faster than `ziskemu`. With it, it runs about 1.3 G steps per second, because each `dot_i8` step does a whole group of multiply-adds. With groups of 144 and no precompile, `stories15M` takes 3.12 G steps and 1.87 s on it. With `float` scales and the precompile, it takes 2.77 G steps and 2.11 s.
+
+The native time of the `--group-size 144` column is the native run with the same groups, 0.149 s.
+
+What each change saved on `stories15M`, as profile cost:
+
+| Change | Cost | Saving |
+|---|---|---|
+| The beginning: `float`, `soft` | 229.4 G | |
+| The `dot_i8` precompile | 111.5 G | −51% |
+| Fixed-point scales | 35.8 G | −68% |
+| The cheaper call site | 30.1 G | −16% |
+| Groups of 144 (optional, less accurate) | 21.7 G | −28% |
+
+1. **For `stories15M`, the gap with native went from about 530× to about 100×.** The cost is 7.6× lower with llama2.c's groups, and 10.6× lower with groups of 144. Native gains little from the same changes: fixed-point scales save 7%, and groups of 144 save 15%.
+2. **For `stories260K`, the gap barely changed, from about 680× to about 580×.** Its matrices are small, so most of its cost is in the `f32` code around them, which ZisK runs as software floats. Fixed point in the rest of the model, the first of the [next steps](#next-steps), is what would close the gap for this model.
+3. **Where the cost of `stories15M` goes has changed.** At the beginning, `matmul` was 94% of it. Now it is about 37% with groups of 144, and `expf` (18%) and `quantize` (14%) come next.
+4. **On the assembly emulator, the current `stories15M` guest is about 3 times slower than native**, down from about 21 times at the beginning. Fixed-point scales alone take it to about 12 times, and the precompile then cuts the time by 3.6 times. `stories260K` stays at about 17–23 times, for the same reason as in `ziskemu`: its cost is mostly `f32` code.
 
 ## Next steps
 
