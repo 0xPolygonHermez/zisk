@@ -39,6 +39,7 @@ require "poseidon/pil/poseidon2_koalabear.pil"
 require "blake2/pil/blake2br.pil"
 require "blake2/pil/blake2s.pil"
 require "blake3/pil/blake3f.pil"
+require "floatdot/pil/floatdot.pil"
 
 enable_range_stats();
 
@@ -201,4 +202,6 @@ airgroup Zisk {
     for (int i = 0; i < PUBLIC_INPUTS_64_BITS; i++) {
         direct_global_update_proves(OPERATION_BUS_ID, [OP_PUBOUT, i, 0, inputs[i*2], inputs[i*2 + 1], inputs[i*2], inputs[i*2 + 1]], surname: PIOP_SURNAME_DYNAMIC);
     }
+    FloatDot(N:2**14);
+
 }

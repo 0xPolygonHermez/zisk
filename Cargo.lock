@@ -7761,6 +7761,7 @@ dependencies = [
  "zisk-precomp-common",
  "zisk-precomp-dma",
  "zisk-precomp-evm",
+ "zisk-precomp-floatdot",
  "zisk-precomp-hints",
  "zisk-precomp-keccakf",
  "zisk-precomp-poseidon",
@@ -7970,6 +7971,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-precomp-floatdot"
+version = "1.4.0-alpha"
+dependencies = [
+ "proofman-common",
+ "proofman-fields",
+ "zisk-common",
+ "zisk-core",
+ "zisk-pil",
+ "zisk-precomp-common",
+ "zisk-precomp-helpers",
+]
+
+[[package]]
 name = "zisk-precomp-helpers"
 version = "1.4.0-alpha"
 dependencies = [
@@ -7983,6 +7997,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "zisk-circuit",
+ "zisk-definitions",
  "zisk-lib-c",
 ]
 

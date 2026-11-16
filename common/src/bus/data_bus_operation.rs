@@ -13,6 +13,9 @@ pub const OPERATION_BUS_ID: BusId = BusId(0);
 pub const OPERATION_BUS_DATA_SIZE: usize = 4; // op,op_type,a,b
 /// The size of the precompiled operation data payload, which includes an additional `step` parameter.
 pub const OPERATION_PRECOMPILED_BUS_DATA_SIZE: usize = 5; // op,op_type,a,b, step
+/// FloatDot fixed header: outer operation fields plus x, y, n, initial bits/flags and result.
+/// Packed vector words are dispatched separately as extended operation data.
+pub const OPERATION_BUS_FLOATDOT_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 6;
 
 // worst case:
 // arith_256:     3 x 256 + 2 addr = 3 * 4 + 2 = 14
@@ -156,6 +159,8 @@ pub const STEP: usize = 4;
 
 /// Type alias for operation data payload.
 pub type OperationData<D> = [D; OPERATION_BUS_DATA_SIZE];
+/// Fixed FloatDot operation header, excluding the separately dispatched vector words.
+pub type OperationFloatDotData<D> = [D; OPERATION_BUS_FLOATDOT_DATA_SIZE];
 
 // Type alias for precompiles operation data payload.
 /// Keccakf operation data type alias.
@@ -227,6 +232,8 @@ pub type OperationEd25519AddData<D> = [D; OPERATION_BUS_ED25519_ADD_DATA_SIZE];
 
 /// The `ExtOperationData` enum encapsulates the various types of operation data that can be transmitted over the operation bus.
 pub enum ExtOperationData<D> {
+    /// Fixed FloatDot replay header; vector words travel as extended data.
+    OperationFloatDotData(OperationFloatDotData<D>),
     /// Generic operation data type for operations that do not fit into specific precompiled categories.
     OperationData(OperationData<D>),
     /// Keccakf operation data.
@@ -306,7 +313,29 @@ impl<D: Copy + Into<u64>> TryFrom<&[D]> for ExtOperationData<D> {
             return Err("Invalid data length");
         }
         let op = data[OP].into();
+        if data[OP_TYPE].into() == ZiskOperationType::FloatDot as u64
+            && op != u64::from(ZiskOp::FLOATDOT)
+        {
+            return Err("FloatDot operation type requires the floatdot opcode");
+        }
         match op as u8 {
+            ZiskOp::FLOATDOT => {
+                let array: OperationFloatDotData<D> =
+                    data.try_into().map_err(|_| "Invalid OperationFloatDotData size")?;
+                let words = array.map(Into::into);
+                if op != u64::from(ZiskOp::FLOATDOT)
+                    || words[OP_TYPE] != ZiskOperationType::FloatDot as u64
+                {
+                    return Err("Invalid FloatDot opcode or operation type");
+                }
+                zisk_core::validate_floatdot_replay_header(
+                    words[A],
+                    words[B],
+                    words[STEP],
+                    &words[OPERATION_PRECOMPILED_BUS_DATA_SIZE..],
+                )?;
+                Ok(ExtOperationData::OperationFloatDotData(array))
+            }
             ZiskOp::KECCAK => {
                 let array: OperationKeccakData<D> =
                     data.try_into().map_err(|_| "Invalid OperationKeccakData size")?;
@@ -488,6 +517,53 @@ impl<D: Copy + Into<u64>> TryFrom<&[D]> for ExtOperationData<D> {
 pub struct OperationBusData<D>(std::marker::PhantomData<D>);
 
 impl OperationBusData<u64> {
+    fn floatdot_header(inst: &ZiskInst, ctx: &InstContext) -> OperationFloatDotData<u64> {
+        assert!(!inst.m32, "floatdot does not accept m32 operand truncation");
+        assert_eq!(inst.op, ZiskOp::FLOATDOT, "invalid FloatDot opcode");
+        let header = zisk_core::validate_floatdot_replay_header(
+            ctx.a,
+            ctx.b,
+            ctx.step,
+            &ctx.precompiled.input_data,
+        )
+        .expect("invalid FloatDot replay header");
+        assert_eq!(
+            ctx.data_ext_len,
+            header.data_ext_len(),
+            "inconsistent FloatDot extended length"
+        );
+        assert_eq!(ctx.c, header.encode()[5], "FloatDot result differs from the replay header");
+        assert!(!ctx.flag, "floatdot VM flag must be false");
+        let mut data = [0; OPERATION_BUS_FLOATDOT_DATA_SIZE];
+        data[..OPERATION_PRECOMPILED_BUS_DATA_SIZE].copy_from_slice(&[
+            u64::from(inst.op),
+            inst.op_type as u64,
+            ctx.a,
+            ctx.b,
+            ctx.step,
+        ]);
+        data[OPERATION_PRECOMPILED_BUS_DATA_SIZE..].copy_from_slice(&header.encode());
+        data
+    }
+
+    /// Validate a fixed FloatDot operation header and its separately dispatched vector words.
+    /// Arithmetic and memory consistency remain proof obligations, including overlapping reads.
+    pub fn validate_floatdot_payload(data: &[u64], data_ext: &[u64]) -> Result<(), &'static str> {
+        let ExtOperationData::OperationFloatDotData(words) = ExtOperationData::try_from(data)?
+        else {
+            return Err("Expected a dedicated FloatDot operation payload");
+        };
+        let header = zisk_core::validate_floatdot_replay_header(
+            words[A],
+            words[B],
+            words[STEP],
+            &words[OPERATION_PRECOMPILED_BUS_DATA_SIZE..],
+        )?;
+        if data_ext.len() != header.data_ext_len() {
+            return Err("FloatDot operation has the wrong number of extended words");
+        }
+        Ok(())
+    }
     /// Creates operation data from raw values.
     ///
     /// # Arguments
@@ -507,6 +583,10 @@ impl OperationBusData<u64> {
         b: u64,
         pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
     ) {
+        assert!(
+            op != ZiskOp::FLOATDOT && op_type != ZiskOperationType::FloatDot as u64,
+            "floatdot requires its dedicated replay header"
+        );
         pending.push_back((OPERATION_BUS_ID, vec![op as u64, op_type, a, b], Vec::new()));
     }
 
@@ -520,6 +600,11 @@ impl OperationBusData<u64> {
     /// An array representing the operation data payload.
     #[inline(always)]
     pub fn from_instruction(inst: &ZiskInst, ctx: &InstContext) -> ExtOperationData<u64> {
+        assert_eq!(
+            inst.op == ZiskOp::FLOATDOT,
+            inst.op_type == ZiskOperationType::FloatDot,
+            "FloatDot opcode and operation type must agree"
+        );
         let a = if inst.m32 { ctx.a & 0xffff_ffff } else { ctx.a };
         let b = if inst.m32 { ctx.b & 0xffff_ffff } else { ctx.b };
         let op = inst.op as u64;
@@ -527,6 +612,9 @@ impl OperationBusData<u64> {
         let step = ctx.step;
 
         match inst.op_type {
+            ZiskOperationType::FloatDot => {
+                ExtOperationData::OperationFloatDotData(Self::floatdot_header(inst, ctx))
+            }
             ZiskOperationType::Keccak => {
                 let mut data = [0u64; OPERATION_BUS_KECCAKF_DATA_SIZE];
                 data[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
@@ -829,6 +917,11 @@ impl OperationBusData<u64> {
         ctx: &InstContext,
         buffer: &'a mut [u64; MAX_OPERATION_DATA_SIZE],
     ) -> &'a [u64] {
+        assert_eq!(
+            inst.op == ZiskOp::FLOATDOT,
+            inst.op_type == ZiskOperationType::FloatDot,
+            "FloatDot opcode and operation type must agree"
+        );
         let a = if inst.m32 { ctx.a & 0xffff_ffff } else { ctx.a };
         let b = if inst.m32 { ctx.b & 0xffff_ffff } else { ctx.b };
         let op = inst.op as u64;
@@ -836,6 +929,11 @@ impl OperationBusData<u64> {
         let step = ctx.step;
 
         match inst.op_type {
+            ZiskOperationType::FloatDot => {
+                buffer[..OPERATION_BUS_FLOATDOT_DATA_SIZE]
+                    .copy_from_slice(&Self::floatdot_header(inst, ctx));
+                &buffer[..OPERATION_BUS_FLOATDOT_DATA_SIZE]
+            }
             ZiskOperationType::Keccak => {
                 debug_assert_eq!(ctx.precompiled.input_data.len(), 25);
                 buffer[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
@@ -1155,6 +1253,7 @@ impl OperationBusData<u64> {
     #[inline(always)]
     pub fn get_op(data: &ExtOperationData<u64>) -> u8 {
         match data {
+            ExtOperationData::OperationFloatDotData(d) => d[OP] as u8,
             ExtOperationData::OperationData(d) => d[OP] as u8,
             ExtOperationData::OperationKeccakData(d) => d[OP] as u8,
             ExtOperationData::OperationSha256Data(d) => d[OP] as u8,
@@ -1202,6 +1301,7 @@ impl OperationBusData<u64> {
     #[inline(always)]
     pub fn get_op_type(data: &ExtOperationData<u64>) -> PayloadType {
         match data {
+            ExtOperationData::OperationFloatDotData(d) => d[OP_TYPE],
             ExtOperationData::OperationData(d) => d[OP_TYPE],
             ExtOperationData::OperationKeccakData(d) => d[OP_TYPE],
             ExtOperationData::OperationSha256Data(d) => d[OP_TYPE],
@@ -1249,6 +1349,7 @@ impl OperationBusData<u64> {
     #[inline(always)]
     pub fn get_a(data: &ExtOperationData<u64>) -> PayloadType {
         match data {
+            ExtOperationData::OperationFloatDotData(d) => d[A],
             ExtOperationData::OperationData(d) => d[A],
             ExtOperationData::OperationKeccakData(d) => d[A],
             ExtOperationData::OperationSha256Data(d) => d[A],
@@ -1296,6 +1397,7 @@ impl OperationBusData<u64> {
     #[inline(always)]
     pub fn get_b(data: &ExtOperationData<u64>) -> PayloadType {
         match data {
+            ExtOperationData::OperationFloatDotData(d) => d[B],
             ExtOperationData::OperationData(d) => d[B],
             ExtOperationData::OperationKeccakData(d) => d[B],
             ExtOperationData::OperationSha256Data(d) => d[B],

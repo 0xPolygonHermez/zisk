@@ -14,11 +14,11 @@ use zisk_definitions::{
     SYSCALL_BN254_COMPLEX_MUL_ID, SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID,
     SYSCALL_BN254_CURVE_DBL_ID, SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID,
     SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_DOT_I8_ID, SYSCALL_ED25519_ADD_ID,
-    SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID,
-    SYSCALL_POSEIDON2_KOALABEAR_ID, SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID,
-    SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID,
-    SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END, ZKVMCALL_ADDR_START, ZKVMCALL_ARG_ADDR_END,
-    ZKVMCALL_ARG_ADDR_START,
+    SYSCALL_FLOATDOT_ID, SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID,
+    SYSCALL_POSEIDON2_ID, SYSCALL_POSEIDON2_KOALABEAR_ID, SYSCALL_PROFILE_ID,
+    SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID,
+    SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END, ZKVMCALL_ADDR_START,
+    ZKVMCALL_ARG_ADDR_END, ZKVMCALL_ARG_ADDR_START,
 };
 
 use zisk_core::rom_layout::InlineBody;
@@ -1966,6 +1966,9 @@ impl<'a> Riscv2ZiskContext<'a> {
             SYSCALL_DOT_I8_ID if i.rs1 != 0 => {
                 return self.transpile_precompiled_ret(i, next_instructions, "dot_i8");
             }
+            SYSCALL_FLOATDOT_ID if i.rs1 != 0 => {
+                return self.transpile_precompiled_ret(i, next_instructions, "floatdot");
+            }
             _ => {}
         }
         if i.rd == i.rs1 {
@@ -2174,11 +2177,9 @@ impl<'a> Riscv2ZiskContext<'a> {
         }
     }
 
-    /// `csrrs rd, 0x811, rs1`: the add256 precompile on the parameter block at rs1,
-    /// carry-out to rd (dropped when rd is x0). One instruction; the precompile reads
+    /// A returning precompile on the parameter block at rs1, result to rd
+    /// (dropped when rd is x0). One instruction; the precompile reads
     /// rs1 before rd is written, so rd may equal rs1.
-    /// A precompile called as `csrrs rd, port, rs1`: b = rs1 (its parameter block) and the result
-    /// c is stored in rd, unless rd is x0.
     fn transpile_precompiled_ret(
         &mut self,
         i: &RiscvInst,
@@ -3365,36 +3366,43 @@ mod tests {
     use super::*;
     use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ADDR, SRC_REG, STORE_NONE, STORE_REG};
 
-    /// `csrrs rd, 0x811, rs1` must become one add256 on the block at rs1, its carry stored in
-    /// rd, for every register combination: a C compiler may give the carry the same register
-    /// as the block pointer, and a caller that ignores the carry writes it to x0.
     #[test]
-    fn csrrs_add256_is_the_precompile_for_any_rd() {
-        let add256 = ZiskOp::try_from_name("add256").unwrap().code();
-        for (rd, rs1) in [(15, 15), (10, 15), (0, 15)] {
-            let inst = RiscvInst {
-                rom_address: ROM_ADDR,
-                inst_name: RiscvInstName::Csrrs,
-                rd,
-                rs1,
-                csr: SYSCALL_ADD256_ID as u32,
-                ..Default::default()
-            };
-            let next = RiscvInst { rom_address: ROM_ADDR + 4, ..Default::default() };
+    fn csrrs_returning_precompiles_handle_any_rd() {
+        for (name, csr) in [
+            ("add256", SYSCALL_ADD256_ID as u32),
+            ("dot_i8", SYSCALL_DOT_I8_ID as u32),
+            ("floatdot", SYSCALL_FLOATDOT_ID as u32),
+        ] {
+            let opcode = ZiskOp::try_from_name(name).unwrap().code();
+            for (rd, rs1) in [(15, 15), (10, 15), (0, 15)] {
+                let inst = RiscvInst {
+                    rom_address: ROM_ADDR,
+                    inst_name: RiscvInstName::Csrrs,
+                    rd,
+                    rs1,
+                    csr,
+                    ..Default::default()
+                };
+                let next = RiscvInst { rom_address: ROM_ADDR + 4, ..Default::default() };
 
-            let mut rom = ZiskRom::default();
-            Riscv2ZiskContext::new(&mut rom).csrrs(&inst, &[next]);
+                let mut rom = ZiskRom::default();
+                Riscv2ZiskContext::new(&mut rom).csrrs(&inst, &[next]);
 
-            assert_eq!(rom.insts.len(), 1, "rd={rd} rs1={rs1}: one instruction");
-            let zi = &rom.insts[&ROM_ADDR].i;
-            assert_eq!(zi.op, add256, "rd={rd} rs1={rs1}: add256, not a CSR write");
-            assert_eq!((zi.b_src, zi.b_offset_imm0), (SRC_REG, rs1 as u64), "rd={rd} rs1={rs1}");
-            if rd == 0 {
-                assert_eq!(zi.store, STORE_NONE, "rs1={rs1}: carry discarded");
-            } else {
-                assert_eq!((zi.store, zi.store_offset), (STORE_REG, rd as i64), "rd={rd}");
+                assert_eq!(rom.insts.len(), 1, "rd={rd} rs1={rs1}: one instruction");
+                let zi = &rom.insts[&ROM_ADDR].i;
+                assert_eq!(zi.op, opcode, "{name} rd={rd} rs1={rs1}: must call the precompile");
+                assert_eq!(
+                    (zi.b_src, zi.b_offset_imm0),
+                    (SRC_REG, rs1 as u64),
+                    "rd={rd} rs1={rs1}"
+                );
+                if rd == 0 {
+                    assert_eq!(zi.store, STORE_NONE, "rs1={rs1}: carry discarded");
+                } else {
+                    assert_eq!((zi.store, zi.store_offset), (STORE_REG, rd as i64), "rd={rd}");
+                }
+                assert_eq!((zi.jmp_offset1, zi.jmp_offset2), (0, 4), "rd={rd} rs1={rs1}");
             }
-            assert_eq!((zi.jmp_offset1, zi.jmp_offset2), (0, 4), "rd={rd} rs1={rs1}");
         }
     }
 

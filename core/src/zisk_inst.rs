@@ -95,8 +95,17 @@ pub enum ZiskOperationType {
     Fcall,
     FcallGet,
     Profile,
-    // Experimental, emulator only (no state machine yet). Kept last so the ids above don't move
+    // Experimental, emulator only (no state machine yet).
     DotI8,
+    // Appended to preserve all existing operation type IDs.
+    FloatDot,
+}
+
+impl ZiskOperationType {
+    /// Operations whose replay must reach the secondary state-machine bus.
+    pub fn is_proof_operation(self) -> bool {
+        (self > Self::Internal && self < Self::FcallParam) || self == Self::FloatDot
+    }
 }
 
 pub const NONE_OP_TYPE_ID: u32 = ZiskOperationType::None as u32;
@@ -120,6 +129,7 @@ pub const TWISTED_EDWARDS_OP_TYPE_ID: u32 = ZiskOperationType::TwistedEdwards as
 pub const BLAKE3_OP_TYPE_ID: u32 = ZiskOperationType::Blake3 as u32;
 pub const BLAKE2S_OP_TYPE_ID: u32 = ZiskOperationType::Blake2s as u32;
 pub const POSEIDON2_KOALABEAR_OP_TYPE_ID: u32 = ZiskOperationType::Poseidon2KoalaBear as u32;
+pub const FLOATDOT_OP_TYPE_ID: u32 = ZiskOperationType::FloatDot as u32;
 
 /// ZisK instruction definition
 ///

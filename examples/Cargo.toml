@@ -1,5 +1,7 @@
 [workspace]
 members = [
+  "fp32-dot/guest",
+  "floatdot/guest",
   "zisklib-demo/guest",
   "sha-hasher/host",
   "multiple-programs/host",

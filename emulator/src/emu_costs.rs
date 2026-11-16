@@ -43,6 +43,10 @@ pub fn get_ops_costs(ops: &[u64]) -> (u64, u64) {
     let mut precompiled_cost = 0;
     for (op, count) in ops.iter().enumerate() {
         if let Ok(inst) = ZiskOp::try_from_code(op as u8) {
+            assert!(
+                *count == 0 || inst != ZiskOp::FloatDot,
+                "floatdot opcode cost profiling is unsupported"
+            );
             if inst.input_size() > 0 {
                 precompiled_cost += inst.cost() * (*count);
             } else {

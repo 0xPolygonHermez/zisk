@@ -59,6 +59,9 @@ pub mod helpers;
 pub mod inst_context;
 pub mod mem;
 mod operations;
+pub use operations::{
+    floatdot_consume_mem_reads, floatdot_generate_mem_reads, validate_floatdot_replay_header,
+};
 /// Exported for the parity tests against the DMA memory-input generators.
 pub use operations::{report_memcmp_proof_reads, report_memcpy_proof_ops};
 pub mod ops_core;

@@ -5450,6 +5450,7 @@ impl ZiskRom2Asm {
             ZiskOp::DotI8 => {
                 panic!("dot_i8 is experimental and only supported by the Rust emulator (ziskemu)");
             }
+            ZiskOp::FloatDot => panic!("floatdot Assembly support is not implemented"),
             ZiskOp::Poseidon2 | ZiskOp::Poseidon1 | ZiskOp::Poseidon2KoalaBear => {
                 // In-place state of input_size bytes, handled by _opcode_<name>
                 let pname = zisk_op.name();

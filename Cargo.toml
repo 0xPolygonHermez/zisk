@@ -57,6 +57,7 @@ members = [
   "precompiles/twisted_edwards",
   "precompiles/dma",
   "precompiles/evm",
+  "precompiles/floatdot",
   "precompiles/poseidon",
   "lib-c",
   "lib-float",
@@ -121,6 +122,7 @@ zisk-precomp-big-int = { path = "precompiles/big_int", version = "1.4.0-alpha" }
 zisk-precomp-twisted-edwards = { path = "precompiles/twisted_edwards", version = "1.4.0-alpha" }
 zisk-precomp-dma = { path = "precompiles/dma", version = "1.4.0-alpha" }
 zisk-precomp-evm = { path = "precompiles/evm", version = "1.4.0-alpha" }
+zisk-precomp-floatdot = { path = "precompiles/floatdot", version = "1.4.0-alpha" }
 zisk-riscv = { path = "transpilers/riscv", version = "1.4.0-alpha" }
 zisk-transpiler-common = { path = "transpilers/common", version = "1.4.0-alpha" }
 zisk-transpiler-riscv = { path = "transpilers/riscv2zisk", version = "1.4.0-alpha" }

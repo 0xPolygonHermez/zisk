@@ -1,0 +1,101 @@
+require "floatdot/pil/components.pil"
+
+// Binary32 add/multiply with fixed RNE, gradual underflow and canonical NaNs.
+// This arithmetic relation must still be bound to the VM operation and memory buses.
+function fp32_arithmetic(expr a[],expr b[],expr is_mul,expr result[],expr flags[]) {
+    assert(length(a)==32 && length(b)==32 && length(result)==32 && length(flags)==5);
+    is_mul*(1-is_mul) === 0;
+    col witness bits(64) fp_a_sig[24],fp_a_sign,fp_a_exp,fp_a_cls[6],fp_a_ez[9],fp_a_eo[9],fp_a_fz[24];
+    col witness bits(64) fp_b_sig[24],fp_b_sign,fp_b_exp,fp_b_cls[6],fp_b_ez[9],fp_b_eo[9],fp_b_fz[24];
+    fp32_decode(a,fp_a_sig,fp_a_sign,fp_a_exp,fp_a_cls,fp_a_ez,fp_a_eo,fp_a_fz);
+    fp32_decode(b,fp_b_sig,fp_b_sign,fp_b_exp,fp_b_cls,fp_b_ez,fp_b_eo,fp_b_fz);
+
+    // Replace nonfinite values by signed zero only on the unused numeric path.
+    const expr finite_a=fp_a_cls[0]+fp_a_cls[1]+fp_a_cls[2];
+    const expr finite_b=fp_b_cls[0]+fp_b_cls[1]+fp_b_cls[2];
+    col witness bits(64) fp_a_finite_sig[24],fp_b_finite_sig[24],fp_a_eff_exp,fp_b_eff_exp;
+    for(int i=0;i<24;i++) {
+        fp_a_finite_sig[i] === finite_a*fp_a_sig[i];
+        fp_b_finite_sig[i] === finite_b*fp_b_sig[i];
+    }
+    fp_a_eff_exp === 1+finite_a*(1-fp_a_ez[8])*(fp_a_exp-1);
+    fp_b_eff_exp === 1+finite_b*(1-fp_b_ez[8])*(fp_b_exp-1);
+    expr abs_a=0;
+    expr abs_b=0;
+    for(int i=0;i<31;i++) { abs_a=abs_a+a[i]*2**i; abs_b=abs_b+b[i]*2**i; }
+    col witness bits(64) fp_compare[32],fp_delta[8],fp_align_bits[6];
+    fp32_pack(fp_compare) === finite_a*abs_a-finite_b*abs_b+2**31;
+    const expr ge=fp_compare[31];
+    const expr large_exp=ge*fp_a_eff_exp+(1-ge)*fp_b_eff_exp;
+    const expr small_exp=(1-ge)*fp_a_eff_exp+ge*fp_b_eff_exp;
+    fp32_pack(fp_delta) === large_exp-small_exp;
+    const expr saturate=1-(1-fp_delta[6])*(1-fp_delta[7]);
+    for(int i=0;i<6;i++) { fp_align_bits[i] === saturate+(1-saturate)*fp_delta[i]; }
+    expr left[27];
+    expr right_input[48];
+    for(int i=0;i<48;i++) {
+        if(i<3 || i>=27) { right_input[i]=0; }
+        else { right_input[i]=(1-ge)*fp_a_finite_sig[i-3]+ge*fp_b_finite_sig[i-3]; }
+    }
+    for(int i=0;i<27;i++) {
+        if(i<3) { left[i]=0; }
+        else { left[i]=ge*fp_a_finite_sig[i-3]+(1-ge)*fp_b_finite_sig[i-3]; }
+    }
+    col witness bits(64) fp_align_stages[6][48],fp_align_sticky[6][33];
+    fp32_shift_jam(right_input,fp_align_bits,fp_align_stages,fp_align_sticky);
+    expr right[27];
+    for(int i=0;i<27;i++) { right[i]=fp_align_stages[5][i]; }
+    col witness bits(64) fp_sign_xor,fp_sum[28],fp_product[48];
+    fp_sign_xor === fp_a_sign+fp_b_sign-2*fp_a_sign*fp_b_sign;
+    fp32_add_significands(left,right,fp_sign_xor,fp_sum);
+    fp32_mul_significands(fp_a_finite_sig,fp_b_finite_sig,fp_product);
+
+    col witness bits(64) fp_norm_raw[48],fp_norm_norm[48],fp_norm_high_index[6],fp_norm_prefix[49],fp_norm_leading[48];
+    for(int i=0;i<48;i++) {
+        if(i<28) { fp_norm_raw[i] === is_mul*fp_product[i]+(1-is_mul)*fp_sum[i]; }
+        else { fp_norm_raw[i] === is_mul*fp_product[i]; }
+    }
+    fp32_normalize(fp_norm_raw,fp_norm_norm,fp_norm_high_index,fp_norm_prefix,fp_norm_leading);
+    col witness bits(64) fp_norm_tail[22],fp_norm_sig[27],fp_exponent[10],fp_sign;
+    fp_norm_tail[0] === fp_norm_norm[0];
+    for(int i=1;i<22;i++) {
+        fp_norm_tail[i] === fp_norm_tail[i-1]+fp_norm_norm[i]-fp_norm_tail[i-1]*fp_norm_norm[i];
+    }
+    fp_norm_sig[0] === fp_norm_tail[21];
+    for(int i=1;i<27;i++) { fp_norm_sig[i] === fp_norm_norm[i+21]; }
+    const expr high=fp32_pack(fp_norm_high_index);
+    fp32_pack(fp_exponent) === is_mul*(fp_a_eff_exp+fp_b_eff_exp+high+212)
+        +(1-is_mul)*(large_exp+high+359);
+    // Opposite-signed exact cancellation is +0; -0 + -0 remains -0.
+    fp_sign === is_mul*fp_sign_xor+(1-is_mul)*(ge*fp_a_sign+(1-ge)*fp_b_sign)
+        *(1-fp_sign_xor*fp_norm_prefix[0]);
+
+    col witness bits(64) fp_round_exp_lower[10],fp_round_exp_upper[10],fp_round_under_diff[11],fp_round_tiny_diff[11];
+    col witness bits(64) fp_round_shift_amount[8],fp_round_shift_bits[6],fp_round_stages[6][48],fp_round_sticky[6][33];
+    col witness bits(64) fp_round_rounded[25],fp_round_inexact,fp_round_top_ones[26],fp_round_overflow_diff[11];
+    col witness bits(64) fp_round_result[32],fp_round_flags[5];
+    fp32_round_pack(fp_norm_sig,fp_exponent,fp_sign,fp_round_exp_lower,fp_round_exp_upper,
+        fp_round_under_diff,fp_round_tiny_diff,fp_round_shift_amount,fp_round_shift_bits,
+        fp_round_stages,fp_round_sticky,fp_round_rounded,fp_round_inexact,fp_round_top_ones,
+        fp_round_overflow_diff,fp_round_result,fp_round_flags);
+
+    const expr a_nan=fp_a_cls[4]+fp_a_cls[5];
+    const expr b_nan=fp_b_cls[4]+fp_b_cls[5];
+    const expr any_nan=a_nan+b_nan-a_nan*b_nan;
+    const expr any_snan=fp_a_cls[5]+fp_b_cls[5]-fp_a_cls[5]*fp_b_cls[5];
+    const expr invalid_mul=fp_a_cls[3]*fp_b_cls[0]+fp_b_cls[3]*fp_a_cls[0];
+    const expr invalid_add=fp_a_cls[3]*fp_b_cls[3]*fp_sign_xor;
+    col witness bits(64) fp_invalid,fp_nan,fp_inf;
+    fp_invalid === any_snan+is_mul*invalid_mul+(1-is_mul)*invalid_add;
+    fp_nan === any_nan+fp_invalid-any_nan*fp_invalid;
+    fp_inf === (1-fp_nan)*(fp_a_cls[3]+fp_b_cls[3]-fp_a_cls[3]*fp_b_cls[3]);
+    const expr finite=1-fp_nan-fp_inf;
+    const expr inf_sign=is_mul*fp_sign_xor+(1-is_mul)
+        *(fp_a_cls[3]*fp_a_sign+(1-fp_a_cls[3])*fp_b_sign);
+    fp32_pack(result) === fp_nan*0x7fc00000+fp_inf*(0x7f800000+2**31*inf_sign)
+        +finite*fp32_pack(fp_round_result);
+    fp32_pack(flags);
+    for(int i=0;i<3;i++) { flags[i] === finite*fp_round_flags[i]; }
+    flags[3] === 0;
+    flags[4] === fp_invalid;
+}

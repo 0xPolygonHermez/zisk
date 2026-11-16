@@ -1,0 +1,171 @@
+require "floatdot/pil/arithmetic.pil"
+require "operations.pil"
+
+// One operand vector: prove the accessed word address and lane without wrap, select the
+// lane, and embed it exactly as binary32. FP32 uses an effective stride of two halfwords.
+function floatdot_operand(expr word[][],expr base[],expr stride[],expr idx,expr bf16,expr fp16,
+        expr waddr[],expr lane[],expr sel[],expr op[],expr lead[],expr ez,expr eo) {
+    const expr f32=1-bf16-fp16;
+    // base and stride booleanity is constrained by the caller's packing.
+    expr base_value=0;
+    expr stride_value=0;
+    for(int i=0;i<31;i++) { base_value=base_value+base[i]*2**i; }
+    for(int i=0;i<16;i++) { stride_value=stride_value+stride[i]*2**i; }
+    4*fp32_pack(waddr)+fp32_pack(lane) === base_value+(stride_value+2*f32)*idx;
+    f32*stride_value === 0;
+    f32*base[0] === 0;
+    f32*base[1] === 0;
+    for(int i=0;i<16;i++) {
+        sel[i] === (1-lane[1])*((1-lane[0])*word[0][i]+lane[0]*word[0][16+i])
+            +lane[1]*((1-lane[0])*word[1][i]+lane[0]*word[1][16+i]);
+    }
+    fp32_pack(op);
+    for(int i=0;i<32;i++) {
+        f32*(op[i]-((1-lane[1])*word[0][i]+lane[1]*word[1][i])) === 0;
+        if(i<16) { bf16*op[i] === 0; } else { bf16*(op[i]-sel[i-16]) === 0; }
+    }
+    // FP16: zero, leading-one normalized subnormal, normal, or inf/NaN with payload.
+    expr none=1;
+    expr all=1;
+    expr e5=0;
+    for(int j=0;j<5;j++) { none=none*(1-sel[10+j]); all=all*sel[10+j]; e5=e5+sel[10+j]*2**j; }
+    ez === none;
+    eo === all;
+    expr lead_sum=0;
+    expr lead_exp=0;
+    for(int k=0;k<10;k++) {
+        lead_sum=lead_sum+lead[k];
+        lead_exp=lead_exp+lead[k]*(103+k);
+        (1-fp16)*lead[k] === 0;
+        lead[k]*(1-sel[k]) === 0;
+        for(int j=k+1;j<10;j++) { lead[k]*sel[j] === 0; }
+    }
+    fp32_pack(lead);
+    lead_sum*(1-lead_sum) === 0;
+    (1-ez)*lead_sum === 0;
+    for(int j=0;j<10;j++) { fp16*ez*(1-lead_sum)*sel[j] === 0; }
+    expr exponent=0;
+    for(int i=0;i<8;i++) { exponent=exponent+op[23+i]*2**i; }
+    fp16*(exponent-((1-ez-eo)*(e5+112)+eo*255+lead_exp)) === 0;
+    for(int i=0;i<23;i++) {
+        expr m=0;
+        if(i>=13) { m=(1-lead_sum)*sel[i-13]; }
+        for(int k=0;k<10;k++) { if(i-23+k>=0 && i-23+k<k) { m=m+lead[k]*sel[i-23+k]; } }
+        fp16*(op[i]-m) === 0;
+    }
+    fp16*(op[31]-sel[15]) === 0;
+}
+
+// Complete calls use two rows per term, or two inactive arithmetic rows for n=0.
+// Descriptor word 4 selects the input format; accumulation is always binary32.
+airtemplate FloatDot(const int N=2**14, const int with_bus=1) {
+    assert(N >= 8192 && N % 8192 == 0);
+    col fixed FIRST = [1,0:N-1];
+    col fixed LAST = [0:N-1,1];
+    col fixed ADD = [[0,1]:N/2];
+
+    col witness bits(64) a[32],b[32],is_mul,result[32],flags[5];
+    fp32_arithmetic(a,b,is_mul,result,flags);
+    is_mul === 1-ADD;
+
+    col witness bits(64) in_use,descriptor[29],x_half[31],y_half[31],step[36],count[13];
+    col witness bits(64) bf16,fp16,x_stride[16],y_stride[16],load;
+    col witness bits(64) initial[32],initial_flags[5],returned[32],returned_flags[5];
+    col witness bits(64) descriptor_end[29],length_bound[13],length_zero[14];
+    col witness bits(64) remaining[14],acc[32],sticky[5],x_word[2][32],y_word[2][32];
+    col witness bits(64) start,end,index[12],last_zero[14];
+    col witness bits(64) x_waddr[29],x_lane[2],x_sel[16],x_op[32],x_lead[10],x_ez,x_eo;
+    col witness bits(64) y_waddr[29],y_lane[2],y_sel[16],y_op[32],y_lead[10],y_ez,y_eo;
+    bf16*(1-bf16) === 0;
+    fp16*(1-fp16) === 0;
+    bf16*fp16 === 0;
+    in_use*(1-in_use) === 0;
+    start*(1-start) === 0;
+    end*(1-end) === 0;
+    start === FIRST+(1-FIRST)*'end;
+    start*ADD === 0;
+    const expr idx=fp32_pack(index);
+    idx === (1-start)*('idx+'ADD);
+    LAST*(1-end) === 0;
+    const expr dp=fp32_pack(descriptor);
+    const expr xh=fp32_pack(x_half);
+    const expr yh=fp32_pack(y_half);
+    const expr xs=fp32_pack(x_stride);
+    const expr ys=fp32_pack(y_stride);
+    const expr sp=fp32_pack(step);
+    const expr len=fp32_pack(count);
+    const expr init=fp32_pack(initial);
+    const expr init_flags=fp32_pack(initial_flags);
+    const expr out=fp32_pack(returned);
+    const expr out_flags=fp32_pack(returned_flags);
+    fp32_pack(descriptor_end) === dp+4;
+    fp32_pack(length_bound) === 4096-len;
+    length_zero[0] === 1;
+    for(int i=0;i<13;i++) { length_zero[i+1] === length_zero[i]*(1-count[i]); }
+    fp32_pack(remaining) === len-idx-1+8192;
+    length_zero[13]*idx === 0;
+    (1-length_zero[13])*(1-remaining[13]) === 0;
+    (1-in_use)*len === 0;
+    last_zero[0] === 1;
+    for(int i=0;i<13;i++) { last_zero[i+1] === last_zero[i]*(1-remaining[i]); }
+    end === ADD*(length_zero[13]+(1-length_zero[13])*last_zero[13]);
+    const expr active=in_use*remaining[13];
+    const expr keep=1-start;
+    keep*(in_use-'in_use) === 0;
+    keep*(dp-'dp) === 0;
+    keep*(xh-'xh) === 0;
+    keep*(yh-'yh) === 0;
+    keep*(xs-'xs) === 0;
+    keep*(ys-'ys) === 0;
+    keep*(bf16-'bf16) === 0;
+    keep*(fp16-'fp16) === 0;
+    keep*(sp-'sp) === 0;
+    keep*(len-'len) === 0;
+    keep*(init-'init) === 0;
+    keep*(init_flags-'init_flags) === 0;
+    keep*(out-'out) === 0;
+    keep*(out_flags-'out_flags) === 0;
+
+    // Every lane is memory-bound, including the ignored high half of an odd FP32 tail.
+    // FP32 loads a packed pair on even multiply rows; 16-bit formats load every term.
+    load === (1-ADD)*(1-(1-bf16-fp16)*index[0]);
+    floatdot_operand(x_word,x_half,x_stride,idx,bf16,fp16,x_waddr,x_lane,x_sel,x_op,x_lead,x_ez,x_eo);
+    floatdot_operand(y_word,y_half,y_stride,idx,bf16,fp16,y_waddr,y_lane,y_sel,y_op,y_lead,y_ez,y_eo);
+    for(int half=0;half<2;half++) {
+        fp32_pack(x_word[half]);
+        fp32_pack(y_word[half]);
+        for(int i=0;i<32;i++) {
+            (1-load)*(x_word[half][i]-'x_word[half][i]) === 0;
+            (1-load)*(y_word[half][i]-'y_word[half][i]) === 0;
+        }
+    }
+    fp32_pack(acc);
+    fp32_pack(sticky);
+    for(int i=0;i<32;i++) {
+        start*(acc[i]-initial[i]) === 0;
+        keep*(acc[i]-('active*'ADD*'result[i]+(1-'active*'ADD)*'acc[i])) === 0;
+        a[i] === active*(ADD*acc[i]+(1-ADD)*x_op[i]);
+        b[i] === active*(ADD*'result[i]+(1-ADD)*y_op[i]);
+        end*(returned[i]-(active*result[i]+(1-active)*acc[i])) === 0;
+    }
+    for(int i=0;i<5;i++) {
+        start*(sticky[i]-initial_flags[i]) === 0;
+        keep*(sticky[i]-('sticky[i]+'active*'flags[i]*(1-'sticky[i]))) === 0;
+        end*(returned_flags[i]-(sticky[i]+active*flags[i]*(1-sticky[i]))) === 0;
+    }
+
+    if(with_bus) {
+        const expr call_sel=start*in_use;
+        proves_operation(op:OP_FLOATDOT, b:[8*dp,0], c:[out,out_flags], main_step:sp, mul:call_sel);
+        precompiled_mem_op(addr:8*dp, main_step:sp, value:[2*xh,xs], sel:call_sel);
+        precompiled_mem_op(addr:8*dp+8, main_step:sp, value:[2*yh,ys], sel:call_sel);
+        precompiled_mem_op(addr:8*dp+16, main_step:sp, value:[len,0], sel:call_sel);
+        precompiled_mem_op(addr:8*dp+24, main_step:sp, value:[init,0], sel:call_sel);
+        precompiled_mem_op(addr:8*dp+32, main_step:sp, value:[init_flags+256*bf16+512*fp16,0],
+            sel:call_sel);
+        precompiled_mem_op(addr:8*fp32_pack(x_waddr), main_step:sp,
+            value:[fp32_pack(x_word[0]),fp32_pack(x_word[1])], sel:active*load);
+        precompiled_mem_op(addr:8*fp32_pack(y_waddr), main_step:sp,
+            value:[fp32_pack(y_word[0]),fp32_pack(y_word[1])], sel:active*load);
+    }
+}

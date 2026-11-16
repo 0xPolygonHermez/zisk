@@ -14,3 +14,6 @@ pub use dma_memset::*;
 pub use dot_i8::*;
 pub use evm_jump_dest::*;
 pub use profile::*;
+
+mod floatdot;
+pub use floatdot::*;

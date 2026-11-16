@@ -2008,6 +2008,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "floatdot-guest"
+version = "0.1.0"
+dependencies = [
+ "zisk-definitions",
+ "ziskos",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2032,6 +2040,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "fp32-dot-guest"
+version = "0.1.0"
+dependencies = [
+ "zisk-definitions",
+ "ziskos",
 ]
 
 [[package]]
@@ -7035,6 +7051,7 @@ dependencies = [
  "zisk-precomp-common",
  "zisk-precomp-dma",
  "zisk-precomp-evm",
+ "zisk-precomp-floatdot",
  "zisk-precomp-hints",
  "zisk-precomp-keccakf",
  "zisk-precomp-poseidon",
@@ -7220,6 +7237,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-precomp-floatdot"
+version = "1.4.0-alpha"
+dependencies = [
+ "proofman-common",
+ "proofman-fields",
+ "zisk-common",
+ "zisk-core",
+ "zisk-pil",
+ "zisk-precomp-common",
+ "zisk-precomp-helpers",
+]
+
+[[package]]
 name = "zisk-precomp-helpers"
 version = "1.4.0-alpha"
 dependencies = [
@@ -7233,6 +7263,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "zisk-circuit",
+ "zisk-definitions",
  "zisk-lib-c",
 ]
 

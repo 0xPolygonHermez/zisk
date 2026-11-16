@@ -1,0 +1,40 @@
+require "../pil/components.pil"
+airtemplate Multiply(int N = 8) {
+    col witness a[24], b[24], product[48];
+    fp32_mul_significands(a,b,product);
+}
+airtemplate Add(int N = 8) {
+    col witness a[27], b[27], subtract, result[28];
+    fp32_add_significands(a,b,subtract,result);
+}
+airtemplate Round(int N = 8) {
+    col witness sig[27], rounded[25], inexact;
+    fp32_rne(sig,rounded,inexact);
+}
+airtemplate Shift(int N = 8) {
+    col witness input[48], amount[6], stages[6][48], sticky[6][33];
+    fp32_shift_jam(input,amount,stages,sticky);
+}
+airgroup Fp32Components {
+    Multiply(); Add(); Round(); Shift();
+}
+airtemplate Decode(int N=8) {
+    col witness raw[32], sig[24], sign, exponent;
+    col witness classes[6], exp_zero[9], exp_ones[9], frac_zero[24];
+    fp32_decode(raw,sig,sign,exponent,classes,exp_zero,exp_ones,frac_zero);
+}
+airgroup Fp32Components { Decode(); }
+airtemplate Normalize(int N=8) {
+    col witness raw[48], normalized[48], high_index[6], prefix[49], leading[48];
+    fp32_normalize(raw,normalized,high_index,prefix,leading);
+}
+airgroup Fp32Components { Normalize(); }
+airtemplate RoundPack(int N=8) {
+    col witness sig[27], exponent[10], sign, exp_lower[10],exp_upper[10];
+    col witness under_diff[11],tiny_diff[11],shift_amount[8],shift_bits[6];
+    col witness stages[6][48],sticky[6][33],rounded[25],inexact,top_ones[26];
+    col witness overflow_diff[11],result[32],flags[5];
+    fp32_round_pack(sig,exponent,sign,exp_lower,exp_upper,under_diff,tiny_diff,shift_amount,
+        shift_bits,stages,sticky,rounded,inexact,top_ones,overflow_diff,result,flags);
+}
+airgroup Fp32Components { RoundPack(); }

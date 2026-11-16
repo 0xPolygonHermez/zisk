@@ -1,0 +1,2 @@
+require "floatdot/pil/floatdot.pil"
+airgroup Fp32Test { FloatDot(N:16384,with_bus:0); }
