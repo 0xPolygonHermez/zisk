@@ -6,6 +6,8 @@ use std::path::Path;
 
 use ziskos::zisklib::{FCALL_INPUT_READY_ID, FCALL_RANDOM_SEED_ID};
 
+#[cfg(feature = "sp")]
+use crate::SRC_SP;
 use crate::{
     frops_asm::{self, FropsCallSite, FropsOperand, FropsSpec},
     zisk_ops::ZiskOp,
@@ -1606,6 +1608,19 @@ impl ZiskRom2Asm {
                 }
                 ctx.a.is_saved = !ctx.store_a_in_c;
             }
+            #[cfg(feature = "sp")]
+            SRC_SP => {
+                *code += &ctx.full_line_comment("a=SRC_SP".to_string());
+                let store_a_reg = if ctx.store_a_in_c { REG_C } else { REG_A };
+                let store_a_reg_name = if ctx.store_a_in_c { "c" } else { "a" };
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    store_a_reg,
+                    ctx.mem_sp,
+                    ctx.comment(format!("{store_a_reg_name} = sp"))
+                );
+                ctx.a.is_saved = !ctx.store_a_in_c;
+            }
             _ => {
                 panic!("ZiskRom::source_a() Invalid a_src={} pc={}", instruction.a_src, ctx.pc)
             }
@@ -2259,7 +2274,7 @@ impl ZiskRom2Asm {
                         *code += &format!(
                             "\tmov {}, 0x{:x} {}\n",
                             reg_address,
-                            ctx.a.constant_value + instruction.store_offset as u64,
+                            ctx.a.constant_value.wrapping_add(instruction.store_offset as u64),
                             ctx.comment_str("a(address) = imm + offset")
                         );
                     } else if instruction.store_offset != 0 {
@@ -2645,6 +2660,45 @@ impl ZiskRom2Asm {
         // *code += &format!("\tmov rsi, {}\n", REG_C);
         // *code += &format!("\tcall _print_pc\n");
         // Self::pop_internal_registers(ctx, code, false);
+
+        /******/
+        /* SP */
+        /******/
+
+        // Update sp after the store: sp = (set_sp ? c : sp) + inc_sp. It is done before the
+        // step accounting, so that a chunk starting at the next step records the new sp.
+        #[cfg(feature = "sp")]
+        if instruction.set_sp || instruction.inc_sp != 0 {
+            *code += &ctx.full_line_comment("SP".to_string());
+            if instruction.set_sp {
+                if ctx.c.is_constant {
+                    *code += &format!(
+                        "\tmov {}, 0x{:x} {}\n",
+                        REG_VALUE,
+                        ctx.c.constant_value.wrapping_add_signed(instruction.inc_sp),
+                        ctx.comment_str("value = c(const) + inc_sp")
+                    );
+                } else {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_VALUE,
+                        ctx.c.string_value,
+                        ctx.comment_str("value = c")
+                    );
+                    Self::add_inc_sp(ctx, code, instruction.inc_sp);
+                }
+            } else {
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_VALUE,
+                    ctx.mem_sp,
+                    ctx.comment_str("value = sp")
+                );
+                Self::add_inc_sp(ctx, code, instruction.inc_sp);
+            }
+            *code +=
+                &format!("\tmov {}, {} {}\n", ctx.mem_sp, REG_VALUE, ctx.comment_str("sp = value"));
+        }
 
         /********/
         /* STEP */
@@ -7096,6 +7150,32 @@ impl ZiskRom2Asm {
     /**********/
     /* SET PC */
     /**********/
+
+    /// Adds the signed `inc_sp` to REG_VALUE, as an immediate when it fits in 32 bits (what
+    /// x86 `add` sign-extends) or through REG_AUX otherwise
+    #[cfg(feature = "sp")]
+    fn add_inc_sp(ctx: &mut ZiskAsmContext, code: &mut String, inc_sp: i64) {
+        if inc_sp == 0 {
+            return;
+        }
+        if i32::try_from(inc_sp).is_ok() {
+            *code += &format!(
+                "\tadd {}, {} {}\n",
+                REG_VALUE,
+                inc_sp,
+                ctx.comment_str("value += inc_sp")
+            );
+        } else {
+            *code += &format!(
+                "\tmov {}, 0x{:x} {}\n",
+                REG_AUX,
+                inc_sp as u64,
+                ctx.comment_str("aux = inc_sp")
+            );
+            *code +=
+                &format!("\tadd {}, {} {}\n", REG_VALUE, REG_AUX, ctx.comment_str("value += aux"));
+        }
+    }
 
     fn set_pc(
         ctx: &mut ZiskAsmContext,

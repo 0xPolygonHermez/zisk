@@ -8,8 +8,8 @@ use crate::{
     SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
-// #[cfg(feature = "sp")]
-// use crate::SRC_SP;
+#[cfg(feature = "sp")]
+use crate::SRC_SP;
 
 /// Helps building a Zisk instruction during the transpilation process
 #[derive(Debug, Clone, Default)]
@@ -67,8 +67,8 @@ impl ZiskInstBuilder {
             "imm" => SRC_IMM,
             "lastc" => SRC_C,
             "step" => SRC_STEP,
-            // #[cfg(feature = "sp")]
-            // "sp" => SRC_SP,
+            #[cfg(feature = "sp")]
+            "sp" => SRC_SP,
             _ => panic!("ZiskInstBuilder::a_src() called with invalid src={src}"),
         }
     }
@@ -111,8 +111,15 @@ impl ZiskInstBuilder {
         ((a & 0xFFFFFFFF) as u32, (a >> 32) as u32)
     }
 
-    /// Sets the a source instruction sttributes
+    /// Sets the a source instruction sttributes.
+    ///
+    /// `use_sp` adds the sp register to the address, so it is only valid on a `mem` source: a
+    /// register is never sp-relative, not even one held in memory.
     pub fn src_a(&mut self, src_input: &str, offset_imm_reg_input: u64, use_sp: bool) {
+        assert!(
+            !use_sp || src_input == "mem",
+            "ZiskInstBuilder::src_a() use_sp is only valid on a mem source, got src={src_input}"
+        );
         let mut src = src_input;
         let mut offset_imm_reg = offset_imm_reg_input;
         if src == "reg" {
@@ -131,11 +138,7 @@ impl ZiskInstBuilder {
         self.i.a_src = self.a_src(src);
 
         if self.i.a_src == SRC_REG || self.i.a_src == SRC_MEM {
-            if use_sp {
-                self.i.a_use_sp_imm1 = 1;
-            } else {
-                self.i.a_use_sp_imm1 = 0;
-            }
+            self.i.a_use_sp_imm1 = use_sp as u64;
             self.i.a_offset_imm0 = offset_imm_reg;
         } else if self.i.a_src == SRC_IMM {
             let (v0, v1) = Self::nto32s(offset_imm_reg as i128);
@@ -147,8 +150,15 @@ impl ZiskInstBuilder {
         }
     }
 
-    /// Sets the b source instruction sttributes
+    /// Sets the b source instruction sttributes.
+    ///
+    /// `use_sp` adds the sp register to the address, so it is only valid on a `mem` or `ind`
+    /// source.
     pub fn src_b(&mut self, src_input: &str, offset_imm_reg_input: u64, use_sp: bool) {
+        assert!(
+            !use_sp || src_input == "mem" || src_input == "ind",
+            "ZiskInstBuilder::src_b() use_sp is only valid on a mem or ind source, got src={src_input}"
+        );
         let mut src = src_input;
         let mut offset_imm_reg = offset_imm_reg_input;
         if src == "reg" {
@@ -165,11 +175,7 @@ impl ZiskInstBuilder {
         self.i.b_src = self.b_src(src);
 
         if self.i.b_src == SRC_REG || self.i.b_src == SRC_MEM || self.i.b_src == SRC_IND {
-            if use_sp {
-                self.i.b_use_sp_imm1 = 1;
-            } else {
-                self.i.b_use_sp_imm1 = 0;
-            }
+            self.i.b_use_sp_imm1 = use_sp as u64;
             self.i.b_offset_imm0 = offset_imm_reg;
         } else if self.i.b_src == SRC_IMM {
             let (v0, v1) = Self::nto32s(offset_imm_reg as i128);
@@ -181,8 +187,15 @@ impl ZiskInstBuilder {
         }
     }
 
-    /// Sets the c store instruction attributes
+    /// Sets the c store instruction attributes.
+    ///
+    /// `use_sp` adds the sp register to the address, so it is only valid on a `mem` or `ind`
+    /// store.
     pub fn store(&mut self, dst_input: &str, offset_input: i64, use_sp: bool, store_pc: bool) {
+        assert!(
+            !use_sp || dst_input == "mem" || dst_input == "ind",
+            "ZiskInstBuilder::store() use_sp is only valid on a mem or ind store, got dst={dst_input}"
+        );
         let mut dst = dst_input;
         let mut offset = offset_input;
         if dst == "reg" {
@@ -216,10 +229,11 @@ impl ZiskInstBuilder {
         self.i.set_pc = true;
     }
 
-    // #[cfg(feature = "sp")]
-    // pub fn set_sp(&mut self) {
-    //     self.i.set_sp = true;
-    // }
+    /// Sets the set sp flag to true: after the store, sp = c + inc_sp
+    #[cfg(feature = "sp")]
+    pub fn set_sp(&mut self) {
+        self.i.set_sp = true;
+    }
 
     /// Sets the opcode, and other instruction attributes that depend on it
     pub fn op(&mut self, optxt: &str) -> Result<(), InvalidNameError> {
@@ -258,10 +272,11 @@ impl ZiskInstBuilder {
         self.i.end = true;
     }
 
-    // #[cfg(feature = "sp")]
-    // pub fn inc_sp(&mut self, inc: u64) {
-    //     self.i.inc_sp += inc;
-    // }
+    /// Adds a signed increment to sp, applied after the store
+    #[cfg(feature = "sp")]
+    pub fn inc_sp(&mut self, inc: i64) {
+        self.i.inc_sp += inc;
+    }
 
     /// Sets a verbose description of the instruction
     pub fn verbose(&mut self, s: &str) {

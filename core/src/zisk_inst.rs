@@ -21,7 +21,12 @@
 //! | SRC_MEM  | a and b     | Value read from current memory at a constant address     |
 //! | SRC_IMM  | a and b     | Constant (immediate) value                               |
 //! | SRC_STEP | a           | Current execution step                                   |
+//! | SRC_SP   | a           | Current value of the sp register (`sp` feature)          |
 //! | SRC_IND  | b           | Value read from current memory at indirect address a + b |
+//!
+//! A memory-addressed source (SRC_MEM for a and b, SRC_IND for b) adds the current value of the
+//! sp register to its address when its `use_sp` field (`a_use_sp_imm1` / `b_use_sp_imm1`) is 1;
+//! for an immediate source (SRC_IMM) the same field holds the higher 32 bits of the value.
 //!
 //! # Zisk register store
 //!
@@ -34,6 +39,16 @@
 //! | STORE_REG  | c        | Value is stored in register at a constant index             |
 //! | STORE_MEM  | c        | Value is stored in memory at a constant address             |
 //! | STORE_IND  | c        | value is stored in memory at an indirect address a + offset |
+//!
+//! A memory-addressed store (STORE_MEM, STORE_IND) adds the current value of the sp register to
+//! its address when `store_use_sp` is set.
+//!
+//! # sp register
+//!
+//! sp is a register of the ZisK machine itself (not the RISC-V `x2`), starting at 0. With the
+//! `sp` feature, after the result has been stored every instruction updates it as
+//! `sp = (set_sp ? c : sp) + inc_sp`, so the next instruction sees the new value. Without it
+//! nothing can change sp, which stays 0.
 
 use crate::{source_to_str, store_to_str, zisk_ops::ZiskOp, InstContext, BLAKE2B_RD_CHAIN};
 
@@ -45,8 +60,13 @@ pub const SRC_MEM: u64 = 1;
 pub const SRC_IMM: u64 = 2;
 /// a register source is the current execution step
 pub const SRC_STEP: u64 = 3;
-// #[cfg(feature = "sp")]
-// pub const SRC_SP: u64 = 4;
+/// Whether this build supports the sp register (the `sp` feature). Crates that implement sp
+/// behaviour behind their own `sp` feature check it against this, so that a build where only
+/// zisk-core has sp fails to compile instead of silently ignoring sp updates.
+pub const SP_ENABLED: bool = cfg!(feature = "sp");
+/// a register source is the current value of the sp register
+#[cfg(feature = "sp")]
+pub const SRC_SP: u64 = 4;
 /// b register source is value read from memory at an indirect address a + b
 pub const SRC_IND: u64 = 5;
 /// a or b registers source is value read from register at a constant index
@@ -135,11 +155,13 @@ pub struct ZiskInst {
     pub store_offset: i64,
     pub set_pc: bool,
     pub is_precompiled: bool,
-    // #[cfg(feature = "sp")]
-    // pub set_sp: bool,
+    /// After the store, sp = c + inc_sp instead of sp + inc_sp
+    #[cfg(feature = "sp")]
+    pub set_sp: bool,
     pub ind_width: u64,
-    // #[cfg(feature = "sp")]
-    // pub inc_sp: u64,
+    /// Signed increment added to sp after the store
+    #[cfg(feature = "sp")]
+    pub inc_sp: i64,
     pub end: bool,
     pub a_src: u64,
     pub a_use_sp_imm1: u64,
@@ -182,11 +204,11 @@ impl Default for ZiskInst {
             store_offset: 0,
             set_pc: false,
             is_precompiled: false,
-            // #[cfg(feature = "sp")]
-            // set_sp: false,
+            #[cfg(feature = "sp")]
+            set_sp: false,
             ind_width: 0,
-            // #[cfg(feature = "sp")]
-            // inc_sp: 0,
+            #[cfg(feature = "sp")]
+            inc_sp: 0,
             end: false,
             a_src: 0,
             a_use_sp_imm1: 0,
@@ -285,14 +307,14 @@ impl ZiskInst {
         if self.jmp_offset2 != 0 {
             s += &format!(" jmp_offset2={}", self.jmp_offset2);
         }
-        // #[cfg(feature = "sp")]
-        // if self.set_sp {
-        //     s += &(" set_sp=".to_string() + &self.set_sp.to_string());
-        // }
-        // #[cfg(feature = "sp")]
-        // if self.inc_sp != 0 {
-        //     s += &(" inc_sp=".to_string() + &self.inc_sp.to_string());
-        // }
+        #[cfg(feature = "sp")]
+        if self.set_sp {
+            s += &format!(" set_sp={}", self.set_sp);
+        }
+        #[cfg(feature = "sp")]
+        if self.inc_sp != 0 {
+            s += &format!(" inc_sp={}", self.inc_sp);
+        }
         if self.end {
             s += &format!(" end={}", self.end);
         }
@@ -316,20 +338,36 @@ impl ZiskInst {
         s
     }
 
+    /// Returns true if the instruction reads or updates the sp register: an sp-relative memory
+    /// operand or store and, with the `sp` feature, an `sp` a source or an sp update (`set_sp`,
+    /// `inc_sp`).
+    pub fn uses_sp(&self) -> bool {
+        let sp_relative = (self.a_src == SRC_MEM && self.a_use_sp_imm1 != 0)
+            || ((self.b_src == SRC_MEM || self.b_src == SRC_IND) && self.b_use_sp_imm1 != 0)
+            || ((self.store == STORE_MEM || self.store == STORE_IND) && self.store_use_sp);
+        #[cfg(feature = "sp")]
+        let sp_relative = sp_relative || self.a_src == SRC_SP || self.set_sp || self.inc_sp != 0;
+        sp_relative
+    }
+
     /// Generates a single line of ZisK assembly code representing this instruction,
     /// following the syntax specified in `ziskasm/ziskasm.md`.
     ///
     /// The general format is:
-    /// `operation(a_source, b_source) -> c_storage, j(jump1, jump2), setpc(jump), sp, end`
-    /// where the `-> c_storage`, `j(...)`/`setpc(...)`, `sp` and `end` parts are optional.
+    /// `operation(a_source, b_source) -> c_storage, j(jump1, jump2), setpc(jump), setsp,
+    /// incsp(N), end`, where the `-> c_storage`, `j(...)`/`setpc(...)`, `setsp`, `incsp(...)` and
+    /// `end` parts are optional. An sp-relative memory operand is written `[sp + N]`, and an
+    /// sp-relative indirection `W[a + sp + N]`.
     pub fn to_zisk_asm(&self) -> String {
         // a_source
         let a_source = match self.a_src {
             SRC_C => "c".to_string(),
             SRC_REG => format!("r{}", self.a_offset_imm0),
-            SRC_MEM => format!("[0x{:x}]", self.a_offset_imm0),
+            SRC_MEM => Self::mem_operand(self.a_use_sp_imm1 != 0, self.a_offset_imm0),
             SRC_IMM => format!("0x{:x}", self.a_offset_imm0 | (self.a_use_sp_imm1 << 32)),
             SRC_STEP => "step".to_string(),
+            #[cfg(feature = "sp")]
+            SRC_SP => "sp".to_string(),
             _ => format!("<invalid a_src={}>", self.a_src),
         };
 
@@ -337,9 +375,13 @@ impl ZiskInst {
         let b_source = match self.b_src {
             SRC_C => "c".to_string(),
             SRC_REG => format!("r{}", self.b_offset_imm0),
-            SRC_MEM => format!("[0x{:x}]", self.b_offset_imm0),
+            SRC_MEM => Self::mem_operand(self.b_use_sp_imm1 != 0, self.b_offset_imm0),
             SRC_IMM => format!("0x{:x}", self.b_offset_imm0 | (self.b_use_sp_imm1 << 32)),
-            SRC_IND => Self::ind_operand(self.ind_width, self.b_offset_imm0 as i64),
+            SRC_IND => Self::ind_operand(
+                self.ind_width,
+                self.b_use_sp_imm1 != 0,
+                self.b_offset_imm0 as i64,
+            ),
             _ => format!("<invalid b_src={}>", self.b_src),
         };
 
@@ -350,9 +392,17 @@ impl ZiskInst {
         match self.store {
             STORE_NONE => {}
             STORE_REG => s += &format!(" -> r{}", self.store_offset),
-            STORE_MEM => s += &format!(" -> [0x{:x}]", self.store_offset as u64),
+            STORE_MEM => {
+                s += &format!(
+                    " -> {}",
+                    Self::mem_operand(self.store_use_sp, self.store_offset as u64)
+                )
+            }
             STORE_IND => {
-                s += &format!(" -> {}", Self::ind_operand(self.ind_width, self.store_offset))
+                s += &format!(
+                    " -> {}",
+                    Self::ind_operand(self.ind_width, self.store_use_sp, self.store_offset)
+                )
             }
             _ => s += &format!(" -> <invalid store={}>", self.store),
         }
@@ -369,12 +419,14 @@ impl ZiskInst {
             s += &format!(", j({}, {})", self.jmp_offset1, self.jmp_offset2);
         }
 
-        // , sp (optional): only affects memory-addressed operands
-        let uses_sp = (self.a_src == SRC_MEM && self.a_use_sp_imm1 != 0)
-            || ((self.b_src == SRC_MEM || self.b_src == SRC_IND) && self.b_use_sp_imm1 != 0)
-            || ((self.store == STORE_MEM || self.store == STORE_IND) && self.store_use_sp);
-        if uses_sp {
-            s += ", sp";
+        // , setsp and , incsp(N) (optional): the sp update applied after the store
+        #[cfg(feature = "sp")]
+        if self.set_sp {
+            s += ", setsp";
+        }
+        #[cfg(feature = "sp")]
+        if self.inc_sp != 0 {
+            s += &format!(", incsp({})", self.inc_sp);
         }
 
         // , end (optional)
@@ -385,13 +437,27 @@ impl ZiskInst {
         s
     }
 
-    /// Formats an indirect (`W[a + N]`) memory operand per the ziskasm spec: `W` is the
-    /// access width in bytes and `N` is the signed address offset relative to register `a`.
-    fn ind_operand(width: u64, offset: i64) -> String {
-        if offset < 0 {
-            format!("{}[a - {}]", width, -offset)
+    /// Formats a `[N]` memory operand, or `[sp + N]` / `[sp - N]` when it is sp-relative, in
+    /// which case `N` is a signed offset.
+    fn mem_operand(use_sp: bool, offset: u64) -> String {
+        if !use_sp {
+            format!("[0x{offset:x}]")
+        } else if (offset as i64) < 0 {
+            format!("[sp - {}]", (offset as i64).unsigned_abs())
         } else {
-            format!("{}[a + {}]", width, offset)
+            format!("[sp + {offset}]")
+        }
+    }
+
+    /// Formats an indirect (`W[a + N]`) memory operand per the ziskasm spec: `W` is the
+    /// access width in bytes and `N` is the signed address offset relative to register `a`,
+    /// written `W[a + sp + N]` when sp is also added to the address.
+    fn ind_operand(width: u64, use_sp: bool, offset: i64) -> String {
+        let base = if use_sp { "a + sp" } else { "a" };
+        if offset < 0 {
+            format!("{}[{} - {}]", width, base, offset.unsigned_abs())
+        } else {
+            format!("{}[{} + {}]", width, base, offset)
         }
     }
 
