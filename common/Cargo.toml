@@ -5,7 +5,6 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
-homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
@@ -16,7 +15,6 @@ exclude = ["tests/repo_fixtures.rs"]
 zisk-core = { workspace = true }
 zisk-verifier = { workspace = true }
 zisk-definitions = { workspace = true }
-zisk-pil = { workspace = true }
 zisk-stream = { workspace = true, features = ["quic"] }
 
 proofman-common = { workspace = true }
