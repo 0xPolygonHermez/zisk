@@ -31,6 +31,8 @@ float = [
     "zisk-core/float",
     "zisk-transpiler-wasm/float",
 ]
+# Lower wasm guests onto the ZisK `sp` register (emulation only, see zisk-transpiler-wasm).
+sp = ["zisk-core/sp", "zisk-transpiler-wasm/sp"]
 # RISC-V C (compressed) extension decoding (see zisk-riscv's `compressed`). OFF by default.
 compressed = ["zisk-riscv/compressed"]
 zba = ["zisk-riscv/zba", "zisk-core/zba"]

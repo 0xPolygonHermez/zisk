@@ -11,6 +11,11 @@
 //! instruction can both read an indirect source (`b = mem[a + off_b]`) and write an indirect store
 //! (`mem[a + off_store] = c`) sharing the base `a = REG_FP`, so a memory-to-memory slot copy is one
 //! instruction.
+//!
+//! With the `sp` feature the frame pointer is the ZisK `sp` register instead of `REG_FP`, and a
+//! frame slot is an `[sp + off]` operand that `a`, `b` and the store can each take: an operator
+//! reads its operands from their slots and writes its result to one without a register in
+//! between (see [`Src`] and [`Dst`]).
 
 use super::layout::*;
 use zisk_core::ZiskInstBuilder;
@@ -34,6 +39,94 @@ pub enum Fixup {
     /// Set the `b` immediate to the absolute ROM address of `label` within this function (used
     /// to hand a return address to an out-of-line runtime routine).
     LabelAddr(LabelId),
+}
+
+/// Where an instruction reads an operand from.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Src {
+    Reg(u64),
+    Imm(i64),
+    /// A frame slot, as an offset from the frame pointer: `[sp + off]`.
+    #[cfg(feature = "sp")]
+    Slot(i64),
+    /// The frame pointer itself (only as `a`).
+    #[cfg(feature = "sp")]
+    Sp,
+}
+
+/// Where an instruction writes its result to.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Dst {
+    None,
+    Reg(u64),
+    /// An absolute address (a global or a system cell).
+    Abs(u64),
+    /// A frame slot, as an offset from the frame pointer: `[sp + off]`.
+    #[cfg(feature = "sp")]
+    Slot(i64),
+}
+
+fn set_a(zib: &mut ZiskInstBuilder, a: Src) {
+    match a {
+        Src::Reg(r) => zib.src_a("reg", r, false),
+        Src::Imm(i) => zib.src_a("imm", i as u64, false),
+        #[cfg(feature = "sp")]
+        Src::Slot(off) => zib.src_a("mem", off as u64, true),
+        #[cfg(feature = "sp")]
+        Src::Sp => zib.src_a("sp", 0, false),
+    }
+}
+
+fn set_b(zib: &mut ZiskInstBuilder, b: Src) {
+    match b {
+        Src::Reg(r) => zib.src_b("reg", r, false),
+        Src::Imm(i) => zib.src_b("imm", i as u64, false),
+        #[cfg(feature = "sp")]
+        Src::Slot(off) => zib.src_b("mem", off as u64, true),
+        #[cfg(feature = "sp")]
+        Src::Sp => panic!("wasm: sp is only an `a` source"),
+    }
+}
+
+fn set_dst(zib: &mut ZiskInstBuilder, d: Dst) {
+    match d {
+        Dst::None => zib.store("none", 0, false, false),
+        Dst::Reg(r) => zib.store("reg", r as i64, false, false),
+        Dst::Abs(addr) => zib.store("mem", addr as i64, false, false),
+        #[cfg(feature = "sp")]
+        Dst::Slot(off) => zib.store("mem", off, true, false),
+    }
+}
+
+/// Sets `a` to the frame base an indirect frame-slot access needs: `REG_FP`, or nothing (an
+/// immediate 0) when the slot is an `[sp + off]` operand.
+fn frame_a(zib: &mut ZiskInstBuilder) {
+    #[cfg(feature = "sp")]
+    zib.src_a("imm", 0, false);
+    #[cfg(not(feature = "sp"))]
+    zib.src_a("reg", REG_FP, false);
+}
+
+/// `b` = the 8-byte frame slot at `off`.  Needs [`frame_a`].
+fn frame_b(zib: &mut ZiskInstBuilder, off: i64) {
+    #[cfg(feature = "sp")]
+    zib.src_b("mem", off as u64, true);
+    #[cfg(not(feature = "sp"))]
+    {
+        zib.src_b("ind", off as u64, false);
+        zib.ind_width(8);
+    }
+}
+
+/// Stores `c` to the 8-byte frame slot at `off`.  Needs [`frame_a`].
+fn frame_store(zib: &mut ZiskInstBuilder, off: i64) {
+    #[cfg(feature = "sp")]
+    zib.store("mem", off, true, false);
+    #[cfg(not(feature = "sp"))]
+    {
+        zib.ind_width(8);
+        zib.store("ind", off, false, false);
+    }
 }
 
 /// One emitted instruction plus its fixup.
@@ -98,16 +191,113 @@ impl Code {
         last.zib.store("reg", reg as i64, false, false);
     }
 
+    /// Makes the last instruction, which stores its result to a register, store it to the
+    /// frame slot at `off` instead.
+    #[cfg(feature = "sp")]
+    pub fn retarget_last_store_to_slot(&mut self, off: i64) {
+        let last = self.insts.last_mut().expect("wasm: no instruction to retarget");
+        last.zib.store("mem", off, true, false);
+    }
+
+    /// Adds `delta` to sp after the last instruction, which must be the last one on its path
+    /// with the old frame (a call: the callee's first instruction sees the new one).
+    #[cfg(feature = "sp")]
+    pub fn inc_sp_last(&mut self, delta: i64) {
+        let last = self.insts.last_mut().expect("wasm: no instruction to update sp");
+        last.zib.inc_sp(delta);
+    }
+
+    // -- the frame pointer ---------------------------------------------------
+
+    /// Sets the frame pointer to the absolute address `addr`.
+    pub fn set_frame(&mut self, addr: u64) {
+        #[cfg(feature = "sp")]
+        {
+            let mut zib = ZiskInstBuilder::new(0);
+            zib.src_a("imm", 0, false);
+            zib.src_b("imm", addr, false);
+            zib.op("copyb").unwrap();
+            zib.store("none", 0, false, false);
+            zib.set_sp();
+            zib.j(4, 4);
+            self.push(zib, Fixup::None);
+        }
+        #[cfg(not(feature = "sp"))]
+        self.load_imm_to_reg(REG_FP, addr);
+    }
+
+    /// Moves the frame pointer by `delta` bytes.
+    pub fn adjust_frame(&mut self, delta: i64) {
+        #[cfg(feature = "sp")]
+        {
+            let mut zib = ZiskInstBuilder::new(0);
+            zib.src_a("imm", 0, false);
+            zib.src_b("imm", 0, false);
+            zib.op("copyb").unwrap();
+            zib.store("none", 0, false, false);
+            zib.inc_sp(delta);
+            zib.j(4, 4);
+            self.push(zib, Fixup::None);
+        }
+        #[cfg(not(feature = "sp"))]
+        self.alu_ri("add", REG_FP, REG_FP, delta);
+    }
+
+    /// `reg = frame pointer + delta`.
+    pub fn frame_plus_to_reg(&mut self, reg: u64, delta: i64) {
+        #[cfg(feature = "sp")]
+        self.op3("add", Dst::Reg(reg), Src::Sp, Src::Imm(delta));
+        #[cfg(not(feature = "sp"))]
+        self.alu_ri("add", reg, REG_FP, delta);
+    }
+
+    // -- generic operands ----------------------------------------------------
+
+    /// `dst = op(a, b)`, one instruction for any operand locations.
+    pub fn op3(&mut self, op: &str, dst: Dst, a: Src, b: Src) {
+        let mut zib = ZiskInstBuilder::new(0);
+        set_a(&mut zib, a);
+        set_b(&mut zib, b);
+        zib.op(op).unwrap();
+        set_dst(&mut zib, dst);
+        zib.j(4, 4);
+        self.push(zib, Fixup::None);
+    }
+
+    /// Compares `a` and `b` with `cmp_op` and branches on the flag.
+    pub fn cmp_branch(&mut self, cmp_op: &str, a: Src, b: Src, label: LabelId, jump_if_flag: bool) {
+        let mut zib = ZiskInstBuilder::new(0);
+        set_a(&mut zib, a);
+        set_b(&mut zib, b);
+        zib.op(cmp_op).unwrap();
+        zib.store("none", 0, false, false);
+        zib.j(0, 0);
+        let fixup =
+            if jump_if_flag { Fixup::JumpIfFlag(label) } else { Fixup::JumpIfNotFlag(label) };
+        self.push(zib, fixup);
+    }
+
+    /// `mem[reg_addr + off] = val` with the given width (a linear-memory store).
+    pub fn store_src_to_mem(&mut self, reg_addr: u64, off: i64, val: Src, width: u64) {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("reg", reg_addr, false);
+        set_b(&mut zib, val);
+        zib.op("copyb").unwrap();
+        zib.ind_width(width);
+        zib.store("ind", off, false, false);
+        zib.j(4, 4);
+        self.push(zib, Fixup::None);
+    }
+
     // -- raw building blocks -------------------------------------------------
 
     /// `copyb a=FP, b=imm value` -> store ind `slot_off` (width 8).  Pushes an immediate to a slot.
     pub fn store_imm_to_slot(&mut self, slot_off: i64, value: i64) {
         let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("reg", REG_FP, false);
+        frame_a(&mut zib);
         zib.src_b("imm", value as u64, false);
         zib.op("copyb").unwrap();
-        zib.ind_width(8);
-        zib.store("ind", slot_off, false, false);
+        frame_store(&mut zib, slot_off);
         zib.j(4, 4);
 
         self.push(zib, Fixup::None);
@@ -116,11 +306,10 @@ impl Code {
     /// Memory-to-memory slot copy: `mem[FP+dst] = mem[FP+src]` in one instruction (width 8).
     pub fn copy_slot(&mut self, dst_off: i64, src_off: i64) {
         let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("reg", REG_FP, false);
-        zib.src_b("ind", src_off as u64, false);
+        frame_a(&mut zib);
+        frame_b(&mut zib, src_off);
         zib.op("copyb").unwrap();
-        zib.ind_width(8);
-        zib.store("ind", dst_off, false, false);
+        frame_store(&mut zib, dst_off);
         zib.j(4, 4);
 
         self.push(zib, Fixup::None);
@@ -130,10 +319,9 @@ impl Code {
     /// `signextend_*` (which act on `b`).
     pub fn slot_to_abs(&mut self, abs_addr: u64, slot_off: i64, op: &str) {
         let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("reg", REG_FP, false);
-        zib.src_b("ind", slot_off as u64, false);
+        frame_a(&mut zib);
+        frame_b(&mut zib, slot_off);
         zib.op(op).unwrap();
-        zib.ind_width(8);
         zib.store("mem", abs_addr as i64, false, false);
         zib.j(4, 4);
 
@@ -143,11 +331,10 @@ impl Code {
     /// `mem[FP+slot_off] = mem[abs_addr]` in one instruction.
     pub fn abs_to_slot(&mut self, slot_off: i64, abs_addr: u64) {
         let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("reg", REG_FP, false);
+        frame_a(&mut zib);
         zib.src_b("mem", abs_addr, false);
         zib.op("copyb").unwrap();
-        zib.ind_width(8);
-        zib.store("ind", slot_off, false, false);
+        frame_store(&mut zib, slot_off);
         zib.j(4, 4);
 
         self.push(zib, Fixup::None);
@@ -168,10 +355,9 @@ impl Code {
     /// Loads `mem[FP+slot_off]` into register `reg` (width 8).
     pub fn load_slot_to_reg(&mut self, reg: u64, slot_off: i64) {
         let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("reg", REG_FP, false);
-        zib.src_b("ind", slot_off as u64, false);
+        frame_a(&mut zib);
+        frame_b(&mut zib, slot_off);
         zib.op("copyb").unwrap();
-        zib.ind_width(8);
         zib.store("reg", reg as i64, false, false);
         zib.j(4, 4);
 
@@ -181,11 +367,10 @@ impl Code {
     /// Stores register `reg` into `mem[FP+slot_off]` (width 8).
     pub fn store_reg_to_slot(&mut self, slot_off: i64, reg: u64) {
         let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("reg", REG_FP, false);
+        frame_a(&mut zib);
         zib.src_b("reg", reg, false);
         zib.op("copyb").unwrap();
-        zib.ind_width(8);
-        zib.store("ind", slot_off, false, false);
+        frame_store(&mut zib, slot_off);
         zib.j(4, 4);
 
         self.push(zib, Fixup::None);
@@ -374,10 +559,9 @@ impl Code {
     /// Returns to the address saved at `mem[FP + off]`, in one instruction.
     pub fn ret_via_slot(&mut self, off: i64) {
         let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("reg", REG_FP, false);
-        zib.src_b("ind", off as u64, false);
+        frame_a(&mut zib);
+        frame_b(&mut zib, off);
         zib.op("copyb").unwrap();
-        zib.ind_width(8);
         zib.set_pc();
         zib.j(0, 4);
         // Profiling metadata: a return, like a RISC-V `jalr x0, ra`

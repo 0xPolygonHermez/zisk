@@ -427,7 +427,7 @@ fn build_entry_routine(module: &WasmModule, func_addr: &[u64], entry_calls: &[u3
     code.load_imm_to_reg(REG_MEM_END, WASM_MEM_BASE + module.mem_initial_pages * WASM_PAGE_SIZE);
     code.set_mem_limits();
 
-    code.load_imm_to_reg(REG_FP, WASM_STACK_TOP);
+    code.set_frame(WASM_STACK_TOP);
     for &func_index in entry_calls {
         emit_entry_call(&mut code, func_index);
     }
@@ -439,7 +439,7 @@ fn build_entry_routine(module: &WasmModule, func_addr: &[u64], entry_calls: &[u3
 
 fn emit_entry_call(code: &mut Code, func_index: u32) {
     // The callee's frame pointer.  Nothing after the call needs the old one back.
-    code.load_imm_to_reg(REG_FP, (WASM_STACK_TOP as i64 - ENTRY_FRAME_RESERVE) as u64);
+    code.set_frame((WASM_STACK_TOP as i64 - ENTRY_FRAME_RESERVE) as u64);
     let mut zib = ZiskInstBuilder::new(0);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", 0, false);
