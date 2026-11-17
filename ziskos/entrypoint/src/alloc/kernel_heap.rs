@@ -5,6 +5,10 @@
 //! is linked with the medium code model, so a symbol address must be within +-2GiB of the code,
 //! which the end of the RAM (above the PC reach, see `core/src/mem.rs`) is not. The end is a
 //! constant, materialised as an immediate.
+//!
+//! Each allocator uses a subset of these bounds (the isolated staticlib's bump allocator, none),
+//! so unused ones are not an error.
+#![allow(dead_code)]
 
 use crate::ziskos_definitions::ziskos_config::{RAM_ADDR, RAM_SIZE};
 

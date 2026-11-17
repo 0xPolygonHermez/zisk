@@ -8,6 +8,8 @@ use zisk_common::ChunkId;
 use crate::{MemAlignCounters, MemHelpers};
 use std::fmt;
 use zisk_common::{BusDevice, BusId, MemBusData, Metrics, MEM_BUS_DATA_SIZE, MEM_BUS_ID};
+#[cfg(feature = "save_mem_bus_data")]
+use zisk_core::FREE_INPUT_ADDR;
 use zisk_core::{RAM_ADDR, ROM_ADDR};
 
 const ST_BITS_OFFSET: u32 = 30;
@@ -267,17 +269,23 @@ impl MemCounters {
         }
         // One light-form MOPS header per access (mem-cpp/cpp/mops_format.hpp), the stream that
         // mem-cpp's load_from_compact_file reads: tag at bit 63, 33-bit byte address at bits 0-32,
-        // mode at bit 33 (width, write flag 0x10), and NO_VALUE on writes, since no value follows.
+        // mode at bit 33 (width, write flag 0x10), and NO_VALUE when no value follows: on writes
+        // and on reads of the free-input word, which are READ_8_VALUE (0x28), not plain reads.
         const MOPS_TAG: u64 = 1 << 63;
         const MOPS_MODE_SHIFT: u64 = 33;
         const MOPS_WRITE_FLAG: u64 = 0x10;
+        const MOPS_READ_8_VALUE: u64 = 0x28;
         const MOPS_NO_VALUE_BIT: u64 = 59;
-        let is_write = MemHelpers::is_write(MemBusData::get_op(data)) as u64;
-        let mode = MemBusData::get_bytes(data) as u64 | (is_write * MOPS_WRITE_FLAG);
-        let header = MOPS_TAG
-            | MemBusData::get_addr(data)
-            | (mode << MOPS_MODE_SHIFT)
-            | (is_write << MOPS_NO_VALUE_BIT);
+        let addr = MemBusData::get_addr(data);
+        let is_write = MemHelpers::is_write(MemBusData::get_op(data));
+        let (mode, no_value) = if is_write {
+            (MemBusData::get_bytes(data) as u64 | MOPS_WRITE_FLAG, 1)
+        } else if addr == FREE_INPUT_ADDR {
+            (MOPS_READ_8_VALUE, 1)
+        } else {
+            (MemBusData::get_bytes(data) as u64, 0)
+        };
+        let header = MOPS_TAG | addr | (mode << MOPS_MODE_SHIFT) | (no_value << MOPS_NO_VALUE_BIT);
         self.file.as_mut().unwrap().write_all(&header.to_le_bytes()).unwrap();
     }
     #[allow(dead_code)]

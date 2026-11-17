@@ -37,10 +37,11 @@
 namespace {
 
 constexpr int RF_BLOCK = 256;
-constexpr uint32_t RF_STEP_BITS = 36;         // mem step bits inside a sort key (address above)
+// Sort keys are the compact RAM word address alone. The mem step does not fit beside it: up to
+// 2^36 main steps take a 38-bit mem step, and 2GB of RAM a 28-bit address. The passes that need
+// the step read it from the access's record (40-bit step), through the sorted arrival index.
 constexpr uint32_t RF_ADDR_BITS = 28;         // compact RAM word address bits (2GB of RAM)
-static_assert(RF_STEP_BITS + RF_ADDR_BITS <= 64, "sort key does not fit");
-constexpr uint64_t RF_STEP_MASK = (1ull << RF_STEP_BITS) - 1;
+static_assert((ZISK_RAM_SIZE_BYTES >> 3) <= (1ull << RF_ADDR_BITS), "RF_ADDR_BITS does not cover the RAM");
 constexpr size_t   RF_PROP_BLOCK = (size_t)1 << 24;  // accesses per value-propagation block
 constexpr int      RF_REGION_RAM = 2;
 
@@ -88,9 +89,8 @@ __device__ __forceinline__ uint64_t rf_chunk(uint64_t meta, uint32_t chunk_bits)
     return (rf_step(meta) - 1) >> (chunk_bits + 2);
 }
 
-// Sort keys: the address above the mem step, so equal keys are the same word at the same step; the
-// stable sort then keeps their arrival order, which inside a chunk is the record order (the read
-// of a partial write precedes its write).
+// Sort keys: the address; the stable sort keeps the arrival order inside an address, which is step
+// order, and inside a chunk the record order (the read of a partial write precedes its write).
 // The arrival index travels through the sort with the access kind in its top two bits, so the
 // passes that only need the kind do not read records at random.
 constexpr uint32_t RF_IDX_KIND_SHIFT = 30;
@@ -130,20 +130,20 @@ __global__ void other_scatter_align_kernel(const uint32_t* __restrict__ idx, con
     align_scatter(align, rec.value(k), word);
 }
 
-// sidx and the lane anchors from the sorted keys.
-__device__ __forceinline__ uint64_t rf_key_chunk(uint64_t key, uint32_t chunk_bits) {
-    return ((key & RF_STEP_MASK) - 1) >> (chunk_bits + 2);
+// Mem step of sorted position j, from its record.
+__device__ __forceinline__ uint64_t rf_sorted_step(const uint32_t* __restrict__ sidx, RamRecords rec, size_t j) {
+    return rf_step(rec.meta(rf_sidx_index(sidx[j])));
 }
 
+// The lane anchors from the sorted keys and sidx.
 __global__ void rf_anchors_kernel(const uint64_t* __restrict__ keys, const uint32_t* __restrict__ sidx,
-                                  size_t n, uint32_t chunk_bits, uint32_t* __restrict__ anchor) {
+                                  RamRecords rec, size_t n, uint32_t chunk_bits, uint32_t* __restrict__ anchor) {
     const size_t j = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (j >= n) return;
     bool pairable = false;
-    if (j > 0 && rf_sidx_kind(sidx[j]) == 0) {
-        const uint64_t k = keys[j], kp = keys[j - 1];
-        pairable = (k >> RF_STEP_BITS) == (kp >> RF_STEP_BITS) &&
-                   rf_key_chunk(k, chunk_bits) == rf_key_chunk(kp, chunk_bits);
+    if (j > 0 && rf_sidx_kind(sidx[j]) == 0 && keys[j] == keys[j - 1]) {
+        pairable = rf_chunk(rec.meta(rf_sidx_index(sidx[j])), chunk_bits) ==
+                   rf_chunk(rec.meta(rf_sidx_index(sidx[j - 1])), chunk_bits);
     }
     anchor[j] = pairable ? 0u : (uint32_t)(j + 1);
 }
@@ -178,7 +178,7 @@ __global__ void rf_merge_in_kernel(const uint32_t* __restrict__ sidx, const uint
         e.mask = ~0ull; e.val = rec.value(i);
     }
     in[k] = e;
-    keys[k] = (uint32_t)(skeys[j0 + k] >> RF_STEP_BITS);
+    keys[k] = (uint32_t)skeys[j0 + k];
 }
 
 // Resolved value of every access of the block: the state after it, composed with the carry for
@@ -200,16 +200,15 @@ __global__ void rf_merge_out_kernel(const Merge* __restrict__ out, const uint32_
 __device__ __forceinline__ MemPackLane rf_lane(size_t g, const uint32_t* __restrict__ lane_first,
                                                const uint32_t* __restrict__ sidx, const uint32_t* __restrict__ emit,
                                                size_t n_sorted, const uint64_t* __restrict__ skeys,
-                                               const uint64_t* __restrict__ resolved) {
+                                               const uint64_t* __restrict__ resolved, RamRecords rec) {
     const uint32_t j = lane_first[g];
-    const uint64_t k = skeys[j];
     MemPackLane l;
-    l.addr = (uint32_t)(k >> RF_STEP_BITS) + RAM_W_ADDR_BASE;
-    l.step = k & RF_STEP_MASK;
+    l.addr = (uint32_t)skeys[j] + RAM_W_ADDR_BASE;
+    l.step = rf_sorted_step(sidx, rec, j);
     l.value = resolved[j];
     l.wr = rf_sidx_kind(sidx[j]) != 0;
     l.dual = ((size_t)j + 1 < n_sorted) && emit[j + 1] == 0;
-    l.step_dual = l.dual ? (skeys[j + 1] & RF_STEP_MASK) : 0;
+    l.step_dual = l.dual ? rf_sorted_step(sidx, rec, j + 1) : 0;
     return l;
 }
 
@@ -217,7 +216,8 @@ __global__ void rf_rows_kernel(MemPackLayout layout, size_t lane_from, uint32_t 
                                const uint32_t* __restrict__ lane_first,
                                const uint32_t* __restrict__ sidx, const uint32_t* __restrict__ emit,
                                size_t n_sorted, const uint64_t* __restrict__ skeys,
-                               const uint64_t* __restrict__ resolved, uint64_t* __restrict__ out_rows) {
+                               const uint64_t* __restrict__ resolved, RamRecords rec,
+                               uint64_t* __restrict__ out_rows) {
     const uint32_t r = blockIdx.x * blockDim.x + threadIdx.x;
     if (r >= n_rows) return;
     const uint32_t L = layout.lanes_x_row;
@@ -225,7 +225,7 @@ __global__ void rf_rows_kernel(MemPackLayout layout, size_t lane_from, uint32_t 
 #pragma unroll
     for (uint32_t k = 0; k < MEMPACK_MAX_WORDS_PER_ROW; ++k) w[k] = 0;
 
-    const MemPackLane last = rf_lane(lane_from + n_lanes_inst - 1, lane_first, sidx, emit, n_sorted, skeys, resolved);
+    const MemPackLane last = rf_lane(lane_from + n_lanes_inst - 1, lane_first, sidx, emit, n_sorted, skeys, resolved, rec);
     const uint64_t pad_step = last.dual ? last.step_dual : last.step;
     // Padding reads the last word of the region; when the last access sat elsewhere the first
     // padding lane changes address, reads 0 and carries the distance.
@@ -237,11 +237,11 @@ __global__ void rf_rows_kernel(MemPackLayout layout, size_t lane_from, uint32_t 
         const uint32_t v = r * L + lane;
         if (v < n_lanes_inst) {
             const size_t g = lane_from + v;
-            const MemPackLane me = rf_lane(g, lane_first, sidx, emit, n_sorted, skeys, resolved);
+            const MemPackLane me = rf_lane(g, lane_first, sidx, emit, n_sorted, skeys, resolved, rec);
             bool addr_changes;
             uint64_t inc;
             if (g > 0) {
-                const MemPackLane pv = rf_lane(g - 1, lane_first, sidx, emit, n_sorted, skeys, resolved);
+                const MemPackLane pv = rf_lane(g - 1, lane_first, sidx, emit, n_sorted, skeys, resolved, rec);
                 addr_changes = pv.addr != me.addr;
                 inc = mempack_increment(addr_changes, me, pv.addr, pv.dual ? pv.step_dual : pv.step);
             } else {
@@ -295,7 +295,7 @@ __global__ void rf_gather_kernel(RamRecords rec, const uint32_t* __restrict__ ch
     }
     const size_t k = (size_t)chunk_base[lo] + bound[(size_t)lo * stride + 2 * inst] + (j - pref[lo]);
     const uint64_t m = rec.meta(k);
-    keys[j] = ((uint64_t)rec.addr(k) << RF_STEP_BITS) | (rf_step(m) & RF_STEP_MASK);
+    keys[j] = rec.addr(k);
     idx[j] = (uint32_t)k | (rf_kind(m) << RF_IDX_KIND_SHIFT);
 }
 
@@ -462,9 +462,9 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
 
 
     // Scratch above the tables, up to the retained accesses: two key and two index buffers that
-    // the sort ping-pongs between (the sorted keys stay: they give every lane its address and
-    // step; the sorted indexes are sidx; the other two become anchors, emit and the resolved
-    // values), lane_first, the propagation block, the instance's rows, cub temp.
+    // the sort ping-pongs between (the sorted keys stay: they give every lane its address; the
+    // sorted indexes are sidx, which lead to every lane's step; the other two become anchors, emit
+    // and the resolved values), lane_first, the propagation block, the instance's rows, cub temp.
     uint8_t* cur = fill_scratch_ ? fill_scratch_ : rf_scratch_;
     uint8_t* end = scratch_end_(n_total);
     auto take = [&](size_t bytes) -> uint8_t* {
@@ -482,7 +482,7 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     uint32_t* prop_keys = (uint32_t*)take(prop_block * 4);
     uint64_t* rows = d_out ? d_out : (uint64_t*)take((size_t)n_rows * mem_words_per_row_ * 8);
     size_t t_sort = 0, t_max = 0, t_bykey = 0, t_select = 0;
-    cub::DeviceRadixSort::SortPairs(nullptr, t_sort, dkeys, didx, n, (int)RF_STEP_BITS, (int)(RF_STEP_BITS + RF_ADDR_BITS), fill_stream_);
+    cub::DeviceRadixSort::SortPairs(nullptr, t_sort, dkeys, didx, n, 0, (int)RF_ADDR_BITS, fill_stream_);
     cub::DeviceScan::InclusiveScan(nullptr, t_max, (uint32_t*)nullptr, (uint32_t*)nullptr, MaxU32Op(), n, fill_stream_);
     cub::DeviceSelect::Flagged(nullptr, t_select, thrust::counting_iterator<uint32_t>(0),
                                (uint32_t*)nullptr, (uint32_t*)nullptr, (uint32_t*)nullptr, n, fill_stream_);
@@ -505,7 +505,7 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
                                                dkeys.Current(), didx.Current());
     RF_TRY(cudaGetLastError());
     size_t tb = t_bytes;
-    RF_TRY(cub::DeviceRadixSort::SortPairs(temp, tb, dkeys, didx, n, (int)RF_STEP_BITS, (int)(RF_STEP_BITS + RF_ADDR_BITS), fill_stream_));
+    RF_TRY(cub::DeviceRadixSort::SortPairs(temp, tb, dkeys, didx, n, 0, (int)RF_ADDR_BITS, fill_stream_));
     uint64_t* keys_out = dkeys.Current();
     uint32_t* sidx     = didx.Current();
 
@@ -513,7 +513,7 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     uint32_t* anchor = (uint32_t*)dkeys.Alternate();
     uint32_t* last_anchor = anchor + n;
     uint32_t* emit = didx.Alternate();
-    rf_anchors_kernel<<<rf_grid(n), RF_BLOCK, 0, fill_stream_>>>(keys_out, sidx, n, chunk_size_bits_, anchor);
+    rf_anchors_kernel<<<rf_grid(n), RF_BLOCK, 0, fill_stream_>>>(keys_out, sidx, ram_records_, n, chunk_size_bits_, anchor);
     RF_TRY(cudaGetLastError());
     tb = t_bytes;
     RF_TRY(cub::DeviceScan::InclusiveScan(temp, tb, anchor, last_anchor, MaxU32Op(), n, fill_stream_));
@@ -575,28 +575,34 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     mempack_layout(layout, mem_col_widths_, mem_n_cols_, mem_words_per_row_, mem_lanes_x_row_);
     if (out_rows || d_out) {
         rf_rows_kernel<<<(n_rows + RF_BLOCK - 1) / RF_BLOCK, RF_BLOCK, 0, fill_stream_>>>(
-            layout, lane_from, n_lanes_inst, n_rows, lfirst, sidx, emit, n, keys_out, resolved, rows);
+            layout, lane_from, n_lanes_inst, n_rows, lfirst, sidx, emit, n, keys_out, resolved, ram_records_, rows);
         RF_TRY(cudaGetLastError());
     }
     if (out_rows) RF_TRY(cudaMemcpyAsync(out_rows, rows, (size_t)n_rows * mem_words_per_row_ * 8, cudaMemcpyDeviceToHost, fill_stream_));
     RF_TRY(cudaStreamSynchronize(fill_stream_));
 
     // Continuation scalars: the lane before the window and the window's last lane.
+    // Mem step of sorted position j: its record's meta, through sidx.
+    auto sorted_step = [&](uint32_t j, uint64_t& step) -> bool {
+        uint32_t s = 0;
+        uint32_t meta[2] = {0, 0};
+        RF_TRY(cudaMemcpyAsync(&s, sidx + j, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+        RF_TRY(cudaMemcpyAsync(meta, ram_records_.rec(s & RF_IDX_MASK) + 1, 8, cudaMemcpyDeviceToHost, fill_stream_));
+        RF_TRY(cudaStreamSynchronize(fill_stream_));
+        step = (meta[0] | ((uint64_t)meta[1] << 32)) & RAM_META_STEP_MASK;
+        return true;
+    };
     auto lane_scalars = [&](size_t g, uint32_t& addr_w, uint64_t& step, uint64_t& value) -> bool {
         uint32_t j = 0, e_next = 1;
         uint64_t k = 0;
         RF_TRY(cudaMemcpyAsync(&j, lfirst + g, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
         RF_TRY(cudaMemcpyAsync(&k, keys_out + j, 8, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
         RF_TRY(cudaMemcpyAsync(&value, resolved + j, 8, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
-        addr_w = (uint32_t)(k >> RF_STEP_BITS) + RAM_W_ADDR_BASE;
-        step = k & RF_STEP_MASK;
+        addr_w = (uint32_t)k + RAM_W_ADDR_BASE;
+        if (!sorted_step(j, step)) return false;
         if ((size_t)j + 1 < n) {
             RF_TRY(cudaMemcpyAsync(&e_next, emit + j + 1, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
-            if (e_next == 0) {
-                uint64_t k2 = 0;
-                RF_TRY(cudaMemcpyAsync(&k2, keys_out + j + 1, 8, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
-                step = k2 & RF_STEP_MASK;
-            }
+            if (e_next == 0 && !sorted_step(j + 1, step)) return false;
         }
         return true;
     };
@@ -2138,7 +2144,7 @@ size_t CountAndPlan::fill_scratch_bound_(const AlignPlanDesc* plans, uint32_t n_
             cub::DoubleBuffer<uint64_t> k(nullptr, nullptr);
             cub::DoubleBuffer<uint32_t> v(nullptr, nullptr);
             size_t t_sort = 0, t_max = 0, t_select = 0, t_bykey = 0;
-            cub::DeviceRadixSort::SortPairs(nullptr, t_sort, k, v, n, (int)RF_STEP_BITS, (int)(RF_STEP_BITS + RF_ADDR_BITS));
+            cub::DeviceRadixSort::SortPairs(nullptr, t_sort, k, v, n, 0, (int)RF_ADDR_BITS);
             cub::DeviceScan::InclusiveScan(nullptr, t_max, (uint32_t*)nullptr, (uint32_t*)nullptr, MaxU32Op(), n);
             cub::DeviceSelect::Flagged(nullptr, t_select, thrust::counting_iterator<uint32_t>(0), (uint32_t*)nullptr,
                                        (uint32_t*)nullptr, (uint32_t*)nullptr, n);
