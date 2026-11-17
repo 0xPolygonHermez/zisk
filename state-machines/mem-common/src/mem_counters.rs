@@ -265,17 +265,20 @@ impl MemCounters {
                     .unwrap(),
             );
         }
-        let addr = MemBusData::get_addr(data);
-        // low 32 bits of the address, then bytes | is_write << 16 | addr_hi << 17
-        let values: [u32; 2] = [
-            addr as u32,
-            MemBusData::get_bytes(data) as u32
-                + ((MemHelpers::is_write(MemBusData::get_op(data)) as u32) << 16)
-                + (((addr >> 32) as u32) << 17),
-        ];
-        let bytes =
-            unsafe { slice::from_raw_parts(values.as_ptr() as *const u8, 2 * size_of::<u32>()) };
-        self.file.as_mut().unwrap().write_all(bytes).unwrap();
+        // One light-form MOPS header per access (mem-cpp/cpp/mops_format.hpp), the stream that
+        // mem-cpp's load_from_compact_file reads: tag at bit 63, 33-bit byte address at bits 0-32,
+        // mode at bit 33 (width, write flag 0x10), and NO_VALUE on writes, since no value follows.
+        const MOPS_TAG: u64 = 1 << 63;
+        const MOPS_MODE_SHIFT: u64 = 33;
+        const MOPS_WRITE_FLAG: u64 = 0x10;
+        const MOPS_NO_VALUE_BIT: u64 = 59;
+        let is_write = MemHelpers::is_write(MemBusData::get_op(data)) as u64;
+        let mode = MemBusData::get_bytes(data) as u64 | (is_write * MOPS_WRITE_FLAG);
+        let header = MOPS_TAG
+            | MemBusData::get_addr(data)
+            | (mode << MOPS_MODE_SHIFT)
+            | (is_write << MOPS_NO_VALUE_BIT);
+        self.file.as_mut().unwrap().write_all(&header.to_le_bytes()).unwrap();
     }
     #[allow(dead_code)]
     pub fn load_from_file(

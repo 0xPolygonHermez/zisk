@@ -9,7 +9,7 @@
 
 #include "zkvm_zisklib.h"
 
-static volatile uint8_t* const O = (volatile uint8_t*)0xA0410000ULL;
+static volatile uint8_t* const O = (volatile uint8_t*)0xC0410000ULL;
 
 static uint64_t h;
 static void mix(const void* p, size_t n) {

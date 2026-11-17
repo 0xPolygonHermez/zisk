@@ -40,6 +40,6 @@ SECTIONS
     }
     
     /* Stack */
-    . = 0x90100000;
+    . = 0xA8100000;
     _stack_top = .;
 }

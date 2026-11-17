@@ -118,6 +118,11 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     // by bytes to get the real address.
 
     assert(size_mb <= 128 || large_mem);
+    // A memory area is at most 4GB, and its last byte must be inside the 33-bit address space
+    // (ADDR_BITS): the address columns are ADDR_W_BITS wide and nothing else bounds the area.
+    assert(size_mb <= 4096, `${AIR_NAME}: memory area of ${size_mb} MB, the maximum is 4096 MB (4GB)`);
+    assert(base_address + size_mb * 1024 * 1024 - 1 < 2**ADDR_BITS,
+           `${AIR_NAME}: last address of the memory area (base_address ${base_address} + ${size_mb} MB - 1) is not below 2^${ADDR_BITS}`);
     assert(lanes_x_row >= 1);
     assert(bytes == 8);
     

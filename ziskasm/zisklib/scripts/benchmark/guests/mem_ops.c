@@ -17,7 +17,7 @@
 #include "zkvm_mem.h"
 #include "zkvm_evm.h"
 
-static volatile uint8_t* const O = (volatile uint8_t*)0xA0410000ULL;
+static volatile uint8_t* const O = (volatile uint8_t*)0xC0410000ULL;
 
 static uint64_t rng = 0x9e3779b97f4a7c15ULL;
 static uint8_t rnd8(void) { rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17; return (uint8_t)rng; }

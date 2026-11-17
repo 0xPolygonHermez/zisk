@@ -124,7 +124,7 @@ for pk in (G, neg(G), phi(G), mul(2, G)):
 o = []
 w = o.append
 w('#include "zkvm_accelerators.h"')
-w('static volatile uint8_t* const O = (volatile uint8_t*)0xA0410000ULL;')
+w('static volatile uint8_t* const O = (volatile uint8_t*)0xC0410000ULL;')
 w('typedef struct { uint8_t kind, recid, exp_ok; uint8_t z[32], r[32], s[32], pt[64]; } C;')
 w('static const C K[] = {')
 for c in cases:

@@ -39,7 +39,7 @@ o = ['#include "zkvm_accelerators.h"']
 for i, (b, e, m, r) in enumerate(cases):
     o += [arr(f'b{i}', b), arr(f'e{i}', e), arr(f'm{i}', m), arr(f'r{i}', r)]
 o.append('static uint8_t out[1100];')
-o.append('int main(void) { volatile uint8_t *O = (volatile uint8_t *)0xA0410000ULL;')
+o.append('int main(void) { volatile uint8_t *O = (volatile uint8_t *)0xC0410000ULL;')
 for i, (b, e, m, r) in enumerate(cases):
     o.append(f'  {{ for (int j = 0; j < 1100; j++) out[j] = 0xa5; int s = zkvm_modexp(b{i},{len(b)},e{i},{len(e)},m{i},{len(m)},out); int d = s;'
              f' for (int j = 0; j < {len(r)}; j++) d |= out[j] ^ r{i}[j]; d |= out[{len(r)}] ^ 0xa5; O[{i}] = (uint8_t)(d != 0); }}')

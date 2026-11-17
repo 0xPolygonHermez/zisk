@@ -38,7 +38,7 @@ We have plans to add to ZisK the support to consume input data as a stream.  Thi
 
 This limit consists of the maximum ROM address space size in bytes.  Another way to describe it is the maximum size of the program code and the program constant data, together.  In essence, we are referring to the program size.
 
-Currently, ZisK maps the ROM to the virtual address space between addresses 0xA800_0000 and 0xAFFF_FFFF, i.e. 128 MB.  The top 1 MB of that region, from 0xAFF0_0000 to 0xAFFF_FFFF, is used by the float library ROM, and the 1 MB below it, from 0xAFE0_0000 to 0x97EF_FFFF, by the ZisK library ROM.  This leaves an effective limit of 126 MB for the program.
+Currently, ZisK maps the ROM to the virtual address space between addresses 0xA800_0000 and 0xAFFF_FFFF, i.e. 128 MB.  The top 1 MB of that region, from 0xAFF0_0000 to 0xAFFF_FFFF, is used by the float library ROM, and the 1 MB below it, from 0xAFE0_0000 to 0xAFEF_FFFF, by the ZisK library ROM.  This leaves an effective limit of 126 MB for the program.
 
 An Ethereum client normally uses about 4 MB.  This is approximately 3 % of the maximum ROM size.
 
