@@ -24,6 +24,7 @@
 #include "c_provided.hpp"
 #include "log.hpp"
 #include "../../lib-c/c/src/keccakf_cache/keccakf_cache.hpp"
+#include "../../lib-c/c/src/keccakf_cache/keccakf_dedup.hpp"
 #include "../../lib-c/c/src/fcall/fcall.hpp"
 
 /****************************/
@@ -989,6 +990,11 @@ void server_reset_slow (void)
     // Release the Keccak-f cache built during the emulation that just finished
     keccakf_cache_free();
 
+    // The table of unique Keccak-f permutations is NOT released here: it is emptied when the
+    // next emulation starts (keccakf_dedup_reset) and keeps its memory. Releasing it makes every
+    // emulation fault its pages in again, which doubles what the table costs (measured: about
+    // 100 ns per Keccak-f instead of 50). It is released in server_cleanup().
+
     // Reset RAM and ROM data for next emulation
     {
 #ifdef DEBUG
@@ -1055,6 +1061,9 @@ void server_run (void)
 
     // Start this emulation with an empty Keccak-f cache: it only lives for one execution
     keccakf_cache_reset();
+
+    // Start this emulation with no Keccak-f permutation registered as unique
+    keccakf_dedup_reset();
 
 #ifdef ASM_CALL_METRICS
     reset_asm_call_metrics();
@@ -1287,6 +1296,16 @@ void server_run (void)
     print_asm_call_metrics(assembly_duration);
 #endif
 
+    // Report how many Keccak-f permutations of this execution repeat an earlier one
+    if ((gen_method == MinimalTrace) && (metrics || verbose))
+    {
+        uint64_t unique = keccakf_dedup_unique_count();
+        uint64_t replicas = keccakf_dedup_replica_count();
+        asm_printf("Keccak-f dedup: total=%lu unique=%lu replicas=%lu (%.2f%%)\n",
+            unique + replicas, unique, replicas,
+            (unique + replicas) ? (100.0 * (double)replicas / (double)(unique + replicas)) : 0.0);
+    }
+
     // Log trace
     if ((gen_method == MinimalTrace) && trace)
     {
@@ -1335,6 +1354,9 @@ static void save_rom_histogram_to_file (void)
 
 void server_cleanup (void)
 {
+    // Release the table of unique Keccak-f permutations, kept across emulations
+    keccakf_dedup_free();
+
     // Cleanup ROM
     int result = munmap((void *)ROM_ADDR, ROM_SIZE);
     if (result == -1)

@@ -15,6 +15,7 @@ use crate::{
 };
 use crate::{
     zisk_ops::blake2b_gap_is_provable, BLAKE2B_RD_CHAIN, BLAKE2B_ROUND_MASK, BLAKE2B_WR_CHAIN,
+    KECCAKF_XOR_LANES,
 };
 
 /// Last register held in the main trace; the asm keeps a `reg_N` slot for r0..=LAST_REG.
@@ -316,6 +317,7 @@ impl ZiskAsmContext {
         matches!(
             zisk_op,
             ZiskOp::Keccak
+                | ZiskOp::KeccakXor
                 | ZiskOp::Sha256
                 | ZiskOp::Poseidon2
                 | ZiskOp::Poseidon1
@@ -725,6 +727,9 @@ impl ZiskRom2Asm {
         *code += ".extern print_char\n";
         *code += ".extern print_step\n";
         *code += ".extern opcode_keccak\n";
+        *code += ".extern opcode_keccak_mt\n";
+        *code += ".extern opcode_keccak_xor\n";
+        *code += ".extern opcode_keccak_xor_mt\n";
         *code += ".extern opcode_sha256\n";
         *code += ".extern opcode_poseidon2\n";
         *code += ".extern opcode_poseidon1\n";
@@ -5218,7 +5223,33 @@ impl ZiskRom2Asm {
 
                 // Get result from precompile results data
                 if ctx.precompile_results_keccak() {
+                    // The minimal trace carries the dedup word of every Keccak-f, which only
+                    // _opcode_keccak_mt() computes
+                    assert!(
+                        !ctx.minimal_trace(),
+                        "Keccak-f precompile results are not supported by the minimal trace"
+                    );
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 25);
+                } else if ctx.minimal_trace() {
+                    // Call the keccak function, which returns the dedup word of this Keccak-f:
+                    // the index of its unique permutation and whether it repeats an earlier one
+                    Self::push_internal_registers(ctx, code, false);
+                    *code += "\tcall _opcode_keccak_mt\n";
+
+                    // Append the dedup word to the 25 input words already in mem_reads. The
+                    // mem_reads registers are callee-saved, and rax is restored by the pop below
+                    *code += &format!(
+                        "\tmov [{} + {}*8], rax {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads[25] = keccak dedup word")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                    Self::pop_internal_registers(ctx, code, false);
                 } else {
                     // Call the keccak function
                     Self::push_internal_registers(ctx, code, false);
@@ -5234,6 +5265,71 @@ impl ZiskRom2Asm {
                 // Set result
                 *code +=
                     &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Keccak: c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::KeccakXor => {
+                // Two direct operands: a = state address (receives the result), b = block address
+                *code += &ctx.full_line_comment("KeccakXor: rdi = a, rsi = b".to_string());
+
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = state address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rsi = b = block address")
+                );
+
+                // Save the state, as it is before the XOR, and the block into mem_reads
+                if ctx.minimal_trace() {
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 25, KECCAKF_XOR_LANES as u64);
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_ab_read_and_write(
+                        ctx,
+                        code,
+                        25,
+                        KECCAKF_XOR_LANES as u64,
+                        25,
+                    );
+                }
+
+                // There are no precompile results for a keccak_xor: it is always computed here
+                Self::push_internal_registers(ctx, code, false);
+                if ctx.minimal_trace() {
+                    // Returns the dedup word of the permutation, as _opcode_keccak_mt()
+                    *code += "\tcall _opcode_keccak_xor_mt\n";
+                    *code += &format!(
+                        "\tmov [{} + {}*8], rax {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads[42] = keccak dedup word")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                } else {
+                    *code += "\tcall _opcode_keccak_xor\n";
+                }
+                Self::pop_internal_registers(ctx, code, false);
+
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
+                // Set result
+                *code += &format!(
+                    "\txor {}, {} {}\n",
+                    REG_C,
+                    REG_C,
+                    ctx.comment_str("KeccakXor: c = 0")
+                );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }

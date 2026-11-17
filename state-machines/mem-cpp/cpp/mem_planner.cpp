@@ -51,21 +51,20 @@ MemPlanner::~MemPlanner() {
 }
 
 const MemLocator *MemPlanner::get_next_locator(MemLocators &locators, uint32_t &segment_id, uint32_t us_timeout) {
-    const MemLocator *plocator = locators.get_locator(segment_id);
-    bool completed = false;
-    while (plocator == nullptr) {
-        if (completed && locators.is_completed()) {
-            return nullptr;
-        }
-        plocator = locators.get_locator(segment_id);
+    while (true) {
+        // Read the completed flag BEFORE polling the queue. The generator pushes its last locator
+        // and then sets the flag, so a poll that follows a set flag sees every locator. Checking
+        // the flag after an empty poll loses a locator pushed in between, and with it a segment.
+        const bool completed = locators.is_completed();
+        const MemLocator *plocator = locators.get_locator(segment_id);
         if (plocator != nullptr) {
             return plocator;
         }
-        completed = true;
+        if (completed) {
+            return nullptr;
+        }
         usleep(us_timeout);
-        continue;
     }
-    return plocator;
 }
 
 void MemPlanner::execute_from_locators(const std::vector<MemCounter *> &workers, MemLocators &locators, MemSegments &segments) {

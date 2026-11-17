@@ -14,10 +14,11 @@ use zisk_definitions::{
     SYSCALL_BN254_COMPLEX_MUL_ID, SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID,
     SYSCALL_BN254_CURVE_DBL_ID, SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID,
     SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_ED25519_ADD_ID, SYSCALL_JUMP_DEST_ID,
-    SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID, SYSCALL_POSEIDON2_KOALABEAR_ID,
-    SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID,
-    SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END,
-    ZKVMCALL_ADDR_START, ZKVMCALL_ARG_ADDR_END, ZKVMCALL_ARG_ADDR_START,
+    SYSCALL_KECCAKF_ID, SYSCALL_KECCAK_XOR_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID,
+    SYSCALL_POSEIDON2_KOALABEAR_ID, SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID,
+    SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID,
+    SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END, ZKVMCALL_ADDR_START, ZKVMCALL_ARG_ADDR_END,
+    ZKVMCALL_ARG_ADDR_START,
 };
 
 use zisk_core::rom_layout::InlineBody;
@@ -38,7 +39,7 @@ use zisk_core::{FREG_F0, FREG_INST, FREG_RA, MTVEC, REG_X0};
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 // Important: The order should be the same as in such file.
-const CSR_PRECOMPILED: [&str; 34] = [
+const CSR_PRECOMPILED: [&str; 35] = [
     "keccak",
     "arith256",
     "arith256_mod",
@@ -73,6 +74,7 @@ const CSR_PRECOMPILED: [&str; 34] = [
     "blake2s",
     "ed25519_add",
     "poseidon2_koalabear",
+    "keccak_xor",
 ];
 const CSR_PRECOMPILED_ADDR_START: u16 = SYSCALL_KECCAKF_ID;
 const CSR_FCALL_ADDR_START: u16 = 0x8C0;
@@ -2043,7 +2045,8 @@ impl<'a> Riscv2ZiskContext<'a> {
                 | SYSCALL_SHA256F_ID
                 | SYSCALL_BLAKE3F_ID
                 | SYSCALL_BLAKE2SF_ID
-                | SYSCALL_ED25519_ADD_ID => {
+                | SYSCALL_ED25519_ADD_ID
+                | SYSCALL_KECCAK_XOR_ID => {
                     let precompiled =
                         CSR_PRECOMPILED[i.csr as usize - CSR_PRECOMPILED_ADDR_START as usize];
                     self.transpile_precompiled_ab_pattern(i, next_instructions, precompiled);

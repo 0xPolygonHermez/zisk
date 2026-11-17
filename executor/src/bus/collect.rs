@@ -93,6 +93,7 @@ const BINARY_E_TYPE: u64 = ZiskOperationType::BinaryE as u64;
 const ARITH_TYPE: u64 = ZiskOperationType::Arith as u64;
 const DMA_OP_TYPE_ID: u64 = ZiskOperationType::Dma as u64;
 const EVM_OP_TYPE_ID_U64: u64 = ZiskOperationType::Evm as u64;
+const KECCAK_OP_TYPE_ID_U64: u64 = ZiskOperationType::Keccak as u64;
 
 impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
     /// Constructs a collector-phase data bus for a single chunk. Each
@@ -246,6 +247,13 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                     );
                 }
                 op => {
+                    if op == KECCAK_OP_TYPE_ID_U64 {
+                        // The XORs of a keccak_xor are proven by Binary
+                        zisk_precomp_keccakf::keccakf_xor_binary_ops(
+                            data,
+                            &mut self.pending_transfers,
+                        );
+                    }
                     self.precompiles.dispatch_op(
                         op as u32,
                         &bus_id,

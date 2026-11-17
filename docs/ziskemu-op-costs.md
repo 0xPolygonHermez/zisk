@@ -31,7 +31,8 @@ they are accumulated, or the FROPS change.
 
 | Cost | Opcodes | Instances (Total × rows per op) | Previous | Current | Max |
 |---|---|---|---:|---:|---:|
-| `KECCAK_COST` | keccak | Keccakf 615 × 135 rows / 2 ops per slot | 41,512 | **41,513** | 41,513 |
+| `KECCAK_COST` | keccak | Keccakf 608 × 135 rows / 2 ops per slot + KeccakfProxy 318 × 1 (a keccak that repeats an earlier permutation only takes the proxy row) | 41,236 | **41,358** | 41,358 |
+| `KECCAK_XOR_COST` | keccak_xor | KECCAK + 17 XOR in Binary (17 × 55) | – | **42,293** | 42,293 |
 | `SHA256_COST` | sha256 | Sha256f 122 × 72 | 8,784 | **8,784** | 8,784 |
 | `POSEIDON_COST` | poseidon1, poseidon2 | Poseidon 392 × 14 | 5,488 | **5,488** | 5,488 |
 | `POSEIDON2_KOALABEAR_COST` | poseidon2_koalabear | Poseidon2KoalaBear 499 × 30 | 14,970 | **14,970** | 14,970 |
