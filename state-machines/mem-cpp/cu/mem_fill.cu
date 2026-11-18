@@ -1400,6 +1400,7 @@ namespace {
 __device__ __forceinline__ uint32_t align_kind_of(uint64_t info)  { return (uint32_t)(info >> ALIGN_KIND_SHIFT) & 7u; }
 __device__ __forceinline__ uint32_t align_width_of(uint64_t info) { return (uint32_t)(info >> ALIGN_WIDTH_SHIFT) & 15u; }
 __device__ __forceinline__ bool     align_wr_of(uint64_t info)    { return ((info >> ALIGN_WR_SHIFT) & 1u) != 0; }
+__device__ __forceinline__ uint32_t align_off_of(uint64_t info)   { return (uint32_t)(info >> ALIGN_OFF_SHIFT) & 7u; }
 __device__ __forceinline__ uint64_t align_step_of(uint64_t info)  { return info & RAM_META_STEP_MASK; }
 
 // Every retained align access: its record index, in (chunk, arrival) order.
@@ -1454,10 +1455,10 @@ __global__ void align_rows_per_op_kernel(const AlignRecord* __restrict__ align, 
 }
 
 // The bytes the access read, as the CPU's get_read_value.
-__device__ __forceinline__ uint64_t align_read_value(uint32_t addr, uint32_t width, const uint64_t* old) {
-    const uint32_t off = (addr & 7u) * 8;
+__device__ __forceinline__ uint64_t align_read_value(uint32_t byte_off, uint32_t width, const uint64_t* old) {
+    const uint32_t off = byte_off * 8;
     uint64_t v = old[0] >> off;
-    if ((addr & 7u) + width > 8) v |= old[1] << (64 - off);
+    if (byte_off + width > 8) v |= old[1] << (64 - off);
     return width >= 8 ? v : (v & ((1ull << (8 * width)) - 1));
 }
 __device__ __forceinline__ uint32_t align_byte(uint64_t v, uint32_t i, uint32_t rot) {
@@ -1533,12 +1534,12 @@ __device__ __forceinline__ uint8_t ma_sel_range(uint32_t from, uint32_t to) {   
 
 // The 2, 3 or 5 rows of one full-air access, as prove_mem_align_op builds them.
 __device__ void ma_rows(const RowPackLayout& l, const AlignRecord& a, uint64_t* out) {
-    const uint32_t off = a.addr & 7u, width = align_width_of(a.info);
+    const uint32_t off = align_off_of(a.info), width = align_width_of(a.info);
     const bool wr = align_wr_of(a.info);
     const bool two = off + width > 8;
     const uint64_t step = align_step_of(a.info);
-    const uint32_t addr_w = a.addr >> 3;
-    const uint64_t value = wr ? a.value : align_read_value(a.addr, width, a.old);
+    const uint32_t addr_w = a.addr_w;
+    const uint64_t value = wr ? a.value : align_read_value(off, width, a.old);
     const uint32_t pc = align_pc(wr, two, off, width);
     const uint64_t first = a.old[0], second = a.old[1];
     const uint32_t rem = (off + width) & 7u;
@@ -1599,7 +1600,7 @@ __device__ void ma_rows(const RowPackLayout& l, const AlignRecord& a, uint64_t* 
 //   3 MemAlignWriteByte: sel_high_4b, sel_high_2b, sel_high_b, direct, composed, written_composed,
 //                        written_byte, value_16b, value_8b, byte, addr_w, step, mem_write[2]
 __device__ void mb_row(const RowPackLayout& l, uint32_t air_kind, const AlignRecord& a, uint64_t* out) {
-    const uint32_t off = a.addr & 7u;
+    const uint32_t off = align_off_of(a.info);
     const uint32_t high = (uint32_t)(a.old[0] >> 32), low = (uint32_t)a.old[0];
     const bool wr = align_wr_of(a.info);
     const uint32_t direct = off < 4 ? high : low;
@@ -1624,7 +1625,7 @@ __device__ void mb_row(const RowPackLayout& l, uint32_t air_kind, const AlignRec
     rowpack_put(l, w, c++, value_16b);
     rowpack_put(l, w, c++, value_8b);
     rowpack_put(l, w, c++, byte);
-    rowpack_put(l, w, c++, a.addr >> 3);   // addr_w: word address
+    rowpack_put(l, w, c++, a.addr_w);
     rowpack_put(l, w, c++, align_step_of(a.info));
     if (air_kind == 1) rowpack_put(l, w, c++, wr ? 1 : 0);
     if (air_kind != 2) { rowpack_put(l, w, c++, mw0); rowpack_put(l, w, c++, mw1); }

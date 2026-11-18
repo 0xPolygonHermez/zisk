@@ -319,14 +319,14 @@ void emit_store(uint64_t addr, uint32_t width, PotentialEmit* out, uint32_t step
 
 // The MemAlign record of an access, and the slot tags of its reads: tag = (2 * index + word) + 1.
 __device__ __forceinline__
-void write_align_record(AlignRecord* rec, uint32_t addr, uint32_t chunk, uint32_t chunk_bits, uint32_t step_field,
+void write_align_record(AlignRecord* rec, uint64_t addr, uint32_t chunk, uint32_t chunk_bits, uint32_t step_field,
                         uint32_t kind, uint32_t width, bool wr, uint64_t value) {
     const uint64_t main_step = ((uint64_t)chunk << chunk_bits) + (step_field >> 2);
     const uint64_t mem_step  = 1ull + (main_step << 2) + (step_field & 3u);
-    rec->addr  = addr;
-    rec->chunk = chunk;
-    rec->info  = mem_step | ((uint64_t)kind << ALIGN_KIND_SHIFT) | ((uint64_t)width << ALIGN_WIDTH_SHIFT)
-               | ((uint64_t)(wr ? 1 : 0) << ALIGN_WR_SHIFT);
+    rec->addr_w = (uint32_t)(addr >> 3);
+    rec->chunk  = chunk;
+    rec->info   = mem_step | ((uint64_t)kind << ALIGN_KIND_SHIFT) | ((uint64_t)width << ALIGN_WIDTH_SHIFT)
+                | ((uint64_t)(wr ? 1 : 0) << ALIGN_WR_SHIFT) | ((addr & 7u) << ALIGN_OFF_SHIFT);
     rec->value = wr ? value : 0;
     rec->old[0] = 0; rec->old[1] = 0;
 }
@@ -410,7 +410,8 @@ void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block, const uin
         case MOPS_BLOCK_VALUES + 0x00: case MOPS_BLOCK_VALUES + 0x10:
         case MOPS_BLOCK_VALUES + 0x20: case MOPS_BLOCK_VALUES + 0x30: {
             const uint32_t count = (op_flags(op) >> MOPS_BLOCK_COUNT_SBITS) & 63u;
-            const uint32_t vstep = (op_flags(op) >> (MOPS_VALUES_STEP_SHIFT - MOPS_MODE_SHIFT)) & MOPS_STEP_FIELD_MASK;
+            // From the header word: the step ends at bit 62, above the bits op_flags() returns.
+            const uint32_t vstep = (uint32_t)(op.hdr >> MOPS_VALUES_STEP_SHIFT) & MOPS_STEP_FIELD_MASK;
             const uint64_t tops  = rec[1];
             for (uint32_t i = 0; i < count; i++) {
                 const uint64_t v = rec[2 + i] | (((tops >> i) & 1ull) << 63);

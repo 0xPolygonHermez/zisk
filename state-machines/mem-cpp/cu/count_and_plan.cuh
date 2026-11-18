@@ -124,15 +124,17 @@ struct RamRecords {
 // A MemAlign access (unaligned, or one byte wide), retained in arrival order in its own region at
 // the arena top. The read potentials of the access carry the index of its old-word slots, which
 // the memory fills scatter the resolved words into.
+// The address is split (word address, byte offset in `info`) so that a 33-bit address keeps the
+// record at 40 bytes: the region's capacity is its size / 40.
 struct AlignRecord {
-    uint64_t addr;     // byte address (33 bits)
+    uint32_t addr_w;   // word address (byte address / 8, 30 bits)
     uint32_t chunk;
-    uint32_t pad_;
-    uint64_t info;     // mem step (40) | kind << 40 (3) | width << 43 (4) | wr << 47
+    uint64_t info;     // mem step (40) | kind << 40 (3) | width << 43 (4) | wr << 47 | byte offset << 48 (3)
     uint64_t value;    // the written value as the stream carries it; 0 for a read
     uint64_t old[2];   // the words the access found, filled in by the fills
 };
-constexpr uint32_t ALIGN_KIND_SHIFT = 40, ALIGN_WIDTH_SHIFT = 43, ALIGN_WR_SHIFT = 47;
+static_assert(sizeof(AlignRecord) == 40, "AlignRecord is 40 bytes");
+constexpr uint32_t ALIGN_KIND_SHIFT = 40, ALIGN_WIDTH_SHIFT = 43, ALIGN_WR_SHIFT = 47, ALIGN_OFF_SHIFT = 48;
 constexpr uint32_t ALIGN_KINDS = 5;          // full_5, full_3, full_2, read_byte, write_byte
 constexpr uint32_t ALIGN_KIND_NONE = ALIGN_KINDS;
 constexpr uint32_t ALIGN_RUN_NONE = 0xFFFFFFFFu;
