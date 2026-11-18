@@ -55,7 +55,8 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use zisk_core::{
     zisk_ops::{OpType, ZiskOp},
-    ZiskInst, ZiskInstBuilder, SRC_C, SRC_IMM, SRC_IND, SRC_REG, STORE_IND, STORE_NONE, STORE_REG,
+    ZiskInst, ZiskInstBuilder, SRC_C, SRC_IMM, SRC_IND, SRC_REG, SRC_STEP, STORE_IND, STORE_NONE,
+    STORE_REG,
 };
 
 /// Registers r1..r39, the ones the Main trace holds; liveness tracks them as a bit mask, bit r for
@@ -125,6 +126,13 @@ pub fn optimize_rom(
     passes: RomOptPasses,
 ) -> RomOptStats {
     let mut st = RomOptStats::default();
+    // Every pass removes executed steps, so it shifts the step number that a `step` source
+    // (SRC_STEP) reads in all later instructions. Neither the transpiler nor the ZisK library
+    // reads `step` today, but if any instruction in the ROM ever does, leave the ROM unchanged
+    // rather than change a value the program can observe.
+    if insts.values().any(|b| b.i.a_src == SRC_STEP) {
+        return st;
+    }
     // Each round runs every selected pass once. A rewrite can make another one possible (a fold
     // can leave a jump that threading then removes, or make a register dead for the next fold),
     // so the passes repeat until a round changes nothing, or MAX_ROUNDS is reached.
@@ -635,6 +643,24 @@ mod tests {
         pass_jump_threading(&mut insts, &mut st);
         assert_eq!(st.jump_threading, 1);
         assert_eq!((insts[&100].i.jmp_offset1, insts[&100].i.jmp_offset2), (8, 100));
+    }
+
+    /// A ROM that reads the step counter is left unchanged: removing a step would change the
+    /// value every later `step` read observes.
+    #[test]
+    fn a_rom_that_reads_step_is_not_optimized() {
+        let mut br = inst(100, "eq");
+        br.src_a("reg", 5, false);
+        br.j(8, 4);
+        let mut j = inst(104, "flag");
+        j.j(96, 96);
+        let mut reads_step = inst(200, "add");
+        reads_step.i.a_src = SRC_STEP;
+        reads_step.i.end = true;
+        let mut insts = BTreeMap::from([(100, br), (104, j), (108, end(108)), (200, reads_step)]);
+        let st = optimize_rom(&mut insts, RomOptPasses::default());
+        assert_eq!(st, RomOptStats::default());
+        assert_eq!((insts[&100].i.jmp_offset1, insts[&100].i.jmp_offset2), (8, 4));
     }
 
     /// A jump that is followed by an instruction reading the previous c, an instruction that
