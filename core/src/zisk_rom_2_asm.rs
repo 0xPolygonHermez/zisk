@@ -1626,6 +1626,17 @@ impl ZiskRom2Asm {
             }
         }
 
+        // With the store_a_in_c hint, a non-constant `a` was read into REG_C only, but a b
+        // indirection and an indirect store both form their address from REG_A, so copy it
+        // there too (a constant `a` is materialized from its value by those paths instead).
+        if ctx.store_a_in_c
+            && !ctx.a.is_constant
+            && (instruction.b_src == SRC_IND || instruction.store == STORE_IND)
+        {
+            *code += &format!("\tmov {}, {} {}\n", REG_A, REG_C, ctx.comment_str("a = c"));
+            ctx.a.is_saved = true;
+        }
+
         /************/
         /* B SOURCE */
         /************/
