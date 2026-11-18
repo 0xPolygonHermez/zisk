@@ -190,6 +190,13 @@ jobs:
             -e ZISK_SCRIPTS_DIR="${ZISK_SCRIPTS_DIR}" \
             -- bash -c '
               set -eo pipefail
+              # ziskup exports PILFFLONK_JS in ~/.bashrc, but sourcing it does
+              # nothing here: the Ubuntu .bashrc returns early in non-interactive
+              # shells. Load only that line.
+              pilfflonk_line="$(grep "^export PILFFLONK_JS=" ~/.bashrc || true)"
+              [[ -n "$pilfflonk_line" ]] || { echo "❌ ziskup did not add PILFFLONK_JS to ~/.bashrc"; exit 1; }
+              eval "$pilfflonk_line"
+              echo "PILFFLONK_JS=$PILFFLONK_JS"
               # The test-env scripts must be run from their own directory (they
               # source ./utils.sh) and resolve the repository holding the programs
               # under test through ZISK_REPO_DIR, so the two clones stay separate.

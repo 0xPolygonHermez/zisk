@@ -2,6 +2,9 @@
 
 # Export PATH to include ZisK binaries
 export PATH="$PATH:$HOME/.zisk/bin"
+# cargo-zisk verify finds pilfflonk's JS verifier through PILFFLONK_JS, which ziskup exports
+# from ~/.bashrc: non-interactive shells never read it.
+export PILFFLONK_JS="${PILFFLONK_JS:-$HOME/.zisk/zisk/pilfflonk-js}"
 
 # Colors
 if [ -t 1 ]; then
