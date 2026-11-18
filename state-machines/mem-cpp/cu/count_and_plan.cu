@@ -172,10 +172,6 @@ bool is_ram_addr(uint64_t addr) {
     return (addr >= ZISK_RAM_ADDR_BASE) && (addr < ZISK_RAM_ADDR_END);
 }
 
-__host__ __device__ __forceinline__
-uint32_t ram_compact(uint64_t aligned_addr) {
-    return (uint32_t)((aligned_addr - ZISK_RAM_ADDR_BASE) >> 3);
-}
 // The RAM word index of a compact (whole map) address of the RAM.
 __host__ __device__ __forceinline__
 uint32_t ram_compact_of_compact(uint32_t compact) {
@@ -627,20 +623,6 @@ inline uint64_t expand_addr(uint32_t compact) {
     if (compact < N_ADDR_ROM)
         return ((uint64_t)compact << 3) + ZISK_ROM_ADDR_BASE;
     return ((uint64_t)(compact - N_ADDR_ROM) << 3) + ZISK_INPUT_ADDR_BASE;
-}
-
-// Whether `raw` is inside the memory map, and its compact address when it is.
-__device__ __forceinline__ bool compact_addr_dev(uint64_t raw, uint32_t& compact) {
-    if (raw >= ZISK_RAM_ADDR_BASE) {
-        compact = (uint32_t)((raw - ZISK_RAM_ADDR_BASE) >> 3) + N_ADDR_ROM + N_ADDR_INPUT;
-        return raw < ZISK_RAM_ADDR_END;
-    }
-    if (raw >= ZISK_ROM_ADDR_BASE) {
-        compact = (uint32_t)((raw - ZISK_ROM_ADDR_BASE) >> 3);
-        return raw < ZISK_ROM_ADDR_END;
-    }
-    compact = (uint32_t)((raw - ZISK_INPUT_ADDR_BASE) >> 3) + N_ADDR_ROM;
-    return raw >= ZISK_INPUT_ADDR_BASE && raw < ZISK_INPUT_ADDR_END;
 }
 
 // =====================================================================

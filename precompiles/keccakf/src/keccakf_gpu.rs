@@ -20,7 +20,7 @@ unsafe impl ::proofman_common::GpuWitnessOp for GpuOp {}
 
 impl From<&KeccakfInput> for GpuOp {
     fn from(input: &KeccakfInput) -> Self {
-        Self { state: input.state, step: input.step_main, addr: input.addr_main as u64 }
+        Self { state: input.state, step: input.step_main, addr: input.addr_main }
     }
 }
 
