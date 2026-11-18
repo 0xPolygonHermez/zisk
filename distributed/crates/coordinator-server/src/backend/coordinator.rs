@@ -321,8 +321,8 @@ fn catchup_events(state: &JobState, job_id: Uuid) -> Vec<DomainJobEvent> {
 
 #[async_trait]
 impl BackendService for CoordinatorBackend {
-    async fn render_metrics(&self) -> String {
-        self.coordinator.render_metrics().await
+    async fn render_metrics(&self, take: bool) -> String {
+        self.coordinator.render_metrics(take).await
     }
 
     async fn register_guest_program(&self, elf: Vec<u8>) -> ApiResult<String> {
