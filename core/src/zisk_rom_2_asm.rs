@@ -8101,7 +8101,7 @@ impl ZiskRom2Asm {
         if ctx.light_mops() {
             for (address, length) in &sections {
                 assert!(
-                    *length < (1u64 << 26),
+                    *length <= F_MOPS_BLOCK_LENGTH_MAX,
                     "initialised data section of {length} words exceeds a block header"
                 );
                 *code += &format!(
