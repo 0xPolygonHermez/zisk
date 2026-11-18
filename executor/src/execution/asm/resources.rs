@@ -240,7 +240,13 @@ impl AsmResources {
         verbose: proofman_common::VerboseMode,
         gpu: bool,
     ) -> ExecutorResult<Self> {
-        let options = AsmRunnerOptions::new().with_local_rank(0);
+        // Verbose (-v) and above, the services say what they do, as in a full execution: which
+        // fork-join regions they ran apart, and why not
+        let verbose_services = verbose != proofman_common::VerboseMode::Info;
+        let options = AsmRunnerOptions::new()
+            .with_local_rank(0)
+            .with_verbose(verbose_services)
+            .with_metrics(verbose_services);
         // The claim that started the services is kept until the program is active:
         // mapping initializes the shared control and input segments, which another
         // client's job in this process may be using.

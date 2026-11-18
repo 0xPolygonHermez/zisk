@@ -108,3 +108,42 @@ SEED=000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
 Without `--random-seed`, ziskemu draws a fresh seed for each run (`-v` prints it, so
 the run can be replayed). The committed copy of this guest in
 `elf-regressions/zkvm_random/` is checked by `emulator/tests/zkvm_random.rs`.
+
+## Fork-join regions
+
+[`zkvm_parallel_guest.c`](zkvm_parallel_guest.c) runs SAXPY (`y = a*x + y`) over four
+slices of `y` as one fork-join region (`zkvm_parallel.h`). It demonstrates the raw ABI,
+not a speed-up: each task runs about 10^4 steps, and the driver pads every task to a
+chunk boundary (2^18 steps), so the region runs far more padding than work and is
+slower than a sequential loop. A region pays off with tasks much longer than a chunk.
+
+A task owns one page-aligned range of memory (`mem_start..mem_end`), which must hold
+both its stack and everything it writes: run in parallel, a task writes into a private
+copy of the memory outside that range, and those writes are lost. So each task's slice
+of `y` lives in its arena, next to its stack. `x` and the arguments are written before
+the region, so every task can read them. A task list that breaks these rules (ranges
+not page-aligned or overlapping, outside the RAM, or a stack outside its range), or that
+lies in the memory of one of its tasks, does not fail: the assembly emulator runs the region one task after another, with only a warning
+in its log.
+
+Before the region the guest also computes the expected `y`, sequentially. After it, the
+guest compares the two and outputs the sum of `y` (184516608) and the result of the
+comparison (0 when they match):
+
+```bash
+riscv64-unknown-elf-gcc -march=rv64ima_zicsr -mabi=lp64 -mcmodel=medany -nostdlib \
+    -ffreestanding -O2 -I../include -T ../../../../ziskbuild/zisk_linker_script.ld -o /tmp/saxpy.elf \
+    ../src/_start.s zkvm_parallel_guest.c ../src/zkvm_calls.s
+: > /tmp/empty.bin
+../../../../target/release/ziskemu -e /tmp/saxpy.elf -i /tmp/empty.bin -o /tmp/saxpy.bin
+xxd -p -l 16 /tmp/saxpy.bin    # 0080ff0a000000000000000000000000
+```
+
+`ziskemu` runs the tasks one after another; the assembly emulator runs them at the same
+time, with the same minimal traces (see the book's *Parallel Execution* page for how to
+compare them).
+
+[`zkvm_parallel_fcsr_guest.c`](zkvm_parallel_fcsr_guest.c) checks what a region does with
+the FCSR, which floating-point code rewrites at every operation: each of four tasks
+outputs the FCSR it starts with and leaves another one, and the guest outputs the FCSR
+after the region. All five are the value the caller set before the region (0x60).

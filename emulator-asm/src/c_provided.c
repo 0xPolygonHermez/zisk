@@ -16,6 +16,7 @@
 #include "trace.hpp"
 #include "emu.hpp"
 #include "log.hpp"
+#include "par.hpp"
 
 /**************/
 /* PRINT REGS */
@@ -236,8 +237,14 @@ extern void _chunk_done()
     asm_printf("chunk_done() sync_duration=%lu\n", sync_duration);
 #endif
 
-    // Notify the caller that a new chunk is done and its trace is ready to be consumed
+    // Notify the caller that a new chunk is done and its trace is ready to be consumed: in MT and
+    // MO as an event, from the main trace or from a fork-join task's (see par.c, par_events.hpp)
     assert(call_chunk_done);
+    if (par_events_enabled())
+    {
+        par_chunk_done();
+        return;
+    }
     int result = sem_post(sem_chunk_done);
     if (result == -1)
     {

@@ -1,0 +1,20 @@
+[package]
+name = "parallel-guest"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ziskos = { workspace = true }
+parallel-common = { path = "../common" }
+
+[[bin]]
+name = "pi-guest"
+path = "src/pi.rs"
+
+[[bin]]
+name = "histogram-guest"
+path = "src/histogram.rs"
+
+[[bin]]
+name = "sort-guest"
+path = "src/sort.rs"

@@ -182,8 +182,8 @@ impl AsmProver {
 
         let asm_runner_options = AsmRunnerOptions::new()
             .with_local_rank(local_rank)
-            .with_verbose(verbose_mode == VerboseMode::Debug)
-            .with_metrics(verbose_mode == VerboseMode::Debug)
+            .with_verbose(verbose_mode != VerboseMode::Info)
+            .with_metrics(verbose_mode != VerboseMode::Info)
             .with_unlock_mapped_memory(unlock_mapped_memory)
             .with_asm_out_file(asm_out_file);
 

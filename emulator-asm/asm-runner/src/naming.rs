@@ -117,6 +117,27 @@ pub(crate) fn shmem_output_name(
     }
 }
 
+/// Shared memory name for the chunk events of a chunked trace service (see `par_events`).
+pub(crate) fn shmem_events_name(prefix: &str, asm_service: AsmService) -> String {
+    build_service_shmem_name(prefix, asm_service, "events")
+}
+
+/// Shared memory name for the trace of task `task` of the fork-join region `region` a chunked
+/// trace service runs apart in one run (see `par_events`).
+///
+/// `prefix` is the program's, [`sem_prefix_for`], not the segments': every program set up on a
+/// rank shares those, and a service unlinks its last run's task objects by name, at its next run
+/// and at its teardown, which may come while another program runs a job. The program's prefix
+/// still begins with [`process_prefix_for`], so the process's janitor finds them.
+pub(crate) fn shmem_task_trace_name(
+    prefix: &str,
+    asm_service: AsmService,
+    region: u64,
+    task: u64,
+) -> String {
+    build_service_shmem_name(prefix, asm_service, &format!("r{region}_t{task}"))
+}
+
 /// Semaphore name for chunk completion (per service).
 pub(crate) fn sem_chunk_done_name(prefix: &str, asm_service: AsmService) -> String {
     build_sem_name(prefix, asm_service, "chunk_done")
@@ -184,6 +205,25 @@ mod tests {
         assert_eq!(shmem_control_output_name(p, AsmService::MO), "ZISK_42_0_MO_control_output");
         assert_eq!(shmem_output_name(p, AsmService::MT, None), "ZISK_42_0_MT_output");
         assert_eq!(shmem_output_name(p, AsmService::MT, Some(3)), "ZISK_42_0_MT_output_3");
+        assert_eq!(shmem_events_name(p, AsmService::MO), "ZISK_42_0_MO_events");
+        assert_eq!(shmem_task_trace_name(p, AsmService::MT, 1, 12), "ZISK_42_0_MT_r1_t12");
+        assert!(is_zisk_shmem_file(&shmem_task_trace_name(p, AsmService::MO, 0, 0)));
+    }
+
+    /// Two programs set up on one rank's segments never name the same task trace object, so a
+    /// service of one cannot unlink the other's; both stay in their process's namespace.
+    #[test]
+    fn task_trace_names_are_per_program() {
+        let (a, b) = ("a".repeat(64), "b".repeat(64));
+        let name = |hash: &str| {
+            shmem_task_trace_name(&sem_prefix_for(42, hash, 0, false), AsmService::MT, 1, 12)
+        };
+        assert_eq!(name(&a), format!("ZISK_42_{}_0_h0_MT_r1_t12", &a[..32]));
+        assert_ne!(name(&a), name(&b));
+        for name in [name(&a), name(&b)] {
+            assert!(name.starts_with(&process_prefix_for(42)) && is_zisk_shmem_file(&name));
+            assert!(!name.starts_with(&shm_prefix_for(42, 0, false)));
+        }
     }
 
     #[test]

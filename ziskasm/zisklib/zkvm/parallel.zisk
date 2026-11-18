@@ -1,0 +1,155 @@
+; ============================================================================
+; zkvm/parallel.zisk - fork-join regions. Entry point `ziskasm_zkvm_parallel`,
+; reached from a guest through the zkvmcall `zkvm_parallel`.
+;
+;   void zkvm_parallel(const zkvm_task_t* tasks, uint64_t n, void (*ret)(void))
+;     zkvm_task_t = { entry, arg, out, stack_top, mem_start, mem_end }: six u64
+;     each, where entry is void entry(const void* arg, void* out), and
+;     mem_start..mem_end is the memory the task owns: its stack, its out and anything
+;     else it writes for after the region. The loop does not read it; an emulator
+;     that runs the tasks apart keeps only the writes in that range.
+;     ret = zkvm_parallel_ret, the guest thunk of the zkvmcall that leads back here
+;
+; Runs entry(arg, out) for each task in order, each on its own stack, and returns.
+; A task returns to `ret`, not into this routine: the assembly executor resolves the
+; dynamic jumps of guest code (a task's `ret`) only within the guest, so the way back
+; into the library is the thunk's zkvmcall, a static jump to ziskasm_zkvm_parallel_ret.
+; That is all a proof sees. The fcalls around the task loop only tell the emulator
+; where the region and each pass through the loop start, so that it can run the
+; tasks at the same time and stitch their traces in order. For that, the loop keeps
+; three things:
+;
+; - Every pass (one per task, and a last one that leaves the loop) starts at
+;   zpar_loop on a chunk boundary: after each task, the padding takes the loop to
+;   the next one.
+; - Every pass starts in the same state but for s11, the task index. The loop keeps
+;   s7 = ret, s8 = sp once it has saved ra, s7-s11 and the FCSR on the caller's stack,
+;   s9 = n, s10 = tasks and s11 in callee-saved registers, which every task preserves;
+;   it zeroes ra, the temporaries, the arguments and the virtual registers, which a
+;   task may leave anything in; the other callee-saved registers, gp and tp keep the
+;   caller's values; and c is zpar_loop's address, left by the jump every pass
+;   arrives through.
+; - Every pass starts with the FCSR the region started with. The floating-point
+;   library reads it at every operation (its rounding mode) and rewrites its flags,
+;   and it lives in memory no task owns: run apart, a task would read it as the
+;   region started, where run in order it would read what the task before it left.
+;   So the loop restores it before every pass, and a task's rounding-mode changes and
+;   flags end with the task: after the region the FCSR is what the caller left.
+;
+; So an emulator can start any task from the state of the first pass, with s11 set
+; to its index. What a task may do is the tasks' contract (ZkvmTask in
+; ziskos/entrypoint/src/zisklib/lib/zkvm_parallel.rs); laying out the memory each
+; task owns is the caller's job.
+; ============================================================================
+
+; The padding's fixed steps, besides its burn loop (see below), and the fewest steps
+; it can take, which leave the loop at least one pass
+define ZPAR_PAD_FIXED 9
+define ZPAR_PAD_MIN 11
+; CHUNK_SIZE = 2^ZPAR_CHUNK_SIZE_BITS, the grid FCALL_PAR_PAD counts on
+define ZPAR_CHUNK_SIZE_BITS 18
+; The FCSR's address: CSR_ADDR + 3 * 8 (FCSR in core/src/mem.rs, FREG_CSR in lib-float)
+define ZPAR_FCSR 0xa0408018
+
+ziskasm_zkvm_parallel:
+	; Keep ra, the callee-saved registers the loop uses and the FCSR on the caller's
+	; stack (64 bytes, so sp stays 16-byte aligned)
+	sub(r2, 64) -> r2
+	copyb(r2, r1) -> 8[a + 0]
+	copyb(r2, r23) -> 8[a + 8]
+	copyb(r2, r24) -> 8[a + 16]
+	copyb(r2, r25) -> 8[a + 24]
+	copyb(r2, r26) -> 8[a + 32]
+	copyb(r2, r27) -> 8[a + 40]
+	copyb(0, [ZPAR_FCSR]) -> r5
+	copyb(r2, r5) -> 8[a + 48]
+	copyb(0, r12) -> r23             ; s7 = ret
+	copyb(0, r2) -> r24              ; s8 = sp
+	copyb(0, r11) -> r25             ; s9 = n
+	copyb(0, r10) -> r26             ; s10 = tasks
+	copyb(0, 0) -> r27               ; s11 = 0, the first task's index
+	fcall_param(1, r26)
+	fcall_param(1, r25)
+	fcall(FCALL_PAR_FORK, 0)
+	jump(zpar_clear)
+
+zpar_loop:
+	fcall(FCALL_PAR_BOUNDARY, 0)
+	eq(r27, r25), j(zpar_done)       ; every task has run
+	sll(r27, 5) -> r5                ; t0 = index * 32
+	sll(r27, 4) -> r6                ; t1 = index * 16
+	add(r5, r6) -> r5                ; t0 = index * 48
+	add(r26, r5) -> r5               ; t0 = &tasks[index]
+	copyb(r5, 8[a + 8]) -> r10       ; a0 = arg
+	copyb(r5, 8[a + 16]) -> r11      ; a1 = out
+	copyb(r5, 8[a + 24]) -> r2       ; sp = the task's stack
+	copyb(r5, 8[a + 0]) -> r5        ; t0 = entry
+	copyb(0, r23) -> r1              ; ra = ret, which leads back below
+	copyb(0, r5), setpc(0)           ; to the task's entry
+
+ziskasm_zkvm_parallel_ret:
+	copyb(0, r24) -> r2              ; sp = s8
+	fcall(FCALL_PAR_TASK_END, 0)
+	add(r27, 1) -> r27
+
+zpar_clear:
+	; The FCSR the region started with, for the next pass
+	copyb(r24, 8[a + 48]) -> r5
+	copyb(0, r5) -> [ZPAR_FCSR]
+	; What a task may leave anything in (and the driver's own setup, before the
+	; first pass): ra, the temporaries, the arguments and the virtual registers
+	copyb(0, 0) -> r1
+	copyb(0, 0) -> r5
+	copyb(0, 0) -> r6
+	copyb(0, 0) -> r7
+	copyb(0, 0) -> r10
+	copyb(0, 0) -> r11
+	copyb(0, 0) -> r12
+	copyb(0, 0) -> r13
+	copyb(0, 0) -> r14
+	copyb(0, 0) -> r15
+	copyb(0, 0) -> r16
+	copyb(0, 0) -> r17
+	copyb(0, 0) -> r28
+	copyb(0, 0) -> r29
+	copyb(0, 0) -> r30
+	copyb(0, 0) -> r31
+	copyb(0, 0) -> r32
+	copyb(0, 0) -> r33
+	copyb(0, 0) -> r34
+	copyb(0, 0) -> r35
+	copyb(0, 0) -> r36
+	copyb(0, 0) -> r37
+	copyb(0, 0) -> r38
+	copyb(0, 0) -> r39
+
+	; Padding to the next chunk boundary. After the fcall, exactly as many steps as
+	; it returns (r) must run before zpar_loop, or r + CHUNK_SIZE when r is too few
+	; for the fixed ones: ZPAR_PAD_FIXED fixed steps (the 8 after the fcall and the
+	; final jump), the odd step when the rest (B) is odd, and B rounded down to
+	; even in the burn loop, 2 steps a pass: 9 + B = r in all
+	fcall(FCALL_PAR_PAD, 0)
+	copyb(0, [FREE_INPUT]) -> r5     ; t0 = r
+	ltu(r5, ZPAR_PAD_MIN) -> r6      ; t1 = 1 if r is too few
+	sll(r6, ZPAR_CHUNK_SIZE_BITS) -> r6
+	add(r5, r6) -> r5                ; t0 = r, or r + CHUNK_SIZE
+	sub(r5, ZPAR_PAD_FIXED) -> r5    ; t0 = B, at least 2
+	and(r5, 1) -> r6                 ; t1 = B is odd
+	sub(r5, r6) -> r5                ; t0 = B rounded down to even, at least 2
+	eq(r6, 0), j(zpar_burn)
+	copyb(0, 0) -> r6                ; the odd step, which also leaves t1 = 0
+zpar_burn:
+	sub(r5, 2) -> r5
+	ltu(0, r5), j(zpar_burn)         ; leaves t0 = 0
+	jump(zpar_loop)
+
+zpar_done:
+	fcall(FCALL_PAR_JOIN, 0)
+	copyb(r2, 8[a + 0]) -> r1
+	copyb(r2, 8[a + 8]) -> r23
+	copyb(r2, 8[a + 16]) -> r24
+	copyb(r2, 8[a + 24]) -> r25
+	copyb(r2, 8[a + 32]) -> r26
+	copyb(r2, 8[a + 40]) -> r27
+	add(r2, 64) -> r2
+	ret

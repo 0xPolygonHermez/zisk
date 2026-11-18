@@ -1,0 +1,15 @@
+[package]
+name = "parallel-host"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+zisk-sdk = { workspace = true }
+parallel-common = { path = "../common" }
+
+[build-dependencies]
+zisk-sdk = { workspace = true }
+
+[[bin]]
+name = "parallel-host"
+path = "src/main.rs"

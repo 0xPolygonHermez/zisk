@@ -48,6 +48,7 @@ mod inputs_shmem_stub;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod multi_shmem;
 mod naming;
+mod par_events;
 mod shmem_reader;
 mod shmem_sys;
 mod shmem_utils;
@@ -89,6 +90,8 @@ pub use inputs_shmem_stub::*;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub(crate) use multi_shmem::*;
 pub(crate) use naming::*;
+pub(crate) use par_events::*;
+pub use par_events::{FailureCause, RegionFailure, SequentialReason, TaskAt};
 pub(crate) use shmem_reader::*;
 pub(crate) use shmem_utils::*;
 pub(crate) use shmem_writer::*;
@@ -101,7 +104,8 @@ pub(crate) const TRACE_DELTA_SIZE: usize = 0x080000000; // 2GB
 pub(crate) const TRACE_MAX_SIZE: usize = 0x1000000000; // 64GB
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-const SEM_CHUNK_DONE_WAIT_DURATION: std::time::Duration = std::time::Duration::from_secs(10);
+pub(crate) const SEM_CHUNK_DONE_WAIT_DURATION: std::time::Duration =
+    std::time::Duration::from_secs(10);
 
 /// How long a runner waits for a chunk before it looks whether the service has answered
 /// the request; see [`wait_for_chunk`].
@@ -169,6 +173,18 @@ pub(crate) fn wait_for_chunk(
         if std::time::Instant::now() >= deadline {
             return Err(ChunkStop::Stalled(named_sem::Error::WaitTimeout));
         }
+    }
+}
+
+/// The exit code of a run whose chunk stream stopped before its last chunk: the one the
+/// service's header gives, which says how the run failed, unless it gives none (0). A stream
+/// that never reached its last chunk is never a success, even when the header, which a run that
+/// never started leaves as the previous run's, says the run went fine.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub(crate) fn stopped_stream_exit_code(header_exit_code: u64) -> u64 {
+    match header_exit_code {
+        0 => 1,
+        exit_code => exit_code,
     }
 }
 

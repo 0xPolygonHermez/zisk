@@ -31,14 +31,19 @@ pub fn read<T: DeserializeOwned>() -> T {
     val
 }
 
+/// Read the next input slice. Panics inside a fork-join task (see [`crate::par`]): the input is
+/// read in order, and a task run in parallel would not see where the tasks before it left it.
 #[cfg(zisk_guest)]
 pub fn read_slice<'a>() -> &'a [u8] {
+    crate::par::assert_outside_task("reading the input");
     crate::read_slice_zerocopy()
 }
 
+/// Read the next input slice. Panics inside a fork-join task (see [`crate::par`]).
 #[allow(unused)]
 #[cfg(not(zisk_guest))]
 pub fn read_slice() -> Box<[u8]> {
+    crate::par::assert_outside_task("reading the input");
     read_input().into_boxed_slice()
 }
 
@@ -66,8 +71,10 @@ pub fn commit<T: Serialize>(value: &T) {
 /// Append raw bytes to public outputs.
 ///
 /// Successive calls append to the same byte stream; partial 32-bit output slots
-/// are shared across calls.
+/// are shared across calls. Panics inside a fork-join task (see [`crate::par`]): outputs are
+/// committed in order, and a task run in parallel would lose what it committed.
 pub fn commit_slice(buf: &[u8]) {
+    crate::par::assert_outside_task("committing outputs");
     // SAFETY: buf.as_ptr() is valid for buf.len() bytes by construction of &[u8].
     unsafe { crate::zisklib::zkvm_io::write_output(buf.as_ptr(), buf.len()) };
 }

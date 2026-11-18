@@ -3,6 +3,7 @@
 pub mod asm;
 pub mod output;
 pub mod rust;
+pub mod trace_dump;
 
 pub use asm::*;
 pub use output::*;

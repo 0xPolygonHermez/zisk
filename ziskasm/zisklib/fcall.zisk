@@ -36,3 +36,10 @@ pub define FCALL_BIGINT_DIV             22 ; hints quotient + remainder of an ar
 
 pub define FCALL_INPUT_READY             23 ; asserts standard input is available at a given address
 pub define FCALL_RANDOM_SEED             27 ; returns the 256-bit seed of zkvm_random_u64 (4 words)
+
+; Fork-join markers (zkvm/parallel.zisk). No hints: the emulators resolve them.
+pub define FCALL_PAR_FORK                28 ; a parallel region starts; params: tasks, n
+pub define FCALL_PAR_BOUNDARY            29 ; a pass through the task loop starts, on a chunk boundary
+pub define FCALL_PAR_TASK_END            30 ; a task has returned
+pub define FCALL_PAR_PAD                 31 ; returns the steps left in the chunk after it
+pub define FCALL_PAR_JOIN                32 ; the region ends

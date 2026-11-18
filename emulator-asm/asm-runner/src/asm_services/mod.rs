@@ -10,8 +10,8 @@
 //! The segments are many gigabytes, locked in memory, so a process that sets up several programs
 //! (a worker, or a client proving several guests) cannot afford a set per program. There is one
 //! set per process, rank and hints mode, named by `shm_prefix_for`, and every program set up on
-//! it shares it. What is per program are the service processes and their semaphores, named by
-//! `sem_prefix_for`.
+//! it shares it. What is per program are the service processes, their semaphores and their
+//! fork-join task trace objects, named by `sem_prefix_for`.
 //!
 //! Sharing rests on three rules:
 //!
@@ -22,7 +22,7 @@
 //! - **The segments outlive everything that uses them, and no longer.** The first program's
 //!   setup creates them, and each program's services, and the parent's mappings of them, own
 //!   them through one [`SharedSegments`]; the last owner unlinks them. A program's own teardown
-//!   removes only its semaphores.
+//!   removes only its semaphores and task trace objects.
 //! - **They serve one program at a time.** Which one is recorded in the `SharedSegments`, so
 //!   every client in the process sees the same answer. [`AsmServices::activate`] hands them to
 //!   another program: it waits until the active program's services have finished with them,

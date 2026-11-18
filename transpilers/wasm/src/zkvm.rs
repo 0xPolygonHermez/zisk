@@ -665,12 +665,16 @@ mod tests {
         }
     }
 
-    /// Every zkvmcall with a library routine has a wasm import, except the two `read_input` and
-    /// `write_output`, which WASI's stdin and stdout replace.
+    /// Every zkvmcall with a library routine has a wasm import, except `read_input` and
+    /// `write_output`, which WASI's stdin and stdout replace, and the fork-join driver
+    /// `zkvm_parallel` with its return thunk `zkvm_parallel_ret`: a task is a code address in the
+    /// ROM, and a wasm guest's function reference is a table index.
     #[test]
     fn every_zkvmcall_is_covered() {
+        const NOT_IMPORTED: [&str; 4] =
+            ["read_input", "write_output", "zkvm_parallel", "zkvm_parallel_ret"];
         for call in zisk_definitions::ZKVMCALLS {
-            if !["read_input", "write_output"].contains(&call.name) {
+            if !NOT_IMPORTED.contains(&call.name) {
                 assert!(function(call.name).is_some(), "{}", call.name);
             }
         }

@@ -885,10 +885,9 @@ impl Coordinator {
             execution_duration: exec_time_dto.execution_duration as u64,
             count_and_plan_duration: exec_time_dto.count_and_plan_duration as u64,
             count_and_plan_mo_duration: exec_time_dto.count_and_plan_mo_duration as u64,
-            asm_execution_duration: exec_time_dto
-                .asm_execution_duration
-                .as_ref()
-                .map(|asm_info| AsmExecutionInfo { time: asm_info.time, mhz: asm_info.mhz }),
+            asm_execution_duration: exec_time_dto.asm_execution_duration.as_ref().map(|asm_info| {
+                AsmExecutionInfo { time: asm_info.time, mhz: asm_info.mhz, ..Default::default() }
+            }),
         }
     }
 

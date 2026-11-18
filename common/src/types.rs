@@ -325,6 +325,12 @@ pub struct AsmExecutionInfo {
     pub time: f32,
     /// Effective execution speed in MHz.
     pub mhz: f32,
+    /// Fork-join regions the assembly emulator ran apart, each task in a process of its own.
+    #[serde(default)]
+    pub fork_join_regions_apart: u64,
+    /// Fork-join regions it ran one task after another instead; its log says why.
+    #[serde(default)]
+    pub fork_join_regions_sequential: u64,
 }
 
 impl fmt::Display for AsmExecutionInfo {

@@ -35,6 +35,8 @@ extern "C" {
 #define FCALL_GET_KECCAKF_CACHE_INDEX_ID 25
 #define FCALL_ED25519_FP_SQRT_RATIO_ID 26
 #define FCALL_RANDOM_SEED_ID 27
+// 28-32 = FCALL_PAR_FORK_ID, FCALL_PAR_BOUNDARY_ID, FCALL_PAR_TASK_END_ID, FCALL_PAR_PAD_ID and
+// FCALL_PAR_JOIN_ID, the fork-join markers, resolved at transpilation time, never reach Fcall()
 
 // Size of the host randomness seed in 64-bit words (256 bits)
 #define RANDOM_SEED_WORDS 4

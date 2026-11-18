@@ -366,8 +366,9 @@ is `i64`, e.g. `env.zkvm_keccak256: (i32, i32, i32) -> i32`. These are supported
 | [`zkvm_zisklib.h`](../../ziskasm/lang/c/include/zkvm_zisklib.h) (ZisK) | all 24: 256-bit limb arithmetic, ECDSA and Schnorr, pairings, maps and hashes to curves, BLS and KZG verification, modexp |
 | [`zkvm_fcall.h`](../../ziskasm/lang/c/include/zkvm_fcall.h) (ZisK) | `zkvm_fcall`, `zkvm_fcall_get`, `zkvm_fcall_read`: the hints (free-input calls) |
 
-`zkvm_mem.h` and `zkvm_evm.h` are not: wasm has its own bulk-memory operations, and the
-JUMPDEST analysis of `zkvm_evm.h` is not wired up. An import with a different signature, or another
+`zkvm_mem.h`, `zkvm_evm.h` and `zkvm_parallel.h` are not: wasm has its own bulk-memory
+operations, the JUMPDEST analysis of `zkvm_evm.h` is not wired up, and a `zkvm_parallel` task is
+a code address in the ROM, where a wasm function reference is a table index. An import with a different signature, or another
 name from `env` that is not a raw precompile, is rejected at transpile time.
 
 Most imports become a stub ([`src/zkvm.rs`](src/zkvm.rs)) that:

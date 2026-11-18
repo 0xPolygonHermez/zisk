@@ -18,6 +18,7 @@
 #include "globals.hpp"
 #include "emu.hpp"
 #include "log.hpp"
+#include "par.hpp"
 
 /**************/
 /* TRACE SIZE */
@@ -220,6 +221,16 @@ void trace_map_next_chunk (void)
     void * chunk_address = trace_get_chunk_address(chunk_id);
 
     if (verbose) asm_printf("trace_map_next_chunk() mapping chunk id=%lu size=%lu B address=0x%lx\n", chunk_id, chunk_size, (uint64_t)chunk_address);
+
+    // A fork-join task's trace goes to its own memory, at the same addresses (see par.c)
+    if (par_is_child())
+    {
+        par_child_map_trace((uint64_t)chunk_address, chunk_size);
+        trace_total_mapped_size += chunk_size;
+        set_trace_size(trace_total_mapped_size);
+        next_chunk_id++;
+        return;
+    }
 
     // Build the chunk shared memory name
     char shmem_chunk_name[128];

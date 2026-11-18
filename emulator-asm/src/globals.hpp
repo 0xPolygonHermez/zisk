@@ -53,6 +53,7 @@ extern char shmem_output_name[128];
 extern char shmem_precompile_name[128];
 extern char shmem_rom_name[128];
 extern char shmem_ram_name[128];
+extern char shmem_events_name[128]; // Chunk events of MT and MO (par_events.hpp), empty otherwise
 
 // Semaphore names
 extern char sem_prec_avail_name[128];

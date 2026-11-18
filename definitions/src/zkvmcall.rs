@@ -186,6 +186,13 @@ pub const ZKVMCALLS: &[ZkvmCall] = &[
     // `flag` that reads the text's pointer and length and jumps past it, the same in
     // every ROM; ziskemu prints the text only when asked to (see `add_zisk_code`)
     zcx(0x8B4, "write_log", 2),
+    // Fork-join regions (not EF): runs tasks as if one after another, which is what the
+    // proof sees, while the emulator may run them at the same time. A task returns to the
+    // guest thunk `zkvm_parallel_ret`, which enters the library back through its zkvmcall:
+    // the assembly executor resolves guest code's dynamic jumps (a task's `ret`) only
+    // within the guest
+    zc(0x8B5, "zkvm_parallel", "ziskasm_zkvm_parallel"),
+    zc(0x8B6, "zkvm_parallel_ret", "ziskasm_zkvm_parallel_ret"),
 ];
 
 /// Returns the zkvmcall with CSR number `id`, if any.
