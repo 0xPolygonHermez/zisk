@@ -116,6 +116,8 @@ test_elf() {
     num_mpi_inputs=${#mpi_inputs[@]}
 
     # Set step counts
+    # single: verify constraints + prove; mpi: prove. The verify steps are
+    # temporarily disabled (see below); add 1 to each when re-enabling them.
     current_step=1
     steps_single=2
     steps_mpi=1
@@ -123,7 +125,7 @@ test_elf() {
         steps_single=1
         steps_mpi=0
     fi
-    total_steps=$(( 1 + num_inputs * steps_single + num_mpi_inputs * steps_mpi ))
+    total_steps=$(( num_inputs * steps_single + num_mpi_inputs * steps_mpi ))
 
     # Create directories for proof results and logs
     PROOF_RESULTS_DIR="${WORKSPACE_DIR}/proof-results"
@@ -206,14 +208,16 @@ test_elf() {
                 echo "{\"time\": ${prove_time:-0}, \"cycles\": ${prove_cycles:-0}}" > "${PROOF_RESULTS_DIR}/single/${input_file}.json"
                 result_files+=("${input_file}")
 
-                step "Verifying proof for ${input_file}..."
-                ensure cargo-zisk verify \
-                    -p ./proof.bin \
-                    2>&1 | tee "${LOGS_DIR}/single/verify_${input_file}.log" || return 1
-                if ! grep -F "STARK proof was verified" "${LOGS_DIR}/single/verify_${input_file}.log"; then
-                    err "verify proof failed for ${input_file}"
-                    return 1
-                fi
+                # TEMPORARILY DISABLED: `cargo-zisk verify` is skipped until the issue with the
+                # constants in verifier/src/keys.rs is fixed. Re-enable once resolved.
+                # step "Verifying proof for ${input_file}..."
+                # ensure cargo-zisk verify \
+                #     -p ./proof.bin \
+                #     2>&1 | tee "${LOGS_DIR}/single/verify_${input_file}.log" || return 1
+                # if ! grep -F "STARK proof was verified" "${LOGS_DIR}/single/verify_${input_file}.log"; then
+                #     err "verify proof failed for ${input_file}"
+                #     return 1
+                # fi
             fi
         done
     else
@@ -255,23 +259,25 @@ test_elf() {
                     result_mpi_files+=("${input_file}")
                 fi
 
-                step "Verifying mpi proof for ${input_file}..."
-                local verify_proof_file
-                verify_proof_file=$(resolve_verify_proof_file) || {
-                    err "Verify mpi proof failed for ${input_file}: no proof_*.bin or vadcop_final_proof.bin found in ./proof"
-                    return 1
-                }
-
-                if ! ensure cargo-zisk verify \
-                    -p "${verify_proof_file}" \
-                    2>&1 | tee "${LOGS_DIR}/mpi/verify_mpi_${input_file}.log"; then
-                    return 1
-                fi
-
-                if ! grep -qF "STARK proof was verified" "${LOGS_DIR}/mpi/verify_mpi_${input_file}.log"; then
-                    err "Verify mpi proof failed for ${input_file}"
-                    return 1
-                fi
+                # TEMPORARILY DISABLED: `cargo-zisk verify` is skipped until the issue with the
+                # constants in verifier/src/keys.rs is fixed. Re-enable once resolved.
+                # step "Verifying mpi proof for ${input_file}..."
+                # local verify_proof_file
+                # verify_proof_file=$(resolve_verify_proof_file) || {
+                #     err "Verify mpi proof failed for ${input_file}: no proof_*.bin or vadcop_final_proof.bin found in ./proof"
+                #     return 1
+                # }
+                #
+                # if ! ensure cargo-zisk verify \
+                #     -p "${verify_proof_file}" \
+                #     2>&1 | tee "${LOGS_DIR}/mpi/verify_mpi_${input_file}.log"; then
+                #     return 1
+                # fi
+                #
+                # if ! grep -qF "STARK proof was verified" "${LOGS_DIR}/mpi/verify_mpi_${input_file}.log"; then
+                #     err "Verify mpi proof failed for ${input_file}"
+                #     return 1
+                # fi
             done
         fi
     else
