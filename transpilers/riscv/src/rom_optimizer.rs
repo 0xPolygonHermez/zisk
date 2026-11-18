@@ -349,9 +349,17 @@ fn pass_jump_threading(insts: &mut BTreeMap<u64, ZiskInstBuilder>, st: &mut RomO
                     let nt = (t as i64 + u.i.jmp_offset1) as u64;
                     // Skipping the jump changes what the next instruction sees as the previous c,
                     // so only skip it when the destination reads neither operand from c. A jump to
-                    // itself, or to an address outside the ROM, also stops the chain.
+                    // itself, to an odd address (an internal step, entered only through its own
+                    // instruction), or to an address outside the ROM also stops the chain.
                     match insts.get(&nt) {
-                        Some(v) if v.i.a_src != SRC_C && v.i.b_src != SRC_C && nt != t => t = nt,
+                        Some(v)
+                            if nt & 1 == 0
+                                && v.i.a_src != SRC_C
+                                && v.i.b_src != SRC_C
+                                && nt != t =>
+                        {
+                            t = nt
+                        }
                         _ => break,
                     }
                 }
@@ -674,6 +682,23 @@ mod tests {
         pass_jump_threading(&mut insts, &mut st);
         assert_eq!(st.jump_threading, 0);
         assert_eq!(insts[&196].i.jmp_offset1, 5);
+
+        // An even pure jump whose target is odd is not skipped: the caller would otherwise jump
+        // straight into an internal step.
+        let mut to_odd = inst(304, "flag");
+        to_odd.j(-3, -3); // -> 301
+        let mut insts = BTreeMap::from([
+            (300, inst(300, "add")),
+            (301, end(301)),
+            (304, to_odd),
+            (296, {
+                let mut z = inst(296, "add");
+                z.j(8, 8); // -> 304
+                z
+            }),
+        ]);
+        pass_jump_threading(&mut insts, &mut st);
+        assert_eq!(insts[&296].i.jmp_offset1, 8);
     }
 
     /// A ROM that reads the step counter is left unchanged: removing a step would change the
