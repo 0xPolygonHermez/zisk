@@ -163,6 +163,7 @@ impl From<CoordinatorMessageDto> for CoordinatorMessage {
                     program_name: dto.program_name,
                     with_hints: dto.with_hints,
                     emulator_only: dto.emulator_only,
+                    cached_only: dto.cached_only,
                 })),
             },
             CoordinatorMessageDto::InputStreamData(dto) => {
@@ -287,6 +288,7 @@ impl From<SetupProgramDto> for SetupProgram {
             program_name: dto.program_name,
             with_hints: dto.with_hints,
             emulator_only: dto.emulator_only,
+            cached_only: dto.cached_only,
         }
     }
 }
