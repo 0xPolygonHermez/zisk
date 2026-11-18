@@ -247,7 +247,8 @@ fn an_unaligned_block_record_is_rejected() {
     for mode in [0x0Au64, 0x0B] {
         for off in [1u64, 3, 7] {
             for words in [5u64, 65] {
-                let record = TAG | NO_PAYLOAD | (mode << 33) | (words << 37) | (RAM_ADDR + 0x1000 + off);
+                let record =
+                    TAG | NO_PAYLOAD | (mode << 33) | (words << 37) | (RAM_ADDR + 0x1000 + off);
                 let chunk = vec![record];
                 gpu.reset();
                 let rejected = !gpu.add_chunk(chunk.len() as u64, chunk.as_ptr() as *const c_void)
