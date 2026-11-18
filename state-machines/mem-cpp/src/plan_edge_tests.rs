@@ -236,3 +236,25 @@ fn a_wide_block_record_in_every_region() {
         }
     }
 }
+
+/// A plain block record with a misaligned base is illegal (every producer aligns): the GPU
+/// planner must reject the plan, never treat it silently as aligned. The CPU reference is not
+/// consulted here on purpose: its counters abort() on this stream.
+#[test]
+fn an_unaligned_block_record_is_rejected() {
+    let Some(planner) = planner() else { return };
+    let gpu = planner.lock().unwrap();
+    for mode in [0x0Au64, 0x0B] {
+        for off in [1u64, 3, 7] {
+            for words in [5u64, 65] {
+                let record = TAG | NO_PAYLOAD | (mode << 33) | (words << 37) | (RAM_ADDR + 0x1000 + off);
+                let chunk = vec![record];
+                gpu.reset();
+                let rejected = !gpu.add_chunk(chunk.len() as u64, chunk.as_ptr() as *const c_void)
+                    || gpu.run().is_none();
+                assert!(rejected, "mode {mode:#04x} off {off} words {words}: the planner accepted an unaligned block");
+            }
+        }
+    }
+    gpu.reset();
+}

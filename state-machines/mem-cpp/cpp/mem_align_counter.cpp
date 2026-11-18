@@ -5,6 +5,8 @@
 #include "tools.hpp"
 #include <vector>
 #include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 MemAlignCounter::MemAlignCounter(std::shared_ptr<MemContext> context) :context(context), elapsed_ms(0), total_usleep(0) {
     total_counters.chunk_id = 0xFFFFFFFF;
@@ -122,8 +124,10 @@ void MemAlignCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData 
             case MOPS_BLOCK_READ + 0x20:
             case MOPS_BLOCK_READ + 0x30:
                 if ((rec.addr & 0x07) > 0) {
-                    const uint32_t count = rec.flags >> MOPS_BLOCK_COUNT_SBITS;
-                    full_5 += count;
+                    // Same invariant as MemCounter: block bases are 8-aligned at every producer.
+                    fprintf(stderr, "MemAlignCounter FATAL: unaligned block record (addr 0x%09lX);"
+                                    " block bases must be 8-aligned\n", (unsigned long)rec.addr);
+                    abort();
                 }
                 break;
             case MOPS_BLOCK_WRITE + 0x00:
@@ -131,8 +135,10 @@ void MemAlignCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData 
             case MOPS_BLOCK_WRITE + 0x20:
             case MOPS_BLOCK_WRITE + 0x30:
                 if ((rec.addr & 0x07) > 0) {
-                    const uint32_t count = rec.flags >> MOPS_BLOCK_COUNT_SBITS;
-                    full_5 += count;
+                    // Same invariant as MemCounter: block bases are 8-aligned at every producer.
+                    fprintf(stderr, "MemAlignCounter FATAL: unaligned block record (addr 0x%09lX);"
+                                    " block bases must be 8-aligned\n", (unsigned long)rec.addr);
+                    abort();
                 }
                 break;
 

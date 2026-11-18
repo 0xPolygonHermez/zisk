@@ -21,7 +21,8 @@
 // =====================================================================
 
 // Decodes the record starting at word `start`. `flags` loses the tag and the relocated top bit;
-// the payload gets the value's bit 63 back (a no-op for step-field payloads).
+// the payload gets the value's bit 63 back (a no-op for step-field payloads; on a value block it
+// sets bit 63 of the mask word, which no reader consumes: tops come from the raw word).
 __host__ __device__ __forceinline__ MemOp load_record(const uint64_t* words, uint32_t start) {
     const uint64_t hdr = words[start];
     MemOp op;
@@ -239,8 +240,17 @@ bool decode(MemOp op,
         case MOPS_BLOCK_WRITE        + 0x00: case MOPS_BLOCK_WRITE        + 0x10:
         case MOPS_BLOCK_WRITE        + 0x20: case MOPS_BLOCK_WRITE        + 0x30:
         case MOPS_ALIGNED_BLOCK_WRITE+ 0x00: case MOPS_ALIGNED_BLOCK_WRITE+ 0x10:
-        case MOPS_ALIGNED_BLOCK_WRITE+ 0x20: case MOPS_ALIGNED_BLOCK_WRITE+ 0x30:
+        case MOPS_ALIGNED_BLOCK_WRITE+ 0x20: case MOPS_ALIGNED_BLOCK_WRITE+ 0x30: {
+            // Block bases are 8-aligned at every producer; the CPU planner implements no other
+            // case either (its counters abort). An unaligned plain block fails the plan, so the
+            // whole block falls back to the CPU path and dies there with the message.
+            const uint32_t nib = (uint32_t)(op_flags(op) & 0x0Fu);
+            if ((nib == MOPS_BLOCK_READ || nib == MOPS_BLOCK_WRITE) && (op_addr(op) & 0x07u)) {
+                atomicOr(d_invalid_mode_flag, INVALID_ADDRESS);
+                *count_out = 0; return false;
+            }
             *count_out = op_flags(op) >> MOPS_BLOCK_COUNT_SBITS; return true;
+        }
         case MOPS_BLOCK_VALUES + 0x00: case MOPS_BLOCK_VALUES + 0x10:
         case MOPS_BLOCK_VALUES + 0x20: case MOPS_BLOCK_VALUES + 0x30:
             *count_out = (op_flags(op) >> MOPS_BLOCK_COUNT_SBITS) & 63u; return true;
@@ -385,11 +395,14 @@ void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block, const uin
         // the InputData fill takes the value from the record; the word never belongs to RAM.
         case MOPS_READ_8_VALUE:
             emit_one_w(addr, out, step, kind_full, op.payload); break;
+        // Block bases are 8-aligned at every producer, so each element is exactly one word:
+        // decode() and the host walk reject an unaligned plain block (the CPU counters abort).
         case MOPS_BLOCK_READ        + 0x00: case MOPS_BLOCK_READ        + 0x10:
         case MOPS_BLOCK_READ        + 0x20: case MOPS_BLOCK_READ        + 0x30:
         case MOPS_ALIGNED_BLOCK_READ+ 0x00: case MOPS_ALIGNED_BLOCK_READ+ 0x10:
         case MOPS_ALIGNED_BLOCK_READ+ 0x20: case MOPS_ALIGNED_BLOCK_READ+ 0x30: {
             if (skip_block) break;
+            if ((mode & 0x0Fu) == MOPS_BLOCK_READ && (addr & 0x07u)) break;   // rejected by decode()
             const uint32_t count = op_flags(op) >> MOPS_BLOCK_COUNT_SBITS;
             const uint32_t bstep = mops_step_field(op, true);
             for (uint32_t i = 0; i < count; i++) emit_one_r(addr + i * 8, out + i, bstep);
@@ -400,6 +413,7 @@ void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block, const uin
         case MOPS_ALIGNED_BLOCK_WRITE+ 0x00: case MOPS_ALIGNED_BLOCK_WRITE+ 0x10:
         case MOPS_ALIGNED_BLOCK_WRITE+ 0x20: case MOPS_ALIGNED_BLOCK_WRITE+ 0x30: {
             if (skip_block) break;
+            if ((mode & 0x0Fu) == MOPS_BLOCK_WRITE && (addr & 0x07u)) break;   // rejected by decode()
             const uint32_t count = op_flags(op) >> MOPS_BLOCK_COUNT_SBITS;
             const uint32_t bstep = mops_step_field(op, true);
             for (uint32_t i = 0; i < count; i++) emit_one_w(addr + i * 8, out + i, bstep, POT_KIND_UNKNOWN, 0);
@@ -1665,6 +1679,13 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
             case MOPS_BLOCK_VALUES + 0x00: case MOPS_BLOCK_VALUES + 0x10:
             case MOPS_BLOCK_VALUES + 0x20: case MOPS_BLOCK_VALUES + 0x30:
                 add_pot(addr, (op_flags(op) >> MOPS_BLOCK_COUNT_SBITS) & 63u); break;
+            case MOPS_BLOCK_READ  + 0x00: case MOPS_BLOCK_READ  + 0x10:
+            case MOPS_BLOCK_READ  + 0x20: case MOPS_BLOCK_READ  + 0x30:
+            case MOPS_BLOCK_WRITE + 0x00: case MOPS_BLOCK_WRITE + 0x10:
+            case MOPS_BLOCK_WRITE + 0x20: case MOPS_BLOCK_WRITE + 0x30:
+                // Same rejection as decode(): block bases are 8-aligned at every producer.
+                if (off != 0) return malformed(k, "unaligned block record (block bases must be 8-aligned)");
+                add_pot(addr, op_flags(op) >> MOPS_BLOCK_COUNT_SBITS); break;
             default: add_pot(addr, op_flags(op) >> MOPS_BLOCK_COUNT_SBITS); break;
         }
         if (dp > piece_potentials_) {
@@ -1680,7 +1701,8 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
             for (uint32_t done = 0; done < count;) {
                 const uint32_t part = std::min(count - done, piece_potentials_);
                 Piece sp{k, len, part, is_ram_addr(addr) ? part : 0u, len, {0, 0}};
-                sp.sub[0] = (hdr & ~count_mask & ~MOPS_ADDR_MASK) | ((uint64_t)part << MOPS_BLOCK_COUNT_SHIFT) | (uint64_t)(addr + done * 8u);
+                sp.sub[0] = (hdr & ~count_mask & ~MOPS_ADDR_MASK) | ((uint64_t)part << MOPS_BLOCK_COUNT_SHIFT)
+                           | ((addr + (uint64_t)done * 8u) & MOPS_ADDR_MASK);
                 if (len == 2) sp.sub[1] = words[k + 1];
                 pieces.push_back(sp);
                 pot_total += part; ram_total += sp.ram;
