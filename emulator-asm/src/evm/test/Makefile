@@ -2,7 +2,7 @@
 # the DMA test harness next door.
 
 CXX = g++
-CXXFLAGS = -std=c++17 -O2 -Wall -Wextra -g -no-pie
+CXXFLAGS = -std=c++17 -O2 -Wall -Wextra -g -no-pie -I../../../../state-machines/mem-cpp/cpp
 LDFLAGS = -no-pie
 ASMFLAGS = -g --noexecstack -I$(CURDIR) -I.. -I../../dma
 BDIR = build

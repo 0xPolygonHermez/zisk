@@ -81,11 +81,11 @@ constexpr uint32_t POT_KIND_UNKNOWN = 3;
 constexpr uint32_t POT_META_OFF_SHIFT   = 2;
 constexpr uint32_t POT_META_WIDTH_SHIFT = 5;
 constexpr uint32_t POT_META_STEP_SHIFT  = 9;
-constexpr uint32_t MOPS_STEP_FIELD_MASK = (1u << 20) - 1;
+static_assert(MOPS_STEP_SHIFT + MOPS_STEP_FIELD_BITS <= MOPS_NO_VALUE_BIT, "step field must fit op_flags()");
+static_assert(MOPS_VALUES_STEP_SHIFT + MOPS_STEP_FIELD_BITS <= 63, "value-block step must end below the tag");
 // Step field of a record: bits 39-58 of the header for non-block modes, of the payload for blocks.
 __host__ __device__ __forceinline__ uint32_t mops_step_field(const MemOp& op, bool block) {
-    return block ? (uint32_t)((op.payload >> MOPS_STEP_SHIFT) & MOPS_STEP_FIELD_MASK)
-                 : (uint32_t)((op_flags(op) >> 6) & MOPS_STEP_FIELD_MASK);
+    return mops_hdr_step_field(block ? op.payload : op.hdr);
 }
 __host__ __device__ __forceinline__ uint32_t pot_meta(uint32_t kind, uint32_t off, uint32_t width, uint32_t step) {
     return kind | (off << POT_META_OFF_SHIFT) | (width << POT_META_WIDTH_SHIFT) | (step << POT_META_STEP_SHIFT);
@@ -259,8 +259,10 @@ bool decode(MemOp op,
 // `aligned_addr_packed` of a potential at the aligned byte address `aligned`: its compact word
 // address shifted by 2 (a 33-bit byte address does not fit the field) and the flag bits, with
 // POT_FLAG_INVALID when the address is outside the memory map.
-// Not inlined on purpose: inlined into the emit helpers, nvcc 12.9 (sm_120) stores a stale
-// register for the input-region branch, which the planner tests catch (plan_edge_tests.rs).
+// Not inlined on purpose: inlined into blockop_emit_kernel, ptxas (12.9 and 13.0, sm_120) leaves
+// the high word of the 64-bit `aligned - base` unset (the PTX is right), which sets bit 31 of
+// the packed address of a ROM block record wider than BLOCKOP_SPILL_THRESH_VAL. Caught by
+// plan_edge_tests.rs `a_wide_block_record_in_every_region`.
 __host__ __device__ __noinline__ uint32_t pack_aligned(uint64_t aligned) {
     if (aligned >= ZISK_RAM_ADDR_BASE) {
         if (aligned >= ZISK_RAM_ADDR_END) return POT_FLAG_INVALID;
@@ -411,7 +413,7 @@ void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block, const uin
         case MOPS_BLOCK_VALUES + 0x20: case MOPS_BLOCK_VALUES + 0x30: {
             const uint32_t count = (op_flags(op) >> MOPS_BLOCK_COUNT_SBITS) & 63u;
             // From the header word: the step ends at bit 62, above the bits op_flags() returns.
-            const uint32_t vstep = (uint32_t)(op.hdr >> MOPS_VALUES_STEP_SHIFT) & MOPS_STEP_FIELD_MASK;
+            const uint32_t vstep = mops_values_step_field(op.hdr);
             const uint64_t tops  = rec[1];
             for (uint32_t i = 0; i < count; i++) {
                 const uint64_t v = rec[2 + i] | (((tops >> i) & 1ull) << 63);
@@ -567,7 +569,7 @@ void blockop_emit_kernel(const BlockOpSpill* __restrict__ d_spill,
         const uint32_t count       = s.count;
         const uint32_t base_offset = d_potential_offsets[s.memop_idx];
         PotentialEmit* base = d_potentials + base_offset;
-        const uint32_t step = (uint32_t)((s.payload >> MOPS_STEP_SHIFT) & MOPS_STEP_FIELD_MASK);
+        const uint32_t step = mops_hdr_step_field(s.payload);
         for (uint32_t i = threadIdx.x; i < count; i += blockDim.x) {
             const uint64_t a = base_addr + (uint64_t)i * 8u;
             if (s.kind_w) emit_one_w(a, base + i, step, POT_KIND_UNKNOWN, 0);

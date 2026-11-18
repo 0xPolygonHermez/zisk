@@ -8,13 +8,9 @@
 #include <string>
 #include <vector>
 
-#define EXTRA_PARAMETER_ADDR 0xC0400F00
+#include "mops_format.hpp"
 
-#define MOPS_ALIGNED_READ 0x0C
-#define MOPS_ALIGNED_WRITE 0x0D
-#define MOPS_ALIGNED_BLOCK_READ 0x0E
-#define MOPS_ALIGNED_BLOCK_WRITE 0x0F
-#define MOPS_BLOCK_COUNT_SBITS 4
+#define EXTRA_PARAMETER_ADDR 0xC0400F00
 
 extern "C" {
 uint64_t test_asm_jump_dest_fast(uint64_t *dst, const uint8_t *src, size_t count,
@@ -105,17 +101,17 @@ static std::vector<uint64_t> byte_walk(const uint8_t *code, size_t count) {
 // ---------------------------------------------------------------------------
 
 static uint64_t encode_aligned_read(uint64_t addr) {
-    return ((uint64_t)MOPS_ALIGNED_READ << 32) | addr;
+    return ((uint64_t)MOPS_ALIGNED_READ << MOPS_MODE_SHIFT) | addr;
 }
 static uint64_t encode_block(uint64_t op, uint64_t addr, uint64_t words) {
-    return (op << 32) | (words << (MOPS_BLOCK_COUNT_SBITS + 32)) | addr;
+    return (op << MOPS_MODE_SHIFT) | (words << MOPS_BLOCK_COUNT_SHIFT) | addr;
 }
 
 static std::string decode(uint64_t value) {
-    const uint32_t flags = (uint32_t)(value >> 32);
-    const uint32_t addr = (uint32_t)value;
+    const uint32_t flags = (uint32_t)(value >> MOPS_MODE_SHIFT) & ((1u << MOPS_FLAGS_BITS) - 1);
+    const unsigned long long addr = value & MOPS_ADDR_MASK;
     char buffer[128];
-    snprintf(buffer, sizeof(buffer), "op:0x%02X words:%u addr:0x%08X", flags & 0x0F,
+    snprintf(buffer, sizeof(buffer), "op:0x%02X words:%u addr:0x%09llX", flags & 0x0F,
              flags >> MOPS_BLOCK_COUNT_SBITS, addr);
     return buffer;
 }
@@ -273,8 +269,10 @@ void Test::run_case(const std::string &name, const std::vector<uint8_t> &code) {
     // The harness runs with r14 = 1024 steps left and chunk_size = 1 << 18, so every record of
     // the call carries the same step field.
     const uint64_t TAG = 1ull << 63;
-    const uint64_t step_read = (((uint64_t)(1 << 18) - 1024) << 2 | 2) << 38;
-    const uint64_t values_header = ((uint64_t)0x07 << 32) | ((step_read | (1ull << 38)) << 4) | TAG;
+    const uint64_t step_read = (((uint64_t)(1 << 18) - 1024) << 2 | 2) << MOPS_STEP_SHIFT;
+    // The value block's write step: the read's with slot 3, moved to MOPS_VALUES_STEP_SHIFT.
+    const uint64_t values_header = ((uint64_t)MOPS_BLOCK_VALUES << MOPS_MODE_SHIFT)
+        | ((step_read | (1ull << MOPS_STEP_SHIFT)) << (MOPS_VALUES_STEP_SHIFT - MOPS_STEP_SHIFT)) | TAG;
     std::vector<uint64_t> want;
 #ifdef MOPS_LIGHT
     // Light form: one word per record, no steps, no values; block records carry the no-payload bit.
@@ -299,7 +297,7 @@ void Test::run_case(const std::string &name, const std::vector<uint8_t> &code) {
         // the bitmap words as value blocks of up to 63 words: header, top bits, values
         for (size_t w0 = 0; w0 < expected.bitmap.size(); w0 += 63) {
             const size_t n = std::min<size_t>(63, expected.bitmap.size() - w0);
-            want.push_back(((uint64_t)dst + w0 * 8) | ((uint64_t)n << 36) | values_header);
+            want.push_back(((uint64_t)dst + w0 * 8) | ((uint64_t)n << MOPS_BLOCK_COUNT_SHIFT) | values_header);
             uint64_t tops = 0;
             for (size_t i = 0; i < n; ++i) tops |= (expected.bitmap[w0 + i] >> 63) << i;
             want.push_back(tops);

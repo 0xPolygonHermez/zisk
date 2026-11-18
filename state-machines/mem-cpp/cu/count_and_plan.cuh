@@ -47,7 +47,12 @@ struct __align__(8) MemOp {
 };
 static_assert(sizeof(MemOp) == 16, "MemOp is one decoded record");
 __host__ __device__ __forceinline__ uint64_t op_addr(const MemOp& op) { return op.hdr & MOPS_ADDR_MASK; }
-__host__ __device__ __forceinline__ uint32_t op_flags(const MemOp& op) { return (uint32_t)(op.hdr >> MOPS_MODE_SHIFT) & 0x1FFFFFFFu; }
+// Bit 62 stays out: on a light block record it is NO_PAYLOAD and would land in the count, so a
+// field ending at bit 62 (the value-block step) is read from `hdr`.
+static_assert(MOPS_BLOCK_COUNT_SHIFT + MOPS_BLOCK_COUNT_BITS <= MOPS_NO_PAYLOAD_BIT, "block count must fit op_flags()");
+__host__ __device__ __forceinline__ uint32_t op_flags(const MemOp& op) {
+    return (uint32_t)(op.hdr >> MOPS_MODE_SHIFT) & ((1u << MOPS_FLAGS_BITS) - 1);
+}
 
 // Stream layout: cpp/mem_config.hpp. `load_record` decodes the record at a word position into a
 // `MemOp`.

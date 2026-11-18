@@ -212,3 +212,27 @@ fn a_piece_of_zero_count_block_records() {
     let chunks = vec![small_chunk(1), empties, small_chunk(2)];
     assert_same_plans("zero-count blocks", &chunks);
 }
+
+/// A block record wider than BLOCKOP_SPILL_THRESH_VAL words goes through blockop_emit_kernel;
+/// with pack_aligned inlined there, ptxas miscompiled the ROM branch (count_and_plan.cu).
+#[test]
+fn a_wide_block_record_in_every_region() {
+    let regions = [
+        ("ROM", ROM_ADDR + 0x8A90),
+        ("input", INPUT_ADDR + 0x1000),
+        ("RAM", RAM_ADDR + 0x10_0000),
+        ("RAM above 4 GB", 1 << 32),
+    ];
+    for (region, addr) in regions {
+        // block read, block write, aligned block read, aligned block write
+        for mode in [0x0Au64, 0x0B, 0x0E, 0x0F] {
+            for words in [65u64, 1416] {
+                let record = TAG | NO_PAYLOAD | (mode << 33) | (words << 37) | addr;
+                assert_same_plans(
+                    &format!("{region}, mode {mode:#04x}, {words} words"),
+                    &[vec![record]],
+                );
+            }
+        }
+    }
+}

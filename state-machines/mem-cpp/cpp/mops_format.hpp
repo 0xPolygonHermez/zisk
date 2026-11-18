@@ -85,9 +85,14 @@
 #define MOPS_BLOCK_COUNT_MAX ((1u << MOPS_BLOCK_COUNT_BITS) - 1)
 #define MOPS_STEP_SHIFT 39
 #define MOPS_VALUES_STEP_SHIFT 43
+#define MOPS_STEP_FIELD_BITS 20
+#define MOPS_STEP_FIELD_MASK ((1u << MOPS_STEP_FIELD_BITS) - 1)
 #define MOPS_BLOCK_COUNT_SBITS 4
 #define MOPS_NO_VALUE_BIT 59
 #define MOPS_NO_PAYLOAD_BIT 62
+// The header bits from the mode up to NO_PAYLOAD (33-61): mode, block count, step field, NO_VALUE.
+// The value-block step ends at bit 62, outside them.
+#define MOPS_FLAGS_BITS (MOPS_NO_PAYLOAD_BIT - MOPS_MODE_SHIFT)
 
 #ifdef __CUDACC__
 #define MOPS_HD __host__ __device__ __forceinline__
@@ -114,6 +119,17 @@ MOPS_HD int mops_record_is_light(uint64_t hdr) {
     if (low == MOPS_BLOCK_VALUES || low == MOPS_ALIGNED_READ) return 0;
     if (low == 1 || low == 2 || low == 4 || low == 8 || low == MOPS_ALIGNED_WRITE) return (int)((hdr >> MOPS_NO_VALUE_BIT) & 1);
     return (int)((hdr >> MOPS_NO_PAYLOAD_BIT) & 1);
+}
+
+// The 20-bit step field, (step_in_chunk << 2) | slot. A non-block record carries it in the header
+// at MOPS_STEP_SHIFT; a block record carries it in the payload word at the same position.
+MOPS_HD uint32_t mops_hdr_step_field(uint64_t w) {
+    return (uint32_t)(w >> MOPS_STEP_SHIFT) & MOPS_STEP_FIELD_MASK;
+}
+// A value block keeps the write step in the header, at MOPS_VALUES_STEP_SHIFT: it ends at bit 62,
+// above a 29-bit mode-up flags extract, so it must be read from the full header word.
+MOPS_HD uint32_t mops_values_step_field(uint64_t hdr) {
+    return (uint32_t)(hdr >> MOPS_VALUES_STEP_SHIFT) & MOPS_STEP_FIELD_MASK;
 }
 
 #endif

@@ -15,14 +15,14 @@ struct MemCountersBusData {
 
 // The record whose header word is `w[0]`, for the counters. The payload words are not read: a
 // count needs no value. The one rewrite is the heavy form's block write (MOPS_BLOCK_VALUES, 0x07),
-// whose header holds the count in 6 bits at 36 and the write step above it: it is reported as an
+// whose header holds the count in 6 bits at 37 and the write step above it: it is reported as an
 // ALIGNED_BLOCK_WRITE of that count, the form the counters' block case already handles, so no
 // counter needs a case for 0x07 and none reads the step bits as part of the count.
 static inline MemCountersBusData mops_decode_record(const uint64_t *w) {
     const uint64_t hdr = w[0];
     MemCountersBusData rec;
     rec.addr = hdr & MOPS_ADDR_MASK;
-    rec.flags = (uint32_t)(hdr >> MOPS_MODE_SHIFT) & 0x1FFFFFFF;
+    rec.flags = (uint32_t)(hdr >> MOPS_MODE_SHIFT) & ((1u << MOPS_FLAGS_BITS) - 1);
     if ((rec.flags & 0x0F) == MOPS_BLOCK_VALUES) {
         rec.flags = MOPS_ALIGNED_BLOCK_WRITE | ((uint32_t)((hdr >> MOPS_BLOCK_COUNT_SHIFT) & 63) << MOPS_BLOCK_COUNT_SBITS);
     }
