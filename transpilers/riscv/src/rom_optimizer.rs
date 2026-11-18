@@ -342,8 +342,10 @@ fn pass_jump_threading(insts: &mut BTreeMap<u64, ZiskInstBuilder>, st: &mut RomO
     let final_target = |insts: &BTreeMap<u64, ZiskInstBuilder>, mut t: u64| -> u64 {
         for _ in 0..16 {
             match insts.get(&t) {
-                // t is a pure jump: look at where it goes (a flag always takes j1).
-                Some(u) if is_pure_jump(&u.i) => {
+                // t is a pure jump at an even address that is a whole instruction by itself: look
+                // at where it goes (a flag always takes j1). An odd address is an internal step of
+                // a multi-step instruction, which must be executed, never skipped.
+                Some(u) if t & 1 == 0 && u.i.next_internal_inst.is_none() && is_pure_jump(&u.i) => {
                     let nt = (t as i64 + u.i.jmp_offset1) as u64;
                     // Skipping the jump changes what the next instruction sees as the previous c,
                     // so only skip it when the destination reads neither operand from c. A jump to
@@ -363,8 +365,10 @@ fn pass_jump_threading(insts: &mut BTreeMap<u64, ZiskInstBuilder>, st: &mut RomO
     for a in addrs {
         let i = &insts[&a].i;
         // Only instructions whose jump offsets can be changed freely: plain ones, and pure jumps
-        // themselves (which shortens chains of jumps).
-        if !is_plain(i) && !is_pure_jump(i) {
+        // themselves (which shortens chains of jumps). Never an internal step (odd address) or an
+        // instruction that continues into one: their offsets are the route through the steps of
+        // a multi-step instruction.
+        if a & 1 != 0 || i.next_internal_inst.is_some() || (!is_plain(i) && !is_pure_jump(i)) {
             continue;
         }
         // Thread both slots: j1 (flag set, e.g. a taken branch) and j2 (flag clear).
@@ -643,6 +647,33 @@ mod tests {
         pass_jump_threading(&mut insts, &mut st);
         assert_eq!(st.jump_threading, 1);
         assert_eq!((insts[&100].i.jmp_offset1, insts[&100].i.jmp_offset2), (8, 100));
+    }
+
+    /// Jump threading leaves multi-step instructions alone: an instruction that continues into an
+    /// internal step keeps its offsets, and an internal (odd) pure jump is never skipped.
+    #[test]
+    fn jump_threading_keeps_internal_steps() {
+        // 100 continues into an internal flag at 101, which jumps on to 104.
+        let mut x = inst(100, "add");
+        x.j(1, 1);
+        x.i.next_internal_inst = Some(101);
+        let mut internal = inst(101, "flag");
+        internal.j(3, 3);
+        let mut insts = BTreeMap::from([(100, x.clone()), (101, internal), (104, end(104))]);
+        let mut st = RomOptStats::default();
+        pass_jump_threading(&mut insts, &mut st);
+        assert_eq!(st.jump_threading, 0);
+        assert_eq!((insts[&100].i.jmp_offset1, insts[&100].i.jmp_offset2), (1, 1));
+
+        // An even plain instruction whose successor is an odd pure jump does not skip it either.
+        let mut odd_flag = inst(201, "flag");
+        odd_flag.j(3, 3);
+        let mut y = inst(196, "add");
+        y.j(5, 5);
+        let mut insts = BTreeMap::from([(196, y), (201, odd_flag), (204, end(204))]);
+        pass_jump_threading(&mut insts, &mut st);
+        assert_eq!(st.jump_threading, 0);
+        assert_eq!(insts[&196].i.jmp_offset1, 5);
     }
 
     /// A ROM that reads the step counter is left unchanged: removing a step would change the
