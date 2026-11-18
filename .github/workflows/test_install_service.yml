@@ -38,11 +38,12 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v4
+      # openmpi-bin pulls the libopenmpi package of the runner's Ubuntu version
       - name: Install runtime deps
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends \
-              libsodium23 libomp5 libgomp1 libopenmpi3 openmpi-bin
+              libsodium23 libomp5 libgomp1 openmpi-bin
       - name: Worker install smoke (safe default)
         run: sudo bash distributed/deploy/scripts/test/worker-install-linux.sh
       - name: Coordinator install smoke (safe default)

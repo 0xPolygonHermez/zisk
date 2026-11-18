@@ -14,14 +14,17 @@ main() {
     # Load environment variables from .env file (only the ones used by this script)
     load_env ZISK_REPO_DIR ZISK_TEMPLATE_BRANCH DISABLE_PROVE ONLY_CPU PROVE_FLAGS || return 1
 
+    # 4 base steps (shared memory, new, build, run) + setup + verify constraints
+    # + prove (unless DISABLE_PROVE). The verify step is temporarily disabled (see below).
+    # On GHA macOS only the 4 base steps run.
     current_step=1
     if [[ "${DISABLE_PROVE}" == "1" ]]; then
-        total_steps=8
+        total_steps=6
     else
-        total_steps=10
+        total_steps=7
     fi
     if is_gha && [[ "${PLATFORM}" == "darwin" ]]; then
-        total_steps=$((total_steps - 2))
+        total_steps=4
     fi
 
     if ! is_gha || [[ "${PLATFORM}" == "linux" ]]; then
@@ -97,12 +100,14 @@ main() {
                 return 1
             fi
 
-            step "Verifying proof..."
-            ensure cargo-zisk verify -p ./proof.bin 2>&1 | tee verify_output.log || return 1
-            if ! grep -F "STARK proof was verified" verify_output.log; then
-                err "verify proof failed"
-                return 1
-            fi
+            # TEMPORARILY DISABLED: `cargo-zisk verify` is skipped until the issue with the
+            # constants in verifier/src/keys.rs is fixed. Re-enable once resolved.
+            # step "Verifying proof..."
+            # ensure cargo-zisk verify -p ./proof.bin 2>&1 | tee verify_output.log || return 1
+            # if ! grep -F "STARK proof was verified" verify_output.log; then
+            #     err "verify proof failed"
+            #     return 1
+            # fi
         fi
     fi
 

@@ -5,7 +5,6 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
-homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
@@ -21,9 +20,6 @@ path = "src/bin/riscv2zisk.rs"
 [dependencies]
 zisk-core = { workspace = true }
 zisk-transpiler-common = { workspace = true }
-
-[build-dependencies]
-zisk-lib-float = { workspace = true, optional = true }
 
 [features]
 # Zba is proven natively by ZisK (sh<n>add and slli.uw in the binary state machines, add.uw

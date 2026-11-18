@@ -3,7 +3,6 @@ version = "1.4.0-alpha"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 keywords = ["zisk", "zkvm", "zero-knowledge"]
-homepage = "https://github.com/0xPolygonHermez/zisk"
 repository = "https://github.com/0xPolygonHermez/zisk"
 documentation = "https://0xpolygonhermez.github.io/zisk-docs/"
 categories = ["cryptography"]
@@ -123,7 +122,6 @@ zisk-precomp-dma = { path = "precompiles/dma", version = "1.4.0-alpha" }
 zisk-precomp-evm = { path = "precompiles/evm", version = "1.4.0-alpha" }
 zisk-riscv = { path = "transpilers/riscv", version = "1.4.0-alpha" }
 zisk-transpiler-common = { path = "transpilers/common", version = "1.4.0-alpha" }
-zisk-transpiler-riscv = { path = "transpilers/riscv2zisk", version = "1.4.0-alpha" }
 zisk-transpiler-wasm = { path = "transpilers/wasm", version = "1.4.0-alpha" }
 zisk-rom-setup = { path = "rom-setup", version = "1.4.0-alpha" }
 zisk-setup = { path = "setup", version = "1.4.0-alpha" }
@@ -136,7 +134,6 @@ zisk-sm-mem-common = { path = "state-machines/mem-common", version = "1.4.0-alph
 zisk-sm-mem-planner = { path = "state-machines/mem-cpp", version = "1.4.0-alpha" }
 zisk-sm-rom = { path = "state-machines/rom", version = "1.4.0-alpha" }
 zisk-test-artifacts = { path = "test-artifacts" }
-ziskclib = { path = "ziskclib", version = "1.4.0-alpha" }
 zisk-zkvm-interface = { path = "zkvm-interface", version = "1.4.0-alpha" }
 ziskos = { path = "ziskos/entrypoint", version = "1.4.0-alpha" }
 ziskos-hints = { path = "ziskos-hints", version = "1.4.0-alpha" }
@@ -154,8 +151,6 @@ zisk-recurser = { path = "recurser", version = "1.4.0-alpha" }
 zisk-cluster-common = { path = "distributed/crates/cluster-common", version = "1.4.0-alpha" }
 zisk-coordinator = { path = "distributed/crates/coordinator", version = "1.4.0-alpha" }
 zisk-cluster-api = { path = "distributed/crates/cluster-api", version = "1.4.0-alpha" }
-zisk-worker = { path = "distributed/crates/worker", version = "1.4.0-alpha" }
-zisk-coordinator-server = { path = "distributed/crates/coordinator-server", version = "1.4.0-alpha" }
 zisk-coordinator-api = { path = "distributed/crates/coordinator-api", version = "1.4.0-alpha" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client", version = "1.4.0-alpha" }
 

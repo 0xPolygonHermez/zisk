@@ -7604,7 +7604,6 @@ dependencies = [
  "tracing",
  "zisk-core",
  "zisk-definitions",
- "zisk-pil",
  "zisk-stream",
  "zisk-verifier",
 ]
@@ -8170,7 +8169,6 @@ dependencies = [
  "zisk-asm",
  "zisk-core",
  "zisk-definitions",
- "zisk-lib-float",
 ]
 
 [[package]]
@@ -8370,7 +8368,6 @@ name = "zisk-transpiler-common"
 version = "1.4.0-alpha"
 dependencies = [
  "zisk-core",
- "zisk-lib-float",
  "zisk-riscv",
  "zisk-transpiler-wasm",
 ]
@@ -8380,7 +8377,6 @@ name = "zisk-transpiler-riscv"
 version = "1.4.0-alpha"
 dependencies = [
  "zisk-core",
- "zisk-lib-float",
  "zisk-transpiler-common",
 ]
 
@@ -8429,7 +8425,6 @@ dependencies = [
  "tonic",
  "tracing",
  "uuid",
- "vergen-git2",
  "zisk-asm-runner",
  "zisk-cluster-api",
  "zisk-cluster-common",
