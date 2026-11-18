@@ -529,8 +529,7 @@ impl<'a> Emu<'a> {
             }
             SRC_IND => {
                 // Calculate memory address
-                let mut addr =
-                    (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
+                let mut addr = self.ctx.inst_ctx.a.wrapping_add(instruction.b_offset_imm0);
                 if instruction.b_use_sp_imm1 != 0 {
                     addr = addr.wrapping_add(self.ctx.inst_ctx.sp);
                 }
@@ -600,8 +599,7 @@ impl<'a> Emu<'a> {
             }
             SRC_IND => {
                 // Calculate memory address
-                let mut address =
-                    (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
+                let mut address = self.ctx.inst_ctx.a.wrapping_add(instruction.b_offset_imm0);
                 if instruction.b_use_sp_imm1 != 0 {
                     address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
@@ -701,8 +699,7 @@ impl<'a> Emu<'a> {
             }
             SRC_IND => {
                 // Calculate memory address
-                let mut address =
-                    (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
+                let mut address = self.ctx.inst_ctx.a.wrapping_add(instruction.b_offset_imm0);
                 if instruction.b_use_sp_imm1 != 0 {
                     address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
@@ -845,8 +842,7 @@ impl<'a> Emu<'a> {
             }
             SRC_IND => {
                 // Calculate memory address
-                let mut address =
-                    (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
+                let mut address = self.ctx.inst_ctx.a.wrapping_add(instruction.b_offset_imm0);
                 if instruction.b_use_sp_imm1 != 0 {
                     address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
@@ -994,8 +990,7 @@ impl<'a> Emu<'a> {
             }
             SRC_IND => {
                 // Calculate memory address
-                let mut address =
-                    (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
+                let mut address = self.ctx.inst_ctx.a.wrapping_add(instruction.b_offset_imm0);
                 if instruction.b_use_sp_imm1 != 0 {
                     address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
@@ -1083,12 +1078,7 @@ impl<'a> Emu<'a> {
                 let val = self.get_value_to_store(instruction);
 
                 // Calculate memory address
-                let mut addr: i64 = instruction.store_offset;
-                if instruction.store_use_sp {
-                    addr = addr.wrapping_add(self.ctx.inst_ctx.sp as i64);
-                }
-                debug_assert!(addr >= 0);
-                let addr = addr as u64;
+                let addr = self.store_mem_address(instruction);
 
                 // Only read the previous value for stack writes (the only ones
                 // reported); reading elsewhere could hit an unmapped section.
@@ -1114,13 +1104,7 @@ impl<'a> Emu<'a> {
                 let val = val as u64;
 
                 // Calculate memory address
-                let mut addr = instruction.store_offset;
-                if instruction.store_use_sp {
-                    addr = addr.wrapping_add(self.ctx.inst_ctx.sp as i64);
-                }
-                addr += self.ctx.inst_ctx.a as i64;
-                debug_assert!(addr >= 0, "addr is negative: addr={addr}=0x{addr:x}");
-                let addr = addr as u64;
+                let addr = self.store_ind_address(instruction);
 
                 // Only read the previous value for stack writes (the only ones
                 // reported); reading elsewhere could hit an unmapped section.
@@ -1171,12 +1155,7 @@ impl<'a> Emu<'a> {
                 let value = self.get_value_to_store(instruction);
 
                 // Calculate the memory address
-                let mut address: i64 = instruction.store_offset;
-                if instruction.store_use_sp {
-                    address = address.wrapping_add(self.ctx.inst_ctx.sp as i64);
-                }
-                debug_assert!(address >= 0);
-                let address = address as u64;
+                let address = self.store_mem_address(instruction);
 
                 // If not aligned, get old raw data from memory, then write it
                 if Mem::is_full_aligned(address, 8) {
@@ -1196,13 +1175,7 @@ impl<'a> Emu<'a> {
                 let value = self.get_value_to_store(instruction);
 
                 // Calculate the memory address
-                let mut address = instruction.store_offset;
-                if instruction.store_use_sp {
-                    address = address.wrapping_add(self.ctx.inst_ctx.sp as i64);
-                }
-                address += self.ctx.inst_ctx.a as i64;
-                debug_assert!(address >= 0);
-                let address = address as u64;
+                let address = self.store_ind_address(instruction);
 
                 // If the operation is a register operation, write it to the context registers
                 // If not aligned, get old raw data from memory, then write it
@@ -1246,12 +1219,7 @@ impl<'a> Emu<'a> {
             }
             STORE_MEM => {
                 // Calculate the memory address
-                let mut address: i64 = instruction.store_offset;
-                if instruction.store_use_sp {
-                    address = address.wrapping_add(self.ctx.inst_ctx.sp as i64);
-                }
-                debug_assert!(address >= 0);
-                let address = address as u64;
+                let address = self.store_mem_address(instruction);
 
                 // If not aligned, get old raw data from memory, then write it
                 if !Mem::is_full_aligned(address, 8) {
@@ -1270,13 +1238,7 @@ impl<'a> Emu<'a> {
             }
             STORE_IND => {
                 // Calculate the memory address
-                let mut address = instruction.store_offset;
-                if instruction.store_use_sp {
-                    address = address.wrapping_add(self.ctx.inst_ctx.sp as i64);
-                }
-                address += self.ctx.inst_ctx.a as i64;
-                debug_assert!(address >= 0);
-                let address = address as u64;
+                let address = self.store_ind_address(instruction);
 
                 // If not aligned, get old raw data from memory, then write it
                 if !Mem::is_full_aligned(address, instruction.ind_width) {
@@ -1327,12 +1289,7 @@ impl<'a> Emu<'a> {
                 let value = self.get_value_to_store(instruction);
 
                 // Calculate the memory address
-                let mut address: i64 = instruction.store_offset;
-                if instruction.store_use_sp {
-                    address = address.wrapping_add(self.ctx.inst_ctx.sp as i64);
-                }
-                debug_assert!(address >= 0);
-                let address = address as u64;
+                let address = self.store_mem_address(instruction);
 
                 if Mem::is_full_aligned(address, 8) {
                     let payload = MemHelpers::mem_write(
@@ -1388,13 +1345,7 @@ impl<'a> Emu<'a> {
                 let value = self.get_value_to_store(instruction);
 
                 // Calculate the memory address
-                let mut address = instruction.store_offset;
-                if instruction.store_use_sp {
-                    address = address.wrapping_add(self.ctx.inst_ctx.sp as i64);
-                }
-                address += self.ctx.inst_ctx.a as i64;
-                debug_assert!(address >= 0);
-                let address = address as u64;
+                let address = self.store_ind_address(instruction);
 
                 // Otherwise, if aligned
                 if Mem::is_full_aligned(address, instruction.ind_width) {
@@ -1476,12 +1427,7 @@ impl<'a> Emu<'a> {
             }
             STORE_MEM => {
                 // Calculate the memory address
-                let mut address: i64 = instruction.store_offset;
-                if instruction.store_use_sp {
-                    address = address.wrapping_add(self.ctx.inst_ctx.sp as i64);
-                }
-                debug_assert!(address >= 0);
-                let address = address as u64;
+                let address = self.store_mem_address(instruction);
 
                 // If not aligned, get old raw data from memory, then write it
                 if !Mem::is_full_aligned(address, 8) {
@@ -1498,13 +1444,7 @@ impl<'a> Emu<'a> {
             }
             STORE_IND => {
                 // Calculate the memory address
-                let mut address = instruction.store_offset;
-                if instruction.store_use_sp {
-                    address = address.wrapping_add(self.ctx.inst_ctx.sp as i64);
-                }
-                address += self.ctx.inst_ctx.a as i64;
-                debug_assert!(address >= 0);
-                let address = address as u64;
+                let address = self.store_ind_address(instruction);
 
                 // If not aligned, get old raw data from memory, then write it
                 if !Mem::is_full_aligned(address, instruction.ind_width) {
@@ -1524,6 +1464,24 @@ impl<'a> Emu<'a> {
                 instruction.store, self.ctx.inst_ctx.pc
             ),
         }
+    }
+
+    /// Address of a `STORE_MEM`: `store_offset [+ sp]`, modulo 2^64, so a negative offset
+    /// (e.g. `[sp - 8]`) wraps instead of going through a signed intermediate.
+    #[inline(always)]
+    fn store_mem_address(&self, instruction: &ZiskInst) -> u64 {
+        let address = instruction.store_offset as u64;
+        if instruction.store_use_sp {
+            address.wrapping_add(self.ctx.inst_ctx.sp)
+        } else {
+            address
+        }
+    }
+
+    /// Address of a `STORE_IND`: `a + store_offset [+ sp]`, modulo 2^64.
+    #[inline(always)]
+    fn store_ind_address(&self, instruction: &ZiskInst) -> u64 {
+        self.store_mem_address(instruction).wrapping_add(self.ctx.inst_ctx.a)
     }
 
     /// Update SP after the store, as specified by the current instruction:

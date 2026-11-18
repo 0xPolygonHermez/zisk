@@ -173,3 +173,29 @@ fn sp_syntax_errors() {
     // The b and store indirections share one ind_width, also when sp-relative.
     assert!(parse_err("copyb(r1, 2[a + sp + 0]) -> 8[a + sp - 8]").contains("same width"));
 }
+
+/// Addresses are computed modulo 2^64: `a + offset [+ sp]` may pass through values at or
+/// above 2^63 (negative as `i64`) and still land on valid memory. Here sp = 2^63 and
+/// a = 2^63 + B (store) or a = 2^63 + B + 8 with offset -8 (load), so the signed sums
+/// overflowed (a debug-build panic) although the final address is B.
+#[test]
+fn sp_addresses_wrap_modulo_2_64() {
+    const WRAP_SRC: &str = "\
+define OUTPUT_ADDR 0xa0410000
+main:
+\tcopyb(0, 0x8000000000000000), setsp
+\tcopyb(0, 0x80000000a0100000) -> r9
+\tcopyb(0, 77) -> r5
+\tcopyb(r9, r5) -> 8[a + sp + 0]
+\tcopyb(0, 0x80000000a0100008) -> r10
+\tcopyb(r10, 8[a + sp - 8]) -> r6
+\tcopyb(0, OUTPUT_ADDR) -> r13
+\tcopyb(r13, r6) -> 8[a + 0]
+\tret
+";
+    let program = parse_program(WRAP_SRC, "sp_wrap").expect("parse should succeed");
+    let rom = assemble(&program).expect("assembly should succeed");
+    let out = ZiskEmulator::process_rom(&rom, &[], &EmuOptions::default(), None::<fn(EmuTrace)>)
+        .expect("emulation should succeed");
+    assert_eq!(u64::from_le_bytes(out[0..8].try_into().unwrap()), 77);
+}
