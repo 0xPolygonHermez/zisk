@@ -409,6 +409,11 @@ impl EmuCoreProver {
     ) -> Result<Self> {
         check_paths_exist(&proving_key)?;
         zisk_setup::check_setup_version(&proving_key)?;
+        // Before ProofMan allocates its buffers: a final.so the wrap cannot load fails here, not
+        // after the STARK proofs.
+        if use_snark_wrapper {
+            crate::ensure_final_witness_loads(&proving_key_snark)?;
+        }
 
         let proofman = ProofMan::new(proving_key.clone(), options.clone())
             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
