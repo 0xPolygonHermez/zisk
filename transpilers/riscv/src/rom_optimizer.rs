@@ -425,9 +425,13 @@ fn pass_fold(insts: &mut BTreeMap<u64, ZiskInstBuilder>, cf: bool, af: bool, st:
         {
             continue;
         }
-        // Y is X's only successor, which must be a ROM instruction.
+        // Y is X's only successor, which must be a ROM instruction at an even address: an odd one
+        // is an internal step, owned by its own instruction and never moved out of it.
         let d = x.jmp_offset2;
         let ya = (a as i64 + d) as u64;
+        if ya & 1 != 0 {
+            continue;
+        }
         let Some(&yk) = r.pos.get(&ya) else { continue };
         // X or Y was already folded this round: liveness for it is stale.
         if touched.contains(&a) || touched.contains(&ya) {
@@ -780,6 +784,25 @@ mod tests {
                 assert_eq!(insts[&104].i.op, ZiskOp::ADD);
             }
         }
+    }
+
+    /// A successor at an odd address is an internal step: it is never folded into X.
+    #[test]
+    fn constant_folding_skips_an_odd_successor() {
+        let mut li = inst(100, "copyb");
+        li.src_b("imm", 7, false);
+        li.store("reg", 5, false, false);
+        li.j(5, 5); // -> 105
+        let mut add = inst(105, "add");
+        add.src_a("reg", 5, false);
+        add.src_b("reg", 4, false);
+        add.store("reg", 6, false, false);
+        add.j(3, 3); // -> 108
+        let mut insts = BTreeMap::from([(100, li), (105, add), (108, end_reading(108, 6))]);
+        let mut st = RomOptStats::default();
+        pass_fold(&mut insts, true, false, &mut st);
+        assert_eq!(st.constant_folding, 0);
+        assert_eq!(insts[&100].i.op, ZiskOp::COPYB);
     }
 
     /// Two constants: the operation is evaluated at transpile time into a copyb.
