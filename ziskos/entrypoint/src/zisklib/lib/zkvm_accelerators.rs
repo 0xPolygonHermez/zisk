@@ -66,10 +66,7 @@ pub unsafe extern "C" fn zkvm_sha256(
             }
 
             #[cfg(zisk_hints_debug)]
-            crate::hint_log(format!(
-                "hint_sha2 (input: {:x?})",
-                std::slice::from_raw_parts(data, len)
-            ));
+            crate::hint_log(format!("hint_sha2 (input: {:x?})", slice_from_ffi(data, len)));
 
             #[cfg(zisk_guest)]
             {
@@ -80,7 +77,7 @@ pub unsafe extern "C" fn zkvm_sha256(
 
         #[cfg(not(zisk_guest))]
         {
-            let result = sha256_sw::hash(std::slice::from_raw_parts(data, len));
+            let result = sha256_sw::hash(slice_from_ffi(data, len));
             std::ptr::copy_nonoverlapping(result.as_ptr(), output as *mut u8, 32);
             ZKVM_EOK
         }
@@ -122,7 +119,7 @@ pub unsafe extern "C" fn zkvm_ripemd160(
 
         #[cfg(not(zisk_guest))]
         {
-            (*output).data = ripemd160_sw::hash(std::slice::from_raw_parts(data, len));
+            (*output).data = ripemd160_sw::hash(slice_from_ffi(data, len));
             ZKVM_EOK
         }
     }
@@ -395,10 +392,7 @@ pub unsafe extern "C" fn zkvm_bn254_pairing(
 
         #[cfg(not(zisk_guest))]
         {
-            match bn254_sw::pairing_check(core::slice::from_raw_parts(
-                pairs as *const [u8; 192],
-                num_pairs,
-            )) {
+            match bn254_sw::pairing_check(slice_from_ffi(pairs as *const [u8; 192], num_pairs)) {
                 Some(result) => {
                     *verified = result;
                     ZKVM_EOK

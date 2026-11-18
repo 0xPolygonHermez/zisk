@@ -3,6 +3,7 @@
 use crate::syscalls::syscall_sha256_f;
 
 use super::is_aligned_8;
+use super::utils::slice_from_ffi;
 
 /// SHA-256 initial hash values
 const SHA256_INIT: [u32; 8] = [
@@ -163,7 +164,7 @@ fn convert_bytes_to_u64(block: &[u8; 64]) -> [u64; 8] {
 /// C-compatible wrapper for full SHA-256 hash
 ///
 /// # Safety
-/// - `input` must point to at least `input_len` bytes
+/// - `input` must point to at least `input_len` bytes; it may be null when `input_len` is 0
 /// - `output` must point to a writable buffer of at least 32 bytes
 #[allow(dead_code)]
 #[inline]
@@ -173,7 +174,7 @@ pub(crate) unsafe fn sha256_c(
     output: *mut u8,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    let input_slice = core::slice::from_raw_parts(input, input_len);
+    let input_slice = slice_from_ffi(input, input_len);
     let hash = sha256(
         input_slice,
         #[cfg(feature = "hints")]
