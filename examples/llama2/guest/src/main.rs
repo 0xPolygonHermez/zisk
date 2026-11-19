@@ -3,9 +3,9 @@
 //! Reads three raw slices from its standard input:
 //! 1. the model blob (layout in `llama2_common::checkpoint`), used in place;
 //! 2. the generation parameters (`llama2_common::params::GenParams`);
-//! 3. guest options, one `u64` of flags: bit 0 ([`USE_DOT_I8`]) computes the
+//! 3. guest options, one `u64` of flags: bit 0 ([`USE_DOT_F8`]) computes the
 //!    dot products of the matrix multiplications with the experimental
-//!    `dot_i8` precompile, which ZisK's emulator runs but cannot prove yet;
+//!    `dot_f8` precompile, which ZisK's emulator runs but cannot prove yet;
 //!    bit 1 ([`FIXED_SCALES`]) applies the group scales in fixed point
 //!    instead of `f32`.
 //!
@@ -20,52 +20,50 @@ ziskos::entrypoint!(main);
 
 use core::fmt::Write;
 
-use llama2_common::forward::{DotFn, MatmulMode, RowFixedFn, Scales, dot_soft, row_fixed_soft};
+use llama2_common::formats::Format;
+use llama2_common::forward::{DotFn, MatmulMode, Scales, dot_soft};
 use llama2_common::generate::generate_with;
 use llama2_common::model::Model;
 use llama2_common::params::GenParams;
 use sha2::{Digest, Sha256};
 
-use ziskos::syscalls::{SYSCALL_DOT_I8_ID, SyscallDotI8Params, syscall_dot_i8};
+use ziskos::syscalls::{SyscallDotF8Params, dot_f8_formats, syscall_dot_f8};
 
-/// Guest option: use the `dot_i8` precompile.
-const USE_DOT_I8: u64 = 1;
+/// Guest option: use the `dot_f8` precompile.
+const USE_DOT_F8: u64 = 1;
 
 /// Guest option: fixed-point scales in the matrix multiplications.
 const FIXED_SCALES: u64 = 2;
 
-/// The dot product with the `dot_i8` precompile, which needs 8-byte aligned
-/// vectors and a length that is a multiple of 8. Groups of other sizes (4 in
+/// The dot products of one row with the `dot_f8` precompile: one call
+/// computes the sums of all its groups and writes them to `out`. The
+/// precompile needs 8-byte aligned vectors and groups of whole 64-bit words
+/// (8 values, or 16 with E2M1); other rows (the groups of 4 of
 /// `stories260K`'s `w2`) use the plain-Rust loop.
-fn dot_precompile(x: &[i8], y: &[i8]) -> i32 {
-    if x.len() % 8 != 0 {
-        return dot_soft(x, y);
+fn dot_precompile(
+    w: &[u8],
+    wf: Format,
+    x: &[u8],
+    xf: Format,
+    n: usize,
+    gs: usize,
+    out: &mut [i64],
+) {
+    let per_word = 64 / wf.bits().min(xf.bits());
+    if (w.as_ptr() as usize | x.as_ptr() as usize) % 8 != 0 || gs % per_word != 0 {
+        return dot_soft(w, wf, x, xf, n, gs, out);
     }
-    let params = SyscallDotI8Params { x: x.as_ptr(), y: y.as_ptr(), n: x.len() as u64 };
-    // SAFETY: both slices hold `n` bytes; the emulator checks the alignment.
-    unsafe { syscall_dot_i8(&params) }
-}
-
-/// One output of a fixed-point matrix multiplication with the `dot_i8`
-/// precompile. The parameter block is written once per row; for each group
-/// only its two addresses advance, and the `csrrs` is issued inline instead of
-/// through a function call. Rows that do not meet the precompile's alignment
-/// rules use the plain-Rust loop.
-fn row_fixed_precompile(w: &[i8], x: &[i8], gs: usize, w_scales: &[i32], x_scales: &[i32]) -> i64 {
-    if (w.as_ptr() as usize | x.as_ptr() as usize | gs) % 8 != 0 {
-        return row_fixed_soft(w, x, gs, w_scales, x_scales);
-    }
-    let mut params = SyscallDotI8Params { x: w.as_ptr(), y: x.as_ptr(), n: gs as u64 };
-    let mut acc: i64 = 0;
-    for (&ws, &xs) in w_scales.iter().zip(x_scales) {
-        let addr = &params as *const SyscallDotI8Params as u64;
-        // The asm block may read memory, so `params` is stored before it.
-        let dot = ziskos::ziskos_syscall_ret_u64!(SYSCALL_DOT_I8_ID, addr) as i32;
-        acc += dot as i64 * (ws as i64 * xs as i64);
-        params.x = params.x.wrapping_add(gs);
-        params.y = params.y.wrapping_add(gs);
-    }
-    acc
+    let params = SyscallDotF8Params {
+        x: w.as_ptr(),
+        y: x.as_ptr(),
+        n: n as u64,
+        formats: dot_f8_formats(wf.id(), xf.id()),
+        block: gs as u64,
+        out: out.as_mut_ptr(),
+    };
+    // SAFETY: both vectors hold the bytes of `n` values and `out` holds
+    // `n / gs` sums; the emulator checks the alignment and the lengths.
+    unsafe { syscall_dot_f8(&params) };
 }
 
 fn main() {
@@ -79,9 +77,8 @@ fn main() {
 
     let scales = if flags & FIXED_SCALES != 0 { Scales::Fixed } else { Scales::Float };
     let mut mode = MatmulMode::soft(scales);
-    if flags & USE_DOT_I8 != 0 {
+    if flags & USE_DOT_F8 != 0 {
         mode.dot = dot_precompile as DotFn;
-        mode.row_fixed = row_fixed_precompile as RowFixedFn;
     }
     let tokens = generate_with(&model, &params, mode, |_| {});
 

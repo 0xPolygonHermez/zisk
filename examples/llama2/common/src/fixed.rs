@@ -84,7 +84,18 @@ pub fn scales_to_fixed(scales: &[f32], fixed: &mut [i32]) -> i32 {
 /// result is below 2^-126 (it becomes 0) or too large (it becomes infinite);
 /// neither happens with these scales.
 pub fn fixed_to_f32(acc: i64, k: i32) -> f32 {
-    let f = acc as f32;
+    scale_f32(acc as f32, k)
+}
+
+/// [`fixed_to_f32`] for an `i128` sum. The FP8 and FP4 formats need it: their
+/// dot products are larger integers (in units of 2^-18 for two E4M3 values),
+/// so with the scales applied a row's sum no longer fits an `i64`.
+pub fn wide_fixed_to_f32(acc: i128, k: i32) -> f32 {
+    scale_f32(acc as f32, k)
+}
+
+/// `f · 2^-k`, changing only the exponent of `f` (see [`fixed_to_f32`]).
+fn scale_f32(f: f32, k: i32) -> f32 {
     let bits = f.to_bits();
     let exp = (bits >> 23) as i32 & 0xff;
     if exp == 0 {

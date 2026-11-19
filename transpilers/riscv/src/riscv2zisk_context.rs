@@ -13,7 +13,7 @@ use zisk_definitions::{
     SYSCALL_BLS12_381_CURVE_ADD_ID, SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID,
     SYSCALL_BN254_COMPLEX_MUL_ID, SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID,
     SYSCALL_BN254_CURVE_DBL_ID, SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID,
-    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_DOT_I8_ID, SYSCALL_ED25519_ADD_ID,
+    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_DOT_F8_ID, SYSCALL_ED25519_ADD_ID,
     SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID,
     SYSCALL_POSEIDON2_KOALABEAR_ID, SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID,
     SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID,
@@ -74,7 +74,7 @@ const CSR_PRECOMPILED: [&str; 35] = [
     "blake2s",
     "ed25519_add",
     "poseidon2_koalabear",
-    "dot_i8",
+    "dot_f8",
 ];
 const CSR_PRECOMPILED_ADDR_START: u16 = SYSCALL_KECCAKF_ID;
 const CSR_FCALL_ADDR_START: u16 = 0x8C0;
@@ -1962,9 +1962,9 @@ impl<'a> Riscv2ZiskContext<'a> {
             SYSCALL_ADD256_ID if i.rs1 != 0 => {
                 return self.transpile_precompiled_ret(i, next_instructions, "add256");
             }
-            // dot_i8 returns the dot product in rd (experimental, emulator only)
-            SYSCALL_DOT_I8_ID if i.rs1 != 0 => {
-                return self.transpile_precompiled_ret(i, next_instructions, "dot_i8");
+            // dot_f8 returns the dot product in rd (experimental, emulator only)
+            SYSCALL_DOT_F8_ID if i.rs1 != 0 => {
+                return self.transpile_precompiled_ret(i, next_instructions, "dot_f8");
             }
             _ => {}
         }

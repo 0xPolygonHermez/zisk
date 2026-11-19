@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! cargo run --release -- [WIDTH...] [--execute-only] [--save-input PATH] [--asm] [--gpu]
-//!     [--dot-i8]
+//!     [--dot-f8]
 //! ```
 //!
 //! `WIDTH...` are the layer widths, input first and output last. The default
@@ -15,7 +15,7 @@
 //!
 //! - `--execute-only` counts steps without proving, to scan sizes quickly.
 //! - `--save-input PATH` writes the guest input file for `cargo-zisk` and exits.
-//! - `--dot-i8` makes the guest use the experimental `dot_i8` precompile. Only
+//! - `--dot-f8` makes the guest use the experimental `dot_f8` precompile. Only
 //!   `ziskemu` runs it: it cannot be proven, and the SDK's execution also
 //!   prepares proof inputs. So it needs `--save-input`, to run the guest with
 //!   `ziskemu`.
@@ -35,11 +35,11 @@ struct Args {
     save_input: Option<String>,
     asm: bool,
     gpu: bool,
-    dot_i8: bool,
+    dot_f8: bool,
 }
 
-/// Guest option flag: use the `dot_i8` precompile (see the guest).
-const USE_DOT_I8: u64 = 1;
+/// Guest option flag: use the `dot_f8` precompile (see the guest).
+const USE_DOT_F8: u64 = 1;
 
 fn parse_args() -> Result<Args, Box<dyn Error>> {
     let mut args = Args {
@@ -48,7 +48,7 @@ fn parse_args() -> Result<Args, Box<dyn Error>> {
         save_input: None,
         asm: false,
         gpu: false,
-        dot_i8: false,
+        dot_f8: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -57,7 +57,7 @@ fn parse_args() -> Result<Args, Box<dyn Error>> {
             "--save-input" => args.save_input = Some(it.next().ok_or("--save-input needs a path")?),
             "--asm" => args.asm = true,
             "--gpu" => args.gpu = true,
-            "--dot-i8" => args.dot_i8 = true,
+            "--dot-f8" => args.dot_f8 = true,
             width => args.dims.push(width.parse().map_err(|_| format!("bad width: {width}"))?),
         }
     }
@@ -67,8 +67,8 @@ fn parse_args() -> Result<Args, Box<dyn Error>> {
     if args.dims.len() < 2 || args.dims.contains(&0) {
         return Err("give at least two non-zero widths (input and output)".into());
     }
-    if args.dot_i8 && args.save_input.is_none() {
-        return Err("--dot-i8 only runs on ziskemu: add --save-input PATH and run ziskemu".into());
+    if args.dot_f8 && args.save_input.is_none() {
+        return Err("--dot-f8 only runs on ziskemu: add --save-input PATH and run ziskemu".into());
     }
     Ok(args)
 }
@@ -85,7 +85,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let stdin = ZiskStdin::new();
     stdin.write_slice(&blob);
     stdin.write_slice(&input_bytes);
-    let flags = if args.dot_i8 { USE_DOT_I8 } else { 0 };
+    let flags = if args.dot_f8 { USE_DOT_F8 } else { 0 };
     stdin.write_slice(&flags.to_le_bytes());
 
     if let Some(path) = &args.save_input {
@@ -102,8 +102,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("  parameters: {}", model.params());
     println!("  MACs/inference: {}", model.macs());
     println!("  model blob: {} bytes", blob.len());
-    if args.dot_i8 {
-        println!("  dot products: dot_i8 precompile (experimental, emulator only)");
+    if args.dot_f8 {
+        println!("  dot products: dot_f8 precompile (experimental, emulator only)");
     }
 
     let mut builder = ProverClient::embedded();

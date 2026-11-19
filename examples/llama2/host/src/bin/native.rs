@@ -33,7 +33,7 @@ fn main() -> Result<()> {
     print_model_info(&o, &l);
 
     // Interpret the blob as a model: its sizes and its weight matrices. The
-    // int8 weights are not copied, only referenced.
+    // quantized weights are not copied, only referenced.
     let model = Model::parse(&l.blob);
 
     // One prompt from `--prompt`, or each line the user types until an empty
@@ -50,9 +50,9 @@ fn main() -> Result<()> {
         let start = Instant::now();
 
         // How the matrix multiplications, almost all of the work, are
-        // computed: the plain-Rust integer dot product, and the scales in
+        // computed: the plain-Rust exact dot products, and the scales in
         // `f32` or fixed point (`--scales`). The ZisK guest can use the
-        // `dot_i8` precompile instead of `dot_soft`; natively there is none.
+        // `dot_f8` precompile instead of `dot_soft`; natively there is none.
         let mode = MatmulMode::soft(o.scales);
 
         // The generation loop. For each position it runs the model once

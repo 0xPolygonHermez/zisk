@@ -1,18 +1,22 @@
-//! Parses a model blob (see [`crate::checkpoint`]) without copying the int8
-//! weights; only the small `f32` arrays are copied.
+//! Parses a model blob (see [`crate::checkpoint`]) without copying the
+//! quantized weights; only the small `f32` arrays are copied.
 
 use alloc::vec::Vec;
 
 use crate::checkpoint::{Config, MAGIC, VERSION};
 use crate::fixed;
+use crate::formats::Format;
 use crate::{read_f32, read_u32};
 
-/// An int8 matrix of `rows` x `cols`, quantized in groups of `gs` along each row.
+/// A quantized matrix of `rows` x `cols`, in groups of `gs` along each row,
+/// each with a scale per unit (see [`crate::formats`]).
 pub struct QMatrix<'a> {
     pub rows: usize,
     pub cols: usize,
     pub gs: usize,
-    pub q: &'a [i8],
+    pub format: Format,
+    /// The values' bytes: one per value, or one per two values for E2M1.
+    pub q: &'a [u8],
     pub scales: Vec<f32>,
     /// The scales in fixed point (see [`crate::fixed`]): `scales[g] ≈
     /// fixed_scales[g] · 2^-row_shift[row]`.
@@ -27,7 +31,9 @@ impl QMatrix<'_> {
             rows: n,
             cols: self.cols,
             gs: self.gs,
-            q: &self.q[first * self.cols..(first + n) * self.cols],
+            format: self.format,
+            q: &self.q
+                [self.format.bytes(first * self.cols)..self.format.bytes((first + n) * self.cols)],
             scales: &self.scales[first * self.cols / self.gs..(first + n) * self.cols / self.gs],
             fixed_scales: &self.fixed_scales
                 [first * self.cols / self.gs..(first + n) * self.cols / self.gs],
@@ -45,7 +51,8 @@ pub struct QMatrixView<'a> {
     pub rows: usize,
     pub cols: usize,
     pub gs: usize,
-    pub q: &'a [i8],
+    pub format: Format,
+    pub q: &'a [u8],
     pub scales: &'a [f32],
     pub fixed_scales: &'a [i32],
     pub row_shift: &'a [i32],
@@ -55,6 +62,9 @@ pub struct QMatrixView<'a> {
 /// `wq.rows(l * dim, dim)`.
 pub struct Model<'a> {
     pub config: Config,
+    /// The format the activations are quantized to before each matrix
+    /// multiplication.
+    pub activations: Format,
     pub rms_att: Vec<f32>,
     pub rms_ffn: Vec<f32>,
     pub rms_final: Vec<f32>,
@@ -72,6 +82,7 @@ pub struct Model<'a> {
 struct Cursor<'a> {
     blob: &'a [u8],
     pos: usize,
+    format: Format,
 }
 
 impl<'a> Cursor<'a> {
@@ -87,13 +98,17 @@ impl<'a> Cursor<'a> {
         v
     }
 
+    fn align8(&mut self) {
+        self.pos = self.pos.next_multiple_of(8);
+    }
+
     fn qmatrix(&mut self, rows: usize, cols: usize, gs: usize) -> QMatrix<'a> {
-        let n = rows * cols;
-        let bytes = &self.blob[self.pos..self.pos + n];
-        // SAFETY: i8 and u8 have the same size and alignment.
-        let q = unsafe { core::slice::from_raw_parts(bytes.as_ptr().cast::<i8>(), n) };
-        self.pos += n;
+        let (n, format) = (rows * cols, self.format);
+        let q = &self.blob[self.pos..self.pos + format.bytes(n)];
+        self.pos += format.bytes(n);
+        self.align8();
         let scales = self.floats(n / gs);
+        self.align8();
         assert!(cols <= fixed::MAX_LEN, "matrix rows of {cols} values are too long");
         let mut fixed_scales = alloc::vec![0; n / gs];
         let row_shift = scales
@@ -101,14 +116,14 @@ impl<'a> Cursor<'a> {
             .zip(fixed_scales.chunks_exact_mut(cols / gs))
             .map(|(s, f)| fixed::scales_to_fixed(s, f))
             .collect();
-        QMatrix { rows, cols, gs, q, scales, fixed_scales, row_shift }
+        QMatrix { rows, cols, gs, format, q, scales, fixed_scales, row_shift }
     }
 }
 
 impl<'a> Model<'a> {
     /// Parses a model blob. Panics if the blob is malformed.
     pub fn parse(blob: &'a [u8]) -> Self {
-        let mut c = Cursor { blob, pos: 0 };
+        let mut c = Cursor { blob, pos: 0, format: Format::Int8 };
         assert_eq!(c.u32() as u32, MAGIC, "not a model blob");
         assert_eq!(c.u32() as u32, VERSION, "unsupported model blob version");
         let config = Config {
@@ -122,6 +137,9 @@ impl<'a> Model<'a> {
         };
         let shared = c.u32() != 0;
         let (gs_dim, gs_hidden) = (c.u32(), c.u32());
+        let format = |id| Format::from_id(id).expect("unknown format in the model blob");
+        c.format = format(c.u32() as u32);
+        let activations = format(c.u32() as u32);
         let (dim, hidden, layers, kv_dim) =
             (config.dim, config.hidden_dim, config.n_layers, config.kv_dim());
 
@@ -139,7 +157,22 @@ impl<'a> Model<'a> {
         let wcls = (!shared).then(|| c.qmatrix(config.vocab_size, dim, gs_dim));
         assert_eq!(c.pos, blob.len(), "trailing bytes in the model blob");
 
-        Model { config, rms_att, rms_ffn, rms_final, embedding, wq, wk, wv, wo, w1, w2, w3, wcls }
+        Model {
+            config,
+            activations,
+            rms_att,
+            rms_ffn,
+            rms_final,
+            embedding,
+            wq,
+            wk,
+            wv,
+            wo,
+            w1,
+            w2,
+            w3,
+            wcls,
+        }
     }
 
     /// The output classifier, which is the token embedding when shared.
@@ -147,11 +180,17 @@ impl<'a> Model<'a> {
         self.wcls.as_ref().unwrap_or(&self.embedding)
     }
 
-    /// Number of weights (int8 values) in the model.
+    /// The format of the weights.
+    pub fn weights(&self) -> Format {
+        self.wq.format
+    }
+
+    /// Number of weights in the model.
     pub fn params(&self) -> usize {
         let mats =
             [&self.embedding, &self.wq, &self.wk, &self.wv, &self.wo, &self.w1, &self.w2, &self.w3];
-        mats.iter().map(|m| m.q.len()).sum::<usize>() + self.wcls.as_ref().map_or(0, |m| m.q.len())
+        let n = |m: &QMatrix| m.rows * m.cols;
+        mats.iter().map(|m| n(m)).sum::<usize>() + self.wcls.as_ref().map_or(0, n)
     }
 
     /// Integer multiply-accumulates in the matrix multiplications of one

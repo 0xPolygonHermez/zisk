@@ -9,7 +9,7 @@
 //!
 //! `--save-input PATH` writes the guest input for the first prompt and exits.
 //!
-//! `--dot-product precompile` makes the guest use the experimental `dot_i8`
+//! `--dot-product precompile` makes the guest use the experimental `dot_f8`
 //! precompile, which needs a `ziskemu` built from this repository (see
 //! `--ziskemu`) and cannot be proven yet. The default, `soft`, is plain Rust.
 
@@ -42,9 +42,9 @@ struct EmuRun {
     secs: f64,
 }
 
-/// Guest option flags (see the guest): use the `dot_i8` precompile, and use
+/// Guest option flags (see the guest): use the `dot_f8` precompile, and use
 /// fixed-point scales.
-const USE_DOT_I8: u64 = 1;
+const USE_DOT_F8: u64 = 1;
 const FIXED_SCALES: u64 = 2;
 
 /// The guest's input file: the model blob, the generation parameters, then
@@ -117,7 +117,7 @@ fn main() -> Result<()> {
     let ziskemu = extra("--ziskemu").unwrap_or_else(|| "ziskemu".to_string());
     let mut flags = match extra("--dot-product").as_deref() {
         None | Some("soft") => 0,
-        Some("precompile") => USE_DOT_I8,
+        Some("precompile") => USE_DOT_F8,
         Some(v) => return Err(format!("--dot-product must be soft or precompile, not {v}").into()),
     };
     if o.scales == Scales::Fixed {
@@ -136,8 +136,8 @@ fn main() -> Result<()> {
 
     print_model_info(&o, &l);
     println!("Guest ELF {GUEST_ELF}");
-    if flags & USE_DOT_I8 != 0 {
-        println!("Dot products: dot_i8 precompile (experimental, emulator only)");
+    if flags & USE_DOT_F8 != 0 {
+        println!("Dot products: dot_f8 precompile (experimental, emulator only)");
     }
     if o.scales == Scales::Fixed {
         println!("Scales: fixed point");

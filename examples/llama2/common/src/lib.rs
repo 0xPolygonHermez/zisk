@@ -1,11 +1,12 @@
-//! A Llama-2 transformer with int8 weights, shared by the native program,
-//! the ZisK guest and the ZisK host.
+//! A Llama-2 transformer with quantized weights, shared by the native
+//! program, the ZisK guest and the ZisK host.
 //!
 //! This is a Rust port of the int8 path of Andrej Karpathy's llama2.c
 //! (`runq.c`), for the TinyStories checkpoints:
 //!
-//! - every matrix multiplication uses int8 weights and int8 activations,
-//!   quantized in groups, with an `i32` dot product per group;
+//! - every matrix multiplication uses quantized weights and activations, in
+//!   groups with one scale each, and an exact integer dot product per group;
+//!   int8 as llama2.c, or the FP8 and FP4 formats of [`formats`];
 //! - the per-group scales use `f32`, as in llama2.c, or fixed point (see
 //!   [`fixed`]), which is much cheaper on ZisK;
 //! - RMSNorm, softmax, SiLU and RoPE use `f32`.
@@ -18,9 +19,10 @@
 //! Modules:
 //! - [`checkpoint`]: reads a llama2.c `.bin` checkpoint and quantizes it into a
 //!   model blob;
-//! - [`model`]: parses the blob without copying the int8 weights;
+//! - [`model`]: parses the blob without copying the quantized weights;
 //! - [`forward`]: the transformer forward pass;
 //! - [`fixed`]: fixed-point scales for the matrix multiplications;
+//! - [`formats`]: int8, FP8 and FP4 weights and activations;
 //! - [`generate`]: the generation loop and the sampler;
 //! - [`tokenizer`]: llama2.c's BPE tokenizer (host side only);
 //! - [`params`]: the generation request sent to the guest.
@@ -31,6 +33,7 @@ extern crate alloc;
 
 pub mod checkpoint;
 pub mod fixed;
+pub mod formats;
 pub mod forward;
 pub mod generate;
 pub mod model;

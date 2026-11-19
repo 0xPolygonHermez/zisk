@@ -20,7 +20,7 @@
 //! ```
 //!
 //! The padding keeps the weight rows 8-byte aligned (when `in` is a multiple
-//! of 8), as the experimental `dot_i8` precompile requires.
+//! of 8), as the experimental `dot_f8` precompile requires.
 
 #![no_std]
 
@@ -29,8 +29,8 @@ extern crate alloc;
 use alloc::vec;
 use alloc::vec::Vec;
 
-/// Computes the dot product of two int8 vectors of the same length, as a
-/// wrapping `i32` sum. [`infer_with`] calls it once per neuron.
+/// Computes the dot product of two int8 vectors of the same length, as an
+/// `i32`. [`infer_with`] calls it once per neuron.
 pub type DotFn = fn(&[i8], &[i8]) -> i32;
 
 /// The dot product in plain Rust.
@@ -39,8 +39,7 @@ pub type DotFn = fn(&[i8], &[i8]) -> i32;
 /// compiler uses `addw`, which ZisK proves with the Binary machine instead of
 /// the cheaper BinaryAdd, and it narrows an `i64` sum back to `addw` when the
 /// result is just truncated. Each product is at most 2^14 in absolute value,
-/// so the result only saturates, instead of wrapping like the `dot_i8`
-/// precompile, for vectors longer than 131,072 elements.
+/// so the result only saturates for vectors longer than 131,072 elements.
 pub fn dot_soft(x: &[i8], y: &[i8]) -> i32 {
     let mut acc: i64 = 0;
     for (&a, &b) in x.iter().zip(y) {
@@ -131,7 +130,7 @@ impl<'a> Model<'a> {
 }
 
 /// An activation vector, stored in `u64` words so it is 8-byte aligned, as
-/// the `dot_i8` precompile requires.
+/// the `dot_f8` precompile requires.
 struct Activations {
     words: Vec<u64>,
     n: usize,

@@ -5447,13 +5447,13 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::DotI8 => {
-                // Experimental: b = address of the parameter block (x address, y address, n).
-                // emulator-asm/src/dot_i8/dot_i8.asm computes the result and, for the minimal
-                // trace, appends the parameter block, the result and both vectors (see
-                // core/src/operations/dot_i8.rs). It clobbers rax (b), rcx, rdx (flag), rsi, rdi
+            ZiskOp::DotF8 => {
+                // Experimental: b = address of the parameter block (see
+                // core/src/operations/dot_f8.rs). emulator-asm/src/dot_f8/ computes the result,
+                // writes the block sums and, for the minimal trace, appends the parameter block,
+                // the result and both vectors. It clobbers rax (b), rcx, rdx (flag), rsi, rdi
                 // and r9.
-                *code += &ctx.full_line_comment("DotI8: rdi = b".to_string());
+                *code += &ctx.full_line_comment("DotF8: rdi = b".to_string());
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
                     ctx.b.string_value,
@@ -5464,14 +5464,14 @@ impl ZiskRom2Asm {
                         assert_eq!(REG_MEM_READS_ADDRESS, "r12");
                         assert_eq!(REG_MEM_READS_SIZE, "r13");
                         assert_eq!(REG_STEP, "r14");
-                        *code += "\tcall dot_i8_mtrace\n";
+                        *code += "\tcall dot_f8_mtrace\n";
                     }
                     AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
-                        *code += "\tcall dot_i8_fast\n";
+                        *code += "\tcall dot_f8_fast\n";
                     }
                     AsmGenerationMethod::AsmMemOp | AsmGenerationMethod::AsmMemOpLight => {
                         panic!(
-                            "dot_i8 is experimental: the assembly emulator supports it only in the \
+                            "dot_f8 is experimental: the assembly emulator supports it only in the \
                              fast, minimal trace and ROM histogram modes"
                         );
                     }

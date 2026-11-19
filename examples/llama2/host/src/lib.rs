@@ -5,7 +5,8 @@ use std::error::Error;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
-use llama2_common::checkpoint::{Config, quantize_checkpoint_with, read_config};
+use llama2_common::checkpoint::{Config, Quantization, quantize_checkpoint_with, read_config};
+use llama2_common::formats::Format;
 use llama2_common::forward::Scales;
 use llama2_common::params::GenParams;
 use llama2_common::tokenizer::Tokenizer;
@@ -25,8 +26,12 @@ Options:
   --scales float|fixed how matrix multiplications apply the group scales:
                        f32 as llama2.c, or fixed point (default: float)
   --group-size N       quantize in groups of at most N values, a multiple of 8
-                       that divides the row (default: llama2.c's, a power of
-                       two up to 64)";
+                       (16 with e2m1) that divides the row (default:
+                       llama2.c's, a power of two up to 64)
+  --weights FORMAT     format of the weights: int8 (default, as llama2.c),
+                       e4m3 (OCP FP8), e4m3fnuz (AMD FP8) or e2m1 (FP4)
+  --activations FORMAT format the activations are quantized to before each
+                       matrix multiplication (default: the weights' format)";
 
 pub struct Options {
     pub model: PathBuf,
@@ -37,6 +42,8 @@ pub struct Options {
     pub seed: u64,
     pub scales: Scales,
     pub max_group: Option<usize>,
+    pub weights: Format,
+    pub activations: Option<Format>,
     /// Options this program knows and the shared parser does not.
     pub extra: Vec<(String, String)>,
 }
@@ -54,6 +61,8 @@ pub fn parse_options(extra: &[&str]) -> Result<Options> {
         seed: 42,
         scales: Scales::Float,
         max_group: None,
+        weights: Format::Int8,
+        activations: None,
         extra: Vec::new(),
     };
     let mut args = std::env::args().skip(1);
@@ -71,6 +80,8 @@ pub fn parse_options(extra: &[&str]) -> Result<Options> {
             "--temperature" => o.temperature = value.parse()?,
             "--seed" => o.seed = value.parse()?,
             "--group-size" => o.max_group = Some(value.parse()?),
+            "--weights" => o.weights = parse_format(&name, &value)?,
+            "--activations" => o.activations = Some(parse_format(&name, &value)?),
             "--scales" => {
                 o.scales = match value.as_str() {
                     "float" => Scales::Float,
@@ -88,6 +99,22 @@ pub fn parse_options(extra: &[&str]) -> Result<Options> {
     Ok(o)
 }
 
+fn parse_format(name: &str, value: &str) -> Result<Format> {
+    Format::from_name(value)
+        .ok_or_else(|| format!("{name} must be int8, e4m3, e4m3fnuz or e2m1, not {value}").into())
+}
+
+impl Options {
+    /// The model's quantization: formats and group sizes.
+    pub fn quantization(&self) -> Quantization {
+        Quantization {
+            weights: self.weights,
+            activations: self.activations.unwrap_or(self.weights),
+            max_group: self.max_group,
+        }
+    }
+}
+
 /// The quantized model blob and its tokenizer.
 pub struct Loaded {
     pub blob: Vec<u8>,
@@ -103,7 +130,7 @@ pub fn load(o: &Options) -> Result<Loaded> {
     };
     let checkpoint = read(&o.model)?;
     let (config, _) = read_config(&checkpoint)?;
-    let blob = quantize_checkpoint_with(&checkpoint, o.max_group)?;
+    let blob = quantize_checkpoint_with(&checkpoint, o.quantization())?;
     let tokenizer_path = o.tokenizer.clone().unwrap_or_else(|| {
         let name = if config.vocab_size == 512 { "tok512.bin" } else { "tokenizer.bin" };
         o.model.with_file_name(name)
@@ -183,9 +210,11 @@ pub fn print_model_info(o: &Options, l: &Loaded) {
         c.seq_len
     );
     println!(
-        "  {} int8 weights, {} integer MACs per token in matrix multiplications, \
+        "  {} {} weights, {} activations, {} MACs per token in matrix multiplications, \
          groups of {} (dim) and {} (hidden_dim)",
         model.params(),
+        model.weights().name(),
+        model.activations.name(),
         model.matmul_macs_per_token(),
         model.wq.gs,
         model.w2.gs

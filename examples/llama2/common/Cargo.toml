@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 libm = "0.2.16"
+zisk-definitions = { path = "../../../definitions" }

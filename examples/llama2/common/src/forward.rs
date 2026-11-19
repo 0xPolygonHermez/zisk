@@ -4,27 +4,35 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::fixed;
+use crate::formats::{Format, quantize_group};
 use crate::model::{Model, QMatrixView};
 
-/// Computes the dot product of two int8 vectors of the same length, as a
-/// wrapping `i32` sum. [`forward`] calls it once per group in every matrix
-/// multiplication.
-pub type DotFn = fn(&[i8], &[i8]) -> i32;
+/// Computes the exact dot products of one matrix row `w` (format `wf`) and a
+/// vector `x` (format `xf`), both of `n` values, in groups of `gs`: writes the
+/// sum of each group to `out`, in units of the two formats (see
+/// [`crate::formats`]). This is what the `dot_f8` precompile computes in one
+/// call; [`forward`] calls it once per row of every matrix multiplication.
+pub type DotFn =
+    fn(w: &[u8], wf: Format, x: &[u8], xf: Format, n: usize, gs: usize, out: &mut [i64]);
 
-/// The dot product in plain Rust (llama2.c's inner loop).
+/// [`DotFn`] in plain Rust.
 ///
-/// It sums in `i64` and saturates to `i32` at the end. With 32-bit sums the
-/// compiler uses `addw`, which ZisK proves with the Binary machine instead of
-/// the cheaper BinaryAdd, and it narrows an `i64` sum back to `addw` when the
-/// result is just truncated. Each product is at most 2^14 in absolute value,
-/// so the result only saturates, instead of wrapping like the `dot_i8`
-/// precompile, for vectors longer than 131,072 elements.
-pub fn dot_soft(x: &[i8], y: &[i8]) -> i32 {
-    let mut acc: i64 = 0;
-    for (&a, &b) in x.iter().zip(y) {
-        acc += a as i64 * b as i64;
+/// For int8 this is llama2.c's inner loop. It sums in `i64`: with 32-bit
+/// sums the compiler uses `addw`, which ZisK proves with the Binary machine
+/// instead of the cheaper BinaryAdd. The other formats decode each value with
+/// a table lookup.
+pub fn dot_soft(w: &[u8], wf: Format, x: &[u8], xf: Format, n: usize, gs: usize, out: &mut [i64]) {
+    if wf == Format::Int8 && xf == Format::Int8 {
+        for ((wg, xg), o) in w[..n].chunks_exact(gs).zip(x[..n].chunks_exact(gs)).zip(out) {
+            let mut acc: i64 = 0;
+            for (&a, &b) in wg.iter().zip(xg) {
+                acc += a as i8 as i64 * b as i8 as i64;
+            }
+            *o = acc;
+        }
+    } else {
+        zisk_definitions::dot_f8_reference(wf.id(), w, xf.id(), x, n, gs, Some(out));
     }
-    acc.clamp(i32::MIN as i64, i32::MAX as i64) as i32
 }
 
 /// How the matrix multiplications combine each group's dot product with the
@@ -33,42 +41,23 @@ pub fn dot_soft(x: &[i8], y: &[i8]) -> i32 {
 pub enum Scales {
     /// In `f32`, as llama2.c: `val += ival · w_scale · x_scale` per group.
     Float,
-    /// In fixed point (see [`crate::fixed`]): an exact `i64` sum per row,
+    /// In fixed point (see [`crate::fixed`]): an exact integer sum per row,
     /// converted to `f32` once.
     Fixed,
-}
-
-/// Computes one output of a matrix multiplication with fixed-point scales:
-/// `Σ_g dot(w_g, x_g) · w_scales[g] · x_scales[g]` over the groups of `gs`
-/// values of a row `w` and the vector `x`, exactly in `i64` (see
-/// [`crate::fixed`]).
-pub type RowFixedFn = fn(w: &[i8], x: &[i8], gs: usize, w_scales: &[i32], x_scales: &[i32]) -> i64;
-
-/// [`RowFixedFn`] in plain Rust, with [`dot_soft`] per group.
-pub fn row_fixed_soft(w: &[i8], x: &[i8], gs: usize, w_scales: &[i32], x_scales: &[i32]) -> i64 {
-    let mut acc: i64 = 0;
-    for ((wg, xg), (&ws, &xs)) in
-        w.chunks_exact(gs).zip(x.chunks_exact(gs)).zip(w_scales.iter().zip(x_scales))
-    {
-        acc += dot_soft(wg, xg) as i64 * (ws as i64 * xs as i64);
-    }
-    acc
 }
 
 /// How the matrix multiplications are computed.
 #[derive(Clone, Copy)]
 pub struct MatmulMode {
-    /// The dot product of one group, used with [`Scales::Float`].
+    /// The dot products of one row.
     pub dot: DotFn,
-    /// One output, used with [`Scales::Fixed`].
-    pub row_fixed: RowFixedFn,
     pub scales: Scales,
 }
 
 impl MatmulMode {
     /// Plain Rust, with the given scales.
     pub fn soft(scales: Scales) -> Self {
-        MatmulMode { dot: dot_soft, row_fixed: row_fixed_soft, scales }
+        MatmulMode { dot: dot_soft, scales }
     }
 }
 
@@ -79,13 +68,16 @@ impl Default for MatmulMode {
     }
 }
 
-/// An activation vector quantized to int8 in groups, like a matrix row.
+/// An activation vector quantized in groups, like a matrix row, in the
+/// model's activation format.
 ///
-/// The int8 values are stored in `u64` words, so they are 8-byte aligned, as
-/// the `dot_i8` precompile requires.
+/// The values are stored in `u64` words, so they are 8-byte aligned, as the
+/// `dot_f8` precompile requires.
 struct QVec {
     words: Vec<u64>,
     n: usize,
+    format: Format,
+    /// The scale of one unit of each group.
     scales: Vec<f32>,
     /// The scales in fixed point, `scales[g] ≈ fixed_scales[g] · 2^-shift`,
     /// when quantized for [`Scales::Fixed`].
@@ -94,33 +86,27 @@ struct QVec {
 }
 
 impl QVec {
-    fn new(n: usize) -> Self {
+    fn new(n: usize, format: Format) -> Self {
         let words = vec![0; n.div_ceil(8)];
-        QVec { words, n, scales: vec![0.0; n], fixed_scales: vec![0; n], shift: 0 }
+        QVec { words, n, format, scales: vec![0.0; n], fixed_scales: vec![0; n], shift: 0 }
     }
 
-    fn q(&self) -> &[i8] {
-        // SAFETY: the words hold at least `n` bytes, and any byte is a valid i8.
-        unsafe { core::slice::from_raw_parts(self.words.as_ptr().cast::<i8>(), self.n) }
+    fn bytes(&self) -> &[u8] {
+        // SAFETY: the words hold at least `n` bytes.
+        unsafe { core::slice::from_raw_parts(self.words.as_ptr().cast::<u8>(), self.n) }
     }
 
-    fn q_mut(&mut self) -> &mut [i8] {
-        // SAFETY: as in `q`, and `&mut self` makes the borrow unique.
-        unsafe { core::slice::from_raw_parts_mut(self.words.as_mut_ptr().cast::<i8>(), self.n) }
-    }
-
-    /// Quantizes `x` in groups of `gs` (llama2.c's `quantize`), and converts
-    /// the scales to fixed point for [`Scales::Fixed`].
+    /// Quantizes `x` in groups of `gs` (llama2.c's `quantize` for int8), and
+    /// converts the scales to fixed point for [`Scales::Fixed`].
     fn quantize(&mut self, x: &[f32], gs: usize, scales: Scales) {
+        let f = self.format;
+        // SAFETY: as in `bytes`, and `&mut self` makes the borrow unique.
+        let q = unsafe {
+            core::slice::from_raw_parts_mut(self.words.as_mut_ptr().cast::<u8>(), self.n)
+        };
         for (g, group) in x.chunks_exact(gs).enumerate() {
-            let wmax = group.iter().fold(0.0f32, |m, &v| m.max(libm::fabsf(v)));
-            let scale = wmax / 127.0;
-            self.scales[g] = scale;
-            let q = &mut self.q_mut()[g * gs..(g + 1) * gs];
-            for (qi, &v) in q.iter_mut().zip(group) {
-                let qv = if scale == 0.0 { 0.0 } else { libm::roundf(v / scale) };
-                *qi = qv as i8;
-            }
+            self.scales[g] =
+                quantize_group(f, group, &mut q[f.bytes(g * gs)..f.bytes((g + 1) * gs)]);
         }
         if scales == Scales::Fixed {
             let groups = x.len() / gs;
@@ -130,40 +116,44 @@ impl QVec {
     }
 }
 
-/// `out = W x`, with integer dot products per group (llama2.c's `matmul`).
-fn matmul(out: &mut [f32], x: &QVec, w: &QMatrixView, mode: MatmulMode) {
-    match mode.scales {
-        Scales::Float => matmul_float(out, x, w, mode.dot),
-        Scales::Fixed => matmul_fixed(out, x, w, mode.row_fixed),
-    }
-}
-
-/// [`matmul`] with `f32` scales.
-fn matmul_float(out: &mut [f32], x: &QVec, w: &QMatrixView, dot: DotFn) {
+/// `out = W x`, with exact dot products per group (llama2.c's `matmul`).
+/// `sums` holds the group sums of one row.
+fn matmul(out: &mut [f32], x: &QVec, w: &QMatrixView, mode: MatmulMode, sums: &mut [i64]) {
     let (n, gs) = (w.cols, w.gs);
-    let xq = x.q();
+    let (wf, xq) = (w.format, x.bytes());
+    let groups = n / gs;
+    let sums = &mut sums[..groups];
+    let x_fixed = &x.fixed_scales[..groups];
+    // int8 sums fit an i64 with the scales applied (see fixed::MAX_LEN); the
+    // floats need an i128.
+    let wide = wf != Format::Int8 || x.format != Format::Int8;
     for (i, o) in out.iter_mut().enumerate().take(w.rows) {
-        let row = &w.q[i * n..(i + 1) * n];
-        let row_scales = &w.scales[i * n / gs..(i + 1) * n / gs];
-        let mut val = 0.0f32;
-        for (g, (wg, xg)) in row.chunks_exact(gs).zip(xq.chunks_exact(gs)).enumerate() {
-            let ival = dot(wg, xg);
-            val += ival as f32 * row_scales[g] * x.scales[g];
-        }
-        *o = val;
-    }
-}
-
-/// [`matmul`] with fixed-point scales: no float operation per group.
-fn matmul_fixed(out: &mut [f32], x: &QVec, w: &QMatrixView, row_fixed: RowFixedFn) {
-    let (n, gs) = (w.cols, w.gs);
-    let xq = x.q();
-    let x_scales = &x.fixed_scales[..n / gs];
-    for (i, o) in out.iter_mut().enumerate().take(w.rows) {
-        let row = &w.q[i * n..(i + 1) * n];
-        let row_scales = &w.fixed_scales[i * n / gs..(i + 1) * n / gs];
-        let acc = row_fixed(row, xq, gs, row_scales, x_scales);
-        *o = fixed::fixed_to_f32(acc, w.row_shift[i] + x.shift);
+        let row = &w.q[wf.bytes(i * n)..wf.bytes((i + 1) * n)];
+        (mode.dot)(row, wf, xq, x.format, n, gs, sums);
+        let (g0, g1) = (i * groups, (i + 1) * groups);
+        *o = match mode.scales {
+            Scales::Float => {
+                let mut val = 0.0f32;
+                for ((&ival, &ws), &xs) in sums.iter().zip(&w.scales[g0..g1]).zip(&x.scales) {
+                    val += ival as f32 * ws * xs;
+                }
+                val
+            }
+            Scales::Fixed if !wide => {
+                let mut acc: i64 = 0;
+                for ((&ival, &ws), &xs) in sums.iter().zip(&w.fixed_scales[g0..g1]).zip(x_fixed) {
+                    acc += ival * (ws as i64 * xs as i64);
+                }
+                fixed::fixed_to_f32(acc, w.row_shift[i] + x.shift)
+            }
+            Scales::Fixed => {
+                let mut acc: i128 = 0;
+                for ((&ival, &ws), &xs) in sums.iter().zip(&w.fixed_scales[g0..g1]).zip(x_fixed) {
+                    acc += ival as i128 * (ws as i64 * xs as i64) as i128;
+                }
+                fixed::wide_fixed_to_f32(acc, w.row_shift[i] + x.shift)
+            }
+        };
     }
 }
 
@@ -202,6 +192,8 @@ pub struct RunState {
     hb2: Vec<f32>,
     xq: QVec,
     hq: QVec,
+    /// The group sums of one matrix row.
+    sums: Vec<i64>,
     q: Vec<f32>,
     k: Vec<f32>,
     v: Vec<f32>,
@@ -234,8 +226,9 @@ impl RunState {
             xb2: vec![0.0; dim],
             hb: vec![0.0; hidden],
             hb2: vec![0.0; hidden],
-            xq: QVec::new(dim),
-            hq: QVec::new(hidden),
+            xq: QVec::new(dim, model.activations),
+            hq: QVec::new(hidden, model.activations),
+            sums: vec![0; dim.max(hidden)],
             q: vec![0.0; dim],
             k: vec![0.0; kv_dim],
             v: vec![0.0; kv_dim],
@@ -262,8 +255,9 @@ pub fn forward(model: &Model, s: &mut RunState, token: u32, pos: usize) {
     // Token embedding, dequantized.
     let e = &model.embedding;
     let t = token as usize;
+    let row = &e.q[e.format.bytes(t * dim)..e.format.bytes((t + 1) * dim)];
     for i in 0..dim {
-        s.x[i] = e.q[t * dim + i] as f32 * e.scales[(t * dim + i) / e.gs];
+        s.x[i] = e.format.units(row, i) as f32 * e.scales[(t * dim + i) / e.gs];
     }
 
     // RoPE rotation for this position; the same for every layer and head.
@@ -278,9 +272,9 @@ pub fn forward(model: &Model, s: &mut RunState, token: u32, pos: usize) {
         // Attention.
         rmsnorm(&mut s.xb, &s.x, &model.rms_att[l * dim..(l + 1) * dim]);
         s.xq.quantize(&s.xb, gs_dim, s.mode.scales);
-        matmul(&mut s.q, &s.xq, &model.wq.rows(l * dim, dim), s.mode);
-        matmul(&mut s.k, &s.xq, &model.wk.rows(l * kv_dim, kv_dim), s.mode);
-        matmul(&mut s.v, &s.xq, &model.wv.rows(l * kv_dim, kv_dim), s.mode);
+        matmul(&mut s.q, &s.xq, &model.wq.rows(l * dim, dim), s.mode, &mut s.sums);
+        matmul(&mut s.k, &s.xq, &model.wk.rows(l * kv_dim, kv_dim), s.mode, &mut s.sums);
+        matmul(&mut s.v, &s.xq, &model.wv.rows(l * kv_dim, kv_dim), s.mode, &mut s.sums);
 
         for i in (0..dim).step_by(2) {
             let j = (i % hs) / 2;
@@ -323,7 +317,7 @@ pub fn forward(model: &Model, s: &mut RunState, token: u32, pos: usize) {
         }
 
         s.xq.quantize(&s.xb, gs_dim, s.mode.scales);
-        matmul(&mut s.xb2, &s.xq, &model.wo.rows(l * dim, dim), s.mode);
+        matmul(&mut s.xb2, &s.xq, &model.wo.rows(l * dim, dim), s.mode, &mut s.sums);
         for (x, &d) in s.x.iter_mut().zip(&s.xb2) {
             *x += d;
         }
@@ -331,15 +325,15 @@ pub fn forward(model: &Model, s: &mut RunState, token: u32, pos: usize) {
         // Feed-forward: w2(silu(w1 x) * w3 x).
         rmsnorm(&mut s.xb, &s.x, &model.rms_ffn[l * dim..(l + 1) * dim]);
         s.xq.quantize(&s.xb, gs_dim, s.mode.scales);
-        matmul(&mut s.hb, &s.xq, &model.w1.rows(l * hidden, hidden), s.mode);
-        matmul(&mut s.hb2, &s.xq, &model.w3.rows(l * hidden, hidden), s.mode);
+        matmul(&mut s.hb, &s.xq, &model.w1.rows(l * hidden, hidden), s.mode, &mut s.sums);
+        matmul(&mut s.hb2, &s.xq, &model.w3.rows(l * hidden, hidden), s.mode, &mut s.sums);
         for (h, &h2) in s.hb.iter_mut().zip(&s.hb2) {
             let mut val = *h;
             val *= 1.0 / (1.0 + libm::expf(-val));
             *h = val * h2;
         }
         s.hq.quantize(&s.hb, gs_hidden, s.mode.scales);
-        matmul(&mut s.xb, &s.hq, &model.w2.rows(l * dim, dim), s.mode);
+        matmul(&mut s.xb, &s.hq, &model.w2.rows(l * dim, dim), s.mode, &mut s.sums);
         for (x, &d) in s.x.iter_mut().zip(&s.xb) {
             *x += d;
         }
@@ -348,5 +342,5 @@ pub fn forward(model: &Model, s: &mut RunState, token: u32, pos: usize) {
     let x = s.x.clone();
     rmsnorm(&mut s.x, &x, &model.rms_final);
     s.xq.quantize(&s.x, gs_dim, s.mode.scales);
-    matmul(&mut s.logits, &s.xq, &model.wcls().all(), s.mode);
+    matmul(&mut s.logits, &s.xq, &model.wcls().all(), s.mode, &mut s.sums);
 }
