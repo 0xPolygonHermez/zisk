@@ -2235,7 +2235,7 @@ impl ZiskRom2Asm {
                 // Check if address is constant and calculate it if so, to optimize code and get alignment info
                 let address_is_constant = ctx.a.is_constant && !instruction.store_use_sp;
                 let address_constant_value = if address_is_constant {
-                    (ctx.a.constant_value as i64 + instruction.store_offset) as u64
+                    ctx.a.constant_value.wrapping_add_signed(instruction.store_offset)
                 } else {
                     0
                 };
