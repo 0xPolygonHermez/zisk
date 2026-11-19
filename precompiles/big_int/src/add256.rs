@@ -16,10 +16,10 @@ use super::add256_constants::{PARAM_CHUNKS, START_READ_PARAMS};
 #[derive(Debug)]
 pub struct Add256Input {
     pub step_main: u64,
-    pub addr_main: u32,
-    pub addr_a: u32,
-    pub addr_b: u32,
-    pub addr_c: u32,
+    pub addr_main: u64,
+    pub addr_a: u64,
+    pub addr_b: u64,
+    pub addr_c: u64,
     pub cin: u64,
     pub a: [u64; 4],
     pub b: [u64; 4],
@@ -29,11 +29,11 @@ impl Add256Input {
     pub fn from(values: &OperationAdd256Data<u64>) -> Self {
         Self {
             step_main: values[STEP],
-            addr_main: values[B] as u32,
-            addr_a: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE] as u32,
-            addr_b: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE + 1] as u32,
+            addr_main: values[B],
+            addr_a: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE],
+            addr_b: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE + 1],
             cin: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2],
-            addr_c: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE + 3] as u32,
+            addr_c: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE + 3],
             a: values[START_READ_PARAMS..START_READ_PARAMS + PARAM_CHUNKS].try_into().unwrap(),
             b: values[START_READ_PARAMS + PARAM_CHUNKS..START_READ_PARAMS + 2 * PARAM_CHUNKS]
                 .try_into()
@@ -117,6 +117,10 @@ impl<F: PrimeField64> Add256SM<F> {
         trace.set_addr_a(input.addr_a);
         trace.set_addr_b(input.addr_b);
         trace.set_addr_c(input.addr_c);
+        trace.set_addr_params_hi(zisk_core::addr_hi(input.addr_main) == 1);
+        trace.set_addr_a_hi(zisk_core::addr_hi(input.addr_a) == 1);
+        trace.set_addr_b_hi(zisk_core::addr_hi(input.addr_b) == 1);
+        trace.set_addr_c_hi(zisk_core::addr_hi(input.addr_c) == 1);
         trace.set_step(input.step_main);
         trace.set_sel(true);
     }

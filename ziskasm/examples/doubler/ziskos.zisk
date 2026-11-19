@@ -30,7 +30,7 @@
 
 ; ---- Definitions ----
 
-define INIT_STACK_TOP  0xa0400000     ; _init_stack_top = ORIGIN(ram) + stack_size
+define INIT_STACK_TOP  0xc0400000     ; _init_stack_top = ORIGIN(ram) + stack_size
 define GLOBAL_POINTER  0x00000000     ; _global_pointer: unused here (the linker
                                       ; fills it in a real program); set only to
                                       ; mirror the launcher faithfully

@@ -23,10 +23,10 @@ impl MemProcessor for Recorder {
     fn process_mem_data(&mut self, data: &[u64; 7]) {
         self.rows.push(*data);
     }
-    fn skip_addr(&mut self, _addr: u32) -> bool {
+    fn skip_addr(&mut self, _addr: u64) -> bool {
         false
     }
-    fn skip_addr_range(&mut self, _addr_from: u32, _addr_to: u32) -> bool {
+    fn skip_addr_range(&mut self, _addr_from: u64, _addr_to: u64) -> bool {
         false
     }
 }
@@ -43,13 +43,13 @@ fn direct_ab_data(op: u8, a: u64, b: u64, step: u64, p1: &[u64], p2: &[u64]) -> 
 fn expected_rows(a: u64, b: u64, step: u64, p1: &[u64], p2: &[u64], p3: &[u64]) -> Vec<[u64; 7]> {
     let mut expected = Recorder::default();
     for (i, value) in p1.iter().enumerate() {
-        MemBusHelpers::mem_aligned_op(a as u32 + 8 * i as u32, step, *value, false, &mut expected);
+        MemBusHelpers::mem_aligned_op(a + 8 * i as u64, step, *value, false, &mut expected);
     }
     for (i, value) in p2.iter().enumerate() {
-        MemBusHelpers::mem_aligned_op(b as u32 + 8 * i as u32, step, *value, false, &mut expected);
+        MemBusHelpers::mem_aligned_op(b + 8 * i as u64, step, *value, false, &mut expected);
     }
     for (i, value) in p3.iter().enumerate() {
-        MemBusHelpers::mem_aligned_op(a as u32 + 8 * i as u32, step, *value, true, &mut expected);
+        MemBusHelpers::mem_aligned_op(a + 8 * i as u64, step, *value, true, &mut expected);
     }
     expected.rows
 }
@@ -67,7 +67,7 @@ fn secp256k1_add_mem_inputs_take_the_operands_from_a_and_b() {
 
     let mut recorder = Recorder::default();
     <ArithEqSM<Goldilocks> as PrecompileMemInputs>::generate(
-        data[B] as u32,
+        data[B],
         data[STEP],
         &data,
         false,
@@ -81,7 +81,7 @@ fn secp256k1_add_mem_inputs_take_the_operands_from_a_and_b() {
         panic!("unexpected bus payload variant");
     };
     let input = Secp256k1AddInput::from(&values);
-    assert_eq!((input.p1_addr as u64, input.p2_addr as u64, input.step), (data[A], data[B], step));
+    assert_eq!((input.p1_addr, input.p2_addr, input.step), (data[A], data[B], step));
     assert_eq!((input.p1, input.p2), (p1, p2));
 }
 
@@ -98,7 +98,7 @@ fn bn254_complex_mul_mem_inputs_take_the_operands_from_a_and_b() {
 
     let mut recorder = Recorder::default();
     <ArithEqSM<Goldilocks> as PrecompileMemInputs>::generate(
-        data[B] as u32,
+        data[B],
         data[STEP],
         &data,
         false,
@@ -111,6 +111,6 @@ fn bn254_complex_mul_mem_inputs_take_the_operands_from_a_and_b() {
         panic!("unexpected bus payload variant");
     };
     let input = Bn254ComplexMulInput::from(&values);
-    assert_eq!((input.f1_addr as u64, input.f2_addr as u64), (a, b));
+    assert_eq!((input.f1_addr, input.f2_addr), (a, b));
     assert_eq!((input.f1, input.f2), (f1, f2));
 }

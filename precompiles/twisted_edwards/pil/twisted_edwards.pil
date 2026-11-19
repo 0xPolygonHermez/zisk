@@ -312,6 +312,13 @@ airtemplate TwistedEdwards (const int N = 2**18, const int curves = TE_ALL) {
     // step_addr column reused across clocks (see arith_eq.pil for the technique).
     col witness bits(40) step_addr;
 
+    // High limb (bit 32) of the addresses held in step_addr. The operation bus carries an operand
+    // as two 32-bit limbs and this machine is the one that joins them into a 33-bit address, so it
+    // is the one that checks the high limb is a bit: the address is then below 2^33 and cannot
+    // wrap the field.
+    col witness bits(1) addr_hi;
+    addr_hi * (1 - addr_hi) === 0;
+
     const int MAIN_STEP = 0;
 
     // 2 reads   256-bit points  (x1||y1) and (x2||y2)  = 2 * 4 = 8 reads 64-bit (x col + y col)
@@ -429,7 +436,8 @@ airtemplate TwistedEdwards (const int N = 2**18, const int curves = TE_ALL) {
     const expr bus_op = _bus_op;
 
     // a = p1 address, b = p2 address
-    proves_operation(op: bus_op, a:[step_addr'(ADDR_A), 0], b:[step_addr'(ADDR_OP), 0], c:[0, 0], flag:0,
+    proves_operation(op: bus_op, a: [step_addr'(ADDR_A) - 2**32 * addr_hi'(ADDR_A), addr_hi'(ADDR_A)],
+                     b: [step_addr'(ADDR_OP) - 2**32 * addr_hi'(ADDR_OP), addr_hi'(ADDR_OP)], c:[0, 0], flag:0,
                      main_step: step_addr'(MAIN_STEP), mul: in_use_clk0);
 
     // selclk0 is the clock 0 dedicated to one operation

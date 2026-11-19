@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include "emu.hpp"
+#include "constants.hpp"
 #include "log.hpp"
 #include "../../lib-c/c/src/bigint/add256.hpp"
 #include "../../lib-c/c/src/ec/ec.hpp"
@@ -400,7 +401,7 @@ uint64_t print_abcflag_counter = 0;
 
 extern int _print_abcflag(uint64_t a, uint64_t b, uint64_t c, uint64_t flag)
 {
-    uint64_t * pMem = (uint64_t *)0xa0012118;
+    uint64_t * pMem = (uint64_t *)(RAM_ADDR + 0x12118);
     asm_printf("counter=%lu a=%08lx b=%08lx c=%08lx flag=%08lx mem=%08lx\n", print_abcflag_counter, a, b, c, flag, *pMem);
     // uint64_t *pRegs = (uint64_t *)RAM_ADDR;
     // for (int i=0; i<32; i++)

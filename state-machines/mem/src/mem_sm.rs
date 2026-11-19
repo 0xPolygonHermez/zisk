@@ -196,7 +196,7 @@ impl<F: PrimeField64> MemSM<F> {
     ///
     /// File format: raw array of u32 little-endian values, one per qword slot.
     /// The number of entries is implicit (file_size / 4).
-    /// The base address is stored externally (segment->offsets_base_addr).
+    /// The base address is stored externally (segment->offsets_base_addr_w).
     ///
     /// offsets[i] = 1-based virtual row (row * lanes_x_row + lane) of the first
     ///              memory lane whose qword address equals (from_addr + i).  If
@@ -1290,7 +1290,7 @@ fn fill_mem_range<F: PrimeField64, R: MemTraceRowOps<F>>(
     // A range must not write past its own slots. With a single range this is `num_slots`, so the
     // guard below is the one the sequential fill had.
     let slot_limit = range.slot_to;
-    let offset_base_addr_w = seg.offsets_base_addr >> 3;
+    let offset_base_addr_w = seg.offsets_base_addr_w;
 
     #[cfg(feature = "debug_mem")]
     let mut filled_slots = vec![false; num_slots];

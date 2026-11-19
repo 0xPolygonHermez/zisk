@@ -24,7 +24,7 @@ static const uint8_t e6[32]={0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0
 static uint8_t o[7][32]; static volatile uint32_t g_data=1;
 static int cmp(const uint8_t*a,const uint8_t*b){int d=0;for(int i=0;i<32;i++)d|=a[i]^b[i];return d;}
 int main(void){
-  volatile uint8_t *O=(volatile uint8_t*)(0xA0410000ULL); unsigned k=0;
+  volatile uint8_t *O=(volatile uint8_t*)(0xC0410000ULL); unsigned k=0;
   zkvm_status s0=zkvm_ripemd160(m0,L0,(void*)o[0]);
   O[k++]=(uint8_t)s0; O[k++]=(uint8_t)cmp(o[0],e0);
   zkvm_status s1=zkvm_ripemd160(m1,L1,(void*)o[1]);

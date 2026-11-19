@@ -88,12 +88,10 @@ direct_dma_xmemset_mops:
 
     mov     rax, rdx
     shr     rax, 3                            # 1 cycle - rax = count / 8 (qwords)
-    shl     rax, MOPS_BLOCK_WORDS_RS          # 1 cycle - format for mops block
-    mov     r9, MOPS_ALIGNED_BLOCK_WRITE      # 1 cycle - write block flag
-    add     r9, rax                           # 1 cycle - add qword count
-    add     r9, rdi                           # 1 cycle - add dst (already aligned)
+    shl     rax, MOPS_DESC_WORDS_RS           # 1 cycle - format for the descriptor
+    add     rax, rdi                          # 1 cycle - add dst (already aligned)
 
-    mov     [r12 + r13 * 8], r9               # ~4 cycles - write block descriptor, expanded after the fill
+    mov     [r12 + r13 * 8], rax              # ~4 cycles - write block descriptor, expanded after the fill
 
     jmp     .L_xmemset_mops_fill
 
@@ -114,10 +112,8 @@ direct_dma_xmemset_mops:
     MOPS_REC_READ rcx
 
     # BRANCH 1 - Write block entry
-    shl     r9, MOPS_BLOCK_WORDS_RS           # 1 cycle - format qwords for mops
-    mov     rax, MOPS_ALIGNED_BLOCK_WRITE     # 1 cycle - write block flag
-    add     rax, r9                           # 1 cycle - add qword count
-    add     rax, rdi                          # 1 cycle - add dst (aligned)
+    shl     r9, MOPS_DESC_WORDS_RS            # 1 cycle - format qwords for the descriptor
+    lea     rax, [r9 + rdi]                   # 1 cycle - add dst (aligned)
 
     mov     [r12 + r13 * 8], rax              # ~4 cycles - write block descriptor, expanded after the fill
 
@@ -159,9 +155,7 @@ direct_dma_xmemset_mops:
     mov     rax, rdi
     and     rax, ALIGN_MASK                   # 1 cycle - rax = aligned dst
     shr     rcx, 3                            # 1 cycle - rcx = qwords
-    shl     rcx, MOPS_BLOCK_WORDS_RS          # 1 cycle - format for mops
-    mov     r9, MOPS_ALIGNED_BLOCK_WRITE      # 1 cycle - write block flag
-    add     rcx, r9                           # 1 cycle - add flag
+    shl     rcx, MOPS_DESC_WORDS_RS           # 1 cycle - format for the descriptor
     add     rcx, rax                          # 1 cycle - add aligned address
 
     mov     [r12 + r13 * 8 + 8], rcx          # ~4 cycles - write block descriptor after the read record
@@ -181,9 +175,8 @@ direct_dma_xmemset_mops:
 
     # rcx = (rdi & 0x7) + rdx + 7  →  (rcx >> 3) = qwords needed
     shr     rcx, 3                            # 1 cycle - rcx = qwords
-    shl     rcx, MOPS_BLOCK_WORDS_RS          # 1 cycle - format for mops
-    mov     rax, MOPS_ALIGNED_BLOCK_WRITE     # 1 cycle - write block flag
-    add     rax, rcx                          # 1 cycle - add qword count
+    shl     rcx, MOPS_DESC_WORDS_RS           # 1 cycle - format for the descriptor
+    mov     rax, rcx                          # 1 cycle - qword count
     mov     rcx, rdi
     and     rcx, ALIGN_MASK                   # 1 cycle - rcx = aligned dst
     add     rax, rcx                          # 1 cycle - add aligned address

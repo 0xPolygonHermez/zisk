@@ -14,63 +14,81 @@
 //! `|`
 //! `|---------------`
 //! `      ...`
-//! `|--------------- INPUT_ADDR = FREE_INPUT_ADDR       (0x10000000)`
+//! `|--------------- INPUT_ADDR = FREE_INPUT_ADDR       (0x20000000)`
 //! `|`
 //! `| Contains program input data (2GB).`
 //! `| A load from FREE_INPUT_ADDR returns the free input (fcall result).`
 //! `|`
-//! `|--------------- ROM_ADDR: first program instruction (0x90000000)`
+//! `|--------------- ROM_ADDR: first program instruction (0xa8000000)`
 //! `|`
 //! `| Contains program instructions and read-only data (ROM data).`
 //! `| Calls ecalls/system calls when required.`
 //! `|`
-//! `|--- ZISKLIB_ROM_ADDR: first ZisK lib instruction    (0x97E00000)`
+//! `|--- ZISKLIB_ROM_ADDR: first ZisK lib instruction    (0xafe00000)`
 //! `|`
-//! `|--- FLOAT_LIB_ROM_ADDR: first float lib instruction (0x97F00000)`
+//! `|--- FLOAT_LIB_ROM_ADDR: first float lib instruction (0xaff00000)`
 //! `|`
 //! `| Contains float library instructions. 1M before ROM_ADDR_MAX.`
 //! `|`
 //! `| Initial value of the float library stack pointer.`
 //! `|`
-//! `|--- STACK_GUARD_ADDR (= ROM_ADDR + ROM_SIZE)       (0x98000000)`
+//! `|--- STACK_GUARD_ADDR (= ROM_ADDR + ROM_SIZE)       (0xb0000000)`
 //! `|`
-//! `| UNMAPPED stack guard region, 128MB, running up to the stack bottom.`
+//! `| UNMAPPED stack guard region, 256MB, running up to the stack bottom.`
 //! `| EF standard 6 requires >= 4kB here; any access traps. The assembly`
 //! `| emulator reserves this same span PROT_NONE (see constants.hpp).`
 //! `|`
-//! `|--------------- RAM_ADDR = STACK_ADDR: stack bottom (0xa0000000)`
+//! `|--------------- RAM_ADDR = STACK_ADDR: stack bottom (0xc0000000)`
 //! `|`
-//! `|--------------- RAM_ADDR + STACK_SIZE - 16          (0xa03ffff0)`
+//! `|--------------- RAM_ADDR + STACK_SIZE - 16          (0xc03ffff0)`
 //! `|`
-//! `|--------------- SYS_ADDR (= RAM_ADDR + STACK_SIZE)  (0xa0400000)`
+//! `|--------------- SYS_ADDR (= RAM_ADDR + STACK_SIZE)  (0xc0400000)`
 //! `|`
 //! `| Contains system address.`
 //! `| The first 320 bytes contain 40 8-byte registers (r0..r39)`
-//! `| The address UART_ADDR is used as a stdout at addr = 0xa0400200`
-//! `| The first float register is at         FREG_FIRST = 0xa0401000`
-//! `| The first CSR register is at             CSR_ADDR = 0xa0408000`
+//! `| The address UART_ADDR is used as a stdout at addr = 0xc0400200`
+//! `| The first float register is at         FREG_FIRST = 0xc0401000`
+//! `| The first CSR register is at             CSR_ADDR = 0xc0408000`
 //! `|`
-//! `|--------------- OUTPUT_ADDR                         (0xa0410000)`
+//! `|--------------- OUTPUT_ADDR                         (0xc0410000)`
 //! `|`
 //! `| Contains output data, which is written during`
 //! `| program execution and read during memory finalization`
 //! `|`
-//! `|--------------- general-purpose RAM                 (0xa0430000)`
+//! `|--------------- FLOAT_LIB_RAM_ADDR                  (0xc0430000)`
 //! `|`
-//! `| Contains program memory, available for normal R/W`
-//! `| used during program execution.`
-//! `|`
-//! `|--------------- FLOAT_LIB_RAM_ADDR = 0xbfff0000     (0xc0000000 - 0x10000)`
-//! `|`
-//! `| Contains float library memory, available for normal R/W`
+//! `| Contains float library memory (64KB), available for normal R/W`
 //! `| used during library execution (bottom-up).`
-//! `|`
 //! `| Contains float library stack memory (top-down).`
 //! `|`
-//! `|--------------- FLOAT_LIB_SP = 0xbffffff0           (0xc0000000 - 16)`
+//! `|--------------- FLOAT_LIB_SP = FLOAT_LIB_RAM_ADDR + 0x10000 - 16`
 //! `|`
-//! `|--------------- END OF RAM                          (0xc0000000)`
+//! `|--------------- ZISKLIB_RAM_ADDR                    (0xc0440000)`
+//! `|`
+//! `| Contains the ZisK library scratch memory (192KB).`
+//! `|`
+//! `|--------------- general-purpose RAM                 (0xc0470000)`
+//! `|`
+//! `| Contains program memory, available for normal R/W`
+//! `| used during program execution: .data, .bss and then the heap.`
+//! `|`
+//! `|--------------- END OF RAM                          (0x1_40000000)`
 //! `      ...`
+//!
+//! ## Addresses above 32 bits
+//! * Addresses are 33 bits wide ([`ADDR_BITS`], [`MAX_ADDR`]) and the proof system handles them as
+//!   single field elements: the memory bus carries the whole byte address and the memory airs
+//!   hold 30-bit word addresses. BIOS, input and ROM live below 4GB; the RAM crosses it.
+//!   Registers, memory values and the operands on the operation bus are two 32-bit limbs, and
+//!   nothing says that such a value is a pointer. So the machine that joins the limbs into an
+//!   address, lo + 2^32 * hi, is the one that checks the high limb is a bit, which keeps the
+//!   address below 2^33 and unable to wrap the field: Main for the pointer of an indirect
+//!   access, and each precompile for its address operands and for the pointers it reads from a
+//!   parameter struct.
+//! * The guest is linked with the `medium` code model (PC-relative, +-2GiB), so from the ROM at
+//!   `ROM_ADDR` it can only reach RAM up to `ROM_ADDR + 2GiB` = 0x1_2800_0000 ([`PC_REACH_END`]):
+//!   .data/.bss and the system regions must stay below it; the rest of the RAM is reached
+//!   through pointers (the heap).
 //!
 //! ## ROM_ENTRY / ROM_ADDR / ROM_EXIT
 //! * The program will start executing at the first BIOS address `ROM_ENTRY`.
@@ -114,7 +132,7 @@ use crate::{M16, M3, M32, M8, REG_FIRST, REG_LAST};
 use core::fmt;
 
 /// Fist input data memory address
-pub const INPUT_ADDR: u64 = 0x1000_0000;
+pub const INPUT_ADDR: u64 = 0x2000_0000;
 /// Maximum size of the input data
 pub const MAX_INPUT_SIZE: u64 = 0x8000_0000; // 2GB
 /// Maximum size of a guest's stdin: the input region less its first word, the free input, and its
@@ -122,10 +140,30 @@ pub const MAX_INPUT_SIZE: u64 = 0x8000_0000; // 2GB
 pub const MAX_STDIN_SIZE: u64 = MAX_INPUT_SIZE - 16;
 /// Free input data memory address = first input address
 pub const FREE_INPUT_ADDR: u64 = INPUT_ADDR;
+/// Number of bits of an address
+pub const ADDR_BITS: u32 = 33;
+/// Highest valid address
+pub const MAX_ADDR: u64 = (1 << ADDR_BITS) - 1;
+/// High limb (bits 32 and up) of an address
+#[inline(always)]
+pub const fn addr_hi(addr: u64) -> u64 {
+    addr >> 32
+}
+/// Whether `address = pointer + offset` is a valid indirect access: both the pointer and the
+/// address are inside the 33-bit address space. The Main air takes the pointer as a 64-bit value
+/// whose high limb must be 0 or 1, and the sum with the (signed) offset as a field element: an
+/// offset that wraps the 64-bit sum leaves the address space, as does a pointer above it.
+#[inline(always)]
+pub const fn indirect_address_is_valid(pointer: u64, address: u64) -> bool {
+    pointer <= MAX_ADDR && address <= MAX_ADDR
+}
 /// First global RW memory address
-pub const RAM_ADDR: u64 = 0xa0000000;
+pub const RAM_ADDR: u64 = 0xC000_0000;
 /// Size of the global RW memory
-pub const RAM_SIZE: u64 = 0x20000000; // 512M
+pub const RAM_SIZE: u64 = 0x8000_0000; // 2GB
+/// Last address the guest code can reach PC-relative: the guest is linked with the `medium`
+/// code model (`auipc`, +-2GiB), and its code starts at `ROM_ADDR`
+pub const PC_REACH_END: u64 = ROM_ADDR + 0x8000_0000;
 /// Program stack addr
 pub const STACK_ADDR: u64 = RAM_ADDR;
 /// Program stack size
@@ -181,6 +219,9 @@ const _: () = {
         INPUT_ADDR + MAX_INPUT_SIZE <= ROM_ADDR,
         "the input window now reaches into the program ROM"
     );
+    assert!(RAM_ADDR + RAM_SIZE - 1 <= MAX_ADDR, "RAM reaches beyond the address space");
+    // The system regions and the libraries' RAM must be reachable PC-relative from the ROM.
+    assert!(GENERAL_RAM_ADDR < PC_REACH_END, "the system regions are out of the PC reach");
 };
 
 /// First system RW memory address
@@ -191,8 +232,9 @@ pub const SYS_SIZE: u64 = 0x10000;
 pub const OUTPUT_ADDR: u64 = SYS_ADDR + SYS_SIZE;
 /// Size of the output RW memory
 pub const OUTPUT_MAX_SIZE: u64 = 0x20000; // 128K
-/// First general purpose RW memory address
-pub const GENERAL_RAM_ADDR: u64 = OUTPUT_ADDR + OUTPUT_MAX_SIZE;
+/// First general purpose RW memory address: .data, .bss and the heap of the guest, after the
+/// float library and ZisK library RAM regions
+pub const GENERAL_RAM_ADDR: u64 = ZISKLIB_RAM_ADDR + ZISKLIB_RAM_SIZE;
 /// First BIOS instruction address, i.e. first instruction executed
 pub const ROM_ENTRY: u64 = 0x1000;
 /// Size of the BIOS instruction area
@@ -202,7 +244,7 @@ pub const ROM_EXIT: u64 = 0x1004;
 /// Maximum Zisk OS ROM instruction address, i.e. last instruction of the BIOS
 pub const MAX_ZISK_OS_ROM_ADDR: u64 = 0x10000000 - 1;
 /// First program ROM instruction address, i.e. first RISC-V transpiled instruction
-pub const ROM_ADDR: u64 = 0x9000_0000;
+pub const ROM_ADDR: u64 = 0xA800_0000;
 /// Size of the program ROM instruction area
 pub const ROM_SIZE: u64 = 0x08000000; // 128M
 /// Maximum program ROM instruction address
@@ -215,17 +257,19 @@ pub const FLOAT_LIB_ROM_ADDR: u64 = ROM_ADDR + ROM_SIZE - FLOAT_LIB_ROM_SIZE;
 pub const FLOAT_LIB_ROM_ADDR_MAX: u64 = FLOAT_LIB_ROM_ADDR + FLOAT_LIB_ROM_SIZE - 1;
 /// Size of float library RAM
 pub const FLOAT_LIB_RAM_SIZE: u64 = 0x10000; // 64K
-/// First float library RAM address
-pub const FLOAT_LIB_RAM_ADDR: u64 = RAM_ADDR + RAM_SIZE - FLOAT_LIB_RAM_SIZE;
+/// First float library RAM address: right after the output region, so that it stays within the
+/// PC reach of the float library ROM
+pub const FLOAT_LIB_RAM_ADDR: u64 = OUTPUT_ADDR + OUTPUT_MAX_SIZE;
 /// Maximum float library RAM address
 pub const FLOAT_LIB_RAM_ADDR_MAX: u64 = FLOAT_LIB_RAM_ADDR + FLOAT_LIB_RAM_SIZE - 1;
-/// Float library stack pointer address
-pub const FLOAT_LIB_SP: u64 = RAM_ADDR + RAM_SIZE - 16;
+/// Float library stack pointer address: the top of the float library RAM
+pub const FLOAT_LIB_SP: u64 = FLOAT_LIB_RAM_ADDR + FLOAT_LIB_RAM_SIZE - 16;
 
 // -------------------------------------------------------------------------
 // ZisK library (`.zisk` routines callable from a RISC-V guest via symbol
-// redirect). Reserved just below the float-library regions; code + ROM
-// constants live in ZISKLIB_ROM, mutable scratch/variables in ZISKLIB_RAM.
+// redirect). Code + ROM constants live in ZISKLIB_ROM, just below the
+// float-library ROM; mutable scratch/variables in ZISKLIB_RAM, just above the
+// float-library RAM.
 // The guest linker fences these off so guest allocations never collide.
 // -------------------------------------------------------------------------
 /// Size of ZisK library ROM (code + read-only constants)
@@ -237,11 +281,11 @@ pub const ZISKLIB_ROM_ADDR_MAX: u64 = ZISKLIB_ROM_ADDR + ZISKLIB_ROM_SIZE - 1;
 /// Size of ZisK library RAM (mutable scratch / variables).
 /// Keep in sync with `_zisklib_ram_data_size` in the guest linker scripts
 /// (ziskbuild/zisk_linker_script.ld),
-/// which reserve this same amount below the float-library RAM so the guest heap
-/// never grows into it.
+/// which reserve this same amount above the float-library RAM, before the guest
+/// data, so the guest never allocates into it.
 pub const ZISKLIB_RAM_SIZE: u64 = 0x30000; // 192K
-/// First ZisK library RAM address (just below the float-library RAM)
-pub const ZISKLIB_RAM_ADDR: u64 = FLOAT_LIB_RAM_ADDR - ZISKLIB_RAM_SIZE;
+/// First ZisK library RAM address (just above the float-library RAM)
+pub const ZISKLIB_RAM_ADDR: u64 = FLOAT_LIB_RAM_ADDR + FLOAT_LIB_RAM_SIZE;
 /// Maximum ZisK library RAM address
 pub const ZISKLIB_RAM_ADDR_MAX: u64 = ZISKLIB_RAM_ADDR + ZISKLIB_RAM_SIZE - 1;
 /// Zisk architecture ID

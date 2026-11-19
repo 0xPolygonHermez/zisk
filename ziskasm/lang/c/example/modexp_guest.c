@@ -37,7 +37,7 @@ int main(void){
   zkvm_modexp(v3_b,37,v3_e,19,v3_m,48,v3_o);
   zkvm_modexp(v4_b,50,v4_e,1,v4_m,40,v4_o);
   zkvm_status s5 = zkvm_modexp(v1_b,1,v1_e,1,v1_m,0,v5_o);
-  volatile uint8_t *O = (volatile uint8_t *)(0xA0410000ULL);
+  volatile uint8_t *O = (volatile uint8_t *)(0xC0410000ULL);
   unsigned k=0;
   for(unsigned i=0;i<1;i++) O[k++]=v1_o[i];
   for(unsigned i=0;i<32;i++) O[k++]=v2_o[i];

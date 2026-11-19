@@ -54,16 +54,18 @@ impl MemHelpers {
     }
 
     #[inline(always)]
-    pub fn is_aligned(addr: u32, width: u8) -> bool {
+    pub fn is_aligned(addr: u64, width: u8) -> bool {
         (addr & MEM_ADDR_ALIGN_MASK) == 0 && width == 8
     }
     #[inline(always)]
-    pub fn get_addr_w(addr: u32) -> u32 {
-        addr >> MEM_BYTES_BITS
+    /// Word address (byte address / 8); every word address of the 33-bit space fits in a `u32`
+    pub fn get_addr_w(addr: u64) -> u32 {
+        (addr >> MEM_BYTES_BITS) as u32
     }
     #[inline(always)]
-    pub fn get_addr(addr_w: u32) -> u32 {
-        addr_w << MEM_BYTES_BITS
+    /// Byte address of a word address
+    pub fn get_addr(addr_w: u32) -> u64 {
+        (addr_w as u64) << MEM_BYTES_BITS
     }
     #[inline(always)]
     pub fn get_read_step(step: u64) -> u64 {
@@ -74,19 +76,19 @@ impl MemHelpers {
         step + 1
     }
     #[inline(always)]
-    pub fn is_double(addr: u32, bytes: u8) -> bool {
-        (addr & MEM_ADDR_ALIGN_MASK) + bytes as u32 > 8
+    pub fn is_double(addr: u64, bytes: u8) -> bool {
+        (addr & MEM_ADDR_ALIGN_MASK) + bytes as u64 > 8
     }
     #[inline(always)]
-    pub fn is_dual(addr: u32) -> bool {
-        addr as u64 >= RAM_ADDR && addr as u64 <= (RAM_ADDR + RAM_SIZE)
+    pub fn is_dual(addr: u64) -> bool {
+        (RAM_ADDR..=RAM_ADDR + RAM_SIZE).contains(&addr)
     }
     #[inline(always)]
     pub fn is_write(op: u8) -> bool {
         op == MEMORY_STORE_OP
     }
     #[inline(always)]
-    pub fn get_byte_offset(addr: u32) -> u8 {
+    pub fn get_byte_offset(addr: u64) -> u8 {
         (addr & MEM_ADDR_ALIGN_MASK) as u8
     }
 
@@ -110,7 +112,7 @@ impl MemHelpers {
     #[cfg(target_endian = "big")]
     compile_error!("This code requires a little-endian machine.");
 
-    pub fn get_write_values(addr: u32, bytes: u8, value: u64, read_values: [u64; 2]) -> [u64; 2] {
+    pub fn get_write_values(addr: u64, bytes: u8, value: u64, read_values: [u64; 2]) -> [u64; 2] {
         let is_double = Self::is_double(addr, bytes);
         let offset = Self::get_byte_offset(addr) * 8;
         let value = match bytes {
@@ -142,7 +144,7 @@ impl MemHelpers {
     #[cfg(target_endian = "big")]
     compile_error!("This code requires a little-endian machine.");
 
-    pub fn get_read_value(addr: u32, bytes: u8, read_values: [u64; 2]) -> u64 {
+    pub fn get_read_value(addr: u64, bytes: u8, read_values: [u64; 2]) -> u64 {
         let is_double = Self::is_double(addr, bytes);
         let offset = Self::get_byte_offset(addr) * 8;
         let mut value = read_values[0] >> offset;
@@ -159,7 +161,7 @@ impl MemHelpers {
     }
     #[inline(always)]
     pub fn mem_load(
-        addr: u32,
+        addr: u64,
         step: u64,
         step_offset: u8,
         bytes: u8,
@@ -167,7 +169,7 @@ impl MemHelpers {
     ) -> [u64; 7] {
         [
             MEMORY_LOAD_OP as u64,
-            addr as u64,
+            addr,
             Self::main_step_to_mem_step(step, step_offset),
             bytes as u64,
             mem_values[0],
@@ -177,7 +179,7 @@ impl MemHelpers {
     }
     #[inline(always)]
     pub fn mem_write(
-        addr: u32,
+        addr: u64,
         step: u64,
         step_offset: u8,
         bytes: u8,
@@ -186,7 +188,7 @@ impl MemHelpers {
     ) -> [u64; 7] {
         [
             MEMORY_STORE_OP as u64,
-            addr as u64,
+            addr,
             Self::main_step_to_mem_step(step, step_offset),
             bytes as u64,
             mem_values[0],

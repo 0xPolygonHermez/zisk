@@ -19,7 +19,7 @@ int main(void){
   zkvm_status s2=zkvm_bls12_map_fp2_to_g2((const void*)u2,(void*)og2);
   zkvm_status s3=zkvm_kzg_point_eval((const void*)kc,(const void*)kz,(const void*)ky,(const void*)kp,&okV);
   zkvm_status s4=zkvm_kzg_point_eval((const void*)kc,(const void*)kz,(const void*)kyb,(const void*)kp,&okB);
-  volatile uint8_t *O=(volatile uint8_t*)(0xA0410000ULL); unsigned k=0;
+  volatile uint8_t *O=(volatile uint8_t*)(0xC0410000ULL); unsigned k=0;
   O[k++]=(uint8_t)s1; O[k++]=(uint8_t)cmp(og1,eg1,96);
   O[k++]=(uint8_t)s2; O[k++]=(uint8_t)cmp(og2,eg2,192);
   O[k++]=(uint8_t)s3; O[k++]=(uint8_t)okV; O[k++]=(uint8_t)s4; O[k++]=(uint8_t)okB;

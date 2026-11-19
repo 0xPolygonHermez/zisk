@@ -11,28 +11,29 @@ use crate::{GpuCountAndPlan, MemPlanner};
 use zisk_common::{ChunkId, Plan};
 use zisk_sm_mem_common::{MemAlignCheckPoint, MemModuleSegmentCheckPoint};
 
-// The memory map of core/src/mem.rs, as count_and_plan.cuh carries it.
-const INPUT_ADDR: u32 = 0x1000_0000;
-const INPUT_SIZE: u32 = 1 << 31;
-const ROM_ADDR: u32 = 0x9000_0000;
-const ROM_SIZE: u32 = 1 << 27;
-const RAM_ADDR: u32 = 0xA000_0000;
+// The memory map of core/src/mem.rs, as count_and_plan.cuh carries it (33-bit addresses).
+const INPUT_ADDR: u64 = 0x2000_0000;
+const INPUT_SIZE: u64 = 1 << 31;
+const ROM_ADDR: u64 = 0xA800_0000;
+const ROM_SIZE: u64 = 1 << 27;
+const RAM_ADDR: u64 = 0xC000_0000;
 /// The largest gap two consecutive addresses of an immutable region may have (2^24 words), the
 /// step of the BIOS anchor reads.
-const ANCHOR_STEP: u32 = (1 << 24) * 8;
+const ANCHOR_STEP: u64 = (1 << 24) * 8;
 
-// Light records (mops_format.hpp): a header word per record, no values, no steps.
+// Light records (mops_format.hpp): a header word per record, no values, no steps. The address
+// takes bits 0-32, the mode starts at bit 33 and a block's word count at bit 37.
 const TAG: u64 = 1 << 63;
-const NO_VALUE: u64 = 1 << 58;
+const NO_VALUE: u64 = 1 << 59;
 const NO_PAYLOAD: u64 = 1 << 62;
-fn read8(addr: u32) -> u64 {
-    TAG | (0x08 << 32) | addr as u64
+fn read8(addr: u64) -> u64 {
+    TAG | (0x08 << 33) | addr
 }
-fn write8(addr: u32) -> u64 {
-    TAG | NO_VALUE | (0x18 << 32) | addr as u64
+fn write8(addr: u64) -> u64 {
+    TAG | NO_VALUE | (0x18 << 33) | addr
 }
-fn block_read(addr: u32, words: u64) -> u64 {
-    TAG | NO_PAYLOAD | (0x0A << 32) | (words << 36) | addr as u64
+fn block_read(addr: u64, words: u64) -> u64 {
+    TAG | NO_PAYLOAD | (0x0A << 33) | (words << 37) | addr
 }
 
 fn planner() -> Option<&'static Mutex<GpuCountAndPlan>> {
@@ -155,10 +156,10 @@ fn assert_same_plans(name: &str, chunks: &[Vec<u64>]) {
 fn small_chunk(salt: u32) -> Vec<u64> {
     let mut c = Vec::new();
     for i in 0..64u32 {
-        c.push(read8(ROM_ADDR + 8 * (i + salt)));
-        c.push(read8(INPUT_ADDR + 8 * i));
-        c.push(write8(RAM_ADDR + 8 * (i % 7)));
-        c.push(read8(RAM_ADDR + 8 * (i % 7)));
+        c.push(read8(ROM_ADDR + 8 * u64::from(i + salt)));
+        c.push(read8(INPUT_ADDR + 8 * u64::from(i)));
+        c.push(write8(RAM_ADDR + 8 * u64::from(i % 7)));
+        c.push(read8(RAM_ADDR + 8 * u64::from(i % 7)));
     }
     c
 }
@@ -173,7 +174,7 @@ fn the_last_word_of_a_region_leaves_the_next_region_prefix_intact() {
         * zisk_sm_mem_common::input_data_lanes_x_row()) as u32;
     let mut c0 = Vec::new();
     for i in 0..input_rows + input_rows / 4 {
-        c0.push(read8(INPUT_ADDR + 8 * i));
+        c0.push(read8(INPUT_ADDR + 8 * u64::from(i)));
     }
     for k in 1..INPUT_SIZE / ANCHOR_STEP {
         c0.push(read8(INPUT_ADDR + k * ANCHOR_STEP));
@@ -182,8 +183,8 @@ fn the_last_word_of_a_region_leaves_the_next_region_prefix_intact() {
     c0.push(read8(ROM_ADDR));
     c0.push(read8(ROM_ADDR + ROM_SIZE - 8));
     for i in 0..1000u32 {
-        c0.push(write8(RAM_ADDR + 8 * i));
-        c0.push(read8(RAM_ADDR + 8 * i));
+        c0.push(write8(RAM_ADDR + 8 * u64::from(i)));
+        c0.push(read8(RAM_ADDR + 8 * u64::from(i)));
     }
     let chunks = vec![c0, small_chunk(1), small_chunk(2)];
     assert_same_plans("last words", &chunks);
@@ -210,4 +211,51 @@ fn a_piece_of_zero_count_block_records() {
     let empties: Vec<u64> = (0..16).map(|i| block_read(RAM_ADDR + 64 * i, 0)).collect();
     let chunks = vec![small_chunk(1), empties, small_chunk(2)];
     assert_same_plans("zero-count blocks", &chunks);
+}
+
+/// A block record wider than BLOCKOP_SPILL_THRESH_VAL words goes through blockop_emit_kernel;
+/// with pack_aligned inlined there, ptxas miscompiled the ROM branch (count_and_plan.cu).
+#[test]
+fn a_wide_block_record_in_every_region() {
+    let regions = [
+        ("ROM", ROM_ADDR + 0x8A90),
+        ("input", INPUT_ADDR + 0x1000),
+        ("RAM", RAM_ADDR + 0x10_0000),
+        ("RAM above 4 GB", 1 << 32),
+    ];
+    for (region, addr) in regions {
+        // block read, block write, aligned block read, aligned block write
+        for mode in [0x0Au64, 0x0B, 0x0E, 0x0F] {
+            for words in [65u64, 1416] {
+                let record = TAG | NO_PAYLOAD | (mode << 33) | (words << 37) | addr;
+                assert_same_plans(
+                    &format!("{region}, mode {mode:#04x}, {words} words"),
+                    &[vec![record]],
+                );
+            }
+        }
+    }
+}
+
+/// A plain block record with a misaligned base is illegal (every producer aligns): the GPU
+/// planner must reject the plan, never treat it silently as aligned. The CPU reference is not
+/// consulted here on purpose: its counters abort() on this stream.
+#[test]
+fn an_unaligned_block_record_is_rejected() {
+    let Some(planner) = planner() else { return };
+    let gpu = planner.lock().unwrap();
+    for mode in [0x0Au64, 0x0B] {
+        for off in [1u64, 3, 7] {
+            for words in [5u64, 65] {
+                let record =
+                    TAG | NO_PAYLOAD | (mode << 33) | (words << 37) | (RAM_ADDR + 0x1000 + off);
+                let chunk = vec![record];
+                gpu.reset();
+                let rejected = !gpu.add_chunk(chunk.len() as u64, chunk.as_ptr() as *const c_void)
+                    || gpu.run().is_none();
+                assert!(rejected, "mode {mode:#04x} off {off} words {words}: the planner accepted an unaligned block");
+            }
+        }
+    }
+    gpu.reset();
 }

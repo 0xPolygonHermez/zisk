@@ -396,7 +396,7 @@ impl<F: PrimeField64> RomDataSM<F> {
 
         #[cfg(debug_assertions)]
         let mut filled_slots = vec![false; num_slots];
-        let offset_base_addr_w = seg.offsets_base_addr >> 3;
+        let offset_base_addr_w = seg.offsets_base_addr_w;
 
         if seg.offset_at(0) == 0 {
             current_offsets[0] = OFFSET_USE_FLAG;

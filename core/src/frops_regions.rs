@@ -101,12 +101,12 @@ static OP_07: [FropsRegion; 2] = [
 static OP_09: [FropsRegion; 4] = [
     // low_rect: a < 2051 && b < 260
     FropsRegion { a_lo: 0x0, a_count: 2051, a_stride: 1, b_lo: 0x0, b_count: 260, base_row: 2490674 },
-    // mid_box: a >= 0xA03FF000 && a < 0xA0400000 && (a & 7) == 0 && b == 0
-    FropsRegion { a_lo: 0xa03ff000, a_count: 512, a_stride: 8, b_lo: 0x0, b_count: 1, base_row: 3023934 },
-    // mid_box: a >= 0xA6847000 && a < 0xA6A5D000 && (a & 7) == 0 && b == 0
-    FropsRegion { a_lo: 0xa6847000, a_count: 273408, a_stride: 8, b_lo: 0x0, b_count: 1, base_row: 3024446 },
-    // mid_box: a >= 0xA841F000 && a < 0xA8969000 && (a & 7) == 0 && b == 0
-    FropsRegion { a_lo: 0xa841f000, a_count: 693248, a_stride: 8, b_lo: 0x0, b_count: 1, base_row: 3297854 },
+    // mid_box: a >= 0xC03FF000 && a < 0xc0400000 && (a & 7) == 0 && b == 0
+    FropsRegion { a_lo: 0xc03ff000, a_count: 512, a_stride: 8, b_lo: 0x0, b_count: 1, base_row: 3023934 },
+    // mid_box: a >= 0xc6847000 && a < 0xC6A5D000 && (a & 7) == 0 && b == 0
+    FropsRegion { a_lo: 0xc6847000, a_count: 273408, a_stride: 8, b_lo: 0x0, b_count: 1, base_row: 3024446 },
+    // mid_box: a >= 0xC841F000 && a < 0xc8969000 && (a & 7) == 0 && b == 0
+    FropsRegion { a_lo: 0xc841f000, a_count: 693248, a_stride: 8, b_lo: 0x0, b_count: 1, base_row: 3297854 },
 ];
 
 /// `add` (0x0a)
@@ -114,12 +114,12 @@ static OP_09: [FropsRegion; 4] = [
 static OP_0A: [FropsRegion; 4] = [
     // low_rect: a < 4013 && b < 69
     FropsRegion { a_lo: 0x0, a_count: 4013, a_stride: 1, b_lo: 0x0, b_count: 69, base_row: 3991102 },
-    // mid_box: a >= 0xA03F1000 && a < 0xA03FF000 && (a & 7) == 0 && b < 2113
-    FropsRegion { a_lo: 0xa03f1000, a_count: 7168, a_stride: 8, b_lo: 0x0, b_count: 2113, base_row: 4267999 },
-    // mid_box: a >= 0xA042F000 && a < 0xA0431000 && (a & 7) == 0 && b >= 40 && b < 217
-    FropsRegion { a_lo: 0xa042f000, a_count: 1024, a_stride: 8, b_lo: 0x28, b_count: 177, base_row: 19413983 },
-    // mid_box: a >= 0xBFFEF000 && a < 0xBFFF0000 && (a & 7) == 0 && b == 8
-    FropsRegion { a_lo: 0xbffef000, a_count: 512, a_stride: 8, b_lo: 0x8, b_count: 1, base_row: 19595231 },
+    // mid_box: a >= 0xC03F1000 && a < 0xC03FF000 && (a & 7) == 0 && b < 2113
+    FropsRegion { a_lo: 0xc03f1000, a_count: 7168, a_stride: 8, b_lo: 0x0, b_count: 2113, base_row: 4267999 },
+    // mid_box: a >= 0xC042F000 && a < 0xc0431000 && (a & 7) == 0 && b >= 40 && b < 217
+    FropsRegion { a_lo: 0xc042f000, a_count: 1024, a_stride: 8, b_lo: 0x28, b_count: 177, base_row: 19413983 },
+    // mid_box: a >= 0xC046F000 && a < 0xc0470000 && (a & 7) == 0 && b == 8
+    FropsRegion { a_lo: 0xc046f000, a_count: 512, a_stride: 8, b_lo: 0x8, b_count: 1, base_row: 19595231 },
 ];
 
 /// `sub` (0x0b)
@@ -276,8 +276,8 @@ static OP_26: [FropsRegion; 1] = [
 static OP_27: [FropsRegion; 2] = [
     // low_rect: a == 0 && b < 257
     FropsRegion { a_lo: 0x0, a_count: 1, a_stride: 1, b_lo: 0x0, b_count: 257, base_row: 22890730 },
-    // mid_box: a >= 0xA03FC000 && a < 0xA03FF000 && (a & 7) == 0 && b < 252
-    FropsRegion { a_lo: 0xa03fc000, a_count: 1536, a_stride: 8, b_lo: 0x0, b_count: 252, base_row: 22890987 },
+    // mid_box: a >= 0xC03FC000 && a < 0xC03FF000 && (a & 7) == 0 && b < 252
+    FropsRegion { a_lo: 0xc03fc000, a_count: 1536, a_stride: 8, b_lo: 0x0, b_count: 252, base_row: 22890987 },
 ];
 
 /// `signextend_h` (0x28)
@@ -285,23 +285,23 @@ static OP_27: [FropsRegion; 2] = [
 static OP_28: [FropsRegion; 3] = [
     // low_rect: a == 0 && b < 2901
     FropsRegion { a_lo: 0x0, a_count: 1, a_stride: 1, b_lo: 0x0, b_count: 2901, base_row: 23278059 },
-    // mid_box: a >= 0x900D5000 && a < 0x900D6000 && (a & 7) == 0 && b < 6
-    FropsRegion { a_lo: 0x900d5000, a_count: 512, a_stride: 8, b_lo: 0x0, b_count: 6, base_row: 23280960 },
-    // mid_box: a >= 0x900D5000 && a < 0x900D6000 && (a & 7) == 0 && b == 100
-    FropsRegion { a_lo: 0x900d5000, a_count: 512, a_stride: 8, b_lo: 0x64, b_count: 1, base_row: 23284032 },
+    // mid_box: a >= 0xA80D5000 && a < 0xA80D6000 && (a & 7) == 0 && b < 6
+    FropsRegion { a_lo: 0xa80d5000, a_count: 512, a_stride: 8, b_lo: 0x0, b_count: 6, base_row: 23280960 },
+    // mid_box: a >= 0xA80D5000 && a < 0xA80D6000 && (a & 7) == 0 && b == 100
+    FropsRegion { a_lo: 0xa80d5000, a_count: 512, a_stride: 8, b_lo: 0x64, b_count: 1, base_row: 23284032 },
 ];
 
 /// `signextend_w` (0x29)
 #[rustfmt::skip]
 static OP_29: [FropsRegion; 4] = [
-    // mid_box: a >= 0x900D5000 && a < 0x900D6000 && (a & 3) == 0 && b == 100
-    FropsRegion { a_lo: 0x900d5000, a_count: 1024, a_stride: 4, b_lo: 0x64, b_count: 1, base_row: 23284544 },
-    // mid_box: a >= 0xAABC9000 && a < 0xAABCA000 && (a & 7) == 0 && b < 15
-    FropsRegion { a_lo: 0xaabc9000, a_count: 512, a_stride: 8, b_lo: 0x0, b_count: 15, base_row: 23285568 },
-    // mid_box: a >= 0xAAC0C000 && a < 0xAAC0E000 && (a & 7) == 0 && b < 15
-    FropsRegion { a_lo: 0xaac0c000, a_count: 1024, a_stride: 8, b_lo: 0x0, b_count: 15, base_row: 23293248 },
-    // mid_box: a >= 0xAACAE000 && a < 0xAACB0000 && (a & 7) == 0 && b < 15
-    FropsRegion { a_lo: 0xaacae000, a_count: 1024, a_stride: 8, b_lo: 0x0, b_count: 15, base_row: 23308608 },
+    // mid_box: a >= 0xA80D5000 && a < 0xA80D6000 && (a & 3) == 0 && b == 100
+    FropsRegion { a_lo: 0xa80d5000, a_count: 1024, a_stride: 4, b_lo: 0x64, b_count: 1, base_row: 23284544 },
+    // mid_box: a >= 0xCABC9000 && a < 0xCABCA000 && (a & 7) == 0 && b < 15
+    FropsRegion { a_lo: 0xcabc9000, a_count: 512, a_stride: 8, b_lo: 0x0, b_count: 15, base_row: 23285568 },
+    // mid_box: a >= 0xCAC0C000 && a < 0xCAC0E000 && (a & 7) == 0 && b < 15
+    FropsRegion { a_lo: 0xcac0c000, a_count: 1024, a_stride: 8, b_lo: 0x0, b_count: 15, base_row: 23293248 },
+    // mid_box: a >= 0xCACAE000 && a < 0xCACB0000 && (a & 7) == 0 && b < 15
+    FropsRegion { a_lo: 0xcacae000, a_count: 1024, a_stride: 8, b_lo: 0x0, b_count: 15, base_row: 23308608 },
 ];
 
 /// `rev8` (0x30)

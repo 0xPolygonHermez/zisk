@@ -138,6 +138,13 @@ airtemplate Blake2s(const int N = 2**20) {
     // Step and addresses of the operation, stored at the first rows of the cycle
     col witness bits(40) step_addr;
 
+    // High limb (bit 32) of the addresses held in step_addr. The operation bus carries an operand
+    // as two 32-bit limbs and this machine is the one that joins them into a 33-bit address, so it
+    // is the one that checks the high limb is a bit: the address is then below 2^33 and cannot
+    // wrap the field.
+    col witness bits(1) addr_hi;
+    addr_hi * (1 - addr_hi) === 0;
+
     // Per-op discriminator: the main step of the operation, broadcast to every row of the cycle
     col witness bits(40) op_step;
 
@@ -407,7 +414,8 @@ airtemplate Blake2s(const int N = 2**20) {
     col witness bits(1) in_use_clk_0; // 1 at the first clock cycle of the Blake2br operation, 0 otherwise
     in_use_clk_0 <== CLK_0 * in_use;
 
-    proves_operation(op: OP_BLAKE2S, a: [step_addr'(ADDR_STATE), 0], b: [step_addr'(ADDR_INPUT), 0],
+    proves_operation(op: OP_BLAKE2S, a: [step_addr'(ADDR_STATE) - 2**32 * addr_hi'(ADDR_STATE), addr_hi'(ADDR_STATE)],
+                     b: [step_addr'(ADDR_INPUT) - 2**32 * addr_hi'(ADDR_INPUT), addr_hi'(ADDR_INPUT)],
                      main_step: step_addr'(STEP_MAIN), mul: in_use_clk_0);
 
     // Given a,b,c,active it checks c == (a + b) mod 2³² when active == 1

@@ -86,15 +86,10 @@ pub unsafe fn print_max_used_sys_alloc() {
 /// Backing region for the bump allocator, as `(bottom, top)` addresses.
 ///
 /// Guest binary (default): the heap is the RAM left over after the program
-/// image, delimited by the linker symbols `_heap_*`.
+/// image, from the linker symbol `_heap_bottom` to the end of the RAM.
 #[cfg(all(zisk_guest, not(zisk_staticlib)))]
 unsafe fn sys_alloc_heap_bounds() -> (usize, usize) {
-    extern "C" {
-        static _heap_bottom: u8;
-        static _heap_top: u8;
-    }
-
-    unsafe { (&_heap_bottom as *const u8 as usize, &_heap_top as *const u8 as usize) }
+    (super::kernel_heap::heap_bottom(), super::kernel_heap::heap_top())
 }
 
 /// Isolated staticlib (`zisk_staticlib`): ziskos is linked into a host

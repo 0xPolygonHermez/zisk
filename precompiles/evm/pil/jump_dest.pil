@@ -357,6 +357,15 @@ airtemplate JumpDest(int N = 2**21,                         // Rows of instance
 
     col witness bits(ADDR_W_BITS) src64; 
     col witness bits(ADDR_W_BITS) dst64;
+
+    // Bit 32 of the byte addresses src64 * 8 and dst64 * 8. The operation bus carries an operand as
+    // two 32-bit limbs and this machine is the one that joins them into a 33-bit address, so it
+    // checks the high limb is a bit: the address cannot wrap the field. Only read on the row that
+    // starts a sequence.
+    col witness bits(1) src_addr_hi;
+    col witness bits(1) dst_addr_hi;
+    src_addr_hi * (1 - src_addr_hi) === 0;
+    dst_addr_hi * (1 - dst_addr_hi) === 0;
     col witness bits(MAIN_STEP_BITS) main_step;     // @[main_step] timestamp of operation
     col witness bits(32) count;                     // @[count] number of bytes
 
@@ -595,8 +604,8 @@ airtemplate JumpDest(int N = 2**21,                         // Rows of instance
     is_last_segment * LAST * (sel - seq_end) === 0;
 
     proves_operation(op: OP_JUMP_DEST,
-                     a: [dst64 * 8, 0],
-                     b: [src64 * 8, 0],
+                     a: [dst64 * 8 - 2**32 * dst_addr_hi, dst_addr_hi],
+                     b: [src64 * 8 - 2**32 * src_addr_hi, src_addr_hi],
                      c: [0, 0],
                      flag: 0,
                      main_step:,

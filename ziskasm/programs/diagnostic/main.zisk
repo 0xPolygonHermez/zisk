@@ -19,7 +19,7 @@
 ;   ziskemu -z ziskasm/programs/diagnostic -c        (no input needed)
 ; ============================================================================
 
-define OUTPUT_ADDR 0xa0410000
+define OUTPUT_ADDR 0xc0410000
 
 main:
 	copyb(0, r1) -> r9              ; save return address (our `call`s clobber r1)

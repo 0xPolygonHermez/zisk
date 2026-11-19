@@ -137,6 +137,15 @@ airtemplate Blake3f(const int N = 2**20, const int LANES = 1) {
     // Step and addresses of the operation, stored at the first rows of the cycle
     col witness bits(40) step_addr[LANES];
 
+    // High limb (bit 32) of the addresses held in step_addr. The operation bus carries an operand
+    // as two 32-bit limbs and this machine is the one that joins them into a 33-bit address, so it
+    // is the one that checks the high limb is a bit: the address is then below 2^33 and cannot
+    // wrap the field.
+    col witness bits(1) addr_hi[LANES];
+    for (int l = 0; l < LANES; l++) {
+        addr_hi[l] * (1 - addr_hi[l]) === 0;
+    }
+
     // Per-op discriminator: the main step of the operation, broadcast to every row of the cycle
     col witness bits(40) op_step[LANES];
 
@@ -455,7 +464,8 @@ airtemplate Blake3f(const int N = 2**20, const int LANES = 1) {
         // MAIN PROCESSOR INTEGRATION
         // ───────────────────────────────────────────────────────────────────────
 
-        proves_operation(op: OP_BLAKE3, a: [step_addr[l]'(ADDR_STATE), 0], b: [step_addr[l]'(ADDR_INPUT), 0],
+        proves_operation(op: OP_BLAKE3, a: [step_addr[l]'(ADDR_STATE) - 2**32 * addr_hi[l]'(ADDR_STATE), addr_hi[l]'(ADDR_STATE)],
+                         b: [step_addr[l]'(ADDR_INPUT) - 2**32 * addr_hi[l]'(ADDR_INPUT), addr_hi[l]'(ADDR_INPUT)],
                          main_step: step_addr[l]'(STEP_MAIN), mul: in_use_clk_0[l]);
     }
 

@@ -566,12 +566,12 @@ impl<F: PrimeField64> InputDataSM<F> {
 
         #[cfg(feature = "debug_mem")]
         let mut filled_slots = vec![false; num_slots];
-        let offset_base_addr_w = seg.offsets_base_addr >> 3;
+        let offset_base_addr_w = seg.offsets_base_addr_w;
 
         // first address == halo
         // In input data, first special address not active flag change address if has free inputs
         // on special address INPUT_ADDR, first position of input data.
-        if seg.offset_at(0) == 0 || seg.offsets_base_addr == INPUT_ADDR as u32 {
+        if seg.offset_at(0) == 0 || seg.offsets_base_addr_w == (INPUT_ADDR >> 3) as u32 {
             current_offsets[0] = OFFSET_USE_FLAG;
         }
 

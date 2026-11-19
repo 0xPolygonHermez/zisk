@@ -408,8 +408,8 @@ fails; idempotent) and `void write_output(const uint8_t* output, size_t size)`
 
 **ZisK.** Both functions are implemented in the ZisK library (`zisklib_read_input`,
 `zisklib_write_output`) and reached through zkvmcalls (0x863, 0x864). Input is exposed at the memory-mapped
-free-input region (`INPUT_ADDR = 0x1000_0000`); output is written to the public
-output region (`OUTPUT_ADDR = 0xa041_0000`). Reads are non-failing and side-effect
+free-input region (`INPUT_ADDR = 0x2000_0000`); output is written to the public
+output region (`OUTPUT_ADDR = 0xC041_0000`). Reads are non-failing and side-effect
 free; successive `write_output` calls concatenate. C guests get both from
 [`zkvm_io.h`](../../ziskasm/lang/c/include/zkvm_io.h) and the zkvmcall thunks in
 `ziskasm/lang/c/src/zkvm_calls.s`, linked via `zisklib_c` (§9). The draft
@@ -432,12 +432,12 @@ linker script (`ziskbuild/zisk_linker_script.ld`):
 
 | Region | Address |
 |--------|---------|
-| Free input | `0x1000_0000` (len `0x8000_0000`) |
-| ROM (program) | `0x9000_0000` (len `0x0800_0000`) |
-| RAM base / stack | `0xa000_0000` (stack 4 MB) |
-| System reserved | `0xa040_0000` |
-| Public output | `0xa041_0000` |
-| RAM top | `0xc000_0000` |
+| Free input | `0x2000_0000` (len `0x8000_0000`) |
+| ROM (program) | `0xA800_0000` (len `0x0800_0000`) |
+| RAM base / stack | `0xC000_0000` (stack 4 MB) |
+| System reserved | `0xC040_0000` |
+| Public output | `0xC041_0000` |
+| RAM top | `0x1_4000_0000` |
 
 **Assessment: Conformant** (ZisK supplies and requires its own vendor linker
 script, exactly as the standard intends).
@@ -454,15 +454,15 @@ of at least 4 kB immediately below the stack bottom, contiguous with no gap.
 now enforced rather than incidental.
 
 **Null-pointer trap.** The lowest data area is the input window at
-`INPUT_ADDR = 0x1000_0000`. Below it there is only the BIOS ROM (`0x1000`–`0x0fff_ffff`),
+`INPUT_ADDR = 0x2000_0000`. Below it there is only the BIOS ROM (`0x1000`–`0x0fff_ffff`),
 which holds instructions and is never a data area: no `Mem` or `RomData` section covers
 any address below `INPUT_ADDR`. So a load or store anywhere in `0x0000`–`0x0FFF` fails the
 `Mem` section bounds check and aborts, and since no instruction lives there either, a jump
 into it aborts too.
 
-**Stack guard.** The stack bottom is `STACK_ADDR = RAM_ADDR = 0xa000_0000` — the
-lowest mapped RAM address — with the stack growing down from `0xa040_0000`. ROM ends
-at `0x97ff_ffff`, so the span `0x9800_0000`–`0x9fff_ffff` (128 MB) is unmapped. That
+**Stack guard.** The stack bottom is `STACK_ADDR = RAM_ADDR = 0xC000_0000` — the
+lowest mapped RAM address — with the stack growing down from `0xC040_0000`. ROM ends
+at `0xAFFF_FFFF`, so the span `0xB000_0000`–`0xBFFF_FFFF` (256 MB) is unmapped. That
 region therefore begins at the byte immediately below the stack bottom, which is
 exactly the standard's "contiguous and adjacent to the bottom of the stack with no
 gap between them", and it is far larger than the required 4 kB.
@@ -494,7 +494,7 @@ and if anything landed in the span, a guest access into the guard would silently
 *succeed*.
 
 `server_setup()` (`emulator-asm/src/server.c`) therefore reserves the whole span
-`GUARD_ADDR`..`RAM_ADDR` (0x9800_0000–0x9fff_ffff, 128 MB) as
+`GUARD_ADDR`..`RAM_ADDR` (0xB000_0000–0xBFFF_FFFF, 256 MB) as
 `PROT_NONE | MAP_FIXED | MAP_NORESERVE`: the range is claimed so nothing else can be
 placed in it, any access faults, and `MAP_NORESERVE` keeps it off the commit charge
 (a single VMA, no backing pages). Measured before and after in a standalone harness:

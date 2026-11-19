@@ -23,9 +23,9 @@ const MEM_OFFSETS_PAGE_MASK: u32 = MEM_OFFSETS_PAGE_SIZE - 1;
 // there too — there is no compile-time cross-language check.
 pub const MEM_OFFSETS_PAGE_ABSENT: u32 = u32::MAX;
 
-//   offsets_base_addr  — first byte address of the segment's address range
-//                        (the byte address mapped to dense slot 0).
-//   addr_range_slots   — ("offsets_last_addr" - offsets_base_addr)/8 + 1, dense slot count
+//   offsets_base_addr_w — first word address (byte address / 8) of the segment's address
+//                        range (the word mapped to dense slot 0).
+//   addr_range_slots   — "offsets_last_addr_w" - offsets_base_addr_w + 1, dense slot count
 //   num_pages          — ceil(addr_range_slots / MEM_OFFSETS_PAGE_SIZE)
 //   present_count      — number of non-absent pages
 //   page_starts[p]     — MEM_OFFSETS_PAGE_ABSENT iff page p is absent
@@ -42,7 +42,7 @@ pub const MEM_OFFSETS_PAGE_ABSENT: u32 = u32::MAX;
 #[derive(Debug, Default, Clone)]
 pub struct MemModuleSegmentCheckPoint {
     pub chunks: HashMap<ChunkId, MemModuleCheckPoint>,
-    pub offsets_base_addr: u32,
+    pub offsets_base_addr_w: u32,
     pub addr_range_slots: u32,
     pub num_pages: u32,
     pub present_count: u32,
@@ -70,7 +70,7 @@ impl MemModuleSegmentCheckPoint {
     /// *same* `offset` value (the offset is a monotone running pointer, so an
     /// address with no own value carries the value of the next populated
     /// address). In other words this call paints `(previous_addr_w, addr_w]`
-    /// with `offset`. The first call defines `offsets_base_addr` (slot 0).
+    /// with `offset`. The first call defines `offsets_base_addr_w` (slot 0).
     ///
     /// If `addr_w` repeats the previously added address, the call is ignored:
     /// the first `offset` seen for an address is the valid one (it is the row of
@@ -84,16 +84,16 @@ impl MemModuleSegmentCheckPoint {
     /// physical page is appended to `pages_dense`. Fully-skipped pages inside a
     /// gap are uniform by construction and remain absent.
     ///
-    /// This manages only the offsets layout (`offsets_base_addr`,
+    /// This manages only the offsets layout (`offsets_base_addr_w`,
     /// `addr_range_slots`, `num_pages`, `present_count`, `page_starts`,
     /// `page_single_value`, `pages_dense`); `chunks`, `first_chunk_id` and
     /// `is_last_segment` are owned by other code.
     pub fn add_addr_offset(&mut self, addr_w: u32, offset: u32) {
         const PAGE: u64 = MEM_OFFSETS_PAGE_SIZE as u64;
 
-        // First address: it defines slot 0 and the segment base byte address.
+        // First address: it defines slot 0 and the segment base word address.
         if self.addr_range_slots == 0 {
-            self.offsets_base_addr = addr_w << 3;
+            self.offsets_base_addr_w = addr_w;
             self.ensure_num_pages(1);
             // Single slot in a single page => uniform => absent page.
             self.page_single_value[0] = offset;
@@ -101,7 +101,7 @@ impl MemModuleSegmentCheckPoint {
             return;
         }
 
-        let base_w = (self.offsets_base_addr >> 3) as u64;
+        let base_w = self.offsets_base_addr_w as u64;
         debug_assert!(addr_w as u64 >= base_w, "address below segment base");
         let target_slot = addr_w as u64 - base_w;
         let prev_last = self.addr_range_slots as u64 - 1;
@@ -217,7 +217,7 @@ impl MemModuleSegmentCheckPoint {
     pub fn previous_change_addr_w(&self, k: u32) -> Option<u64> {
         debug_assert!(k < self.addr_range_slots);
         let cur_val = self.offset_at(k);
-        let base_w = (self.offsets_base_addr as u64) >> 3;
+        let base_w = self.offsets_base_addr_w as u64;
         let mut page = k >> MEM_OFFSETS_PAGE_SIZE_LOG2;
         let mut upper = (k & MEM_OFFSETS_PAGE_MASK) as usize;
         loop {
@@ -254,7 +254,7 @@ impl MemModuleSegmentCheckPoint {
         println!("[MemDebug] saving offsets to {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let base = self.offsets_base_addr as u64;
+        let base = (self.offsets_base_addr_w as u64) << 3;
         let mut prev_value = u32::MAX;
         for index in 0..self.addr_range_slots {
             let value = self.offset_at(index);
@@ -327,7 +327,7 @@ mod add_addr_offset_tests {
         let dense = reference_dense(base_w, ops);
 
         // Base and range.
-        assert_eq!(seg.offsets_base_addr, base_w << 3);
+        assert_eq!(seg.offsets_base_addr_w, base_w);
         assert_eq!(seg.addr_range_slots as usize, dense.len());
         let expected_pages = (dense.len() as u32).div_ceil(MEM_OFFSETS_PAGE_SIZE);
         assert_eq!(seg.num_pages, expected_pages);

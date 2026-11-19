@@ -32,8 +32,10 @@ inline int32_t load_from_compact_file(const char *path, size_t chunk_id, MemCoun
         close(fd);
         return -1;
     }
-    int32_t chunk_size = st.st_size / sizeof(MemCountersBusData);
-    int32_t size = sizeof(MemCountersBusData) * chunk_size;
+    // The file is the raw stream of 8-byte MOPS words (mops_format.hpp), as save_chunk_data writes
+    // it; chunk_size counts words, not decoded MemCountersBusData records.
+    int32_t chunk_size = st.st_size / sizeof(uint64_t);
+    int32_t size = sizeof(uint64_t) * chunk_size;
     *chunk = (MemCountersBusData *)malloc(size);
     if (*chunk == NULL) {
         perror("Error allocating memory");

@@ -179,7 +179,7 @@ fn main() {
     }
     // Emit the result like emit32(): word i = bytes 4i..4i+3, little-endian.
     let r = unsafe { read_volatile(&raw const OR) }.to_be_bytes::<32>();
-    let out = 0xA041_0000usize as *mut u32;
+    let out = 0xC041_0000usize as *mut u32;
     for i in 0..8 {
         let w = u32::from_le_bytes(r[4 * i..4 * i + 4].try_into().unwrap());
         unsafe { write_volatile(out.add(i), w) };

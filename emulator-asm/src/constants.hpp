@@ -10,14 +10,15 @@
 // Address map
 // There definitions must match the ZisK rust code ones at core/src/mem.rs used to generate the
 // assembly code, and that are used by the assembly code to access memory and generate the trace
-#define ROM_ADDR          (uint64_t)0x90000000
+#define ROM_ADDR          (uint64_t)0xA8000000
 #define ROM_SIZE          (uint64_t)0x08000000 // 128MB
-#define INPUT_ADDR        (uint64_t)0x10000000
+#define INPUT_ADDR        (uint64_t)0x20000000
 #define MAX_INPUT_SIZE    (uint64_t)0x80000000 // 2048MB = 2GB
 #define LOCKED_INPUT_SIZE (uint64_t)0x08000000 // 128MB, the part of the input that is mapped with MAP_LOCKED to ensure it is always resident in RAM
-#define RAM_ADDR          (uint64_t)0xA0000000
-#define RAM_SIZE          (uint64_t)0x20000000 // 512MB
-#define SYS_ADDR          (uint64_t)0xA0400000
+// The RAM crosses the 4GB boundary (addresses are 33 bits wide)
+#define RAM_ADDR          (uint64_t)0xC0000000
+#define RAM_SIZE          (uint64_t)0x80000000 // 2GB
+#define SYS_ADDR          (uint64_t)0xC0400000
 // Guard span between the top of ROM and the bottom of the stack (= RAM_ADDR).
 // EF zkVM standard 6 requires a >=4 kB region immediately below the stack bottom that
 // is not mapped readable or writable and whose access aborts; see STACK_GUARD_ADDR in
@@ -26,8 +27,8 @@
 // check -- an out-of-range guest access faults only because the host has nothing
 // mapped there -- so server_setup() reserves the whole span PROT_NONE to stop a
 // casual mmap(NULL, ...) or large malloc from being placed inside it.
-#define GUARD_ADDR        (ROM_ADDR + ROM_SIZE)   // 0x98000000
-#define GUARD_SIZE        (RAM_ADDR - GUARD_ADDR) // 0x08000000 = 128MB
+#define GUARD_ADDR        (ROM_ADDR + ROM_SIZE)   // 0xB0000000
+#define GUARD_SIZE        (RAM_ADDR - GUARD_ADDR) // 0x10000000 = 256MB
 #define SYS_SIZE          (uint64_t)0x10000
 #define OUTPUT_ADDR       (SYS_ADDR + SYS_SIZE)
 
@@ -47,7 +48,9 @@
    Only the size actually needed is allocated and zeroed, see trace_get_chunk_size(). */
 #define TRACE_INITIAL_SIZE_RH (uint64_t)(0x20000000 + 0x1000) /* 512MB + 4kB (header) */
 
-#define TRACE_ADDR         (uint64_t)0xd0000000
+// The trace window sits above the end of the RAM (0x1_4000_0000); core/src/zisk_rom_2_asm.rs
+// TRACE_ADDR_NUMBER and the .zisk_region of the Makefile follow it.
+#define TRACE_ADDR         (uint64_t)0x200000000
 #define TRACE_MAX_SIZE     (uint64_t)0x800000000 // 32GB
 #define TRACE_NUMBER_OF_CHUNKS (((TRACE_MAX_SIZE - TRACE_INITIAL_SIZE) / TRACE_DELTA_SIZE) + 1)
 #define TRACE_SIZE_GRANULARITY (1014*1014) // ROM histogram trace size is round up to a multiple of this granularity
@@ -62,8 +65,8 @@
 // The generated assembly addresses these pages with absolute 32-bit displacements (see
 // CONTROL_INPUT_ADDR in core/src/zisk_rom_2_asm.rs), so they must lie below 2GB, and outside the
 // guest data regions (input, ROM data, RAM). Below 2GB that leaves only the BIOS ROM span
-// [0x1000, INPUT_ADDR), which the guest fetches instructions from but never accesses as data: they
-// sit at its top, just below INPUT_ADDR, above this executable, which is linked at 0x400000 in the
+// [0x1000, 0x10000000), which the guest fetches instructions from but never accesses as data: they
+// sit at its top, above this executable, which is linked at 0x400000 in the
 // same span and must end below them (see the .zisk_region in the Makefile). As with the executable
 // itself, this emulator does no software bounds check, so a guest load or store there is not
 // trapped; it is rejected by the Rust emulator and cannot be proven, as no Mem area covers it.

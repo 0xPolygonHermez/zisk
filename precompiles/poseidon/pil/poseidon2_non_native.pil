@@ -242,6 +242,13 @@ airtemplate Poseidon2NonNative(const int N, const int OP, const int P, const int
     */
     col witness bits(40) step_addr;
 
+    // High limb (bit 32) of the addresses held in step_addr. The operation bus carries an operand
+    // as two 32-bit limbs and this machine is the one that joins them into a 33-bit address, so it
+    // is the one that checks the high limb is a bit: the address is then below 2^33 and cannot
+    // wrap the field.
+    col witness bits(1) addr_hi;
+    addr_hi * (1 - addr_hi) === 0;
+
     const int STEP_MAIN = 0;
     const int ADDR_STATE = STEP_MAIN + 1;
 
@@ -284,7 +291,7 @@ airtemplate Poseidon2NonNative(const int N, const int OP, const int P, const int
     }
 
     // --> Constraints to make sure that this coprocessor is called from the main processor
-    proves_operation(op: OP, b: [step_addr'(ADDR_STATE), 0], main_step: step_addr'(STEP_MAIN), mul: in_use_clk_0);
+    proves_operation(op: OP, b: [step_addr'(ADDR_STATE) - 2**32 * addr_hi'(ADDR_STATE), addr_hi'(ADDR_STATE)], main_step: step_addr'(STEP_MAIN), mul: in_use_clk_0);
 
     function clock_set(const expr mvcol = 1, const int start = 0, int end = -1): const expr {
         expr result = 0;

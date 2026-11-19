@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[derive(Debug)]
 pub struct KeccakfInput {
     pub step_main: u64,
-    pub addr_main: u32,
+    pub addr_main: u64,
     pub state: [u64; 25],
 }
 
@@ -24,7 +24,7 @@ impl KeccakfInput {
     pub fn from(values: &OperationKeccakData<u64>) -> Self {
         Self {
             step_main: values[4],
-            addr_main: values[3] as u32,
+            addr_main: values[3],
             state: values[5..30].try_into().unwrap(),
         }
     }
@@ -268,10 +268,12 @@ impl<F: PrimeField64> KeccakfSM<F> {
     ) {
         // Fill step and addr of both ops
         trace[0].set_step_addr(input_a.step_main);
-        trace[1].set_step_addr(input_a.addr_main as u64);
+        trace[1].set_step_addr(input_a.addr_main);
+        trace[1].set_addr_hi(zisk_core::addr_hi(input_a.addr_main) == 1);
         if let Some(input_b) = input_b {
             trace[2].set_step_addr(input_b.step_main);
-            trace[3].set_step_addr(input_b.addr_main as u64);
+            trace[3].set_step_addr(input_b.addr_main);
+            trace[3].set_addr_hi(zisk_core::addr_hi(input_b.addr_main) == 1);
         }
 
         // Fill the activation flags

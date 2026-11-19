@@ -9,6 +9,7 @@
 // path: 57 u64 per row, LSB-first, fields in declaration order —
 //   [0,2) flags | [2,1282) state[320]×4b | [1282,1538) c[64]×4b
 //   | [1538,1922) xor5_acc[16]×24b | [1922,3586) chi_acc[64]×26b | [3586,3626) step_addr
+//   | [3626,3627) addr_hi
 
 #include <cstdint>
 #include <cuda_runtime.h>
@@ -30,11 +31,12 @@ constexpr int GROUP_OUT_A    = (2 + ROUNDS) * ROWS_PER_STATE;
 
 constexpr uint32_t CHI_BASE     = 28;
 constexpr uint32_t CHI_SPAN     = 17210368u;               // 28^5
-constexpr uint64_t STEP_ADDR_MASK = (1ull << 40) - 1;
+constexpr int      STEP_ADDR_BITS = 40;
+constexpr uint64_t STEP_ADDR_MASK = (1ull << STEP_ADDR_BITS) - 1;
 
 // Packed row layout, mirroring the `trace_row!` declaration: two flag bits, the
 // row's state cells, its parity cells, the packed xor5 keys, the packed chi
-// inputs, then step_addr.
+// inputs, then step_addr and addr_hi.
 // The static_asserts are what keeps this file honest if the PIL row ever moves.
 constexpr int FLAG_BITS   = 2;
 constexpr int STATE_CELLS = LANES_PER_ROW * 64;  // 320
@@ -44,8 +46,8 @@ constexpr int XOR5_CELLS  = C_CELLS / XOR5_BATCH;  // 16
 constexpr int XOR5_DIGIT  = 6;                     // base 64: a sum sA + 8·sB <= 45
 constexpr int CHI_CELLS   = 64;
 constexpr int ROW_BITS =
-    FLAG_BITS + STATE_CELLS * 4 + C_CELLS * 4 + XOR5_CELLS * 24 + CHI_CELLS * 26 + 40;
-static_assert(ROW_BITS == 3626, "packed Keccakf row is 3626 bits");
+    FLAG_BITS + STATE_CELLS * 4 + C_CELLS * 4 + XOR5_CELLS * 24 + CHI_CELLS * 26 + STEP_ADDR_BITS + 1;
+static_assert(ROW_BITS == 3627, "packed Keccakf row is 3627 bits");
 static_assert(ROW_WORDS == (ROW_BITS + 63) / 64, "ROW_WORDS must cover ROW_BITS");
 constexpr unsigned FULL_MASK    = 0xffffffffu;
 
@@ -125,10 +127,10 @@ __device__ __forceinline__ void emit_cells(Emitter& e, const uint64_t* av, const
     }
 }
 
-/// step_addr and the final partial word. ROW_BITS is not a multiple of 64, so a
+/// step_addr, addr_hi and the final partial word. ROW_BITS is not a multiple of 64, so a
 /// partial word always remains; the guard keeps the store in bounds otherwise.
-__device__ __forceinline__ void emit_tail(Emitter& e, uint64_t step_addr) {
-    emit(e, step_addr & STEP_ADDR_MASK, 40);
+__device__ __forceinline__ void emit_tail(Emitter& e, uint64_t step_addr, uint64_t addr_hi) {
+    emit(e, (step_addr & STEP_ADDR_MASK) | (addr_hi << STEP_ADDR_BITS), STEP_ADDR_BITS + 1);
     if (e.bits != 0) {
         e.out[e.idx] = e.carry;
     }
@@ -137,7 +139,7 @@ __device__ __forceinline__ void emit_tail(Emitter& e, uint64_t step_addr) {
 /// A row without xor5 or χ inputs: the boundary groups and the last round's output group.
 __device__ __forceinline__ void emit_state_row(uint64_t* __restrict__ row, uint64_t flags,
                                                const uint64_t* av, const uint64_t* bv,
-                                               uint64_t step_addr) {
+                                               uint64_t step_addr, uint64_t addr_hi) {
     Emitter e{row, flags, FLAG_BITS, 0};
     emit_cells(e, av, bv, 0, 0);
     for (int g = 0; g < XOR5_CELLS; ++g) {
@@ -146,7 +148,7 @@ __device__ __forceinline__ void emit_state_row(uint64_t* __restrict__ row, uint6
     for (int z = 0; z < CHI_CELLS; ++z) {
         emit(e, 0, 26);
     }
-    emit_tail(e, step_addr);
+    emit_tail(e, step_addr, addr_hi);
 }
 
 /// A round row: parity cells, the xor5 keys, then the χ inputs, the row's five
@@ -188,7 +190,7 @@ __device__ __forceinline__ void emit_round_row(uint64_t* __restrict__ row, uint6
         v += (uint32_t)((rc_bits >> z) & 1) * CHI_SPAN;
         emit(e, v, 26);
     }
-    emit_tail(e, 0);
+    emit_tail(e, 0, 0);
 }
 
 /// Exchange `mine` with the pair lane and order the two values as (op A, op B).
@@ -251,9 +253,10 @@ __global__ __launch_bounds__(256) void keccakf_witness_kernel(
     const uint64_t zeros[LANES_PER_ROW] = {0, 0, 0, 0, 0};
 
     // Boundary groups: op A's plain state, the b-slot empty. Rows 0..3 of the
-    // input group carry the two ops' step and addr.
+    // input group carry the two ops' step and addr, and the addr rows their bit 32 in addr_hi.
     auto emit_boundary = [&](int group_a, bool with_step_addr) {
         const uint64_t step_addr[ROWS_PER_STATE] = {step_a, addr_a, step_b, addr_b, 0};
+        const uint64_t addr_hi[ROWS_PER_STATE] = {0, addr_a >> 32, 0, addr_b >> 32, 0};
         for (int k = 0; k < ROWS_PER_STATE; ++k) {
             uint64_t a[LANES_PER_ROW], b[LANES_PER_ROW];
 #pragma unroll
@@ -261,7 +264,8 @@ __global__ __launch_bounds__(256) void keccakf_witness_kernel(
                 pair(st[k * LANES_PER_ROW + l], is_a, a[l], b[l]);
             }
             if (owns(k)) {
-                emit_state_row(row_at(group_a + k), flags, a, zeros, with_step_addr ? step_addr[k] : 0);
+                emit_state_row(row_at(group_a + k), flags, a, zeros, with_step_addr ? step_addr[k] : 0,
+                               with_step_addr ? addr_hi[k] : 0);
             }
         }
     };
@@ -279,7 +283,7 @@ __global__ __launch_bounds__(256) void keccakf_witness_kernel(
                     pair(st[k * LANES_PER_ROW + l], is_a, sa[l], sb[l]);
                 }
                 if (owns(k)) {
-                    emit_state_row(row_at(group + k), flags, sa, sb, 0);
+                    emit_state_row(row_at(group + k), flags, sa, sb, 0, 0);
                 }
             }
             break;

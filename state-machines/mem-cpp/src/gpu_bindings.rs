@@ -3,8 +3,9 @@ use std::os::raw::c_void;
 #[repr(C, align(8))]
 #[derive(Copy, Clone, Debug)]
 pub struct MemOp {
-    pub addr: u32,
-    pub flags: u32,
+    /// The record's header word (mops_format.hpp): the 33-bit address in bits 0-32, the mode and
+    /// the step field or block count above.
+    pub hdr: u64,
     /// Written value for non-block writes; step field for block records.
     pub payload: u64,
 }
@@ -32,7 +33,9 @@ const _: () = assert!(core::mem::size_of::<PagedOffsets>() == 40);
 pub struct InstanceMeta {
     pub inst_id: u32,
     pub kind: u32,
+    /// first word address (byte address / 8) of the instance
     pub first_addr: u32,
+    /// last word address of the instance
     pub last_addr: u32,
     pub count_per_chunk: *const u32,
     pub n_chunks: u32,

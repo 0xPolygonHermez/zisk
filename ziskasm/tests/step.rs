@@ -12,7 +12,7 @@ fn step_source_reads_running_counter() {
     // use `add`). Two consecutive reads are one instruction apart. We write both
     // to the output and check the difference is exactly 1.
     let src = "\
-define OUTPUT_ADDR 0xa0410000
+define OUTPUT_ADDR 0xc0410000
 main:
 \tadd(step, 0) -> r5             ; r5 = step at this instruction (A)
 \tadd(step, 0) -> r6             ; r6 = step at the next instruction (A + 1)

@@ -76,19 +76,13 @@ impl JumpDestCounterInputGen {
         only_counters: bool,
         mem_processors: &mut P,
     ) {
-        let bitmap_addr = data[A] as u32;
-        let bytecode_addr = data[B] as u32;
+        let bitmap_addr = data[A];
+        let bytecode_addr = data[B];
         let step = data[STEP];
         let count = data[COUNT_OFFSET] as usize;
 
         // The opcode reads its byte count from the extra-parameter slot.
-        MemBusHelpers::mem_aligned_op(
-            EXTRA_PARAMS_ADDR as u32,
-            step,
-            count as u64,
-            false,
-            mem_processors,
-        );
+        MemBusHelpers::mem_aligned_op(EXTRA_PARAMS_ADDR, step, count as u64, false, mem_processors);
 
         if count == 0 {
             return;
@@ -102,7 +96,7 @@ impl JumpDestCounterInputGen {
                 let word = data_ext[word_index];
                 // Only the words the walk visits are read from memory.
                 MemBusHelpers::mem_aligned_op(
-                    bytecode_addr + (word_index * BYTES_PER_WORD) as u32,
+                    bytecode_addr + (word_index * BYTES_PER_WORD) as u64,
                     step,
                     word,
                     false,
@@ -117,7 +111,7 @@ impl JumpDestCounterInputGen {
         for (index, word) in bitmap.iter().enumerate() {
             let value = if only_counters { 0 } else { *word };
             MemBusHelpers::mem_aligned_op(
-                bitmap_addr + (index * BYTES_PER_WORD) as u32,
+                bitmap_addr + (index * BYTES_PER_WORD) as u64,
                 step,
                 value,
                 true,
@@ -136,14 +130,14 @@ impl JumpDestCounterInputGen {
         if count == 0 {
             // Unreachable: count > 0 is a precondition the emulator asserts. Kept total anyway,
             // and an empty call would touch nothing but the count read.
-            return mem_processors.skip_addr(EXTRA_PARAMS_ADDR as u32);
+            return mem_processors.skip_addr(EXTRA_PARAMS_ADDR);
         }
-        let bitmap_addr = data[A] as u32;
-        let bitmap_last = bitmap_addr + ((bitmap_words(count) - 1) * BYTES_PER_WORD) as u32;
-        let bytecode_addr = data[B] as u32;
-        let bytecode_last = bytecode_addr + ((src_words(count) - 1) * BYTES_PER_WORD) as u32;
+        let bitmap_addr = data[A];
+        let bitmap_last = bitmap_addr + ((bitmap_words(count) - 1) * BYTES_PER_WORD) as u64;
+        let bytecode_addr = data[B];
+        let bytecode_last = bytecode_addr + ((src_words(count) - 1) * BYTES_PER_WORD) as u64;
 
-        mem_processors.skip_addr(EXTRA_PARAMS_ADDR as u32)
+        mem_processors.skip_addr(EXTRA_PARAMS_ADDR)
             && mem_processors.skip_addr_range(bitmap_addr, bitmap_last)
             && mem_processors.skip_addr_range(bytecode_addr, bytecode_last)
     }
@@ -226,17 +220,17 @@ mod tests {
     /// Records the memory operations a generation emits.
     #[derive(Default)]
     struct Recorder {
-        ops: Vec<(u32, bool)>,
+        ops: Vec<(u64, bool)>,
     }
     impl MemProcessor for Recorder {
         fn process_mem_data(&mut self, data: &[u64; 7]) {
             // [op, addr, step, bytes, value_lo, value_hi, ...] — op 2 is a store.
-            self.ops.push((data[1] as u32, data[0] == 2));
+            self.ops.push((data[1], data[0] == 2));
         }
-        fn skip_addr(&mut self, _addr: u32) -> bool {
+        fn skip_addr(&mut self, _addr: u64) -> bool {
             false
         }
-        fn skip_addr_range(&mut self, _from: u32, _to: u32) -> bool {
+        fn skip_addr_range(&mut self, _from: u64, _to: u64) -> bool {
             false
         }
     }
@@ -255,7 +249,7 @@ mod tests {
 
     fn bus_data(count: usize) -> Vec<u64> {
         // [op, op_type, a = bitmap, b = bytecode, step, count]
-        vec![0xc0, ZiskOperationType::Evm as u64, 0xA000_0000, 0xA001_0000, 7, count as u64]
+        vec![0xc0, ZiskOperationType::Evm as u64, 0xC000_0000, 0xC001_0000, 7, count as u64]
     }
 
     #[test]
@@ -282,19 +276,19 @@ mod tests {
             &mut recorder,
         );
 
-        let reads: Vec<u32> = recorder
+        let reads: Vec<u64> = recorder
             .ops
             .iter()
-            .filter(|(addr, is_write)| !is_write && *addr != EXTRA_PARAMS_ADDR as u32)
-            .map(|(addr, _)| (addr - 0xA001_0000) / 8)
+            .filter(|(addr, is_write)| !is_write && *addr != EXTRA_PARAMS_ADDR)
+            .map(|(addr, _)| (addr - 0xC001_0000) / 8)
             .collect();
         assert_eq!(reads, vec![0, 4, 8, 12, 16]);
 
-        let writes: Vec<u32> = recorder
+        let writes: Vec<u64> = recorder
             .ops
             .iter()
             .filter(|(_, is_write)| *is_write)
-            .map(|(addr, _)| (addr - 0xA000_0000) / 8)
+            .map(|(addr, _)| (addr - 0xC000_0000) / 8)
             .collect();
         assert_eq!(writes, vec![0, 1, 2], "every bitmap word is written, zeros included");
     }
@@ -312,7 +306,7 @@ mod tests {
         let reads = recorder
             .ops
             .iter()
-            .filter(|(addr, is_write)| !is_write && *addr != EXTRA_PARAMS_ADDR as u32)
+            .filter(|(addr, is_write)| !is_write && *addr != EXTRA_PARAMS_ADDR)
             .count();
         assert_eq!(reads, src_words(200));
     }
@@ -321,6 +315,6 @@ mod tests {
     fn an_empty_operation_only_reads_its_count() {
         let mut recorder = Recorder::default();
         JumpDestCounterInputGen::generate_mem_inputs(&bus_data(0), &[], false, &mut recorder);
-        assert_eq!(recorder.ops, vec![(EXTRA_PARAMS_ADDR as u32, false)]);
+        assert_eq!(recorder.ops, vec![(EXTRA_PARAMS_ADDR, false)]);
     }
 }

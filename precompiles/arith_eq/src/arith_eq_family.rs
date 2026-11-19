@@ -131,7 +131,7 @@ impl<F: PrimeField64> ArithEqCounterInputGen<F> {
         }
 
         let step_main = data[STEP];
-        let addr_main = data[B] as u32;
+        let addr_main = data[B];
 
         match self.mode {
             BusDeviceMode::Counter => {
