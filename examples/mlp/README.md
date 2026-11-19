@@ -102,11 +102,11 @@ cargo run --release -- 784 512 512 10 --asm --gpu
 # Write the guest input file for cargo-zisk
 cargo run --release -- 784 128 10 --save-input ../guest/samples/example-input.bin
 
-# Guest input that uses the experimental dot_i8 precompile, to run on ziskemu
-cargo run --release -- 784 128 10 --dot-i8 --save-input /tmp/in-dot.bin
+# Guest input that uses the experimental dot_f8 precompile, to run on ziskemu
+cargo run --release -- 784 128 10 --dot-f8 --save-input /tmp/in-dot.bin
 ```
 
-`--dot-i8` makes the guest compute each neuron's dot product with the experimental `dot_i8` precompile. Only a `ziskemu` built from this repository runs it, and it cannot be proven yet, so it needs `--save-input` (see [Measured with the experimental `dot_i8`](#measured-with-the-experimental-dot_i8)).
+`--dot-f8` makes the guest compute each neuron's dot product with the experimental `dot_f8` precompile, on two int8 vectors. Only a `ziskemu` built from this repository runs it, and it cannot be proven yet, so it needs `--save-input` (see [Measured with the experimental precompile](#measured-with-the-experimental-precompile)).
 
 The host prints the parameter count, multiply-accumulates (MACs) per inference, steps, steps per MAC, and the setup, prove and verify times.
 
@@ -114,7 +114,7 @@ The host prints the parameter count, multiply-accumulates (MACs) per inference, 
 
 Run from the `guest/` directory. `samples/example-input.bin` holds the default `784 128 10` model.
 
-The guest reads three records: the model blob, the input vector, and one `u64` of option flags. Bit 0 selects the `dot_i8` precompile.
+The guest reads three records: the model blob, the input vector, and one `u64` of option flags. Bit 0 selects the `dot_f8` precompile.
 
 ```bash
 cargo-zisk build --release
@@ -221,14 +221,14 @@ A precompile only pays off when one call does a lot of work, so its fixed cost i
 
 ```rust
 // guest side, one call per neuron
-acc = bias + syscall_dot_i8(row.as_ptr(), x.as_ptr(), n);
+acc = bias + dot(row, x, n);   // one precompile call
 ```
 
 **Circuit sketch.**
 
 - Each row of the precompile's state machine reads one 64-bit word from each vector (8 weights and 8 activations), so 8 MACs per row.
 - It splits each word into 8 bytes, range-checks them as signed bytes, and checks `acc' = acc + Σ a_i·b_i`, which is a single degree-2 constraint.
-- The arithmetic fits easily in the Goldilocks field: each product is below 2^14, so even a 2^40-element vector cannot overflow. The exact sum taken mod 2^32 equals Rust's wrapping `i32` sum, so the semantics match the current code.
+- The arithmetic fits easily in the Goldilocks field: each product is below 2^14, so even a 2^40-element vector cannot overflow, and the exact sum can be returned.
 
 **Cost per 8 MACs:**
 
@@ -249,7 +249,7 @@ That is a 10–50× reduction in trace work for the hot loop. The actual gain in
 - an aligned 64-bit path that handles up to 8 words per row and continues across rows ([`dma_64_aligned.pil`](../../precompiles/dma/pil/dma_64_aligned.pil));
 - separate paths for unaligned head and tail bytes.
 
-A `dot_i8` precompile would reuse most of this, with a different per-row constraint (sum of products instead of compare) and a different result. A first version can stay small by requiring 8-byte-aligned pointers and lengths that are a multiple of 8. The model blob would then pad each layer width and weight row to a multiple of 8 on the host side, which avoids the unaligned path.
+A dot-product precompile would reuse most of this, with a different per-row constraint (sum of products instead of compare) and a different result. A first version can stay small by requiring 8-byte-aligned pointers and lengths that are a multiple of 8. The model blob would then pad each layer width and weight row to a multiple of 8 on the host side, which avoids the unaligned path.
 
 **Work involved:**
 
@@ -257,62 +257,64 @@ A `dot_i8` precompile would reuse most of this, with a different per-row constra
 2. The PIL AIR, witness generation, and generation of the memory inputs (modeled on `dma_gen_memcmp_mem_inputs.rs`).
 3. Integration with the planner and the instance builder.
 
-### Measured with the experimental `dot_i8`
+### Measured with the experimental precompile
 
-Step 1 is now done as an experiment: ZisK has an operation `dot_i8` (opcode `0xc2`, syscall `0x822`) that runs in the operation table, the emulator and, except for the memory-operations mode, `emulator-asm`. **No state machine proves it yet**, so a program that uses it cannot be proven. The SDK's execution cannot run it either, because it also prepares proof inputs; it runs in `ziskemu`. The [`llama2` README](../llama2/README.md#with-the-experimental-dot_i8-precompile) describes the operation and its estimated costs.
+Step 1 is now done as an experiment: ZisK has an operation `dot_f8` (opcode `0xc2`, syscall `0x822`) that runs in the operation table, the emulator and, except for the memory-operations mode, `emulator-asm`. It computes the exact dot product of two vectors of int8, FP8 or FP4 values; this example uses int8. **No state machine proves it yet**, so a program that uses it cannot be proven. The SDK's execution cannot run it either, because it also prepares proof inputs; it runs in `ziskemu`. The [`llama2` README](../llama2/README.md#number-formats-int8-fp8-and-fp4) describes the operation and its estimated costs.
+
+It replaced `dot_i8`, the first version, which only took int8 vectors and a 3-word parameter block. `dot_f8`'s 6-word block costs about 6 more steps per neuron: with `dot_i8`, the three sizes below took 8,562, 47,196 and 91,228 steps, and cost 1.77 M, 11.1 M and 29.8 M.
 
 In this example:
 
 - the model blob now pads each layer's biases so the weights start at a multiple of 8 bytes, and the activations are stored in `u64` words, so every weight row and activation vector is 8-byte aligned;
-- `infer_with` takes the dot product as a function: `dot_soft`, the loop above, or the guest's `dot_precompile`, which makes one `dot_i8` call per neuron.
+- `infer_with` takes the dot product as a function: `dot_soft`, the loop above, or the guest's `dot_precompile`, which makes one `dot_f8` call per neuron.
 
 The runs below use a `ziskemu` built from this repository:
 
 ```bash
 cargo build --release --bin ziskemu        # at the repository root
 cd examples/mlp/host
-cargo run --release -- 1024 1024 1024 10 --dot-i8 --save-input /tmp/in-dot.bin
+cargo run --release -- 1024 1024 1024 10 --dot-f8 --save-input /tmp/in-dot.bin
 ../../../target/release/ziskemu -e ../../target/elf/riscv64ima-zisk-zkvm-elf/release/mlp-guest \
     -i /tmp/in-dot.bin -X --sdk --top-functions
 ```
 
 Both modes commit the same class and logits for every size.
 
-| Widths | Neurons | Steps, `dot_soft` | Steps, `dot_i8` | Fewer steps |
+| Widths | Neurons | Steps, `dot_soft` | Steps, `dot_f8` | Fewer steps |
 |---|---|---|---|---|
-| 784 128 10 | 138 | 719,157 | 8,562 | 84× |
-| 784 512 512 10 | 1,034 | 4,721,695 | 47,196 | 100× |
-| 1024 1024 1024 10 | 2,058 | 14,830,623 | 91,228 | 163× |
+| 784 128 10 | 138 | 719,157 | 9,390 | 77× |
+| 784 512 512 10 | 1,034 | 4,721,695 | 53,400 | 88× |
+| 1024 1024 1024 10 | 2,058 | 14,830,623 | 103,576 | 143× |
 
 The cost report's total includes a fixed base cost of 285.2 M for the ROM and the tables, which every program pays. It is left out of this table:
 
-| Widths | Cost, `dot_soft` | Cost, `dot_i8` | Lower cost |
+| Widths | Cost, `dot_soft` | Cost, `dot_f8` | Lower cost |
 |---|---|---|---|
-| 784 128 10 | 80.0 M | 1.77 M | 45× |
-| 784 512 512 10 | 525.3 M | 11.1 M | 47× |
-| 1024 1024 1024 10 | 1,650.7 M | 29.8 M | 55× |
+| 784 128 10 | 80.0 M | 1.88 M | 42× |
+| 784 512 512 10 | 525.3 M | 11.9 M | 44× |
+| 1024 1024 1024 10 | 1,650.7 M | 31.2 M | 53× |
 
 Where the cost goes for `1024 1024 1024 10`, without the base cost:
 
-| Category | `dot_soft` | `dot_i8` |
+| Category | `dot_soft` | `dot_f8` |
 |---|---|---|
-| Main | 919.5 M | 5.7 M |
-| Opcodes | 540.8 M | 1.9 M |
-| Precompiles | ~0 | 10.7 M (estimated) |
-| Memory | 190.4 M | 11.5 M |
+| Main | 919.5 M | 6.4 M |
+| Opcodes | 540.8 M | 2.2 M |
+| Precompiles | ~0 | 10.9 M (estimated) |
+| Memory | 190.4 M | 11.7 M |
 
-1. **Steps no longer depend on the MAC count.** With `dot_i8` the program takes about 43 steps per neuron (the bias, the call, the shift and clamp, and the loop over neurons) plus about 2,600 steps of fixed overhead. The table above expected about 1 step per neuron for the call alone; the rest of the per-neuron code remains.
-2. **The cost falls 45–55×,** within the 10–50× range predicted above, and the gain grows with the model, as the fixed part matters less.
-3. **The precompile's own cost is an estimate.** The `Precompiles` row assumes one row of about 40 columns per 8 MACs, and one row per call. With no state machine, nothing measures it yet. Even at several times that cost the precompile would win by a wide margin: the Main and opcode cost it removes (1,460 M) is over 100 times its estimated cost.
+1. **Steps no longer depend on the MAC count.** With the precompile the program takes about 49 steps per neuron (the bias, the parameter block and the call, the shift and clamp, and the loop over neurons) plus about 2,600 steps of fixed overhead. The table above expected about 1 step per neuron for the call alone; the rest of the per-neuron code remains.
+2. **The cost falls 42–53×,** at the top of the 10–50× range predicted above, and the gain grows with the model, as the fixed part matters less.
+3. **The precompile's own cost is an estimate.** The `Precompiles` row assumes one row of about 40 columns per 8 MACs, and one row per call. With no state machine, nothing measures it yet. Even at several times that cost the precompile would win by a wide margin: the Main and opcode cost it removes (about 1,450 M) is over 100 times its estimated cost.
 4. **Memory drops 16×,** because the precompile reads aligned 64-bit words instead of single bytes.
 
 ### Larger models
 
-- **The precompile still applies.** In a transformer almost all the work is matrix multiplication, which is dot products, so the same precompile covers it as long as the model is quantized to int8. If the model uses int4 or int16 weights, the precompile could take a width parameter; that is easy to design in from the start and harder to add later.
+- **The precompile still applies.** In a transformer almost all the work is matrix multiplication, which is dot products, so the same precompile covers it. `dot_f8` takes each vector's format: int8, FP8 (E4M3, E4M3FNUZ) or FP4 (E2M1). The [`llama2` example](../llama2/README.md#number-formats-int8-fp8-and-fp4) measures them.
 - **The bottleneck moves.** Once dot products are nearly free, the remaining operations dominate: softmax, layer normalization, activation functions and requantization, which stay as RISC-V code. A real model should be profiled before deciding what to accelerate next.
 
 ### Suggested order
 
 1. Unroll the loop in this example: cheap, and possible today.
 2. Prove the larger models (4.7 M and 14.8 M steps) to get the real growth rate of proving time.
-3. Use those numbers, and the emulator results [above](#measured-with-the-experimental-dot_i8), to decide whether to build the `dot_i8` state machine.
+3. Use those numbers, and the emulator results [above](#measured-with-the-experimental-precompile), to decide whether to build the `dot_f8` state machine.

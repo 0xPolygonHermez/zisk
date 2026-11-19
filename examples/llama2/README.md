@@ -62,11 +62,13 @@ Options, for both programs:
 | `--seed S` | 42 | Sampler seed, used when `T > 0` |
 | `--group-size N` | llama2.c's: a power of two up to 64 | Quantize in groups of at most `N` values: the largest multiple of 8 that divides the row (see [below](#cheaper-calls-and-larger-groups)) |
 | `--scales float\|fixed` | `float` | How matrix multiplications apply the group scales: in `f32` like llama2.c, or in fixed point (see [below](#with-fixed-point-scales)) |
+| `--weights FORMAT` | `int8` | Format of the weights: `int8` (llama2.c), `e4m3` (OCP FP8), `e4m3fnuz` (AMD FP8) or `e2m1` (FP4); see [Number formats](#number-formats-int8-fp8-and-fp4) |
+| `--activations FORMAT` | the weights' format | Format the activations are quantized to before each matrix multiplication; the same choices |
 
 `llama2-zisk` also takes:
 
 - `--ziskemu PATH`: the `ziskemu` to run.
-- `--dot-product soft|precompile`: how the guest computes the dot products. The default, `soft`, is plain Rust. `precompile` uses the experimental `dot_i8` precompile, which needs a `ziskemu` built from this repository and cannot be proven yet (see [below](#with-the-experimental-dot_i8-precompile)). An older `ziskemu`, such as an installed release, does not report an error: the run produces wrong tokens, and the last line says `same tokens as native: NO`. Pass the repository's build with `--ziskemu ../../../target/release/ziskemu`.
+- `--dot-product soft|precompile`: how the guest computes the dot products. The default, `soft`, is plain Rust. `precompile` uses the experimental `dot_f8` precompile, which needs a `ziskemu` built from this repository and cannot be proven yet (see [Number formats](#number-formats-int8-fp8-and-fp4)). An older `ziskemu`, such as an installed release, does not report an error: the run produces wrong tokens, and the last line says `same tokens as native: NO`. Pass the repository's build with `--ziskemu ../../../target/release/ziskemu`.
 - `--save-input PATH`: writes the guest input for the first prompt and exits, to run the guest directly:
 
 ```bash
@@ -109,13 +111,13 @@ flowchart TD
 
 1. **Reads the options** (`parse_options`): which model to use, the prompt, how many tokens to generate, and how to pick them.
 2. **Loads the model and the tokenizer** (`load`).
-   - **The model** is a long list of numbers, its *weights*, learned during training. The llama2.c checkpoint stores them as 32-bit floats. `load` converts them to 8-bit integers plus one float *scale* per group of values. This is called *quantization*, and it is the format the ZisK guest uses. The result is a single byte buffer, the *model blob*.
+   - **The model** is a long list of numbers, its *weights*, learned during training. The llama2.c checkpoint stores them as 32-bit floats. `load` converts them to 8-bit integers (or, with `--weights`, to 8-bit or 4-bit floats) plus one float *scale* per group of values. This is called *quantization*, and it is the format the ZisK guest uses. The result is a single byte buffer, the *model blob*.
    - **The tokenizer** converts between text and *tokens*. A token is a word or part of a word, identified by a number. The model only reads and writes these numbers.
-3. **Parses the model** (`Model::parse`): it reads the sizes and finds each weight matrix inside the blob, without copying the int8 weights.
+3. **Parses the model** (`Model::parse`): it reads the sizes and finds each weight matrix inside the blob, without copying the quantized weights.
 4. **For each prompt**, from `--prompt` or typed by the user:
    - **Builds the request** (`gen_params`): the prompt as tokens, and the settings. The first token is BOS ("beginning of sequence", here the start of a story). Temperature 0 always picks the most likely next token.
    - **Starts printing** (`TextPrinter`): it prints the prompt, and then each new token as text as soon as it is generated.
-   - **Chooses how to compute** (`MatmulMode`). Almost all of the work is matrix multiplications. Natively they use the plain-Rust integer dot product, with the scales in `f32` or fixed point (`--scales`). The ZisK guest can use the `dot_i8` precompile instead.
+   - **Chooses how to compute** (`MatmulMode`). Almost all of the work is matrix multiplications. Natively they use the plain-Rust exact dot product, with the scales in `f32` or fixed point (`--scales`). The ZisK guest can use the `dot_f8` precompile instead.
    - **Generates** (`generate_with`, in [`generate.rs`](common/src/generate.rs)). For each position, it runs the model once on the current token: a *forward pass* ([`forward`](common/src/forward.rs)). That gives a score for every token of the vocabulary as the possible next one. During the prompt, the next token is simply the next prompt token. After the prompt, the next token is chosen from those scores and fed back in. Generation stops after `--max-new` tokens, at a BOS (a new story would start), or when the model's context is full.
 5. **Prints the timing**: the prompt and generated token counts, the time, and the tokens per second.
 
@@ -174,8 +176,8 @@ A common simplification: attention is "communicate", and feed-forward is "think"
 
 [`common/`](common/src/lib.rs) is a Rust port of the int8 path of llama2.c (`runq.c`):
 
-- When loading, the host **quantizes** the float32 checkpoint: each matrix row is split into groups of up to 64 values, and each group is stored as int8 values plus one `f32` scale (`max|w| / 127`).
-- Every **matrix multiplication** quantizes its input vector the same way and computes an `i32` dot product per group, which is then multiplied by the two scales. These integer dot products are the same kind of loop as in the [`mlp`](../mlp/) example. With `--scales fixed`, the scales are applied in fixed point instead (see [below](#with-fixed-point-scales)).
+- When loading, the host **quantizes** the float32 checkpoint: each matrix row is split into groups of up to 64 values, and each group is stored as int8 values plus one `f32` scale (`max|w| / 127`). `--weights` and `--activations` choose FP8 or FP4 formats instead (see [Number formats](#number-formats-int8-fp8-and-fp4)).
+- Every **matrix multiplication** quantizes its input vector the same way and computes an exact integer dot product per group, which is then multiplied by the two scales. These integer dot products are the same kind of loop as in the [`mlp`](../mlp/) example. With `--scales fixed`, the scales are applied in fixed point instead (see [below](#with-fixed-point-scales)).
 - **RMSNorm, attention, softmax, SiLU and RoPE** use `f32`.
 
 The guest target (`riscv64ima`) has no floating-point instructions, so the compiler turns `f32` operations into calls to software routines made of integer instructions. Those can be executed and proven by ZisK like any other code, just slowly. Basic IEEE operations are correctly rounded both natively and in those routines, and `exp`, `sin`, `cos`, `pow` and `sqrt` come from the `libm` crate on both sides. So the native run and the ZisK run produce **the same tokens**, which `llama2-zisk` checks every time.
@@ -186,7 +188,7 @@ The guest target (`riscv64ima`) has no floating-point instructions, so the compi
 |---|---|
 | Input record 1 | The quantized model blob, used in place by the guest (layout in [`checkpoint.rs`](common/src/checkpoint.rs)) |
 | Input record 2 | The generation parameters: prompt tokens, `max_new`, temperature, seed ([`params.rs`](common/src/params.rs)) |
-| Input record 3 | Guest options, one `u64` of flags. Bit 0 selects the `dot_i8` precompile, bit 1 fixed-point scales. |
+| Input record 3 | Guest options, one `u64` of flags. Bit 0 selects the `dot_f8` precompile, bit 1 fixed-point scales. |
 | Printed | `tokens: <id> <id> …`, the generated tokens |
 | Committed | `sha256(parameters ‖ generated tokens)` |
 
@@ -203,6 +205,15 @@ llama2/
 │   ├── src/bin/native.rs   # llama2-native
 │   └── src/bin/zisk.rs     # llama2-zisk: builds the guest input, runs ziskemu, checks
 └── models/       # downloaded checkpoints and tokenizers (not in git)
+```
+
+The number formats and the `dot_f8` precompile they use are defined in ZisK itself:
+
+```text
+definitions/src/dot_f8.rs            # format IDs, decoding tables, reference semantics
+core/src/operations/dot_f8.rs        # the operation in ziskemu, its checks and cost model
+ziskos/entrypoint/src/syscalls/dot_f8.rs   # syscall_dot_f8, for guests
+emulator-asm/src/dot_f8/             # the operation in the assembly emulator
 ```
 
 ## Measured cost
@@ -259,6 +270,8 @@ These numbers were measured before the dot product became a separate function (`
 
 ### With the experimental `dot_i8` precompile
 
+> **`dot_i8` has since been replaced by `dot_f8`**, which computes the same int8 dot products, also takes FP8 and FP4 vectors, and does a whole row per call (see [Number formats](#number-formats-int8-fp8-and-fp4)). This section and the next ones, up to [Native and ZisK, at the beginning and now](#native-and-zisk-at-the-beginning-and-now), were measured with `dot_i8` and are kept as the history of the optimizations; the guest code they describe has changed accordingly.
+
 To measure what a dot-product precompile would save, ZisK has an experimental `dot_i8` operation. It is implemented in the operation table, `ziskemu` and the assembly emulator: **both emulators run it, but no state machine proves it, so a program that uses it cannot be proven yet.** The assembly emulator runs it in its fast, ROM histogram and minimal trace modes, but not in the memory-operations mode, which only a proof needs.
 
 **What it does.** The guest passes the address of a block of three `u64`: the address of `x`, the address of `y` and the length `n`. It gets back `Σ x[i]·y[i]` over signed bytes, as a wrapping `i32` sum, which is what `dot_soft` computes. Both addresses must be 8-byte aligned and `n` a multiple of 8, so the planned state machine can read one 64-bit word of each vector per row, that is 8 multiply-adds per row.
@@ -267,8 +280,8 @@ The weight rows in the model blob are 8-byte aligned, and the guest stores the a
 
 **Cost model.** The cost report needs a cost for the new operation, but there is no state machine to measure, so these are estimates:
 
-- each call costs one row, like a DMA call (`DOT_I8_COST = 63`);
-- each 8 multiply-adds cost one row of about 40 columns (`DOT_I8_ROW_COST = 40`), which is close to `Dma64AlignedMem`'s 50;
+- each call costs one row, like a DMA call (`DOT_I8_COST = 63`, now `DOT_F8_COST`);
+- each 8 multiply-adds cost one row of about 40 columns (`DOT_I8_ROW_COST = 40`, now `DOT_F8_ROW_COST`), which is close to `Dma64AlignedMem`'s 50;
 - the parameter block and both vectors are charged as aligned 64-bit memory reads.
 
 **How to run it.** Build `ziskemu` from this repository, then pass it to `llama2-zisk`:
@@ -456,7 +469,9 @@ ZisK times are for executing the guest, not for proving it, on two emulators:
 
 The table also has the current guest without the precompile (`fixed`, `soft`), to separate what fixed-point scales and the precompile each bring.
 
-The assembly emulator runs `dot_i8` with a hand-written routine ([`emulator-asm/src/dot_i8/dot_i8.asm`](../../emulator-asm/src/dot_i8/dot_i8.asm)). For each call, it writes the parameter block, the result and both vectors to the minimal trace, the data that a `dot_i8` state machine would need (see [`dot_i8.rs`](../../core/src/operations/dot_i8.rs)).
+The assembly emulator ran `dot_i8` with a hand-written SSE routine. For each call, it wrote the parameter block, the result and both vectors to the minimal trace, the data that a `dot_i8` state machine would need. `dot_f8` does the same ([`emulator-asm/src/dot_f8/`](../../emulator-asm/src/dot_f8/), [`dot_f8.rs`](../../core/src/operations/dot_f8.rs)).
+
+The precompile columns below were measured with `dot_i8`; [Number formats](#number-formats-int8-fp8-and-fp4) has the same runs with `dot_f8`.
 
 All the runs below were measured again for this comparison, with the current code:
 - The native times are the median of 3 runs.
@@ -504,10 +519,125 @@ What each change saved on `stories15M`, as profile cost:
 3. **Where the cost of `stories15M` goes has changed.** At the beginning, `matmul` was 94% of it. Now it is about 37% with groups of 144, and `expf` (18%) and `quantize` (14%) come next.
 4. **On the assembly emulator, the current `stories15M` guest is about 3 times slower than native**, down from about 21 times at the beginning. Fixed-point scales alone take it to about 12 times, and the precompile then cuts the time by 3.6 times. `stories260K` stays at about 17–23 times, for the same reason as in `ziskemu`: its cost is mostly `f32` code.
 
+### Number formats: int8, FP8 and FP4
+
+AI models are now often published with 8-bit or even 4-bit floats instead of int8. The `--weights` and `--activations` options run this model with the most used ones, and the experimental `dot_f8` precompile computes their dot products. It replaced `dot_i8`, and with two int8 vectors it computes the same thing.
+
+| `--weights` / `--activations` | Format | Bits | Largest value | Used by |
+|---|---|---|---|---|
+| `int8` | signed integer | 8 | 127 | llama2.c's `runq.c` |
+| `e4m3` | OCP FP8 E4M3 (E4M3FN): bias 7, no infinities | 8 | 448 | DeepSeek-V3/R1, Qwen3 and Llama FP8 checkpoints, NVIDIA ModelOpt |
+| `e4m3fnuz` | FP8 E4M3FNUZ: bias 8, no negative zero, NaN = `0x80` | 8 | 240 | AMD MI300, Graphcore |
+| `e2m1` | FP4 E2M1, two per byte | 4 | 6 | the elements of MXFP4 (gpt-oss) and NVFP4 |
+
+E5M2, the other OCP FP8 format, is not supported yet. It is mostly used for gradients and some KV caches, and its range is so wide that one exact product can need 64 bits plus the sign, more than the 64-bit result holds.
+
+**How every format is quantized.** The same way as llama2.c's int8: each row, and each activation vector, is split into groups. Each group has one `f32` scale that maps its largest absolute value to the format's largest value (127, 448, 240 or 6), and the values are rounded to the nearest one of the format, ties to even. That is also how FP8 and FP4 checkpoints are scaled: per block of 128 values in DeepSeek-V3 and Qwen3, per block of 32 in MXFP4 and of 16 in NVFP4. `--group-size` works for every format; with `e2m1` the groups are a multiple of 16 values.
+
+**Exact integer dot products.** Every value of these formats is an integer number of *units*: 1 for int8, 2^-9 for E4M3, 2^-10 for E4M3FNUZ and 2^-1 for E2M1. So the products and their sums are exact integers, with no rounding, and the scales are stored per unit. With `--scales fixed` the guest then applies the scales as before. For the float formats the sums of a row no longer fit in an `i64` once the scales are applied, so they are added in `i128` ([`forward.rs`](common/src/forward.rs), [`fixed.rs`](common/src/fixed.rs)).
+
+#### The `dot_f8` precompile
+
+The guest passes the address of six `u64` (`SyscallDotF8Params` in [`ziskos`](../../ziskos/entrypoint/src/syscalls/dot_f8.rs)):
+
+| Word | Meaning |
+|---|---|
+| `x`, `y` | the addresses of the two vectors, 8-byte aligned |
+| `n` | the number of values: a multiple of 8, or of 16 with E2M1, at most 2^26 |
+| `formats` | the format of `x` (bits 0..8) and of `y` (bits 8..16): 0 int8, 1 E4M3, 2 E4M3FNUZ, 3 E2M1 |
+| `block` | values per block, dividing `n`; 0 for a single block |
+| `out` | where to write the sum of each block, or null |
+
+It returns the exact sum over all `n` values, in units of the two formats, and writes the sum of each block to `out`. The two vectors can have different formats, for example FP4 weights and FP8 activations. The guest makes **one call per matrix row**, with `block` set to the group size, and then combines the group sums with the scales ([`guest/src/main.rs`](guest/src/main.rs)). With `dot_i8` it made one call per group.
+
+As `dot_i8` was, it is implemented in the operation table, `ziskemu` and the assembly emulator, but **no state machine proves it yet**. The cost model is the same estimate: one row per call, one row of about 40 columns per 8 multiply-adds, whatever the formats, and the vectors and block sums charged as aligned 64-bit memory accesses. A state machine would decode each value with a lookup into its format's table (256 entries), so the formats should cost about the same as int8.
+
+```bash
+cargo build --release --bin ziskemu        # at the repository root
+cd examples/llama2/host
+cargo run --release --bin llama2-zisk -- --ziskemu ../../../target/release/ziskemu \
+    --model ../models/stories15M.bin --prompt "Once upon a time" --max-new 20 \
+    --scales fixed --dot-product precompile --weights e2m1 --activations e4m3
+```
+
+#### Accuracy
+
+Measured as in [Accuracy of larger groups](#accuracy-of-larger-groups): teacher forcing over the same 5 prompts, against the int8 `float` mode with groups of 8, which is close to the unquantized model. All candidates use `--scales fixed`. The int8 rows are the same as before.
+
+| `stories15M` | Groups (`dim` / `hidden_dim`) | Top-1 token differs | Largest logit difference | Mean of (largest difference / logit range) |
+|---|---|---|---|---|
+| int8 | 32 / 64 | 1.0% | 0.74 | **1.31%** |
+| int8 | 144 / 128 | 1.8% | 1.06 | 1.85% |
+| E4M3 | 32 / 64 | 4.9% | 2.57 | **3.75%** |
+| E4M3 | 144 / 128 | 5.5% | 2.47 | 4.08% |
+| E4M3FNUZ | 32 / 64 | 3.5% | 2.08 | 3.68% |
+| E4M3FNUZ | 144 / 128 | 4.2% | 2.40 | 4.15% |
+| E4M3 weights, int8 activations | 32 / 64 | 4.3% | 2.11 | 3.10% |
+| E2M1 weights, int8 activations | 32 / 64 | 13.0% | 7.24 | 12.48% |
+| E2M1 weights, E4M3 activations | 32 / 64 | 12.7% | 7.36 | 12.67% |
+| E2M1 weights, E4M3 activations | 16 / 16 | 14.0% | 7.21 | 11.45% |
+| E2M1 | 32 / 64 | 18.8% | 9.15 | **17.07%** |
+| E2M1 | 16 / 16 | 17.1% | 8.43 | 14.65% |
+
+| `stories260K` | Groups | Top-1 token differs | Largest logit difference | Mean of (largest difference / logit range) |
+|---|---|---|---|---|
+| int8 | 64 / 4 | 2.1% | 0.72 | 1.10% |
+| E4M3 | 64 / 4 | 6.1% | 1.90 | 3.39% |
+| E4M3FNUZ | 64 / 4 | 5.1% | 1.96 | 3.36% |
+| E2M1 weights, E4M3 activations | 64 / 4 | 15.1% | 6.64 | 11.87% |
+| E2M1 | 64 / 4 | 21.3% | 10.13 | 15.48% |
+
+1. **On these models, int8 is the most accurate.** With the same groups, FP8 is about 3 times further from the reference. Its 3 mantissa bits round every value by up to about 6%, while int8 rounds the larger values of a group by under 1%, and those weigh the most in a dot product.
+2. **The two FP8 variants are equivalent.** E4M3FNUZ has a smaller range (240 against 448) and the same precision.
+3. **FP4 is about 10 times further from the reference than int8.** Smaller groups (16, like NVFP4) and FP8 activations help a little. In the end-to-end runs below, the FP4 text departs from the int8 one at the 15th to 17th generated token, while the FP8 text matches it for all 20.
+4. **This is quantization after training.** Published FP8 and FP4 models are trained or calibrated for their format (DeepSeek-V3 is trained in FP8; gpt-oss uses quantization-aware training for MXFP4), which these TinyStories models were not. So these numbers say how well the formats represent a model trained in `f32`, not how good FP8 or FP4 models are. What the formats bring to ZisK is the ability to run such models with their published weights.
+
+#### Performance
+
+`stories15M`, `--scales fixed`, prompt "Once upon a time". The profile is the same 6-token run as in the previous sections; end to end is 5 prompt + 20 generated tokens. All runs were measured in the same session, one at a time; times on the assembly emulator are the median of 3 while generating the minimal trace (`--gen=1`). Every run produces the same tokens as the native run with the same options, and both emulators take the same number of steps.
+
+| Weights / activations | Groups | Dot product | Profile steps | Profile cost | End-to-end steps | `ziskemu` | Assembly emulator |
+|---|---|---|---|---|---|---|---|
+| int8 | 32 / 64 | `soft` | 1,386 M | 152.8 G | 3,374 M | | 2.07 s |
+| int8 | 32 / 64 | `dot_f8` | 273.0 M | 29.49 G | 702.7 M | 14.1 s | 0.57 s |
+| int8 | 144 / 128 | `dot_f8` | 211.8 M | 22.56 G | 582.1 M | 12.2 s | 0.48 s |
+| E4M3 | 32 / 64 | `soft` | 2,642 M | 281.4 G | 6,388 M | | |
+| E4M3 | 32 / 64 | `dot_f8` | 288.6 M | 31.11 G | 739.9 M | 14.1 s | 0.76 s |
+| E4M3 | 144 / 128 | `dot_f8` | 213.4 M | 22.66 G | 585.9 M | 12.3 s | 0.67 s |
+| E4M3FNUZ | 32 / 64 | `dot_f8` | 288.7 M | 31.12 G | 740.2 M | 14.4 s | 0.76 s |
+| E2M1 / E4M3 | 32 / 64 | `dot_f8` | 287.5 M | 30.67 G | 737.3 M | 14.2 s | 0.87 s |
+| E2M1 | 32 / 64 | `soft` | 4,004 M | 362.8 G | 9,657 M | | |
+| E2M1 | 32 / 64 | `dot_f8` | 286.5 M | 30.46 G | 735.0 M | 14.4 s | 0.90 s |
+| E2M1 | 16 / 16 | `dot_f8` | 394.2 M | 42.53 G | 956.0 M | 17.7 s | 1.10 s |
+
+Cost categories of the precompile runs with groups of 32 / 64:
+
+| | Main | Opcodes | Precompiles | Memory |
+|---|---|---|---|---|
+| int8 | 16.92 G | 8.62 G | 0.79 G | 2.87 G |
+| E4M3 | 17.89 G | 9.28 G | 0.79 G | 2.86 G |
+| E2M1 / E4M3 | 17.83 G | 9.19 G | 0.79 G | 2.58 G |
+| E2M1 | 17.76 G | 9.13 G | 0.79 G | 2.48 G |
+
+The `dot_i8` rows of [Cheaper calls and larger groups](#cheaper-calls-and-larger-groups), for comparison with the int8 `dot_f8` rows:
+
+| Groups | `dot_i8`, one call per group | `dot_f8`, one call per row |
+|---|---|---|
+| 32 / 64 | 276 M steps, 30.1 G, 710 M end to end | 273.0 M (−1%), 29.49 G (−2%), 702.7 M |
+| 144 / 128 | 201 M steps, 21.7 G, 557 M end to end | 211.8 M (+5%), 22.56 G (+4%), 582.1 M |
+
+1. **With the precompile, the format barely changes the cost.** FP8 and FP4 cost 3–6% more than int8 with llama2.c's groups, and 0.5% more with groups of 144. The precompile's own cost is the same for every format, since it is estimated per multiply-add. The difference is in the guest: the `i128` sums and their conversion to `f32` (`__floattisf`) cost about 2.8 G more than int8's `i64` ones, and quantizing the activations to a float format, without `roundf`, costs about 1.2 G less. Groups of 144 have fewer group sums to add, so the difference almost disappears.
+2. **FP4 halves the memory traffic of the weights**: the Memory category drops by 14%. Its steps are about the same as FP8's, because the guest code per group is the same.
+3. **The precompile matters more for the float formats.** Without it, the guest decodes each value with a table lookup, so FP8 costs 1.8 times and FP4 2.4 times as much as int8. With it, the cost falls 5.2 times for int8, 9.0 times for E4M3 and 11.9 times for E2M1.
+4. **One call per row is about as cheap as `dot_i8`'s optimized call site.** Fitting the two comparisons above, it saves roughly 3–4 steps per group, the per-group call, but adds roughly 25 steps per row: the 6-word parameter block, the call through the function pointer, its checks and the loop that reads the group sums back. That is a gain with llama2.c's groups (9 to 12 per row) and a loss with groups of 144 (2 to 6 per row). The per-row part could be reduced by writing the parameter block once per matrix.
+5. **On the assembly emulator, the float formats are 30–60% slower than int8.** int8 is computed with SSE2, 8 values at a time, but FP8 and FP4 use a table lookup per value ([`dot_f8.c`](../../emulator-asm/src/dot_f8/dot_f8.c)). The routine is written in C and called through an assembly wrapper that saves the registers the generated code uses; the int8 case is also slightly slower than `dot_i8`'s hand-written routine (0.57 s against 0.54 s, measured on different days).
+
 ## Next steps
 
 1. **Fixed point in the rest of the model.** After [cheaper calls and larger groups](#cheaper-calls-and-larger-groups), the float code outside the matrix multiplications is the largest part of the cost: `expf`, `quantize`, RMSNorm, attention and RoPE. Moving it to fixed point would also make the model fully integer, which a proof-friendly model needs anyway. Accuracy has to be measured as above. A cheap first step is `quantize`, which divides every value by its scale with software floats.
-2. **Fewer calls per row, if still worth it.** With groups of 144, the per-group loop and its calls are about 20% of the cost. A `dot_i8` variant that takes a group size and writes one `i32` per group to memory would allow one call per row, at a small extra cost in the state machine. A variant that also applies the scales would remove the loop as well, but its state machine is much more expensive to build.
-3. **Make `dot_i8` provable.** It needs a state machine (the PIL, witness generation, the memory inputs and the planner), as described in the [`mlp` README](../mlp/README.md#dot-product-precompile). That would also replace the estimated costs above with measured ones.
-4. **Bind the model** in the commitment with a hash of the blob, using the SHA-256 or Keccak precompile. Storing the fixed-point scales in the blob would also remove their conversion when loading.
-5. **Prove** a short generation with `cargo-zisk prove`, and measure proving time per token.
+2. **A cheaper row call.** `dot_f8` already computes a whole row per call. Writing its parameter block once per matrix, and only advancing the row address, would remove most of the 25 or so steps per row. For the float formats, dropping the low bits of each group sum before applying the scales would let the row sum fit in an `i64` again, which removes the `i128` cost, at no visible accuracy cost (the sums have far more bits than an `f32`).
+3. **Make `dot_f8` provable.** It needs a state machine (the PIL, witness generation, the memory inputs and the planner), as described in the [`mlp` README](../mlp/README.md#dot-product-precompile), with one 256-entry decoding table per format as a lookup. That would also replace the estimated costs above with measured ones.
+4. **Faster float formats on the assembly emulator**, with SIMD decoding: for example `pshufb` on the 16 FP4 codes, or a gather on the FP8 table.
+5. **Run a model published in FP8 or FP4**, to measure the formats with weights trained for them.
+6. **Bind the model** in the commitment with a hash of the blob, using the SHA-256 or Keccak precompile. Storing the fixed-point scales in the blob would also remove their conversion when loading.
+7. **Prove** a short generation with `cargo-zisk prove`, and measure proving time per token.
