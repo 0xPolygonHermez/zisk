@@ -907,7 +907,8 @@ fn parse_signed_offset(s: &str, operand: &str) -> Result<i64, String> {
     } else if let Some(n) = s.strip_prefix('+') {
         parse_i64(n.trim())
     } else if let Some(n) = s.strip_prefix('-') {
-        Ok(-parse_i64(n.trim())?)
+        // Negate inside parse_i64 (which accepts i64::MIN), not here.
+        parse_i64(&format!("-{}", n.trim()))
     } else {
         Err(format!("offset must be `+ N` or `- N`: `{operand}`"))
     }
@@ -968,13 +969,16 @@ fn parse_i64(s: &str) -> Result<i64, String> {
         Some(b) => (true, b.trim()),
         None => (false, s.strip_prefix('+').map(str::trim).unwrap_or(s)),
     };
+    // Parse the magnitude as a u64 so that `-2^63` (i64::MIN), whose magnitude does not
+    // fit in an i64, is accepted.
     let mag = if let Some(h) = body.strip_prefix("0x").or_else(|| body.strip_prefix("0X")) {
-        i64::from_str_radix(h, 16)
+        u64::from_str_radix(h, 16)
     } else {
-        body.parse::<i64>()
+        body.parse::<u64>()
     }
     .map_err(|_| format!("invalid number `{s}`"))?;
-    Ok(if neg { -mag } else { mag })
+    if neg { 0i64.checked_sub_unsigned(mag) } else { i64::try_from(mag).ok() }
+        .ok_or_else(|| format!("number `{s}` is out of the i64 range"))
 }
 
 /// Splits `s` at occurrences of `delim` that are not nested inside `()` or `[]`.

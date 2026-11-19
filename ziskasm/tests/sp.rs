@@ -199,3 +199,34 @@ main:
         .expect("emulation should succeed");
     assert_eq!(u64::from_le_bytes(out[0..8].try_into().unwrap()), 77);
 }
+
+/// `incsp(N)` and sp-relative offsets take any i64, i64::MIN included (its magnitude does not
+/// fit in an i64), and render back to the same text.
+#[test]
+fn sp_i64_extremes_round_trip() {
+    for line in [
+        "copyb(0x0, 0x0), incsp(-9223372036854775808)",
+        "copyb(0x0, 0x0), incsp(9223372036854775807)",
+        "copyb(0x0, [sp - 9223372036854775808]) -> r5",
+        "copyb(0x0, 0x7) -> [sp + 9223372036854775807]",
+        "copyb(r9, 8[a + sp - 9223372036854775808]) -> r7",
+    ] {
+        let src = format!("main:\n\t{line}\n\tret\n");
+        let rom = assemble(&parse_program(&src, "line").unwrap()).unwrap();
+        let again: Vec<String> = rom
+            .insts
+            .values()
+            .map(|b| &b.i)
+            .filter(|i| i.uses_sp())
+            .map(|i| i.to_zisk_asm())
+            .collect();
+        assert_eq!(again, vec![line.to_string()], "round trip of `{line}`");
+    }
+    let parse_err = |line: &str| {
+        let src = format!("main:\n\t{line}\n\tret\n");
+        parse_program(&src, "err").err().unwrap_or_else(|| panic!("`{line}` should not parse"))
+    };
+    assert!(parse_err("copyb(0, 0), incsp(9223372036854775808)").contains("i64 range"));
+    assert!(parse_err("copyb(0, [sp - 9223372036854775809]) -> r5").contains("i64 range"));
+    assert!(parse_err("copyb(0, 0), incsp(-0x8000000000000001)").contains("i64 range"));
+}
