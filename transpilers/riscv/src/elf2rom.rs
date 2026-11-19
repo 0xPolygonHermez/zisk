@@ -4,6 +4,7 @@ use crate::elf_extraction::{
     collect_elf_payload_from_bytes, merge_ro_sections, validate_entry_point, ElfPayload,
 };
 use crate::riscv2zisk_context::{add_zisk_code, zkvmcall_ids as zkvmcall_ids_in};
+use crate::rom_optimizer::{optimize_rom, RomOptPasses};
 use std::collections::HashMap;
 use std::error::Error;
 use zisk_core::mem::DataSection;
@@ -275,6 +276,10 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     if let Some(library) = library {
         merge_library(&mut rom, library)?;
     }
+
+    // ROM post-pass optimizations (jump threading, constant and address folding), once the whole
+    // program (guest, ZisK library, float library) is in the ROM. See rom_optimizer.rs.
+    optimize_rom(&mut rom.insts, RomOptPasses::default());
 
     // Preprocess the ROM
     // Split the ROM instructions based on their address to improve performance when
