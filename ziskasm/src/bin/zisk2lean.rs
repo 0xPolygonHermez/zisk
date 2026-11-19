@@ -19,8 +19,8 @@ use std::{
     process,
 };
 use zisk_core::{
-    zisk_rom::DataSection64, ZiskInst, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
-    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, ZISKLIB_RAM_ADDR, ZISKLIB_ROM_ADDR,
+    zisk_rom::DataSection64, ZiskInst, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, STORE_IND,
+    STORE_MEM, STORE_NONE, STORE_REG, ZISKLIB_RAM_ADDR, ZISKLIB_ROM_ADDR,
 };
 use ziskasm::{
     assemble_files_with_symbols, assemble_zisk_library, collect_zisk_files, ZISK_LIBRARY,
@@ -75,7 +75,6 @@ fn sp_suffix(use_sp: bool) -> &'static str {
 fn a_source(i: &ZiskInst) -> Result<String, String> {
     match i.a_src {
         SRC_C => Ok(".c".into()),
-        SRC_STEP => Ok(".step".into()),
         SRC_REG => {
             if i.a_offset_imm0 < 32 {
                 Ok(format!("(.reg {})", i.a_offset_imm0))

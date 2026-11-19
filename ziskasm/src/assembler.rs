@@ -758,7 +758,6 @@ fn encode_a(
         ASource::Mem(n) => zib.src_a("mem", resolve_num(n, symbols)?, false),
         ASource::SpMem(off) => zib.src_a("mem", *off as u64, true),
         ASource::Imm(n) => zib.src_a("imm", resolve_num(n, symbols)?, false),
-        ASource::Step => zib.src_a("step", 0, false),
         ASource::Sp => zib.src_a("sp", 0, false),
     }
     Ok(())

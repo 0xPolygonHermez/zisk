@@ -8,5 +8,6 @@ description = "Rust bindings for the ZisK assembly library (ziskasm/zisklib): zk
 # workspace crates.io publish list; see tools/crates.io/publish_common.sh).
 publish = false
 
-[dependencies]
+# Only the riscv64 thunks name the zkvmcall ids; the host stubs do not.
+[target.'cfg(target_arch = "riscv64")'.dependencies]
 zisk-definitions = { workspace = true }

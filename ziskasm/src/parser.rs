@@ -135,7 +135,6 @@ pub enum ASource {
     /// `[sp ± N]`: memory at sp plus a signed offset.
     SpMem(i64),
     Imm(Num),
-    Step,
     /// `sp`: the current value of the sp register.
     Sp,
 }
@@ -735,7 +734,6 @@ fn strip_call(s: &str, name: &str) -> Option<String> {
 fn parse_a_source(s: &str) -> Result<ASource, String> {
     Ok(match s {
         "c" => ASource::C,
-        "step" => ASource::Step,
         "sp" => {
             require_sp("the `sp` source")?;
             ASource::Sp
@@ -755,7 +753,6 @@ fn parse_a_source(s: &str) -> Result<ASource, String> {
 fn parse_b_source(s: &str) -> Result<BSource, String> {
     Ok(match s {
         "c" => BSource::C,
-        "step" => return Err("`step` is only valid as the `a` source".into()),
         "sp" => return Err("`sp` is only valid as the `a` source".into()),
         _ if is_reg(s) => BSource::Reg(parse_reg(s)?),
         _ if s.starts_with('[') => match parse_sp_mem(s)? {

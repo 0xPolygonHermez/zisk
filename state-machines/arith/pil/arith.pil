@@ -285,6 +285,19 @@ airtemplate Arith(const int N = 2**18) {
     m32 * bus_a1 === 0;
     m32 * bus_b1 === 0;
 
+    // In 32-bit operations the high chunks of a and d are always zero:
+    //
+    // operation          a[2], a[3]                         d[2], d[3]
+    // -----------------  ---------------------------------  ---------------------------------
+    // mul_w              a is a 32-bit operand              the product fits in c, so d = 0
+    // divu_w, remu_w     quotient <= dividend < 2^32        remainder < divisor < 2^32
+    // div_w, rem_w       32-bit quotient, no sign extension 32-bit remainder, no sign extension
+    // division by zero   quotient is 0xFFFF_FFFF            remainder is the 32-bit dividend
+    // division overflow  quotient is 0x8000_0000            remainder is 0
+    //
+    // All four chunks are 16-bit range checked, so a zero sum forces each one to zero.
+    m32 * (a[2] + a[3] + d[2] + d[3]) === 0;
+
     airval padding_size;
 
     // Used to cancel padding operations with true operation (e.g. mulu(0,0) = (0,0)) 

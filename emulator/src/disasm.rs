@@ -185,8 +185,7 @@ fn inst_to_asm(inst: &ZiskInst, labels: &HashMap<u64, String>, next_pc: Option<u
     #[cfg(feature = "sp")]
     use zisk_core::SRC_SP;
     use zisk_core::{
-        SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
-        STORE_REG,
+        SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
     };
 
     let mut asm = String::new();
@@ -252,7 +251,6 @@ fn inst_to_asm(inst: &ZiskInst, labels: &HashMap<u64, String>, next_pc: Option<u
                 format!("0x{:x}", imm as u64)
             }
         }
-        SRC_STEP => "step".to_string(),
         #[cfg(feature = "sp")]
         SRC_SP => "sp".to_string(),
         _ => "?".to_string(),
