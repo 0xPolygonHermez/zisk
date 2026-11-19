@@ -748,7 +748,6 @@ fn encode_a(
         ASource::Reg(n) => zib.src_a("reg", *n, false),
         ASource::Mem(n) => zib.src_a("mem", resolve_num(n, symbols)?, false),
         ASource::Imm(n) => zib.src_a("imm", resolve_num(n, symbols)?, false),
-        ASource::Step => zib.src_a("step", 0, false),
     }
     Ok(())
 }
