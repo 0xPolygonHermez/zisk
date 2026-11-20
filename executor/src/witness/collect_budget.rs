@@ -18,6 +18,11 @@ use crate::error::{ExecutorError, ExecutorResult};
 /// memory available.
 pub const BUDGET_ENV: &str = "ZISK_COLLECT_BUDGET";
 
+/// Memory the automatic budget also leaves, per process, while the first registration round
+/// collects inside the execution: the memory-operations runner and its plans are still being built
+/// alongside it.
+pub const FIRST_ROUND_RESERVE: u64 = 4 << 30;
+
 /// How often a wave waiting for room checks the instances it waits on.
 const POLL: Duration = Duration::from_millis(10);
 
@@ -27,8 +32,9 @@ const STALL_REPORT: Duration = Duration::from_secs(30);
 /// Bytes the collectors may hold at once, or `None` to collect everything in one pass.
 ///
 /// `host_share` measures this process's share of the host memory available, after the margin
-/// (`host_memory::host_memory_share`). An explicit size is taken as is, without measuring.
-pub fn collect_budget(host_share: impl FnOnce() -> Option<u64>) -> Option<u64> {
+/// (`host_memory::host_memory_share`); the budget leaves `reserve` of it for work of its
+/// own that runs alongside the collect. An explicit size is taken as is, without measuring.
+pub fn collect_budget(reserve: u64, host_share: impl FnOnce() -> Option<u64>) -> Option<u64> {
     match std::env::var(BUDGET_ENV) {
         Ok(value) if value.eq_ignore_ascii_case("off") => None,
         Ok(value) if !value.is_empty() && !value.eq_ignore_ascii_case("auto") => {
@@ -36,22 +42,23 @@ pub fn collect_budget(host_share: impl FnOnce() -> Option<u64>) -> Option<u64> {
                 Some(bytes) => Some(bytes),
                 None => {
                     tracing::warn!("{BUDGET_ENV}={value} is not off, auto or a size; using auto");
-                    available_budget(host_share)
+                    available_budget(reserve, host_share)
                 }
             }
         }
-        _ => available_budget(host_share),
+        _ => available_budget(reserve, host_share),
     }
 }
 
-/// What the host can give this process's collectors: its share of the memory available. `None`
-/// when the platform reports no memory figures, so nothing is held back on a guess.
-fn available_budget(host_share: impl FnOnce() -> Option<u64>) -> Option<u64> {
+/// What the host can give this process's collectors: its share of the memory available, less
+/// `reserve`. `None` when the platform reports no memory figures, so nothing is held back on a
+/// guess.
+fn available_budget(reserve: u64, host_share: impl FnOnce() -> Option<u64>) -> Option<u64> {
     let Some(share) = host_share() else {
         tracing::warn!("no memory figures from the system; collecting without a budget");
         return None;
     };
-    Some(share)
+    Some(share.saturating_sub(reserve))
 }
 
 /// Parses `24G`, `512M`, `64K` (powers of 1024) or plain bytes.
@@ -88,19 +95,23 @@ pub struct WavePlan {
     pub pending: Vec<Pending>,
 }
 
-/// How many instances to take from the front of `pending` so their bytes fit in `room`.
-///
-/// At least one, so an instance larger than the whole budget is collected alone rather than never.
-pub fn next_wave(pending: &[Pending], room: u64) -> usize {
+/// How many instances from the front of `pending` fit in `room` together; possibly none.
+pub fn fitting_prefix(pending: &[Pending], room: u64) -> usize {
     let mut used = 0u64;
-    let fitting = pending
+    pending
         .iter()
         .take_while(|p| {
             used = used.saturating_add(p.bytes);
             used <= room
         })
-        .count();
-    fitting.max(1).min(pending.len())
+        .count()
+}
+
+/// How many instances to take from the front of `pending` so their bytes fit in `room`.
+///
+/// At least one, so an instance larger than the whole budget is collected alone rather than never.
+pub fn next_wave(pending: &[Pending], room: u64) -> usize {
+    fitting_prefix(pending, room).max(1).min(pending.len())
 }
 
 /// Whether the next wave may start: once nothing collected is still held, or once what is held is
@@ -210,13 +221,6 @@ mod tests {
     }
 
     #[test]
-    fn the_budget_is_the_host_share() {
-        const GIB: u64 = 1 << 30;
-        assert_eq!(available_budget(|| Some(10 * GIB)), Some(10 * GIB));
-        assert_eq!(available_budget(|| None), None, "no memory figures, no budget");
-    }
-
-    #[test]
     fn sizes_parse_in_powers_of_1024() {
         assert_eq!(parse_size("24G"), Some(24 << 30));
         assert_eq!(parse_size("512m"), Some(512 << 20));
@@ -229,11 +233,32 @@ mod tests {
     }
 
     #[test]
+    fn the_budget_is_the_host_share_less_the_reserve() {
+        const GIB: u64 = 1 << 30;
+        assert_eq!(available_budget(4 * GIB, || Some(10 * GIB)), Some(6 * GIB));
+        assert_eq!(
+            available_budget(12 * GIB, || Some(10 * GIB)),
+            Some(0),
+            "a reserve above the share"
+        );
+        assert_eq!(available_budget(0, || None), None, "no memory figures, no budget");
+    }
+
+    #[test]
     fn a_wave_takes_the_prefix_that_fits() {
         let p = pending(&[3, 4, 5, 1]);
         assert_eq!(next_wave(&p, 7), 2);
         assert_eq!(next_wave(&p, 12), 3);
         assert_eq!(next_wave(&p, 100), 4);
+    }
+
+    #[test]
+    fn a_fitting_prefix_may_be_empty() {
+        let p = pending(&[10, 1]);
+        assert_eq!(fitting_prefix(&p, 5), 0, "the first instance alone exceeds the room");
+        assert_eq!(fitting_prefix(&p, 10), 1);
+        assert_eq!(fitting_prefix(&p, 11), 2);
+        assert_eq!(fitting_prefix(&[], 11), 0);
     }
 
     #[test]

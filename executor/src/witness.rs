@@ -97,13 +97,15 @@ impl<'a, F: PrimeField64> WitnessContext<'a, F> {
 /// How [`WitnessPhase::pre_calculate`] may collect the instances it is given.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CollectMode {
-    /// One replay of the chunks for every instance, whatever they reserve.
-    OnePass,
     /// Within the memory budget ([`collect_budget`]): in one pass when everything fits, else in
     /// waves, each waiting for proofman to compute what the earlier ones announced. Only for a
     /// caller that holds nothing those computations need; it falls back to one pass where proofman
     /// does not compute the announces while the call runs.
     Waves,
+    /// What fits in the budget now, and nothing more: the rest stays uncollected and unannounced,
+    /// and proofman passes it again to a later call. Never waits. For the first registration
+    /// round, which collects inside the execution.
+    FittingPrefix,
 }
 
 /// Phase-4 actor — classifies each global id and dispatches to one
@@ -460,12 +462,32 @@ impl<F: PrimeField64> WitnessPhase<F> {
             return Ok(());
         }
         let plan = match mode {
-            CollectMode::OnePass => None,
-            CollectMode::Waves => self.plan_waves(pctx, registry, &instances_to_collect)?,
+            // Waves wait for proofman to compute what earlier waves announced: only where it
+            // computes the announces on its own threads while this call runs (`witness_tx` set: its
+            // admission thread is live). Anywhere else nobody would compute them in time. A single
+            // instance makes a single wave, whatever its size.
+            CollectMode::Waves
+                if instances_to_collect.len() > 1
+                    && pctx.witness_tx.read_or_poison("witness_tx")?.is_some() =>
+            {
+                self.plan_waves(pctx, registry, &instances_to_collect, 0, "collect")?
+            }
+            CollectMode::Waves => None,
+            // Even a single instance: one that does not fit is left for later.
+            CollectMode::FittingPrefix => self.plan_waves(
+                pctx,
+                registry,
+                &instances_to_collect,
+                collect_budget::FIRST_ROUND_RESERVE,
+                "first-round collect",
+            )?,
         };
         let Some(plan) = plan else {
             return self.collector.collect(pctx, state, instances_to_collect);
         };
+        if mode == CollectMode::FittingPrefix {
+            return self.collect_fitting_prefix(pctx, state, &instances_to_collect, &plan);
+        }
         // The waves wait for proofman's witness threads, which read the instances too: hold the
         // instances only while each wave is collected, never across a wait.
         drop(instances_to_collect);
@@ -473,31 +495,26 @@ impl<F: PrimeField64> WitnessPhase<F> {
         self.collect_waves(pctx, state, plan)
     }
 
-    /// The waves to collect `instances` in, or `None` to collect them in one pass: when they fit in
-    /// the budget, or when there is no budget to keep.
-    ///
-    /// Waves wait for proofman to compute what earlier waves announced, so they are planned only
-    /// where proofman computes the announces on its own threads while this call runs (`witness_tx`
-    /// set: its admission thread is live). Anywhere else nobody would compute them in time.
+    /// `instances` in the order to collect them within the budget, or `None` to collect them in one
+    /// pass: when they fit, or when there is no budget to keep. The automatic budget also leaves
+    /// `reserve` for work that runs alongside; `label` names the collect in the log.
     fn plan_waves(
         &self,
         pctx: &ProofCtx<F>,
         registry: &dyn Dctx,
         instances: &HashMap<usize, &dyn Instance<F>>,
+        reserve: u64,
+        label: &str,
     ) -> ExecutorResult<Option<collect_budget::WavePlan>> {
-        let announces_computed = pctx.witness_tx.read_or_poison("witness_tx")?.is_some();
-        if instances.len() < 2 || !announces_computed {
-            return Ok(None);
-        }
         let node_processes = pctx.mpi_ctx.node_n_processes.max(1) as usize;
         let host_share = || host_memory::host_memory_share(node_processes, None);
-        let Some(budget) = collect_budget::collect_budget(host_share) else {
+        let Some(budget) = collect_budget::collect_budget(reserve, host_share) else {
             return Ok(None);
         };
         let total: u64 = instances.values().map(|i| i.collector_capacity_bytes()).sum();
         if total <= budget {
             tracing::info!(
-                "collect: {} instances reserve {:.1} GiB of a {:.1} GiB budget: one pass",
+                "{label}: {} instances reserve {:.1} GiB of a {:.1} GiB budget: one pass",
                 instances.len(),
                 collect_budget::gib(total),
                 collect_budget::gib(budget)
@@ -527,6 +544,33 @@ impl<F: PrimeField64> WitnessPhase<F> {
         order.sort_unstable_by_key(|(key, _)| *key);
         let pending = order.into_iter().map(|(_, pending)| pending).collect();
         Ok(Some(collect_budget::WavePlan { budget, total, pending }))
+    }
+
+    /// Collects the front of `plan` that fits in its budget, and leaves the rest uncollected and
+    /// unannounced for proofman to pass again to a later call. Never waits.
+    fn collect_fitting_prefix(
+        &self,
+        pctx: &ProofCtx<F>,
+        state: &ExecutionState<F>,
+        instances: &HashMap<usize, &dyn Instance<F>>,
+        plan: &collect_budget::WavePlan,
+    ) -> ExecutorResult<()> {
+        let take = collect_budget::fitting_prefix(&plan.pending, plan.budget);
+        let (now, later) = plan.pending.split_at(take);
+        tracing::info!(
+            "first-round collect: {} instances reserve {:.1} GiB of a {:.1} GiB budget: {} now, {} ({:.1} GiB) left for later",
+            plan.pending.len(),
+            collect_budget::gib(plan.total),
+            collect_budget::gib(plan.budget),
+            now.len(),
+            later.len(),
+            collect_budget::gib(later.iter().map(|p| p.bytes).sum())
+        );
+        if now.is_empty() {
+            return Ok(());
+        }
+        let prefix = now.iter().map(|p| (p.global_id, instances[&p.global_id])).collect();
+        self.collector.collect(pctx, state, prefix)
     }
 
     /// Collects `plan` wave by wave, each one once the instances the earlier ones announced have
