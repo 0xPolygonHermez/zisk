@@ -12,19 +12,26 @@ use zisk_common::{
 };
 use zisk_core::mem::DataSection;
 
-use zisk_pil::{IndexedFill, MainTraceRowOps};
-use zisk_riscv::RiscVRegisters;
-use zisk_sm_mem_common::MemHelpers;
-// #[cfg(feature = "sp")]
-// use zisk_core::SRC_SP;
 use zisk_common::{DataBusTrait, EmuTrace, EmuTraceStart};
 use zisk_core::zisk_ops::ZiskOp;
+#[cfg(feature = "sp")]
+use zisk_core::SRC_SP;
 use zisk_core::{
     EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, FREG_F0, FREG_INST,
     FREG_RA, FREG_X0, OUTPUT_ADDR, RAM_ADDR, REGS_IN_MAIN_TO, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
     SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
     SYS_ADDR,
 };
+use zisk_pil::{IndexedFill, MainTraceRowOps};
+use zisk_riscv::RiscVRegisters;
+use zisk_sm_mem_common::MemHelpers;
+
+// The sp update lives here, but the instruction fields it reads live in zisk-core: a build
+// where only zisk-core has `sp` would assemble and decode sp updates and then ignore them.
+const _: () = assert!(
+    zisk_core::SP_ENABLED == cfg!(feature = "sp"),
+    "zisk-core has the `sp` feature but ziskemu does not: enable `ziskemu/sp`"
+);
 
 const LOAD_SYMBOLS: [&str; 3] = ["_heap_bottom", "_heap_top", "ZISK_BUMP_HEAP_POS"];
 
@@ -185,7 +192,7 @@ impl<'a> Emu<'a> {
                 // Calculate memory address
                 let mut address = instruction.a_offset_imm0;
                 if instruction.a_use_sp_imm1 != 0 {
-                    address += self.ctx.inst_ctx.sp;
+                    address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
 
                 if address < 0x200 {
@@ -202,8 +209,8 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            // #[cfg(feature = "sp")]
-            // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
+            #[cfg(feature = "sp")]
+            SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
                 "Emu::source_a() Invalid a_src={} pc={}",
                 instruction.a_src, self.ctx.inst_ctx.pc
@@ -234,7 +241,7 @@ impl<'a> Emu<'a> {
                 // Calculate memory address
                 let mut address = instruction.a_offset_imm0;
                 if instruction.a_use_sp_imm1 != 0 {
-                    address += self.ctx.inst_ctx.sp;
+                    address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
 
                 // If the operation is a register operation, get it from the context registers
@@ -262,8 +269,8 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            // #[cfg(feature = "sp")]
-            // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
+            #[cfg(feature = "sp")]
+            SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
                 "Emu::source_a_mem_reads_generate() Invalid a_src={} pc={}",
                 instruction.a_src, self.ctx.inst_ctx.pc
@@ -295,7 +302,7 @@ impl<'a> Emu<'a> {
                 // Calculate memory address
                 let mut address = instruction.a_offset_imm0;
                 if instruction.a_use_sp_imm1 != 0 {
-                    address += self.ctx.inst_ctx.sp;
+                    address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
 
                 // get it from memory
@@ -329,8 +336,8 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            // #[cfg(feature = "sp")]
-            // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
+            #[cfg(feature = "sp")]
+            SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
                 "Emu::source_a_mem_reads_consume() Invalid a_src={} pc={}",
                 instruction.a_src, self.ctx.inst_ctx.pc
@@ -361,7 +368,7 @@ impl<'a> Emu<'a> {
                 // Calculate memory address
                 let mut address = instruction.a_offset_imm0;
                 if instruction.a_use_sp_imm1 != 0 {
-                    address += self.ctx.inst_ctx.sp;
+                    address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
 
                 // Otherwise, get it from memory
@@ -411,8 +418,8 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            // #[cfg(feature = "sp")]
-            // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
+            #[cfg(feature = "sp")]
+            SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
                 "Emu::source_a_mem_reads_consume_databus() Invalid a_src={} pc={}",
                 instruction.a_src, self.ctx.inst_ctx.pc
@@ -442,7 +449,7 @@ impl<'a> Emu<'a> {
                 // Calculate memory address
                 let mut address = instruction.a_offset_imm0;
                 if instruction.a_use_sp_imm1 != 0 {
-                    address += self.ctx.inst_ctx.sp;
+                    address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
 
                 // Otherwise, get it from memory
@@ -476,8 +483,8 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            // #[cfg(feature = "sp")]
-            // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
+            #[cfg(feature = "sp")]
+            SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
                 "Emu::source_a_mem_reads_consume_databus() Invalid a_src={} pc={}",
                 instruction.a_src, self.ctx.inst_ctx.pc
@@ -502,7 +509,7 @@ impl<'a> Emu<'a> {
                 // Calculate memory address
                 let mut addr = instruction.b_offset_imm0;
                 if instruction.b_use_sp_imm1 != 0 {
-                    addr += self.ctx.inst_ctx.sp;
+                    addr = addr.wrapping_add(self.ctx.inst_ctx.sp);
                 }
 
                 // Get it from memory
@@ -517,10 +524,9 @@ impl<'a> Emu<'a> {
             }
             SRC_IND => {
                 // Calculate memory address
-                let mut addr =
-                    (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
+                let mut addr = self.ctx.inst_ctx.a.wrapping_add(instruction.b_offset_imm0);
                 if instruction.b_use_sp_imm1 != 0 {
-                    addr += self.ctx.inst_ctx.sp;
+                    addr = addr.wrapping_add(self.ctx.inst_ctx.sp);
                 }
 
                 // get it from memory
@@ -557,7 +563,7 @@ impl<'a> Emu<'a> {
                 // Calculate memory address
                 let mut address = instruction.b_offset_imm0;
                 if instruction.b_use_sp_imm1 != 0 {
-                    address += self.ctx.inst_ctx.sp;
+                    address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
                 if Mem::is_full_aligned(address, 8) {
                     self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(address, 8);
@@ -588,10 +594,9 @@ impl<'a> Emu<'a> {
             }
             SRC_IND => {
                 // Calculate memory address
-                let mut address =
-                    (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
+                let mut address = self.ctx.inst_ctx.a.wrapping_add(instruction.b_offset_imm0);
                 if instruction.b_use_sp_imm1 != 0 {
-                    address += self.ctx.inst_ctx.sp;
+                    address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
 
                 // If the operation is a register operation, get it from the context registers
@@ -647,7 +652,7 @@ impl<'a> Emu<'a> {
                 // Calculate memory address
                 let mut address = instruction.b_offset_imm0;
                 if instruction.b_use_sp_imm1 != 0 {
-                    address += self.ctx.inst_ctx.sp;
+                    address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
 
                 // Get it from memory
@@ -689,10 +694,9 @@ impl<'a> Emu<'a> {
             }
             SRC_IND => {
                 // Calculate memory address
-                let mut address =
-                    (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
+                let mut address = self.ctx.inst_ctx.a.wrapping_add(instruction.b_offset_imm0);
                 if instruction.b_use_sp_imm1 != 0 {
-                    address += self.ctx.inst_ctx.sp;
+                    address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
 
                 // Otherwise, get it from memory
@@ -766,7 +770,7 @@ impl<'a> Emu<'a> {
                 // Calculate memory address
                 let mut address = instruction.b_offset_imm0;
                 if instruction.b_use_sp_imm1 != 0 {
-                    address += self.ctx.inst_ctx.sp;
+                    address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
 
                 // Otherwise, get it from memory
@@ -833,10 +837,9 @@ impl<'a> Emu<'a> {
             }
             SRC_IND => {
                 // Calculate memory address
-                let mut address =
-                    (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
+                let mut address = self.ctx.inst_ctx.a.wrapping_add(instruction.b_offset_imm0);
                 if instruction.b_use_sp_imm1 != 0 {
-                    address += self.ctx.inst_ctx.sp;
+                    address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
 
                 // Otherwise, get it from memory
@@ -939,7 +942,7 @@ impl<'a> Emu<'a> {
                 // Calculate memory address
                 let mut address = instruction.b_offset_imm0;
                 if instruction.b_use_sp_imm1 != 0 {
-                    address += self.ctx.inst_ctx.sp;
+                    address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
 
                 // Otherwise, get it from memory
@@ -982,10 +985,9 @@ impl<'a> Emu<'a> {
             }
             SRC_IND => {
                 // Calculate memory address
-                let mut address =
-                    (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
+                let mut address = self.ctx.inst_ctx.a.wrapping_add(instruction.b_offset_imm0);
                 if instruction.b_use_sp_imm1 != 0 {
-                    address += self.ctx.inst_ctx.sp;
+                    address = address.wrapping_add(self.ctx.inst_ctx.sp);
                 }
 
                 // Otherwise, get it from memory
@@ -1071,12 +1073,7 @@ impl<'a> Emu<'a> {
                 let val = self.get_value_to_store(instruction);
 
                 // Calculate memory address
-                let mut addr: i64 = instruction.store_offset;
-                if instruction.store_use_sp {
-                    addr += self.ctx.inst_ctx.sp as i64;
-                }
-                debug_assert!(addr >= 0);
-                let addr = addr as u64;
+                let addr = self.store_mem_address(instruction);
 
                 // Only read the previous value for stack writes (the only ones
                 // reported); reading elsewhere could hit an unmapped section.
@@ -1102,13 +1099,7 @@ impl<'a> Emu<'a> {
                 let val = val as u64;
 
                 // Calculate memory address
-                let mut addr = instruction.store_offset;
-                if instruction.store_use_sp {
-                    addr += self.ctx.inst_ctx.sp as i64;
-                }
-                addr += self.ctx.inst_ctx.a as i64;
-                debug_assert!(addr >= 0, "addr is negative: addr={addr}=0x{addr:x}");
-                let addr = addr as u64;
+                let addr = self.store_ind_address(instruction);
 
                 // Only read the previous value for stack writes (the only ones
                 // reported); reading elsewhere could hit an unmapped section.
@@ -1159,12 +1150,7 @@ impl<'a> Emu<'a> {
                 let value = self.get_value_to_store(instruction);
 
                 // Calculate the memory address
-                let mut address: i64 = instruction.store_offset;
-                if instruction.store_use_sp {
-                    address += self.ctx.inst_ctx.sp as i64;
-                }
-                debug_assert!(address >= 0);
-                let address = address as u64;
+                let address = self.store_mem_address(instruction);
 
                 // If not aligned, get old raw data from memory, then write it
                 if Mem::is_full_aligned(address, 8) {
@@ -1184,13 +1170,7 @@ impl<'a> Emu<'a> {
                 let value = self.get_value_to_store(instruction);
 
                 // Calculate the memory address
-                let mut address = instruction.store_offset;
-                if instruction.store_use_sp {
-                    address += self.ctx.inst_ctx.sp as i64;
-                }
-                address += self.ctx.inst_ctx.a as i64;
-                debug_assert!(address >= 0);
-                let address = address as u64;
+                let address = self.store_ind_address(instruction);
 
                 // If the operation is a register operation, write it to the context registers
                 // If not aligned, get old raw data from memory, then write it
@@ -1234,12 +1214,7 @@ impl<'a> Emu<'a> {
             }
             STORE_MEM => {
                 // Calculate the memory address
-                let mut address: i64 = instruction.store_offset;
-                if instruction.store_use_sp {
-                    address += self.ctx.inst_ctx.sp as i64;
-                }
-                debug_assert!(address >= 0);
-                let address = address as u64;
+                let address = self.store_mem_address(instruction);
 
                 // If not aligned, get old raw data from memory, then write it
                 if !Mem::is_full_aligned(address, 8) {
@@ -1258,13 +1233,7 @@ impl<'a> Emu<'a> {
             }
             STORE_IND => {
                 // Calculate the memory address
-                let mut address = instruction.store_offset;
-                if instruction.store_use_sp {
-                    address += self.ctx.inst_ctx.sp as i64;
-                }
-                address += self.ctx.inst_ctx.a as i64;
-                debug_assert!(address >= 0);
-                let address = address as u64;
+                let address = self.store_ind_address(instruction);
 
                 // If not aligned, get old raw data from memory, then write it
                 if !Mem::is_full_aligned(address, instruction.ind_width) {
@@ -1315,12 +1284,7 @@ impl<'a> Emu<'a> {
                 let value = self.get_value_to_store(instruction);
 
                 // Calculate the memory address
-                let mut address: i64 = instruction.store_offset;
-                if instruction.store_use_sp {
-                    address += self.ctx.inst_ctx.sp as i64;
-                }
-                debug_assert!(address >= 0);
-                let address = address as u64;
+                let address = self.store_mem_address(instruction);
 
                 if Mem::is_full_aligned(address, 8) {
                     let payload = MemHelpers::mem_write(
@@ -1376,13 +1340,7 @@ impl<'a> Emu<'a> {
                 let value = self.get_value_to_store(instruction);
 
                 // Calculate the memory address
-                let mut address = instruction.store_offset;
-                if instruction.store_use_sp {
-                    address += self.ctx.inst_ctx.sp as i64;
-                }
-                address += self.ctx.inst_ctx.a as i64;
-                debug_assert!(address >= 0);
-                let address = address as u64;
+                let address = self.store_ind_address(instruction);
 
                 // Otherwise, if aligned
                 if Mem::is_full_aligned(address, instruction.ind_width) {
@@ -1464,12 +1422,7 @@ impl<'a> Emu<'a> {
             }
             STORE_MEM => {
                 // Calculate the memory address
-                let mut address: i64 = instruction.store_offset;
-                if instruction.store_use_sp {
-                    address += self.ctx.inst_ctx.sp as i64;
-                }
-                debug_assert!(address >= 0);
-                let address = address as u64;
+                let address = self.store_mem_address(instruction);
 
                 // If not aligned, get old raw data from memory, then write it
                 if !Mem::is_full_aligned(address, 8) {
@@ -1486,13 +1439,7 @@ impl<'a> Emu<'a> {
             }
             STORE_IND => {
                 // Calculate the memory address
-                let mut address = instruction.store_offset;
-                if instruction.store_use_sp {
-                    address += self.ctx.inst_ctx.sp as i64;
-                }
-                address += self.ctx.inst_ctx.a as i64;
-                debug_assert!(address >= 0);
-                let address = address as u64;
+                let address = self.store_ind_address(instruction);
 
                 // If not aligned, get old raw data from memory, then write it
                 if !Mem::is_full_aligned(address, instruction.ind_width) {
@@ -1514,16 +1461,32 @@ impl<'a> Emu<'a> {
         }
     }
 
-    // Set SP, if specified by the current instruction
-    // #[cfg(feature = "sp")]
-    // #[inline(always)]
-    // pub fn set_sp(&mut self, instruction: &ZiskInst) {
-    //     if instruction.set_sp {
-    //         self.ctx.inst_ctx.sp = self.ctx.inst_ctx.c;
-    //     } else {
-    //         self.ctx.inst_ctx.sp += instruction.inc_sp;
-    //     }
-    // }
+    /// Address of a `STORE_MEM`: `store_offset [+ sp]`, modulo 2^64, so a negative offset
+    /// (e.g. `[sp - 8]`) wraps instead of going through a signed intermediate.
+    #[inline(always)]
+    fn store_mem_address(&self, instruction: &ZiskInst) -> u64 {
+        let address = instruction.store_offset as u64;
+        if instruction.store_use_sp {
+            address.wrapping_add(self.ctx.inst_ctx.sp)
+        } else {
+            address
+        }
+    }
+
+    /// Address of a `STORE_IND`: `a + store_offset [+ sp]`, modulo 2^64.
+    #[inline(always)]
+    fn store_ind_address(&self, instruction: &ZiskInst) -> u64 {
+        self.store_mem_address(instruction).wrapping_add(self.ctx.inst_ctx.a)
+    }
+
+    /// Update SP after the store, as specified by the current instruction:
+    /// `sp = (set_sp ? c : sp) + inc_sp`
+    #[cfg(feature = "sp")]
+    #[inline(always)]
+    pub fn set_sp(&mut self, instruction: &ZiskInst) {
+        let base = if instruction.set_sp { self.ctx.inst_ctx.c } else { self.ctx.inst_ctx.sp };
+        self.ctx.inst_ctx.sp = base.wrapping_add_signed(instruction.inc_sp);
+    }
     /// Set PC, based on current PC, current flag and current instruction
     #[inline(always)]
     pub fn set_pc(&mut self, instruction: &ZiskInst) {
@@ -1602,8 +1565,8 @@ impl<'a> Emu<'a> {
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c(instruction);
 
-        // #[cfg(feature = "sp")]
-        // self.set_sp(instruction);
+        #[cfg(feature = "sp")]
+        self.set_sp(instruction);
 
         self.set_pc(instruction);
         self.ctx.inst_ctx.end = instruction.end;
@@ -1659,8 +1622,8 @@ impl<'a> Emu<'a> {
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c(instruction);
 
-        // #[cfg(feature = "sp")]
-        // self.set_sp(instruction);
+        #[cfg(feature = "sp")]
+        self.set_sp(instruction);
 
         self.set_pc(instruction);
         self.ctx.inst_ctx.end = instruction.end;
@@ -2300,8 +2263,8 @@ impl<'a> Emu<'a> {
         self.store_c(instruction);
 
         // Set SP, if specified by the current instruction
-        // #[cfg(feature = "sp")]
-        // self.set_sp(instruction);
+        #[cfg(feature = "sp")]
+        self.set_sp(instruction);
 
         // println!(
         //     "s={} pc={:x} c={:x}",
@@ -2438,8 +2401,8 @@ impl<'a> Emu<'a> {
         self.store_c_mem_reads_generate(instruction, mem_reads);
 
         // Set SP, if specified by the current instruction
-        // #[cfg(feature = "sp")]
-        // self.set_sp(instruction);
+        #[cfg(feature = "sp")]
+        self.set_sp(instruction);
 
         // Set PC, based on current PC, current flag and current instruction
         self.set_pc(instruction);
@@ -2480,8 +2443,8 @@ impl<'a> Emu<'a> {
         self.store_c(instruction);
 
         // Set SP, if specified by the current instruction
-        // #[cfg(feature = "sp")]
-        // self.set_sp(instruction);
+        #[cfg(feature = "sp")]
+        self.set_sp(instruction);
 
         // Set PC, based on current PC, current flag and current instruction
         self.set_pc(instruction);
@@ -2558,8 +2521,8 @@ impl<'a> Emu<'a> {
             }
         }
 
-        // #[cfg(feature = "sp")]
-        // self.set_sp(instruction);
+        #[cfg(feature = "sp")]
+        self.set_sp(instruction);
         self.set_pc(instruction);
         self.ctx.inst_ctx.end = instruction.end;
 
@@ -2630,8 +2593,8 @@ impl<'a> Emu<'a> {
             }
         }
 
-        // #[cfg(feature = "sp")]
-        // self.set_sp(instruction);
+        #[cfg(feature = "sp")]
+        self.set_sp(instruction);
         self.set_pc(instruction);
         self.ctx.inst_ctx.end = instruction.end;
 
@@ -2775,8 +2738,8 @@ impl<'a> Emu<'a> {
         // Write rom bus data to rom bus
         data_bus.write_to_bus(ROM_BUS_ID, &rom_payload, &[]);
 
-        // #[cfg(feature = "sp")]
-        // self.set_sp(instruction);
+        #[cfg(feature = "sp")]
+        self.set_sp(instruction);
         self.set_pc(instruction);
         self.ctx.inst_ctx.end = instruction.end;
 
@@ -2848,8 +2811,8 @@ impl<'a> Emu<'a> {
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
 
-        // #[cfg(feature = "sp")]
-        // self.set_sp(instruction);
+        #[cfg(feature = "sp")]
+        self.set_sp(instruction);
         self.set_pc(instruction);
         self.ctx.inst_ctx.end = instruction.end;
 
@@ -2949,28 +2912,28 @@ impl<'a> Emu<'a> {
             F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64)).as_canonical_u64()
         };
 
+        // The Main AIR is instantiated without `stack_enabled`, so it has no sp columns and
+        // `a_imm1`/`b_imm1` are plain immediates: an instruction that reads or updates sp
+        // cannot be proven yet, and must not silently become one that ignores sp.
+        assert!(
+            !inst.uses_sp(),
+            "Main AIR does not support the sp register yet (stack_enabled=0): pc=0x{:x} {}",
+            inst.paddr,
+            inst.to_zisk_asm()
+        );
+
         trace.set_pc(lane, inst.paddr as u32);
         trace.set_a_src_imm(lane, inst.a_src == SRC_IMM);
         trace.set_a_src_mem(lane, inst.a_src == SRC_MEM);
         trace.set_a_src_reg(lane, inst.a_src == SRC_REG);
         trace.set_a_offset_imm0(lane, a_offset_imm0);
-        // #[cfg(not(feature = "sp"))]
         trace.set_a_imm1(lane, inst.a_use_sp_imm1 as u32);
-        // #[cfg(feature = "sp")]
-        // trace.set_sp(lane, inst_ctx.sp);
-        // #[cfg(feature = "sp")]
-        // trace.set_a_src_sp(lane, inst.a_src == SRC_SP),
-        // #[cfg(feature = "sp")]
-        // trace.set_a_use_sp_imm1(lane, inst.a_use_sp_imm1),
         trace.set_is_precompiled(lane, inst.is_precompiled);
         trace.set_b_src_imm(lane, inst.b_src == SRC_IMM);
         trace.set_b_src_mem(lane, inst.b_src == SRC_MEM);
         trace.set_b_src_reg(lane, inst.b_src == SRC_REG);
         trace.set_b_offset_imm0(lane, b_offset_imm0);
-        // #[cfg(not(feature = "sp"))]
         trace.set_b_imm1(lane, inst.b_use_sp_imm1 as u32);
-        // #[cfg(feature = "sp")]
-        // trace.set_b_use_sp_imm1(lane, inst.b_use_sp_imm1),
         trace.set_b_src_ind(lane, inst.b_src == SRC_IND);
         trace.set_ind_width(lane, inst.ind_width as u8);
         trace.set_is_external_op(lane, inst.is_external_op);
@@ -2993,12 +2956,6 @@ impl<'a> Emu<'a> {
         trace.set_store_ind(lane, inst.store == STORE_IND);
         trace.set_store_offset(lane, store_offset);
         trace.set_set_pc(lane, inst.set_pc);
-        // #[cfg(feature = "sp")]
-        // trace.set_store_use_sp(lane, inst.store_use_sp);
-        // #[cfg(feature = "sp")]
-        // trace.set_sp(lane, inst_ctx.sp);
-        // #[cfg(feature = "sp")]
-        // trace.set_inc_sp(lane, inst.inc_sp);
         trace.set_jmp_offset1(lane, jmp_offset1);
         trace.set_jmp_offset2(lane, jmp_offset2);
         trace.set_m32(lane, inst.m32);

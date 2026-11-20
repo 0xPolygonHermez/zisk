@@ -10,7 +10,7 @@
 
 use std::error::Error;
 
-use super::emit::{Code, Fixup, LabelId};
+use super::emit::{Code, Dst, Fixup, LabelId, Src};
 use super::layout::*;
 use super::module::{FuncSig, WasmModule};
 use wasmparser::{BlockType, Operator};
@@ -373,14 +373,46 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             Opnd::Const(c) => self.code.load_imm_to_reg(scratch, c as u64),
             Opnd::Reg(r) => return r,
             Opnd::LocalPlus(k, c) => {
-                let base = match self.local_opnd(k) {
-                    Opnd::Reg(r) => r,
-                    o => self.opnd_reg(o, scratch),
-                };
-                self.code.alu_ri("add_w", scratch, base, c as i64);
+                let base = self.local_src(k, scratch);
+                self.code.op3("add_w", Dst::Reg(scratch), base, Src::Imm(c as i64));
             }
         }
         scratch
+    }
+
+    /// Where an instruction can read `o` from, computing it into `scratch` only when it has to
+    /// be: a constant is an immediate, and with `sp` a frame slot is an operand of its own.
+    fn src(&mut self, o: Opnd, scratch: u64) -> Src {
+        match o {
+            Opnd::Const(c) => Src::Imm(c),
+            Opnd::Reg(r) => Src::Reg(r),
+            #[cfg(feature = "sp")]
+            Opnd::Slot(off) => Src::Slot(off),
+            _ => Src::Reg(self.opnd_reg(o, scratch)),
+        }
+    }
+
+    /// Where an instruction can read local `k` from, loading it into `scratch` if it has to.
+    fn local_src(&mut self, k: u32, scratch: u64) -> Src {
+        let o = self.local_opnd(k);
+        self.src(o, scratch)
+    }
+
+    /// Where an instruction can read the frame slot at `off` from: the slot itself with `sp`,
+    /// or `scratch` after loading it there.
+    fn slot_src(&mut self, off: i64, scratch: u64) -> Src {
+        self.src(Opnd::Slot(off), scratch)
+    }
+
+    /// `slot[off] = op(a, b)`: one instruction with `sp`, or through `REG_T0`.
+    fn op_to_slot(&mut self, op: &str, off: i64, a: Src, b: Src) {
+        #[cfg(feature = "sp")]
+        self.code.op3(op, Dst::Slot(off), a, b);
+        #[cfg(not(feature = "sp"))]
+        {
+            self.code.op3(op, Dst::Reg(REG_T0), a, b);
+            self.code.store_reg_to_slot(off, REG_T0);
+        }
     }
 
     /// Where local `k` is: its register, or its frame slot.
@@ -410,9 +442,9 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             Opnd::Slot(src) => self.code.copy_slot(dst, src),
             Opnd::Const(c) => self.code.store_imm_to_slot(dst, c),
             Opnd::Reg(r) => self.code.store_reg_to_slot(dst, r),
-            Opnd::LocalPlus(..) => {
-                let r = self.opnd_reg(o, REG_T0);
-                self.code.store_reg_to_slot(dst, r);
+            Opnd::LocalPlus(k, c) => {
+                let base = self.local_src(k, REG_T0);
+                self.op_to_slot("add_w", dst, base, Src::Imm(c as i64));
             }
         }
     }
@@ -436,9 +468,26 @@ impl<'a, 'b> FuncGen<'a, 'b> {
 
     fn spill_reg_val(&mut self, v: Val, reg: u64) {
         if let Some(i) = self.vals.iter().position(|&w| w == v) {
-            self.code.store_reg_to_slot(self.slot(i as u32), reg);
+            let off = self.slot(i as u32);
+            if !self.retarget_acc_to_slot(v, off) {
+                self.code.store_reg_to_slot(off, reg);
+            }
             self.vals[i] = Val::Slot;
         }
+    }
+
+    /// With `sp`, when the last instruction computed `v`, the value in `REG_ACC`, makes it write
+    /// the frame slot at `off` instead, and returns `true`.  Only for a value that is going to
+    /// its slot and nowhere else.
+    fn retarget_acc_to_slot(&mut self, v: Val, off: i64) -> bool {
+        #[cfg(feature = "sp")]
+        if v == Val::Acc && self.acc_inst == Some(self.code.len()) {
+            self.code.retarget_last_store_to_slot(off);
+            self.acc_inst = None;
+            return true;
+        }
+        let _ = (v, off);
+        false
     }
 
     /// Copies every pending `local.get k` to its slot, before local `k` changes.
@@ -459,14 +508,9 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         };
         self.vals.pop();
         self.spill_acc();
-        let ra = self.opnd_reg(c.a, REG_T0);
-        match c.b {
-            Opnd::Const(k) => self.code.alu_ri(c.op, REG_ACC, ra, k),
-            b => {
-                let rb = self.opnd_reg(b, REG_T1);
-                self.code.alu_rr(c.op, REG_ACC, ra, rb);
-            }
-        }
+        let a = self.src(c.a, REG_T0);
+        let b = self.src(c.b, REG_T1);
+        self.code.op3(c.op, Dst::Reg(REG_ACC), a, b);
         if c.invert {
             self.code.alu_ri("xor", REG_ACC, REG_ACC, 1);
         }
@@ -481,8 +525,10 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.compute_cmp();
         for i in 0..self.vals.len() {
             let off = self.slot(i as u32);
-            match self.vals[i] {
+            let v = self.vals[i];
+            match v {
                 Val::Slot => continue,
+                Val::Acc if self.retarget_acc_to_slot(v, off) => {}
                 Val::Local(_) | Val::LocalPlus(..) | Val::Const(_) | Val::Acc | Val::Acc2 => {
                     let o = self.opnd_at(self.vals[i], i as u32);
                     self.opnd_to_slot(off, o);
@@ -509,10 +555,13 @@ impl<'a, 'b> FuncGen<'a, 'b> {
                 let top = *self.vals.last().expect("wasm: operand stack underflow");
                 let v = self.pop();
                 self.set_local(local_index, v);
-                // The value is now the local's (its register may have taken it from `REG_ACC`).
+                // The value is now the local's (its register may have taken it from `REG_ACC`,
+                // and with `sp` its slot may have: see `set_local`).
                 let now = match top {
                     _ if self.locals.reg(local_index).is_some() => Val::Local(local_index),
                     Val::LocalPlus(j, _) if j == local_index => Val::Local(local_index),
+                    #[cfg(feature = "sp")]
+                    Val::Acc => Val::Local(local_index),
                     _ => top,
                 };
                 self.push_val(now);
@@ -522,13 +571,11 @@ impl<'a, 'b> FuncGen<'a, 'b> {
                 self.code.load_abs_to_reg(REG_ACC, global_addr(global_index));
                 self.push_acc();
             }
-            GlobalSet { global_index } => match self.pop() {
-                Opnd::Const(c) => self.code.store_imm_to_abs(global_addr(global_index), c as u64),
-                v => {
-                    let r = self.opnd_reg(v, REG_T0);
-                    self.code.store_reg_to_abs(global_addr(global_index), r, 8);
-                }
-            },
+            GlobalSet { global_index } => {
+                let v = self.pop();
+                let v = self.src(v, REG_T0);
+                self.code.op3("copyb", Dst::Abs(global_addr(global_index)), Src::Imm(0), v);
+            }
 
             // -- integer arithmetic and logic -----------------------------------
             I32Add => self.alu("add_w", true),
@@ -634,6 +681,13 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.materialize_local(k);
         self.ptrs.retain(|p| p.local != k);
         let Some(r) = self.locals.reg(k) else {
+            // With `sp` the instruction that just computed the value can write the slot.
+            #[cfg(feature = "sp")]
+            if v == Opnd::Reg(REG_ACC) && self.acc_inst == Some(self.code.len()) {
+                self.code.retarget_last_store_to_slot(local_offset(k));
+                self.acc_inst = None;
+                return;
+            }
             self.opnd_to_slot(local_offset(k), v);
             return;
         };
@@ -671,14 +725,9 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             std::mem::swap(&mut a, &mut b);
         }
         self.spill_acc();
-        let ra = self.opnd_reg(a, REG_T0);
-        match b {
-            Opnd::Const(c) => self.code.alu_ri(op, REG_ACC, ra, c),
-            _ => {
-                let rb = self.opnd_reg(b, REG_T1);
-                self.code.alu_rr(op, REG_ACC, ra, rb);
-            }
-        }
+        let a = self.src(a, REG_T0);
+        let b = self.src(b, REG_T1);
+        self.code.op3(op, Dst::Reg(REG_ACC), a, b);
         self.push_acc();
     }
 
@@ -715,15 +764,16 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         let b = self.pop();
         let a = self.pop();
         self.spill_acc();
-        let ra = self.opnd_reg(a, REG_T0);
-        match b {
-            Opnd::Const(c) => self.code.alu_ri(op, REG_ACC, ra, c & count_mask),
+        let a = self.src(a, REG_T0);
+        let count = match b {
+            Opnd::Const(c) => Src::Imm(c & count_mask),
             _ => {
-                let rb = self.opnd_reg(b, REG_T1);
-                self.code.alu_ri("and", REG_T1, rb, count_mask);
-                self.code.alu_rr(op, REG_ACC, ra, REG_T1);
+                let b = self.src(b, REG_T1);
+                self.code.op3("and", Dst::Reg(REG_T1), b, Src::Imm(count_mask));
+                Src::Reg(REG_T1)
             }
-        }
+        };
+        self.code.op3(op, Dst::Reg(REG_ACC), a, count);
         self.push_acc();
     }
 
@@ -762,15 +812,9 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             return;
         }
         self.spill_acc();
-        let ra = self.opnd_reg(a, REG_T0);
         // signextend acts on `b`.
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("imm", 0, false);
-        zib.src_b("reg", ra, false);
-        zib.op(op).unwrap();
-        zib.store("reg", REG_ACC as i64, false, false);
-        zib.j(4, 4);
-        self.code.push_raw(zib, Fixup::None);
+        let b = self.src(a, REG_T0);
+        self.code.op3(op, Dst::Reg(REG_ACC), Src::Imm(0), b);
         self.push_acc();
     }
 
@@ -779,14 +823,9 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     fn branch_on(&mut self, cond: Val, label: LabelId, when: bool) {
         if let Val::Cmp(c) = cond {
             let jump_if_flag = when != c.invert;
-            let ra = self.opnd_reg(c.a, REG_T0);
-            match c.b {
-                Opnd::Const(k) => self.code.cmp_imm_branch(c.op, ra, k, label, jump_if_flag),
-                b => {
-                    let rb = self.opnd_reg(b, REG_T1);
-                    self.code.cmp_reg_branch(c.op, ra, rb, label, jump_if_flag);
-                }
-            }
+            let a = self.src(c.a, REG_T0);
+            let b = self.src(c.b, REG_T1);
+            self.code.cmp_branch(c.op, a, b, label, jump_if_flag);
             return;
         }
         match self.opnd_at(cond, self.depth) {
@@ -796,8 +835,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
                 }
             }
             o => {
-                let r = self.opnd_reg(o, REG_T0);
-                self.code.cmp_imm_branch("eq", r, 0, label, !when);
+                let a = self.src(o, REG_T0);
+                self.code.cmp_branch("eq", a, Src::Imm(0), label, !when);
             }
         }
     }
@@ -1177,11 +1216,11 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     fn binop_div(&mut self, op: &str, swap: bool) -> Result<(), Box<dyn Error>> {
         let a = self.slot(self.depth - 2);
         let b = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a);
-        self.code.load_slot_to_reg(REG_T1, b);
-        // Trap if divisor (REG_T1) == 0.
+        let sa = self.slot_src(a, REG_T0);
+        let sb = self.slot_src(b, REG_T1);
+        // Trap if the divisor is 0.
         let ok = self.code.new_label();
-        self.code.cmp_imm_branch("eq", REG_T1, 0, ok, false); // jump to ok when divisor != 0
+        self.code.cmp_branch("eq", sb, Src::Imm(0), ok, false); // jump to ok when divisor != 0
         self.emit_trap();
         self.code.bind(ok);
         let signed_min = match op {
@@ -1191,17 +1230,13 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         };
         if let Some(min) = signed_min {
             let ok = self.code.new_label();
-            self.code.cmp_imm_branch("eq", REG_T1, -1, ok, false); // divisor != -1
-            self.code.cmp_imm_branch("eq", REG_T0, min, ok, false); // dividend != MIN
+            self.code.cmp_branch("eq", sb, Src::Imm(-1), ok, false); // divisor != -1
+            self.code.cmp_branch("eq", sa, Src::Imm(min), ok, false); // dividend != MIN
             self.emit_trap();
             self.code.bind(ok);
         }
-        if swap {
-            self.code.alu_rr(op, REG_T0, REG_T1, REG_T0);
-        } else {
-            self.code.alu_rr(op, REG_T0, REG_T0, REG_T1);
-        }
-        self.code.store_reg_to_slot(a, REG_T0);
+        let (x, y) = if swap { (sb, sa) } else { (sa, sb) };
+        self.op_to_slot(op, a, x, y);
         self.depth -= 1;
         Ok(())
     }
@@ -1285,8 +1320,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     /// Computes the absolute linear-memory address of a wasm i32 address operand + static offset
     /// into `reg`.  The sum cannot wrap: `u32 + u32 + WASM_MEM_BASE` fits in 34 bits.
     fn compute_addr(&mut self, reg: u64, addr_slot: i64, static_offset: u64) {
-        self.code.load_slot_to_reg(reg, addr_slot);
-        self.code.alu_ri("and", reg, reg, 0xFFFF_FFFF); // zero-extend to u32
+        let src = self.slot_src(addr_slot, reg);
+        self.code.op3("and", Dst::Reg(reg), src, Src::Imm(0xFFFF_FFFF)); // zero-extend to u32
         self.code.alu_ri("add", reg, reg, (WASM_MEM_BASE + static_offset) as i64);
     }
 
@@ -1318,9 +1353,9 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     /// A linear-memory store.
     pub(crate) fn store(&mut self, width: u64, static_offset: u64) {
         let val = self.pop();
-        let val_reg = self.opnd_reg(val, REG_T1);
+        let val = self.src(val, REG_T1);
         let (reg, off) = self.access_addr(static_offset, width);
-        self.code.store_reg_to_mem(reg, off, val_reg, width);
+        self.code.store_src_to_mem(reg, off, val, width);
     }
 
     /// Pops the address operand of a `width`-byte access and returns `(reg, off)`: the access is
@@ -1382,11 +1417,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         let reg = REG_PTRS[self.next_ptr];
         self.next_ptr = (self.next_ptr + 1) % REG_PTRS.len();
         self.ptrs.retain(|p| p.reg != reg);
-        let src = match self.local_opnd(k) {
-            Opnd::Reg(r) => r,
-            o => self.opnd_reg(o, reg),
-        };
-        self.code.alu_ri("and", reg, src, 0xFFFF_FFFF); // zero-extend to u32
+        let src = self.local_src(k, reg);
+        self.code.op3("and", Dst::Reg(reg), src, Src::Imm(0xFFFF_FFFF)); // zero-extend to u32
         self.code.alu_ri("add", reg, reg, (WASM_MEM_BASE + static_offset) as i64);
         self.check_bounds(reg, Len::Imm(width), REG_T1);
         self.ptrs.push(Ptr { local: k, reg, off0: static_offset, hi: w });
@@ -1407,8 +1439,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             self.code.load_imm_to_reg(reg, (c as u64 & 0xFFFF_FFFF) + base);
             return;
         }
-        let src = self.opnd_reg(addr, reg);
-        self.code.alu_ri("and", reg, src, 0xFFFF_FFFF); // zero-extend to u32
+        let src = self.src(addr, reg);
+        self.code.op3("and", Dst::Reg(reg), src, Src::Imm(0xFFFF_FFFF)); // zero-extend to u32
         self.code.alu_ri("add", reg, reg, base as i64);
     }
 
@@ -1490,15 +1522,20 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         let a = self.slot(self.depth - 3);
         let b = self.slot(self.depth - 2);
         let cond = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T2, cond);
+        let c = self.slot_src(cond, REG_T2);
         let use_b = self.code.new_label();
         let done = self.code.new_label();
-        self.code.cmp_imm_branch("eq", REG_T2, 0, use_b, true); // cond == 0 -> b
-                                                                // use a: already at slot a, nothing to move
+        self.code.cmp_branch("eq", c, Src::Imm(0), use_b, true); // cond == 0 -> b
+                                                                 // use a: already at slot a, nothing to move
         self.code.jump(done);
         self.code.bind(use_b);
-        self.code.load_slot_to_reg(REG_T0, b);
-        self.code.store_reg_to_slot(a, REG_T0);
+        #[cfg(feature = "sp")]
+        self.code.copy_slot(a, b);
+        #[cfg(not(feature = "sp"))]
+        {
+            self.code.load_slot_to_reg(REG_T0, b);
+            self.code.store_reg_to_slot(a, REG_T0);
+        }
         self.code.bind(done);
         self.depth -= 2;
     }
@@ -1544,7 +1581,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.flush();
         self.restore_locals();
         let cond = self.opnd_at(cond, self.depth);
-        let index = self.opnd_reg(cond, REG_T0);
+        let index = self.src(cond, REG_T0);
         // A target past the outermost block is the function body: those cases jump to a shared
         // return stub emitted after the dispatch.
         let mut return_stub: Option<LabelId> = None;
@@ -1569,13 +1606,14 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         let default = target_label(self, targets.default())?;
         if labels.len() < BR_TABLE_JUMP_MIN {
             for (i, &label) in labels.iter().enumerate() {
-                self.code.cmp_imm_branch("eq", index, i as i64, label, true);
+                self.code.cmp_branch("eq", index, Src::Imm(i as i64), label, true);
             }
             self.code.jump(default);
         } else {
             // An i32 index is sign-extended, so one at 2^31 or above compares as huge here too.
-            self.code.cmp_imm_branch("ltu", index, labels.len() as i64, default, false);
-            self.code.alu_ri("sll", REG_T0, index, 2); // one 4-byte jump per entry
+            self.code.cmp_branch("ltu", index, Src::Imm(labels.len() as i64), default, false);
+            // one 4-byte jump per entry
+            self.code.op3("sll", Dst::Reg(REG_T0), index, Src::Imm(2));
             let table = self.code.new_label();
             self.code.jump_reg_plus_label(REG_T0, table);
             self.code.bind(table);
@@ -1614,7 +1652,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.forget_ptrs();
 
         // Trap unless the callee's frame, which ends `frame_sz + callee_frame` below FP, fits.
-        self.code.alu_ri("add", scratch, REG_FP, -(frame_sz + callee_frame));
+        self.code.frame_plus_to_reg(scratch, -(frame_sz + callee_frame));
         let ok = self.code.new_label();
         self.code.cmp_imm_branch("ltu", scratch, WASM_STACK_LIMIT as i64, ok, false);
         self.emit_trap();
@@ -1634,9 +1672,13 @@ impl<'a, 'b> FuncGen<'a, 'b> {
                 self.code.store_reg_to_slot(local_offset(k), r);
             }
         }
-        self.code.alu_ri("add", REG_FP, REG_FP, -frame_sz);
+        // FP moves to the callee's frame: with `sp`, as the call instruction's own sp update.
+        #[cfg(not(feature = "sp"))]
+        self.code.adjust_frame(-frame_sz);
         emit_call(&mut self.code);
-        self.code.alu_ri("add", REG_FP, REG_FP, frame_sz);
+        #[cfg(feature = "sp")]
+        self.code.inc_sp_last(-frame_sz);
+        self.code.adjust_frame(frame_sz);
         for (k, _) in self.locals.mapped() {
             self.locals.in_slot[k as usize] = true;
             self.locals.clean[k as usize] = true;
@@ -1676,8 +1718,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
 
         // The table index is on top of the stack.
         let idx = self.pop();
-        let idx = self.opnd_reg(idx, REG_T0);
-        self.code.alu_ri("and", REG_T0, idx, 0xFFFF_FFFF);
+        let idx = self.src(idx, REG_T0);
+        self.code.op3("and", Dst::Reg(REG_T0), idx, Src::Imm(0xFFFF_FFFF));
         let in_bounds = self.code.new_label();
         self.code.cmp_imm_branch("ltu", REG_T0, self.module.table_initial as i64, in_bounds, true);
         self.emit_trap();

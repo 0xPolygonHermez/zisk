@@ -20,7 +20,9 @@ const GP_RAM_ADDR: u64 = OUTPUT_ADDR + OUTPUT_MAX_SIZE;
 
 /// Return-address register, written by `store_pc` on a call (RISC-V `ra` convention).
 pub const REG_RA: u64 = 1;
-/// Frame pointer: the only pointer register live across wasm instruction boundaries.
+/// Frame pointer: the only pointer register live across wasm instruction boundaries.  With the
+/// `sp` feature the frame pointer is the ZisK `sp` register instead, and x2 is only set, as
+/// their stack pointer, right before a call into the ZisK library (see `zkvm.rs`).
 pub const REG_FP: u64 = 2;
 /// Scratch temporaries, dead across wasm instruction boundaries.
 pub const REG_T0: u64 = 5;

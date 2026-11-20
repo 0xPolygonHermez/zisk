@@ -183,7 +183,7 @@ u64 acc = 0
 The instruction must follow a format with some fields that are mandatory, and some fields that are optional.  This is the generic instruction format:
 
 ```
-operation(a_source, b_source) -> c_storage, j(jump1, jump2), setpc(jump), sp, end
+operation(a_source, b_source) -> c_storage, j(jump1, jump2), setpc(jump), setsp, incsp(N), end
 ```
 
 The instruction must contain all the information required to populate an instance of the ZiskInst element specified in the file zisk_inst.rs.
@@ -213,17 +213,22 @@ The `(a_source, b_source)` fields describe how the registers a and b are loaded
 The possible formats of `a_source` are:
 - `c`, meaning that register `a` will be loaded with the current value of register `c`, i.e. with the result of the previously executed instruction.  The ZiskInst instance field `a_src` is set to SRC_C.
 - `rN`, meaning that register `a` will be loaded with the current value of register `rN`.  The ZiskInst instance field `a_src` is set to SRC_REG, and the field `a_offset_imm0` is set to N.
-- `[N]`, meaning that register `a` will be loaded with the current value of the memory at address N, plus the SP register if specified.  The ZiskInst instance field `a_src` is set to SRC_MEM, and the field `a_offset_imm0` is set to N.
+- `[N]`, meaning that register `a` will be loaded with the current value of the memory at address N.  The ZiskInst instance field `a_src` is set to SRC_MEM, and the field `a_offset_imm0` is set to N.
+- `[sp+N]`, meaning that register `a` will be loaded with the current value of the memory at address `sp` plus N, which can be a negative offset (`[sp-N]`, or `[sp]` for N=0).  The ZiskInst instance field `a_src` is set to SRC_MEM, the field `a_offset_imm0` is set to N including sign, and the field `a_use_sp_imm1` is set to 1 (see SP register).
 - `N`, meaning that register `a` will be loaded with the value N, which is a u64.  The ZiskInst instance field `a_src` is set to SRC_IMM, the field `a_offset_imm0` is set to the lower 32 bits of N, and the field `a_use_sp_imm1` is set to the higher 32 bits of N.
+- `sp`, meaning that register `a` will be loaded with the current value of the `sp` register.  The ZiskInst instance field `a_src` is set to SRC_SP.
 
 The possible formats of `b_source` are:
 - `c`, meaning that register `b` will be loaded with the current value of register `c`, i.e. with the result of the previously executed instruction.  The ZiskInst instance field `b_src` is set to SRC_C.
 - `rN`, meaning that register `b` will be loaded with the current value of register `rN`.  The ZiskInst instance field `b_src` is set to SRC_REG, and the field `b_offset_imm0` is set to N.
-- `[N]`, meaning that register `b` will be loaded with the current value of the memory at address N, plus the SP register if specified.  The ZiskInst instance field `b_src` is set to SRC_MEM, and the field `b_offset_imm0` is set to N.
+- `[N]`, meaning that register `b` will be loaded with the current value of the memory at address N.  The ZiskInst instance field `b_src` is set to SRC_MEM, and the field `b_offset_imm0` is set to N.
+- `[sp+N]`, meaning that register `b` will be loaded with the current value of the memory at address `sp` plus N, which can be a negative offset.  The ZiskInst instance field `b_src` is set to SRC_MEM, the field `b_offset_imm0` is set to N including sign, and the field `b_use_sp_imm1` is set to 1.
 - `N`, meaning that register `b` will be loaded with the value N, which is a u64.  The ZiskInst instance field `b_src` is set to SRC_IMM, the field `b_offset_imm0` is set to the lower 32 bits of N, and the field `b_use_sp_imm1` is set to the higher 32 bits of N.
 - `W[a+N]`, meaning that register `b` will be loaded with the first W bytes of current value of the memory at address equals the value of `a` register plus the value of N, which can be a negative offset.  The ZiskInst instance field `b_src` is set to SRC_IND, and the ZiskInst instance field `b_offset_imm0` is set to the address offset, i.e. to N including sign, and the field `ind_width` is set to W, which can be 1, 2, 4 or 8.
+- `W[a+sp+N]`, the same indirection with the `sp` register also added to the address: `a + sp + N`.  The field `b_use_sp_imm1` is set to 1.
 
 Notes on register operands:
+- Only `a_source` can use `sp`; `b_source` cannot (there is no SRC_SP for register `b`).
 - The register `r0` is encoded as the immediate value 0 (`SRC_IMM`), not as `SRC_REG` (see Register format).
 
 ## Storage field
@@ -234,8 +239,12 @@ The field ` -> c_storage` specifies how the value of the register `c` after exec
 
 The possible formats of `c_storage` are:
 - `rN`, meaning that the current value of register `c` will be stored into register `rN`.  The ZiskInst instance field `store` is set to STORE_REG, and the field `store_offset` is set to N.
-- `[N]`, meaning that register `c` will be stored in memory at address N, plus the SP register if specified.  The ZiskInst instance field `store` is set to STORE_MEM, and the field `store_offset` is set to N.
+- `[N]`, meaning that register `c` will be stored in memory at address N.  The ZiskInst instance field `store` is set to STORE_MEM, and the field `store_offset` is set to N.
+- `[sp+N]`, meaning that register `c` will be stored in memory at address `sp` plus N, which can be a negative offset.  The ZiskInst instance field `store` is set to STORE_MEM, the field `store_offset` is set to N including sign, and the field `store_use_sp` is set to true.
 - `W[a+N]`, meaning that the first W bytes of the current value of register `c` will be stored at the first W bytes in memory at address equals the value of `a` register plus the value of N, which can be a negative offset.  The ZiskInst instance field `store` is set to STORE_IND, and the ZiskInst instance field `store_offset` is set to the address offset, i.e. to N including sign, and the field `ind_width` is set to W, which can be 1, 2, 4 or 8.
+- `W[a+sp+N]`, the same indirection with the `sp` register also added to the address: `a + sp + N`.  The field `store_use_sp` is set to true.
+
+An instruction has a single `ind_width` field, so when both `b_source` and `c_storage` are indirections they must use the same width W; the assembler rejects an instruction whose two widths differ.
 - If not specified, the `c` register is not stored.  The ZiskInst instance field `store` is set to STORE_NONE.
 
 ## Jump field
@@ -268,15 +277,37 @@ next_instruction_pc = c + offset
 
 Note that `setpc` and the flag-based jump `j(jump1, jump2)` are mutually exclusive on the same instruction: both are stored in the field `jmp_offset1`, and the emulator checks `set_pc` first.  If `set_pc` is true, the next pc is `c + jmp_offset1` and the `flag` register is ignored; otherwise the next pc is `pc + jmp_offset1` when `flag` is 1, or `pc + jmp_offset2` when `flag` is 0.
 
-## SP field
+## SP register
+
+The `sp` register is only available in builds with the `sp` Cargo feature (`cargo build -p zisk-asm --features sp`, or `-p ziskemu --features sp` for the emulator); without it, every construct below is rejected by the assembler.
+
+`sp` is a register of the ZisK machine itself, separate from the RISC-V stack pointer `x2` (`r2`, which the `push`/`pop` pseudo-instructions use).  It starts at 0 and only changes through the `setsp` and `incsp(N)` fields below.  An instruction can read it as an `a_source` (`sp`) and use it as a base address on each memory operand independently: `[sp+N]` for `a_source`, `b_source` and `c_storage`, and `W[a+sp+N]` for the `b_source` and `c_storage` indirections.  For example:
+
+```
+add([sp+0], [sp-8]) -> [sp+16], incsp(-8)   ; mem[sp+16] = mem[sp] + mem[sp-8]; sp -= 8
+```
+
+Registers (`rN`), immediates (`N`), `c` and `step` are never sp-relative.  For an immediate source the ZiskInst fields `a_use_sp_imm1` / `b_use_sp_imm1` hold the higher 32 bits of the value instead, so an operand is either sp-relative memory or an immediate, never both.  The name `sp` is reserved inside a memory operand: `[sp...]` is always the register, never a symbol.
+
+The `sp` register is updated after the result has been stored, so every operand of the instruction, including `c_storage`, sees the value `sp` had before the instruction:
+
+```
+sp = (setsp ? c : sp) + incsp
+```
+
+### Set SP field
 
 This field is optional.
 
-The field `, sp` specifies that the `sp` register must be added to the address of the memory-addressed operands of the instruction.
+The field `, setsp` sets `sp` to the value of the register `c` (plus `incsp`, if also present).  The ZiskInst instance field `set_sp` is set to true.
 
-There is no single `use_sp` field; this sets the per-operand flags `a_use_sp_imm1`, `b_use_sp_imm1` and `store_use_sp` of the ZiskInst instance, as applicable.  It only affects memory-addressed operands, i.e. the `[N]` (`SRC_MEM`) and `W[a+N]` (`SRC_IND`) sources, and the `[N]`/`W[a+N]` stores; it has no effect on `c`, `rN`, immediate (`N`) or `step` operands.
+### Increment SP field
 
-Note that for an immediate source (`N`), the same field (`a_use_sp_imm1` / `b_use_sp_imm1`) holds the higher 32 bits of the immediate value, so `sp` cannot be combined with an immediate on the same operand.
+This field is optional.
+
+The field `, incsp(N)` adds the signed integer N (i64) to `sp`.  The ZiskInst instance field `inc_sp` is set to N.
+
+Note: with the `sp` feature, `sp` is supported by the emulators (Rust and assembly) and by the ziskbin format, but not yet by the prover: the Main and ROM AIRs are instantiated without `stack_enabled`, so building the Main witness of a program that uses `sp` fails.
 
 ## End field
 
