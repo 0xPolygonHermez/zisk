@@ -3,10 +3,10 @@ require "operations.pil"
 require "opids.pil"
 require "config.pil"
 require "allocator/pil/allocator.pil"
-require "allocator/pil/allocator_det.pil"
+require "allocator/pil/allocator_canonical.pil"
 
 airgroup AllocTest {
     Allocator(N: 2**22);
-    AllocatorDet(N: 2**22);
-    allocator_det_init();
+    AllocatorCanonical(N: 2**22);
+    allocator_canonical_init();
 }

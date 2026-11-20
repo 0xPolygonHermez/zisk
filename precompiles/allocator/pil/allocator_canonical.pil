@@ -6,7 +6,7 @@ require "opids.pil"
 require "config.pil"
 require "allocator/pil/allocator_common.pil"
 
-// AllocatorDet
+// AllocatorCanonical
 //
 // Deterministic allocator: the address returned by each alloc is fully determined by the previous
 // operations of the main, the prover has no decision to take. It's the same idea as Allocator
@@ -20,7 +20,7 @@ require "allocator/pil/allocator_common.pil"
 //
 //      FREE    free block and node of the free list. The list is ordered by (size, addr) and
 //              (next_size, next_addr) is the key of the following node. The head of the list is
-//              the token FREE(addr 0, size 0), proved once by allocator_det_init(), and the tail
+//              the token FREE(addr 0, size 0), proved once by allocator_canonical_init(), and the tail
 //              is only a key, (2**32, 0).
 //      USE     block handed out.
 //      GUARD   end of a created area. A block that is never free.
@@ -65,11 +65,11 @@ require "allocator/pil/allocator_common.pil"
 const int ALLOC_TAIL_SIZE = 2**32;
 
 // Head of the free list. Must be called once, at proof level.
-function allocator_det_init() {
-    direct_global_update_proves(ALLOC_DET_BUS_ID, [ALLOC_TOKEN_FREE, 0, 0, 0, 0, 0, ALLOC_TAIL_SIZE, 0]);
+function allocator_canonical_init() {
+    direct_global_update_proves(ALLOC_CANONICAL_BUS_ID, [ALLOC_TOKEN_FREE, 0, 0, 0, 0, 0, ALLOC_TAIL_SIZE, 0]);
 }
 
-airtemplate AllocatorDet(int N = 2**20) {
+airtemplate AllocatorCanonical(int N = 2**20) {
 
     // Only ranges that other airs already use (16, 22 and 24 bits), to not add new range tables.
     const int VER_CHUNK_BITS[2] = [16, 24];
@@ -384,47 +384,47 @@ airtemplate AllocatorDet(int N = 2**20) {
 
     // [1] remove A: - FREE(PA -> A), - FREE(A -> next), + FREE(PA -> next)
     //     show below: - USE(A), + USE(A)
-    permutation_assumes(ALLOC_DET_BUS_ID, [T_FREE, pa_addr, pa_size, pa_prev, pa_dirty, pa_ver, a_size, a_addr],
+    permutation_assumes(ALLOC_CANONICAL_BUS_ID, [T_FREE, pa_addr, pa_size, pa_prev, pa_dirty, pa_ver, a_size, a_addr],
                         sel: remove_a, sel_is_binary: 1);
-    permutation_assumes(ALLOC_DET_BUS_ID, [T_FREE + show_below * (T_USE - T_FREE), a_addr, a_size, a_prev, a_dirty, a_ver,
+    permutation_assumes(ALLOC_CANONICAL_BUS_ID, [T_FREE + show_below * (T_USE - T_FREE), a_addr, a_size, a_prev, a_dirty, a_ver,
                                        a_next_size, a_next_addr],
                         sel: sel_alloc + has_below, sel_is_binary: 1);
-    permutation_proves(ALLOC_DET_BUS_ID, [T_FREE, pa_addr, pa_size, pa_prev, pa_dirty, version[0], a_next_size, a_next_addr],
+    permutation_proves(ALLOC_CANONICAL_BUS_ID, [T_FREE, pa_addr, pa_size, pa_prev, pa_dirty, version[0], a_next_size, a_next_addr],
                        sel: emit_pa, sel_is_binary: 1);
-    permutation_proves(ALLOC_DET_BUS_ID, [T_USE, a_addr, a_size, a_prev, 0, version[0], 0, 0],
+    permutation_proves(ALLOC_CANONICAL_BUS_ID, [T_USE, a_addr, a_size, a_prev, 0, version[0], 0, 0],
                        sel: emit_below, sel_is_binary: 1);
 
     // [1] alloc:   + USE(a_addr, size, a_prev)
     //     dealloc: - USE(addr, size, prev)
-    permutation_proves(ALLOC_DET_BUS_ID, [T_USE, a_addr, size, a_prev, 0, version[0], 0, 0],
+    permutation_proves(ALLOC_CANONICAL_BUS_ID, [T_USE, a_addr, size, a_prev, 0, version[0], 0, 0],
                        sel: emit_use, sel_is_binary: 1);
-    permutation_assumes(ALLOC_DET_BUS_ID, [T_USE, addr, size, prev, 0, use_ver, 0, 0],
+    permutation_assumes(ALLOC_CANONICAL_BUS_ID, [T_USE, addr, size, prev, 0, use_ver, 0, 0],
                         sel: sel_dealloc, sel_is_binary: 1);
 
     // [2] remove B: - FREE(PB -> B), - FREE(B -> next), + FREE(PB -> next)
-    permutation_assumes(ALLOC_DET_BUS_ID, [T_FREE, pb_addr, pb_size, pb_prev, pb_dirty, pb_ver, b_size, addr + size],
+    permutation_assumes(ALLOC_CANONICAL_BUS_ID, [T_FREE, pb_addr, pb_size, pb_prev, pb_dirty, pb_ver, b_size, addr + size],
                         sel: join_above, sel_is_binary: 1);
-    permutation_assumes(ALLOC_DET_BUS_ID, [T_FREE, addr + size, b_size, size, b_dirty, b_ver, b_next_size, b_next_addr],
+    permutation_assumes(ALLOC_CANONICAL_BUS_ID, [T_FREE, addr + size, b_size, size, b_dirty, b_ver, b_next_size, b_next_addr],
                         sel: join_above, sel_is_binary: 1);
-    permutation_proves(ALLOC_DET_BUS_ID, [T_FREE, pb_addr, pb_size, pb_prev, pb_dirty, version[1], b_next_size, b_next_addr],
+    permutation_proves(ALLOC_CANONICAL_BUS_ID, [T_FREE, pb_addr, pb_size, pb_prev, pb_dirty, version[1], b_next_size, b_next_addr],
                        sel: emit_pb, sel_is_binary: 1);
 
     // [3] update UP: - UP(prev = up_prev), + UP(prev = m_size)
-    permutation_assumes(ALLOC_DET_BUS_ID, [T_USE + up_guard * (T_GUARD - T_USE), up_addr, up_size, up_prev, 0, up_ver, 0, 0],
+    permutation_assumes(ALLOC_CANONICAL_BUS_ID, [T_USE + up_guard * (T_GUARD - T_USE), up_addr, up_size, up_prev, 0, up_ver, 0, 0],
                         sel: update_up, sel_is_binary: 1);
-    permutation_proves(ALLOC_DET_BUS_ID, [T_USE + up_guard * (T_GUARD - T_USE), up_addr, up_size, m_size, 0, version[2], 0, 0],
+    permutation_proves(ALLOC_CANONICAL_BUS_ID, [T_USE + up_guard * (T_GUARD - T_USE), up_addr, up_size, m_size, 0, version[2], 0, 0],
                        sel: emit_up, sel_is_binary: 1);
 
     // [3] insert M: - FREE(Q -> next), + FREE(Q -> M), + FREE(M -> next)
-    permutation_assumes(ALLOC_DET_BUS_ID, [T_FREE, q_addr, q_size, q_prev, q_dirty, q_ver, qn_size, qn_addr],
+    permutation_assumes(ALLOC_CANONICAL_BUS_ID, [T_FREE, q_addr, q_size, q_prev, q_dirty, q_ver, qn_size, qn_addr],
                         sel: insert, sel_is_binary: 1);
-    permutation_proves(ALLOC_DET_BUS_ID, [T_FREE, q_addr, q_size, q_prev, q_dirty, version[2], m_size, m_addr],
+    permutation_proves(ALLOC_CANONICAL_BUS_ID, [T_FREE, q_addr, q_size, q_prev, q_dirty, version[2], m_size, m_addr],
                        sel: emit_q, sel_is_binary: 1);
-    permutation_proves(ALLOC_DET_BUS_ID, [T_FREE, m_addr, m_size, m_prev, m_dirty, version[2], qn_size, qn_addr],
+    permutation_proves(ALLOC_CANONICAL_BUS_ID, [T_FREE, m_addr, m_size, m_prev, m_dirty, version[2], qn_size, qn_addr],
                        sel: emit_m, sel_is_binary: 1);
 
     // [3] create: + GUARD(addr + size, prev = size)
-    permutation_proves(ALLOC_DET_BUS_ID, [T_GUARD, addr + size, 0, size, 0, version[2], 0, 0],
+    permutation_proves(ALLOC_CANONICAL_BUS_ID, [T_GUARD, addr + size, 0, size, 0, version[2], 0, 0],
                        sel: emit_guard, sel_is_binary: 1);
 
     // BUS: ALLOCATOR ===> MAIN

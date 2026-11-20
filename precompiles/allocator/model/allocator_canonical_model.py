@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Model of AllocatorDet (precompiles/allocator/pil/allocator_det.pil).
+"""Model of AllocatorCanonical (precompiles/allocator/pil/allocator_canonical.pil).
 
 Deterministic allocator: ordered free list (best fit) + forced coalescing. See ../README.md.
 
@@ -18,7 +18,7 @@ Goldilocks, plus the buses), written per operation instead of with selectors. Ex
 witness. reference() is an independent best-fit allocator: the addresses of an accepted trace must
 be exactly its addresses. oracle() checks what the guest needs (disjoint live blocks, calloc zeroed).
 
-Run: python3 allocator_det_model.py
+Run: python3 allocator_canonical_model.py
 """
 import bisect
 import random

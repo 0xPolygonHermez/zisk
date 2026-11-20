@@ -53,7 +53,7 @@ This is sound as long as the guest program is correct. If the guest has a memory
 a use after free), a malicious prover can arrange the heap so that the bug hits the data it wants.
 The result of a program that depends on pointer values is also not unique.
 
-### `AllocatorDet`: nothing to choose
+### `AllocatorCanonical`: nothing to choose
 
 The address returned by each `alloc` is fully determined by the previous operations:
 
@@ -71,7 +71,7 @@ A prover cannot shape the heap, so a guest bug behaves the same for every prover
 
 Measured with `proofman-setup stats` on the standalone PIL, one instance of 2^22 rows:
 
-| | `Allocator` | `AllocatorDet` |
+| | `Allocator` | `AllocatorCanonical` |
 |---|---|---|
 | Witness columns | 25 | 81 |
 | Committed columns (base field, all stages) | 55 | 156 |
@@ -107,7 +107,7 @@ sound:
 3. **Unique addresses.** Sizes are not zero, so two live blocks never share an address and
    `dealloc(addr)` identifies one block.
 
-`AllocatorDet` adds, to each free token, the key of the next free block in the ordered list, and
+`AllocatorCanonical` adds, to each free token, the key of the next free block in the ordered list, and
 to every token the size of the block just below it. With the first the precompile proves that
 nothing smaller would fit; with the second it finds both neighbours of a block and proves whether
 each one is free.
@@ -118,9 +118,9 @@ unprovable; it never changes its result.
 
 ## Files
 
-- `pil/allocator.pil`, `pil/allocator_det.pil`: the two variants.
+- `pil/allocator.pil`, `pil/allocator_canonical.pil`: the two variants.
 - `pil/allocator_common.pil`: opcodes, bus ids and token types.
 - `model/`: Python models with an honest executor, a re-implementation of the constraints and a
-  set of attacks. `python3 model/allocator_model.py`, `python3 model/allocator_det_model.py`.
+  set of attacks. `python3 model/allocator_model.py`, `python3 model/allocator_canonical_model.py`.
 - `test/allocator_test.pil`: harness to compile both variants standalone.
 - `AGENTS.md`: implementation notes for the executor and for formal verification.

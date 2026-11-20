@@ -6,14 +6,14 @@
 //                                       decides which free block is used and when free blocks
 //                                       are joined.
 //
-//   AllocatorDet   (allocator_det.pil)  Deterministic: best fit over an ordered free list and
+//   AllocatorCanonical   (allocator_canonical.pil)  Deterministic: best fit over an ordered free list and
 //                                       forced coalescing. The prover has no decision to take,
 //                                       so it can't shape the heap to exploit a bug of the guest.
 //
 // Both validate the same main operations, only one of them must be instantiated.
 
 const int ALLOC_BUS_ID = 8300;         // tokens of Allocator
-const int ALLOC_DET_BUS_ID = 8301;     // tokens of AllocatorDet (different layout)
+const int ALLOC_CANONICAL_BUS_ID = 8301;     // tokens of AllocatorCanonical (different layout)
 
 const int OP_ALLOC_CREATE_CLEAN = 0xDB;
 const int OP_ALLOC_CREATE_DIRTY = 0xDC;     // must be OP_ALLOC_CREATE_CLEAN + 1
