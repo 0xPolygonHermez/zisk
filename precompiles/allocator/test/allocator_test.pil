@@ -1,0 +1,12 @@
+require "std_direct.pil"
+require "operations.pil"
+require "opids.pil"
+require "config.pil"
+require "allocator/pil/allocator.pil"
+require "allocator/pil/allocator_det.pil"
+
+airgroup AllocTest {
+    Allocator(N: 2**22);
+    AllocatorDet(N: 2**22);
+    allocator_det_init();
+}

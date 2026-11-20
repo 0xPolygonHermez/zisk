@@ -1,0 +1,273 @@
+require "std_permutation.pil"
+require "std_range_check.pil"
+require "operations.pil"
+require "opids.pil"
+require "config.pil"
+require "allocator/pil/allocator_common.pil"
+
+// Allocator
+//
+// Validates the operations of a heap allocator. The allocator state is not stored in any trace, it
+// lives in a private multiset bus (ALLOC_BUS_ID) as a set of tokens:
+//
+//      FREE (addr, size, step, dirty)    free block [addr, addr + size), available since step.
+//                                        dirty = 0 guarantees that all its bytes are zero.
+//      USE  (addr, size, step)           block handed out by the alloc/calloc of that step.
+//
+// Each row is an independent operation (there are no constraints between rows) that consumes
+// (assumes) and produces (proves) tokens:
+//
+//      create_clean/dirty (addr, size)   =>             + FREE(addr, size, step, dirty)         [wbu]
+//
+//      alloc/calloc (size) => free_addr  => - FREE(free_addr, free_size, free_step, free_dirty)
+//                                           + USE (free_addr, size, step)                       [wbf]
+//                                           + FREE(free_addr + size, free_size - size, step,
+//                                                  free_dirty)                                  [wbu]
+//                                           calloc and free_dirty: memset(free_addr, 0, size)
+//
+//      dealloc (free_addr)               => - USE (free_addr, free_size, free_step)
+//                                           + FREE(free_addr, free_size, step, 1)               [wbu]
+//
+//      join (internal, no main operation)=> - FREE(addr, size, step, dirty)
+//                                           - FREE(addr + size, free_size, free_step, free_dirty)
+//                                           + FREE(addr, size + free_size, max(step, free_step),
+//                                                  dirty | free_dirty)
+//
+//      [wbu] only if will_be_use == 1     [wbf] only if will_be_freed == 1
+//
+// Soundness rests on three facts, all of them enforced here:
+//
+//  1. Conservation: every operation produces blocks that are inside the blocks it consumes, and
+//     the pieces it produces don't overlap each other. Only create produces without consuming.
+//
+//  2. Causality: a consumed token must be strictly older than the consumer (free_step < step),
+//     and the token produced by a join carries the newest of the two steps. Without it the bus,
+//     which has no notion of time, would accept cycles (an alloc consuming the FREE that a later
+//     dealloc of that very alloc produces) that create blocks out of nothing.
+//
+//  3. Uniqueness of USE by address: alloc sizes are non-zero, so two live USE tokens can't share
+//     an address and the size that dealloc takes as a witness is the only one that balances.
+//
+// A will_be_use/will_be_freed flag at 0 only drops a token, which leaks memory but never makes
+// two live blocks overlap. In the same way, out_dirty may be 1 for a clean block (it only costs
+// a memset later), but never 0 for a dirty one.
+//
+// Assumptions on the caller (ziskos), NOT verified here in this first iteration:
+//  - created areas don't overlap each other nor any other memory in use, and a create_clean area
+//    is really zeroed,
+//  - addresses and sizes of the created areas are multiples of 8 (the sizes of alloc/calloc are
+//    verified here, so then every address returned is aligned to 8),
+//  - addr + size of a created area fits in the address space.
+
+airtemplate Allocator(int N = 2**20) {
+
+    // Only ranges that other airs already use (16 and 24 bits), to not add new range tables.
+    const int SIZE_CHUNK_BITS = 16;
+    const int STEP_CHUNK_BITS[2] = [16, 24];
+    assert(STEP_CHUNK_BITS[0] + STEP_CHUNK_BITS[1] >= MAIN_STEP_BITS);
+
+    // Operation selectors, at most one per row. A row without operation does nothing.
+
+    col witness bits(1) sel_create;
+    col witness bits(1) sel_alloc;
+    col witness bits(1) sel_dealloc;
+    col witness bits(1) sel_join;
+
+    const expr sel_op = sel_create + sel_alloc + sel_dealloc;
+    const expr sel = sel_op + sel_join;
+
+    sel_create * (1 - sel_create) === 0;
+    sel_alloc * (1 - sel_alloc) === 0;
+    sel_dealloc * (1 - sel_dealloc) === 0;
+    sel_join * (1 - sel_join) === 0;
+    sel * (1 - sel) === 0;
+
+    // Flags
+
+    col witness bits(1) calloc;             // alloc: the block must be returned zeroed
+    col witness bits(1) memset;             // alloc: calloc over a dirty block
+    col witness bits(1) will_be_use;        // the FREE produced by this row will be consumed
+    col witness bits(1) will_be_freed;      // alloc: the block will be deallocated
+    col witness bits(1) free_is_newer;      // join: free_step > step (if not, step > free_step)
+
+    calloc * (1 - calloc) === 0;
+    will_be_use * (1 - will_be_use) === 0;
+    will_be_freed * (1 - will_be_freed) === 0;
+    free_is_newer * (1 - free_is_newer) === 0;
+
+    calloc * (1 - sel_alloc) === 0;
+    will_be_freed * (1 - sel_alloc) === 0;
+    free_is_newer * (1 - sel_join) === 0;
+    will_be_use * (1 - sel) === 0;
+
+    // A join always produces its token: it's an internal operation, it's done only to use it.
+    sel_join * (1 - will_be_use) === 0;
+
+    // Block (addr, size, step, dirty)
+    //
+    //   create:  the new area, step is the main step.
+    //   alloc:   size is the requested size, step is the main step. addr and dirty unused.
+    //   dealloc: step is the main step. addr, size and dirty unused.
+    //   join:    the lower of the two FREE tokens to join.
+
+    col witness bits(ADDR_BITS + 1) addr;
+    col witness bits(32) size;
+    col witness bits(MAIN_STEP_BITS) step;
+    col witness bits(1) dirty;
+
+    dirty * (1 - dirty) === 0;
+
+    // Free block (free_addr, free_size, free_step, free_dirty)
+    //
+    //   alloc:   the FREE token from which the block is taken, from its beginning.
+    //   dealloc: the USE token to release, free_addr is the address given by the main.
+    //   join:    the upper of the two FREE tokens to join.
+
+    col witness bits(ADDR_BITS + 1) free_addr;
+    col witness bits(32) free_size;
+    col witness bits(1) free_dirty;
+
+    free_dirty * (1 - free_dirty) === 0;
+    sel_dealloc * free_dirty === 0;
+
+    // Causality. free_step isn't a column, it's defined from step and a range checked distance:
+    //
+    //   free_is_newer = 0:  free_step = step - 1 - step_diff   ==>  free_step < step
+    //   free_is_newer = 1:  free_step = step + 1 + step_diff   ==>  free_step > step   (only join)
+    //
+    // In create rows the distance isn't used.
+
+    col witness bits(STEP_CHUNK_BITS[0]) step_diff_0;
+    col witness bits(STEP_CHUNK_BITS[1]) step_diff_1;
+
+    range_check(expression: step_diff_0, min: 0, max: 2**STEP_CHUNK_BITS[0] - 1);
+    range_check(expression: step_diff_1, min: 0, max: 2**STEP_CHUNK_BITS[1] - 1);
+
+    const expr step_distance = 1 + step_diff_0 + step_diff_1 * 2**STEP_CHUNK_BITS[0];
+    const expr free_step = step - (1 - 2 * free_is_newer) * step_distance;
+    const expr newest_step = step + free_is_newer * step_distance;
+
+    // alloc: size <= free_size, and if the rest is produced it isn't empty.
+    //
+    //   free_size = size + will_be_use + rest      with rest in [0, 2**32)
+    //
+    // There is no use_all flag: producing the rest (will_be_use) is the only decision, and an
+    // unproduced rest (because size == free_size or because nobody will use it) is just dropped.
+
+    col witness bits(SIZE_CHUNK_BITS) rest[2];
+
+    range_check(expression: rest[0], min: 0, max: 2**SIZE_CHUNK_BITS - 1);
+    range_check(expression: rest[1], min: 0, max: 2**SIZE_CHUNK_BITS - 1);
+
+    sel_alloc * (free_size - size - will_be_use - rest[0] - rest[1] * 2**SIZE_CHUNK_BITS) === 0;
+
+    // alloc: the requested size is a non-zero multiple of 8 that fits in the address space.
+    //
+    //   size = (size_chunks + 1) * 8               with size_chunks in [0, 2**32)
+    //
+    // With size == 0 the USE token would share its address with the USE token of the next alloc
+    // over the same block, and dealloc could release the wrong one.
+
+    col witness bits(SIZE_CHUNK_BITS) size_chunks[2];
+
+    range_check(expression: size_chunks[0], min: 0, max: 2**SIZE_CHUNK_BITS - 1);
+    range_check(expression: size_chunks[1], min: 0, max: 2**SIZE_CHUNK_BITS - 1);
+
+    sel_alloc * (size - (size_chunks[0] + size_chunks[1] * 2**SIZE_CHUNK_BITS + 1) * 8) === 0;
+
+    // FREE token produced by the row (out_addr, out_size, out_step, out_dirty)
+
+    col witness bits(ADDR_BITS + 1) out_addr;
+    col witness bits(32) out_size;
+    col witness bits(1) out_dirty;
+
+    out_dirty * (1 - out_dirty) === 0;
+
+    sel_create * (out_addr - addr) === 0;
+    sel_create * (out_size - size) === 0;
+
+    sel_alloc * (out_addr - free_addr - size) === 0;
+    sel_alloc * (out_size - free_size + size) === 0;
+
+    sel_dealloc * (out_addr - free_addr) === 0;
+    sel_dealloc * (out_size - free_size) === 0;
+
+    // join: both blocks must be adjacent, (addr, size) is the lower one.
+    sel_join * (free_addr - addr - size) === 0;
+    sel_join * (out_addr - addr) === 0;
+    sel_join * (out_size - size - free_size) === 0;
+
+    // The produced block is dirty if any of the blocks it comes from is dirty, and always after
+    // a dealloc. These constraints don't need the selector because the unused dirty flags are
+    // boolean and the honest prover leaves them at zero.
+    dirty * (1 - out_dirty) === 0;
+    free_dirty * (1 - out_dirty) === 0;
+    sel_dealloc * (1 - out_dirty) === 0;
+
+    // BUS: ALLOC (tokens)
+    // --------------------------------------------------------------------------------
+    // All the selectors are boolean: a non boolean selector would turn an assume into a prove.
+
+    // alloc:   - FREE(free_addr, free_size, free_step, free_dirty)
+    // dealloc: - USE (free_addr, free_size, free_step, 0)
+    // join:    - FREE(free_addr, free_size, free_step, free_dirty)
+    permutation_assumes(ALLOC_BUS_ID, [ALLOC_TOKEN_FREE + sel_dealloc * (ALLOC_TOKEN_USE - ALLOC_TOKEN_FREE),
+                                       free_addr,
+                                       free_size,
+                                       free_step,
+                                       free_dirty], sel: sel_alloc + sel_dealloc + sel_join, sel_is_binary: 1);
+
+    // join:    - FREE(addr, size, step, dirty)
+    permutation_assumes(ALLOC_BUS_ID, [ALLOC_TOKEN_FREE, addr, size, step, dirty],
+                        sel: sel_join, sel_is_binary: 1);
+
+    // create:  + FREE(addr, size, step, dirty)
+    // alloc:   + FREE(free_addr + size, free_size - size, step, free_dirty)
+    // dealloc: + FREE(free_addr, free_size, step, 1)
+    // join:    + FREE(addr, size + free_size, max(step, free_step), dirty | free_dirty)
+    permutation_proves(ALLOC_BUS_ID, [ALLOC_TOKEN_FREE, out_addr, out_size, newest_step, out_dirty],
+                       sel: will_be_use, sel_is_binary: 1);
+
+    // alloc:   + USE(free_addr, size, step, 0)
+    permutation_proves(ALLOC_BUS_ID, [ALLOC_TOKEN_USE, free_addr, size, step, 0],
+                       sel: will_be_freed, sel_is_binary: 1);
+
+    // BUS: ALLOCATOR ===> MAIN
+    // --------------------------------------------------------------------------------
+    // OP_ALLOC_CREATE_CLEAN  (addr, 0, size, 0,         0, 0, 0, main_step)
+    // OP_ALLOC_CREATE_DIRTY  (addr, 0, size, 0,         0, 0, 0, main_step)
+    // OP_ALLOC_ALLOC         (size, 0,    0, 0, free_addr, 0, 0, main_step)
+    // OP_ALLOC_CALLOC        (size, 0,    0, 0, free_addr, 0, 0, main_step)
+    // OP_ALLOC_DEALLOC       (addr, 0,    0, 0,         0, 0, 0, main_step)
+    //
+    // The high chunks are zero: a size or an address of more than 32 bits can't be proved, and it
+    // can't alias a small one modulo the field either.
+
+    proves_operation(op: sel_create * (OP_ALLOC_CREATE_CLEAN + dirty) +
+                         sel_alloc * (OP_ALLOC_ALLOC + calloc) +
+                         sel_dealloc * OP_ALLOC_DEALLOC,
+                     a: [sel_create * addr + sel_alloc * size + sel_dealloc * free_addr, 0],
+                     b: [sel_create * size, 0],
+                     c: [sel_alloc * free_addr, 0],
+                     flag: 0,
+                     main_step: step,
+                     mul: sel_op);
+
+    // BUS: ALLOCATOR ===> DMA
+    // --------------------------------------------------------------------------------
+    // A calloc over a dirty block launches the memset as the main would do:
+    //
+    // OP_DMA_XMEMSET  (dst, 0, count, 0, dst, 0, 0, main_step, value)
+
+    memset === calloc * free_dirty;
+
+    assumes_operation(op: OP_DMA_XMEMSET,
+                      a: [free_addr, 0],
+                      b: [size, 0],
+                      c: [free_addr, 0],
+                      flag: 0,
+                      main_step: step,
+                      extended_arg: 0,
+                      sel: memset,
+                      sel_is_binary: 1);
+}
