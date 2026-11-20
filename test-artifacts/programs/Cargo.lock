@@ -7188,7 +7188,7 @@ dependencies = [
 
 [[package]]
 name = "ziskasm"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "riscv",
  "zisk-core",

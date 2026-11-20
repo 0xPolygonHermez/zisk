@@ -20,9 +20,16 @@
 //! the `map_pc_*` branch table of the assembly backend.  This means the generated code is GCC/Clang
 //! specific, which is no new restriction: the emulator is already built with gcc.
 //!
-//! Scope: only `AsmGenerationMethod::AsmFast` is implemented.  The trace-generating methods need the
-//! mem reads / mem op bookkeeping, which is deliberately left for a later step; asking for one of
-//! them panics rather than silently emitting a program that produces no trace.
+//! Scope: `AsmGenerationMethod::AsmFast` and `AsmGenerationMethod::AsmMinimalTraces` are
+//! implemented.  The remaining methods (ROM histogram, mem op) panic rather than silently emitting a
+//! program that produces no trace.
+//!
+//! The minimal trace is written exactly as the assembly backend writes it, because the same
+//! consumers read it: the chunk layout and the order of the mem reads are a contract, not an
+//! implementation detail, so anything that reads memory here records the same words, in the same
+//! order, as its assembly counterpart.  Two things are borrowed from the runtime instead of being
+//! written again: the DMA operations, whose trace encoding lives in hand-written assembly and is
+//! reached through the trampolines below, and `_chunk_done()` / `_realloc_trace()`.
 
 use std::path::Path;
 
@@ -42,11 +49,31 @@ use ziskos::zisklib::FCALL_INPUT_READY_ID;
 /// Number of ZisK registers, i.e. the 32 RISC-V registers plus the ZisK-specific ones
 const ZISK_REGS: u64 = 35;
 
+/// Size, in 8-byte words, of the fixed part of a minimal trace chunk, i.e. everything that comes
+/// before its mem reads.  See the layout in `preamble_minimal_trace()`.
+const ZISK_CHUNK_HEADER: u64 = 41;
+
+/// Registers whose value a minimal trace chunk records as part of the state it starts from: 1 to 33.
+/// Register 0 is always zero, and the ZisK-specific registers above 33 are not part of that state.
+const ZISK_CHUNK_START_REGS: u64 = 33;
+
 /// Address of the counter of input bytes written so far, in the control input shared memory.
 ///
 /// The client or the server writes it as the input data arrives, so this code only ever reads it.
 /// The same literal address is used by the assembly backend, see its `mem_input_written_address`.
 const INPUT_WRITTEN_ADDR: u64 = 0x7000_0010;
+
+/// The address of a memory access, as far as the generator knows it.
+///
+/// What it is used for is deciding what the minimal trace has to record, which depends on the
+/// alignment of the address: when the address is known at generation time, so is its alignment, and
+/// the check disappears from the generated code.
+enum MtAddr {
+    /// Known at generation time
+    Const(u64),
+    /// Only known at run time; the C expression that reads it
+    Dynamic(String),
+}
 
 /// What is statically known about the flag produced by an operation.
 ///
@@ -121,6 +148,11 @@ pub struct ZiskCContext {
 impl ZiskCContext {
     pub fn fast(&self) -> bool {
         self.mode.is_fast()
+    }
+
+    /// True if the generated program writes the minimal trace
+    fn minimal_trace(&self) -> bool {
+        self.mode.is_minimal_trace()
     }
 
     /// True if the ROM is split into several C functions instead of one
@@ -232,13 +264,13 @@ impl ZiskRom2C {
         chunk_size: u64,
         print_pc: bool,
     ) {
-        // Only the fast method is implemented so far.  Refuse the rest instead of emitting a program
-        // that runs but silently produces no trace.
-        if !generation_method.is_fast() {
+        // The ROM histogram and mem op methods are not implemented yet.  Refuse them instead of
+        // emitting a program that runs but silently produces no trace.
+        if !generation_method.is_fast() && !generation_method.is_minimal_trace() {
             panic!(
                 "ZiskRom2C::save_to_c() generation_method={generation_method:?} is not implemented \
-                 by the C backend yet; only AsmFast is.  Use ZiskRom2Asm for the trace-generating \
-                 methods."
+                 by the C backend yet; only AsmFast and AsmMinimalTraces are.  Use ZiskRom2Asm for \
+                 the other methods."
             );
         }
         assert!(
@@ -325,10 +357,18 @@ impl ZiskRom2C {
 
         if !ctx.chunked() {
             *code += "\nemu_end:\n";
-            *code += &ctx.full_line_comment(
-                "Publish the step counter so that the caller can read it".to_string(),
-            );
-            *code += "\tMEM_STEP = step;\n";
+            if ctx.minimal_trace() {
+                // In this method the step counter is a count down to the end of the chunk, and
+                // MEM_STEP is the total, which every chunk boundary has already updated
+                *code += &ctx.full_line_comment(
+                    "MEM_STEP was published by the last chunk boundary".to_string(),
+                );
+            } else {
+                *code += &ctx.full_line_comment(
+                    "Publish the step counter so that the caller can read it".to_string(),
+                );
+                *code += "\tMEM_STEP = step;\n";
+            }
             *code += "\treturn;\n";
             *code += "}\n";
         } else {
@@ -466,8 +506,11 @@ impl ZiskRom2C {
 
         // The globals come first: some of the helpers below read the fcall context
         Self::preamble_globals(ctx, code);
-        Self::preamble_helpers(code);
         Self::preamble_externs(ctx, code);
+        Self::preamble_helpers(code);
+        if ctx.minimal_trace() {
+            Self::preamble_minimal_trace(ctx, code);
+        }
         Self::preamble_getters(ctx, code, rom);
         if ctx.chunked() {
             Self::preamble_chunked(ctx, code, chunks);
@@ -491,6 +534,10 @@ impl ZiskRom2C {
         *code += "   free to keep it all in machine registers. */\n";
         *code += "typedef struct {\n";
         *code += "\tuint64_t a, b, c, flag, step, pc;\n";
+        if ctx.minimal_trace() {
+            *code += "\tuint64_t *mem_reads;\n";
+            *code += "\tuint64_t mem_reads_size;\n";
+        }
         *code += &format!("\tuint64_t reg[{ZISK_REGS}];\n");
         *code += "} ZiskState;\n\n";
 
@@ -632,6 +679,167 @@ impl ZiskRom2C {
         *code += "\treturn dst;\n}\n\n";
     }
 
+    /*******************/
+    /* MINIMAL TRACE   */
+    /*******************/
+
+    /// Emits everything the minimal trace needs that is not per-instruction: the chunk layout, the
+    /// chunk open and close operations, the helpers that record a memory access, and the trampolines
+    /// that reach the runtime's DMA routines
+    fn preamble_minimal_trace(ctx: &mut ZiskCContext, code: &mut String) {
+        *code += "/**********************/\n";
+        *code += "/*   MINIMAL TRACE    */\n";
+        *code += "/**********************/\n\n";
+
+        *code += "/* One chunk of the minimal trace, in 8-byte words:\n";
+        *code += "     [0]      start pc\n";
+        *code += "     [1]      start sp\n";
+        *code += "     [2]      start c\n";
+        *code += "     [3]      start step\n";
+        *code += "     [4..36]  start reg[1] .. reg[33]\n";
+        *code += "     [37]     last c\n";
+        *code += "     [38]     end\n";
+        *code += "     [39]     steps executed in this chunk\n";
+        *code += "     [40]     mem reads size\n";
+        *code += "     [41...]  mem reads\n";
+        *code +=
+            "   The chunks are written back to back, so the next one starts right after the mem\n";
+        *code += "   reads of this one. */\n";
+        *code += &format!("#define ZISK_CHUNK_HEADER {ZISK_CHUNK_HEADER}\n\n");
+
+        // The registers the chunk start state records: 1 to 33.  Register 0 is always zero and the
+        // ZisK-specific ones above 33 are not part of the state a chunk resumes from.
+        *code +=
+            "/* Opens a chunk: counts it, writes the state it starts from, and returns where its\n";
+        *code += "   mem reads go */\n";
+        *code +=
+            "static uint64_t *zisk_chunk_start(uint64_t pc, uint64_t c, const uint64_t *reg) {\n";
+        *code += "\tZM64(MEM_TRACE_ADDRESS) += 1;\n";
+        *code += "\tuint64_t *chunk = (uint64_t *)(uintptr_t)MEM_CHUNK_ADDRESS;\n";
+        *code += "\tchunk[0] = pc;\n";
+        *code += "\tchunk[1] = MEM_SP;\n";
+        *code += "\tchunk[2] = c;\n";
+        *code += "\tchunk[3] = MEM_STEP;\n";
+        *code += "\tMEM_CHUNK_START_STEP = MEM_STEP;\n";
+        *code += &format!(
+            "\tfor (int i = 1; i < {}; i++) chunk[3 + i] = reg[i];\n",
+            ZISK_CHUNK_START_REGS + 1
+        );
+        *code +=
+            "\t/* All ones is what tells the consumer that this chunk is not complete yet */\n";
+        *code += "\tchunk[40] = 0xFFFFFFFFFFFFFFFFULL;\n";
+        *code += "\treturn chunk + ZISK_CHUNK_HEADER;\n";
+        *code += "}\n\n";
+
+        *code +=
+            "/* Closes the current chunk: writes the state it ended at and its size, advances to\n";
+        *code += "   the next chunk, grows the trace if it is running short, and hands the chunk to the\n";
+        *code +=
+            "   runtime.  steps_left is what is left of the chunk's step count down, which is 0\n";
+        *code += "   for every chunk but the last one. */\n";
+        *code +=
+            "static void zisk_chunk_end(uint64_t c, uint64_t mem_reads_size, uint64_t steps_left) {\n";
+        *code += "\tMEM_STEP += chunk_size - steps_left;\n";
+        *code += "\tuint64_t *chunk = (uint64_t *)(uintptr_t)MEM_CHUNK_ADDRESS;\n";
+        *code += "\tchunk[37] = c;\n";
+        *code += "\tchunk[38] = MEM_END;\n";
+        *code += "\tchunk[39] = MEM_STEP - MEM_CHUNK_START_STEP;\n";
+        *code += "\tchunk[40] = mem_reads_size;\n";
+        *code += "\tMEM_CHUNK_ADDRESS =\n";
+        *code += "\t\t(uint64_t)(uintptr_t)(chunk + ZISK_CHUNK_HEADER + mem_reads_size);\n";
+        *code += "\tif (MEM_CHUNK_ADDRESS >= trace_address_threshold) _realloc_trace();\n";
+        *code += "\t_chunk_done();\n";
+        *code += "}\n\n";
+
+        *code +=
+            "/* Records the two aligned words that an unaligned 8-byte access reads or writes */\n";
+        *code += "static inline uint64_t zisk_mt_8(uint64_t *mr, uint64_t size, uint64_t addr) {\n";
+        *code += "\tuint64_t prev = addr & ~(uint64_t)7;\n";
+        *code += "\tmr[size] = ZM64(prev);\n";
+        *code += "\tmr[size + 1] = ZM64(prev + 8);\n";
+        *code += "\treturn size + 2;\n";
+        *code += "}\n\n";
+
+        *code +=
+            "/* Records the aligned word, or the two of them, that a narrow (1, 2 or 4 byte)\n";
+        *code += "   access at addr falls into */\n";
+        *code +=
+            "static inline uint64_t zisk_mt_narrow(uint64_t *mr, uint64_t size, uint64_t addr,\n";
+        *code += "\t\tuint64_t width) {\n";
+        *code += "\tuint64_t prev = addr & ~(uint64_t)7;\n";
+        *code += "\tuint64_t next = (addr + width - 1) & ~(uint64_t)7;\n";
+        *code += "\tmr[size] = ZM64(prev);\n";
+        *code += "\tif (next == prev) return size + 1;\n";
+        *code += "\tmr[size + 1] = ZM64(next);\n";
+        *code += "\treturn size + 2;\n";
+        *code += "}\n\n";
+
+        Self::preamble_dma_trampolines(ctx, code);
+    }
+
+    /// Emits the trampolines that reach the runtime's DMA routines.
+    ///
+    /// A DMA operation writes a variable number of mem reads, encoded together with the operation's
+    /// alignment metadata by a table the runtime owns (`emulator-asm/src/dma`).  Rather than write
+    /// that encoding a second time here, where it could drift from the one the trace consumers
+    /// expect, the routines themselves are called.  They take the mem reads buffer in r12/r13 and the
+    /// remaining step count in r14, which the C ABI knows nothing about, so each one gets the wrapper
+    /// its own documentation asks for: move the arguments where it wants them, preserve the registers
+    /// the C ABI expects to survive a call, and hand back the mem reads index it advanced.
+    ///
+    /// The number of pushes is even on purpose: these routines save XMM registers with `movaps`,
+    /// which needs the stack alignment that only follows from an even number of pushes on top of the
+    /// alignment the C ABI guarantees at a call.
+    fn preamble_dma_trampolines(_ctx: &mut ZiskCContext, code: &mut String) {
+        // (C name, assembly routine, whether it returns a value besides the mem reads index)
+        const TRAMPOLINES: [(&str, &str, bool); 4] = [
+            ("zisk_dma_memcpy_mt", "direct_dma_memcpy_mtrace_with_count_check", false),
+            ("zisk_dma_memcmp_mt", "direct_dma_memcmp_mtrace", true),
+            ("zisk_dma_inputcpy_mt", "direct_dma_inputcpy_mtrace_with_count_check", false),
+            ("zisk_dma_memset_mt", "direct_dma_xmemset_mtrace", false),
+        ];
+
+        *code += "/* The DMA operations keep the minimal trace themselves, in the runtime's assembly */\n";
+        *code += "typedef struct { uint64_t value, mem_reads_size; } ZiskDmaResult;\n\n";
+        for (name, routine, returns_value) in TRAMPOLINES {
+            if returns_value {
+                *code += &format!(
+                    "/* {routine}: returns its result and the mem reads index it advanced */\n"
+                );
+                *code += &format!("extern ZiskDmaResult {name}(uint64_t dst, uint64_t src,\n");
+            } else {
+                *code += &format!("/* {routine}: returns the mem reads index it advanced */\n");
+                *code += &format!("extern uint64_t {name}(uint64_t dst, uint64_t src,\n");
+            }
+            *code +=
+                "\t\tuint64_t count, uint64_t *mem_reads, uint64_t mem_reads_size, uint64_t steps_left);\n";
+        }
+        *code += "\n";
+
+        *code += "asm(\n";
+        *code += "\t\".text\\n\"\n";
+        for (name, routine, returns_value) in TRAMPOLINES {
+            *code += &format!("\t\"{name}:\\n\"\n");
+            *code += "\t\"\\tpush %rbp\\n\\tpush %rbx\\n\\tpush %r12\\n\"\n";
+            *code += "\t\"\\tpush %r13\\n\\tpush %r14\\n\\tpush %r15\\n\"\n";
+            *code += "\t\"\\tmov %rcx, %r12\\n\"\n";
+            *code += "\t\"\\tmov %r8, %r13\\n\"\n";
+            *code += "\t\"\\tmov %r9, %r14\\n\"\n";
+            *code += &format!("\t\"\\tcall {routine}\\n\"\n");
+            // The mem reads index comes back in r13, as the second return value when the routine
+            // already uses rax for its own result
+            if returns_value {
+                *code += "\t\"\\tmov %r13, %rdx\\n\"\n";
+            } else {
+                *code += "\t\"\\tmov %r13, %rax\\n\"\n";
+            }
+            *code += "\t\"\\tpop %r15\\n\\tpop %r14\\n\\tpop %r13\\n\"\n";
+            *code += "\t\"\\tpop %r12\\n\\tpop %rbx\\n\\tpop %rbp\\n\"\n";
+            *code += "\t\"\\tret\\n\"\n";
+        }
+        *code += ");\n\n";
+    }
+
     /// Emits the global variables the C runtime reads, matching the `.comm` symbols of the assembly
     /// backend one for one
     fn preamble_globals(_ctx: &mut ZiskCContext, code: &mut String) {
@@ -688,7 +896,23 @@ impl ZiskRom2C {
         *code += "extern int _opcode_bls12_381_complex_mul(uint64_t *address);\n";
         *code += "extern uint64_t _opcode_add256(uint64_t *address);\n";
         *code += "extern int _opcode_fcall(void *ctx);\n";
-        *code += "extern int _wait_for_input_avail(uint64_t required_input_bytes);\n\n";
+        *code += "extern int _wait_for_input_avail(uint64_t required_input_bytes);\n";
+        if ctx.minimal_trace() {
+            *code += "extern void _chunk_done(void);\n";
+            *code += "extern void _realloc_trace(void);\n";
+        }
+        *code += "\n";
+
+        if ctx.minimal_trace() {
+            // The runtime owns these: it decides how long a chunk is, when to stop, and where the
+            // trace lives, and it may move the threshold when it grows the trace.  They are read on
+            // every chunk boundary, so they are read from memory rather than cached in a local.
+            *code += "/* Runtime-provided configuration (see emulator-asm/src/globals.c) */\n";
+            *code += "extern uint64_t chunk_size;\n";
+            *code += "extern uint64_t max_steps;\n";
+            *code += "extern uint64_t trace_address;\n";
+            *code += "extern uint64_t trace_address_threshold;\n\n";
+        }
     }
 
     /// Emits the configuration getters the C main program queries to check that the generated code
@@ -696,7 +920,15 @@ impl ZiskRom2C {
     fn preamble_getters(ctx: &mut ZiskCContext, code: &mut String, rom: &ZiskRom) {
         *code +=
             &format!("uint64_t get_rom_length(void) {{ return 0x{:08x}ULL; }}\n", rom.insts.len());
-        *code += &format!("uint64_t get_gen_method(void) {{ return {}ULL; }}\n", ctx.mode as u64);
+        // These are the values the C main program's GenMethod enum uses, which are not the ZisK
+        // discriminants: see emulator-asm/src/globals.hpp
+        let gen_method: u64 = match ctx.mode {
+            AsmGenerationMethod::AsmFast => 0,
+            AsmGenerationMethod::AsmMinimalTraces => 1,
+            AsmGenerationMethod::AsmRomHistogram => 2,
+            AsmGenerationMethod::AsmMemOp => 7,
+        };
+        *code += &format!("uint64_t get_gen_method(void) {{ return {gen_method}ULL; }}\n");
         *code += &format!(
             "uint64_t get_precompile_results(void) {{ return {}ULL; }}\n\n",
             u64::from(ctx.precompile_results.enabled())
@@ -716,13 +948,54 @@ impl ZiskRom2C {
         );
         *code += "\tuint64_t a = 0, b = 0, c = 0, flag = 0;\n";
         *code += "\tuint64_t step = 0, pc = 0, addr = 0;\n";
-        *code += &format!("\tuint64_t reg[{ZISK_REGS}] = {{0}};\n\n");
+        *code += &format!("\tuint64_t reg[{ZISK_REGS}] = {{0}};\n");
+        if ctx.minimal_trace() {
+            *code += &ctx.full_line_comment(
+                "Where the mem reads of the chunk being written go, and how many there are so far"
+                    .to_string(),
+            );
+            *code += "\tuint64_t *mem_reads = 0;\n";
+            *code += "\tuint64_t mem_reads_size = 0;\n";
+        }
+        *code += "\n";
 
         Self::branch_table(ctx, code, rom);
         Self::emit_state_init(ctx, code);
 
         // Silence "set but not used" for the locals a ROM may never happen to need
         *code += "\t(void)a; (void)b; (void)flag; (void)addr; (void)pc;\n";
+
+        if ctx.minimal_trace() {
+            // Open the first chunk at the first instruction of the ROM.  Everything below is
+            // generated in ascending program counter order, so that is where execution starts.
+            let first_pc = rom.sorted_pc_list.first().copied().unwrap_or(ROM_ENTRY);
+            *code += &format!(
+                "\tpc = {};{}\n",
+                u64_lit(first_pc),
+                ctx.comment_str("start at the first instruction of the ROM")
+            );
+            Self::emit_first_chunk_start(ctx, code, "pc", "c", "reg", "");
+        }
+    }
+
+    /// Emits the opening of the first chunk of the minimal trace.  The chunk counter is reset here
+    /// rather than in `zisk_chunk_start()`, which increments it.
+    fn emit_first_chunk_start(
+        ctx: &mut ZiskCContext,
+        code: &mut String,
+        pc: &str,
+        c: &str,
+        reg: &str,
+        state: &str,
+    ) {
+        *code += &ctx.full_line_comment("Open the first chunk of the minimal trace".to_string());
+        *code += &format!("\tZM64(MEM_TRACE_ADDRESS) = 0;{}\n", ctx.comment_str("no chunks yet"));
+        *code += &format!("\t{state}mem_reads = zisk_chunk_start({pc}, {c}, {reg});\n");
+        *code += &format!("\t{state}mem_reads_size = 0;\n");
+        *code += &format!(
+            "\t{state}step = chunk_size;{}\n",
+            ctx.comment_str("step counts down to the end of the chunk")
+        );
     }
 
     /// Emits the initialization of the state the C runtime observes.  Shared by both modes: the
@@ -740,6 +1013,22 @@ impl ZiskRom2C {
         *code += &format!("\tfcall_ctx[{FCALL_RESULT_CAPACITY}] = {FCALL_RESULT_LENGTH};\n");
         *code += &format!("\tfcall_ctx[{FCALL_RESULT_SIZE}] = 0;\n");
         *code += &format!("\tfcall_ctx[{FCALL_RESULT_GOT}] = 0;\n");
+
+        if ctx.minimal_trace() {
+            // The runtime keeps a 32-byte header at the start of the trace (version, exit code,
+            // allocated size, used size) that it writes itself, so the chunks start after it: first
+            // the number of chunks, then the chunks themselves.
+            *code += &ctx.full_line_comment("Minimal trace initialization".to_string());
+            *code += &format!(
+                "\tMEM_TRACE_ADDRESS = trace_address + 0x20;{}\n",
+                ctx.comment_str("past the runtime's header")
+            );
+            *code += &format!(
+                "\tMEM_CHUNK_ADDRESS = MEM_TRACE_ADDRESS + 8;{}\n",
+                ctx.comment_str("past the number of chunks")
+            );
+            *code += "\tMEM_CHUNK_START_STEP = 0;\n";
+        }
     }
 
     /*******************/
@@ -775,6 +1064,10 @@ impl ZiskRom2C {
         *code += &ctx.full_line_comment("machine state into locals".to_string());
         *code += "\tuint64_t a = s->a, b = s->b, c = s->c, flag = s->flag;\n";
         *code += "\tuint64_t step = s->step, pc = s->pc, addr = 0, ret;\n";
+        if ctx.minimal_trace() {
+            *code += "\tuint64_t *mem_reads = s->mem_reads;\n";
+            *code += "\tuint64_t mem_reads_size = s->mem_reads_size;\n";
+        }
         *code += &format!("\tuint64_t reg[{ZISK_REGS}];\n");
         *code += &format!("\tfor (int i = 0; i < {ZISK_REGS}; i++) reg[i] = s->reg[i];\n");
         *code += "\t(void)a; (void)b; (void)flag; (void)addr;\n\n";
@@ -837,6 +1130,9 @@ impl ZiskRom2C {
         *code += "zisk_spill:\n";
         *code += "\ts->a = a; s->b = b; s->c = c; s->flag = flag;\n";
         *code += "\ts->step = step; s->pc = pc;\n";
+        if ctx.minimal_trace() {
+            *code += "\ts->mem_reads = mem_reads; s->mem_reads_size = mem_reads_size;\n";
+        }
         *code += &format!("\tfor (int i = 0; i < {ZISK_REGS}; i++) s->reg[i] = reg[i];\n");
         *code += "\treturn ret;\n";
         *code += "}\n";
@@ -912,6 +1208,9 @@ impl ZiskRom2C {
             u64_lit(first_pc),
             ctx.comment_str("start at the first instruction of the ROM")
         );
+        if ctx.minimal_trace() {
+            Self::emit_first_chunk_start(ctx, code, "pc", "s->c", "s->reg", "s->");
+        }
         *code += "\twhile (pc != ZISK_END) {\n";
         *code += "\t\tuint32_t chunk;\n";
         for (ci, cluster) in clusters.iter().enumerate() {
@@ -931,10 +1230,17 @@ impl ZiskRom2C {
         *code += "\t\tpc = zisk_chunks[chunk](s);\n";
         *code += "\t}\n\n";
 
-        *code += &ctx.full_line_comment(
-            "Publish the step counter so that the caller can read it".to_string(),
-        );
-        *code += "\tMEM_STEP = s->step;\n";
+        if ctx.minimal_trace() {
+            // In this method the step counter is a count down to the end of the chunk, and MEM_STEP
+            // is the total, which every chunk boundary has already updated
+            *code += &ctx
+                .full_line_comment("MEM_STEP was published by the last chunk boundary".to_string());
+        } else {
+            *code += &ctx.full_line_comment(
+                "Publish the step counter so that the caller can read it".to_string(),
+            );
+            *code += "\tMEM_STEP = s->step;\n";
+        }
         *code += "}\n";
     }
 
@@ -1040,18 +1346,222 @@ impl ZiskRom2C {
             );
         }
 
-        // Count the step
-        *code += &format!("\tstep++;{}\n", ctx.comment_str("increment step"));
+        // Count the step.  When the minimal trace is generated the step counter counts down to the
+        // end of the chunk instead of up, exactly like the assembly backend's: the total is kept in
+        // MEM_STEP, which the chunk boundaries update.
+        if ctx.minimal_trace() {
+            *code += &format!("\tstep--;{}\n", ctx.comment_str("decrement step count down"));
+        } else {
+            *code += &format!("\tstep++;{}\n", ctx.comment_str("increment step"));
+        }
 
         // The end instruction stops the emulation
         if instruction.end {
             *code += &format!("\tMEM_END = 1;{}\n", ctx.comment_str("end = 1"));
             *code += &format!("\tpc = {};{}\n", u64_lit(ctx.pc), ctx.comment_str("pc = this pc"));
+            if ctx.minimal_trace() {
+                // Close the chunk this instruction ends, which is short of a full chunk of steps
+                *code += &format!(
+                    "\tzisk_chunk_end(c, mem_reads_size, step);{}\n",
+                    ctx.comment_str("close the last chunk")
+                );
+            }
             *code += if ctx.chunked() { "\tgoto zisk_end;\n" } else { "\tgoto emu_end;\n" };
             return;
         }
 
+        // The chunk ends every chunk_size steps: close it, and open the next one at the instruction
+        // this one is about to jump to
+        if ctx.minimal_trace() {
+            Self::minimal_trace_chunk_boundary(ctx, instruction, code);
+        }
+
         Self::set_pc(ctx, instruction, code, rom);
+    }
+
+    /// Emits the end of a minimal trace chunk and the start of the next one, for the step at which
+    /// the chunk's step count down reaches zero.
+    ///
+    /// The chunk that starts here starts at the instruction this one jumps to, so its program counter
+    /// has to be computed before the chunk is opened.  That computation is then made again by the
+    /// `set_pc()` that follows, which is what actually jumps: this is the same shape as the assembly
+    /// backend's, where the count down path computes the program counter and then rejoins the common
+    /// jump code.
+    fn minimal_trace_chunk_boundary(
+        ctx: &mut ZiskCContext,
+        instruction: &ZiskInst,
+        code: &mut String,
+    ) {
+        *code += &format!("\tif (step == 0) {{{}\n", ctx.comment_str("the chunk is over"));
+        Self::pc_value(ctx, instruction, code);
+        *code += &format!(
+            "\t\tzisk_chunk_end(c, mem_reads_size, 0);{}\n",
+            ctx.comment_str("close this chunk")
+        );
+        // The next chunk is opened before the step count is checked, and so before the emulation may
+        // stop, exactly as the assembly backend's chunk_end_and_start does: what the consumer sees
+        // when the emulation runs out of steps is part of the contract, not an accident
+        *code += "\t\tmem_reads = zisk_chunk_start(pc, c, reg);\n";
+        *code += "\t\tmem_reads_size = 0;\n";
+        *code += "\t\tstep = chunk_size;\n";
+        *code += &format!(
+            "\t\tif (MEM_STEP >= max_steps) goto {};{}\n",
+            if ctx.chunked() { "zisk_end" } else { "emu_end" },
+            ctx.comment_str("out of steps")
+        );
+        *code += "\t}\n";
+    }
+
+    /// Emits the program counter this instruction continues at, without jumping to it, indented for
+    /// the inside of the chunk boundary's block.
+    ///
+    /// This is the value part of `set_pc()`, and it says nothing about where control goes; it is what
+    /// the chunk boundary needs, as the program counter a chunk starts at is part of its trace.
+    fn pc_value(ctx: &mut ZiskCContext, instruction: &ZiskInst, code: &mut String) {
+        if instruction.set_pc {
+            if ctx.c.is_constant {
+                let new_pc = (ctx.c.constant_value as i64 + instruction.jmp_offset1) as u64;
+                *code += &format!("\t\tpc = {};\n", u64_lit(new_pc));
+            } else if instruction.jmp_offset1 != 0 {
+                *code += &format!(
+                    "\t\tpc = {} + {};\n",
+                    ctx.c.expr,
+                    offset_lit(instruction.jmp_offset1)
+                );
+            } else {
+                *code += &format!("\t\tpc = {};\n", ctx.c.expr);
+            }
+            return;
+        }
+
+        let pc_if_set = (ctx.pc as i64 + instruction.jmp_offset1) as u64;
+        let pc_if_clear = (ctx.pc as i64 + instruction.jmp_offset2) as u64;
+        match ctx.flag {
+            FlagState::AlwaysZero => *code += &format!("\t\tpc = {};\n", u64_lit(pc_if_clear)),
+            FlagState::AlwaysOne => *code += &format!("\t\tpc = {};\n", u64_lit(pc_if_set)),
+            FlagState::Dynamic => {
+                if pc_if_set == pc_if_clear {
+                    *code += &format!("\t\tpc = {};\n", u64_lit(pc_if_set));
+                } else {
+                    *code += &format!(
+                        "\t\tpc = flag ? {} : {};\n",
+                        u64_lit(pc_if_set),
+                        u64_lit(pc_if_clear)
+                    );
+                }
+            }
+        }
+    }
+
+    /*************/
+    /* MEM READS */
+    /*************/
+
+    /// Records the 8-byte read of `value` at `addr` in the mem reads of the current chunk.
+    ///
+    /// An aligned read records the value that was read.  An unaligned one records instead the two
+    /// aligned words it spans, because that is what the consumer needs to reconstruct it: it works in
+    /// aligned words, and the value read is not one.
+    fn mt_read_8(ctx: &mut ZiskCContext, code: &mut String, addr: &MtAddr, value: &str) {
+        match addr {
+            MtAddr::Const(address) if address % 8 == 0 => {
+                *code += &format!(
+                    "\tmem_reads[mem_reads_size++] = {value};{}\n",
+                    ctx.comment_str("mem read, aligned")
+                );
+            }
+            MtAddr::Const(address) => {
+                *code += &format!(
+                    "\tmem_reads_size = zisk_mt_8(mem_reads, mem_reads_size, {});{}\n",
+                    u64_lit(*address),
+                    ctx.comment_str("mem read, unaligned")
+                );
+            }
+            MtAddr::Dynamic(expr) => {
+                *code += &format!(
+                    "\tif (({expr} & 7) == 0) mem_reads[mem_reads_size++] = {value};{}\n",
+                    ctx.comment_str("mem read, aligned")
+                );
+                *code += &format!(
+                    "\telse mem_reads_size = zisk_mt_8(mem_reads, mem_reads_size, {expr});{}\n",
+                    ctx.comment_str("mem read, unaligned")
+                );
+            }
+        }
+    }
+
+    /// Records what the mem reads need about an 8-byte write at `addr`.
+    ///
+    /// An aligned write records nothing: the value written is known from the trace itself.  An
+    /// unaligned one records the two aligned words it spans, as they hold the bytes the write does
+    /// not overwrite.
+    fn mt_write_8(ctx: &mut ZiskCContext, code: &mut String, addr: &MtAddr) {
+        match addr {
+            MtAddr::Const(address) if address % 8 == 0 => {
+                *code += &ctx.full_line_comment("aligned write: nothing to record".to_string());
+            }
+            MtAddr::Const(address) => {
+                *code += &format!(
+                    "\tmem_reads_size = zisk_mt_8(mem_reads, mem_reads_size, {});{}\n",
+                    u64_lit(*address),
+                    ctx.comment_str("write, unaligned")
+                );
+            }
+            MtAddr::Dynamic(expr) => {
+                *code += &format!(
+                    "\tif (({expr} & 7) != 0)\n\t\tmem_reads_size = \
+                     zisk_mt_8(mem_reads, mem_reads_size, {expr});{}\n",
+                    ctx.comment_str("write, unaligned")
+                );
+            }
+        }
+    }
+
+    /// Records the aligned words a narrow (1, 2 or 4 byte) access at `addr` falls into.
+    ///
+    /// Reads and writes record the same thing here: a narrow access is never a whole aligned word, so
+    /// either way what the consumer needs is the word, or the two words, that contain it.
+    fn mt_narrow(ctx: &mut ZiskCContext, code: &mut String, addr: &MtAddr, width: u64) {
+        assert!(
+            (width == 1) || (width == 2) || (width == 4),
+            "ZiskRom2C::mt_narrow() width={width} pc={}",
+            ctx.pc
+        );
+
+        match addr {
+            MtAddr::Const(address) => {
+                // The words the access falls into are known, so only the ones it really spans are
+                // recorded
+                let prev = address & !7;
+                let next = (address + width - 1) & !7;
+                *code += &format!(
+                    "\tmem_reads[mem_reads_size++] = ZM64({});{}\n",
+                    u64_lit(prev),
+                    ctx.comment_str("narrow access: first word")
+                );
+                if next != prev {
+                    *code += &format!(
+                        "\tmem_reads[mem_reads_size++] = ZM64({});{}\n",
+                        u64_lit(next),
+                        ctx.comment_str("narrow access: second word")
+                    );
+                }
+            }
+            // A single byte always falls into one word, so there is nothing to decide at run time
+            MtAddr::Dynamic(expr) if width == 1 => {
+                *code += &format!(
+                    "\tmem_reads[mem_reads_size++] = ZM64({expr} & ~(uint64_t)7);{}\n",
+                    ctx.comment_str("byte access: its word")
+                );
+            }
+            MtAddr::Dynamic(expr) => {
+                *code += &format!(
+                    "\tmem_reads_size = \
+                     zisk_mt_narrow(mem_reads, mem_reads_size, {expr}, {width});{}\n",
+                    ctx.comment_str("narrow access: the word, or two, it spans")
+                );
+            }
+        }
     }
 
     /************/
@@ -1073,21 +1583,27 @@ impl ZiskRom2C {
             }
             SRC_MEM => {
                 *code += &ctx.full_line_comment("a=SRC_MEM".to_string());
-                if instruction.a_use_sp_imm1 != 0 {
+                let address = if instruction.a_use_sp_imm1 != 0 {
                     *code += &format!(
                         "\taddr = {} + MEM_SP;{}\n",
                         u64_lit(instruction.a_offset_imm0),
                         ctx.comment_str("address = a_offset_imm0 + sp")
                     );
                     *code += &format!("\ta = ZM64(addr);{}\n", ctx.comment_str("a = mem[address]"));
+                    MtAddr::Dynamic("addr".to_string())
                 } else {
                     *code += &format!(
                         "\ta = ZM64({});{}\n",
                         u64_lit(instruction.a_offset_imm0),
                         ctx.comment_str("a = mem[a_offset_imm0]")
                     );
-                }
+                    MtAddr::Const(instruction.a_offset_imm0)
+                };
                 ctx.a.expr = "a".to_string();
+
+                if ctx.minimal_trace() {
+                    Self::mt_read_8(ctx, code, &address, "a");
+                }
             }
             SRC_IMM => {
                 ctx.a.is_constant = true;
@@ -1098,8 +1614,10 @@ impl ZiskRom2C {
             }
             SRC_STEP => {
                 // NOTE: this mirrors the assembly backend, which reads the MEM_STEP variable here
-                // rather than its step register.  In this generation method MEM_STEP is only
-                // written at the end of the emulation, so both backends read the same value.
+                // rather than its step register.  MEM_STEP is not the step count of the instruction
+                // being executed: it is only written at the end of the emulation, or at every chunk
+                // boundary when the minimal trace is generated.  Reading it is what the assembly
+                // backend does, so both backends read the same value.
                 *code += &format!("\ta = MEM_STEP;{}\n", ctx.comment_str("a=SRC_STEP"));
                 ctx.a.expr = "a".to_string();
             }
@@ -1129,13 +1647,16 @@ impl ZiskRom2C {
                 let b_is_free_input = (instruction.b_offset_imm0 == FREE_INPUT_ADDR)
                     && (instruction.b_use_sp_imm1 == 0);
 
-                if b_is_free_input {
+                let address = if b_is_free_input {
                     // The free input is not read from guest memory but from the variable the fcall
                     // operations write
                     *code += &format!(
                         "\tb = MEM_FREE_INPUT;{}\n",
                         ctx.comment_str("b=SRC_MEM free input")
                     );
+                    // The trace records it as a read of the free input address, which is aligned, so
+                    // what gets recorded is the value the fcall produced
+                    MtAddr::Const(instruction.b_offset_imm0)
                 } else {
                     *code += &ctx.full_line_comment("b=SRC_MEM".to_string());
                     if instruction.b_use_sp_imm1 != 0 {
@@ -1146,15 +1667,21 @@ impl ZiskRom2C {
                         );
                         *code +=
                             &format!("\tb = ZM64(addr);{}\n", ctx.comment_str("b = mem[address]"));
+                        MtAddr::Dynamic("addr".to_string())
                     } else {
                         *code += &format!(
                             "\tb = ZM64({});{}\n",
                             u64_lit(instruction.b_offset_imm0),
                             ctx.comment_str("b = mem[b_offset_imm0]")
                         );
+                        MtAddr::Const(instruction.b_offset_imm0)
                     }
-                }
+                };
                 ctx.b.expr = "b".to_string();
+
+                if ctx.minimal_trace() {
+                    Self::mt_read_8(ctx, code, &address, "b");
+                }
             }
             SRC_IMM => {
                 ctx.b.is_constant = true;
@@ -1190,6 +1717,15 @@ impl ZiskRom2C {
                 };
                 *code += &format!("\tb = {read};{}\n", ctx.comment_str("b = mem[address]"));
                 ctx.b.expr = "b".to_string();
+
+                if ctx.minimal_trace() {
+                    let address = MtAddr::Dynamic("addr".to_string());
+                    if instruction.ind_width == 8 {
+                        Self::mt_read_8(ctx, code, &address, "b");
+                    } else {
+                        Self::mt_narrow(ctx, code, &address, instruction.ind_width);
+                    }
+                }
             }
             _ => {
                 panic!("ZiskRom2C::source_b() Invalid b_src={} pc={}", instruction.b_src, ctx.pc)
@@ -1227,11 +1763,31 @@ impl ZiskRom2C {
             }
             STORE_MEM => {
                 *code += &ctx.full_line_comment("STORE_MEM".to_string());
-                let address = if instruction.store_use_sp {
+                let mut address = if instruction.store_use_sp {
                     format!("{} + MEM_SP", offset_lit(instruction.store_offset))
                 } else {
                     offset_lit(instruction.store_offset)
                 };
+
+                // What the trace records about a write is what the write is about to overwrite, so it
+                // is recorded first.  The address is put in a local so that it is not computed twice.
+                if ctx.minimal_trace() {
+                    if instruction.store_use_sp {
+                        *code += &format!(
+                            "\taddr = {address};{}\n",
+                            ctx.comment_str("address = store_offset + sp")
+                        );
+                        address = "addr".to_string();
+                        Self::mt_write_8(ctx, code, &MtAddr::Dynamic(address.clone()));
+                    } else {
+                        Self::mt_write_8(
+                            ctx,
+                            code,
+                            &MtAddr::Const(instruction.store_offset as u64),
+                        );
+                    }
+                }
+
                 *code += &format!(
                     "\tZM64({address}) = {value};{}\n",
                     ctx.comment(format!("mem[store_offset] = {value_name}"))
@@ -1248,6 +1804,25 @@ impl ZiskRom2C {
                 }
                 *code +=
                     &format!("\taddr = {address};{}\n", ctx.comment_str("address = a + offset"));
+
+                // What the trace records about a write is what the write is about to overwrite, so it
+                // is recorded first
+                if ctx.minimal_trace() {
+                    // When a is a constant and sp is not involved, so is the address, and its
+                    // alignment is decided here instead of at run time
+                    let address = if ctx.a.is_constant && !instruction.store_use_sp {
+                        MtAddr::Const(
+                            (ctx.a.constant_value as i64 + instruction.store_offset) as u64,
+                        )
+                    } else {
+                        MtAddr::Dynamic("addr".to_string())
+                    };
+                    if instruction.ind_width == 8 {
+                        Self::mt_write_8(ctx, code, &address);
+                    } else {
+                        Self::mt_narrow(ctx, code, &address, instruction.ind_width);
+                    }
+                }
 
                 match instruction.ind_width {
                     8 => {
@@ -1668,62 +2243,62 @@ impl ZiskRom2C {
             ZiskOp::CzeroNez => set_c(code, format!("({b} != 0) ? 0ULL : {a}"), "czero_nez"),
 
             /* Precompiles: the runtime does the work, addressed by b */
-            ZiskOp::Keccak => Self::precompile(ctx, code, "_opcode_keccak", &b, false, false),
-            ZiskOp::Poseidon2 => Self::precompile(ctx, code, "_opcode_poseidon2", &b, false, false),
-            ZiskOp::Poseidon1 => Self::precompile(ctx, code, "_opcode_poseidon1", &b, false, false),
-            ZiskOp::Sha256 => Self::precompile(ctx, code, "_opcode_sha256", &b, true, false),
-            ZiskOp::Blake2 => Self::precompile(ctx, code, "_opcode_blake2", &b, true, false),
-            ZiskOp::Arith256 => Self::precompile(ctx, code, "_opcode_arith256", &b, true, false),
+            ZiskOp::Keccak => Self::precompile(ctx, code, zisk_op, "_opcode_keccak", &b, false, false),
+            ZiskOp::Poseidon2 => Self::precompile(ctx, code, zisk_op, "_opcode_poseidon2", &b, false, false),
+            ZiskOp::Poseidon1 => Self::precompile(ctx, code, zisk_op, "_opcode_poseidon1", &b, false, false),
+            ZiskOp::Sha256 => Self::precompile(ctx, code, zisk_op, "_opcode_sha256", &b, true, false),
+            ZiskOp::Blake2 => Self::precompile(ctx, code, zisk_op, "_opcode_blake2", &b, true, false),
+            ZiskOp::Arith256 => Self::precompile(ctx, code, zisk_op, "_opcode_arith256", &b, true, false),
             ZiskOp::Arith256Mod => {
-                Self::precompile(ctx, code, "_opcode_arith256_mod", &b, true, false)
+                Self::precompile(ctx, code, zisk_op, "_opcode_arith256_mod", &b, true, false)
             }
             ZiskOp::Arith384Mod => {
-                Self::precompile(ctx, code, "_opcode_arith384_mod", &b, true, false)
+                Self::precompile(ctx, code, zisk_op, "_opcode_arith384_mod", &b, true, false)
             }
             ZiskOp::Secp256k1Add => {
-                Self::precompile(ctx, code, "_opcode_secp256k1_add", &b, true, false)
+                Self::precompile(ctx, code, zisk_op, "_opcode_secp256k1_add", &b, true, false)
             }
             ZiskOp::Secp256k1Dbl => {
-                Self::precompile(ctx, code, "_opcode_secp256k1_dbl", &b, true, false)
+                Self::precompile(ctx, code, zisk_op, "_opcode_secp256k1_dbl", &b, true, false)
             }
             ZiskOp::Secp256r1Add => {
-                Self::precompile(ctx, code, "_opcode_secp256r1_add", &b, true, false)
+                Self::precompile(ctx, code, zisk_op, "_opcode_secp256r1_add", &b, true, false)
             }
             ZiskOp::Secp256r1Dbl => {
-                Self::precompile(ctx, code, "_opcode_secp256r1_dbl", &b, true, false)
+                Self::precompile(ctx, code, zisk_op, "_opcode_secp256r1_dbl", &b, true, false)
             }
             ZiskOp::Bn254CurveAdd => {
-                Self::precompile(ctx, code, "_opcode_bn254_curve_add", &b, true, false)
+                Self::precompile(ctx, code, zisk_op, "_opcode_bn254_curve_add", &b, true, false)
             }
             ZiskOp::Bn254CurveDbl => {
-                Self::precompile(ctx, code, "_opcode_bn254_curve_dbl", &b, true, false)
+                Self::precompile(ctx, code, zisk_op, "_opcode_bn254_curve_dbl", &b, true, false)
             }
             ZiskOp::Bn254ComplexAdd => {
-                Self::precompile(ctx, code, "_opcode_bn254_complex_add", &b, true, false)
+                Self::precompile(ctx, code, zisk_op, "_opcode_bn254_complex_add", &b, true, false)
             }
             ZiskOp::Bn254ComplexSub => {
-                Self::precompile(ctx, code, "_opcode_bn254_complex_sub", &b, true, false)
+                Self::precompile(ctx, code, zisk_op, "_opcode_bn254_complex_sub", &b, true, false)
             }
             ZiskOp::Bn254ComplexMul => {
-                Self::precompile(ctx, code, "_opcode_bn254_complex_mul", &b, true, false)
+                Self::precompile(ctx, code, zisk_op, "_opcode_bn254_complex_mul", &b, true, false)
             }
             ZiskOp::Bls12_381CurveAdd => {
-                Self::precompile(ctx, code, "_opcode_bls12_381_curve_add", &b, true, false)
+                Self::precompile(ctx, code, zisk_op, "_opcode_bls12_381_curve_add", &b, true, false)
             }
             ZiskOp::Bls12_381CurveDbl => {
-                Self::precompile(ctx, code, "_opcode_bls12_381_curve_dbl", &b, true, false)
+                Self::precompile(ctx, code, zisk_op, "_opcode_bls12_381_curve_dbl", &b, true, false)
             }
             ZiskOp::Bls12_381ComplexAdd => {
-                Self::precompile(ctx, code, "_opcode_bls12_381_complex_add", &b, true, false)
+                Self::precompile(ctx, code, zisk_op, "_opcode_bls12_381_complex_add", &b, true, false)
             }
             ZiskOp::Bls12_381ComplexSub => {
-                Self::precompile(ctx, code, "_opcode_bls12_381_complex_sub", &b, true, false)
+                Self::precompile(ctx, code, zisk_op, "_opcode_bls12_381_complex_sub", &b, true, false)
             }
             ZiskOp::Bls12_381ComplexMul => {
-                Self::precompile(ctx, code, "_opcode_bls12_381_complex_mul", &b, true, false)
+                Self::precompile(ctx, code, zisk_op, "_opcode_bls12_381_complex_mul", &b, true, false)
             }
             // add256 is the only precompile that returns the c value instead of leaving it zero
-            ZiskOp::Add256 => Self::precompile(ctx, code, "_opcode_add256", &b, true, true),
+            ZiskOp::Add256 => Self::precompile(ctx, code, zisk_op, "_opcode_add256", &b, true, true),
 
             /* Free input calls */
             ZiskOp::FcallParam => Self::fcall_param(ctx, code, &b),
@@ -1733,37 +2308,75 @@ impl ZiskRom2C {
             /* Direct memory access */
             ZiskOp::DmaMemCpy | ZiskOp::DmaXMemCpy => {
                 let count = Self::dma_count(instruction, zisk_op == ZiskOp::DmaXMemCpy);
-                *code += &format!(
-                    "\tzisk_dma_memcpy({a}, {b}, {count});{}\n",
-                    ctx.comment_str("dma_memcpy(dst = a, src = b, count)")
-                );
+                if ctx.minimal_trace() {
+                    *code += &format!(
+                        "\tmem_reads_size = zisk_dma_memcpy_mt({a}, {b}, {count}, mem_reads, \
+                         mem_reads_size, step);{}\n",
+                        ctx.comment_str("dma_memcpy(dst = a, src = b, count)")
+                    );
+                } else {
+                    *code += &format!(
+                        "\tzisk_dma_memcpy({a}, {b}, {count});{}\n",
+                        ctx.comment_str("dma_memcpy(dst = a, src = b, count)")
+                    );
+                }
                 set_c(code, a.clone(), "dma_memcpy: c = dst");
             }
             ZiskOp::DmaMemCmp | ZiskOp::DmaXMemCmp => {
                 let count = Self::dma_count(instruction, zisk_op == ZiskOp::DmaXMemCmp);
-                set_c(
-                    code,
-                    format!("zisk_dma_memcmp({a}, {b}, {count})"),
-                    "dma_memcmp: c = result",
-                );
+                if ctx.minimal_trace() {
+                    // The comparison result and the mem reads it wrote come back together
+                    *code += &format!(
+                        "\t{{{}\n",
+                        ctx.comment_str("dma_memcmp(a, b, count) -> c, mem reads")
+                    );
+                    *code += &format!(
+                        "\t\tZiskDmaResult result = zisk_dma_memcmp_mt({a}, {b}, {count}, \
+                         mem_reads, mem_reads_size, step);\n"
+                    );
+                    *code += "\t\tc = result.value;\n";
+                    *code += "\t\tmem_reads_size = result.mem_reads_size;\n";
+                    *code += "\t}\n";
+                } else {
+                    set_c(
+                        code,
+                        format!("zisk_dma_memcmp({a}, {b}, {count})"),
+                        "dma_memcmp: c = result",
+                    );
+                }
             }
             ZiskOp::DmaXMemSet => {
                 // The fill byte travels in the instruction's extended argument
                 let fill = (instruction.jmp_offset1 as u64) & 0xFF;
-                *code += &format!(
-                    "\tzisk_dma_memset({a}, {b}, {fill});{}\n",
-                    ctx.comment_str("dma_memset(dst = a, count = b, fill)")
-                );
+                if ctx.minimal_trace() {
+                    *code += &format!(
+                        "\tmem_reads_size = zisk_dma_memset_mt({a}, {fill}, {b}, mem_reads, \
+                         mem_reads_size, step);{}\n",
+                        ctx.comment_str("dma_memset(dst = a, fill, count = b)")
+                    );
+                } else {
+                    *code += &format!(
+                        "\tzisk_dma_memset({a}, {b}, {fill});{}\n",
+                        ctx.comment_str("dma_memset(dst = a, count = b, fill)")
+                    );
+                }
                 set_c(code, a.clone(), "dma_memset: c = dst");
             }
 
             // Unlike the other DMA operations, the count is b: there is no extended variant
             ZiskOp::DmaInputCpy => {
-                set_c(
-                    code,
-                    format!("zisk_dma_inputcpy({a}, {b})"),
-                    "dma_inputcpy: c = dst",
-                );
+                if ctx.minimal_trace() {
+                    // The source is the fcall result, which the runtime's routine finds by itself, so
+                    // there is no source argument to pass
+                    *code += &format!(
+                        "\tmem_reads_size = zisk_dma_inputcpy_mt({a}, 0, {b}, mem_reads, \
+                         mem_reads_size, step);{}\n",
+                        ctx.comment_str("dma_inputcpy(dst = a, count = b)")
+                    );
+                    set_c(code, a.clone(), "dma_inputcpy: c = dst");
+                } else {
+                    set_c(code, format!("zisk_dma_inputcpy({a}, {b})"), "dma_inputcpy: c = dst");
+                }
             }
             ZiskOp::Profile => {
                 panic!("ZiskRom2C::operation_to_c() Internal opcode Profile, pc={}", ctx.pc)
@@ -1799,11 +2412,75 @@ impl ZiskRom2C {
         ctx.flag = FlagState::Dynamic;
     }
 
+    /// The words a precompile's operands occupy, as the minimal trace records them: how many words
+    /// the operand block at b holds, and, for each of those words that is a pointer, how many words it
+    /// points at.  A zero means that word is not a pointer.
+    ///
+    /// This is the shape the trace consumer expects, so it is the shape the assembly backend writes:
+    /// see the `precompiled_save_mem_reads()` calls in `zisk_rom_2_asm`, which this mirrors one for
+    /// one.
+    fn precompile_operands(zisk_op: ZiskOp) -> (u64, &'static [u64]) {
+        match zisk_op {
+            ZiskOp::Keccak => (25, &[]),
+            ZiskOp::Poseidon2 | ZiskOp::Poseidon1 => (16, &[]),
+            ZiskOp::Sha256 => (2, &[4, 8]),
+            ZiskOp::Blake2 => (3, &[0, 16, 16]),
+            ZiskOp::Arith256 => (5, &[4, 4, 4]),
+            ZiskOp::Arith256Mod => (5, &[4, 4, 4, 4]),
+            ZiskOp::Arith384Mod => (5, &[6, 6, 6, 6]),
+            ZiskOp::Secp256k1Add | ZiskOp::Secp256r1Add => (2, &[8, 8]),
+            ZiskOp::Secp256k1Dbl | ZiskOp::Secp256r1Dbl => (8, &[]),
+            ZiskOp::Bn254CurveAdd => (2, &[8, 8]),
+            ZiskOp::Bn254CurveDbl => (8, &[]),
+            ZiskOp::Bn254ComplexAdd | ZiskOp::Bn254ComplexSub | ZiskOp::Bn254ComplexMul => {
+                (2, &[8, 8])
+            }
+            ZiskOp::Bls12_381CurveAdd => (2, &[12, 12]),
+            ZiskOp::Bls12_381CurveDbl => (12, &[]),
+            ZiskOp::Bls12_381ComplexAdd
+            | ZiskOp::Bls12_381ComplexSub
+            | ZiskOp::Bls12_381ComplexMul => (2, &[12, 12]),
+            ZiskOp::Add256 => (4, &[4, 4]),
+            _ => panic!("ZiskRom2C::precompile_operands() {zisk_op:?} is not a precompile"),
+        }
+    }
+
+    /// Records everything a precompile reads: the operand block at b, and whatever the pointers in it
+    /// point at.  It has to be done before the call, as the precompile writes its result over some of
+    /// those same words.
+    fn precompile_mem_reads(ctx: &mut ZiskCContext, code: &mut String, zisk_op: ZiskOp, b: &str) {
+        let (params, loads) = Self::precompile_operands(zisk_op);
+        assert!(
+            loads.len() as u64 <= params,
+            "ZiskRom2C::precompile_mem_reads() more pointers than operands, pc={}",
+            ctx.pc
+        );
+
+        *code += &format!("\t{{{}\n", ctx.comment_str("precompile operands into the mem reads"));
+        *code += &format!("\t\tconst uint64_t params = {b};\n");
+        *code += &format!("\t\tfor (uint64_t i = 0; i < {params}; i++)\n");
+        *code += "\t\t\tmem_reads[mem_reads_size + i] = ZM64(params + i * 8);\n";
+        *code += &format!("\t\tmem_reads_size += {params};\n");
+        for (i, words) in loads.iter().enumerate() {
+            if *words == 0 {
+                continue;
+            }
+            *code += &format!("\t\t{{{}\n", ctx.comment(format!("operand {i} points at {words}")));
+            *code += &format!("\t\t\tconst uint64_t data = ZM64(params + {});\n", i * 8);
+            *code += &format!("\t\t\tfor (uint64_t j = 0; j < {words}; j++)\n");
+            *code += "\t\t\t\tmem_reads[mem_reads_size + j] = ZM64(data + j * 8);\n";
+            *code += &format!("\t\t\tmem_reads_size += {words};\n");
+            *code += "\t\t}\n";
+        }
+        *code += "\t}\n";
+    }
+
     /// Emits a call to a runtime precompile.  The precompile reads and writes guest memory itself,
     /// addressed by b; c is zero unless the precompile returns it.
     fn precompile(
         ctx: &mut ZiskCContext,
         code: &mut String,
+        zisk_op: ZiskOp,
         function: &str,
         b: &str,
         takes_pointer: bool,
@@ -1812,11 +2489,23 @@ impl ZiskRom2C {
         let argument =
             if takes_pointer { format!("(uint64_t *)(uintptr_t)({b})") } else { b.to_string() };
 
+        if ctx.minimal_trace() {
+            Self::precompile_mem_reads(ctx, code, zisk_op, b);
+        }
+
         if returns_c {
             *code += &format!(
                 "\tc = {function}({argument});{}\n",
                 ctx.comment_str("precompile: c = result")
             );
+            if ctx.minimal_trace() {
+                // A precompile that produces a c value records it: unlike the ones that write their
+                // result to memory, there is nothing in the mem reads it could be derived from
+                *code += &format!(
+                    "\tmem_reads[mem_reads_size++] = c;{}\n",
+                    ctx.comment_str("precompile result into the mem reads")
+                );
+            }
         } else {
             *code += &format!("\t{function}({argument});{}\n", ctx.comment_str("precompile"));
             *code += &format!("\tc = 0;{}\n", ctx.comment_str("precompile: c = 0"));
