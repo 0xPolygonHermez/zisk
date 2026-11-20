@@ -1,8 +1,9 @@
 use zisk_precomp_helpers::DmaInfo;
 
 use crate::{
-    zisk_ops::OpStats, EmulationMode, InstContext, DMA_64_ALIGNED_MEMSET_COST,
-    DMA_64_ALIGNED_MEMSET_DIVISOR, DMA_PRE_POST_MEMSET_COST,
+    zisk_ops::{OpStats, DMA_LOOP_MEMSET},
+    EmulationMode, InstContext, DMA_64_ALIGNED_MEMSET_COST, DMA_64_ALIGNED_MEMSET_DIVISOR,
+    DMA_PRE_POST_MEMSET_COST,
 };
 #[inline(always)]
 pub fn opc_dma_xmemset(ctx: &mut InstContext) {
@@ -124,6 +125,8 @@ pub fn ops_dma_xmemset(ctx: &InstContext, stats: &mut dyn OpStats) {
         // but if all bytes are equal count = count_eq, no need extra reads
         let first_loop_dst64 = (addr_a + pre_count) >> 3;
 
+        // memset has no source, so its loop is always aligned.
+        stats.dma_loop(DMA_LOOP_MEMSET, loop_count as usize, true);
         stats.mem_align_write(first_loop_dst64 * 8, loop_count as usize);
         // add information about other machines to demostrate operation
         stats.set_variable_cost(

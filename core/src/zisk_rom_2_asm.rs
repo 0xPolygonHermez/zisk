@@ -10,8 +10,8 @@ use crate::{
     frops_asm::{self, FropsCallSite, FropsOperand, FropsSpec},
     zisk_ops::ZiskOp,
     ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR, INPUT_ADDR, M64,
-    REGS_IN_MAIN_TO, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
-    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR, ZISKLIB_ROM_ADDR,
+    REGS_IN_MAIN_TO, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, STORE_IND,
+    STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR, ZISKLIB_ROM_ADDR,
 };
 use crate::{
     zisk_ops::blake2b_gap_is_provable, BLAKE2B_RD_CHAIN, BLAKE2B_ROUND_MASK, BLAKE2B_WR_CHAIN,
@@ -1128,13 +1128,9 @@ impl ZiskRom2Asm {
         Self::push_external_registers(&mut ctx, code);
 
         // Initialize ROM data from rom.ro_data
-        for i in 0..rom.ro_data_64.len() {
-            for (j, value) in rom.ro_data_64[i].data.iter().enumerate() {
-                *code += &format!(
-                    "\tmov {}, 0x{:x}\n",
-                    REG_ADDRESS,
-                    rom.ro_data_64[i].addr + (j as u64) * 8
-                );
+        for section in &rom.ro_data_64 {
+            for (j, value) in section.data.iter().enumerate() {
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, section.addr + (j as u64) * 8);
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
                 *code += &format!("\tmov qword {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE);
             }
@@ -1154,13 +1150,9 @@ impl ZiskRom2Asm {
         Self::push_external_registers(&mut ctx, code);
 
         // Initialize ROM data from rom.rw_data_64
-        for i in 0..rom.rw_data_64.len() {
-            for (j, value) in rom.rw_data_64[i].data.iter().enumerate() {
-                *code += &format!(
-                    "\tmov {}, 0x{:x}\n",
-                    REG_ADDRESS,
-                    rom.rw_data_64[i].addr + (j as u64) * 8
-                );
+        for section in &rom.rw_data_64 {
+            for (j, value) in section.data.iter().enumerate() {
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, section.addr + (j as u64) * 8);
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
                 *code += &format!("\tmov qword {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE);
             }
@@ -1588,31 +1580,6 @@ impl ZiskRom2Asm {
                 }
                 // DEBUG: Used only to get register traces:
                 //*s += &format!("\tmov {}, {} {}\n", REG_A, ctx.a.string_value, ctx.commit_str("a = a_value"));
-            }
-            SRC_STEP => {
-                *code += &ctx.full_line_comment("a=SRC_STEP".to_string());
-                let store_a_reg = if ctx.store_a_in_c { REG_C } else { REG_A };
-                let store_a_reg_name = if ctx.store_a_in_c { "c" } else { "a" };
-                *code += &format!(
-                    "\tmov {}, {} {}\n",
-                    store_a_reg,
-                    ctx.mem_step,
-                    ctx.comment(format!("{store_a_reg_name} = step"))
-                );
-                if ctx.minimal_trace() {
-                    *code += &format!(
-                        "\tadd {}, chunk_size {}\n",
-                        store_a_reg,
-                        ctx.comment(format!("{store_a_reg_name} += chunk_size"))
-                    );
-                    *code += &format!(
-                        "\tsub {}, {} {}\n",
-                        store_a_reg,
-                        REG_STEP,
-                        ctx.comment(format!("{store_a_reg_name} -= step_count_down"))
-                    );
-                }
-                ctx.a.is_saved = !ctx.store_a_in_c;
             }
             _ => {
                 panic!("ZiskRom::source_a() Invalid a_src={} pc={}", instruction.a_src, ctx.pc)

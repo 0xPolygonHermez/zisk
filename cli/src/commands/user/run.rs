@@ -24,7 +24,7 @@ pub(crate) struct RunCmd {
     #[arg(long)]
     no_default_features: bool,
 
-    /// Path to the guest ELF
+    /// Path to the guest program (RISC-V ELF or .wasm)
     #[arg(short = 'e', long)]
     elf: Option<String>,
 

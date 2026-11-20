@@ -74,7 +74,7 @@ status folds away. The body writes only memory and the virtual registers
 has a thunk (used with `ZKVM_U256_CALLS` or by a declarations-only header), which
 expands the same body; the inline `zkvm_u256_le.h` functions have none.
 `definitions/src/zkvmcall.rs` marks which IDs are inline and explains the
-sequence; [the C binding's README](../../ziskasm/lang/c/README.md#coverage) lists
+sequence; [the C binding's README](https://github.com/0xPolygonHermez/zisk/blob/main/ziskasm/lang/c/README.md#coverage) lists
 the builds of each family.
 
 `zkvm_keccak_f1600` is neither: it is a single keccak-f precompile, so the header

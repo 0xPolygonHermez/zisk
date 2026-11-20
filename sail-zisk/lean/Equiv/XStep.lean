@@ -109,7 +109,6 @@ theorem KeepPC.source_a (inst : _root_.Zisk.zisk_inst) : KeepPC (_root_.Zisk.Fun
   · exact KeepPC.rX _
   · exact (keepPC_of_frame (Frame.read_mem _ _))
   · exact KeepPC.pure _
-  · exact KeepPC.readReg _
 
 theorem KeepPC.source_b (inst : _root_.Zisk.zisk_inst) (a : BitVec 64) :
     KeepPC (_root_.Zisk.Functions.source_b inst a) := by

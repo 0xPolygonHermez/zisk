@@ -452,7 +452,7 @@ Edit `/etc/zisk/worker.toml`:
 
 | Setting                      | Default | Notes                                                                |
 | ---                          | ---     | ---                                                                  |
-| `reconnect_interval_seconds` | `5`     | Backoff between reconnect attempts when the coordinator is unreachable. |
+| `reconnect_interval_seconds` | `5`     | Backoff between reconnect attempts when the coordinator is unreachable or refused the registration (another proving key, the connection limit). |
 | `heartbeat_timeout_seconds`  | `30`    | How long to wait for a heartbeat before treating the connection dead.   |
 
 **`[logging]`** — same shape as the coordinator's `[logging]`
@@ -464,7 +464,7 @@ table.
 | Setting            | Default | Notes                                                                                 |
 | ---                | ---     | ---                                                                                   |
 | `enabled`          | `true`  | Report host and process telemetry with the heartbeat. CLI: `--no-telemetry` turns it off. |
-| `interval_seconds` | `10`    | Seconds between two reports. The heartbeat goes this often too (at most every 30 s).  |
+| `interval_seconds` | `10`    | Seconds between two samples. The heartbeat, every 5 s, carries the latest.            |
 
 After editing:
 

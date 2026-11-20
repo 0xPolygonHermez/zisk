@@ -333,7 +333,9 @@ theorem misjump_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region
       ∃ k z', ZRun zrom k z z' ∧ (∃ st, z'.regs.get? _root_.Zisk.Register.Step = some st) ∧ z'.regs.get? _root_.Zisk.Register.PC = some tgt :=
   misjump_stepR s z rs hrel zrom h.toR n
 
-/-- The fused pair at pc, its target any, its ZisK instruction from the spec. -/
+/-- The fused auipc-jalr pair at pc, its target any, its ZisK instruction
+    from the spec. (The auipc-addi pair's target, past the addi, is never 2
+    mod 4.) -/
 structure FtAtM (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
     (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : FInstr) : Prop where
   al : pc.toNat % 4 = 0
@@ -352,6 +354,7 @@ structure FtAtM (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   rd : i.rd ≠ 0
   link : i.rd2 = i.rd ∨ i.rd2 = 0
   tr : Transpiled zrom pc i.auipc.encode (some i.jalr.encode)
+  ja : i.addi = false
 
 set_option maxHeartbeats 4000000 in
 /-- The fused pair to a target 2 mod 4: sail-riscv's auipc step, then its
@@ -366,6 +369,8 @@ theorem fusedmis_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
         s2.regs.get? Register.PC = some 0x4#64) ∧
       ∃ z', (zstep zrom).run z = .ok false z' ∧ (∃ st, z'.regs.get? _root_.Zisk.Register.Step = some st) ∧
         z'.regs.get? _root_.Zisk.Register.PC = some (i.T pc) := by
+  have ht' : (jalrTarget (i.A pc) i.jimm)[0] = false ∧ (jalrTarget (i.A pc) i.jimm)[1] = true := by
+    rw [← FInstr.T_jalr hi.ja]; exact ht
   obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
   have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
   subst this
@@ -394,9 +399,10 @@ theorem fusedmis_step (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Regio
         intro t he _ hmr hsec hwf _
         rw [execute_jalr_eq]
         exact execute_jalr_mis t hwf hmr.priv sv (hsec.trans hsv) i.jalr.rs1 i.jalr.rd i.jalr.imm (i.A pc')
-          (getX_of_agree he l1 hv1) ht) (n + 1)
+          (getX_of_agree he l1 hv1) ht') (n + 1)
   have hz := Equiv.Zisk.execute_constj z i.rd.toNat (i.c pc') (i.T pc' - pc') (by omega) xs pc' st hx hzpc hst
-  rw [← i.rom_of_spec hi.rd hi.link hi.tr, ← zstep_run zrom z pc' hzpc] at hz
+  rw [← i.rom_of_spec hi.rd hi.link (by rw [FInstr.second_jalr hi.ja]; exact hi.tr),
+    ← zstep_run zrom z pc' hzpc] at hz
   refine ⟨s1, hrun1, hr1, hpc1, ⟨hi.x1, _, readWord_of hi.h0 hi.h1 hi.h2 hi.h3, (notSys_u i.auipc).plain⟩,
     ⟨hi.x3, _, readWord_of (hmem1 ▸ hi.g0) (hmem1 ▸ hi.g1) (hmem1 ▸ hi.g2) (hmem1 ▸ hi.g3),
       (notSys_jr i.jalr).plain⟩, htrap, _, hz, ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert]⟩, ?_⟩

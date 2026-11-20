@@ -40,15 +40,15 @@ const RNG_WARNING: &str = "WARNING: Using insecure random number generator.\n";
 
 // Scratch registers used by the longer stubs (must avoid REG_FP and the temporaries used by the
 // epilogue, REG_T0/REG_T2).
-const R_A: u64 = 14;
-const R_B: u64 = 15;
-const R_C: u64 = 16;
-const R_D: u64 = 17;
-const R_E: u64 = 18;
-const R_F: u64 = 19;
-const R_G: u64 = 20;
-const R_H: u64 = 21;
-const R_END: u64 = 25;
+pub(crate) const R_A: u64 = 14;
+pub(crate) const R_B: u64 = 15;
+pub(crate) const R_C: u64 = 16;
+pub(crate) const R_D: u64 = 17;
+pub(crate) const R_E: u64 = 18;
+pub(crate) const R_F: u64 = 19;
+pub(crate) const R_G: u64 = 20;
+pub(crate) const R_H: u64 = 21;
+pub(crate) const R_END: u64 = 25;
 
 /// Emits the public-output publication loop followed by a jump to `ROM_EXIT`.  Terminates the
 /// program.  Mirrors the finalization sequence of the RISC-V entry/exit code.
@@ -94,7 +94,7 @@ pub fn emit_pubout_exit(code: &mut Code) {
     code.push_raw(zib, super::emit::Fixup::None);
 }
 
-fn emit_console_str(code: &mut Code, text: &str) {
+pub(crate) fn emit_console_str(code: &mut Code, text: &str) {
     code.load_imm_to_reg(R_B, UART_ADDR);
     for &byte in text.as_bytes() {
         code.load_imm_to_reg(R_C, byte as u64);
@@ -153,7 +153,7 @@ fn emit_splitmix64(code: &mut Code, state: u64, out: u64, tmp: u64) {
     code.alu_rr("xor", out, out, tmp);
 }
 
-fn wrap_stub<F: FnOnce(&mut Code, LabelId, LabelId)>(body: F) -> Code {
+pub(crate) fn wrap_stub<F: FnOnce(&mut Code, LabelId, LabelId)>(body: F) -> Code {
     let mut code = Code::new();
     // Prologue: save the return address.
     code.store_reg_to_slot(FRAME_RET_PC_OFF, REG_RA);
@@ -163,12 +163,9 @@ fn wrap_stub<F: FnOnce(&mut Code, LabelId, LabelId)>(body: F) -> Code {
     code.jump(done);
     code.bind(fault);
     code.load_imm_to_reg(REG_RET, ERRNO_FAULT);
-    // Epilogue: restore caller FP, return to saved address. (REG_RET set by the body.)
+    // Epilogue: return to the saved address (REG_RET set by the body; the caller restores FP).
     code.bind(done);
-    code.load_slot_to_reg(REG_T0, FRAME_RET_PC_OFF);
-    code.load_slot_to_reg(REG_T2, FRAME_CALLER_FP_OFF);
-    code.mov_reg(REG_FP, REG_T2);
-    code.ret_reg(REG_T0);
+    code.ret_via_slot(FRAME_RET_PC_OFF);
     code
 }
 
@@ -185,18 +182,18 @@ fn require_fd(code: &mut Code, allowed: &[u64], done: LabelId) {
 }
 
 #[derive(Clone, Copy)]
-enum Len {
+pub(crate) enum Len {
     Imm(u64),
     Reg(u64),
 }
 
 /// Loads wasm linear-memory absolute address `WASM_MEM_BASE + (reg & 0xffffffff)` into `reg`.
-fn to_linear(code: &mut Code, reg: u64) {
+pub(crate) fn to_linear(code: &mut Code, reg: u64) {
     code.alu_ri("and", reg, reg, 0xFFFF_FFFF);
     code.alu_ri("add", reg, reg, WASM_MEM_BASE as i64);
 }
 
-fn checked_linear(code: &mut Code, reg: u64, len: Len, fault: LabelId) {
+pub(crate) fn checked_linear(code: &mut Code, reg: u64, len: Len, fault: LabelId) {
     to_linear(code, reg);
     match len {
         Len::Imm(n) => code.alu_ri("add", R_END, reg, n as i64),
@@ -471,9 +468,17 @@ fn check_signature(name: &str, declared: &FuncSig) -> Result<(), Box<dyn Error>>
 /// Builds the Zisk routine implementing imported function `import_index`.
 pub fn build_wasi_stub(module: &WasmModule, import_index: usize) -> Result<Code, Box<dyn Error>> {
     let (mod_name, name, _ty) = &module.imports[import_index];
+    if mod_name == "env" && (name == "read_input" || name == "write_output") {
+        return Err(format!(
+            "wasm: unsupported import env::{name}: a wasm guest reads its input from stdin and \
+             writes its public output to stdout (WASI fd_read / fd_write)"
+        )
+        .into());
+    }
     if mod_name != "wasi_snapshot_preview1" {
         return Err(format!(
-            "wasm: unsupported import module '{mod_name}' (only wasi_snapshot_preview1 is supported)"
+            "wasm: unsupported import {mod_name}::{name} (only wasi_snapshot_preview1 and, from \
+             env, the functions of the ZisK C headers and the ZisK precompiles are supported)"
         )
         .into());
     }

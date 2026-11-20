@@ -2,8 +2,8 @@ use std::borrow::Cow;
 use std::mem;
 
 use crate::{
-    ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, FailureReason, ParEmuOptions,
-    RegStepCheck,
+    parse_ops_x_row, ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, FailureReason,
+    MemDualStats, ParEmuOptions, RegStepCheck, MEM_DUAL_MAX,
 };
 use proofman_fields::PrimeField64;
 use zisk_common::{
@@ -22,8 +22,8 @@ use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{
     EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, FREG_F0, FREG_INST,
     FREG_RA, FREG_X0, OUTPUT_ADDR, RAM_ADDR, REGS_IN_MAIN_TO, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
-    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
-    STORE_REG, SYS_ADDR,
+    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    SYS_ADDR,
 };
 
 const LOAD_SYMBOLS: [&str; 3] = ["_heap_bottom", "_heap_top", "ZISK_BUMP_HEAP_POS"];
@@ -132,14 +132,14 @@ impl<'a> Emu<'a> {
             return ctx;
         }
         // Create a new read section for every RO data entry of the rom
-        for i in 0..self.rom.ro_data_64.len() {
+        for section in &self.rom.ro_data_64 {
             // Convert from DataSection64 to DataSection
             let mut data_section = DataSection {
-                addr: self.rom.ro_data_64[i].addr,
-                data: Vec::with_capacity(self.rom.ro_data_64[i].data.len() * 8),
+                addr: section.addr,
+                data: Vec::with_capacity(section.data.len() * 8),
             };
-            for j in 0..self.rom.ro_data_64[i].data.len() {
-                data_section.data.extend_from_slice(&self.rom.ro_data_64[i].data[j].to_le_bytes());
+            for value in &section.data {
+                data_section.data.extend_from_slice(&value.to_le_bytes());
             }
 
             // Add the read section to the memory
@@ -147,14 +147,14 @@ impl<'a> Emu<'a> {
         }
 
         // Write the initial RAM data to the memory, as it will be used for the execution of the program (e.g. for jumps to code in the ROM, or for read-only data)
-        for i in 0..self.rom.rw_data_64.len() {
+        for section in &self.rom.rw_data_64 {
             // Convert from DataSection64 to DataSection
             let mut data_section = DataSection {
-                addr: self.rom.rw_data_64[i].addr,
-                data: Vec::with_capacity(self.rom.rw_data_64[i].data.len() * 8),
+                addr: section.addr,
+                data: Vec::with_capacity(section.data.len() * 8),
             };
-            for j in 0..self.rom.rw_data_64[i].data.len() {
-                data_section.data.extend_from_slice(&self.rom.rw_data_64[i].data[j].to_le_bytes());
+            for value in &section.data {
+                data_section.data.extend_from_slice(&value.to_le_bytes());
             }
 
             // Write the data to the write section of the memory
@@ -202,7 +202,6 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
@@ -263,7 +262,6 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
@@ -331,7 +329,6 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
@@ -414,7 +411,6 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
@@ -480,7 +476,6 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
@@ -1808,6 +1803,29 @@ impl<'a> Emu<'a> {
         if options.top_histogram > 0 && !options.stats {
             panic!("Top Histogram feature needs at least stats option");
         }
+        if options.dma_stats {
+            if !options.stats {
+                panic!("Dma stats feature needs at least stats option");
+            }
+            match parse_ops_x_row(&options.dma_ops_x_row) {
+                Ok(ops_x_row) => self.ctx.stats.set_dma_loops(&ops_x_row),
+                Err(e) => panic!("--dma-ops-x-row '{}': {e}", options.dma_ops_x_row),
+            }
+        }
+        if let Some(duals) = options.mem_duals {
+            if !options.stats {
+                panic!("Mem duals feature needs at least stats option");
+            }
+            if duals > MEM_DUAL_MAX {
+                panic!("--mem-duals: at most {MEM_DUAL_MAX} duals per lane are supported");
+            }
+            if options.mem_dual_reset_bits > MemDualStats::MAX_RESET_BITS {
+                panic!(
+                    "--mem-dual-reset-bits: at most {} bits are supported",
+                    MemDualStats::MAX_RESET_BITS
+                );
+            }
+        }
 
         self.ctx.stats.set_top_histogram(options.top_histogram);
         self.ctx.stats.set_coverage(options.coverage);
@@ -1855,6 +1873,10 @@ impl<'a> Emu<'a> {
                 }
             }
             self.ctx.stats.set_duplicates_ops(Some(set));
+        }
+        if let Some(duals) = options.mem_duals {
+            self.ctx.stats.set_mem_duals(duals, options.mem_dual_reset_bits);
+            self.ctx.stats.seed_mem_dual_init(self.rom);
         }
         self.ctx.stats.set_reg_step_distance(options.reg_step_distance);
         self.ctx.stats.set_reg_step_limit(options.reg_step_limit());
@@ -1915,8 +1937,8 @@ impl<'a> Emu<'a> {
                 println!("\t\tsp=0x{:x}", chunk.start_state.sp);
                 println!("\t\tc=0x{:x}", chunk.start_state.c);
                 println!("\t\tstep={}", chunk.start_state.step);
-                for i in 1..chunk.start_state.regs.len() {
-                    println!("\t\tregister[{}]=0x{:x}", i, chunk.start_state.regs[i]);
+                for (i, reg) in chunk.start_state.regs.iter().enumerate().skip(1) {
+                    println!("\t\tregister[{}]=0x{:x}", i, reg);
                 }
                 println!("\tLast state:");
                 println!("\t\tc=0x{:x}", chunk.last_c);

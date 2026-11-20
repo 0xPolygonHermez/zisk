@@ -335,7 +335,8 @@ theorem ststep_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) 
 /-- lui, or an auipc the transpiler does not fuse with the word after it,
     any rd: copyb(0, its value) into rd. -/
 theorem UInstr.zisk_of_spec (i : UInstr) {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {pc : BitVec 64}
-    {next : Option (BitVec 32)} (hnf : i.op = .AUIPC → ∀ n, next = some n → Transpiler.fuses i.encode n = false)
+    {next : Option (BitVec 32)}
+    (hnf : i.op = .AUIPC → ∀ n, next = some n → Transpiler.fuses i.encode n = false ∧ Transpiler.fusesAddi i.encode n = false)
     (h : Transpiled zrom pc i.encode next) :
     zrom pc = Transpiler.mk (.A_IMM, 0) (.B_IMM, utypeVal i.op pc i.imm) (.ZOP_COPYB ())
       (Transpiler.storeReg i.rd.toNat) 4 4 := by
@@ -347,7 +348,7 @@ theorem UInstr.zisk_of_spec (i : UInstr) {zrom : BitVec 64 → _root_.Zisk.zisk_
   · have hplain : Transpiler.auipc i.encode pc next = Transpiler.auipc.plain i.encode pc := by
       cases next with
       | none => rfl
-      | some n => simp [Transpiler.auipc, hnf hk n rfl]
+      | some n => simp [Transpiler.auipc, (hnf hk n rfl).1, (hnf hk n rfl).2]
     simp [Transpiler.convert, Transpiler.decode, hop, uopEnc, hrd, himm, hplain,
       Transpiler.auipc.plain, utypeVal, sign_extend, Sail.BitVec.signExtend]
 
@@ -360,8 +361,8 @@ structure UtAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   h1 : s.mem.get? (pc.toNat + 1) = some (byte i.encode 1)
   h2 : s.mem.get? (pc.toNat + 2) = some (byte i.encode 2)
   h3 : s.mem.get? (pc.toNat + 3) = some (byte i.encode 3)
-  /-- An auipc does not fuse with the word after it (lui never does). -/
-  nf : i.op = .AUIPC → ∀ n, next = some n → Transpiler.fuses i.encode n = false
+  /-- An auipc fuses with neither a jalr nor an addi after it (lui never does). -/
+  nf : i.op = .AUIPC → ∀ n, next = some n → Transpiler.fuses i.encode n = false ∧ Transpiler.fusesAddi i.encode n = false
   tr : Transpiled zrom pc i.encode next
 
 set_option maxHeartbeats 4000000 in

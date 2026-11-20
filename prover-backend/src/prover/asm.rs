@@ -448,7 +448,7 @@ impl ProverEngine for AsmProver {
         if !asm_mt_path_exists || !asm_rh_path_exists || !asm_all_exist {
             if self.core_prover.asm_info.no_auto_setup {
                 return Err(anyhow::anyhow!(
-                        "Assembly files not found for ELF {}. Force ROM setup is enabled, but assembly files are still missing. Please ensure that the assembly generation process has been completed successfully.",
+                        "Assembly files not found for program {}. Force ROM setup is enabled, but assembly files are still missing. Please ensure that the assembly generation process has been completed successfully.",
                         elf.name()
                     ));
             }
@@ -457,7 +457,7 @@ impl ProverEngine for AsmProver {
             // returned an error on its own would leave the other ranks waiting for it.
             let generated = if pctx.mpi_ctx.rank == 0 {
                 tracing::info!(
-                    ">>> ROM SETUP (one time only) - Generating assembly files for ELF: {}",
+                    ">>> ROM SETUP (one time only) - Generating assembly files for program: {}",
                     elf.name()
                 );
                 timer_start_info!(ROM_SETUP);

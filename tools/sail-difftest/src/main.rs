@@ -42,7 +42,7 @@ use clap::{Parser, Subcommand};
 use zisk_common::EmuTrace;
 use zisk_core::{
     zisk_ops::ZiskOp, ZiskInst, ZiskRom, INPUT_ADDR, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG,
-    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 use ziskemu::{Emu, EmuOptions};
 
@@ -327,7 +327,6 @@ fn model_inst(i: &ZiskInst) -> Result<ModelInst> {
         SRC_C => ("A_C", 0),
         SRC_MEM => ("A_MEM", i.a_offset_imm0),
         SRC_IMM => ("A_IMM", i.a_offset_imm0 | (i.a_use_sp_imm1 << 32)),
-        SRC_STEP => ("A_STEP", 0),
         SRC_REG => ("A_REG", i.a_offset_imm0),
         s => bail!("a_src {s} has no Sail counterpart"),
     };
@@ -414,7 +413,8 @@ fn rom_entry(i: &ZiskInst) -> Result<[u64; 8]> {
         names.iter().position(|n| *n == name).map(|k| k as u64).ok_or_else(|| anyhow!("{name}"))
     };
     let w0 = 1
-        | code(m.a_src, &["A_C", "A_MEM", "A_IMM", "A_STEP", "A_REG"])? << 8
+        // a_src 3 is unused: it was the step source, which ZisK no longer has
+        | code(m.a_src, &["A_C", "A_MEM", "A_IMM", "", "A_REG"])? << 8
         | code(m.b_src, &["B_C", "B_MEM", "B_IMM", "B_IND", "B_REG"])? << 16
         | code(m.store, &["ST_NONE", "ST_MEM", "ST_IND", "ST_REG"])? << 24
         | m.ind_width << 32
@@ -430,7 +430,11 @@ fn rom_listing(elf: &Path, out: &Path) -> Result<()> {
     let bytes = fs::read(elf).with_context(|| format!("reading {}", elf.display()))?;
     let payload = zisk_riscv::elf_extraction::collect_elf_payload_from_bytes(&bytes)
         .map_err(|e| anyhow!("{e}"))?;
-    let rom = zisk_transpiler_common::program2rom(&bytes).map_err(|e| anyhow!("{e}"))?;
+    // Without the ROM optimizer's post-pass: the listing is compared with the Lean spec of the
+    // transpiler (`make transpiler-check`), which describes the per-instruction translation only.
+    // The optimizer is not part of the proof yet (sail-zisk/README.md, to-do list).
+    let rom = zisk_riscv::elf2rom_with(&bytes, zisk_riscv::RomOptPasses::NONE)
+        .map_err(|e| anyhow!("{e}"))?;
     let mut s = String::new();
     for section in &payload.exec {
         write!(s, "code {:x} ", section.addr)?;

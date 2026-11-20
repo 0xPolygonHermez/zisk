@@ -75,7 +75,7 @@ theorem convert_keep {pc : BitVec 64} {w : BitVec 32} {next : Option (BitVec 32)
     all_goals (simp only [Transpiler.mk, Transpiler.registerOp, Transpiler.immediateOp, Transpiler.immediateOpOrCopyb,
       Transpiler.copyb, Transpiler.singleOp, Transpiler.zextH, Transpiler.nop, Transpiler.ecall, Transpiler.lui,
       Transpiler.auipc, Transpiler.jal, Transpiler.loadOp, Transpiler.storeOp, Transpiler.branchOp]; try rfl)
-    all_goals (try split) <;> (try split) <;> (try rfl) <;> simp [zop_keep]
+    all_goals (try split) <;> (try split) <;> (try split) <;> (try rfl) <;> simp [zop_keep]
 
 theorem aLoad_keep (d : Bool) : Equiv.Zisk.writesF (Transpiler.aLoad d) = false := by cases d <;> rfl
 

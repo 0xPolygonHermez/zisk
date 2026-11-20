@@ -65,23 +65,38 @@ theorem rv_jalr_step (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
           rfl) n
   exact ⟨s2, hrun, hmem, hr.keep hwf ho, hpc2, hxs⟩
 
-/-- auipc rd, uimm then jalr rd2, jimm(rd), rd2 rd or x0: the pair the
-    transpiler fuses. -/
+/-- auipc rd, uimm then a word the transpiler fuses it with: jalr rd2,
+    jimm(rd), rd2 rd or x0; or, `addi`, addi rd, rd, jimm (the `la` pair, rd2
+    unused). -/
 structure FInstr where
   rd : BitVec 5
   uimm : BitVec 20
   rd2 : BitVec 5
   jimm : BitVec 12
+  addi : Bool
 
 def FInstr.auipc (i : FInstr) : UInstr := ⟨.AUIPC, i.rd, i.uimm⟩
 def FInstr.jalr (i : FInstr) : JrInstr := ⟨i.rd2, i.rd, i.jimm⟩
+def FInstr.addiI (i : FInstr) : IInstr := ⟨.ADDI, i.rd, i.rd, i.jimm⟩
+/-- The pair's second word. -/
+def FInstr.second (i : FInstr) : BitVec 32 :=
+  match i.addi with
+  | false => i.jalr.encode
+  | true => i.addiI.encode
 /-- auipc's value at pc. -/
 def FInstr.A (i : FInstr) (pc : BitVec 64) : BitVec 64 := utypeVal .AUIPC pc i.uimm
-/-- The pair's target. -/
-def FInstr.T (i : FInstr) (pc : BitVec 64) : BitVec 64 := jalrTarget (i.A pc) i.jimm
+/-- The pair's target: the jalr's, or past the addi. -/
+def FInstr.T (i : FInstr) (pc : BitVec 64) : BitVec 64 :=
+  match i.addi with
+  | false => jalrTarget (i.A pc) i.jimm
+  | true => pc + 8
 /-- What rd holds after the pair: auipc's value when the jalr links to x0,
-    the return address when it links to rd. -/
-def FInstr.c (i : FInstr) (pc : BitVec 64) : BitVec 64 := if i.rd2 = 0 then i.A pc else pc + 8
+    the return address when it links to rd; auipc's value plus the addi's
+    immediate after an addi. -/
+def FInstr.c (i : FInstr) (pc : BitVec 64) : BitVec 64 :=
+  match i.addi with
+  | false => if i.rd2 = 0 then i.A pc else pc + 8
+  | true => itypeVal .ADDI (i.A pc) i.jimm
 
 /-- The fused pair at pc: both words in executable memory, rd ≠ x0, the jalr
     linking to rd or x0, a 4-aligned target, and the transpiler's fused
@@ -97,21 +112,63 @@ structure FAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   h1 : s.mem.get? (pc.toNat + 1) = some (byte i.auipc.encode 1)
   h2 : s.mem.get? (pc.toNat + 2) = some (byte i.auipc.encode 2)
   h3 : s.mem.get? (pc.toNat + 3) = some (byte i.auipc.encode 3)
-  g0 : s.mem.get? (pc + 4).toNat = some (byte i.jalr.encode 0)
-  g1 : s.mem.get? ((pc + 4).toNat + 1) = some (byte i.jalr.encode 1)
-  g2 : s.mem.get? ((pc + 4).toNat + 2) = some (byte i.jalr.encode 2)
-  g3 : s.mem.get? ((pc + 4).toNat + 3) = some (byte i.jalr.encode 3)
+  g0 : s.mem.get? (pc + 4).toNat = some (byte i.second 0)
+  g1 : s.mem.get? ((pc + 4).toNat + 1) = some (byte i.second 1)
+  g2 : s.mem.get? ((pc + 4).toNat + 2) = some (byte i.second 2)
+  g3 : s.mem.get? ((pc + 4).toNat + 3) = some (byte i.second 3)
   rd : i.rd ≠ 0
   link : i.rd2 = i.rd ∨ i.rd2 = 0
   tal : (i.T pc)[0] = false ∧ (i.T pc)[1] = false
   rom : zrom pc = Equiv.Zisk.constJInst i.rd.toNat (i.c pc) (i.T pc - pc)
 
 set_option maxHeartbeats 4000000 in
-/-- The fused pair: two steps of sail-riscv's main loop and one of ZisK keep
-    the states related, both at the pair's target. -/
-theorem fused_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hrel : Rel s z rs)
+/-- sail-riscv's step on addi rd, rs1, imm (rd ≠ x0): rd gets rs1 + imm. -/
+theorem rv_addi_step (s : RVState) (rs : List PMA_Region) (hr : StepReady s rs)
+    (pc : BitVec 64) (hpc : s.regs.get? Register.PC = some pc) (i : IInstr) (hrd : i.rd ≠ 0)
+    (hw : WordAt s rs pc (byte i.encode 0) (byte i.encode 1) (byte i.encode 2) (byte i.encode 3))
+    (v1 : BitVec 64) (hv1 : getX s i.rs1.toNat = some v1) (n : Nat) :
+    ∃ s1, (interpretSailEffects (try_step n false)).run s = .ok false s1 ∧ s1.mem = s.mem ∧
+      StepReady s1 rs ∧ s1.regs.get? Register.PC = some (pc + 4) ∧
+      ∀ k, k < 32 → getX s1 k = getX (setX s i.rd.toNat (itypeVal i.op v1 i.imm)) k := by
+  obtain ⟨hop, hf3, himm, hrdx, hr1x, -⟩ := i.fields
+  have hrd5 : (byte i.encode 3 ++ byte i.encode 2 ++ (byte i.encode 1 ++ byte i.encode 0)).extractLsb 11 7 ≠ 0#5 := by
+    rw [hrdx]; exact hrd
+  have l1 : i.rs1.toNat < 32 := i.rs1.isLt
+  obtain ⟨s1, hrun, hmem, hwf, hpc1, hxs, ho⟩ :=
+    try_step_gen s rs hr pc hpc _ _ _ _ hw (.ITYPE (i.imm, .Regidx i.rs1, .Regidx i.rd, i.op))
+      (by intro t htp ⟨w, hw'⟩ _ _
+          have := decode_itype t _ i.op hop hf3 hrd5 htp w hw'
+          rw [himm, hr1x, hrdx] at this; exact this)
+      i.rd.toNat (itypeVal i.op v1 i.imm) (pc + 4)
+      (by intro t he _ _ _ _ hnext _
+          rw [execute_itype_eq, execute_itype t i.op i.rs1 i.rd i.imm v1 (getX_of_agree he l1 hv1),
+            insert_same t _ _ hnext]
+          rfl) n
+  exact ⟨s1, hrun, hmem, hr.keep hwf ho, hpc1, hxs⟩
+
+theorem FInstr.second_jalr {i : FInstr} (ha : i.addi = false) : i.second = i.jalr.encode := by
+  obtain ⟨_, _, _, _, _ | _⟩ := i <;> first | rfl | cases ha
+theorem FInstr.T_jalr {i : FInstr} (ha : i.addi = false) (p : BitVec 64) :
+    i.T p = jalrTarget (i.A p) i.jimm := by
+  obtain ⟨_, _, _, _, _ | _⟩ := i <;> first | rfl | cases ha
+theorem FInstr.c_jalr {i : FInstr} (ha : i.addi = false) (p : BitVec 64) :
+    i.c p = if i.rd2 = 0 then i.A p else p + 8 := by
+  obtain ⟨_, _, _, _, _ | _⟩ := i <;> first | rfl | cases ha
+theorem FInstr.second_addi {i : FInstr} (ha : i.addi = true) : i.second = i.addiI.encode := by
+  obtain ⟨_, _, _, _, _ | _⟩ := i <;> first | rfl | cases ha
+theorem FInstr.T_addi {i : FInstr} (ha : i.addi = true) (p : BitVec 64) : i.T p = p + 8 := by
+  obtain ⟨_, _, _, _, _ | _⟩ := i <;> first | rfl | cases ha
+theorem FInstr.c_addi {i : FInstr} (ha : i.addi = true) (p : BitVec 64) :
+    i.c p = itypeVal .ADDI (i.A p) i.jimm := by
+  obtain ⟨_, _, _, _, _ | _⟩ := i <;> first | rfl | cases ha
+
+set_option maxHeartbeats 4000000 in
+/-- The fused auipc-jalr pair: two steps of sail-riscv's main loop and one of
+    ZisK keep the states related, both at the pair's target. -/
+theorem fused_rel_jalr (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hrel : Rel s z rs)
     (pc : BitVec 64) (hpc : s.regs.get? Register.PC = some pc)
-    (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : FInstr) (hi : FAt s rs pc zrom i) (n : Nat) :
+    (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : FInstr) (ha : i.addi = false)
+    (hi : FAt s rs pc zrom i) (n : Nat) :
     ∃ s2 z', RVRun n 2 s s2 ∧ ZRun zrom 1 z z' ∧ Rel s2 z' rs ∧
       s2.regs.get? Register.PC = some (i.T pc) ∧
       StepReady (rvNext n s) rs ∧ (rvNext n s).regs.get? Register.PC = some (pc + 4) ∧
@@ -125,24 +182,30 @@ theorem fused_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
       (byte i.auipc.encode 3) := ⟨hi.al, hi.x1, hi.x2, hi.h0, hi.h1, hi.h2, hi.h3, hc1⟩
   obtain ⟨s1, hrun1, hmem1, hr1, hpc1, hxs1⟩ := rv_auipc_step s rs hr pc' hpc i.rd i.uimm hw1 n
   have hal4 : (pc' + 4).toNat % 4 = 0 := by rw [BitVec.toNat_add]; simp; have := hi.al; omega
+  have hsec := FInstr.second_jalr ha
+  have g0 := hi.g0; have g1 := hi.g1; have g2 := hi.g2; have g3 := hi.g3
+  rw [hsec] at g0 g1 g2 g3
   have hw2 : WordAt s1 rs (pc' + 4) (byte i.jalr.encode 0) (byte i.jalr.encode 1) (byte i.jalr.encode 2)
       (byte i.jalr.encode 3) :=
-    ⟨hal4, hi.x3, hi.x4, hmem1 ▸ hi.g0, hmem1 ▸ hi.g1, hmem1 ▸ hi.g2, hmem1 ▸ hi.g3, hc2⟩
+    ⟨hal4, hi.x3, hi.x4, hmem1 ▸ g0, hmem1 ▸ g1, hmem1 ▸ g2, hmem1 ▸ g3, hc2⟩
   have ld : i.rd.toNat < 32 := i.rd.isLt
   have l2 : i.rd2.toNat < 32 := i.rd2.isLt
   have ed := ne_zero_toNat hi.rd
   have hv1 : getX s1 i.jalr.rs1.toNat = some (i.A pc') := by
     show getX s1 i.rd.toNat = _
     rw [hxs1 _ ld, getX_setX _ _ _ _ ld ld, if_pos ⟨ed, rfl⟩]; rfl
+  have tal : (jalrTarget (i.A pc') i.jalr.imm)[0] = false ∧ (jalrTarget (i.A pc') i.jalr.imm)[1] = false := by
+    have := hi.tal; rw [FInstr.T_jalr ha] at this; exact this
   obtain ⟨s2, hrun2, hmem2, hr2, hpc2, hxs2⟩ := rv_jalr_step s1 rs hr1 (pc' + 4) hpc1 i.jalr hw2 (i.A pc') hv1
-    hi.tal (n + 1)
+    tal (n + 1)
+  have hpcT : s2.regs.get? Register.PC = some (i.T pc') := by rw [FInstr.T_jalr ha]; exact hpc2
   have hz := Equiv.Zisk.execute_constj z i.rd.toNat (i.c pc') (i.T pc' - pc') (by omega) xs pc' st hx hzpc hst
   have hzrun := hz
   rw [← hi.rom, ← zstep_run zrom z pc' hzpc] at hzrun
   refine ⟨s2, _, .step hrun1 (.step hrun2 (.done _ _)), .step hzrun (.done _),
     ⟨hr2, ⟨vectorUpdate xs i.rd.toNat (i.c pc'), by simp [Std.ExtDHashMap.get?_insert], ?_⟩,
-      ⟨_, hpc2, ?_⟩,
-      ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, ?_⟩, hpc2,
+      ⟨_, hpcT, ?_⟩,
+      ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, ?_⟩, hpcT,
     by rw [rvNext_of hrun1]; exact hr1, by rw [rvNext_of hrun1]; exact hpc1, by rw [rvNext_of hrun1]; exact hmem1,
     hmem2.trans hmem1, zstep_fkeep hzpc (by rw [hi.rom]; rfl) hzrun⟩
   · intro k hk1 hk2
@@ -150,8 +213,7 @@ theorem fused_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     rw [hxs2 k hk2]
     simp only [FInstr.jalr]
     rw [getX_setX _ _ _ _ l2 hk2, hxs1 k hk2, getX_setX _ _ _ _ ld hk2,
-      getElem!_update xs _ k _ (by omega), e8]
-    simp only [FInstr.c]
+      getElem!_update xs _ k _ (by omega), e8, FInstr.c_jalr ha]
     rcases hi.link with h | h
     · have : i.rd2 ≠ 0 := h ▸ hi.rd
       rw [h] at this ⊢
@@ -167,6 +229,77 @@ theorem fused_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (
     generalize i.T pc' = y; bv_decide
   · show Equiv.normIn z.mem = Equiv.normIn s2.mem
     rw [hmem2, hmem1]; exact hzm
+
+set_option maxHeartbeats 4000000 in
+/-- The fused auipc-addi pair: two steps of sail-riscv's main loop and one of
+    ZisK keep the states related, both past the addi. -/
+theorem fused_rel_addi (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hrel : Rel s z rs)
+    (pc : BitVec 64) (hpc : s.regs.get? Register.PC = some pc)
+    (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : FInstr) (ha : i.addi = true)
+    (hi : FAt s rs pc zrom i) (n : Nat) :
+    ∃ s2 z', RVRun n 2 s s2 ∧ ZRun zrom 1 z z' ∧ Rel s2 z' rs ∧
+      s2.regs.get? Register.PC = some (i.T pc) ∧
+      StepReady (rvNext n s) rs ∧ (rvNext n s).regs.get? Register.PC = some (pc + 4) ∧
+      (rvNext n s).mem = s.mem ∧ s2.mem = s.mem ∧ FKeep z z' := by
+  obtain ⟨hr, ⟨xs, hx, agree⟩, ⟨pc', hpc', hzpc⟩, ⟨st, hst, hze⟩, hzm⟩ := hrel
+  have : pc' = pc := by rw [hpc] at hpc'; exact (Option.some.inj hpc').symm
+  subst this
+  obtain ⟨-, -, -, hc1⟩ := UInstr.fields i.auipc
+  obtain ⟨-, -, -, -, -, hc2⟩ := i.addiI.fields
+  have hw1 : WordAt s rs pc' (byte i.auipc.encode 0) (byte i.auipc.encode 1) (byte i.auipc.encode 2)
+      (byte i.auipc.encode 3) := ⟨hi.al, hi.x1, hi.x2, hi.h0, hi.h1, hi.h2, hi.h3, hc1⟩
+  obtain ⟨s1, hrun1, hmem1, hr1, hpc1, hxs1⟩ := rv_auipc_step s rs hr pc' hpc i.rd i.uimm hw1 n
+  have hal4 : (pc' + 4).toNat % 4 = 0 := by rw [BitVec.toNat_add]; simp; have := hi.al; omega
+  have hsec := FInstr.second_addi ha
+  have g0 := hi.g0; have g1 := hi.g1; have g2 := hi.g2; have g3 := hi.g3
+  rw [hsec] at g0 g1 g2 g3
+  have hw2 : WordAt s1 rs (pc' + 4) (byte i.addiI.encode 0) (byte i.addiI.encode 1) (byte i.addiI.encode 2)
+      (byte i.addiI.encode 3) :=
+    ⟨hal4, hi.x3, hi.x4, hmem1 ▸ g0, hmem1 ▸ g1, hmem1 ▸ g2, hmem1 ▸ g3, hc2⟩
+  have ld : i.rd.toNat < 32 := i.rd.isLt
+  have ed := ne_zero_toNat hi.rd
+  have hv1 : getX s1 i.addiI.rs1.toNat = some (i.A pc') := by
+    show getX s1 i.rd.toNat = _
+    rw [hxs1 _ ld, getX_setX _ _ _ _ ld ld, if_pos ⟨ed, rfl⟩]; rfl
+  obtain ⟨s2, hrun2, hmem2, hr2, hpc2, hxs2⟩ := rv_addi_step s1 rs hr1 (pc' + 4) hpc1 i.addiI hi.rd hw2
+    (i.A pc') hv1 (n + 1)
+  have e8 : pc' + 4 + 4 = pc' + 8 := by rw [BitVec.add_assoc]; rfl
+  rw [e8, ← FInstr.T_addi ha] at hpc2
+  have hz := Equiv.Zisk.execute_constj z i.rd.toNat (i.c pc') (i.T pc' - pc') (by omega) xs pc' st hx hzpc hst
+  have hzrun := hz
+  rw [← hi.rom, ← zstep_run zrom z pc' hzpc] at hzrun
+  refine ⟨s2, _, .step hrun1 (.step hrun2 (.done _ _)), .step hzrun (.done _),
+    ⟨hr2, ⟨vectorUpdate xs i.rd.toNat (i.c pc'), by simp [Std.ExtDHashMap.get?_insert], ?_⟩,
+      ⟨_, hpc2, ?_⟩,
+      ⟨BitVec.addInt st 1, by simp [Std.ExtDHashMap.get?_insert], by simp [Std.ExtDHashMap.get?_insert, hze]⟩, ?_⟩, hpc2,
+    by rw [rvNext_of hrun1]; exact hr1, by rw [rvNext_of hrun1]; exact hpc1, by rw [rvNext_of hrun1]; exact hmem1,
+    hmem2.trans hmem1, zstep_fkeep hzpc (by rw [hi.rom]; rfl) hzrun⟩
+  · intro k hk1 hk2
+    rw [hxs2 k hk2]
+    show getX (setX s1 i.rd.toNat (itypeVal .ADDI (i.A pc') i.jimm)) k = _
+    rw [getX_setX _ _ _ _ ld hk2, hxs1 k hk2, getX_setX _ _ _ _ ld hk2,
+      getElem!_update xs _ k _ (by omega), FInstr.c_addi ha]
+    by_cases e : k = i.rd.toNat
+    · simp [e, ed]
+    · simp [e, ed]; exact agree k hk1 hk2
+  · simp only [Std.ExtDHashMap.get?_insert, beq_self_eq_true, dite_true, cast_eq, Option.some.injEq]
+    show pc' + (i.T pc' - pc') = i.T pc'
+    generalize i.T pc' = y; bv_decide
+  · show Equiv.normIn z.mem = Equiv.normIn s2.mem
+    rw [hmem2, hmem1]; exact hzm
+
+/-- The fused pair: two steps of sail-riscv's main loop and one of ZisK keep
+    the states related, both at the pair's target. -/
+theorem fused_rel (s : RVState) (z : Equiv.Zisk.ZState) (rs : List PMA_Region) (hrel : Rel s z rs)
+    (pc : BitVec 64) (hpc : s.regs.get? Register.PC = some pc)
+    (zrom : BitVec 64 → _root_.Zisk.zisk_inst) (i : FInstr) (hi : FAt s rs pc zrom i) (n : Nat) :
+    ∃ s2 z', RVRun n 2 s s2 ∧ ZRun zrom 1 z z' ∧ Rel s2 z' rs ∧
+      s2.regs.get? Register.PC = some (i.T pc) ∧
+      StepReady (rvNext n s) rs ∧ (rvNext n s).regs.get? Register.PC = some (pc + 4) ∧
+      (rvNext n s).mem = s.mem ∧ s2.mem = s.mem ∧ FKeep z z' := by
+  cases ha : i.addi
+  · exact fused_rel_jalr s z rs hrel pc hpc zrom i ha hi n
+  · exact fused_rel_addi s z rs hrel pc hpc zrom i ha hi n
 
 theorem RVRun.append {n a b : Nat} {s t u : RVState} (h1 : RVRun n a s t) (h2 : RVRun (n + a) b t u) :
     RVRun n (a + b) s u := by

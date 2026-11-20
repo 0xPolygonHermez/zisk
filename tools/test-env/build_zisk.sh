@@ -2,13 +2,82 @@
 
 source ./utils.sh
 
+# Sets crate_dir to the directory of the one package named $1 in the build's dependency graph
+find_crate() {
+    local paths
+    paths="$(jq -r --arg n "$1" '.packages[] | select(.name == $n) | .manifest_path' <<< "$metadata")"
+    if [[ -z "$paths" || "$paths" == *$'\n'* ]]; then
+        err "Expected one $1 package in cargo metadata, found: ${paths:-none}"
+        return 1
+    fi
+    crate_dir="$(dirname "$paths")"
+}
+
+copy_proofman_files() {
+    local metadata crate_dir setup_dir vcs_info proofman_root js_dir circom other p
+
+    metadata="$(cargo metadata --format-version 1)" || return 1
+
+    # A crates.io crate holds only its own directory: take the rest of the repo from the
+    # commit it was published from. A git or path dependency is a whole checkout.
+    find_crate pil2-stark-setup || return 1
+    setup_dir="$crate_dir"
+    vcs_info="$setup_dir/.cargo_vcs_info.json"
+    if [[ -f "$vcs_info" ]]; then
+        if [[ "$(jq -r '.git.dirty // false' "$vcs_info")" == "true" ]]; then
+            err "pil2-stark-setup was published from a dirty tree: no commit holds its files"
+            return 1
+        fi
+        proofman_root="$(mktemp -d)"
+        curl -fsSL --retry 3 \
+            "https://codeload.github.com/0xPolygonHermez/pil2-proofman/tar.gz/$(jq -r .git.sha1 "$vcs_info")" \
+            | tar -xz -C "$proofman_root" --strip-components=1 || return 1
+    else
+        proofman_root="$setup_dir/../.."
+    fi
+
+    # Remove files from a previous install, as ziskup does
+    rm -rf "${ZISK_BIN_DIR}/setup" "${ZISK_BIN_DIR}/pil2-components" "${ZISK_BIN_DIR}/pil2-stark" \
+        "${ZISK_DIR}/zisk/pilfflonk-js"
+
+    for p in setup/circom setup/final_snark_circom setup/stark-recurser/stark2circom/circom_verifier \
+             setup/stark-recurser/plonk2pil/pil pil2-components/lib/std/pil pil2-stark/src/goldilocks/src; do
+        if [[ ! -d "$proofman_root/$p" ]]; then
+            err "pil2-proofman has no $p (at $proofman_root)"
+            return 1
+        fi
+        mkdir -p "${ZISK_BIN_DIR}/$(dirname "$p")"
+        ensure cp -R "$proofman_root/$p" "${ZISK_BIN_DIR}/$p" || return 1
+    done
+    # proofman runs circom on Linux and circom_mac on macOS: keep this platform's.
+    if [[ "${PLATFORM}" == "darwin" ]]; then
+        circom=circom_mac other=circom
+    else
+        circom=circom other=circom_mac
+    fi
+    rm -f "${ZISK_BIN_DIR}/setup/circom/$other"
+    if [[ ! -x "${ZISK_BIN_DIR}/setup/circom/$circom" ]]; then
+        err "${ZISK_BIN_DIR}/setup/circom/$circom not found or not executable"
+        return 1
+    fi
+
+    find_crate proofman-pilfflonk || return 1
+    js_dir="$crate_dir/js"
+    mkdir -p "${ZISK_DIR}/zisk/pilfflonk-js"
+    ensure cp -R "$js_dir/bin" "$js_dir/src" "$js_dir/package.json" "${ZISK_DIR}/zisk/pilfflonk-js/" || return 1
+    if [[ ! -f "${ZISK_DIR}/zisk/pilfflonk-js/bin/verify.js" ]]; then
+        err "pilfflonk verify.js not found in ${ZISK_DIR}/zisk/pilfflonk-js"
+        return 1
+    fi
+}
+
 main() {
     info "▶️  Running $(basename "$0") script..."
 
     current_dir=$(pwd)
 
     current_step=1
-    total_steps=7
+    total_steps=8
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         TARGET="x86_64-unknown-linux-gnu"
@@ -117,6 +186,9 @@ main() {
         ensure cp ./emulator-asm/Makefile "${ZISK_DIR}/zisk/emulator-asm" || return 1
         ensure cp -r ./lib-c "${ZISK_DIR}/zisk" || return 1
     fi
+
+    step "Copying pil2-proofman files..."
+    copy_proofman_files || return 1
 
     step "Adding ${ZISK_BIN_DIR} to PATH..."
     EXPORT_PATH="export PATH=\"$PATH:$ZISK_BIN_DIR\""

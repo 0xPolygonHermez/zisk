@@ -322,7 +322,7 @@ theorem UInstr.spec_fields (i : UInstr) :
     the spec's translation is the one UAt assumes. -/
 theorem UInstr.rom_of_spec (i : UInstr) (hd : i.rd ≠ 0)
     {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {pc : BitVec 64} {next : Option (BitVec 32)}
-    (hnf : ∀ n, next = some n → Transpiler.fuses i.encode n = false)
+    (hnf : ∀ n, next = some n → Transpiler.fuses i.encode n = false ∧ Transpiler.fusesAddi i.encode n = false)
     (h : Transpiled zrom pc i.encode next) :
     zrom pc = Equiv.Zisk.constInst i.rd.toNat (utypeVal i.op pc i.imm) := by
   obtain ⟨hop, hrd, himm⟩ := i.spec_fields
@@ -331,7 +331,7 @@ theorem UInstr.rom_of_spec (i : UInstr) (hd : i.rd ≠ 0)
   have hplain : Transpiler.auipc i.encode pc next = Transpiler.auipc.plain i.encode pc := by
     cases next with
     | none => rfl
-    | some n => simp [Transpiler.auipc, hnf n rfl]
+    | some n => simp [Transpiler.auipc, (hnf n rfl).1, (hnf n rfl).2]
   cases hk : i.op <;> rw [hk] at hop <;>
   · simp [Transpiler.convert, Transpiler.decode, hop, uopEnc, hrd, himm, ed, hplain,
       Transpiler.lui, Transpiler.auipc.plain, Transpiler.mk, storeReg_ne ed, Equiv.Zisk.constInst,
@@ -416,12 +416,14 @@ theorem toNat_eq_zero {x : BitVec 5} : x.toNat = 0 ↔ x = 0 := by
   · intro h; apply BitVec.eq_of_toNat_eq; simpa using h
   · intro h; subst h; rfl
 
-/-- The fused pair: the spec fuses the auipc with the jalr after it, and its
-    instruction is the one FAt assumes. -/
-theorem FInstr.rom_of_spec (i : FInstr) (hd : i.rd ≠ 0) (hl : i.rd2 = i.rd ∨ i.rd2 = 0)
+/-- The fused auipc-jalr pair: the spec fuses the auipc with the jalr after
+    it, and its instruction is the one FAt assumes. -/
+theorem FInstr.rom_of_spec_jalr (i : FInstr) (ha : i.addi = false) (hd : i.rd ≠ 0)
+    (hl : i.rd2 = i.rd ∨ i.rd2 = 0)
     {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {pc : BitVec 64}
     (h : Transpiled zrom pc i.auipc.encode (some i.jalr.encode)) :
     zrom pc = Equiv.Zisk.constJInst i.rd.toNat (i.c pc) (i.T pc - pc) := by
+  rw [FInstr.c_jalr ha, FInstr.T_jalr ha]
   obtain ⟨uop, urd, uimm⟩ := i.auipc.spec_fields
   obtain ⟨jop, jf3, jrd, jr1, jimm⟩ := i.jalr.spec_fields
   simp only [FInstr.auipc, uopEnc] at uop urd uimm
@@ -434,7 +436,46 @@ theorem FInstr.rom_of_spec (i : FInstr) (hd : i.rd ≠ 0) (hl : i.rd2 = i.rd ∨
   refine h.one fun ia => ?_
   simp only [FInstr.auipc, FInstr.jalr] at hf
   simp [Transpiler.convert, Transpiler.decode, uop, Transpiler.auipc, hf, urd, uimm, jrd, jimm, ed,
-    Transpiler.mk, storeReg_ne ed, Equiv.Zisk.constJInst, FInstr.c, FInstr.T, FInstr.A, utypeVal,
+    Transpiler.mk, storeReg_ne ed, Equiv.Zisk.constJInst, FInstr.A, utypeVal,
     jalrTarget, mask_update, toNat_eq_zero, sign_extend, Sail.BitVec.signExtend, FInstr.jalr, FInstr.auipc]
+
+
+theorem addi_beq : (Transpiler.Inst.i .addi == Transpiler.Inst.i .addi) = true := rfl
+theorem addi_jalr_beq : (Transpiler.Inst.i .addi == Transpiler.Inst.jalr) = false := rfl
+
+/-- The fused auipc-addi pair: the spec fuses the auipc with the addi after
+    it, and its instruction is the one FAt assumes. -/
+theorem FInstr.rom_of_spec_addi (i : FInstr) (ha : i.addi = true) (hd : i.rd ≠ 0)
+    {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {pc : BitVec 64}
+    (h : Transpiled zrom pc i.auipc.encode (some i.addiI.encode)) :
+    zrom pc = Equiv.Zisk.constJInst i.rd.toNat (i.c pc) (i.T pc - pc) := by
+  rw [FInstr.c_addi ha, FInstr.T_addi ha]
+  obtain ⟨uop, urd, uimm'⟩ := i.auipc.spec_fields
+  obtain ⟨aop, af3, ard, ar1, aimm⟩ := i.addiI.spec_fields
+  simp only [FInstr.auipc, uopEnc] at uop urd uimm'
+  simp only [FInstr.addiI, itypeF3] at aop af3 ard ar1 aimm
+  have ed := ne_zero_toNat hd
+  have hnf : Transpiler.fuses i.auipc.encode i.addiI.encode = false := by
+    simp [Transpiler.fuses, Transpiler.decode, FInstr.auipc, FInstr.addiI, aop, af3, addi_jalr_beq]
+  have hf : Transpiler.fusesAddi i.auipc.encode i.addiI.encode = true := by
+    simp [Transpiler.fusesAddi, Transpiler.decode, FInstr.auipc, FInstr.addiI, aop, af3, ard, ar1, urd, ed,
+      addi_beq]
+  refine h.one fun ia => ?_
+  simp only [FInstr.auipc, FInstr.addiI] at hf hnf
+  simp [Transpiler.convert, Transpiler.decode, FInstr.auipc, FInstr.addiI, uop, Transpiler.auipc, hf, hnf, urd,
+    uimm', aimm, ed,
+    Transpiler.mk, storeReg_ne ed, Equiv.Zisk.constJInst, FInstr.A, utypeVal,
+    itypeVal, sign_extend, Sail.BitVec.signExtend]
+  generalize pc = p; bv_decide
+
+/-- The fused pair: the spec fuses the auipc with the word after it, and its
+    instruction is the one FAt assumes. -/
+theorem FInstr.rom_of_spec (i : FInstr) (hd : i.rd ≠ 0) (hl : i.rd2 = i.rd ∨ i.rd2 = 0)
+    {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {pc : BitVec 64}
+    (h : Transpiled zrom pc i.auipc.encode (some i.second)) :
+    zrom pc = Equiv.Zisk.constJInst i.rd.toNat (i.c pc) (i.T pc - pc) := by
+  cases ha : i.addi
+  · exact FInstr.rom_of_spec_jalr i ha hd hl (by rw [← FInstr.second_jalr ha]; exact h)
+  · exact FInstr.rom_of_spec_addi i ha hd (by rw [← FInstr.second_addi ha]; exact h)
 
 end Equiv.Sim

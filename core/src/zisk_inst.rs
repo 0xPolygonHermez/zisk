@@ -20,7 +20,6 @@
 //! | SRC_REG  | a and b     | Value read from current register at a constant index     |
 //! | SRC_MEM  | a and b     | Value read from current memory at a constant address     |
 //! | SRC_IMM  | a and b     | Constant (immediate) value                               |
-//! | SRC_STEP | a           | Current execution step                                   |
 //! | SRC_IND  | b           | Value read from current memory at indirect address a + b |
 //!
 //! # Zisk register store
@@ -43,8 +42,6 @@ pub const SRC_C: u64 = 0;
 pub const SRC_MEM: u64 = 1;
 /// a or b registers source is a constant (immediate) value
 pub const SRC_IMM: u64 = 2;
-/// a register source is the current execution step
-pub const SRC_STEP: u64 = 3;
 // #[cfg(feature = "sp")]
 // pub const SRC_SP: u64 = 4;
 /// b register source is value read from memory at an indirect address a + b
@@ -329,7 +326,6 @@ impl ZiskInst {
             SRC_REG => format!("r{}", self.a_offset_imm0),
             SRC_MEM => format!("[0x{:x}]", self.a_offset_imm0),
             SRC_IMM => format!("0x{:x}", self.a_offset_imm0 | (self.a_use_sp_imm1 << 32)),
-            SRC_STEP => "step".to_string(),
             _ => format!("<invalid a_src={}>", self.a_src),
         };
 

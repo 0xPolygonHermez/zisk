@@ -296,22 +296,24 @@ impl ZiskDistributedApi for CoordinatorGrpc {
             let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel::<CoordinatorMessage>();
             let grpc_msg_tx = Box::new(GrpcMessageSender::new(outbound_tx));
 
-            // Clean registration handling - wait for worker to introduce itself
-            let worker_id = match in_stream.next().await {
+            // Clean registration handling - wait for worker to introduce itself. The generation is
+            // the one this registration was given: read after the response is yielded, it could
+            // already be a later connection's.
+            let (worker_id, generation) = match in_stream.next().await {
                 Some(Ok(WorkerMessage { payload: Some(worker_message::Payload::Register(req)) })) => {
                     let req_worker_id = WorkerId::from(req.worker_id.clone());
-                    let (accepted, message, setup) =
+                    let (accepted, message, setup, generation) =
                         coordinator.handle_stream_registration(req.into(), grpc_msg_tx).await;
 
                         yield Self::registration_response(&req_worker_id, accepted, message, None, setup.map(Into::into));
 
-                    if !accepted { return; }
+                    let Some(generation) = generation.filter(|_| accepted) else { return; };
 
-                    req_worker_id
+                    (req_worker_id, generation)
                 }
                 Some(Ok(WorkerMessage { payload: Some(worker_message::Payload::Reconnect(req)) })) => {
                     let req_worker_id = WorkerId::from(req.worker_id.clone());
-                    let (accepted, message, directive, setup) =
+                    let (accepted, message, directive, setup, generation) =
                         coordinator.handle_stream_reconnection(req.into(), grpc_msg_tx).await;
 
                     yield Self::registration_response(
@@ -322,9 +324,9 @@ impl ZiskDistributedApi for CoordinatorGrpc {
                         setup.map(Into::into),
                     );
 
-                    if !accepted { return; }
+                    let Some(generation) = generation.filter(|_| accepted) else { return; };
 
-                    req_worker_id
+                    (req_worker_id, generation)
                 }
                 Some(Ok(_)) => {
                     // First message was not registration or reconnection
@@ -344,13 +346,6 @@ impl ZiskDistributedApi for CoordinatorGrpc {
             };
 
             info!("{worker_id} registered successfully");
-
-            // Get the connection generation to pass to the guard
-            let generation = coordinator
-                .workers_pool()
-                .connection_generation(&worker_id)
-                .await
-                .unwrap_or(0);
 
             // Drop guard handles ALL cleanup — uses generation to avoid race with reconnection
             let _guard = ConnectionDropGuard::new(worker_id.clone(), coordinator.clone(), generation);

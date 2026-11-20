@@ -9,12 +9,13 @@
 //! and floating point without the `float` feature) with a clear error, so the supported subset
 //! fails loudly rather than miscompiling.
 
+use std::collections::BTreeMap;
 use std::error::Error;
 
 use super::layout::WASM_MAX_PAGES;
 use wasmparser::{
-    DataKind, ElementItems, ElementKind, ExternalKind, Operator, Parser, Payload, TypeRef, ValType,
-    Validator, WasmFeatures,
+    DataKind, ElementItems, ElementKind, ExternalKind, KnownCustom, Name, Operator, Parser,
+    Payload, TypeRef, ValType, Validator, WasmFeatures,
 };
 
 const SUPPORTED_FEATURES: WasmFeatures = WasmFeatures::WASM1
@@ -22,7 +23,70 @@ const SUPPORTED_FEATURES: WasmFeatures = WasmFeatures::WASM1
     .union(WasmFeatures::REFERENCE_TYPES)
     .union(WasmFeatures::SIGN_EXTENSION)
     .union(WasmFeatures::SATURATING_FLOAT_TO_INT)
-    .union(WasmFeatures::MULTI_VALUE);
+    .union(WasmFeatures::MULTI_VALUE)
+    .union(WasmFeatures::WIDE_ARITHMETIC);
+
+/// The body [`WasmModule::use_native_multi3`] gives `__multi3`: stores the low 128 bits of
+/// `a * b` at `ret`, from one 64 × 64 → 128-bit product and two 64-bit cross products.
+#[rustfmt::skip]
+static MULTI3_BODY: &[u8] = &[
+    0x01, 0x01, 0x7e,                   // one extra local, $hi: i64 (local 5)
+    0x20, 0x00,                         // local.get $ret
+    0x20, 0x01, 0x20, 0x03,             // local.get $a_lo, local.get $b_lo
+    0xfc, 0x16,                         // i64.mul_wide_u
+    0x21, 0x05,                         // local.set $hi
+    0x37, 0x03, 0x00,                   // i64.store offset=0 (the low half)
+    0x20, 0x00,                         // local.get $ret
+    0x20, 0x05,                         // local.get $hi
+    0x20, 0x01, 0x20, 0x04, 0x7e, 0x7c, // + a_lo * b_hi
+    0x20, 0x02, 0x20, 0x03, 0x7e, 0x7c, // + a_hi * b_lo
+    0x37, 0x03, 0x08,                   // i64.store offset=8 (the high half)
+    0x0b,                               // end
+];
+
+/// The compiler-rt `__multi3` bodies [`WasmModule::use_native_multi3`] recognises, byte for
+/// byte as they appear in the code section (local declarations, then the code).  The name
+/// section is debug information the module's author controls, so a name and a signature do not
+/// show that a function is compiler-rt's helper; a body identical to one of these does.  Each
+/// computes the low 128 bits of `a * b` and stores them at `ret`.  A body that is not listed
+/// (another toolchain, another version) keeps running as written: it only misses the speed-up.
+/// The tests check each entry against the 128-bit product.
+#[rustfmt::skip]
+pub(crate) static KNOWN_MULTI3_BODIES: &[(&str, &[u8])] = &[
+    (
+        // Prebuilt, so the same at every opt-level.
+        "Rust compiler_builtins (rustc 1.97, wasm32-wasip1)",
+        &[
+            0x01, 0x06, 0x7e, 0x20, 0x00, 0x20, 0x03, 0x42, 0xff, 0xff, 0xff, 0xff,
+            0x0f, 0x83, 0x22, 0x05, 0x20, 0x01, 0x42, 0xff, 0xff, 0xff, 0xff, 0x0f,
+            0x83, 0x22, 0x06, 0x7e, 0x22, 0x07, 0x20, 0x03, 0x42, 0x20, 0x88, 0x22,
+            0x08, 0x20, 0x06, 0x7e, 0x22, 0x06, 0x20, 0x05, 0x20, 0x01, 0x42, 0x20,
+            0x88, 0x22, 0x09, 0x7e, 0x7c, 0x22, 0x05, 0x42, 0x20, 0x86, 0x7c, 0x22,
+            0x0a, 0x37, 0x03, 0x00, 0x20, 0x00, 0x20, 0x08, 0x20, 0x09, 0x7e, 0x20,
+            0x05, 0x20, 0x06, 0x54, 0xad, 0x42, 0x20, 0x86, 0x20, 0x05, 0x42, 0x20,
+            0x88, 0x84, 0x7c, 0x20, 0x0a, 0x20, 0x07, 0x54, 0xad, 0x7c, 0x20, 0x04,
+            0x20, 0x01, 0x7e, 0x20, 0x03, 0x20, 0x02, 0x7e, 0x7c, 0x7c, 0x37, 0x03,
+            0x08, 0x0b,
+        ],
+    ),
+    (
+        // At other -opt levels TinyGo's link-time optimisation specialises __multi3 to
+        // (i32, i64, i64), which the signature check already leaves alone.
+        "TinyGo 0.44 compiler-rt (default -opt)",
+        &[
+            0x01, 0x01, 0x7e, 0x20, 0x00, 0x20, 0x01, 0x20, 0x04, 0x7e, 0x20, 0x02,
+            0x20, 0x03, 0x7e, 0x7c, 0x20, 0x03, 0x42, 0x20, 0x88, 0x22, 0x02, 0x20,
+            0x01, 0x42, 0x20, 0x88, 0x22, 0x04, 0x7e, 0x7c, 0x20, 0x03, 0x42, 0xff,
+            0xff, 0xff, 0xff, 0x0f, 0x83, 0x22, 0x03, 0x20, 0x01, 0x42, 0xff, 0xff,
+            0xff, 0xff, 0x0f, 0x83, 0x22, 0x01, 0x7e, 0x22, 0x05, 0x42, 0x20, 0x88,
+            0x20, 0x03, 0x20, 0x04, 0x7e, 0x7c, 0x22, 0x03, 0x42, 0x20, 0x88, 0x7c,
+            0x20, 0x01, 0x20, 0x02, 0x7e, 0x20, 0x03, 0x42, 0xff, 0xff, 0xff, 0xff,
+            0x0f, 0x83, 0x7c, 0x22, 0x01, 0x42, 0x20, 0x88, 0x7c, 0x37, 0x03, 0x08,
+            0x20, 0x00, 0x20, 0x05, 0x42, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x83, 0x20,
+            0x01, 0x42, 0x20, 0x86, 0x84, 0x37, 0x03, 0x00, 0x0b,
+        ],
+    ),
+];
 
 /// The value kinds the lowering supports.  Every kind lives in a 64-bit Zisk slot: i32 values are
 /// kept sign-extended, f32 values occupy the low 32 bits (the high half is don't-care).
@@ -107,6 +171,12 @@ pub struct WasmModule<'a> {
     max_num_locals: u32,
     pub start_func: Option<u32>,
     pub exports: Vec<(String, ExternalKind, u32)>,
+    /// Function names from the `name` custom section, by function index. Debug information
+    /// only: absent or malformed names are skipped, never an error.
+    pub func_names: BTreeMap<u32, String>,
+    /// The function index of `__multi3` once [`WasmModule::use_native_multi3`] has given it the
+    /// native body: its calls are lowered inline (see the lowering's `inline_multi3`).
+    pub native_multi3: Option<u32>,
 }
 
 impl<'a> WasmModule<'a> {
@@ -125,6 +195,38 @@ impl<'a> WasmModule<'a> {
 
     pub fn max_num_locals(&self) -> u32 {
         self.max_num_locals
+    }
+
+    /// Replaces the body of `__multi3`, when the module defines it, with [`MULTI3_BODY`].
+    /// `__multi3` is compiler-rt's 128-bit multiply, which LLVM calls for every `i128`/`u128`
+    /// product on wasm32 (the target has no 64 × 64 → 128-bit multiply unless
+    /// `wide-arithmetic` is enabled); its portable body takes four 32-bit products, while ZisK
+    /// multiplies 64-bit halves natively.  The function is found by its name in the `name`
+    /// section, so a stripped module keeps its own body.  Its signature must be compiler-rt's,
+    /// `(i32 ret, i64 a_lo, i64 a_hi, i64 b_lo, i64 b_hi) -> ()`, and its body must be one of
+    /// [`KNOWN_MULTI3_BODIES`]: the name alone could belong to any function, and replacing that
+    /// one would change what the module computes.
+    pub fn use_native_multi3(&mut self) {
+        let signature = [ValKind::I32, ValKind::I64, ValKind::I64, ValKind::I64, ValKind::I64];
+        let found = self.func_names.iter().find_map(|(&index, name)| {
+            let defined = index.checked_sub(self.func_import_count)? as usize;
+            let func = self.defined.get(defined)?;
+            let sig = &self.sigs[func.type_index as usize];
+            let body = func.body.as_bytes();
+            (name == "__multi3"
+                && sig.params == signature
+                && sig.results.is_empty()
+                && KNOWN_MULTI3_BODIES.iter().any(|&(_, known)| known == body))
+            .then_some(defined)
+        });
+        if let Some(defined) = found {
+            let func = &mut self.defined[defined];
+            func.body =
+                wasmparser::FunctionBody::new(wasmparser::BinaryReader::new(MULTI3_BODY, 0));
+            func.num_locals = 6;
+            self.max_num_locals = self.max_num_locals.max(6);
+            self.native_multi3 = Some(self.func_import_count + defined as u32);
+        }
     }
 
     /// Returns the signature of function `func_index` (across the whole index space).
@@ -206,6 +308,7 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
     let mut has_table = false;
     let mut start_func: Option<u32> = None;
     let mut exports: Vec<(String, ExternalKind, u32)> = Vec::new();
+    let mut func_names: BTreeMap<u32, String> = BTreeMap::new();
 
     for payload in Parser::new(0).parse_all(bytes) {
         match payload? {
@@ -357,6 +460,17 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
             Payload::TagSection(_) => {
                 return Err("wasm: exception handling (tags) is not supported".into());
             }
+            Payload::CustomSection(reader) => {
+                if let KnownCustom::Name(names) = reader.as_known() {
+                    for name in names.into_iter().flatten() {
+                        if let Name::Function(map) = name {
+                            for naming in map.into_iter().flatten() {
+                                func_names.insert(naming.index, naming.name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -406,5 +520,116 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
         max_num_locals,
         start_func,
         exports,
+        func_names,
+        native_multi3: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Runs a straight-line `__multi3` body on `(ret, a_lo, a_hi, b_lo, b_hi)` and returns the
+    /// 128 bits it stores at `ret`. Supports exactly the operators the known bodies use.
+    fn eval_multi3(body: &[u8], a: u128, b: u128) -> u128 {
+        use wasmparser::Operator::*;
+        let body = wasmparser::FunctionBody::new(wasmparser::BinaryReader::new(body, 0));
+        let mut locals = vec![16, a as u64, (a >> 64) as u64, b as u64, (b >> 64) as u64];
+        for local in body.get_locals_reader().unwrap() {
+            let (count, ty) = local.unwrap();
+            assert_eq!(ty, ValType::I64);
+            locals.extend(std::iter::repeat_n(0, count as usize));
+        }
+        let (mut stack, mut stored) = (Vec::<u64>::new(), [None::<u64>; 2]);
+        for op in body.get_operators_reader().unwrap() {
+            let binary = |stack: &mut Vec<u64>, f: fn(u64, u64) -> u64| {
+                let (y, x) = (stack.pop().unwrap(), stack.pop().unwrap());
+                stack.push(f(x, y));
+            };
+            match op.unwrap() {
+                LocalGet { local_index } => stack.push(locals[local_index as usize]),
+                LocalSet { local_index } => locals[local_index as usize] = stack.pop().unwrap(),
+                LocalTee { local_index } => locals[local_index as usize] = *stack.last().unwrap(),
+                I64Const { value } => stack.push(value as u64),
+                I64Add => binary(&mut stack, u64::wrapping_add),
+                I64Mul => binary(&mut stack, u64::wrapping_mul),
+                I64And => binary(&mut stack, |x, y| x & y),
+                I64Or => binary(&mut stack, |x, y| x | y),
+                I64Shl => binary(&mut stack, |x, y| x << (y & 63)),
+                I64ShrU => binary(&mut stack, |x, y| x >> (y & 63)),
+                I64LtU => binary(&mut stack, |x, y| (x < y) as u64),
+                I64ExtendI32U => {}
+                I64Store { memarg } => {
+                    let value = stack.pop().unwrap();
+                    assert_eq!(stack.pop(), Some(16), "stores go to ret");
+                    stored[(memarg.offset / 8) as usize] = Some(value);
+                }
+                End => break,
+                other => panic!("operator {other:?} not supported by the evaluator"),
+            }
+        }
+        stored[0].unwrap() as u128 | (stored[1].unwrap() as u128) << 64
+    }
+
+    #[test]
+    fn known_multi3_bodies_compute_the_128_bit_product() {
+        let mut x = 0x9e37_79b9_7f4a_7c15_f39c_c060_5ced_c834_u128;
+        let mut next = || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x
+        };
+        let mut cases = vec![(0, 0), (u128::MAX, u128::MAX), (1 << 127, 3), (u64::MAX as u128, 7)];
+        cases.extend((0..2000).map(|_| (next(), next())));
+        cases.extend((0..500).map(|_| (next() as u64 as u128, next())));
+        for &(name, body) in KNOWN_MULTI3_BODIES {
+            for &(a, b) in &cases {
+                assert_eq!(eval_multi3(body, a, b), a.wrapping_mul(b), "{name}: {a:#x} * {b:#x}");
+            }
+        }
+    }
+
+    const SIG: &str = "(param i32 i64 i64 i64 i64)";
+    /// The Rust compiler_builtins entry of [`KNOWN_MULTI3_BODIES`], as WAT.
+    const RUST_MULTI3: &str = "(local i64 i64 i64 i64 i64 i64)
+        local.get 0 local.get 3 i64.const 4294967295 i64.and local.tee 5 local.get 1
+        i64.const 4294967295 i64.and local.tee 6 i64.mul local.tee 7 local.get 3 i64.const 32
+        i64.shr_u local.tee 8 local.get 6 i64.mul local.tee 6 local.get 5 local.get 1
+        i64.const 32 i64.shr_u local.tee 9 i64.mul i64.add local.tee 5 i64.const 32 i64.shl
+        i64.add local.tee 10 i64.store local.get 0 local.get 8 local.get 9 i64.mul local.get 5
+        local.get 6 i64.lt_u i64.extend_i32_u i64.const 32 i64.shl local.get 5 i64.const 32
+        i64.shr_u i64.or i64.add local.get 10 local.get 7 i64.lt_u i64.extend_i32_u i64.add
+        local.get 4 local.get 1 i64.mul local.get 3 local.get 2 i64.mul i64.add i64.add
+        i64.store offset=8";
+
+    /// `native_multi3` after [`WasmModule::use_native_multi3`] on a module defining `$name`
+    /// with `sig` and `body`.
+    fn native_multi3(name: &str, sig: &str, body: &str) -> Option<u32> {
+        let wat =
+            format!("(module (memory 1) (func ${name} {sig} {body}) (func (export \"_start\")))");
+        let bytes = wat::parse_str(wat).unwrap();
+        let mut module = parse_module(&bytes).unwrap();
+        module.use_native_multi3();
+        module.native_multi3
+    }
+
+    #[test]
+    fn multi3_is_replaced_only_with_a_known_body() {
+        // The WAT above assembles to the known bytes, so the module really carries them.
+        let wat = format!("(module (memory 1) (func {SIG} {RUST_MULTI3}))");
+        let bytes = wat::parse_str(wat).unwrap();
+        assert_eq!(
+            parse_module(&bytes).unwrap().defined[0].body.as_bytes(),
+            KNOWN_MULTI3_BODIES[0].1
+        );
+
+        assert_eq!(native_multi3("__multi3", SIG, RUST_MULTI3), Some(0));
+        // Same name and signature, but a body of its own: a user function, kept as written.
+        let zeros = "(i64.store (local.get 0) (i64.const 0)) (i64.store offset=8 (local.get 0) (i64.const 0))";
+        assert_eq!(native_multi3("__multi3", SIG, zeros), None);
+        // The known body under another name, or with another signature, is not touched either.
+        assert_eq!(native_multi3("mul128", SIG, RUST_MULTI3), None);
+        assert_eq!(native_multi3("__multi3", "(param i32 i64 i64 i64 i64 i64)", RUST_MULTI3), None);
+    }
 }

@@ -9,7 +9,7 @@ cheapest one and **Max** the most expensive one among those able to prove it.
 Constants live in `core/src/zisk_ops_costs.rs` (opcodes) and `emulator/src/emu_costs.rs` (memory,
 main, base).
 
-Cost model version: `ZISK_COSTS_VERSION = 1`. It must be increased whenever these costs, the way
+Cost model version: `ZISK_COSTS_VERSION = 2`. It must be increased whenever these costs, the way
 they are accumulated, or the FROPS change.
 
 ## Main and standard operations
@@ -17,9 +17,9 @@ they are accumulated, or the FROPS change.
 | Cost | Opcodes | Instances (Total / ops x row → cost) | Previous | Current | Max |
 |---|---|---|---:|---:|---:|
 | `MAIN_COST` (per step) | all | Main 245/4 → 62 | 68 | **62** | 62 |
-| `BINARY_COST` | minu, min, maxu, max, ltu, lt, eq, sub, leu, le, and, or, xor, *_w, brev8, andn, orn, xnor, sh1add, sh2add, sh3add, unal8 | Binary 60/1 → 60, BinaryLarge 114/2 → 57, BinaryHuge 219/4 → 55 | 60 | **55** | 60 |
-| `BINARY_ADD_COST` | add | BinaryAdd 26/1 → 26, BinaryAddLarge 46/2 → 23, BinaryAddHuge 83/4 → 21, Binary* 55–60 | 25 | **21** | 60 |
-| `BINARY_ADD_HI_COST` | add (hi shape, add_hi breakdown) | BinaryAddHi 30/2 → 15, BinaryAddHiLarge 51/4 → 13, BinaryAddHiHuge 93/8 → 12, BinaryAdd* 21–26, Binary* 55–60 | 15 | **12** | 60 |
+| `BINARY_COST` | minu, min, maxu, max, ltu, lt, eq, sub, leu, le, and, or, xor, *_w, brev8, andn, orn, xnor, sh1add, sh2add, sh3add (full shape), unal8 | Binary 60/1 → 60, BinaryLarge 114/2 → 57, BinaryHuge 219/4 → 55 | 60 | **55** | 60 |
+| `BINARY_ADD_COST` | add, sh3add (BinaryAdd shape, `sh3add_add`) | BinaryAdd 26/1 → 26, BinaryAddLarge 46/2 → 23, BinaryAddHuge 83/4 → 21, Binary* 55–60 | 25 | **21** | 60 |
+| `BINARY_ADD_HI_COST` | add (hi shape, add_hi breakdown), sh3add (BinaryAddHi shape, `sh3add_hi`) | BinaryAddHi 30/2 → 15, BinaryAddHiLarge 51/4 → 13, BinaryAddHiHuge 93/8 → 12, BinaryAdd* 21–26, Binary* 55–60 | 15 | **12** | 60 |
 | `BINARY_E_COST` | sll, srl, sra, *_w, signextend_*, rev8, pack*, rol*, ror*, clz*, ctz*, cpop*, orc_b, bclr, bext, binv, bset, clmul*, xperm*, czero_* | BinaryExtension 58/1 → 58, BinaryExtensionLarge 110/2 → 55 | 56 | **55** | 58 |
 | `SLL_U_W_COST` | sll_u_w | = `BINARY_E_COST` | 56 | **55** | 58 |
 | `ADD_U_W_COST` | add_u_w | MAIN + BINARY + BINARY_ADD | 153 | **138** | 182 |
@@ -87,9 +87,11 @@ dual operation cost (22): read ⌈22 × 0.5⌉ = 11, write ⌈22 × 0.8⌉ = 18.
 
 ## Notes
 
-- `sh3add` stays at `BINARY_COST` (general case). Depending on the shape of its operands it can also
-  be proven by BinaryAdd (21) or BinaryAddHi (12), but the emulator only does this breakdown for
-  `add` (`add_hi0` / `add_hif`).
+- `sh3add` is charged by the air that proves it, which depends on the shape of its operands:
+  BinaryAddHi (12, `sh3add_hi`), BinaryAdd (21, `sh3add_add`) or Binary (55, the general case). The
+  emulator classifies each operation with `zisk_sm_binary::sh3add_shape`, the function the binary
+  state machine uses to route it, so the two cannot disagree. Version 1 charged every `sh3add` at
+  `BINARY_COST`.
 - Dma, DmaPrePost and the Dma64Aligned inputcpy had costs of specialized instances that do not exist
   in `pil/zisk.pil`; they now pay the full row of the only instance that proves them.
 - Keccak: 135 rows per slot holding 2 Keccak-f → 41,512.5, rounded up.

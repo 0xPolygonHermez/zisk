@@ -339,6 +339,15 @@ impl Emulator for ZiskEmulator {
             )));
         }
 
+        // A program always executes at least its `end` instruction, so a zero step budget can
+        // never complete an emulation; reject it up front instead of reporting (and, with
+        // statistics, printing a report about) an execution that never started.
+        if options.max_steps == 0 {
+            return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
+                "max steps (-n) must be greater than zero",
+            )));
+        }
+
         // Build an input data buffer either from the provided inputs path (if provided), or leave
         // it empty
         let mut inputs = Vec::new();

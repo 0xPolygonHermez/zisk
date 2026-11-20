@@ -501,6 +501,18 @@ impl Mem {
         }
     }
 
+    /// Non-panicking variant of `read_slice`: returns `None` when `[addr, addr + count)` is not
+    /// fully contained in a single memory section, or when the range overflows. Meant for data
+    /// whose address and length come from the guest and therefore cannot be trusted.
+    pub fn try_read_slice(&self, addr: u64, count: u64) -> Option<&[u8]> {
+        let end = addr.checked_add(count)?;
+        let section = std::iter::once(&self.write_section)
+            .chain(self.read_sections.iter())
+            .find(|section| addr >= section.start && end <= section.end)?;
+        let read_position = (addr - section.start) as usize;
+        section.buffer.get(read_position..read_position + count as usize)
+    }
+
     #[inline(always)]
     pub fn read_slice(&self, addr: u64, count: u64) -> &[u8] {
         debug_assert!(!Mem::address_is_register(addr));
@@ -1170,4 +1182,35 @@ impl Mem {
     }
 
     //pub fn get_non_aligned_data_from_required(address: u64, width: u8,)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mem_with_sections() -> Mem {
+        let mut mem = Mem::new();
+        mem.add_read_section(0x1000, &[1, 2, 3, 4, 5, 6, 7, 8]);
+        mem.add_write_section(0xa000_0000, 32);
+        mem
+    }
+
+    #[test]
+    fn try_read_slice_reads_inside_a_section() {
+        let mem = mem_with_sections();
+        assert_eq!(mem.try_read_slice(0x1002, 3), Some(&[3u8, 4, 5][..]));
+        assert_eq!(mem.try_read_slice(0x1000, 8), Some(&[1u8, 2, 3, 4, 5, 6, 7, 8][..]));
+        assert_eq!(mem.try_read_slice(0xa000_0010, 16), Some(&[0u8; 16][..]));
+    }
+
+    #[test]
+    fn try_read_slice_rejects_ranges_outside_every_section() {
+        let mem = mem_with_sections();
+        assert_eq!(mem.try_read_slice(0x0ff8, 8), None, "before the read section");
+        assert_eq!(mem.try_read_slice(0x1004, 8), None, "crossing the end of the read section");
+        assert_eq!(mem.try_read_slice(0x2000, 1), None, "unmapped address");
+        assert_eq!(mem.try_read_slice(0xa000_0000, 33), None, "longer than the write section");
+        assert_eq!(mem.try_read_slice(u64::MAX - 3, 8), None, "addr + count overflows");
+        assert_eq!(mem.try_read_slice(0x1000, u64::MAX), None, "hostile length");
+    }
 }

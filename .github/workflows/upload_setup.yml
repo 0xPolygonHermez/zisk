@@ -285,7 +285,7 @@ jobs:
     name: Build macOS dylibs (${{ matrix.mode }})
     needs: build-setup
     if: ${{ needs.build-setup.outputs.include_dylib == '1' }}
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 240
     strategy:
       # The two setups are independent, so let both report. upload-setup still

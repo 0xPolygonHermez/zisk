@@ -12,11 +12,13 @@ ZisK is an innovative and high-performance zkVM (Zero-Knowledge Virtual Machine)
 
 ZisK aims to provide a flexible and developer-friendly zkVM, with Rust as its primary language for writing provable programs, with planned support for other languages in the future. By abstracting complex zero-knowledge proof generation, ZisK simplifies the integration of ZK technology into scalable, private, and secure applications across blockchain ecosystems and beyond.
 
-## Getting Started
+## Documentation
 
-To start using ZisK, follow the [Quickstart](https://0xpolygonhermez.github.io/zisk-docs/developer/getting-started/quickstart) guide.
+🚀 **Get started**: follow the [Quickstart](https://0xpolygonhermez.github.io/zisk-docs/developer/getting-started/quickstart) guide to install ZisK and prove your first program.
 
-📚 Complete Documentation: [ZisK Docs](https://0xpolygonhermez.github.io/zisk-docs/)
+📚 **Learn more**: the [ZisK Docs](https://0xpolygonhermez.github.io/zisk-docs/) cover writing programs, precompiles, distributed proving and the architecture of ZisK.
+
+📄 **Go deeper**: the [ZisK papers](https://github.com/0xPolygonHermez/zisk-papers) give the specification of ZisK (whitepaper) and the security analysis of its proof system. Published versions are on the [releases page](https://github.com/0xPolygonHermez/zisk-papers/releases).
 
 ## License
 

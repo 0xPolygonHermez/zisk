@@ -737,7 +737,7 @@ theorem fuses_facts {w n : BitVec 32} (hf : Transpiler.fuses w n = true) :
 
 /-- The fused pair a word and the next make. -/
 def fOfWords (w n : BitVec 32) : FInstr :=
-  ⟨w.extractLsb' 7 5, w.extractLsb' 12 20, n.extractLsb' 7 5, n.extractLsb' 20 12⟩
+  ⟨w.extractLsb' 7 5, w.extractLsb' 12 20, n.extractLsb' 7 5, n.extractLsb' 20 12, false⟩
 
 theorem fOfWords_jalr {w n : BitVec 32} (hf : Transpiler.fuses w n = true) : (fOfWords w n).jalr.encode = n := by
   obtain ⟨hj, -, hr, -⟩ := fuses_facts hf
@@ -763,13 +763,62 @@ theorem fOfWords_link {w n : BitVec 32} (hf : Transpiler.fuses w n = true) :
 theorem jalrTarget_lsb (v : BitVec 64) (imm : BitVec 12) : (jalrTarget v imm)[0] = false := by
   simp only [jalrTarget, Sail.BitVec.update, Sail.BitVec.updateSubrange']; bv_decide
 
+set_option maxHeartbeats 2000000 in
+theorem decode_addi_fields {w : BitVec 32} (h : decode w = some (.i .addi)) :
+    opcode w = 19#7 ∧ funct3 w = 0#3 := by
+  simp only [decode] at h
+  repeat' (split at h)
+  all_goals first
+    | (simp at h; done)
+    | (cases h; rename_i h1; simp_all [BitVec.toNat_eq])
+    | (cases h; simp_all [BitVec.toNat_eq])
+
+/-- What `fusesAddi` says of the word after an auipc: an addi that reads and
+    writes the auipc's rd, not x0. -/
+theorem fusesAddi_facts {w n : BitVec 32} (hf : Transpiler.fusesAddi w n = true) :
+    decode n = some (.i .addi) ∧ Transpiler.rd w ≠ 0 ∧ Transpiler.rd n = Transpiler.rd w ∧
+      Transpiler.rs1 n = Transpiler.rd w := by
+  simp only [Transpiler.fusesAddi, Bool.and_eq_true, decide_eq_true_eq] at hf
+  obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := hf
+  refine ⟨?_, h2, h3, h4⟩
+  cases hn : decode n with
+  | none => rw [hn] at h1; cases h1
+  | some i => rw [hn] at h1; cases i <;> first | rfl | cases h1 | (rename_i op; cases op <;> first | rfl | cases h1)
+
+/-- The fused auipc-addi pair a word and the next make. -/
+def aOfWords (w n : BitVec 32) : FInstr :=
+  ⟨w.extractLsb' 7 5, w.extractLsb' 12 20, w.extractLsb' 7 5, n.extractLsb' 20 12, true⟩
+
+theorem aOfWords_addi {w n : BitVec 32} (hf : Transpiler.fusesAddi w n = true) : (aOfWords w n).second = n := by
+  obtain ⟨ha, -, hr, hs⟩ := fusesAddi_facts hf
+  have haf := decode_addi_fields ha
+  have hr' : n.extractLsb' 7 5 = w.extractLsb' 7 5 := by
+    apply BitVec.eq_of_toNat_eq; simpa [Transpiler.rd, BitVec.extractLsb] using hr
+  have hs' : n.extractLsb' 15 5 = w.extractLsb' 7 5 := by
+    apply BitVec.eq_of_toNat_eq; simpa [Transpiler.rs1, Transpiler.rd, BitVec.extractLsb] using hs
+  simp only [opcode, funct3, BitVec.extractLsb] at haf
+  simp only [aOfWords, FInstr.second, FInstr.addiI, IInstr.encode, itypeF3]; revert haf hr' hs'; bv_decide
+
+theorem aOfWords_rd {w n : BitVec 32} (hf : Transpiler.fusesAddi w n = true) : (aOfWords w n).rd ≠ 0 := by
+  obtain ⟨-, h, -, -⟩ := fusesAddi_facts hf
+  intro e; apply h
+  have := congrArg BitVec.toNat e
+  simpa [aOfWords, Transpiler.rd, BitVec.extractLsb] using this
+
+/-- Past the addi of a pair at an aligned pc: an aligned target. -/
+theorem pc8_tal {pc : BitVec 64} (hal : pc.toNat % 4 = 0) : (pc + 8)[0] = false ∧ (pc + 8)[1] = false := by
+  have h0 : pc.getLsbD 0 = false := by simp [BitVec.getLsbD, Nat.testBit, Nat.shiftRight_zero]; omega
+  have h1 : pc.getLsbD 1 = false := by simp [BitVec.getLsbD, Nat.testBit, Nat.shiftRight_succ]; omega
+  revert h0 h1; bv_decide
+
 /-- lui at pc, or auipc that does not fuse with the word after it: a step
     the simulation covers. -/
 theorem step_u_plain {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {S : ZiskRiscv.State model} {pc : BitVec 64} {w : BitVec 32} (hx : Ctx zrom C S pc w)
     {i : Transpiler.Inst} (hd : decode w = some i) (op : uop) (he : (uOfWord op w).encode = w)
     (hg : group i = .plain)
-    (hnf : op = .AUIPC → ∀ n, nextWord S.rv pc = some n → Transpiler.fuses w n = false) :
+    (hnf : op = .AUIPC → ∀ n, nextWord S.rv pc = some n →
+      Transpiler.fuses w n = false ∧ Transpiler.fusesAddi w n = false) :
     OneOkT ziskRegions zrom S.rv := by
   have h := ctx_at hx hd hg he
   exact ⟨pc, hx.atPc, .inl ⟨.u (uOfWord op w), h.1, h.2.1, h.2.2.1, h.2.2.2.1, h.2.2.2.2.1, h.2.2.2.2.2.1, h.2.2.2.2.2.2.1,
@@ -777,7 +826,8 @@ theorem step_u_plain {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64
 
 /-- lui and auipc at pc: a step the simulation covers; or, auipc fused with
     the jalr after it, the pair, covered, its target 4-aligned, or one of
-    the ends, its target 2 mod 4. -/
+    the ends, its target 2 mod 4; or auipc fused with the addi after it, the
+    pair, covered. -/
 theorem step_u {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {S : ZiskRiscv.State model} {pc : BitVec 64} {w : BitVec 32} (hx : Ctx zrom C S pc w)
     {i : Transpiler.Inst} (hd : decode w = some i) (hu : i = .lui ∨ i = .auipc) : StepCase zrom C S := by
@@ -789,8 +839,34 @@ theorem step_u {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → P
   | some n =>
     cases hf : Transpiler.fuses w n with
     | false =>
-      exact .inl (.inl (step_u_plain hx hd .AUIPC ha rfl (fun _ n' h => by
-        rw [hn] at h; cases h; exact hf)))
+      cases hfa : Transpiler.fusesAddi w n with
+      | false =>
+        exact .inl (.inl (step_u_plain hx hd .AUIPC ha rfl (fun _ n' h => by
+          rw [hn] at h; cases h; exact ⟨hf, hfa⟩)))
+      | true =>
+        -- the auipc-addi pair: the addi after it in the code too
+        have hc4 : C (pc + 4) := hx.next1 (by simp [Transpiler.usesNext, hd])
+        have hal := hx.aligned pc hx.code
+        have hal4 := hx.aligned _ hc4
+        have hj := aOfWords_addi hfa
+        have hau : (aOfWords w n).auipc.encode = w := ha
+        have hb := readWord_bytes hx.word
+        rw [← hau] at hb
+        have hn' : ZiskRiscv.readWord S.rv.mem (pc + 4).toNat = some n := hn
+        have hg := readWord_bytes hn'
+        rw [← hj] at hg
+        -- the ZisK program: the spec's translation of the auipc, the addi after it
+        have htr : Transpiled zrom pc (aOfWords w n).auipc.encode (some (aOfWords w n).second) := by
+          obtain ⟨l, hl⟩ := convert_some_plain hd (by rfl) pc 0 (some n) none
+          have h := hx.spec pc w hx.code hx.word ⟨0, l, by
+            rw [convert_ignores_next2 (usesNext2_plain hd (by rfl)) _ _ _ none, hn']; exact hl⟩
+          rw [hn'] at h
+          rw [hau, hj]; exact h.drop2 ⟨0, l, hl⟩
+        have hx1 := hx.exec pc hx.code
+        have hx3 := hx.exec _ hc4
+        exact .inr (.inl ⟨pc, aOfWords w n, hx.atPc, ⟨hal, hx1, exec_add2 hx1 hal, hx3, exec_add2 hx3 hal4,
+          hb.1, hb.2.1, hb.2.2.1, hb.2.2.2, hg.1, hg.2.1, hg.2.2.1, hg.2.2.2, aOfWords_rd hfa, .inl rfl,
+          pc8_tal hal, htr⟩⟩)
     | true =>
       -- the pair: the jalr after it in the code too
       have hc4 : C (pc + 4) := hx.next1 (by simp [Transpiler.usesNext, hd])
@@ -821,7 +897,7 @@ theorem step_u {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → P
         exact .inr (.inr (.inr (.inl (.inr (.inr (.inr (.inr (.inr (.inr (⟨pc, fOfWords w n, hx.atPc,
           ⟨hal, hx1, exec_add2 hx1 hal, hx3, exec_add2 hx3 hal4,
             hb.1, hb.2.1, hb.2.2.1, hb.2.2.2, hg.1, hg.2.1, hg.2.2.1, hg.2.2.2, fOfWords_rd hf, fOfWords_link hf,
-            htr⟩, jalrTarget_lsb _ _, ht⟩))))))))))
+            htr, rfl⟩, jalrTarget_lsb _ _, ht⟩))))))))))
 
 /-- `KindCases.plain`: a plain word at pc, the step's cases. -/
 theorem kind_plain {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop} :

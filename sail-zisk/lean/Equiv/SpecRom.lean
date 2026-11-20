@@ -121,12 +121,12 @@ theorem OneOkT.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : Bit
   · exact ⟨pc, hpc, .inr (.inr (.inr (.inr (.inr
       ⟨i, { hi with tr := retr hs (hc pc hpc) hi.h0 hi.h1 hi.h2 hi.h3 hi.tr }, rest⟩))))⟩
 
-/-- The fused pair: its translation, with the jalr as the next word. -/
+/-- The fused pair: its translation, with its second word as the next word. -/
 theorem FtAt.retarget {zr zrom : BitVec 64 → _root_.Zisk.zisk_inst} {C : BitVec 64 → Prop}
     {rs : List PMA_Region} {s : RVState} {pc : BitVec 64} {i : FInstr} (hs : SpecRom zrom C s.mem) (hc : C pc)
     (hi : FtAt s rs pc zr i) :
     FtAt s rs pc zrom i := by
-  have hn : nextWord s pc = some i.jalr.encode := Equiv.Machine.readWord_of hi.g0 hi.g1 hi.g2 hi.g3
+  have hn : nextWord s pc = some i.second := Equiv.Machine.readWord_of hi.g0 hi.g1 hi.g2 hi.g3
   have tr : Transpiled zr pc i.auipc.encode (nextWord s pc) := hn ▸ hi.tr
   have := retr hs hc hi.h0 hi.h1 hi.h2 hi.h3 tr
   exact { hi with tr := hn ▸ this }

@@ -36,7 +36,7 @@ pub struct TelemetryConfig {
     #[serde(default = "TelemetryConfig::default_enabled")]
     pub enabled: bool,
 
-    /// Seconds between two reports.
+    /// Seconds between two samples. The heartbeat, every 5 s, carries the latest.
     #[serde(default = "TelemetryConfig::default_interval")]
     pub interval_seconds: u64,
 }
@@ -88,7 +88,8 @@ pub struct CoordinatorConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConnectionConfig {
-    /// Reconnection interval in seconds
+    /// Seconds to wait before connecting again when the coordinator is unreachable or refused
+    /// the registration (another proving key, the connection limit).
     #[serde(default = "ConnectionConfig::default_reconnect_interval")]
     pub reconnect_interval_seconds: u64,
 

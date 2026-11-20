@@ -143,7 +143,6 @@ theorem source_a_miss (inst : zisk_inst) :
   · unfold Functions.rX; nomiss
   · next h => exact (MissIn.read_mem _ _).mono (fun k hk => ⟨h, hk⟩)
   · exact MissIn.pure _ _
-  · exact MissIn.readReg _ _
 
 /-- The bytes an instruction's b source reads, a the value of its a source. -/
 def bReads (inst : zisk_inst) (a : BitVec 64) (k : Nat) : Prop :=

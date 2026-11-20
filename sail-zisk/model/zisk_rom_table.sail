@@ -18,7 +18,7 @@
  *   word 1   a_imm        word 2   b_imm        word 3   store_off
  *   word 4   jmp_off1     word 5   jmp_off2     words 6, 7   zero
  *
- * a_src is A_C 0, A_MEM 1, A_IMM 2, A_STEP 3, A_REG 4; b_src is B_C 0,
+ * a_src is A_C 0, A_MEM 1, A_IMM 2, A_REG 4 (3 unused); b_src is B_C 0,
  * B_MEM 1, B_IMM 2, B_IND 3, B_REG 4; store is ST_NONE 0, ST_MEM 1,
  * ST_IND 2, ST_REG 3.
  */
@@ -30,7 +30,7 @@ function rom_word(entry, k) = __read_ram(64, 8, zeros(), entry + to_bits(64, 8 *
 
 val decode_a_src : bits(8) -> a_src
 function decode_a_src(x) = match x {
-  0x00 => A_C, 0x01 => A_MEM, 0x02 => A_IMM, 0x03 => A_STEP, 0x04 => A_REG,
+  0x00 => A_C, 0x01 => A_MEM, 0x02 => A_IMM, 0x04 => A_REG,
   _ => { assert(false, "ROM table: bad a_src"); A_C }
 }
 

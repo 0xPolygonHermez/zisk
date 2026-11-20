@@ -17,7 +17,7 @@ use crate::ux::{print_banner, print_banner_command, print_banner_field, print_ex
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Verify the constraints of the guest program execution without generating a proof
 pub(crate) struct VerifyConstraintsCmd {
-    /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
+    /// Path to the guest program (RISC-V ELF or .wasm). If omitted, it is auto-detected from the current project
     #[arg(short = 'e', long)]
     elf: Option<PathBuf>,
 
@@ -100,7 +100,7 @@ impl VerifyConstraintsCmd {
                 Some(elf) => Some(elf),
                 None => {
                     anyhow::bail!(
-                        "No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf."
+                        "No guest program provided, and could not detect one in the current project. Please pass a RISC-V ELF or .wasm file with --elf."
                     );
                 }
             };
@@ -110,7 +110,7 @@ impl VerifyConstraintsCmd {
 
         print_banner_command("Verify Constraints");
 
-        print_banner_field("Elf", self.elf.as_ref().unwrap().display());
+        print_banner_field("Program", self.elf.as_ref().unwrap().display());
 
         let inputs_str = self.inputs.clone().unwrap_or_else(|| "None".dimmed().to_string());
         print_banner_field("Input", inputs_str);

@@ -4,6 +4,7 @@ use crate::elf_extraction::{
     collect_elf_payload_from_bytes, merge_ro_sections, validate_entry_point, ElfPayload,
 };
 use crate::riscv2zisk_context::{add_zisk_code, zkvmcall_ids as zkvmcall_ids_in};
+use crate::rom_optimizer::{optimize_rom, RomOptPasses};
 use std::collections::HashMap;
 use std::error::Error;
 use zisk_core::mem::DataSection;
@@ -19,6 +20,13 @@ use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR};
 /// A ziskbin ELF (`e_machine == EM_ZISK`, a prebuilt ROM) is not RISC-V; the guest-format
 /// dispatcher (`zisk_transpiler_common::program2rom`) decodes those before calling this.
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
+    elf2rom_with(elf, RomOptPasses::default())
+}
+
+/// `elf2rom` with the given ROM post-pass optimizations. `RomOptPasses::NONE` gives the ROM as the
+/// instruction-by-instruction translation leaves it, which is what sail-zisk's Lean spec of the
+/// transpiler describes (`make transpiler-check`) until the optimizer is part of the proof.
+pub fn elf2rom_with(elf: &[u8], passes: RomOptPasses) -> Result<ZiskRom, Box<dyn Error>> {
     // Load the embedded float library (enabled with the `float` feature).
     #[cfg(feature = "float")]
     const FLOAT_LIB_DATA: &[u8] = include_bytes!("../../../lib-float/c/lib/ziskfloat.elf");
@@ -276,6 +284,10 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         merge_library(&mut rom, library)?;
     }
 
+    // ROM post-pass optimizations (jump threading, constant and address folding), once the whole
+    // program (guest, ZisK library, float library) is in the ROM. See rom_optimizer.rs.
+    optimize_rom(&mut rom.insts, passes);
+
     // Preprocess the ROM
     // Split the ROM instructions based on their address to improve performance when
     // searching for the instruction corresponding to the program counter (PC) address
@@ -285,8 +297,11 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 }
 
 /// Merges the assembled ZisK library into the guest ROM: its instructions and data
-/// live in the reserved region, disjoint from the guest.
-fn merge_library(rom: &mut ZiskRom, library: ziskasm::ZiskLibrary) -> Result<(), Box<dyn Error>> {
+/// live in the reserved region, disjoint from the guest. Shared with the wasm transpiler.
+pub fn merge_library(
+    rom: &mut ZiskRom,
+    library: ziskasm::ZiskLibrary,
+) -> Result<(), Box<dyn Error>> {
     // The guest linker script reserves ZISKLIB_RAM but not ZISKLIB_ROM, and unlike
     // the float-library region above nothing has fenced these off yet. `extend`
     // would silently overwrite a colliding guest instruction (BTreeMap) or leave

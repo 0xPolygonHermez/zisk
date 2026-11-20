@@ -1,0 +1,13 @@
+[package]
+name = "wasm-guest"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+workloads = { path = "../workloads" }
+
+[profile.release]
+opt-level = 3
+panic = "abort"
+
+[workspace]

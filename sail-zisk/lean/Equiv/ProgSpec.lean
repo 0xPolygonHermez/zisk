@@ -82,14 +82,14 @@ structure FtAt (s : RVState) (rs : List PMA_Region) (pc : BitVec 64)
   h1 : s.mem.get? (pc.toNat + 1) = some (byte i.auipc.encode 1)
   h2 : s.mem.get? (pc.toNat + 2) = some (byte i.auipc.encode 2)
   h3 : s.mem.get? (pc.toNat + 3) = some (byte i.auipc.encode 3)
-  g0 : s.mem.get? (pc + 4).toNat = some (byte i.jalr.encode 0)
-  g1 : s.mem.get? ((pc + 4).toNat + 1) = some (byte i.jalr.encode 1)
-  g2 : s.mem.get? ((pc + 4).toNat + 2) = some (byte i.jalr.encode 2)
-  g3 : s.mem.get? ((pc + 4).toNat + 3) = some (byte i.jalr.encode 3)
+  g0 : s.mem.get? (pc + 4).toNat = some (byte i.second 0)
+  g1 : s.mem.get? ((pc + 4).toNat + 1) = some (byte i.second 1)
+  g2 : s.mem.get? ((pc + 4).toNat + 2) = some (byte i.second 2)
+  g3 : s.mem.get? ((pc + 4).toNat + 3) = some (byte i.second 3)
   rd : i.rd ≠ 0
   link : i.rd2 = i.rd ∨ i.rd2 = 0
   tal : (i.T pc)[0] = false ∧ (i.T pc)[1] = false
-  tr : Transpiled zrom pc i.auipc.encode (some i.jalr.encode)
+  tr : Transpiled zrom pc i.auipc.encode (some i.second)
 
 theorem FtAt.toFAt {s rs pc zrom i} (h : FtAt s rs pc zrom i) : FAt s rs pc zrom i :=
   ⟨h.al, h.x1, h.x2, h.x3, h.x4, h.h0, h.h1, h.h2, h.h3, h.g0, h.g1, h.g2, h.g3, h.rd, h.link, h.tal,
@@ -565,6 +565,12 @@ theorem RunOkT.exec {rs : List PMA_Region} {zrom : BitVec 64 → _root_.Zisk.zis
   | _ + 1, .inl ⟨h, _⟩ => OneOkT.exec h
   | _ + 1, .inr ⟨⟨pc, _, hpc, hi⟩, _⟩ => ⟨pc, hpc, hi.x1⟩
 
+/-- The fused pair's second word, a jalr or an addi, is no system word. -/
+theorem FInstr.notSys_second (i : FInstr) : NotMach i.second := by
+  obtain ⟨rd, uimm, rd2, jimm, _ | _⟩ := i
+  · exact notSys_jr _
+  · exact notSys_i _
+
 /-- The fused pair's two steps are the machine's: plain RISC-V words. -/
 theorem fused_mnext {s s2 : RVState} {rs : List PMA_Region} {pc : BitVec 64}
     {zrom : BitVec 64 → _root_.Zisk.zisk_inst} {i : FInstr} {n : Nat}
@@ -583,7 +589,7 @@ theorem fused_mnext {s s2 : RVState} {rs : List PMA_Region} {pc : BitVec 64}
   have m1 : MStep rs n s t1 := .plain pc _ hpc (readWord_of hi.h0 hi.h1 hi.h2 hi.h3) (notSys_u _).plain h1
   have m2 : MStep rs (n + 1) t1 s2 := .plain (pc + 4) _ hpc1
     (readWord_of (by rw [hmem1]; exact hi.g0) (by rw [hmem1]; exact hi.g1) (by rw [hmem1]; exact hi.g2)
-      (by rw [hmem1]; exact hi.g3)) (notSys_jr _).plain h2
+      (by rw [hmem1]; exact hi.g3)) (FInstr.notSys_second i).plain h2
   exact ⟨t1, h1, h2, m1, m2, m1.next, m2.next⟩
 
 /-- The simulation over whole runs, the ZisK program the spec's translation

@@ -5,7 +5,6 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
-homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
@@ -30,3 +29,4 @@ zisk-test-artifacts = { workspace = true }
 serial_test = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }
+wat = { workspace = true }

@@ -60,8 +60,8 @@ where N = ceil(Length / 8)
 The following control codes are defined:
 - `0x00` (START): Start a new hint stream. Resets processor state and sequence counters. Must be the first hint in the first batch.
 - `0x01` (END): End the current hint stream. The processor will wait for all pending hints to be processed before returning. Must be the last hint in its batch; only a `CTRL_START` may follow in a subsequent batch.
-- `0x02` (CANCEL): **[Reserved for future use]** Cancel current stream and stop processing further hints.
-- `0x03` (ERROR): **[Reserved for future use]** Indicate an error has occurred; stop processing further hints.
+- `0x02` (CANCEL): **\[Reserved for future use\]** Cancel current stream and stop processing further hints.
+- `0x03` (ERROR): **\[Reserved for future use\]** Indicate an error has occurred; stop processing further hints.
 
 Control codes are for control only and do not have any associated data (Length should be zero).
 
@@ -124,8 +124,8 @@ Control codes manage the stream lifecycle and do not carry computational data:
 |------|------|-------------|
 | `0x0000` | `CTRL_START`   | Resets processor state. Must be the first hint in the first batch. |
 | `0x0001` | `CTRL_END`     | Signals end of stream. Blocks until all pending hints complete. Must be the last hint. |
-| `0x0002` | `CTRL_CANCEL`  | **[Reserved for future use]** Cancels the current stream. Sets error flag and stops processing. |
-| `0x0003` | `CTRL_ERROR`   | **[Reserved for future use]** External error signal. Sets error flag and stops processing. |
+| `0x0002` | `CTRL_CANCEL`  | **\[Reserved for future use\]** Cancels the current stream. Sets error flag and stops processing. |
+| `0x0003` | `CTRL_ERROR`   | **\[Reserved for future use\]** External error signal. Sets error flag and stops processing. |
 
 #### 1.4.2. Built-in Hint Types
 

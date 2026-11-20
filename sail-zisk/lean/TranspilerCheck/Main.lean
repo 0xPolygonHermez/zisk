@@ -37,7 +37,8 @@ def hexNat (s : String) : Option Nat :=
 def decodeEntry (ws : Array Nat) : Option zisk_inst := do
   let w0 := ws[0]!
   let byte (k : Nat) := (w0 >>> (8 * k)) % 256
-  let a ← [a_src.A_C, .A_MEM, .A_IMM, .A_STEP, .A_REG][byte 1]?
+  let a ← match byte 1 with
+    | 0 => some a_src.A_C | 1 => some .A_MEM | 2 => some .A_IMM | 4 => some .A_REG | _ => none
   let b ← [b_src.B_C, .B_MEM, .B_IMM, .B_IND, .B_REG][byte 2]?
   let st ← [c_store.ST_NONE, .ST_MEM, .ST_IND, .ST_REG][byte 3]?
   let op ← Functions.zisk_op_of_code (BitVec.ofNat 8 (byte 6))

@@ -341,9 +341,16 @@ def jalr (pc ia : BitVec 64) : List (BitVec 64 × zisk_inst) :=
 def fuses (n : BitVec 32) : Bool :=
   decode n == some .jalr && rd w ≠ 0 && rs1 n = rd w && (rd n = rd w || rd n = 0)
 
+/-- Whether `auipc` fuses with an addi after it (the `la`/`lla` pair): an
+    addi that reads and writes the auipc's rd, not x0. Tried after `fuses`. -/
+def fusesAddi (n : BitVec 32) : Bool :=
+  decode n == some (.i .addi) && rd w ≠ 0 && rd n = rd w && rs1 n = rd w
+
 /-- `auipc` (pc, the next word, if any): fused with a jalr after it that
     jumps through rd and links to rd or x0, one instruction, the constant to
-    rd and the jump made at transpile time; else copyb(0, pc + imm) -> r[rd]. -/
+    rd and the jump made at transpile time; else fused with an addi after it
+    that reads and writes rd, one instruction, the pair's constant to rd and
+    on past the addi; else copyb(0, pc + imm) -> r[rd]. -/
 def auipc (pc : BitVec 64) (next : Option (BitVec 32)) : zisk_inst :=
   match next with
   | some n =>
@@ -352,6 +359,8 @@ def auipc (pc : BitVec 64) (next : Option (BitVec 32)) : zisk_inst :=
       let jumpPc := (auipcResult + immI n) &&& JALR_MASK
       let c := if rd n = 0 then auipcResult else pc + 8
       mk (.A_IMM, 0) (.B_IMM, c) (.ZOP_COPYB ()) (storeReg (rd w)) (jumpPc - pc) (jumpPc - pc)
+    else if fusesAddi w n then
+      mk (.A_IMM, 0) (.B_IMM, pc + immU w + immI n) (.ZOP_COPYB ()) (storeReg (rd w)) 8 8
     else plain
   | none => plain
 where plain := mk (.A_IMM, 0) (.B_IMM, pc + immU w) (.ZOP_COPYB ()) (storeReg (rd w)) 4 4

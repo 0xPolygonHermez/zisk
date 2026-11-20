@@ -523,17 +523,11 @@ impl MemModuleCollector {
     }
 
     pub fn skip_addr(&self, addr: u32) -> bool {
-        if addr > self.filter_max_addr || addr < self.filter_min_addr {
-            return true;
-        }
-        false
+        addr > self.filter_max_addr || addr < self.filter_min_addr
     }
 
     pub fn skip_addr_range(&self, addr_from: u32, addr_to: u32) -> bool {
-        if addr_from > self.filter_max_addr || addr_to < self.filter_min_addr {
-            return true;
-        }
-        false
+        addr_from > self.filter_max_addr || addr_to < self.filter_min_addr
     }
 
     #[inline(always)]

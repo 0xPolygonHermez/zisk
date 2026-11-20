@@ -74,7 +74,7 @@ def programRom (segs : List (BitVec 64 × Array (BitVec 32))) : List (BitVec 64 
   romFrom (codeWords segs) 0
 
 /-- Whether a word's translation reads the word after it: auipc, to fuse
-    with a jalr; a CSR instruction, for a call's sequence. -/
+    with a jalr or an addi; a CSR instruction, for a call's sequence. -/
 def usesNext (w : BitVec 32) : Bool :=
   match decode w with
   | some .auipc | some .csr => true

@@ -11,8 +11,7 @@ function source_a (inst : zisk_inst) -> bits(64) =
     A_C    => Zc,                      /* result of the previous step */
     A_REG  => rX(inst.a_imm[5 .. 0]),
     A_MEM  => read_mem(inst.a_imm, 8),
-    A_IMM  => inst.a_imm,
-    A_STEP => Step
+    A_IMM  => inst.a_imm
   }
 
 function source_b (inst : zisk_inst, a : bits(64)) -> bits(64) =

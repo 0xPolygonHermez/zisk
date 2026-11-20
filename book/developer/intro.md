@@ -2,7 +2,7 @@
 
 ## Overview
 
-ZisK is a zero-knowledge virtual machine (zkVM).  This section describes the high-level architecture of ZisK.
+ZisK is a zero-knowledge virtual machine (zkVM).  This section describes the high-level architecture of ZisK.  For the full specification, see the [ZisK Whitepaper](https://github.com/0xPolygonHermez/zisk-papers/releases).
 
 ## Guest program generation
 
@@ -143,7 +143,6 @@ Some details about the emulation process steps:
   - Memory: the a value is read from a memory address that is constant for this ZisK instruction
   - Register: the a value is read from a RISC-V register whose index is constant for this ZisK instruction
   - c: the a value is copied from register c, i.e. a is the result of the previously emulated instruction
-  - Step: the a value is the current step value
 - The **source of register b** can be any of the following:
   - Immediate: the b value is constant for this instruction
   - Memory: the b value is read from a memory address that is constant for this ZisK instruction
@@ -171,7 +170,6 @@ flowchart TD
     B(b)
     C(c)
     FLAG(flag)
-    STEP(step)
     PC(pc)
     IMM(immediate)
     MEM(memory)
@@ -186,8 +184,6 @@ flowchart TD
 
     ACONST(a = const)
     IMM --> ACONST
-    ASTEP(a = step)
-    STEP --> ASTEP
     APREVC("a = c")
     PREVC --> APREVC
     AREGS("a = regs[const]")
@@ -196,7 +192,6 @@ flowchart TD
     MEM --> AMEM
     subgraph "a source"
     ACONST --> A
-    ASTEP --> A
     APREVC --> A
     AREGS --> A
     AMEM --> A

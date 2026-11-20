@@ -113,6 +113,20 @@ fn rounding_to_integral() {
     assert!(eval_f64("(f64.nearest (f64.const nan))").is_nan());
     assert_eq!(eval_f32("(f32.ceil (f32.const 2.1))"), 3.0);
     assert_eq!(eval_f32("(f32.floor (f32.const -0.5))"), -1.0);
+    // A signaling NaN comes back quiet, keeping its sign and payload (wasm requires an
+    // arithmetic NaN; the spec suite's f32.wast and f64.wast check it).
+    for op in ["ceil", "floor", "trunc", "nearest"] {
+        assert_eq!(
+            eval_f64(&format!("(f64.{op} (f64.const -nan:0x4000000000000))")).to_bits(),
+            0xfffc_0000_0000_0000,
+            "f64.{op}"
+        );
+        assert_eq!(
+            eval_f32(&format!("(f32.{op} (f32.const nan:0x200000))")).to_bits(),
+            0x7fe0_0000,
+            "f32.{op}"
+        );
+    }
 }
 
 #[test]
@@ -196,6 +210,19 @@ fn promote_demote_and_reinterpret() {
         eval_i64("(i64.extend_i32_s (i32.reinterpret_f32 (f32.const -1.0)))") as i64,
         (-1.0f32).to_bits() as i32 as i64
     );
+}
+
+#[test]
+fn promote_covers_signs_zeros_and_subnormals() {
+    // f32 operands reach the float library NaN-boxed; zeros, negatives and subnormals must convert
+    // exactly instead of reading as the canonical NaN.
+    for x in [0.0f32, -0.0, 1.5, -2.5, -1.0, 1e-40, -1e-40, f32::MIN_POSITIVE, f32::MAX, f32::MIN] {
+        let got = eval_f64(&format!("(f64.promote_f32 (f32.const {x:e}))"));
+        assert_eq!(got.to_bits(), (x as f64).to_bits(), "promote({x:e})");
+    }
+    assert_eq!(eval_f64("(f64.promote_f32 (f32.const inf))"), f64::INFINITY);
+    assert_eq!(eval_f64("(f64.promote_f32 (f32.const -inf))"), f64::NEG_INFINITY);
+    assert!(eval_f64("(f64.promote_f32 (f32.const nan))").is_nan());
 }
 
 #[test]
