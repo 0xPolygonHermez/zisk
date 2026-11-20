@@ -8,12 +8,12 @@ not done.
 ## State of the work
 
 Done:
-- `pil/allocator.pil` (`Allocator`) and `pil/allocator_canonical.pil` (`AllocatorCanonical`). Both compile
+- `pil/allocator_flex.pil` (`AllocatorFlex`) and `pil/allocator.pil` (`Allocator`). Both compile
   standalone with the pinned pil2-compiler through `test/allocator_test.pil`.
-- `model/allocator_model.py` and `model/allocator_canonical_model.py`. Each has `verify()` (the
+- `model/allocator_flex_model.py` and `model/allocator_model.py`. Each has `verify()` (the
   constraints re-implemented by hand over Goldilocks plus the bus balance), an honest `Executor`
   that fills the witness, an `oracle()` for the guest-visible guarantees, and attacks.
-  The canonical model also has `reference()`, an independent best-fit allocator.
+  The `Allocator` model also has `reference()`, an independent best-fit allocator.
 
 Not done:
 - No wiring into `pil/zisk.pil`, `pil/operations.pil`, `pil/opids.pil`. Opcodes `0xDB`-`0xDF` and
@@ -23,7 +23,7 @@ Not done:
 - No formal verification.
 
 **The models are not the PIL.** `verify()` is a hand transcription. Any change to a `.pil` must be
-mirrored in its model and vice versa. The canonical model checks constraints per operation with Python
+mirrored in its model and vice versa. The `Allocator` model checks constraints per operation with Python
 branches where the PIL uses selectors; the column names differ (see the mapping below).
 
 ## Commands
@@ -31,8 +31,8 @@ branches where the PIL uses selectors; the column names differ (see the mapping 
 Run from the repo root.
 
 ```
+python3 precompiles/allocator/model/allocator_flex_model.py
 python3 precompiles/allocator/model/allocator_model.py
-python3 precompiles/allocator/model/allocator_canonical_model.py
 ```
 
 Both must end with `RESULT: OK`. "weak" lines show that an attack succeeds when the named
@@ -72,9 +72,9 @@ allocation of 64 bytes.
 A `calloc` over a dirty block assumes `OP_DMA_XMEMSET` with exactly the tuple that `Dma` proves to
 the main: `a: [addr, 0], b: [size, 0], c: [addr, 0], main_step, extended_arg: 0` (fill byte 0).
 
-## `Allocator` (prover chooses)
+## `AllocatorFlex` (prover chooses)
 
-Bus `ALLOC_BUS_ID`, tokens `[type, addr, size, step, dirty]`:
+Bus `ALLOC_FLEX_BUS_ID`, tokens `[type, addr, size, step, dirty]`:
 
 - `FREE(addr, size, step, dirty)`: free block available since `step`. `dirty = 0` means all bytes
   are zero.
@@ -109,9 +109,9 @@ Points that are easy to get wrong:
   joins whose result is consumed later, or the bus does not balance. The model joins lazily, when
   an alloc needs it.
 
-## `AllocatorCanonical` (deterministic)
+## `Allocator` (deterministic)
 
-Bus `ALLOC_CANONICAL_BUS_ID`, tokens `[type, addr, size, prev, dirty, ver, next_size, next_addr]`:
+Bus `ALLOC_BUS_ID`, tokens `[type, addr, size, prev, dirty, ver, next_size, next_addr]`:
 
 - `FREE`: free block and list node. `(next_size, next_addr)` is the key of the next node in the
   list ordered by `(size, addr)`.
@@ -122,7 +122,7 @@ Bus `ALLOC_CANONICAL_BUS_ID`, tokens `[type, addr, size, prev, dirty, ver, next_
 
 Fixed tokens and keys:
 - Head of the list: `FREE(addr 0, size 0, prev 0, dirty 0, ver 0, next = tail)`, proved once with
-  `allocator_canonical_init()` (a global `direct_global_update_proves`).
+  `allocator_init()` (a global `direct_global_update_proves`).
 - Tail: only a key, `(2**32, 0)`. No token.
 - List key: `size * 2**30 + addr`. This equals lexicographic `(size, addr)` only because sizes are
   multiples of 8 and `addr < 2**33`. Keys are below `2**62`, the tail key is `2**62`, and a strict
@@ -208,15 +208,15 @@ Common to both variants:
 - A token that is never consumed must not be produced, or the bus does not balance. This is how
   the heap left at the end of the execution is closed.
 - Every executor (Rust emulator, assembly, GPU) must return the same addresses. For
-  `AllocatorCanonical` the address is unique, so any correct best-fit with eager coalescing agrees. For
-  `Allocator` the policy is free but must be identical everywhere.
+  `Allocator` the address is unique, so any correct best-fit with eager coalescing agrees. For
+  `AllocatorFlex` the policy is free but must be identical everywhere.
 - Unused columns must be 0. Several constraints have no selector and rely on it (unconditional
   range checks, `dirty * (1 - out_dirty)`, `(1 - join_above) * b_size`).
 
-`Allocator`: one row per main operation plus one per join. Join rows have no main step; their
+`AllocatorFlex`: one row per main operation plus one per join. Join rows have no main step; their
 `step` and `free_step` are those of the two tokens.
 
-`AllocatorCanonical`: one row per main operation. The executor needs the free list ordered by
+`Allocator`: one row per main operation. The executor needs the free list ordered by
 `(size, addr)` with predecessor lookup, and the neighbours of each block by address.
 
 ## For formal verification
@@ -226,18 +226,18 @@ Target statements, for any accepted proof and under the assumptions in `README.m
 1. Every `alloc` result lies in a created area.
 2. Blocks live at the same main step are pairwise disjoint.
 3. A `calloc` block is all zeros right after its row.
-4. (`AllocatorCanonical` only) the result of every `alloc` equals the result of the reference best-fit
+4. (`Allocator` only) the result of every `alloc` equals the result of the reference best-fit
    allocator with eager coalescing, given the same sequence of operations.
 
 Proof outline used in the design:
 
 - The bus balance gives a bijection between produced and consumed tokens.
-- Order the rows by step (in `Allocator`, place each join at the step of its output; joins at the
+- Order the rows by step (in `AllocatorFlex`, place each join at the step of its output; joins at the
   same step are ordered by output size, which strictly grows). The causality checks make this a
   topological order of the producer/consumer relation.
 - Invariant, by induction along that order: the tokens produced and not yet consumed describe the
-  true heap. For `Allocator`: they are pairwise disjoint intervals inside the areas. For
-  `AllocatorCanonical` additionally: each `FREE` token's `next` is the true next key among live free
+  true heap. For `AllocatorFlex`: they are pairwise disjoint intervals inside the areas. For
+  `Allocator` additionally: each `FREE` token's `next` is the true next key among live free
   blocks, each `prev` is the true size of the block below, and no two adjacent blocks are free.
 - A token the prover chose not to produce is missing from the set but does not make any existing
   token false. Missing tokens can only make later rows unprovable.
@@ -261,8 +261,8 @@ Things a verification must not skip:
   timestamps of the instruction itself and make sure the memory planners count these operations.
 - `create` arguments are trusted (alignment, non-overlap, zeroed). Decide which to enforce.
 - Alignments above 8 and `realloc` are not covered. A `realloc` in place would be a new operation.
-- `AllocatorCanonical` column sharing: the alloc-only chunks (`r32_*`) and the dealloc-only update 2
+- `Allocator` column sharing: the alloc-only chunks (`r32_*`) and the dealloc-only update 2
   (`b_*`, `pb_*`) never appear in the same row and could share columns.
-- Multiple areas share one free list in `AllocatorCanonical`. One list per area would need an area id in
+- Multiple areas share one free list in `Allocator`. One list per area would need an area id in
   the tokens.
 - `MAIN_STEP_BITS + 2` must stay at or below 40 for the version range check; there is an `assert`.

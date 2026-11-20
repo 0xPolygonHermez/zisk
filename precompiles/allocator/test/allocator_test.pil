@@ -2,11 +2,11 @@ require "std_direct.pil"
 require "operations.pil"
 require "opids.pil"
 require "config.pil"
+require "allocator/pil/allocator_flex.pil"
 require "allocator/pil/allocator.pil"
-require "allocator/pil/allocator_canonical.pil"
 
 airgroup AllocTest {
+    AllocatorFlex(N: 2**22);
     Allocator(N: 2**22);
-    AllocatorCanonical(N: 2**22);
-    allocator_canonical_init();
+    allocator_init();
 }

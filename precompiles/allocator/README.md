@@ -43,17 +43,10 @@ These hold against a malicious prover, under the assumptions below.
 The two variants validate the same operations and give the guarantees above. They differ in how
 much the prover is allowed to decide. Only one of them would be instantiated.
 
-### `Allocator`: the prover chooses
+`Allocator` is the default. `AllocatorFlex` is the cheaper alternative, for when the guest is
+trusted to have no memory bugs.
 
-The prover picks which free block serves each `alloc` (always from the start of a free block) and
-decides when two adjacent free blocks are joined, with internal `join` rows that do not come from
-the main.
-
-This is sound as long as the guest program is correct. If the guest has a memory bug (an overflow,
-a use after free), a malicious prover can arrange the heap so that the bug hits the data it wants.
-The result of a program that depends on pointer values is also not unique.
-
-### `AllocatorCanonical`: nothing to choose
+### `Allocator`: nothing to choose
 
 The address returned by each `alloc` is fully determined by the previous operations:
 
@@ -67,11 +60,21 @@ The address returned by each `alloc` is fully determined by the previous operati
 
 A prover cannot shape the heap, so a guest bug behaves the same for every prover.
 
+### `AllocatorFlex`: the prover chooses
+
+The prover picks which free block serves each `alloc` (always from the start of a free block) and
+decides when two adjacent free blocks are joined, with internal `join` rows that do not come from
+the main.
+
+This is sound as long as the guest program is correct. If the guest has a memory bug (an overflow,
+a use after free), a malicious prover can arrange the heap so that the bug hits the data it wants.
+The result of a program that depends on pointer values is also not unique.
+
 ### Cost
 
 Measured with `proofman-setup stats` on the standalone PIL, one instance of 2^22 rows:
 
-| | `Allocator` | `AllocatorCanonical` |
+| | `AllocatorFlex` | `Allocator` |
 |---|---|---|
 | Witness columns | 25 | 81 |
 | Committed columns (base field, all stages) | 55 | 156 |
@@ -107,7 +110,7 @@ sound:
 3. **Unique addresses.** Sizes are not zero, so two live blocks never share an address and
    `dealloc(addr)` identifies one block.
 
-`AllocatorCanonical` adds, to each free token, the key of the next free block in the ordered list, and
+`Allocator` adds, to each free token, the key of the next free block in the ordered list, and
 to every token the size of the block just below it. With the first the precompile proves that
 nothing smaller would fit; with the second it finds both neighbours of a block and proves whether
 each one is free.
@@ -118,9 +121,9 @@ unprovable; it never changes its result.
 
 ## Files
 
-- `pil/allocator.pil`, `pil/allocator_canonical.pil`: the two variants.
+- `pil/allocator_flex.pil`, `pil/allocator.pil`: the two variants.
 - `pil/allocator_common.pil`: opcodes, bus ids and token types.
 - `model/`: Python models with an honest executor, a re-implementation of the constraints and a
-  set of attacks. `python3 model/allocator_model.py`, `python3 model/allocator_canonical_model.py`.
+  set of attacks. `python3 model/allocator_flex_model.py`, `python3 model/allocator_model.py`.
 - `test/allocator_test.pil`: harness to compile both variants standalone.
 - `AGENTS.md`: implementation notes for the executor and for formal verification.
