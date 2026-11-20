@@ -258,22 +258,45 @@ void process_request(const uint64_t * request, uint64_t * response, bool * bRese
         {
             if (!silent) asm_printf("RESET received\n");
 
-            // Rebuild what a start initializes in the segments every program set up in a
-            // process shares, since another program may have written them since this server
-            // last ran: the control output counters, then RAM and ROM from this binary's own
-            // init data. The client sends this when it switches programs.
+            // The client sends this when it switches programs on the segments every program set up
+            // in a process shares, since another program may have written them since this server
+            // last ran. request[1] says how, and response[2] echoes the mode served:
+            //
+            // - Full: rebuild what a start initializes, the control output counters, then RAM and
+            //   ROM from this binary's own init data, zeroing both first. Any mode but the two
+            //   below, and every mode on internal segments, is served as full.
+            // - Release, to the outgoing program: clear this binary's init data from RAM and ROM.
+            //   They hold nothing else, since server_reset_slow() runs after every run and at start
+            //   and this request is read only after it, so both are left all zero.
+            // - Acquire, to the incoming program once every outgoing service has released: what
+            //   full does, without zeroing RAM and ROM, which are zero already. A full reset zeroes
+            //   640 MB; these write only the init data.
             //
             // Called directly, not via *bReset: that flag is honoured only after the response has
             // been written, and the response must mean the memory is ready.
             //
             // Not server_reset_trace(): it writes the header of the trace output, which is no
             // concern of a reset, and server_run() resets the trace itself.
-            server_reset_fast();
-            server_reset_slow();
+            uint64_t mode = create_internal_shm ? RS_MODE_FULL : request[1];
+            switch (mode)
+            {
+                case RS_MODE_RELEASE:
+                    server_release_init_data();
+                    break;
+                case RS_MODE_ACQUIRE:
+                    server_reset_fast();
+                    server_acquire_init_data();
+                    break;
+                default:
+                    mode = RS_MODE_FULL;
+                    server_reset_fast();
+                    server_reset_slow();
+                    break;
+            }
 
             response[0] = TYPE_RS_RESPONSE;
             response[1] = 0;
-            response[2] = 0;
+            response[2] = mode;
             response[3] = 0;
             response[4] = 0;
             break;

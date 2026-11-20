@@ -1016,6 +1016,25 @@ void server_reset_slow (void)
     }
 }
 
+// Clear this binary's init data from RAM and ROM. After server_reset_slow() they hold nothing else,
+// so they are left all zero: see the release in main.c. Only on shared segments, whose ROM is
+// writable.
+void server_release_init_data (void)
+{
+    assert(!create_internal_shm);
+    clear_rw_init_data();
+    clear_ro_init_data();
+}
+
+// Write this binary's init data into RAM and ROM that a release left all zero: server_reset_slow()
+// without zeroing them. Only on shared segments, whose ROM is writable.
+void server_acquire_init_data (void)
+{
+    assert(!create_internal_shm);
+    write_rw_init_data();
+    write_ro_init_data();
+}
+
 void server_reset_trace (void)
 {
     // Reset trace header and trace_used_size for next emulation

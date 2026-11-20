@@ -25,9 +25,10 @@
 //!   removes only its semaphores.
 //! - **They serve one program at a time.** Which one is recorded in the `SharedSegments`, so
 //!   every client in the process sees the same answer. [`AsmServices::activate`] hands them to
-//!   another program: it waits until the active program's services have finished with them,
-//!   rebinds the parent's writers to the new program's semaphores, and has its services rebuild
-//!   their guest RAM and ROM (the reset request). Starting a new program's services waits the
+//!   another program: it waits until the active program's services have finished with them and
+//!   has them clear their program's init data, rebinds the parent's writers to the new program's
+//!   semaphores, and has its services write theirs (the reset request's release and acquire;
+//!   see [`AsmServices::activate`]). Starting a new program's services waits the
 //!   same way, since starting writes those segments too. Only one setup or job may use them at a
 //!   time: each holds a [`SegmentsClaim`] throughout, and `activate` requires one. A job's claim
 //!   is held by its `AsmJob` (`zisk-executor`), which also orders what a job does at its start
@@ -127,7 +128,18 @@ mod tests {
             MemoryOperationsRequest { max_steps: 1, chunk_len: 2 }.to_request_payload(),
             [CMD_MO_REQUEST_ID, 1, 2, 0, 0]
         );
-        assert_eq!(ResetRequest.to_request_payload(), [CMD_RESET_REQUEST_ID, 0, 0, 0, 0]);
+        assert_eq!(
+            ResetRequest { mode: ResetMode::Full }.to_request_payload(),
+            [CMD_RESET_REQUEST_ID, 0, 0, 0, 0]
+        );
+        assert_eq!(
+            ResetRequest { mode: ResetMode::Release }.to_request_payload(),
+            [CMD_RESET_REQUEST_ID, 1, 0, 0, 0]
+        );
+        assert_eq!(
+            ResetRequest { mode: ResetMode::Acquire }.to_request_payload(),
+            [CMD_RESET_REQUEST_ID, 2, 0, 0, 0]
+        );
         assert_eq!(ShutdownRequest.to_request_payload(), [CMD_SHUTDOWN_REQUEST_ID, 0, 0, 0, 0]);
     }
 
@@ -142,8 +154,8 @@ mod tests {
         let r = RomHistogramResponse::from_response_payload([CMD_RH_RESPONSE_ID, 0, 9, 3, 77]);
         assert_eq!((r.result, r.allocated_len, r.trace_len, r.last_step), (0, 9, 3, 77));
 
-        let r = ResetResponse::from_response_payload([CMD_RESET_RESPONSE_ID, 3, 4096, 0, 0]);
-        assert_eq!(r.result, 3);
+        let r = ResetResponse::from_response_payload([CMD_RESET_RESPONSE_ID, 3, 1, 0, 0]);
+        assert_eq!((r.result, r.served), (3, ResetMode::Release as u64));
     }
 
     #[test]

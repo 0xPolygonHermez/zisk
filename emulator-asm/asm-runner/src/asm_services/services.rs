@@ -1,3 +1,4 @@
+use super::reset::ResetMode;
 use super::segments::{ActiveProgram, SegmentsClaim, SetOnDrop, SharedSegments};
 use super::stdio::{Launch, StdioService};
 use crate::{
@@ -8,6 +9,7 @@ use crate::{
 use anyhow::{Context, Result};
 
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::time::Duration;
@@ -169,6 +171,9 @@ pub(super) struct AsmServicesInner {
     stopped: SetOnDrop,
     /// The segments the services use.
     segments: Arc<SharedSegments>,
+    /// Set once a service answered a release with a full reset: its binary was built before the
+    /// release existed, so a switch away from this program pings its services instead.
+    no_release: AtomicBool,
 }
 
 impl AsmServices {
@@ -268,6 +273,7 @@ impl AsmServices {
             sem_prefix,
             stopped: SetOnDrop::default(),
             segments,
+            no_release: AtomicBool::new(false),
         };
 
         for service in &Self::SERVICES {
@@ -426,11 +432,17 @@ impl AsmServices {
     /// Make the shared segments serve this program, unless they already do.
     ///
     /// The segments serve one program at a time, so a switch takes three steps,
-    /// in order: wait until the program they serve now has finished with them
-    /// (`quiesce_active`), let the caller rebind whatever is per program
-    /// (`bind`, the semaphores of the parent's shared writers), and rebuild this
-    /// program's guest RAM and ROM (`reset_services`). It is recorded as
-    /// active only once all three have succeeded.
+    /// in order: wait until the program they serve now has finished with them and
+    /// have it clear its init data from them (`quiesce_active`), let the caller
+    /// rebind whatever is per program (`bind`, the semaphores of the parent's shared
+    /// writers), and rebuild this program's guest RAM and ROM (`reset_services`). It
+    /// is recorded as active only once all three have succeeded.
+    ///
+    /// The rebuild writes only this program's init data when every service of the
+    /// outgoing program cleared its own, which leaves the guest RAM and ROM all zero,
+    /// and none of this program's was started again, since a starting service writes
+    /// its own. Otherwise it zeroes them first: 640 MiB a service, on the job's critical
+    /// path.
     ///
     /// The record lives with the segments, not with the caller, so every client
     /// in the process that set up programs on them sees the same one.
@@ -459,7 +471,7 @@ impl AsmServices {
         if exited.is_empty() && segments.is_active(&self.inner) {
             return Ok(());
         }
-        Self::quiesce_active(segments);
+        let released = Self::quiesce_active(segments);
         for (service, how) in &exited {
             tracing::warn!(
                 "[{}] Restarting ASM service {service} of {}: it can serve no more requests ({how})",
@@ -472,7 +484,8 @@ impl AsmServices {
                 .with_context(|| format!("Failed to restart ASM service {service}"))?;
         }
         bind()?;
-        self.reset_services()?;
+        let mode = if released && exited.is_empty() { ResetMode::Acquire } else { ResetMode::Full };
+        self.reset_services(mode)?;
 
         segments.set_active(ActiveProgram {
             services: Arc::downgrade(&self.inner),
@@ -488,37 +501,67 @@ impl AsmServices {
     }
 
     /// Wait until the services of the program `segments` serve have finished
-    /// every request already sent, and record that they serve none.
+    /// every request already sent, have them clear their program's init data from
+    /// the guest RAM and ROM, and record that they serve none. Returns whether all
+    /// three cleared it, which leaves the guest RAM and ROM all zero.
     ///
     /// A service keeps writing the shared guest RAM and ROM after it has
     /// answered: its request may still be in flight (the ROM histogram's is
     /// parked until a job reads it), and its own reset runs after the response.
-    /// A ping is answered only after both, since each service reads its next
+    /// The release is answered only after both, since each service reads its next
     /// request only when it is done with the last, and a request in flight holds
     /// that service's handle until its response arrives. A request its runner has
     /// not sent yet is not waited for: see `AsmJob` in `zisk-executor`. A
-    /// service whose ping fails is taken as stopped. A program already dropped is
-    /// not pinged but waited for, until its teardown has stopped its services.
-    fn quiesce_active(segments: &SharedSegments) {
-        let Some(outgoing) = segments.take_active() else { return };
+    /// service whose release fails is taken as stopped. A program already dropped is
+    /// not asked but waited for, until its teardown has stopped its services. A
+    /// program whose binaries predate the release is pinged instead.
+    fn quiesce_active(segments: &SharedSegments) -> bool {
+        let Some(outgoing) = segments.take_active() else { return false };
         // Its last reference is gone, but its teardown, which holds no claim, may
         // still be stopping services that write the segments: wait for it to finish.
         let Some(outgoing) = outgoing.services.upgrade() else {
             outgoing.stopped.wait();
-            return;
+            return false;
         };
+        if outgoing.no_release.load(Ordering::Relaxed) {
+            for service in &Self::SERVICES {
+                if let Err(e) = outgoing.service.send_status_request(service) {
+                    tracing::warn!(
+                        "Service {service} of the outgoing program did not answer before a \
+                         switch; taking it as stopped: {e:#}"
+                    );
+                }
+            }
+            return false;
+        }
+        let mut released = true;
         for service in &Self::SERVICES {
-            if let Err(e) = outgoing.service.send_status_request(service) {
-                tracing::warn!(
-                    "Service {service} of the outgoing program did not answer before a switch; \
-                     taking it as stopped: {e:#}"
-                );
+            match outgoing.service.send_reset_request(service, ResetMode::Release) {
+                Ok(response) if response.served == ResetMode::Release as u64 => {}
+                Ok(_) => {
+                    tracing::warn!(
+                        "Service {service} of the outgoing program serves no release: its \
+                         binary was built before it existed. Clear the cached ASM binaries \
+                         (~/.zisk/cache by default) to switch programs without zeroing the \
+                         guest memory"
+                    );
+                    outgoing.no_release.store(true, Ordering::Relaxed);
+                    released = false;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Service {service} of the outgoing program did not answer before a \
+                         switch; taking it as stopped: {e:#}"
+                    );
+                    released = false;
+                }
             }
         }
+        released
     }
 
-    /// Re-initialize every service's guest RAM and ROM, and wait for all three
-    /// to confirm.
+    /// Re-initialize every service's guest RAM and ROM as `mode` says, and wait
+    /// for all three to confirm.
     ///
     /// Call this before the first emulation after the active program changes.
     /// The `_ram`/`_rom` segments are shared across programs, and a service's
@@ -527,16 +570,16 @@ impl AsmServices {
     /// wrote there in between. The C side services the request synchronously,
     /// so a response means that service's memory is ready.
     ///
-    /// Runs the three in parallel: each clears 640 MiB (512 MiB of RAM, 128 MiB of
-    /// ROM) and rewrites its init data, and they are separate processes with
-    /// independent stdio state. On threads of their own, not rayon's: this runs under
+    /// Runs the three in parallel: a full reset clears 640 MiB (512 MiB of RAM,
+    /// 128 MiB of ROM) and rewrites its init data, and they are separate processes
+    /// with independent stdio state. On threads of their own, not rayon's: this runs under
     /// the segments' claim, which a rayon worker must not wait on while it could steal
     /// a task that takes the claim too.
-    fn reset_services(&self) -> Result<()> {
+    fn reset_services(&self, mode: ResetMode) -> Result<()> {
         std::thread::scope(|scope| {
             let resets: Vec<_> = Self::SERVICES
                 .iter()
-                .map(|service| scope.spawn(move || self.reset_service(service)))
+                .map(|service| scope.spawn(move || self.reset_service(service, mode)))
                 .collect();
             resets.into_iter().try_for_each(|reset| {
                 reset.join().unwrap_or_else(|_| Err(anyhow::anyhow!("a service's reset panicked")))
@@ -546,8 +589,8 @@ impl AsmServices {
     }
 
     /// One service's part of [`reset_services`](Self::reset_services).
-    fn reset_service(&self, service: &AsmService) -> Result<()> {
-        let response = self.inner.service.send_reset_request(service).map_err(|e| {
+    fn reset_service(&self, service: &AsmService, mode: ResetMode) -> Result<()> {
+        let response = self.inner.service.send_reset_request(service, mode).map_err(|e| {
             // A binary generated before the reset request existed exits on
             // it, and its own message is lost with its stderr. The cache names
             // binaries by ELF hash and hints mode only, so say what fixes it.
@@ -760,10 +803,9 @@ mod tests {
         assert!(segments.take_active().is_none(), "the switch must leave no program recorded");
     }
 
-    /// A program whose services are stand-ins: shell scripts that answer pings and,
-    /// unless `exit_on_reset`, resets, log each request's id, and exit on anything else,
-    /// a shutdown included. One that exits on the reset is a binary cached before the
-    /// reset request existed. Its directory goes when it is dropped.
+    /// A program whose services are stand-ins: shell scripts that answer pings and
+    /// resets as `binary` says, log each request (a reset's with its mode), and exit on
+    /// anything else, a shutdown included. Its directory goes when it is dropped.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     struct FakeProgram {
         dir: std::path::PathBuf,
@@ -784,23 +826,39 @@ mod tests {
         }
     }
 
+    /// What a stand-in service does with a reset request.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    fn fake_program(name: &str, exit_on_reset: bool) -> FakeProgram {
+    #[derive(Clone, Copy)]
+    enum Binary {
+        /// Serves the mode asked and echoes it.
+        Current,
+        /// Serves every mode as a full reset and echoes 0: built before the modes existed.
+        BeforeModes,
+        /// Exits on it: built before the reset request existed.
+        BeforeReset,
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn fake_program(name: &str, binary: Binary) -> FakeProgram {
         use std::io::Write;
 
-        let on_reset = if exit_on_reset { "exit 255" } else { r"answer '\024'" };
+        let on_reset = match binary {
+            Binary::Current => r#"answer_reset "$2""#,
+            Binary::BeforeModes => r"answer '\024'",
+            Binary::BeforeReset => "exit 255",
+        };
         let script = format!(
             r#"#!/bin/sh
 for arg in "$@"; do case "$arg" in --just_create*) exit 0;; esac; done
 answer() {{ printf "$1"; head -c 39 /dev/zero; }}
+answer_reset() {{ printf '\024'; head -c 15 /dev/zero; printf "\\00$1"; head -c 23 /dev/zero; }}
 while :; do
-  id=$(head -c 40 | od -An -tu8 -N8 | tr -d ' ')
-  [ -n "$id" ] || exit 0
-  echo "$id" >> "$0.log"
-  case "$id" in
-    1) answer '\002' ;;
-    19) {on_reset} ;;
-    *) exit 0 ;;
+  set -- $(head -c 40 | od -An -tu8 -N16)
+  [ -n "$1" ] || exit 0
+  case "$1" in
+    1) echo 1 >> "$0.log"; answer '\002' ;;
+    19) echo "19/$2" >> "$0.log"; {on_reset} ;;
+    *) echo "$1" >> "$0.log"; exit 0 ;;
   esac
 done
 "#
@@ -828,16 +886,13 @@ done
         FakeProgram { dir }
     }
 
-    /// The ids of the requests `service` of the program at `program` has received.
+    /// The requests `service` of the program at `program` has received, as its stand-in
+    /// logs them: [`PING`], [`FULL`], [`RELEASE`] or [`ACQUIRE`].
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    fn requests(program: &Path, service: AsmService) -> Vec<u64> {
+    fn requests(program: &Path, service: AsmService) -> Vec<String> {
         let trimmed = program.with_file_name("prog");
         let log = format!("{}.log", service.command_path_for(&trimmed.to_string_lossy()));
-        std::fs::read_to_string(log)
-            .unwrap_or_default()
-            .lines()
-            .map(|id| id.parse().unwrap())
-            .collect()
+        std::fs::read_to_string(log).unwrap_or_default().lines().map(str::to_string).collect()
     }
 
     /// Starts `program` on `local_rank`'s segments, as its setup does.
@@ -864,18 +919,34 @@ done
         }
     }
 
-    const PING: u64 = super::super::CMD_PING_REQUEST_ID;
-    const RESET: u64 = super::super::CMD_RESET_REQUEST_ID;
+    // The requests as the stand-ins log them: the command id, and a reset's mode.
+    const PING: &str = "1";
+    const FULL: &str = "19/0";
+    const RELEASE: &str = "19/1";
+    const ACQUIRE: &str = "19/2";
 
-    /// A switch waits for the outgoing program's services, binds the incoming
-    /// program's semaphores, and has its services rebuild their guest memory; a
-    /// program already active is left alone.
+    #[test]
+    fn the_logged_requests_are_the_commands() {
+        use super::super::{CMD_PING_REQUEST_ID, CMD_RESET_REQUEST_ID};
+        assert_eq!(PING, CMD_PING_REQUEST_ID.to_string());
+        for (logged, mode) in
+            [(FULL, ResetMode::Full), (RELEASE, ResetMode::Release), (ACQUIRE, ResetMode::Acquire)]
+        {
+            assert_eq!(logged, format!("{CMD_RESET_REQUEST_ID}/{}", mode as u64));
+        }
+    }
+
+    /// A switch waits for the outgoing program's services and has them clear their
+    /// init data, binds the incoming program's semaphores, and has its services
+    /// write theirs: without zeroing the guest memory when every outgoing service
+    /// cleared its own, and zeroing it first otherwise. A program already active is
+    /// left alone.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     #[test]
     fn a_switch_waits_for_the_outgoing_program_and_resets_the_incoming_one() {
         let rank = 101;
         let (a_program, b_program) =
-            (fake_program("switch_a", false), fake_program("switch_b", false));
+            (fake_program("switch_a", Binary::Current), fake_program("switch_b", Binary::Current));
         let (a_path, b_path) = (a_program.path(), b_program.path());
         let binds = std::cell::Cell::new(0);
         let bind = || {
@@ -889,8 +960,8 @@ done
         for service in AsmServices::SERVICES {
             assert_eq!(
                 requests(&a_path, service),
-                [PING, RESET],
-                "A's {service} starts, then resets"
+                [PING, FULL],
+                "A's {service} starts, then resets in full: nothing released the segments"
             );
         }
         assert_eq!(binds.get(), 1);
@@ -900,25 +971,22 @@ done
         drop(claim);
         assert_eq!(
             requests(&a_path, AsmService::MT),
-            [PING, RESET],
+            [PING, FULL],
             "an active program is left alone"
         );
         assert_eq!(binds.get(), 1);
 
-        // Starting B's services writes the shared segments, so A's are waited for first.
+        // Starting B's services writes the shared segments, so A's are waited for first, and
+        // B's own start leaves the segments released by no one.
         let (b, claim) = start(&b_path, rank, 'b');
         b.activate(&claim, bind).unwrap();
         drop(claim);
         for service in AsmServices::SERVICES {
-            assert_eq!(
-                requests(&a_path, service),
-                [PING, RESET, PING],
-                "A's {service} is waited for"
-            );
+            assert_eq!(requests(&a_path, service), [PING, FULL, RELEASE], "A's {service} releases");
             assert_eq!(
                 requests(&b_path, service),
-                [PING, RESET],
-                "B's {service} starts, then resets"
+                [PING, FULL],
+                "B's {service} starts, then resets in full"
             );
         }
 
@@ -926,18 +994,55 @@ done
         a.activate(&claim, bind).unwrap();
         drop(claim);
         for service in AsmServices::SERVICES {
-            assert_eq!(
-                requests(&b_path, service),
-                [PING, RESET, PING],
-                "B's {service} is waited for"
-            );
+            assert_eq!(requests(&b_path, service), [PING, FULL, RELEASE], "B's {service} releases");
             assert_eq!(
                 requests(&a_path, service),
-                [PING, RESET, PING, RESET],
-                "A's {service} resets"
+                [PING, FULL, RELEASE, ACQUIRE],
+                "A's {service} writes its init data alone, B having released"
             );
         }
         assert_eq!(binds.get(), 3, "the semaphores are bound on every switch, and only then");
+    }
+
+    /// A program whose binaries predate the release answers it with a full reset of its own,
+    /// so the incoming program zeroes the guest memory, and later switches away from it
+    /// only wait for its services. A program switching to it may still acquire: its
+    /// binaries serve that as a full reset.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[test]
+    fn a_switch_from_a_program_built_before_the_release_zeroes_the_guest_memory() {
+        let rank = 106;
+        let (old_program, new_program) = (
+            fake_program("before_modes_a", Binary::BeforeModes),
+            fake_program("before_modes_b", Binary::Current),
+        );
+        let (a_path, b_path) = (old_program.path(), new_program.path());
+        let (a, claim) = start(&a_path, rank, 'g');
+        a.activate(&claim, || Ok(())).unwrap();
+        drop(claim);
+
+        let (b, claim) = start(&b_path, rank, 'h');
+        b.activate(&claim, || Ok(())).unwrap();
+        drop(claim);
+        let claim = a.claim();
+        a.activate(&claim, || Ok(())).unwrap();
+        drop(claim);
+        let claim = b.claim();
+        b.activate(&claim, || Ok(())).unwrap();
+        drop(claim);
+
+        for service in AsmServices::SERVICES {
+            assert_eq!(
+                requests(&a_path, service),
+                [PING, FULL, RELEASE, ACQUIRE, PING],
+                "A's {service} is asked to release once, then only waited for"
+            );
+            assert_eq!(
+                requests(&b_path, service),
+                [PING, FULL, RELEASE, FULL],
+                "B's {service} resets in full after A, which did not release"
+            );
+        }
     }
 
     /// A program whose reset fails, as one whose binary predates the reset request,
@@ -947,7 +1052,7 @@ done
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     #[test]
     fn a_program_that_cannot_reset_is_never_recorded_as_active() {
-        let stale = fake_program("stale", true);
+        let stale = fake_program("stale", Binary::BeforeReset);
         let (program, claim) = start(&stale.path(), 102, 's');
 
         let error = program.activate(&claim, || Ok(())).unwrap_err();
@@ -966,7 +1071,7 @@ done
         for service in AsmServices::SERVICES {
             assert_eq!(
                 requests(&stale.path(), service),
-                [PING, RESET, PING, RESET],
+                [PING, FULL, PING, FULL],
                 "{service} is started again, and exits on the reset again"
             );
         }
@@ -980,8 +1085,10 @@ done
     #[test]
     fn a_service_that_died_is_started_again_by_the_next_activation() {
         let rank = 105;
-        let (a_program, b_program) =
-            (fake_program("restart_a", false), fake_program("restart_b", false));
+        let (a_program, b_program) = (
+            fake_program("restart_a", Binary::Current),
+            fake_program("restart_b", Binary::Current),
+        );
         let (a_path, b_path) = (a_program.path(), b_program.path());
 
         let (a, claim) = start(&a_path, rank, 'e');
@@ -1009,14 +1116,15 @@ done
         assert_eq!(binds.get(), 1, "the new process's semaphores are bound");
         assert_eq!(
             requests(&a_path, AsmService::MT),
-            [PING, RESET, PING, RESET],
-            "MT is started (and pinged) again, then reset"
+            [PING, FULL, PING, FULL],
+            "MT is started (and pinged) again, then reset in full"
         );
         for service in [AsmService::MO, AsmService::RH] {
             assert_eq!(
                 requests(&a_path, service),
-                [PING, RESET, PING, RESET],
-                "A's {service} is waited for before the restart, then reset"
+                [PING, FULL, RELEASE, FULL],
+                "A's {service} releases before the restart, then resets in full: a starting \
+                 service writes its own init data"
             );
         }
         a.inner.service.send_status_request(&AsmService::MT).expect("the new MT serves requests");
@@ -1033,7 +1141,7 @@ done
         drop(claim);
         assert_eq!(
             requests(&b_path, AsmService::MT),
-            [PING, RESET, PING],
+            [PING, FULL, RELEASE],
             "B's services are waited for before A's RH starts"
         );
         a.inner.service.send_status_request(&AsmService::RH).expect("the new RH serves requests");
@@ -1044,7 +1152,7 @@ done
     #[test]
     fn a_program_is_not_activated_under_another_segments_claim() {
         let (a_program, b_program) =
-            (fake_program("claim_a", false), fake_program("claim_b", false));
+            (fake_program("claim_a", Binary::Current), fake_program("claim_b", Binary::Current));
         let (a, a_claim) = start(&a_program.path(), 103, 'c');
         let (_b, b_claim) = start(&b_program.path(), 104, 'd');
 
