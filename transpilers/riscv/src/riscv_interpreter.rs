@@ -45,6 +45,12 @@ pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInst> {
             // println!("riscv_interpreter() found inst=0 at position s={} (index in u32 array)", s);
             // This is a 16-bits invalid instruction, so we must HALT
             insts.push(RiscvInst::c_halt(0, rom_address + (instruction_code_index * 2) as u64));
+            // Without the `compressed` feature (IALIGN = 32) the code is 32-bit words: skip
+            // this word's upper half, so that the walk stays on 4-byte boundaries
+            #[cfg(not(feature = "compressed"))]
+            {
+                code_index += 1;
+            }
             continue;
         }
 
@@ -60,12 +66,18 @@ pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInst> {
             }
             // Without the `compressed` feature the RISC-V C (compressed) extension is
             // disabled (IALIGN = 32), so a 16-bit parcel is an illegal instruction: emit a
-            // halt-with-error (CHalt) instead of decoding it, aborting the run.
+            // halt-with-error (CHalt) instead of decoding it, aborting the run. The code is
+            // then 32-bit words, so skip this word's upper half too: decoding it as the start
+            // of an instruction would take the walk off the 4-byte boundaries, and leave the
+            // real instructions after it without a ROM entry.
             #[cfg(not(feature = "compressed"))]
-            insts.push(RiscvInst::c_halt(
-                inst as u32,
-                rom_address + (instruction_code_index * 2) as u64,
-            ));
+            {
+                insts.push(RiscvInst::c_halt(
+                    inst as u32,
+                    rom_address + (instruction_code_index * 2) as u64,
+                ));
+                code_index += 1;
+            }
         }
         /***********/
         /* 32 bits */
@@ -301,11 +313,9 @@ fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> 
             i.succ = (inst & 0x00F00000) >> 20;
             i.inst_name = RiscvInstName::Fence;
         } else if i.funct3 == 1 {
-            if (inst & 0xFFFF8F80) != 0 {
-                i.inst_name = RiscvInstName::Reserved;
-            } else {
-                i.inst_name = RiscvInstName::FenceI;
-            }
+            // Per Zifencei, base implementations shall ignore FENCE.I's imm, rs1
+            // and rd, reserved for finer-grain fences; only software zeroes them.
+            i.inst_name = RiscvInstName::FenceI;
         } else {
             i.inst_name = RiscvInstName::Reserved;
         }
@@ -689,5 +699,24 @@ mod tests {
         assert_reserved(&[0x1013, 0x0400], "op-imm slli reserved funct6");
         // SYSTEM (opcode 0b1110011) funct3=0 that is neither ECALL nor EBREAK.
         assert_reserved(&[0x0073, 0x0020], "system funct3=0 non-ecall/ebreak");
+    }
+
+    #[cfg(not(feature = "compressed"))]
+    #[test]
+    fn walk_stays_on_word_boundaries() {
+        // A data word whose low half is no instruction's start (0x0000) and whose high
+        // half is (0x0013), then `li a0, 0` (0x00000513): one halt for the data word,
+        // and the instruction at its own address, not a word read across the two.
+        let insts = riscv_interpreter(0x8000_0000, &[0x0000, 0x0013, 0x0513, 0x0000]);
+        assert_eq!(insts.len(), 2);
+        assert_eq!(insts[0].inst_name, RiscvInstName::CHalt);
+        assert_eq!(insts[0].rom_address, 0x8000_0000);
+        assert_eq!(insts[1].inst_name, RiscvInstName::Addi);
+        assert_eq!(insts[1].rom_address, 0x8000_0004);
+        // The same with a low half that is a 16-bit parcel (0x5678, low bits 00).
+        let insts = riscv_interpreter(0x8000_0000, &[0x5678, 0x0013, 0x0513, 0x0000]);
+        assert_eq!(insts.len(), 2);
+        assert_eq!(insts[0].inst_name, RiscvInstName::CHalt);
+        assert_eq!(insts[1].rom_address, 0x8000_0004);
     }
 }

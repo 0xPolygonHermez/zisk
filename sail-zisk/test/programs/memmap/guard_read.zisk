@@ -1,0 +1,4 @@
+; A read of the stack guard, between the ROM and the RAM: unmapped.
+main:
+	copyb(0, [0x98000000]) -> r5
+	ret

@@ -1,0 +1,65 @@
+# The equivalence of RISC-V programs and their ZisK transpilation: proofs
+# relating sail-riscv's generated Lean to sail-zisk's.
+#
+# Both models are generated, not sources of this package: `make lean` writes
+# sail-zisk's into ../build/lean/Zisk, and `make riscv` sail-riscv's, at the
+# commit the Makefile pins and in ZisK's profile (riscv/zisk_profile.py),
+# into ../build/riscv-lean/Lean_ZiskRV. Both depend on Sail's Lean library
+# (lean-sail), so they share one copy of it here.
+#
+# ZiskRiscv is ZisK's RISC-V (doc/riscv_contract.md) as a machine: sail-riscv's
+# step, and sail-zisk's operations for the calls ZisK adds.
+
+name = "SailZiskEquiv"
+defaultTargets = ["Equiv", "ZiskRiscv", "Transpiler"]
+moreLeanArgs = ["--tstack=400000"]
+
+[[require]]
+name = "Zisk"
+path = "../build/lean/Zisk"
+
+[[require]]
+name = "Lean_ZiskRV"
+path = "../build/riscv-lean/Lean_ZiskRV"
+
+[[require]]
+name = "Lean_ZiskRV_executable"
+path = "../build/riscv-lean/Lean_ZiskRV_executable"
+
+# The ELF loader sail-riscv's Lean emulator uses, at its revision.
+[[require]]
+name = "ELFSage"
+git = "https://github.com/GaloisInc/ELFSage.git"
+rev = "7e68e68e836025df741de04a5bb83439fe88d956"
+
+[[lean_lib]]
+name = "ZiskRiscv"
+
+# Runs programs on ZisK's RISC-V machine over sail-riscv's executable Lean.
+[[lean_lib]]
+name = "ZiskRiscvRun"
+
+[[lean_exe]]
+name = "zisk_riscv_run"
+root = "ZiskRiscvRun.Main"
+
+[[lean_lib]]
+name = "Equiv"
+
+# The transpiler as a function in Lean: a hand-written spec, checked against
+# the Rust by transpiler_check (`make transpiler-check`).
+[[lean_lib]]
+name = "Transpiler"
+
+[[lean_lib]]
+name = "TranspilerCheck"
+
+[[lean_exe]]
+name = "transpiler_check"
+root = "TranspilerCheck.Main"
+
+# sail-riscv's decoder on every word the transpiler's decoder can tell apart,
+# for comparing the two (`make decoder-diff`).
+[[lean_exe]]
+name = "decode_diff"
+root = "DecodeDiff.Main"
