@@ -17,6 +17,8 @@
         - 0x90-0x9F
       - Arithmetic Operations:
         - 0xB0-0xBF
+      - bfloat16 Operations (Bf16Table):
+        - 0xC2-0xC3
       - DMA Operations:
         - 0xDA-0xDF
       - Precompiles:
@@ -142,6 +144,10 @@ const int OP_REM_W = 0xBF;
 const int OP_JUMP_DEST = 0xC0;
 
 const int OP_POSEIDON2_KOALABEAR = 0xC1;
+
+// bfloat16 arithmetic, proven by the Bf16Table lookup tables: c = a op b on 16-bit values
+const int OP_BF16_ADD = 0xC2;
+const int OP_BF16_MUL = 0xC3;
 
 const int OP_DMA_MEMCPY = 0xD0;
 const int OP_DMA_MEMCMP = 0xD1;

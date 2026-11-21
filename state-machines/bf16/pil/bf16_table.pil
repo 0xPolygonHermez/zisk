@@ -1,0 +1,98 @@
+require "std_lookup.pil"
+require "operations.pil"
+require "opids.pil"
+
+// Bf16Table
+// ─────────────────────────────────────────────────────────────────────────────
+// Lookup table proving c = op(a, b) for two bfloat16 operands, op being
+// OP_BF16_ADD or OP_BF16_MUL. The full table has 2^16 x 2^16 rows per operation,
+// far more than one AIR instance can hold on a GPU, so it is split into several
+// non-virtual AIRs, each one covering a contiguous range of A values:
+//
+//     A in [from_A, from_A + A_count),  B in [0, 2^16)
+//
+// LAYOUT
+//   Every row carries BLOCKS lookups side by side. With A_X_COL = N / 2^16, the
+//   number of distinct A values that fit in one column of N rows:
+//
+//       row r, block k:   A = from_A + k * A_X_COL + r / 2^16
+//                         B = r % 2^16
+//                         C = op(A, B)
+//
+//   Only the first block's A needs a fixed column: the A of block k is that
+//   column plus the constant k * A_X_COL, and B is the same for every block
+//   because it repeats with period 2^16, which divides N. C is new on every
+//   block, so it is the only per-block fixed column. A_count must be a multiple
+//   of A_X_COL so the last block is full.
+//
+//   Columns: 2 + BLOCKS fixed, BLOCKS witness (one multiplicity per block).
+//
+// C VALUES
+//   A and B are sequences declared here. C comes from a generated binary, one per
+//   instance, written by state-machines/bf16/src/bf16_table_fixed_gen.rs:
+//
+//       cargo run --release --bin bf16-table-fixed-gen -- --op add
+//       cargo run --release --bin bf16-table-fixed-gen -- --op mul
+//
+//   With bin_file empty no binary is loaded and C is left without values,
+//   which is all compile-pil and the setup stats need to size the tables.
+//
+//   The binary only holds C[0..BLOCKS-1]; a column the binary does not name keeps
+//   the definition it has here. Column names carry the AIR name, which is the
+//   alias, so each instance needs its own binary even if two instances shared
+//   the same values.
+//
+// BUS
+//   Proves [op, A, 0, B, 0, C, 0] on OPERATION_BUS_ID, the same short tuple as
+//   FrequentOps: main sends flag = 0, main_step = 0 and extended_arg = 0 for any
+//   op that is not a precompile, and the dynamic surname matches them.
+//
+// SEMANTICS (see state-machines/bf16/src/lib.rs)
+//   IEEE 754 binary arithmetic on the bfloat16 format (1 sign, 8 exponent and 7
+//   fraction bits), round to nearest, ties to even, subnormals kept (no flush to
+//   zero). Any NaN result is the canonical quiet NaN 0x7FC0.
+
+const int BF16_VALUES = 2**16;
+
+// Split used by zisk.pil. With the C binaries, the generator arguments must match:
+// --n-bits 22 --a-count 4096 --dir <BF16_TABLE_DIR>. An empty BF16_TABLE_DIR loads
+// no binary and leaves C at zero, which is enough to size the setup.
+const int BF16_TABLES_ENABLED = 0;
+const int BF16_TABLE_N = 2**22;
+// 64 blocks of 64 A values: 16 instances per operation, 32 AIRs in total. Sized with
+// proofman-setup stats (blake3): 18.24 GB of prover memory and no compressor per AIR;
+// 8192 (16 AIRs) needs 34.24 GB and a compressor.
+const int BF16_TABLE_A_COUNT = 2**12;
+const int BF16_TABLE_INSTANCES = BF16_VALUES / BF16_TABLE_A_COUNT;
+const string BF16_TABLE_DIR = "";
+
+airtemplate Bf16Table(int N = BF16_TABLE_N, const int op = -1, const int from_A = -1, const int A_count = -1,
+                      const string bin_file = "") {
+
+    assert(op == OP_BF16_ADD || op == OP_BF16_MUL);
+    assert(N >= BF16_VALUES);
+    assert((N & (N - 1)) == 0);
+
+    const int A_X_COL = N / BF16_VALUES;
+    assert(A_count > 0);
+    assert(A_count % A_X_COL == 0);
+    assert(from_A >= 0);
+    assert(from_A + A_count <= BF16_VALUES);
+
+    const int BLOCKS = A_count / A_X_COL;
+
+    col fixed A = [from_A:BF16_VALUES..(from_A + A_X_COL - 1):BF16_VALUES];
+    col fixed B = [0..(BF16_VALUES - 1)]...;
+
+    // Without a binary C has no values, which is all sizing (compile-pil, stats) needs.
+    if (bin_file != "") {
+        #pragma extern_fixed_file `${bin_file}`
+    }
+
+    col fixed C[BLOCKS];
+    col witness multiplicity[BLOCKS];
+
+    for (int k = 0; k < BLOCKS; k++) {
+        lookup_proves(OPERATION_BUS_ID, [op, A + k * A_X_COL, 0, B, 0, C[k], 0], mul: multiplicity[k]);
+    }
+}

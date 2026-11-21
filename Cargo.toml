@@ -33,6 +33,7 @@ members = [
   "rom-setup",
   "setup",
   "state-machines/arith",
+  "state-machines/bf16",
   "state-machines/binary",
   "state-machines/frequent-ops",
   "state-machines/main",

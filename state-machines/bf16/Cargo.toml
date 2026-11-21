@@ -1,0 +1,21 @@
+[package]
+name = "zisk-sm-bf16"
+description = "bfloat16 lookup tables (Bf16Table) for the ZisK zkVM"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+
+[[bin]]
+name = "bf16-table-fixed-gen"
+path = "src/bf16_table_fixed_gen.rs"
+
+[dependencies]
+proofman-fields = { workspace = true }
+proofman-common = { workspace = true }
+
+clap = { workspace = true }
+rayon = { workspace = true }

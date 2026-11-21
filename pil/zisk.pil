@@ -39,6 +39,7 @@ require "poseidon/pil/poseidon2_koalabear.pil"
 require "blake2/pil/blake2br.pil"
 require "blake2/pil/blake2s.pil"
 require "blake3/pil/blake3f.pil"
+require "bf16/pil/bf16_table.pil"
 
 enable_range_stats();
 
@@ -193,6 +194,20 @@ airgroup Zisk {
     virtual JumpDestCompressorTable();
     virtual JumpDestBitmapTable();
     JumpDest(N: 2**21, enable_flag: enable_jump_dest);
+
+    // bfloat16 lookup tables: BF16_TABLE_INSTANCES non-virtual AIRs per operation, each covering
+    // BF16_TABLE_A_COUNT values of A (see bf16/pil/bf16_table.pil). Off by default: with an empty
+    // BF16_TABLE_DIR the C columns are left at zero, enough to size the setup without the binaries.
+    if (BF16_TABLES_ENABLED) {
+        for (int i = 0; i < BF16_TABLE_INSTANCES; i++) {
+            const string add_file = BF16_TABLE_DIR == "" ? "" : `${BF16_TABLE_DIR}/bf16_add_${i}_fixed.bin`;
+            const string mul_file = BF16_TABLE_DIR == "" ? "" : `${BF16_TABLE_DIR}/bf16_mul_${i}_fixed.bin`;
+            Bf16Table(N: BF16_TABLE_N, op: OP_BF16_ADD, from_A: i * BF16_TABLE_A_COUNT, A_count: BF16_TABLE_A_COUNT,
+                      bin_file: add_file) alias `Bf16Add${i}`;
+            Bf16Table(N: BF16_TABLE_N, op: OP_BF16_MUL, from_A: i * BF16_TABLE_A_COUNT, A_count: BF16_TABLE_A_COUNT,
+                      bin_file: mul_file) alias `Bf16Mul${i}`;
+        }
+    }
 
     virtual DualRange(id: DUAL_RANGE_7_BITS_ID, min1: 0, max1: P2_7-1, min2: 0, max2: P2_7-1) alias DualRange7Bits;
     virtual DualRange(id: DUAL_RANGE_BYTE_ID, min1: 0, max1: P2_8-1, min2: 0, max2: P2_8-1) alias DualByte;

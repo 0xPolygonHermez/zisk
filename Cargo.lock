@@ -8370,6 +8370,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-sm-bf16"
+version = "1.5.0-alpha"
+dependencies = [
+ "clap",
+ "proofman-common",
+ "proofman-fields",
+ "rayon",
+]
+
+[[package]]
 name = "zisk-sm-binary"
 version = "1.5.0-alpha"
 dependencies = [
