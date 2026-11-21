@@ -21,6 +21,9 @@ extern crate alloc as alloc_crate;
 #[cfg(zisk_guest)]
 pub(crate) use alloc_crate as alloc_extern;
 
+#[cfg(all(zisk_guest, feature = "alloc-marks"))]
+pub use alloc::AllocMarks;
+
 mod profile;
 #[cfg(zisk_guest)]
 pub use fcall::*;

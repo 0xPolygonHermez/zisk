@@ -3,6 +3,11 @@ pub use alloc::*;
 
 mod kernel_heap;
 
+#[cfg(feature = "alloc-marks")]
+mod marks;
+#[cfg(feature = "alloc-marks")]
+pub use marks::AllocMarks;
+
 #[cfg(all(
     not(feature = "zisk-embedded-alloc"),
     not(feature = "zisk-custom-alloc"),

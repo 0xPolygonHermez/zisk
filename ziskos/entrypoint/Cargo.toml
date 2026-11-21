@@ -102,6 +102,12 @@ staticlib = []
 # (the stats code is gated on the `zisk_staticlib` cfg and would be a silent
 # no-op otherwise).
 alloc-stats = ["staticlib"]
+# Make the global allocator tell the emulator what every call does (sizes,
+# alignments, pointers) through allocation marks, so `ziskemu --alloc-stats`
+# can analyze how the program uses its allocator. The marks are extra
+# instructions that cannot be proven: for analysis builds only. A guest with
+# its own allocator (`zisk-custom-alloc`) wraps it in `ziskos::AllocMarks`.
+alloc-marks = []
 zisk-custom-alloc = []
 zisk-embedded-alloc = ["zisk-embedded-dlmalloc-alloc"]
 zisk-embedded-dlmalloc-alloc = [
