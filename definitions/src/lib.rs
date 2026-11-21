@@ -6,7 +6,9 @@ pub use syscall::*;
 mod zkvmcall;
 pub use zkvmcall::*;
 
+mod alloc_mark;
 mod profile;
+pub use alloc_mark::*;
 pub use profile::*;
 
 mod labels;

@@ -565,7 +565,8 @@ define_ops! {
     // source words), followed by the loaded words themselves via data_ext_len.
     (JumpDest, "jump_dest", Evm, JUMP_DEST_COST, 0xc0, 8, 0, opc_jump_dest, op_jump_dest, ops_jump_dest),
     (Poseidon2KoalaBear, "poseidon2_koalabear", Poseidon2KoalaBear, POSEIDON2_KOALABEAR_COST, 0xc1, 64, 64, opc_poseidon2_koalabear, op_poseidon2_koalabear, ops_poseidon2_koalabear),
-    // opcodes 0xc2-0xcf are available
+    (AllocMark, "alloc_mark", Profile, 0, 0xc2, 0, 0, opc_alloc_mark, op_alloc_mark, ops_alloc_mark),
+    // opcodes 0xc3-0xcf are available
 
     (DmaMemCpy, "dma_memcpy", Dma, DMA_MEMCPY_COST, 0xd0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
     (DmaMemCmp, "dma_memcmp", Dma, DMA_MEMCMP_COST, 0xd1, 16, 0, opc_dma_memcmp, op_dma_memcmp, ops_dma_memcmp),
