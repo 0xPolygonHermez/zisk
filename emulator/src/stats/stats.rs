@@ -36,10 +36,10 @@ use zisk_definitions::{
 use zisk_core::{STORE_IND, UART_ADDR};
 
 use crate::{
-    CallPathProfiler, DmaLoopStats, MemDualStats, MemoryOperationsStats, OpsCosts, OpsCount,
-    RamMonitor, RegionsOfInterest, StatsCosts, StatsCoverageReport, StatsReport, BASE_COST,
-    BINARY_ADD_HI_COST, MAIN_COST, MEM_ACCESS_INVALID, MEM_ACCESS_MONITOR, MEM_WRITE_COST,
-    NO_ROI_ID, ROM_READ_COST,
+    AllocStats, CallPathProfiler, DmaLoopStats, MemDualStats, MemoryOperationsStats, OpsCosts,
+    OpsCount, RamMonitor, RegionsOfInterest, StatsCosts, StatsCoverageReport, StatsReport,
+    BASE_COST, BINARY_ADD_HI_COST, MAIN_COST, MEM_ACCESS_INVALID, MEM_ACCESS_MONITOR,
+    MEM_WRITE_COST, NO_ROI_ID, ROM_READ_COST,
 };
 
 #[derive(Debug, Clone)]
@@ -272,6 +272,8 @@ pub struct Stats {
     mem_duals: Option<Box<MemDualStats>>,
     /// DMA 64-bit loop occupancy analysis; `None` unless `--dma-stats` was given.
     dma_loops: Option<Box<DmaLoopStats>>,
+    /// Analysis of the use of the allocator; `None` unless `--alloc-stats` was given.
+    alloc_stats: Option<Box<AllocStats>>,
     /// PC histogram, i.e. number of times each PC was executed
     pc_histogram: HashMap<u64, u64>,
     previous_pc: u64,
@@ -436,6 +438,7 @@ impl Default for Stats {
             log_costly_unaligned: false,
             mem_duals: None,
             dma_loops: None,
+            alloc_stats: None,
             ram_monitor: RamMonitor::new(),
             profile_tags_map: HashMap::new(),
             profile_tags: Vec::new(),
@@ -1215,6 +1218,13 @@ impl Stats {
             println!("### S:{} PC {:x}: {}", self.costs.steps, inst_ctx.pc, inst.verbose);
         }
         let pc = inst_ctx.pc;
+        // Before the step is counted, so a call is charged from its first instruction to its last.
+        if let Some(alloc_stats) = &mut self.alloc_stats {
+            if alloc_stats.is_watched(pc) {
+                let cost = self.costs.total_cost();
+                alloc_stats.on_step(pc, &inst_ctx.regs, self.costs.steps, cost);
+            }
+        }
         self.costs.steps += 1;
         #[cfg(feature = "handle_stdout")]
         self.check_stdout(inst, inst_ctx);
@@ -1228,6 +1238,13 @@ impl Stats {
                     "WARNING: ignoring PROFILE mark at step {} pc 0x{:x}: {error}",
                     self.costs.steps, inst_ctx.pc
                 );
+            }
+        }
+        if inst.op == ZiskOp::ALLOC_MARK {
+            if let Some(alloc_stats) = &mut self.alloc_stats {
+                let cost = self.costs.total_cost();
+                let kind = inst.jmp_offset1 as u64;
+                alloc_stats.on_mark(kind, inst_ctx.a, inst_ctx.b, self.costs.steps, cost);
             }
         }
         if self.store_ops
@@ -3060,6 +3077,10 @@ impl Stats {
             dma_loops.report(&mut report);
         }
 
+        if let Some(alloc_stats) = &self.alloc_stats {
+            alloc_stats.report(&mut report, self.costs.total_cost());
+        }
+
         if self.reg_step_distance {
             self.report_reg_step_distance(&mut report);
         }
@@ -3716,6 +3737,11 @@ impl Stats {
         self.dma_loops = Some(Box::new(DmaLoopStats::new(ops_x_row)));
     }
 
+    /// Enables the analysis of the use of the allocator (`--alloc-stats`).
+    pub fn set_alloc_stats(&mut self, alloc_stats: AllocStats) {
+        self.alloc_stats = Some(Box::new(alloc_stats));
+    }
+
     /// Enables the memory dual-lane occupancy analysis (`--mem-duals`) for `duals` duals per lane and
     /// a reset period of 2^`reset_bits` steps.
     pub fn set_mem_duals(&mut self, duals: u32, reset_bits: u32) {
@@ -3970,6 +3996,9 @@ impl Stats {
             duals.flush();
         }
         self.ram_monitor.on_finish(inst_ctx);
+        if let Some(alloc_stats) = &mut self.alloc_stats {
+            alloc_stats.finish();
+        }
         let ram_usage = self.ram_monitor.ram_used;
         if let Some(profiler) = &mut self.profiler {
             profiler.add_call_path_sample(self.costs.total_cost(), ram_usage);

@@ -22,37 +22,39 @@ This guide walks you through ZiskEmu's profiling capabilities, progressing from 
 
 8. **DMA Loop Occupancy**: Measuring how many word operations share a DMA loop row, to size `ops_x_row`
 
-9. **Register Step Distance**: Measuring how long registers keep a value between accesses, against the proof's distance limit
+9. **Allocator Usage**: What the program asks its allocator for (sizes, alignments, zeroed blocks, reallocations) and what the allocator costs
 
-10. **Opcode Coverage**: Which opcodes, precompiles and RISC-V instructions the run exercised
+10. **Register Step Distance**: Measuring how long registers keep a value between accesses, against the proof's distance limit
 
-11. **Comparing Runs**: Saving a statistics snapshot and diffing a later run against it to validate an optimization
+11. **Opcode Coverage**: Which opcodes, precompiles and RISC-V instructions the run exercised
 
-12. **HTML Report**: Rendering a run, or the comparison of two runs, as a standalone shareable page
+12. **Comparing Runs**: Saving a statistics snapshot and diffing a later run against it to validate an optimization
 
-13. **SDK Report Mode**: Streamlined, compact output format ideal for CI/CD and quick checks, with selective section display options
+13. **HTML Report**: Rendering a run, or the comparison of two runs, as a standalone shareable page
 
-14. **Function Name Display Options**: Configure how long function names are displayed with compact and no-compact modes
+14. **SDK Report Mode**: Streamlined, compact output format ideal for CI/CD and quick checks, with selective section display options
 
-15. **Profile Tags**: Instrument your code to measure specific sections, with immediate or deferred reporting of steps and costs
+15. **Function Name Display Options**: Configure how long function names are displayed with compact and no-compact modes
 
-16. **Firefox Profiler Integration**: Export profiling data for advanced visualization and interactive analysis
+16. **Profile Tags**: Instrument your code to measure specific sections, with immediate or deferred reporting of steps and costs
 
-17. **Function-Level Profiling**: Identifying which functions consume the most resources with cumulative analysis
+17. **Firefox Profiler Integration**: Export profiling data for advanced visualization and interactive analysis
 
-18. **Customizing ROI Display**: Controlling how many functions to show and filtering by patterns
+18. **Function-Level Profiling**: Identifying which functions consume the most resources with cumulative analysis
 
-19. **Detailed Caller Analysis**: In-depth breakdown showing which operations are expensive within each function and who calls them
+19. **Customizing ROI Display**: Controlling how many functions to show and filtering by patterns
 
-20. **Tracking Function Calls**: Logging individual call parameters to analyze usage patterns and optimize for common cases
+20. **Detailed Caller Analysis**: In-depth breakdown showing which operations are expensive within each function and who calls them
 
-21. **PC Histogram Analysis**: Low-level view of the most frequently executed RISC-V instruction sequences
+21. **Tracking Function Calls**: Logging individual call parameters to analyze usage patterns and optimize for common cases
 
-22. **Instruction Tracing and Disassembly**: Step-by-step traces, change traces and an annotated disassembly with execution counts
+22. **PC Histogram Analysis**: Low-level view of the most frequently executed RISC-V instruction sequences
 
-23. **Additional Options**: Quick reference for other useful flags (steps, progress indicators, formatting)
+23. **Instruction Tracing and Disassembly**: Step-by-step traces, change traces and an annotated disassembly with execution counts
 
-24. **Practical Example**: Real-world case study analyzing Ethereum opcode costs in a block validator
+24. **Additional Options**: Quick reference for other useful flags (steps, progress indicators, formatting)
+
+25. **Practical Example**: Real-world case study analyzing Ethereum opcode costs in a block validator
 
 ## Introduction
 
@@ -928,6 +930,117 @@ sense; one concentrated in the high buckets means wide rows will fill up.
 The exact length of every loop is kept (one counter per distinct length), so the rows a candidate
 width needs are computed exactly, not estimated — re-running with a different `--dma-ops-x-row` is
 the only thing needed to try other widths. It needs `-X`.
+
+## Allocator Usage
+
+`--alloc-stats` reports how a program uses its allocator: how many calls of each kind it makes and
+what they cost, how big and how aligned the blocks are, how reallocations behave and how much
+memory is live. It is the data needed to judge an allocator, or a change of allocator, on a real
+workload.
+
+```bash
+ziskemu -e <elf> -i <input> -X --alloc-stats
+
+# Also write every call to a file, to replay the sequence elsewhere
+ziskemu -e <elf> -i <input> -X --alloc-trace calls.tsv
+```
+
+### Where the calls come from
+
+The emulator learns about the calls from one of two sources:
+
+- **Allocation marks.** A guest built with the `alloc-marks` feature of `ziskos` wraps its global
+  allocator so that every call is surrounded by *marks*: no-op instructions that carry the sizes,
+  alignments and pointers of the call. This is the reliable source for Rust guests, where the
+  allocator is usually inlined into its callers and leaves no symbol to watch.
+
+  ```toml
+  [dependencies]
+  ziskos = { ..., features = ["alloc-marks"] }
+  ```
+
+  The feature works with every allocator of ziskos (bump, dlmalloc, talc, tlsf). A guest with its
+  own allocator (`zisk-custom-alloc`) wraps it by hand:
+
+  ```rust
+  #[global_allocator]
+  static HEAP: ziskos::AllocMarks<MyAlloc> = ziskos::AllocMarks(MyAlloc);
+  ```
+
+- **ELF symbols.** A program without marks is analyzed through the symbols of its allocation
+  functions: `malloc`, `calloc`, `realloc`, `free`, `aligned_alloc`, `operator new` / `delete` and
+  `__rust_alloc` & co. Arguments and results are read from the registers. This covers C and C++
+  guests without rebuilding them; it needs `-e` with an ELF that keeps its symbols.
+
+As soon as a mark is seen the symbols are no longer watched, so no call is counted twice. The first
+line of the report tells which source was used.
+
+> **Marks are for analysis builds only.** Each mark is an extra instruction (the report tells how
+> many and what they cost), so a guest built with `alloc-marks` is slightly more expensive than the
+> real one, and it cannot be proven. A call takes two marks (three for `dealloc` and `realloc`).
+
+### Report
+
+```
+ALLOCATOR USAGE
+---------------
+source: 1,222 allocation marks (cost 75,764, included in the totals of the program)
+
+CALLS (steps and cost between the start and the end of each call)
+CALL                    CALLS          STEPS             COST  STEPS/CALL   COST/CALL    % VAR
+alloc                     239         15,250        1,237,144        63.8      5176.3    7.56%
+alloc zeroed                0              0                0           -           -    0.00%
+dealloc                   239         23,629        2,029,651        98.9      8492.3   12.40%
+realloc                     9            775           62,495        86.1      6943.9    0.38%
+TOTAL                     487         39,654        3,329,290        81.4      6836.3   20.35%
+
+MEMORY
+allocated 30,392 bytes in 248 blocks, released 14,040 bytes in 239 blocks
+peak live: 14,032 bytes in 238 blocks   still live at the end: 0 bytes in 0 blocks
+addresses handed out: 0xa04308b0 - 0xa0435200 (18,768 bytes, 1.34x the peak live)
+
+REALLOC
+                    CALLS         %        MOVED     IN PLACE        OLD BYTES        NEW BYTES     COPIED BYTES
+grow                    8    88.89%            0            8            8,160           16,320                0
+shrink                  1    11.11%            0            1            8,192               80                0
+same size               0     0.00%            0            0                0                0                0
+a growing call multiplies the size by 2.00 on average
+reallocations of one block: up to 9
+```
+
+- **CALLS**: what the program spends inside its allocator, everything the call runs included. The
+  marks themselves are left out. `% VAR` is relative to the variable cost of the whole program.
+- **MEMORY**: bytes asked for and released, the peak of live memory, and the range of addresses the
+  allocator handed out. The ratio between that range and the peak tells how much the allocator
+  spreads the blocks (fragmentation, or a bump allocator that never reuses memory). When there are
+  zeroed allocations, a line tells how many landed below the highest address handed out before —
+  memory that may have been used, and so may really need clearing.
+- **REALLOC**: calls that grow, shrink or keep the size, how many the allocator served by moving
+  the block (a copy of `COPIED BYTES`) and how many in place, and how many times a block is
+  reallocated (a vector that grows by doubling shows up as one block with a long chain).
+- **ALIGNMENT / SIZE OF THE BLOCKS**: one row per alignment, and per power-of-two size range, with
+  blocks and bytes. Alignments bigger than 8 are totalled and get a size table of their own, since
+  they are the ones a word-aligned allocator has to treat specially. An alignment `not stated` is a
+  call that does not pass one (`malloc`, `operator new`).
+- **anomalies**: calls that do not fit the model and were counted apart, e.g. a release of a block
+  the analysis never saw allocated, or a layout that does not match the allocation.
+
+### Trace (`--alloc-trace`)
+
+`--alloc-trace <file>` writes one tab-separated line per call, in execution order, with the
+operands, the result and the steps and cost spent in the call. The header of the file documents the
+columns:
+
+```
+a  <size> <align> <ptr> <steps> <cost>                           alloc
+z  <size> <align> <ptr> <steps> <cost>                           zeroed alloc
+f  <ptr> <size> <align> <steps> <cost>                           free
+r  <ptr> <old_size> <align> <new_size> <new_ptr> <steps> <cost>  realloc
+```
+
+The trace is what to feed a model of another allocator with: replaying the same sequence of sizes
+tells what that allocator would have done on this workload, without running the program again.
+`--alloc-trace` implies `--alloc-stats`.
 
 ## Register Step Distance
 
