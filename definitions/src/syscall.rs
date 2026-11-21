@@ -36,6 +36,12 @@ pub const SYSCALL_BLAKE3F_ID: u16 = 0x81E;
 pub const SYSCALL_BLAKE2SF_ID: u16 = 0x81F;
 pub const SYSCALL_ED25519_ADD_ID: u16 = 0x820;
 pub const SYSCALL_POSEIDON2_KOALABEAR_ID: u16 = 0x821;
+// Allocator precompile (PROTOTYPE, see precompiles/allocator): only ziskemu executes it.
+pub const SYSCALL_ALLOC_ALLOC_ID: u16 = 0x822;
+pub const SYSCALL_ALLOC_CALLOC_ID: u16 = 0x823;
+pub const SYSCALL_ALLOC_DEALLOC_ID: u16 = 0x824;
+pub const SYSCALL_ALLOC_CREATE_CLEAN_ID: u16 = 0x825;
+pub const SYSCALL_ALLOC_CREATE_DIRTY_ID: u16 = 0x826;
 
 /// blake2b `extended_arg`: round index (bits 0..3), state and m from the previous round of the
 /// call (`BLAKE2B_RD_CHAIN`), to the next one (`BLAKE2B_WR_CHAIN`), steps back to it (bits 6..).

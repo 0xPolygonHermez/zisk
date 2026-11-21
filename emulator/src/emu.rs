@@ -2,8 +2,8 @@ use std::borrow::Cow;
 use std::mem;
 
 use crate::{
-    parse_ops_x_row, ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, FailureReason,
-    MemDualStats, ParEmuOptions, RegStepCheck, MEM_DUAL_MAX,
+    parse_ops_x_row, AllocStats, ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace,
+    FailureReason, MemDualStats, ParEmuOptions, RegStepCheck, MEM_DUAL_MAX,
 };
 use proofman_fields::PrimeField64;
 use zisk_common::{
@@ -125,6 +125,11 @@ impl<'a> Emu<'a> {
     pub fn create_emu_context(&mut self, inputs: Vec<u8>, options: &EmuOptions) -> EmuContext {
         // Initialize an empty instance
         let mut ctx = EmuContext::new(inputs, options);
+
+        match options.alloc_policy.parse() {
+            Ok(policy) => ctx.inst_ctx.alloc.heap.set_policy(policy),
+            Err(e) => panic!("--alloc-policy: {e}"),
+        }
 
         // Skip memory data allocation when in chunk mode, since memory reads are obtained from the
         // minimal traces, not from memory
@@ -1811,6 +1816,25 @@ impl<'a> Emu<'a> {
                 Ok(ops_x_row) => self.ctx.stats.set_dma_loops(&ops_x_row),
                 Err(e) => panic!("--dma-ops-x-row '{}': {e}", options.dma_ops_x_row),
             }
+        }
+        if options.alloc_stats {
+            if !options.stats {
+                panic!("Alloc stats feature needs at least stats option");
+            }
+            let Some(elf_file) = &options.elf else {
+                panic!("Alloc stats feature needs the ELF file (-e) to find the allocator symbols");
+            };
+            let mut symbols = ElfSymbolReader::new();
+            let heap = match symbols.load_from_file(elf_file, &LOAD_SYMBOLS[..2]) {
+                Ok(heap) => heap,
+                Err(e) => panic!("--alloc-stats: cannot read the symbols of '{elf_file}': {e}"),
+            };
+            let alloc_stats = AllocStats::new(
+                symbols.functions().map(|symbol| (symbol.address, symbol.name.as_str())),
+                heap[1].saturating_sub(heap[0]),
+            );
+            println!("Alloc stats entry points: {}", alloc_stats.entry_names().join(", "));
+            self.ctx.stats.set_alloc_stats(alloc_stats);
         }
         if let Some(duals) = options.mem_duals {
             if !options.stats {

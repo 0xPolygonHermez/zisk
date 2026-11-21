@@ -6,18 +6,20 @@ use std::collections::BTreeSet;
 
 use crate::{riscv_interpreter, RiscvInst, RiscvInstName};
 use zisk_definitions::{
-    zkvmcall_by_id, SYSCALL_ADD256_ID, SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID,
-    SYSCALL_ARITH384_MOD_ID, SYSCALL_BABYJUBJUB_ADD_ID, SYSCALL_BLAKE2B_ROUND_ID,
-    SYSCALL_BLAKE2SF_ID, SYSCALL_BLAKE3F_ID, SYSCALL_BLS12_381_COMPLEX_ADD_ID,
-    SYSCALL_BLS12_381_COMPLEX_MUL_ID, SYSCALL_BLS12_381_COMPLEX_SUB_ID,
-    SYSCALL_BLS12_381_CURVE_ADD_ID, SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID,
-    SYSCALL_BN254_COMPLEX_MUL_ID, SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID,
-    SYSCALL_BN254_CURVE_DBL_ID, SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID,
-    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_ED25519_ADD_ID, SYSCALL_JUMP_DEST_ID,
-    SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID, SYSCALL_POSEIDON2_KOALABEAR_ID,
-    SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID,
-    SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END,
-    ZKVMCALL_ADDR_START, ZKVMCALL_ARG_ADDR_END, ZKVMCALL_ARG_ADDR_START,
+    zkvmcall_by_id, SYSCALL_ADD256_ID, SYSCALL_ALLOC_ALLOC_ID, SYSCALL_ALLOC_CALLOC_ID,
+    SYSCALL_ALLOC_CREATE_CLEAN_ID, SYSCALL_ALLOC_CREATE_DIRTY_ID, SYSCALL_ALLOC_DEALLOC_ID,
+    SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID, SYSCALL_ARITH384_MOD_ID,
+    SYSCALL_BABYJUBJUB_ADD_ID, SYSCALL_BLAKE2B_ROUND_ID, SYSCALL_BLAKE2SF_ID, SYSCALL_BLAKE3F_ID,
+    SYSCALL_BLS12_381_COMPLEX_ADD_ID, SYSCALL_BLS12_381_COMPLEX_MUL_ID,
+    SYSCALL_BLS12_381_COMPLEX_SUB_ID, SYSCALL_BLS12_381_CURVE_ADD_ID,
+    SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID, SYSCALL_BN254_COMPLEX_MUL_ID,
+    SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID, SYSCALL_BN254_CURVE_DBL_ID,
+    SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID, SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID,
+    SYSCALL_ED25519_ADD_ID, SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID,
+    SYSCALL_POSEIDON2_ID, SYSCALL_POSEIDON2_KOALABEAR_ID, SYSCALL_PROFILE_ID,
+    SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID,
+    SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END, ZKVMCALL_ADDR_START,
+    ZKVMCALL_ARG_ADDR_END, ZKVMCALL_ARG_ADDR_START,
 };
 
 use zisk_core::rom_layout::InlineBody;
@@ -38,7 +40,7 @@ use zisk_core::{FREG_F0, FREG_INST, FREG_RA, MTVEC, REG_X0};
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 // Important: The order should be the same as in such file.
-const CSR_PRECOMPILED: [&str; 34] = [
+const CSR_PRECOMPILED: [&str; 39] = [
     "keccak",
     "arith256",
     "arith256_mod",
@@ -73,6 +75,11 @@ const CSR_PRECOMPILED: [&str; 34] = [
     "blake2s",
     "ed25519_add",
     "poseidon2_koalabear",
+    "alloc_alloc",
+    "alloc_calloc",
+    "alloc_dealloc",
+    "alloc_create_clean",
+    "alloc_create_dirty",
 ];
 const CSR_PRECOMPILED_ADDR_START: u16 = SYSCALL_KECCAKF_ID;
 const CSR_FCALL_ADDR_START: u16 = 0x8C0;
@@ -1960,6 +1967,34 @@ impl<'a> Riscv2ZiskContext<'a> {
             SYSCALL_ADD256_ID if i.rs1 != 0 => {
                 return self.transpile_add256(i, next_instructions);
             }
+            // Allocator precompile (prototype). The address comes back in rd, whatever rd is.
+            //
+            //  csrrs rd, 0x822, reg(size)     ===>  alloc_alloc rd, reg(size)
+            //  csrs  0x824, reg(addr)         ===>  alloc_dealloc reg(addr)
+            SYSCALL_ALLOC_ALLOC_ID | SYSCALL_ALLOC_CALLOC_ID | SYSCALL_ALLOC_DEALLOC_ID
+                if i.rs1 != 0 =>
+            {
+                let op = CSR_PRECOMPILED[i.csr as usize - CSR_PRECOMPILED_ADDR_START as usize];
+                let has_result = i.csr as u16 != SYSCALL_ALLOC_DEALLOC_ID;
+                assert!(
+                    has_result || i.rd == 0,
+                    "Invalid use of CSR (0x{:03X}) at address 0x{:08x}: {op} has no result",
+                    i.csr,
+                    i.rom_address
+                );
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
+                zib.src_a("reg", i.rs1 as u64, false);
+                zib.src_b("imm", 0, false);
+                zib.op(op).unwrap();
+                if has_result {
+                    zib.store("reg", i.rd as i64, false, false);
+                }
+                // jmp_offset1 is the extended static parameter, not used here
+                zib.j(0, 4);
+                zib.verbose(&format!("{op} r{}, r{}", i.rd, i.rs1));
+                zib.build(self.rom);
+                return;
+            }
             _ => {}
         }
         if i.rd == i.rs1 {
@@ -2043,7 +2078,10 @@ impl<'a> Riscv2ZiskContext<'a> {
                 | SYSCALL_SHA256F_ID
                 | SYSCALL_BLAKE3F_ID
                 | SYSCALL_BLAKE2SF_ID
-                | SYSCALL_ED25519_ADD_ID => {
+                | SYSCALL_ED25519_ADD_ID
+                // allocator precompile (prototype): a = addr, b = size of the area
+                | SYSCALL_ALLOC_CREATE_CLEAN_ID
+                | SYSCALL_ALLOC_CREATE_DIRTY_ID => {
                     let precompiled =
                         CSR_PRECOMPILED[i.csr as usize - CSR_PRECOMPILED_ADDR_START as usize];
                     self.transpile_precompiled_ab_pattern(i, next_instructions, precompiled);

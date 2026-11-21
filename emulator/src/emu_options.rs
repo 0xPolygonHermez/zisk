@@ -242,6 +242,21 @@ pub struct EmuOptions {
     /// latter as the baseline. Requires option: --dma-stats
     #[clap(long, value_name = "LIST", default_value = DEFAULT_DMA_OPS_X_ROW)]
     pub dma_ops_x_row: String,
+    /// Estimate the cost of the allocator precompile for this program. The calls to the allocation
+    /// entry points of the guest (`__rust_alloc` & co, `malloc`/`free`/..., `operator new`/`delete`,
+    /// found by their ELF symbols) are captured and replayed on shadow heaps that follow the rules
+    /// of the precompile. Reports the cost the guest spends in its allocator against the estimated
+    /// cost of `Allocator` and `AllocatorFlex`, and the distribution of sizes, alignments and
+    /// reallocs. Requires options: -X and -e (an ELF with symbols)
+    #[clap(long, value_name = "ALLOC_STATS", default_value = "false")]
+    pub alloc_stats: bool,
+    /// Variant of the allocator precompile that serves a guest built with the precompile allocator
+    /// (prototype, only ziskemu executes it): `canonical` is `Allocator` (best fit and forced
+    /// coalescing, one row per operation), `flex-eager` and `flex-lazy` are `AllocatorFlex` (every
+    /// join is a row) joining free blocks as soon as possible or only when no block fits. It
+    /// changes the addresses the guest gets and the cost of the operations.
+    #[clap(long, value_name = "POLICY", default_value = "canonical")]
+    pub alloc_policy: String,
     /// Analyze the occupancy of the memory dual lanes: a dual lane holds, in a single memory lane,
     /// one read/write plus up to N reads on the same address (same value, only the step differs).
     /// A lane is the unit of the sorted memory sequence; a physical row packs `lanes_x_row` lanes.
@@ -420,6 +435,8 @@ impl Default for EmuOptions {
             mem_duals: None,
             mem_dual_reset_bits: 18,
             dma_stats: false,
+            alloc_stats: false,
+            alloc_policy: "canonical".to_string(),
             dma_ops_x_row: DEFAULT_DMA_OPS_X_ROW.to_string(),
             read_symbols: false,
             roi_callers: 10,

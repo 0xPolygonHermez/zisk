@@ -67,6 +67,7 @@ pub enum OpType {
     BigInt,
     Evm,
     Dma,
+    Alloc,
     Blake2b,
     Profile,
     TwistedEdwards,
@@ -92,6 +93,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::BigInt => ZiskOperationType::BigInt,
             OpType::Evm => ZiskOperationType::Evm,
             OpType::Dma => ZiskOperationType::Dma,
+            OpType::Alloc => ZiskOperationType::Alloc,
             OpType::Blake2b => ZiskOperationType::Blake2b,
             OpType::Profile => ZiskOperationType::Profile,
             OpType::TwistedEdwards => ZiskOperationType::TwistedEdwards,
@@ -121,6 +123,7 @@ impl Display for OpType {
             Self::BigInt => write!(f, "BigInt"),
             Self::Evm => write!(f, "Evm"),
             Self::Dma => write!(f, "Dma"),
+            Self::Alloc => write!(f, "Alloc"),
             Self::Blake2b => write!(f, "Blake2b"),
             Self::Profile => write!(f, "Profile"),
             Self::TwistedEdwards => write!(f, "TwistedEdwards"),
@@ -151,6 +154,7 @@ impl FromStr for OpType {
             "bint" => Ok(Self::BigInt),
             "evm" => Ok(Self::Evm),
             "dma" => Ok(Self::Dma),
+            "alloc" => Ok(Self::Alloc),
             "b2b" => Ok(Self::Blake2b),
             "profile" => Ok(Self::Profile),
             "twisted_edwards" => Ok(Self::TwistedEdwards),
@@ -565,7 +569,15 @@ define_ops! {
     // source words), followed by the loaded words themselves via data_ext_len.
     (JumpDest, "jump_dest", Evm, JUMP_DEST_COST, 0xc0, 8, 0, opc_jump_dest, op_jump_dest, ops_jump_dest),
     (Poseidon2KoalaBear, "poseidon2_koalabear", Poseidon2KoalaBear, POSEIDON2_KOALABEAR_COST, 0xc1, 64, 64, opc_poseidon2_koalabear, op_poseidon2_koalabear, ops_poseidon2_koalabear),
-    // opcodes 0xc2-0xcf are available
+    // Allocator precompile (PROTOTYPE, see precompiles/allocator): only the plain emulation
+    // executes it. The cost is variable: rows of the allocator air (they depend on the variant)
+    // plus the memset of a calloc over a used block. input_size = 8 marks them as precompiles.
+    (AllocCreateClean, "alloc_create_clean", Alloc, 0, 0xc2, 8, 0, opc_alloc_create_clean, op_alloc, ops_alloc),
+    (AllocCreateDirty, "alloc_create_dirty", Alloc, 0, 0xc3, 8, 0, opc_alloc_create_dirty, op_alloc, ops_alloc),
+    (AllocAlloc, "alloc_alloc", Alloc, 0, 0xc4, 8, 0, opc_alloc_alloc, op_alloc, ops_alloc),
+    (AllocCalloc, "alloc_calloc", Alloc, 0, 0xc5, 8, 0, opc_alloc_calloc, op_alloc, ops_alloc),
+    (AllocDealloc, "alloc_dealloc", Alloc, 0, 0xc6, 8, 0, opc_alloc_dealloc, op_alloc, ops_alloc),
+    // opcodes 0xc7-0xcf are available
 
     (DmaMemCpy, "dma_memcpy", Dma, DMA_MEMCPY_COST, 0xd0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
     (DmaMemCmp, "dma_memcmp", Dma, DMA_MEMCMP_COST, 0xd1, 16, 0, opc_dma_memcmp, op_dma_memcmp, ops_dma_memcmp),
