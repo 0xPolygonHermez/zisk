@@ -1,0 +1,4 @@
+; A write to the input: read-only.
+main:
+	copyb(0, 1) -> [0x10000010]
+	ret

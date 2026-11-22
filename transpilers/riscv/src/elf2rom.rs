@@ -20,6 +20,13 @@ use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR};
 /// A ziskbin ELF (`e_machine == EM_ZISK`, a prebuilt ROM) is not RISC-V; the guest-format
 /// dispatcher (`zisk_transpiler_common::program2rom`) decodes those before calling this.
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
+    elf2rom_with(elf, RomOptPasses::default())
+}
+
+/// `elf2rom` with the given ROM post-pass optimizations. `RomOptPasses::NONE` gives the ROM as the
+/// instruction-by-instruction translation leaves it, which is what sail-zisk's Lean spec of the
+/// transpiler describes (`make transpiler-check`) until the optimizer is part of the proof.
+pub fn elf2rom_with(elf: &[u8], passes: RomOptPasses) -> Result<ZiskRom, Box<dyn Error>> {
     // Load the embedded float library (enabled with the `float` feature).
     #[cfg(feature = "float")]
     const FLOAT_LIB_DATA: &[u8] = include_bytes!("../../../lib-float/c/lib/ziskfloat.elf");
@@ -279,7 +286,7 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 
     // ROM post-pass optimizations (jump threading, constant and address folding), once the whole
     // program (guest, ZisK library, float library) is in the ROM. See rom_optimizer.rs.
-    optimize_rom(&mut rom.insts, RomOptPasses::default());
+    optimize_rom(&mut rom.insts, passes);
 
     // Preprocess the ROM
     // Split the ROM instructions based on their address to improve performance when

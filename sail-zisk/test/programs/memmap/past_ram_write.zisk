@@ -1,0 +1,4 @@
+; A write just past the end of the RAM.
+main:
+	copyb(0, 1) -> [0xc0000000]
+	ret

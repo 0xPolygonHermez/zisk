@@ -1,0 +1,10 @@
+; The memory and fcall operations on the cases ziskasm's diagnostic leaves
+; out: memops.zisk, whose results the trace compares register by register.
+; ziskasm's own fcall and DMA checks run in the whole diagnostic, which
+; `make difftest-all` difftests too.
+
+main:
+	copyb(0, r1) -> r9              ; save return address (our `call` clobbers r1)
+	call memops
+	copyb(0, r9) -> r1
+	ret

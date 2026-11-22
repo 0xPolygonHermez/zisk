@@ -158,7 +158,8 @@ impl RiscvDecoder {
                 // Opcode 47
                 match (inst >> 12) & 0x7 {
                     2 => match (inst >> 27) & 0x1F {
-                        2 => (RiscvInstType::A, RiscvInstName::LrW, 2),
+                        // lr.w's rs2 field must be 0; any other value is reserved.
+                        2 if (inst >> 20) & 0x1F == 0 => (RiscvInstType::A, RiscvInstName::LrW, 2),
                         3 => (RiscvInstType::A, RiscvInstName::ScW, 2),
                         1 => (RiscvInstType::A, RiscvInstName::AmoswapW, 2),
                         0 => (RiscvInstType::A, RiscvInstName::AmoaddW, 2),
@@ -172,7 +173,8 @@ impl RiscvDecoder {
                         _ => (RiscvInstType::Invalid, RiscvInstName::Reserved, 2),
                     },
                     3 => match (inst >> 27) & 0x1F {
-                        2 => (RiscvInstType::A, RiscvInstName::LrD, 2),
+                        // lr.d's rs2 field must be 0; any other value is reserved.
+                        2 if (inst >> 20) & 0x1F == 0 => (RiscvInstType::A, RiscvInstName::LrD, 2),
                         3 => (RiscvInstType::A, RiscvInstName::ScD, 2),
                         1 => (RiscvInstType::A, RiscvInstName::AmoswapD, 2),
                         0 => (RiscvInstType::A, RiscvInstName::AmoaddD, 2),
@@ -487,8 +489,12 @@ impl RiscvDecoder {
                 }
             }
             103 => {
-                // Opcode 103
-                (RiscvInstType::I, RiscvInstName::Jalr, 0)
+                // Opcode 103: jalr is funct3 0; any other funct3 is reserved, an
+                // illegal instruction, as in RISC-V.
+                match (inst >> 12) & 0x7 {
+                    0 => (RiscvInstType::I, RiscvInstName::Jalr, 0),
+                    _ => (RiscvInstType::Invalid, RiscvInstName::Reserved, 0),
+                }
             }
             111 => {
                 // Opcode 111
@@ -871,6 +877,12 @@ mod tests {
         instruction = 0x1001202f; // lr.w x0, (x2)
         result = RiscvDecoder::decode_32(instruction);
         assert_eq!(result, (RiscvInstType::A, RiscvInstName::LrW, 2));
+
+        // lr.w and lr.d with rs2 != 0: reserved
+        result = RiscvDecoder::decode_32(0x1001202f | (1 << 20));
+        assert_eq!(result, (RiscvInstType::Invalid, RiscvInstName::Reserved, 2));
+        result = RiscvDecoder::decode_32(0x1001302f | (5 << 20));
+        assert_eq!(result, (RiscvInstType::Invalid, RiscvInstName::Reserved, 2));
 
         instruction = 0x1801202f; // sc.w x0, x0, (x2)
         result = RiscvDecoder::decode_32(instruction);
@@ -1382,6 +1394,12 @@ mod tests {
         instruction = 0x00010067; // jalr x0, 0(x2)
         result = RiscvDecoder::decode_32(instruction);
         assert_eq!(result, (RiscvInstType::I, RiscvInstName::Jalr, 0));
+
+        // funct3 != 0: reserved
+        for f3 in 1..8u32 {
+            result = RiscvDecoder::decode_32(0x00010067 | (f3 << 12));
+            assert_eq!(result, (RiscvInstType::Invalid, RiscvInstName::Reserved, 0));
+        }
 
         // ========== OPCODE 111 - JAL ==========
         instruction = 0x0000006f; // jal x0, 0

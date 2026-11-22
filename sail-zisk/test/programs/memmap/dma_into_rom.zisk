@@ -1,0 +1,6 @@
+; DMA, whose writes are checked byte by byte: a copy into the ROM.
+const u64 K[2] = 1, 2
+u64 SRC[2] = 3, 4
+main:
+	dma_xmemcpy(K, SRC) -> r5, j(16, 4)
+	ret
