@@ -36,7 +36,8 @@ pub const SYSCALL_BLAKE3F_ID: u16 = 0x81E;
 pub const SYSCALL_BLAKE2SF_ID: u16 = 0x81F;
 pub const SYSCALL_ED25519_ADD_ID: u16 = 0x820;
 pub const SYSCALL_POSEIDON2_KOALABEAR_ID: u16 = 0x821;
-/// Allocation mark for `ziskemu --alloc-stats`, see `alloc_mark.rs`. Not provable.
+/// Allocation mark for `ziskemu --alloc-stats`, see `alloc_mark.rs`. Transpiled to a `copyb` that
+/// stores nothing (a no-op for the prover); the kind of the mark lives in `ZiskInst::alloc_mark`.
 pub const SYSCALL_ALLOC_MARK_ID: u16 = 0x822;
 
 /// blake2b `extended_arg`: round index (bits 0..3), state and m from the previous round of the

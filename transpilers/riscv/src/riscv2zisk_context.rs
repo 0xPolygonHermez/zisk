@@ -3006,25 +3006,34 @@ impl<'a> Riscv2ZiskContext<'a> {
         {
             // alloc mark transpilation pattern (see zisk_definitions::alloc_mark):
             //
-            //  csrs  0x822, reg(a)          ===>  alloc_mark reg(a), reg(b), imm(kind) ─┐
-            //  addi  x0, reg(b), imm(kind)        addi x0, reg(b), imm(kind)            │ jmp+8
-            //  ..........                         ..........   <────────────────────────┘
+            //  csrs  0x822, reg(a)          ===>  copyb reg(a), reg(b) [alloc_mark kind] ─┐
+            //  addi  x0, reg(b), imm(kind)        addi x0, reg(b), imm(kind)              │ jmp+8
+            //  ..........                         ..........   <──────────────────────────┘
             //
-            // reg(b) may be x0 for the marks that carry a single value.
-            let a = i.rs1;
-            let b = next_instructions[0].rs1;
-            let kind = next_instructions[0].imm as i64;
-            let next_pc = next_instructions[1].rom_address;
-            self.create_extended_precompiles_op(
-                i,
-                "alloc_mark",
-                a,
-                b as u64,
-                0,
-                kind,
-                b == 0,
-                next_pc,
+            // The prover sees a copyb that stores nothing; the kind lives in the instruction
+            // (`ZiskInst::alloc_mark`) for ziskemu. reg(b) may be x0 for the marks that carry a
+            // single value: x0 is not a main-trace register, it is read as the immediate 0.
+            let kind = next_instructions[0].imm;
+            assert!(
+                (1..=u8::MAX as i32).contains(&kind),
+                "Invalid alloc mark kind {kind} at address 0x{:08x}",
+                i.rom_address
             );
+            let b = next_instructions[0].rs1;
+            let next_pc = next_instructions[1].rom_address;
+            let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
+            zib.src_a("reg", i.rs1 as u64, false);
+            if b == 0 {
+                zib.src_b("imm", 0, false);
+            } else {
+                zib.src_b("reg", b as u64, false);
+            }
+            zib.op("copyb").unwrap();
+            zib.i.alloc_mark = kind as u8;
+            let jmp_offset = next_pc as i64 - i.rom_address as i64;
+            zib.j(jmp_offset, jmp_offset);
+            zib.verbose(&format!("alloc_mark({kind}) r{}, r{b}", i.rs1));
+            zib.build(self.rom);
             return;
         }
         let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");

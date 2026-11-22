@@ -1240,10 +1240,10 @@ impl Stats {
                 );
             }
         }
-        if inst.op == ZiskOp::ALLOC_MARK {
+        if inst.alloc_mark != 0 {
             if let Some(alloc_stats) = &mut self.alloc_stats {
                 let cost = self.costs.total_cost();
-                let kind = inst.jmp_offset1 as u64;
+                let kind = inst.alloc_mark as u64;
                 alloc_stats.on_mark(kind, inst_ctx.a, inst_ctx.b, self.costs.steps, cost);
             }
         }

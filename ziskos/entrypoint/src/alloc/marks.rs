@@ -5,8 +5,9 @@
 //! call (see `zisk_definitions::alloc_mark`). `ziskemu --alloc-stats` turns them into an analysis
 //! of how the program uses its allocator.
 //!
-//! The marks are instructions of their own, so a guest built with them is slightly longer and
-//! cannot be proven: the feature is meant for analysis builds only.
+//! Every mark is one extra step (a `copyb` that stores nothing, which the prover sees as a no-op),
+//! so a guest built with them can still be proven but is slightly longer: the feature is meant
+//! for analysis builds.
 //!
 //! The allocators of ziskos are wrapped when the feature is on. A guest that brings its own
 //! (`zisk-custom-alloc`) can wrap it the same way:

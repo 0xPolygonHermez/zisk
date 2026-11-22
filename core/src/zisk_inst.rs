@@ -165,6 +165,11 @@ pub struct ZiskInst {
     /// whose `func` is `opc_write_log`. Not part of the ROM the prover commits to; kept so
     /// that a ROM saved as ziskbin gets that `func` back
     pub write_log: bool,
+    /// An allocation mark (`SYSCALL_ALLOC_MARK_ID`, see `zisk_definitions::alloc_mark`): its kind,
+    /// or 0. The instruction is a plain `copyb` that stores nothing (all the prover sees), whose a
+    /// and b are the values of the mark, read by `ziskemu --alloc-stats`. Not part of the ROM the
+    /// prover commits to; kept so that a ROM saved as ziskbin keeps its marks
+    pub alloc_mark: u8,
 }
 
 /// Default constructor
@@ -209,6 +214,7 @@ impl Default for ZiskInst {
             meta_rs1: None,
             meta_rd: None,
             write_log: false,
+            alloc_mark: 0,
         }
     }
 }

@@ -6997,9 +6997,6 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::AllocMark => {
-                unimplemented!("Internal opcode AllocMark");
-            }
             ZiskOp::Profile => {
                 unimplemented!("Internal opcode Profile");
             }
