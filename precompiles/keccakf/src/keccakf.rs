@@ -86,6 +86,9 @@ pub const KECCAKF_PAYLOAD_DEDUP_WORD: usize = KECCAKF_PAYLOAD_BLOCK + KECCAKF_XO
 /// Queues the Binary operations a `keccak_xor` relies on: KeccakfProxy assumes one XOR per
 /// lane of the block (`state[i] ^ block[i]`) from Binary, so Binary has to be handed them, both
 /// when counting and when collecting. Does nothing for a plain `keccak`.
+///
+/// They travel as `XOR_KECCAK_OP`, the bus tag Binary turns back into `XOR`: an injected operation
+/// is not an instruction, so it must never be a frequent operation (see the tag's documentation).
 #[inline(always)]
 pub fn keccakf_xor_binary_ops(data: &[u64], pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>) {
     if !keccakf_is_xor(data) {
@@ -95,7 +98,7 @@ pub fn keccakf_xor_binary_ops(data: &[u64], pending: &mut VecDeque<(BusId, Vec<u
     let block = &data[KECCAKF_PAYLOAD_BLOCK..KECCAKF_PAYLOAD_DEDUP_WORD];
     for (lane, word) in state.iter().zip(block) {
         OperationBusData::from_values(
-            ZiskOp::Xor.code(),
+            zisk_sm_binary::XOR_KECCAK_OP,
             ZiskOperationType::Binary as u64,
             *lane,
             *word,

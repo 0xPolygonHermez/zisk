@@ -8,7 +8,8 @@
         - 0x56-0x58 (Zba shift-and-add)
         - 0x59 (LTU_DIV: bus tag of the LTU assumed by Arith on divisions, not an opcode)
         - 0x5A (UNAL8: 8-byte alignment predicate, ZisK-only)
-        - 0x5B-0x5F (free, reserved for binary)
+        - 0x5B (XOR_KECCAK: bus tag of the XORs assumed by KeccakfProxy, not an opcode)
+        - 0x5C-0x5F (free, reserved for binary)
       - Binary Extension Operations:
         - 0x21-0x29
         - 0x30-0x42 (Zbb/Zbs/Zbkb)

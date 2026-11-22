@@ -14,6 +14,7 @@ build = "build.rs"
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
+zisk-sm-binary = { workspace = true }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }

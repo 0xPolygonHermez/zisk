@@ -523,7 +523,9 @@ define_ops! {
     // ZisK-only alignment predicate (no RISC-V instruction, no m32 variant): c = flag = 1 iff a or b
     // is not a multiple of 8. Guards the fast path of the 8-byte aligned routines
     (Unal8, "unal8", Binary, BINARY_COST, 0x5a, 0, 0, opc_unal8, op_unal8, ops_none),
-    // Opcodes 0x5b-0x5f are reserved for binary
+    // Opcode 0x5b is XOR_KECCAK: the bus tag of the XORs that KeccakfProxy injects for a keccak_xor
+    // (not a ZisK opcode, see state-machines/binary/src/binary_constants.rs)
+    // Opcodes 0x5c-0x5f are reserved for binary
 
     // "Software" opcodes (0x90 - 0x9F): these are not proved by any air. They are either never
     // emitted as a single instruction (the transpiler decomposes them, and the opcode only exists
