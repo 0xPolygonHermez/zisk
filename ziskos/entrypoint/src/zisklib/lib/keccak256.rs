@@ -1,6 +1,6 @@
 //! Keccak-256 hash function.
 
-use crate::syscalls::{syscall_keccak_xor, KECCAK_XOR_LANES};
+use crate::syscalls::{syscall_keccak_f, syscall_keccak_xor, KECCAK_XOR_LANES};
 
 #[cfg(zisk_hints_debug)]
 use core::ffi::c_char;
@@ -39,16 +39,44 @@ const KECCAK256_RATE: usize = 136;
 
 /// Keccak-256 hash function. For reference: https://keccak.team/keccak_specs_summary.html
 ///
-/// Every block is absorbed with one `syscall_keccak_xor` (XOR + Keccak-f), which reads the block
-/// as 17 aligned 64-bit words. A full block is read in place when the input is 8-byte aligned;
-/// otherwise it goes through an aligned copy, as the padded final block always does.
+/// The first block is written straight into the zeroed state and permuted with `syscall_keccak_f`:
+/// XORing it into zeros would cost 17 XORs and 17 extra reads to obtain the block itself, so a
+/// hash of up to 135 bytes is one permutation and no XOR. Every later block is absorbed with one
+/// `syscall_keccak_xor` (XOR + Keccak-f), which reads the block as 17 aligned 64-bit words: in
+/// place when a full block is 8-byte aligned, otherwise through an aligned copy, as the padded
+/// final block always does.
 pub fn keccak256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u8; 32] {
     let mut state = [0u64; 25];
     let input_len = input.len();
     let aligned = (input.as_ptr() as usize) % core::mem::align_of::<u64>() == 0;
 
-    // Absorb phase: process complete rate-sized blocks
-    let mut offset = 0;
+    // First block: the state is all zeros, so the block (padded here when it is also the last
+    // one) is the XORed state. The state is aligned, whatever the alignment of the input.
+    let first_len = input_len.min(KECCAK256_RATE);
+    // SAFETY: [u64; 25] is 200 writable bytes and first_len <= 136; the regions do not overlap. A
+    // byte copy into the lanes is their little-endian reading on the (little-endian) target.
+    unsafe {
+        core::ptr::copy_nonoverlapping(input.as_ptr(), state.as_mut_ptr() as *mut u8, first_len);
+    }
+    if input_len < KECCAK256_RATE {
+        // Keccak padding: 0x01 after the message, 0x80 in the last byte of the rate
+        state[input_len / 8] ^= 0x01 << (8 * (input_len % 8));
+        state[KECCAK_XOR_LANES - 1] ^= 0x80 << 56;
+    }
+    // SAFETY: the state is a valid, aligned 25-lane buffer.
+    unsafe {
+        syscall_keccak_f(
+            &mut state,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+    }
+    if input_len < KECCAK256_RATE {
+        return squeeze(&state);
+    }
+
+    // Absorb phase: process the remaining complete rate-sized blocks
+    let mut offset = KECCAK256_RATE;
     while offset + KECCAK256_RATE <= input_len {
         let block = &input[offset..offset + KECCAK256_RATE];
         if aligned {
@@ -93,12 +121,17 @@ pub fn keccak256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -
         hints,
     );
 
-    // Squeeze phase: extract first 32 bytes (256 bits) from state
+    squeeze(&state)
+}
+
+/// Squeeze phase: the digest is the first 32 bytes (256 bits) of the state.
+#[inline]
+fn squeeze(state: &[u64; 25]) -> [u8; 32] {
     let mut result = [0u8; 32];
     // SAFETY: [u64; 25] and [u8; 200] have the same size (200 bytes) and [u8] has
     // alignment 1, which is compatible with any alignment. The pointer cast is valid
     // because we're reinterpreting the same memory region.
-    let state_bytes: &[u8; 200] = unsafe { &*(&state as *const [u64; 25] as *const [u8; 200]) };
+    let state_bytes: &[u8; 200] = unsafe { &*(state as *const [u64; 25] as *const [u8; 200]) };
     result.copy_from_slice(&state_bytes[..32]);
 
     result
@@ -195,5 +228,30 @@ pub unsafe extern "C" fn native_keccak256(bytes: *const u8, len: usize, output: 
         let mut hasher = Keccak::v256();
         hasher.update(input_bytes);
         hasher.finalize(out);
+    }
+}
+
+#[cfg(all(test, not(zisk_guest), not(feature = "hints")))]
+mod tests {
+    use super::*;
+    use tiny_keccak::{Hasher, Keccak};
+
+    /// Every length around the block boundaries, aligned and not: the first block goes straight
+    /// into the state, the rest through `syscall_keccak_xor`.
+    #[test]
+    fn matches_the_reference_at_every_block_boundary() {
+        let data: Vec<u64> = (0..64u64).map(|i| i.wrapping_mul(0x9e37_79b9_7f4a_7c15)).collect();
+        // SAFETY: a u64 buffer read as bytes
+        let bytes: &[u8] = unsafe { core::slice::from_raw_parts(data.as_ptr() as *const u8, 512) };
+        for start in [0usize, 1, 3] {
+            for len in (0..=9).chain(126..=145).chain(262..=281).chain(400..=409) {
+                let input = &bytes[start..start + len];
+                let mut expected = [0u8; 32];
+                let mut hasher = Keccak::v256();
+                hasher.update(input);
+                hasher.finalize(&mut expected);
+                assert_eq!(keccak256(input), expected, "start {start}, len {len}");
+            }
+        }
     }
 }
