@@ -446,18 +446,13 @@ define_ops! {
     (CopyB, "copyb", Internal, INTERNAL_COST, 0x01, 0, 0, opc_copyb, op_copyb, ops_none),
 
     // Binary
-    //
-    // Binary proves an opcode and its m32 variant at opcode+0x10 with the same air: `mode32` is a
-    // free witness, so from `b_op` it can always also prove `b_op + 0x10`. Every opcode assigned
-    // to Binary therefore reserves opcode+0x10 as well, even when no m32 variant exists: giving
-    // that slot to a different operation would let Binary satisfy it with the wrong semantics.
     (Minu, "minu", Binary, BINARY_COST, 0x02, 0, 0, opc_minu, op_minu, ops_none),
     (Min, "min", Binary, BINARY_COST, 0x03, 0, 0, opc_min, op_min, ops_none),
     (Maxu, "maxu", Binary, BINARY_COST, 0x04, 0, 0, opc_maxu, op_maxu, ops_none),
     (Max, "max", Binary, BINARY_COST, 0x05, 0, 0, opc_max, op_max, ops_none),
     (Ltu, "ltu", Binary, BINARY_COST, 0x06, 0, 0, opc_ltu, op_ltu, ops_none),
     (Lt, "lt", Binary, BINARY_COST, 0x07, 0, 0, opc_lt, op_lt, ops_none),
-    // Opcode 0x08 is reserved for binary
+    // Opcode 0x08 is GT: internal and reserved for binary
     (Eq, "eq", Binary, BINARY_COST, 0x09, 0, 0, opc_eq, op_eq, ops_none),
     (Add, "add", Binary, BINARY_ADD_COST, 0x0a, 0, 0, opc_add, op_add, ops_none),
     (Sub, "sub", Binary, BINARY_COST, 0x0b, 0, 0, opc_sub, op_sub, ops_none),
@@ -473,13 +468,12 @@ define_ops! {
     (MaxW, "max_w", Binary, BINARY_COST, 0x15, 0, 0, opc_max_w, op_max_w, ops_none),
     (LtuW, "ltu_w", Binary, BINARY_COST, 0x16, 0, 0, opc_ltu_w, op_ltu_w, ops_none),
     (LtW, "lt_w", Binary, BINARY_COST, 0x17, 0, 0, opc_lt_w, op_lt_w, ops_none),
-    // Opcode 0x18 is reserved for binary
+    // Opcode 0x18 is GT_W: internal and reserved for binary
     (EqW, "eq_w", Binary, BINARY_COST, 0x19, 0, 0, opc_eq_w, op_eq_w, ops_none),
     (AddW, "add_w", Binary, BINARY_COST, 0x1a, 0, 0, opc_add_w, op_add_w, ops_none),
     (SubW, "sub_w", Binary, BINARY_COST, 0x1b, 0, 0, opc_sub_w, op_sub_w, ops_none),
     (LeuW, "leu_w", Binary, BINARY_COST, 0x1c, 0, 0, opc_leu_w, op_leu_w, ops_none),
     (LeW, "le_w", Binary, BINARY_COST, 0x1d, 0, 0, opc_le_w, op_le_w, ops_none),
-    // Opcodes 0x1e,0x1f,0x20 are reserved for binary
 
     // Binary Extension
     (Sll, "sll", BinaryE, BINARY_E_COST, 0x21, 0, 0, opc_sll, op_sll, ops_none),
@@ -515,11 +509,8 @@ define_ops! {
     (SllUW, "sll_u_w", BinaryE, SLL_U_W_COST, 0x43, 0, 0, opc_sll_u_w, op_sll_u_w, ops_none),
 
     // Bit manipulation extensions (Zbb, Zba, Zbs, Zbkb) - proved by Binary
-    //
-    // These have no m32 variant, so their opcode+0x10 shadow (0x62-0x68) must stay empty; see the
-    // note on the base binary block above. Opcodes 0x50,0x51 are LT_ABS_NP,LT_ABS_PN: internal
-    // comparisons that Arith assumes and Binary proves, so they are not ZisK opcodes, but they
-    // take up this space (and reserve their own shadows 0x60,0x61) all the same.
+    // Opcode 0x50 is LT_ABS_NP: internal and reserved for binary
+    // Opcode 0x51 is LT_ABS_PN: internal and reserved for binary
     (Brev8, "brev8", Binary, BINARY_COST, 0x52, 0, 0, opc_brev8, op_brev8, ops_none),
     (Andn, "andn", Binary, BINARY_COST, 0x53, 0, 0, opc_andn, op_andn, ops_none),
     (Orn, "orn", Binary, BINARY_COST, 0x54, 0, 0, opc_orn, op_orn, ops_none),
@@ -533,10 +524,6 @@ define_ops! {
     // is not a multiple of 8. Guards the fast path of the 8-byte aligned routines
     (Unal8, "unal8", Binary, BINARY_COST, 0x5a, 0, 0, opc_unal8, op_unal8, ops_none),
     // Opcodes 0x5b-0x5f are reserved for binary
-    // Opcodes 0x60-0x6a are the m32 shadows of 0x50-0x5a and must stay empty. Only 0x62-0x6a come
-    // from ops with no m32 variant: shxadd_w does not exist in RISC-V, brev8_w / andn_w / orn_w /
-    // xnor_w are not opcodes either, unal8 has no 32-bit meaning, and 0x69 shadows the LTU_DIV tag
-    // Opcodes 0x6b-0x6f are the shadows of the reserved 0x5b-0x5f
 
     // "Software" opcodes (0x90 - 0x9F): these are not proved by any air. They are either never
     // emitted as a single instruction (the transpiler decomposes them, and the opcode only exists

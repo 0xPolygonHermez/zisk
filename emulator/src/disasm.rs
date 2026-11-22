@@ -183,8 +183,7 @@ impl DisasmWriter {
 /// Format: operation dest, a, b (RISC-V like syntax)
 fn inst_to_asm(inst: &ZiskInst, labels: &HashMap<u64, String>, next_pc: Option<u64>) -> String {
     use zisk_core::{
-        SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
-        STORE_REG,
+        SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
     };
 
     let mut asm = String::new();
@@ -249,7 +248,6 @@ fn inst_to_asm(inst: &ZiskInst, labels: &HashMap<u64, String>, next_pc: Option<u
                 format!("0x{:x}", imm as u64)
             }
         }
-        SRC_STEP => "step".to_string(),
         _ => "?".to_string(),
     };
     operands.push(src_a);

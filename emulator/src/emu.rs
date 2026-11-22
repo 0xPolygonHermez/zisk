@@ -22,8 +22,8 @@ use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{
     EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, FREG_F0, FREG_INST,
     FREG_RA, FREG_X0, OUTPUT_ADDR, RAM_ADDR, REGS_IN_MAIN_TO, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
-    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
-    STORE_REG, SYS_ADDR,
+    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    SYS_ADDR,
 };
 
 const LOAD_SYMBOLS: [&str; 3] = ["_heap_bottom", "_heap_top", "ZISK_BUMP_HEAP_POS"];
@@ -132,14 +132,14 @@ impl<'a> Emu<'a> {
             return ctx;
         }
         // Create a new read section for every RO data entry of the rom
-        for i in 0..self.rom.ro_data_64.len() {
+        for section in &self.rom.ro_data_64 {
             // Convert from DataSection64 to DataSection
             let mut data_section = DataSection {
-                addr: self.rom.ro_data_64[i].addr,
-                data: Vec::with_capacity(self.rom.ro_data_64[i].data.len() * 8),
+                addr: section.addr,
+                data: Vec::with_capacity(section.data.len() * 8),
             };
-            for j in 0..self.rom.ro_data_64[i].data.len() {
-                data_section.data.extend_from_slice(&self.rom.ro_data_64[i].data[j].to_le_bytes());
+            for value in &section.data {
+                data_section.data.extend_from_slice(&value.to_le_bytes());
             }
 
             // Add the read section to the memory
@@ -147,14 +147,14 @@ impl<'a> Emu<'a> {
         }
 
         // Write the initial RAM data to the memory, as it will be used for the execution of the program (e.g. for jumps to code in the ROM, or for read-only data)
-        for i in 0..self.rom.rw_data_64.len() {
+        for section in &self.rom.rw_data_64 {
             // Convert from DataSection64 to DataSection
             let mut data_section = DataSection {
-                addr: self.rom.rw_data_64[i].addr,
-                data: Vec::with_capacity(self.rom.rw_data_64[i].data.len() * 8),
+                addr: section.addr,
+                data: Vec::with_capacity(section.data.len() * 8),
             };
-            for j in 0..self.rom.rw_data_64[i].data.len() {
-                data_section.data.extend_from_slice(&self.rom.rw_data_64[i].data[j].to_le_bytes());
+            for value in &section.data {
+                data_section.data.extend_from_slice(&value.to_le_bytes());
             }
 
             // Write the data to the write section of the memory
@@ -202,7 +202,6 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
@@ -263,7 +262,6 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
@@ -331,7 +329,6 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
@@ -414,7 +411,6 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
@@ -480,7 +476,6 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
@@ -1944,8 +1939,8 @@ impl<'a> Emu<'a> {
                 println!("\t\tsp=0x{:x}", chunk.start_state.sp);
                 println!("\t\tc=0x{:x}", chunk.start_state.c);
                 println!("\t\tstep={}", chunk.start_state.step);
-                for i in 1..chunk.start_state.regs.len() {
-                    println!("\t\tregister[{}]=0x{:x}", i, chunk.start_state.regs[i]);
+                for (i, reg) in chunk.start_state.regs.iter().enumerate().skip(1) {
+                    println!("\t\tregister[{}]=0x{:x}", i, reg);
                 }
                 println!("\tLast state:");
                 println!("\t\tc=0x{:x}", chunk.last_c);

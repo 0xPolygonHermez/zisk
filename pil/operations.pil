@@ -2,14 +2,13 @@
     Reserved Operation Codes:
     ==========================
       - Binary Operations:
-        - 0x02-0x10 (64-bit), 0x12-0x20 (their m32 variants)
+        - 0x02-0x10 (64-bit), 0x12-0x1D (the m32 variants of 0x02-0x0D)
         - 0x50, 0x51 (LT_ABS_NP, LT_ABS_PN: internal, assumed by Arith)
         - 0x52-0x55 (Zbb/Zbkb bitwise)
         - 0x56-0x58 (Zba shift-and-add)
         - 0x59 (LTU_DIV: bus tag of the LTU assumed by Arith on divisions, not an opcode)
         - 0x5A (UNAL8: 8-byte alignment predicate, ZisK-only)
         - 0x5B-0x5F (free, reserved for binary)
-        - 0x60-0x6F (m32 shadows of 0x50-0x5F, must stay empty)
       - Binary Extension Operations:
         - 0x21-0x29
         - 0x30-0x42 (Zbb/Zbs/Zbkb)
@@ -32,11 +31,6 @@
         - 0xF6-0xF8 (Function Calls)
         - 0xFF (HALT)
     ==========================
-
-    Binary proves an opcode and its m32 variant at opcode+0x10 with the same air: mode32 is a free
-    witness, so from b_op it can always also prove b_op + 0x10. Every opcode assigned to Binary
-    therefore reserves opcode+0x10 as well, even when it has no m32 variant -- handing that slot to
-    a different operation would let Binary satisfy it with the wrong semantics.
 */
 
 const int OP_FLAG = 0x00;
@@ -110,12 +104,11 @@ const int OP_BSET = 0x42;
 const int OP_SLL_U_W = 0x43;
 
 // Absolute value comparisons, assumed by Arith and proven by Binary. They are not ZisK opcodes,
-// but they live in the Binary space and reserve their m32 shadows (0x60, 0x61) just the same
+// but they live in the Binary space
 const int OP_LT_ABS_NP = 0x50;
 const int OP_LT_ABS_PN = 0x51;
 
 // Zbb/Zbkb bitwise and Zba shift-and-add (c = b + (a << shift)) operations, proven by Binary.
-// None of them has an m32 variant, so their shadows (0x62-0x68) must stay empty
 const int OP_BREV8 = 0x52;
 const int OP_ANDN = 0x53;
 const int OP_ORN = 0x54;
@@ -125,7 +118,7 @@ const int OP_SH2ADD = 0x57;
 const int OP_SH3ADD = 0x58;
 
 // ZisK-only alignment predicate, proven by Binary: c = flag = 1 iff a or b is not a multiple of 8
-// (i.e. some of the 3 low bits of a | b is set). No m32 variant, so its shadow (0x6A) must stay empty
+// (i.e. some of the 3 low bits of a | b is set). No m32 variant
 const int OP_UNAL8 = 0x5A;
 
 const int OP_PUBOUT = 0xA0;

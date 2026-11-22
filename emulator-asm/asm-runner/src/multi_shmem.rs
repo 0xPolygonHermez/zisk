@@ -57,8 +57,8 @@ impl<H: AsmShmemHeader> Drop for AsmMultiShmem<H> {
     /// names belongs to the last owner of their `SharedSegments`, and to
     /// `cleanup_stale_shmem()` for a process that died holding one.
     fn drop(&mut self) {
-        for i in 0..self.mapped_files.len() {
-            unsafe { close(self.mapped_files[i].fd) };
+        for file in &self.mapped_files {
+            unsafe { close(file.fd) };
         }
 
         // Unmap the entire reserved region (this handles all the MAP_FIXED mappings too)

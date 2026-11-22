@@ -12,6 +12,7 @@ pub mod riscv_inst_name;
 pub mod riscv_inst_type;
 pub mod riscv_interpreter;
 pub mod riscv_registers;
+pub mod rom_optimizer;
 
 pub use elf2rom::*;
 pub use riscv2zisk_context::*;
@@ -21,3 +22,4 @@ pub use riscv_inst_name::*;
 pub use riscv_inst_type::*;
 pub use riscv_interpreter::*;
 pub use riscv_registers::*;
+pub use rom_optimizer::*;

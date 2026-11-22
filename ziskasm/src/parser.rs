@@ -129,7 +129,6 @@ pub enum ASource {
     Reg(u64),
     Mem(Num),
     Imm(Num),
-    Step,
 }
 
 /// `b_source` (adds `ind`).
@@ -684,7 +683,6 @@ fn strip_call(s: &str, name: &str) -> Option<String> {
 fn parse_a_source(s: &str) -> Result<ASource, String> {
     Ok(match s {
         "c" => ASource::C,
-        "step" => ASource::Step,
         _ if is_reg(s) => ASource::Reg(parse_reg(s)?),
         _ if s.starts_with('[') => ASource::Mem(parse_mem(s)?),
         _ if is_ind(s) => {
@@ -697,7 +695,6 @@ fn parse_a_source(s: &str) -> Result<ASource, String> {
 fn parse_b_source(s: &str) -> Result<BSource, String> {
     Ok(match s {
         "c" => BSource::C,
-        "step" => return Err("`step` is only valid as the `a` source".into()),
         _ if is_reg(s) => BSource::Reg(parse_reg(s)?),
         _ if s.starts_with('[') => BSource::Mem(parse_mem(s)?),
         _ if is_ind(s) => {
