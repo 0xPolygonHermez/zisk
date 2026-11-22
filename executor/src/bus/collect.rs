@@ -250,6 +250,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                         op as u32,
                         &bus_id,
                         data,
+                        data_ext,
                         &mut self.mem_collector,
                         &mut self.mem_align_collector,
                     );

@@ -42,6 +42,9 @@ const int DMA_ROM_ID = 8001;
 const int DMA_PRE_POST_TABLE_ID = 8002;
 const int DMA_BYTE_CMP_TABLE_ID = 8003;
 
+// dot_f8
+const int DOT_F8_DECODE_TABLE_ID = 8300;
+
 // EVM
 const int JUMP_DEST_CONT_ID = 8100;
 const int JUMP_DEST_COMPRESSOR_TABLE_ID = 8101;

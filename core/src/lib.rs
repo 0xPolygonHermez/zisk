@@ -59,6 +59,7 @@ pub mod helpers;
 pub mod inst_context;
 pub mod mem;
 mod operations;
+pub use operations::dot_f8_data_ext_len;
 /// Exported for the parity tests against the DMA memory-input generators.
 pub use operations::{report_memcmp_proof_reads, report_memcpy_proof_ops};
 pub mod ops_core;

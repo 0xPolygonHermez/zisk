@@ -3,8 +3,9 @@
 //
 // Called through the wrappers in dot_f8.asm, which save the registers the generated code keeps
 // values in. The parameter block p holds six qwords: x address, y address, n, formats (bits 0..8
-// format of x, 8..16 format of y), block (0 = n) and out (0 = no block sums). The Rust emulator
-// checks the parameters; this code trusts them.
+// format of x, 8..16 format of y, bit 16 REPEAT_Y: y is one block, read again for each block),
+// block (0 = n) and out (0 = no block sums). The Rust emulator checks the parameters; this code
+// trusts them.
 
 #include <stdint.h>
 #include <emmintrin.h>
@@ -16,6 +17,7 @@
 #define F_E4M3 1
 #define F_E4M3_FNUZ 2
 #define F_E2M1 3
+#define REPEAT_Y (1ULL << 16)
 
 // Decoding tables, in each format's units (2^0, 2^-9, 2^-10 and 2^-1); NaN codes are 0. The E2M1
 // table is indexed by nibble.
@@ -54,27 +56,28 @@ static inline __attribute__((always_inline)) int64_t value(const uint8_t *v, con
     return t[v[i]];
 }
 
-// Sum of x[i]*y[i] for i in [start, start + len), with the bit widths known at compile time
+// Sum of x[start + i]*y[ystart + i] for i in [0, len), with the bit widths known at compile time
 static inline __attribute__((always_inline)) int64_t block_sum(
     const uint8_t *x, const int32_t *tx, int x4,
     const uint8_t *y, const int32_t *ty, int y4,
-    uint64_t start, uint64_t len)
+    uint64_t start, uint64_t ystart, uint64_t len)
 {
     int64_t acc = 0;
-    for (uint64_t i = start; i < start + len; i++)
+    for (uint64_t i = 0; i < len; i++)
     {
-        acc += value(x, tx, x4, i) * value(y, ty, y4, i);
+        acc += value(x, tx, x4, start + i) * value(y, ty, y4, ystart + i);
     }
     return acc;
 }
 
 // int8 x int8 with SSE2: 8 values per step, i32 lanes flushed to i64 every 4096 steps (each lane
 // gains at most 2 * 128 * 128 = 2^15 per step)
-static int64_t block_sum_i8(const uint8_t *x, const uint8_t *y, uint64_t start, uint64_t len)
+static int64_t block_sum_i8(const uint8_t *x, const uint8_t *y, uint64_t start, uint64_t ystart,
+                            uint64_t len)
 {
     int64_t acc = 0;
     uint64_t words = len / 8;
-    const uint8_t *px = x + start, *py = y + start;
+    const uint8_t *px = x + start, *py = y + ystart;
     while (words > 0)
     {
         uint64_t chunk = words < 4096 ? words : 4096;
@@ -110,14 +113,16 @@ int64_t dot_f8_compute(const uint64_t *p)
     const int32_t *tx = dot_f8_tables[fx], *ty = dot_f8_tables[fy];
     int x4 = fx == F_E2M1, y4 = fy == F_E2M1;
     int64_t total = 0;
+    int repeat_y = (p[3] & REPEAT_Y) != 0;
     for (uint64_t b = 0, start = 0; start < n; b++, start += block)
     {
         int64_t s;
-        if (fx == F_I8 && fy == F_I8) s = block_sum_i8(x, y, start, block);
-        else if (!x4 && !y4) s = block_sum(x, tx, 0, y, ty, 0, start, block);
-        else if (x4 && !y4) s = block_sum(x, tx, 1, y, ty, 0, start, block);
-        else if (!x4 && y4) s = block_sum(x, tx, 0, y, ty, 1, start, block);
-        else s = block_sum(x, tx, 1, y, ty, 1, start, block);
+        uint64_t ys = repeat_y ? 0 : start;
+        if (fx == F_I8 && fy == F_I8) s = block_sum_i8(x, y, start, ys, block);
+        else if (!x4 && !y4) s = block_sum(x, tx, 0, y, ty, 0, start, ys, block);
+        else if (x4 && !y4) s = block_sum(x, tx, 1, y, ty, 0, start, ys, block);
+        else if (!x4 && y4) s = block_sum(x, tx, 0, y, ty, 1, start, ys, block);
+        else s = block_sum(x, tx, 1, y, ty, 1, start, ys, block);
         if (out) out[b] = s;
         total += s;
     }
@@ -126,10 +131,12 @@ int64_t dot_f8_compute(const uint64_t *p)
 
 dot_f8_mtrace_ret dot_f8_mtrace_c(const uint64_t *p, uint64_t *trace)
 {
-    // Header: the parameter block and the result, then both vectors as words
+    // Header: the parameter block and the result, then both vectors as words (y one block with
+    // REPEAT_Y)
     uint64_t n = p[2];
+    uint64_t yn = (p[3] & REPEAT_Y) && p[4] < n ? p[4] : n;
     uint64_t xw = (p[3] & 0xff) == F_E2M1 ? n / 16 : n / 8;
-    uint64_t yw = ((p[3] >> 8) & 0xff) == F_E2M1 ? n / 16 : n / 8;
+    uint64_t yw = ((p[3] >> 8) & 0xff) == F_E2M1 ? yn / 16 : yn / 8;
     for (int i = 0; i < 6; i++) trace[i] = p[i];
     const uint64_t *x = (const uint64_t *)p[0], *y = (const uint64_t *)p[1];
     uint64_t *t = trace + 7;
