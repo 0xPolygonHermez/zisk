@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "e3b35b814f4109d578d127a66f099ca04f3829ab50196cc1f7289d2c48868656";
+pub const PILOUT_HASH: &str = "7845c83a13c41ff153aa7638e7c972c41657fad080d90b7afd5c402e2622464f";
 
 //AIRGROUP CONSTANTS
 
@@ -591,7 +591,7 @@ trace_row!(KeccakfProxyFixedRow<F> {
 pub type KeccakfProxyFixed<F> = GenericTrace<KeccakfProxyFixedRow<F>, 524288, 0, 37>;
 
 trace_row!(KeccakfProxyTraceRow<F> {
- in_use:bit, is_replica:bit, replicas:ubit(24), step:ubit(40), addr:ubit(33), addr_hi:bit, state_in:[u32; 50], state_out:[u32; 50], is_xor:bit, blk_addr:ubit(33), blk_addr_hi:bit, block:[u32; 34], perm_in:[u32; 34],
+ in_use:bit, is_replica:bit, replicas:ubit(24), step:ubit(40), addr_w_lo:u16, addr_w_hi:ubit(14), addr_hi:bit, state_in:[u32; 50], state_out:[u32; 50], is_xor:bit, blk_addr_w_lo:u16, blk_addr_w_hi:ubit(14), blk_addr_hi:bit, block:[u32; 34], perm_in:[u32; 34],
 });
 
 pub type KeccakfProxyTrace<R> = GenericTrace<R, 524288, 0, 37>;
@@ -1324,7 +1324,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 37, PackedInfoConst {
         is_packed: true,
         num_packed_words: 87,
-        unpack_info: &[1, 1, 24, 40, 33, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1, 33, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32],
+        unpack_info: &[1, 1, 24, 40, 16, 14, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1, 16, 14, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32],
     }),
     (0, 38, PackedInfoConst {
         is_packed: true,

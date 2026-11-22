@@ -37,18 +37,22 @@ airtemplate KeccakfProxy(const int N = 2**19) {
     const int XOR_LANES = 17; // lanes of a block: the rate of keccak256, 136 bytes
     const int XOR_LIMBS = XOR_LANES * LIMBS_PER_LANE;
     const int MAX_REPLICAS = 2**24 - 1;
+    const int ADDR_W_LO_BITS = 16; // a word address is committed as a 16-bit chunk and the rest
+    const int ADDR_W_HI_BITS = ADDR_W_BITS - ADDR_W_LO_BITS;
 
     col witness bits(1) in_use;                        // 1 when the row holds an invocation
     col witness bits(1) is_replica;                    // 1 when the permutation was proven for an earlier row
     col witness bits(24) replicas;                     // originals only: number of replica rows of this permutation
     col witness bits(40) step;                         // main step of the invocation
-    col witness bits(ADDR_BITS) addr;                  // address of the state (read, then overwritten)
+    col witness bits(ADDR_W_LO_BITS) addr_w_lo;        // word address of the state (read, then
+    col witness bits(ADDR_W_HI_BITS) addr_w_hi;        // overwritten), as two chunks
     col witness bits(1) addr_hi;                       // high limb (bit 32) of addr
     col witness bits(32) state_in[LIMBS_PER_STATE];    // lanes read from memory, as 32-bit limbs
     col witness bits(32) state_out[LIMBS_PER_STATE];   // output lanes, as 32-bit limbs
 
     col witness bits(1) is_xor;                        // 1 when the row is an OP_KECCAK_XOR
-    col witness bits(ADDR_BITS) blk_addr;              // address of the block, 0 without the XOR
+    col witness bits(ADDR_W_LO_BITS) blk_addr_w_lo;    // word address of the block, as two chunks:
+    col witness bits(ADDR_W_HI_BITS) blk_addr_w_hi;    // 0 without the XOR
     col witness bits(1) blk_addr_hi;                   // high limb (bit 32) of blk_addr
     col witness bits(32) block[XOR_LIMBS];          // lanes of the block, as 32-bit limbs
     col witness bits(32) perm_in[XOR_LIMBS];        // first lanes of the permutation input
@@ -56,6 +60,20 @@ airtemplate KeccakfProxy(const int N = 2**19) {
     in_use * (1 - in_use) === 0;
     is_replica * (1 - is_replica) === 0;
     is_replica * (1 - in_use) === 0;
+
+    // Both addresses must be 8-byte aligned, as the 25 + 17 accesses are whole words. The machine
+    // commits the word address, in two range-checked chunks, and every address it emits is that
+    // word address times 8: an unaligned operand has no word address to match it on the operation
+    // bus, so such a call cannot be proven. Without the range checks the word address could be any
+    // field element, i.e. address / 8 in the field, and the accesses would be unaligned ones that
+    // MemAlign is able to prove. The word address is below 2^ADDR_W_BITS, so the address is below
+    // 2^ADDR_BITS.
+    range_check(expression: addr_w_lo, min: 0, max: 2**ADDR_W_LO_BITS - 1, sel: in_use);
+    range_check(expression: addr_w_hi, min: 0, max: 2**ADDR_W_HI_BITS - 1, sel: in_use);
+    range_check(expression: blk_addr_w_lo, min: 0, max: 2**ADDR_W_LO_BITS - 1, sel: is_xor);
+    range_check(expression: blk_addr_w_hi, min: 0, max: 2**ADDR_W_HI_BITS - 1, sel: is_xor);
+    const expr addr = WORD_SIZE * (addr_w_lo + 2**ADDR_W_LO_BITS * addr_w_hi);
+    const expr blk_addr = WORD_SIZE * (blk_addr_w_lo + 2**ADDR_W_LO_BITS * blk_addr_w_hi);
 
     // The operation bus carries the address as two 32-bit limbs and this machine is the one that
     // joins them into a 33-bit address, so it is the one that checks the high limb is a bit: the

@@ -42,6 +42,18 @@ fn state_limbs(state: &[u64; LANES]) -> [u32; LIMBS_PER_STATE] {
     limbs
 }
 
+/// Bits of the low chunk of a word address, as `ADDR_W_LO_BITS` of the air.
+const ADDR_W_LO_BITS: u32 = 16;
+
+/// Splits an address into the two chunks of its word address, as the air commits it. The air
+/// only proves aligned addresses, so an unaligned one is a bug of whoever produced the input.
+#[inline(always)]
+fn word_addr_chunks(addr: u64) -> (u16, u16) {
+    debug_assert_eq!(addr & 7, 0, "KeccakfProxy: unaligned address 0x{addr:x}");
+    let addr_w = addr >> 3;
+    (addr_w as u16, (addr_w >> ADDR_W_LO_BITS) as u16)
+}
+
 impl<F: PrimeField64> KeccakfProxySM<F> {
     /// Creates a new KeccakfProxy State Machine instance.
     pub fn new() -> Arc<Self> {
@@ -67,7 +79,9 @@ impl<F: PrimeField64> KeccakfProxySM<F> {
         row.set_is_replica(is_replica);
         row.set_replicas(if is_replica { 0 } else { replicas });
         row.set_step(input.step_main);
-        row.set_addr(input.addr_main);
+        let (addr_w_lo, addr_w_hi) = word_addr_chunks(input.addr_main);
+        row.set_addr_w_lo(addr_w_lo);
+        row.set_addr_w_hi(addr_w_hi);
         row.set_addr_hi(addr_hi(input.addr_main) == 1);
         row.set_all_state_in(&state_limbs(&input.state));
         row.set_all_state_out(&state_limbs(&state_out));
@@ -79,7 +93,9 @@ impl<F: PrimeField64> KeccakfProxySM<F> {
         let perm_in_limbs: [u32; XOR_LIMBS] =
             core::array::from_fn(|i| (perm_in[i / 2] >> (32 * (i % 2))) as u32);
         row.set_is_xor(input.is_xor);
-        row.set_blk_addr(input.block_addr);
+        let (blk_addr_w_lo, blk_addr_w_hi) = word_addr_chunks(input.block_addr);
+        row.set_blk_addr_w_lo(blk_addr_w_lo);
+        row.set_blk_addr_w_hi(blk_addr_w_hi);
         row.set_blk_addr_hi(addr_hi(input.block_addr) == 1);
         row.set_all_block(&block_limbs);
         row.set_all_perm_in(&perm_in_limbs);
@@ -143,6 +159,16 @@ mod tests {
     use zisk_core::KECCAKF_DEDUP_REPLICA_FLAG;
     use zisk_pil::KeccakfProxyTraceRow;
 
+    /// Address of the state a row emits: 8 times the word address it commits.
+    fn addr(row: &KeccakfProxyTraceRow<Goldilocks>) -> u64 {
+        8 * (row.get_addr_w_lo() as u64 + ((row.get_addr_w_hi() as u64) << ADDR_W_LO_BITS))
+    }
+
+    /// Address of the block a row emits: 8 times the word address it commits.
+    fn blk_addr(row: &KeccakfProxyTraceRow<Goldilocks>) -> u64 {
+        8 * (row.get_blk_addr_w_lo() as u64 + ((row.get_blk_addr_w_hi() as u64) << ADDR_W_LO_BITS))
+    }
+
     #[test]
     fn rows_carry_the_permutation_and_only_originals_the_replica_count() {
         let state: [u64; LANES] =
@@ -157,18 +183,18 @@ mod tests {
         let mut row = KeccakfProxyTraceRow::<Goldilocks>::default();
         KeccakfProxySM::<Goldilocks>::process_input(&mut row, &original, 5);
         assert!(row.get_in_use() && !row.get_is_replica() && row.get_addr_hi());
-        assert_eq!((row.get_replicas(), row.get_step(), row.get_addr()), (5, 77, 0x1_2345_6780));
+        assert_eq!((row.get_replicas(), row.get_step(), addr(&row)), (5, 77, 0x1_2345_6780));
         assert_eq!(row.get_all_state_in(), state_limbs(&state));
         assert_eq!(row.get_all_state_out(), state_limbs(&output));
 
         let mut row = KeccakfProxyTraceRow::<Goldilocks>::default();
         KeccakfProxySM::<Goldilocks>::process_input(&mut row, &replica, 5);
         assert!(row.get_in_use() && row.get_is_replica() && !row.get_addr_hi());
-        assert_eq!((row.get_replicas(), row.get_step(), row.get_addr()), (0, 99, 0xc000_1000));
+        assert_eq!((row.get_replicas(), row.get_step(), addr(&row)), (0, 99, 0xc000_1000));
         assert_eq!(row.get_all_state_out(), state_limbs(&output));
         assert!(!row.get_is_xor());
         assert_eq!(row.get_all_perm_in()[..], state_limbs(&state)[..XOR_LIMBS]);
-        assert_eq!((row.get_blk_addr(), row.get_all_block()), (0, [0; XOR_LIMBS]));
+        assert_eq!((blk_addr(&row), row.get_all_block()), (0, [0; XOR_LIMBS]));
     }
 
     #[test]
@@ -191,7 +217,7 @@ mod tests {
         let mut row = KeccakfProxyTraceRow::<Goldilocks>::default();
         KeccakfProxySM::<Goldilocks>::process_input(&mut row, &input, 0);
         assert!(row.get_is_xor() && row.get_blk_addr_hi() && !row.get_addr_hi());
-        assert_eq!((row.get_addr(), row.get_blk_addr()), (0xc100_0000, 0x1_0000_0008));
+        assert_eq!((addr(&row), blk_addr(&row)), (0xc100_0000, 0x1_0000_0008));
         // memory still sees the state before the XOR; the permutation runs on the XORed one
         assert_eq!(row.get_all_state_in(), state_limbs(&state));
         assert_eq!(row.get_all_perm_in()[..], state_limbs(&xored)[..XOR_LIMBS]);
