@@ -36,13 +36,10 @@ bincode = { workspace = true }
 paste = { workspace = true }
 crossbeam-queue = "0.3"
 tikv-jemallocator = { workspace = true, optional = true }
-
-[dev-dependencies]
-# Reads jemalloc's options in the allocator test.
-tikv-jemalloc-sys = "0.6"
+tikv-jemalloc-sys = { workspace = true, optional = true }
 
 [features]
 default = ["jemalloc"]
 # Use jemalloc instead of the system allocator; see `src/allocator.rs`.
-jemalloc = ["dep:tikv-jemallocator"]
+jemalloc = ["dep:tikv-jemallocator", "dep:tikv-jemalloc-sys"]
 stats = []

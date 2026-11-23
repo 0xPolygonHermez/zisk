@@ -508,10 +508,21 @@ impl<F: PrimeField64> WitnessPhase<F> {
     ) -> ExecutorResult<Option<collect_budget::WavePlan>> {
         let node_processes = pctx.mpi_ctx.node_n_processes.max(1) as usize;
         let host_share = || host_memory::host_memory_share(node_processes, None);
-        let Some(budget) = collect_budget::collect_budget(reserve, host_share) else {
+        let Some(mut budget) = collect_budget::collect_budget(reserve, host_share) else {
             return Ok(None);
         };
         let total: u64 = instances.values().map(|i| i.collector_capacity_bytes()).sum();
+        if total > budget && zisk_common::allocator::release_free_memory() {
+            // The allocator keeps the pages of the buffers freed so far resident, to serve its next
+            // allocations, and the OS counts them as used: hand them back and measure again.
+            let before = budget;
+            budget = collect_budget::collect_budget(reserve, host_share).unwrap_or(before);
+            tracing::info!(
+                "{label}: released the allocator's free pages: budget {:.1} -> {:.1} GiB",
+                collect_budget::gib(before),
+                collect_budget::gib(budget)
+            );
+        }
         if total <= budget {
             tracing::info!(
                 "{label}: {} instances reserve {:.1} GiB of a {:.1} GiB budget: one pass",

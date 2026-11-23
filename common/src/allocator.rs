@@ -54,6 +54,33 @@ pub struct MallocConf(*const std::os::raw::c_char);
 #[cfg(feature = "jemalloc")]
 unsafe impl Sync for MallocConf {}
 
+/// Hands the pages the allocator holds free back to the OS now, rather than on its decay timer,
+/// so that the memory the OS reports available counts them. Returns whether it could.
+///
+/// jemalloc keeps the pages of freed buffers resident for a while, to serve the next allocations
+/// of the same arena. A caller sizing work by the memory available sees them as used until then.
+pub fn release_free_memory() -> bool {
+    #[cfg(feature = "jemalloc")]
+    {
+        // `arena.<MALLCTL_ARENAS_ALL>.purge`, with MALLCTL_ARENAS_ALL = 4096: every arena.
+        // SAFETY: the command takes no input and writes no output.
+        let rc = unsafe {
+            tikv_jemalloc_sys::mallctl(
+                c"arena.4096.purge".as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                0,
+            )
+        };
+        rc == 0
+    }
+    #[cfg(not(feature = "jemalloc"))]
+    {
+        false
+    }
+}
+
 #[cfg(all(test, feature = "jemalloc"))]
 mod tests {
     /// jemalloc reads [`super::MALLOC_CONF`]: the option it sets is on.

@@ -97,6 +97,8 @@ opt-level = 3
 # buffers in per-thread arenas that never shrink; jemalloc bounds the arena
 # count and purges dirty pages back to the OS on a decay timer.
 tikv-jemallocator = "0.6"
+# The allocator's control interface, to hand freed pages back to the OS on demand.
+tikv-jemalloc-sys = "0.6"
 # Internal crates
 zisk-common = { path = "common", version = "1.5.0-alpha" }
 zisk-stream = { path = "stream", version = "1.5.0-alpha" }
