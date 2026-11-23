@@ -277,8 +277,9 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         merge_library(&mut rom, library)?;
     }
 
-    // ROM post-pass optimizations (jump threading, constant and address folding), once the whole
-    // program (guest, ZisK library, float library) is in the ROM. See rom_optimizer.rs.
+    // ROM post-pass optimizations (simplification, constant indirect jumps, constant and address
+    // folding, jump threading), once the whole program (guest, ZisK library, float library) is in
+    // the ROM. See rom_optimizer.rs.
     optimize_rom(&mut rom.insts, RomOptPasses::default());
 
     // Preprocess the ROM
