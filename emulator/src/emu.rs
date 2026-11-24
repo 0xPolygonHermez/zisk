@@ -22,8 +22,8 @@ use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{
     EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, FREG_F0, FREG_INST,
     FREG_RA, FREG_X0, OUTPUT_ADDR, RAM_ADDR, REGS_IN_MAIN_TO, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
-    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
-    STORE_REG, SYS_ADDR,
+    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    SYS_ADDR,
 };
 
 const LOAD_SYMBOLS: [&str; 3] = ["_heap_bottom", "_heap_top", "ZISK_BUMP_HEAP_POS"];
@@ -202,7 +202,6 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
@@ -263,7 +262,6 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
@@ -331,7 +329,6 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
@@ -414,7 +411,6 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
@@ -480,7 +476,6 @@ impl<'a> Emu<'a> {
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
-            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(

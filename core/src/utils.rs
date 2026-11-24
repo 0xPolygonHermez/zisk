@@ -1,6 +1,5 @@
 use crate::{
-    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
-    STORE_REG,
+    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // #[cfg(feature = "sp")]
@@ -26,7 +25,6 @@ pub fn source_to_str(source: u64) -> &'static str {
         SRC_REG => "SRC_REG",
         SRC_MEM => "SRC_MEM",
         SRC_IMM => "SRC_IMM",
-        SRC_STEP => "SRC_STEP",
         // #[cfg(feature = "sp")]
         // SRC_SP => "SRC_SP",
         SRC_IND => "SRC_IND",

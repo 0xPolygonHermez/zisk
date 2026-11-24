@@ -215,7 +215,6 @@ The possible formats of `a_source` are:
 - `rN`, meaning that register `a` will be loaded with the current value of register `rN`.  The ZiskInst instance field `a_src` is set to SRC_REG, and the field `a_offset_imm0` is set to N.
 - `[N]`, meaning that register `a` will be loaded with the current value of the memory at address N, plus the SP register if specified.  The ZiskInst instance field `a_src` is set to SRC_MEM, and the field `a_offset_imm0` is set to N.
 - `N`, meaning that register `a` will be loaded with the value N, which is a u64.  The ZiskInst instance field `a_src` is set to SRC_IMM, the field `a_offset_imm0` is set to the lower 32 bits of N, and the field `a_use_sp_imm1` is set to the higher 32 bits of N.
-- `step`, meaning that register `a` will be loaded with the current step number, i.e. the number of instructions executed up to this point. step=0 means the first instruction to execute.  The ZiskInst instance field `a_src` is set to SRC_STEP.
 
 The possible formats of `b_source` are:
 - `c`, meaning that register `b` will be loaded with the current value of register `c`, i.e. with the result of the previously executed instruction.  The ZiskInst instance field `b_src` is set to SRC_C.
@@ -225,7 +224,6 @@ The possible formats of `b_source` are:
 - `W[a+N]`, meaning that register `b` will be loaded with the first W bytes of current value of the memory at address equals the value of `a` register plus the value of N, which can be a negative offset.  The ZiskInst instance field `b_src` is set to SRC_IND, and the ZiskInst instance field `b_offset_imm0` is set to the address offset, i.e. to N including sign, and the field `ind_width` is set to W, which can be 1, 2, 4 or 8.
 
 Notes on register operands:
-- Only `a_source` can use `step`; `b_source` cannot (there is no SRC_STEP for register `b`).
 - The register `r0` is encoded as the immediate value 0 (`SRC_IMM`), not as `SRC_REG` (see Register format).
 
 ## Storage field
