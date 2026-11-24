@@ -1,6 +1,10 @@
 //! ROM post-pass optimizer: rewrites of the transpiled ZisK ROM that only the ZisK instruction set
 //! can express, applied once the whole program (guest, ZisK library, float library) is in the ROM.
 //!
+//! - **Simplification** (`si`): an `add`, `or` or `xor` with an immediate 0 operand, or a `sub`
+//!   of an immediate 0, is a copy of its other operand, and becomes the cheaper `copyb`. It
+//!   catches both what the RISC-V code does with x0 (`mv` is `addi rd, rs, 0`, `li` is
+//!   `addi rd, x0, imm`) and the zeros constant folding puts in place of a register.
 //! - **Jump threading** (`jt`): a jump or branch whose target is an unconditional jump goes
 //!   straight to that jump's destination. Every ZisK instruction carries its own jump offsets, so a
 //!   RISC-V `j` is absorbed by the instruction that falls through or branches to it.
@@ -8,6 +12,10 @@
 //!   rX dies, becomes that instruction with the immediate in place of rX.
 //! - **Address folding** (`af`): `add rX, base, k` followed by a load or store through rX, where rX
 //!   dies, becomes the access at `[base + off + k]`.
+//! - **Constant indirect jump** (`ij`): `copyb imm -> rX` followed by a `jalr` through rX (the
+//!   `auipc` + `jalr` pair of a call or a tail jump) becomes one instruction that writes rX (the
+//!   constant, or the return address when the `jalr` links into rX) and jumps straight to the
+//!   target, which is known at transpile time.
 //! - **Load + indirect jump fusion** (`lj`, opt-in): `ld t, k(base); jr t` becomes one load that
 //!   writes t and jumps to it. It drops `jalr`'s `& ~1`, so it is exact only when every loaded
 //!   target is even.
@@ -17,7 +25,21 @@
 //! X's single successor is Y and the register X writes is dead after Y (or Y overwrites it), which
 //! a global backward liveness analysis over the ROM decides. Every indirect jump, and every jump to
 //! an address outside the ROM, makes all registers live, so calls, returns and jump tables are
-//! safe.
+//! safe. The constant indirect jump fold needs no liveness: its merged instruction leaves rX with
+//! the value it would have after Y.
+//!
+//! # Passes that replaced transpiler special cases
+//!
+//! `si` and `ij` (with `cf`) took over rewrites the RISC-V transpiler used to make while lowering
+//! one instruction at a time: `auipc` + `addi` and `auipc` + `jalr` fused by looking at the next
+//! instruction, and `add`/`or`/`addi`/`xori`/`ori` with x0 or an immediate 0 lowered as a copyb.
+//! Here they also apply to the ZisK library, to the float library, and to the wasm transpiler's
+//! output, and after other folds (a zero that `cf` puts in place of a register, a call that `ij`
+//! turns into a jump to a function that only returns). On the RISC-V test guests
+//! (`test-artifacts/programs`) the default passes give the same ROM the transpiler and the
+//! previous passes gave, plus those extra sites; a wasm guest that runs the soft-float library
+//! takes 15.6% fewer steps (12.1% less variable cost), as the wasm path now runs the passes too.
+//! The table below predates the move, so its "without any pass" ROM already had those rewrites.
 //!
 //! # Measured effect
 //!
@@ -65,7 +87,9 @@ const ALL_REGS: u64 = (1u64 << 40) - 2;
 /// Which passes to run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RomOptPasses {
+    pub simplification: bool,
     pub jump_threading: bool,
+    pub indirect_jump_folding: bool,
     pub constant_folding: bool,
     pub address_folding: bool,
     pub load_jump_fusion: bool,
@@ -75,7 +99,9 @@ impl Default for RomOptPasses {
     /// The exact passes; load + indirect jump fusion is opt-in.
     fn default() -> Self {
         Self {
+            simplification: true,
             jump_threading: true,
+            indirect_jump_folding: true,
             constant_folding: true,
             address_folding: true,
             load_jump_fusion: false,
@@ -85,19 +111,23 @@ impl Default for RomOptPasses {
 
 impl RomOptPasses {
     pub const NONE: Self = Self {
+        simplification: false,
         jump_threading: false,
+        indirect_jump_folding: false,
         constant_folding: false,
         address_folding: false,
         load_jump_fusion: false,
     };
 
-    /// Parses a comma-separated list of `jt`, `cf`, `af`, `lj`, or `none`.
+    /// Parses a comma-separated list of `si`, `jt`, `ij`, `cf`, `af`, `lj`, or `none`.
     pub fn parse(list: &str) -> Self {
         // A pass is on when its name is one of the list's items; `none` (or anything else) matches
         // no pass, so it turns them all off.
         let has = |p: &str| list.split(',').any(|s| s.trim() == p);
         Self {
+            simplification: has("si"),
             jump_threading: has("jt"),
+            indirect_jump_folding: has("ij"),
             constant_folding: has("cf"),
             address_folding: has("af"),
             load_jump_fusion: has("lj"),
@@ -108,7 +138,9 @@ impl RomOptPasses {
 /// How many rewrites each pass made.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RomOptStats {
+    pub simplification: usize,
     pub jump_threading: usize,
+    pub indirect_jump_folding: usize,
     pub constant_folding: usize,
     /// Constant folds whose operands were then both constants, evaluated at transpile time.
     pub constant_evaluated: usize,
@@ -133,6 +165,16 @@ pub fn optimize_rom(
         // Load + indirect jump fusion, only when asked for: it is not exact (see the module docs).
         if passes.load_jump_fusion {
             pass_load_jump(insts, &mut st);
+        }
+        // Simplification first: it turns what the transpiler emits for a RISC-V `mv` or `li` into
+        // the copyb the folds below start from.
+        if passes.simplification {
+            pass_simplify(insts, &mut st);
+        }
+        // Indirect jumps to a constant become static first: that gives liveness and jump threading
+        // static successors where they would otherwise have to assume the worst.
+        if passes.indirect_jump_folding {
+            pass_indirect_jump(insts, &mut st);
         }
         // Constant and address folding share one pass, which computes liveness once for both.
         if passes.constant_folding || passes.address_folding {
@@ -555,6 +597,151 @@ fn pass_fold(insts: &mut BTreeMap<u64, ZiskInstBuilder>, cf: bool, af: bool, st:
     }
 }
 
+/// Simplification: an operation that is a copy of one of its operands becomes a copyb of it.
+fn pass_simplify(insts: &mut BTreeMap<u64, ZiskInstBuilder>, st: &mut RomOptStats) {
+    for zib in insts.values_mut() {
+        let i = &zib.i;
+        // Only a single step with a single successor, so the flag the operation leaves (which
+        // copyb does not reproduce) decides nothing; and neither operand may be a memory address
+        // base (an indirect load in b, or an indirect store, both based on a).
+        if i.next_internal_inst.is_some()
+            || !is_plain(i)
+            || i.jmp_offset1 != i.jmp_offset2
+            || i.b_src == SRC_IND
+            || i.store == STORE_IND
+        {
+            continue;
+        }
+        let a_is_zero = i.a_src == SRC_IMM && imm_a(i) == 0;
+        let b_is_zero = i.b_src == SRC_IMM && imm_b(i) == 0;
+        // 0 + b, 0 | b, 0 ^ b: a copy of b, which stays where it is.
+        let copy_of_b = a_is_zero && matches!(i.op, ZiskOp::ADD | ZiskOp::OR | ZiskOp::XOR);
+        // a + 0, a - 0, a | 0, a ^ 0: a copy of a, which moves to b (copyb copies b). Only a
+        // register or an immediate, the sources a and b share.
+        let copy_of_a = !copy_of_b
+            && b_is_zero
+            && (i.a_src == SRC_REG || i.a_src == SRC_IMM)
+            && matches!(i.op, ZiskOp::ADD | ZiskOp::SUB | ZiskOp::OR | ZiskOp::XOR);
+        if !copy_of_b && !copy_of_a {
+            continue;
+        }
+        let mut f = i.clone();
+        if copy_of_a {
+            if i.a_src == SRC_REG {
+                f.b_src = SRC_REG;
+                f.b_offset_imm0 = i.a_offset_imm0;
+                f.b_use_sp_imm1 = 0;
+            } else {
+                set_imm_b(&mut f, imm_a(i));
+            }
+        }
+        // copyb ignores a; it is left as the immediate 0. The builder resets the op's handler
+        // and properties.
+        set_imm_a(&mut f, 0);
+        let mut b = ZiskInstBuilder { i: f };
+        b.op("copyb").unwrap();
+        zib.i = b.i;
+        st.simplification += 1;
+    }
+}
+
+/// The `and(!1, rX)` with `set_pc` that a `jalr` with an even immediate is lowered to, taking its
+/// target from rX: the `jr rX` shape (no link), or a `jalr rX, rX` (the link goes to rX).
+/// Returns whether it links.
+fn jalr_through(y: &ZiskInst, rx: u64) -> Option<bool> {
+    // One step, an indirect jump on the masked register, and nothing else
+    let is_jalr = y.set_pc
+        && y.next_internal_inst.is_none()
+        && !y.end
+        && !y.is_precompiled
+        && !y.write_log
+        && y.op == ZiskOp::AND
+        && y.a_src == SRC_IMM
+        && imm_a(y) == 0xffff_ffff_ffff_fffe
+        && y.b_src == SRC_REG
+        && y.b_offset_imm0 == rx;
+    if !is_jalr {
+        return None;
+    }
+    // No link, or a link into rX itself (the call that overwrites its own target register)
+    match (y.store, y.store_pc) {
+        (STORE_NONE, false) => Some(false),
+        (STORE_REG, true) if y.store_offset as u64 == rx => Some(true),
+        _ => None,
+    }
+}
+
+/// Constant indirect jump: `copyb imm -> rX` whose only successor is a `jalr` through rX (the
+/// `auipc` + `jalr` pair) becomes one instruction at X that writes rX and jumps straight to the
+/// target. Exact: rX gets the value it would have after the `jalr` (the constant, or the return
+/// address when the `jalr` links into rX), so no liveness is needed.
+fn pass_indirect_jump(insts: &mut BTreeMap<u64, ZiskInstBuilder>, st: &mut RomOptStats) {
+    let addrs: Vec<u64> = insts.keys().copied().collect();
+    let mut merged = vec![];
+    // Try every instruction as X.
+    for a in addrs {
+        let x = &insts[&a].i;
+        // X must be a `copyb imm -> rX` at an even address, the last step of its instruction, plain
+        // and with a single successor.
+        if a & 1 != 0
+            || x.next_internal_inst.is_some()
+            || !is_plain(x)
+            || x.jmp_offset1 != x.jmp_offset2
+            || x.op != ZiskOp::COPYB
+            || x.b_src != SRC_IMM
+            || x.store != STORE_REG
+        {
+            continue;
+        }
+        let rx = x.store_offset as u64;
+        // Y is X's only successor, which must be a ROM instruction at an even address and a
+        // `jalr` through rX.
+        let d = x.jmp_offset2;
+        let ya = (a as i64 + d) as u64;
+        if ya & 1 != 0 {
+            continue;
+        }
+        let Some(y) = insts.get(&ya).map(|b| &b.i) else { continue };
+        let Some(links) = jalr_through(y, rx) else { continue };
+        // The target, known now: c = rX & !1, then the jump to c + j1.
+        let target = ((imm_b(x) & !1) as i64).wrapping_add(y.jmp_offset1) as u64;
+        // It must be a ROM instruction at an even address. The merged instruction leaves a c of
+        // its own (rX's new value) where Y left the masked target, so the target must not read c.
+        match insts.get(&target) {
+            Some(t) if target & 1 == 0 && t.i.a_src != SRC_C && t.i.b_src != SRC_C => {}
+            _ => continue,
+        }
+        // The merged instruction: X, now writing what rX holds after Y (the return address,
+        // Y's pc + j2, when Y links into rX), and jumping to the target from X's address.
+        let mut f = x.clone();
+        if links {
+            set_imm_b(&mut f, (ya as i64 + y.jmp_offset2) as u64);
+        }
+        let off = target as i64 - a as i64;
+        f.jmp_offset1 = off;
+        f.jmp_offset2 = off;
+        // The call stack reads which registers a jump goes through and links into, so the merged
+        // instruction takes Y's. X has its own only when it is itself a merged call (from a
+        // previous round), and then a Y that does not link is the callee's return (a call to a
+        // function that only returns): the call and the return cancel, and the merged instruction
+        // is neither, as no frame is pushed or popped any more.
+        if x.meta_rd.is_some() && !links {
+            f.meta_rs1 = None;
+            f.meta_rd = None;
+        } else {
+            f.meta_rs1 = y.meta_rs1;
+            f.meta_rd = y.meta_rd;
+        }
+        f.verbose = format!("{} + {}", x.verbose, y.verbose);
+        merged.push((a, f));
+    }
+    // Replace each X by its merged instruction; the jalr keeps its own place.
+    for (a, f) in merged {
+        insts.get_mut(&a).unwrap().i = f;
+        st.indirect_jump_folding += 1;
+    }
+}
+
 /// Load + indirect jump: `ld t, k(base); jr t` (jalr with rd = x0) becomes one instruction at the
 /// load that writes t and jumps to it. Drops jalr's `& ~1`.
 fn pass_load_jump(insts: &mut BTreeMap<u64, ZiskInstBuilder>, st: &mut RomOptStats) {
@@ -726,6 +913,149 @@ mod tests {
         let mut insts = BTreeMap::from([(100, inst(100, "copyb")), (104, log), (200, end(200))]);
         pass_jump_threading(&mut insts, &mut st);
         assert_eq!(st.jump_threading, 0);
+    }
+
+    /// An add, or, xor with an immediate 0 operand, or a sub of 0, becomes a copyb of the other
+    /// operand; anything else, or one whose flag decides a branch, stays.
+    #[test]
+    fn simplification_turns_copies_into_copyb() {
+        // (op, a, b, simplified, copyb's b afterwards: register or immediate)
+        let reg = |r| (SRC_REG, r);
+        let imm = |v| (SRC_IMM, v);
+        for (op, a, b, simplified, copied) in [
+            ("add", imm(0), reg(4), true, reg(4)),
+            ("or", imm(0), imm(9), true, imm(9)),
+            ("xor", imm(0), reg(4), true, reg(4)),
+            ("add", reg(3), imm(0), true, reg(3)),
+            ("sub", reg(3), imm(0), true, reg(3)),
+            ("or", imm(7), imm(0), true, imm(7)),
+            ("sub", imm(0), reg(4), false, reg(4)), // 0 - b is not b
+            ("and", imm(0), reg(4), false, reg(4)), // 0 & b is 0
+            ("add", imm(1), reg(4), false, reg(4)),
+        ] {
+            let mut x = inst(100, op);
+            let kind = |src| if src == SRC_REG { "reg" } else { "imm" };
+            x.src_a(kind(a.0), a.1, false);
+            x.src_b(kind(b.0), b.1, false);
+            x.store("reg", 6, false, false);
+            let mut insts = BTreeMap::from([(100, x)]);
+            let mut st = RomOptStats::default();
+            pass_simplify(&mut insts, &mut st);
+            assert_eq!(st.simplification, usize::from(simplified), "{op} {a:?} {b:?}");
+            let i = &insts[&100].i;
+            if simplified {
+                assert_eq!(i.op, ZiskOp::COPYB, "{op} {a:?} {b:?}");
+                assert_eq!((i.a_src, imm_a(i)), (SRC_IMM, 0), "{op} {a:?} {b:?}");
+                let got = if i.b_src == SRC_REG { reg(i.b_offset_imm0) } else { imm(imm_b(i)) };
+                assert_eq!(got, copied, "{op} {a:?} {b:?}");
+                assert_eq!((i.store, i.store_offset), (STORE_REG, 6), "{op} {a:?} {b:?}");
+            } else {
+                assert_ne!(i.op, ZiskOp::COPYB, "{op} {a:?} {b:?}");
+            }
+        }
+        // A branch on the flag of 0 + r4 keeps its operation.
+        let mut br = inst(100, "add");
+        br.src_b("reg", 4, false);
+        br.j(8, 4);
+        let mut insts = BTreeMap::from([(100, br)]);
+        let mut st = RomOptStats::default();
+        pass_simplify(&mut insts, &mut st);
+        assert_eq!((st.simplification, insts[&100].i.op), (0, ZiskOp::ADD));
+    }
+
+    /// `copyb v -> r5` (the auipc) followed by the lowering of `jalr rd, r5, imm`, at 104.
+    fn auipc_jalr(v: u64, rd: u64, imm: i64) -> BTreeMap<u64, ZiskInstBuilder> {
+        let mut x = inst(100, "copyb");
+        x.src_b("imm", v, false);
+        x.store("reg", 5, false, false);
+        let mut y = inst(104, "and");
+        y.src_a("imm", 0xffff_ffff_ffff_fffe, false);
+        y.src_b("reg", 5, false);
+        y.set_pc();
+        y.store_pc("reg", rd as i64, false);
+        y.j(imm, 4);
+        y.set_meta_rs1_rd(5, rd as u8);
+        BTreeMap::from([(100, x), (104, y)])
+    }
+
+    /// `auipc r5; jr imm(r5)` becomes one copyb that keeps r5's value and jumps to the target, and
+    /// `auipc r5; jalr r5, imm(r5)` one that writes the return address to r5 instead; the jalr
+    /// stays in place for any other predecessor.
+    #[test]
+    fn indirect_jump_to_a_constant_becomes_static() {
+        // (link register, value auipc wrote, jalr immediate, target, r5 afterwards)
+        for (rd, v, imm, target, r5) in [(0, 201, 0, 200, 201), (5, 200, 8, 208, 108)] {
+            let mut insts = auipc_jalr(v, rd, imm);
+            insts.insert(200, end(200));
+            insts.insert(208, end(208));
+            let jalr = insts[&104].i.to_text();
+            let mut st = RomOptStats::default();
+            pass_indirect_jump(&mut insts, &mut st);
+            assert_eq!(st.indirect_jump_folding, 1, "rd={rd}");
+            let x = &insts[&100].i;
+            assert_eq!((x.op, x.b_src, imm_b(x)), (ZiskOp::COPYB, SRC_IMM, r5), "rd={rd}");
+            assert_eq!((x.store, x.store_offset, x.store_pc), (STORE_REG, 5, false), "rd={rd}");
+            assert!(!x.set_pc, "rd={rd}: a static jump");
+            let off = target as i64 - 100;
+            assert_eq!((x.jmp_offset1, x.jmp_offset2), (off, off), "rd={rd}");
+            assert_eq!((x.meta_rs1, x.meta_rd), (Some(5), Some(rd as u8)), "rd={rd}");
+            assert_eq!(insts[&104].i.to_text(), jalr, "rd={rd}: the jalr stays");
+        }
+    }
+
+    /// A call to a function that only returns: the merged call is folded again with the return
+    /// it now jumps to, so it jumps straight back to the return address, and carries no call stack
+    /// metadata, as it is no longer a call nor a return.
+    #[test]
+    fn indirect_jump_folds_a_call_to_an_empty_function() {
+        // call: auipc r5 = 200; jalr r5, 0(r5) -> 200, returning to 108
+        let mut insts = auipc_jalr(200, 5, 0);
+        // the callee, at 200: jr r5
+        let mut ret = inst(200, "and");
+        ret.src_a("imm", 0xffff_ffff_ffff_fffe, false);
+        ret.src_b("reg", 5, false);
+        ret.set_pc();
+        ret.j(0, 4);
+        ret.set_meta_rs1_rd(5, 0);
+        insts.insert(200, ret);
+        insts.insert(108, end(108));
+        let st = optimize_rom(&mut insts, RomOptPasses::default());
+        assert_eq!(st.indirect_jump_folding, 2);
+        let x = &insts[&100].i;
+        assert_eq!((x.op, imm_b(x), x.store_offset), (ZiskOp::COPYB, 108, 5));
+        assert_eq!((x.jmp_offset1, x.jmp_offset2), (8, 8));
+        assert_eq!((x.meta_rs1, x.meta_rd), (None, None));
+    }
+
+    /// The fold needs the target to be a ROM instruction that does not read c, and the jalr to link
+    /// nowhere or into the register it jumps through.
+    #[test]
+    fn indirect_jump_keeps_what_it_must() {
+        let mut st = RomOptStats::default();
+        // Target outside the ROM.
+        let mut insts = auipc_jalr(200, 0, 0);
+        pass_indirect_jump(&mut insts, &mut st);
+        // Target reads c.
+        let mut insts2 = auipc_jalr(200, 0, 0);
+        let mut reads_c = end(200);
+        reads_c.i.b_src = SRC_C;
+        insts2.insert(200, reads_c);
+        pass_indirect_jump(&mut insts2, &mut st);
+        // The jalr links into another register: one instruction cannot write both.
+        let mut insts3 = auipc_jalr(200, 1, 0);
+        insts3.insert(200, end(200));
+        pass_indirect_jump(&mut insts3, &mut st);
+        // X branches: the jalr is not its only successor.
+        let mut insts4 = auipc_jalr(200, 0, 0);
+        insts4.insert(200, end(200));
+        insts4.get_mut(&100).unwrap().j(4, 100);
+        pass_indirect_jump(&mut insts4, &mut st);
+        assert_eq!(st.indirect_jump_folding, 0);
+        // Every auipc is left as it was
+        for (i, j2) in [(&insts, 4), (&insts2, 4), (&insts3, 4), (&insts4, 100)] {
+            let x = &i[&100].i;
+            assert_eq!((x.jmp_offset1, x.jmp_offset2, imm_b(x)), (4, j2, 200));
+        }
     }
 
     /// `li r5, 7; add r6, r5, r4` becomes `add r6, 7, r4` at the li's address and row, when r5 is
