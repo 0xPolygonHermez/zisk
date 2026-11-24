@@ -221,6 +221,12 @@ fn transpile(bytes: &[u8]) -> Result<(ZiskRom, Vec<WasmFunctionSymbol>), Box<dyn
         zisk_riscv::merge_library(&mut rom, library)?;
     }
 
+    // ROM post-pass optimizations, once the whole program (wasm functions, ZisK library, float
+    // library) is in the ROM, as elf2rom does: the soft-float library goes through the RISC-V
+    // transpiler, which leaves pairs such as auipc + jalr for these passes to merge. They work on
+    // ZisK instructions alone, so they apply to the wasm-generated code too.
+    zisk_riscv::optimize_rom(&mut rom.insts, zisk_riscv::RomOptPasses::default());
+
     rom.optimize_instruction_lookup()?;
 
     let mut symbols: Vec<WasmFunctionSymbol> = codes
