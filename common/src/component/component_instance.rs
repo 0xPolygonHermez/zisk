@@ -46,6 +46,44 @@ impl<F> From<std::io::Error> for WitnessError<F> {
     }
 }
 
+/// Bytes input collectors hold, by where their buffers go: a range lent to the allocator
+/// ([`crate::lent_memory`]), while one is lent and has room, or the heap. A budget weighs the two
+/// apart, since the heap ones can never use a lent range.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CollectorBytes {
+    /// In buffers built with [`crate::lent_memory::lent_vec`], at what they take in a lent range
+    /// ([`crate::lent_memory::lent_size`]). Those that do not fit there go to the heap.
+    pub lendable: u64,
+    /// In buffers that always go to the heap.
+    pub heap: u64,
+}
+
+impl CollectorBytes {
+    /// `bytes` in buffers that always go to the heap.
+    pub fn heap(bytes: u64) -> Self {
+        Self { lendable: 0, heap: bytes }
+    }
+
+    /// Both kinds together.
+    pub fn total(self) -> u64 {
+        self.lendable + self.heap
+    }
+}
+
+impl std::ops::Add for CollectorBytes {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self { lendable: self.lendable + other.lendable, heap: self.heap + other.heap }
+    }
+}
+
+impl std::iter::Sum for CollectorBytes {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::default(), |a, b| a + b)
+    }
+}
+
 /// The result of [`Instance::compute_witness`].
 pub type WitnessResult<F> = Result<Option<AirInstance<F>>, WitnessError<F>>;
 
@@ -105,13 +143,14 @@ pub trait Instance<F: PrimeField64>: Any + Send + Sync {
         None
     }
 
-    /// Heap bytes the input collectors of this instance hold once they have collected, summed
-    /// over every chunk it collects from; `0` for an instance without input collectors.
+    /// Bytes the input collectors of this instance hold once they have collected, summed over
+    /// every chunk it collects from, by where their buffers go; nothing for an instance without
+    /// input collectors.
     ///
     /// The witness phase compares it with the memory available, to bound what it collects at once,
     /// so it must count every collector the instance builds: no default, so that no instance is
     /// left out of that bound by omission. Each instance takes it from its own plan.
-    fn collector_capacity_bytes(&self) -> u64;
+    fn collector_capacity_bytes(&self) -> CollectorBytes;
 
     /// Debugs the instance.
     ///
@@ -192,8 +231,8 @@ macro_rules! table_instance {
 
         impl<F: PrimeField64> Instance<F> for $InstanceName {
             /// A table counts multiplicities in its state machine: it collects no inputs.
-            fn collector_capacity_bytes(&self) -> u64 {
-                0
+            fn collector_capacity_bytes(&self) -> $crate::CollectorBytes {
+                $crate::CollectorBytes::default()
             }
 
             fn compute_witness(
@@ -307,8 +346,8 @@ macro_rules! table_instance_array {
 
         impl<F: PrimeField64> Instance<F> for $InstanceName {
             /// A table counts multiplicities in its state machine: it collects no inputs.
-            fn collector_capacity_bytes(&self) -> u64 {
-                0
+            fn collector_capacity_bytes(&self) -> $crate::CollectorBytes {
+                $crate::CollectorBytes::default()
             }
 
             fn compute_witness(

@@ -10,8 +10,8 @@ use rayon::prelude::*;
 use zisk_asm_runner::{AsmRHData, AsmRunnerRH};
 use zisk_common::StatsType;
 use zisk_common::{
-    BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx, InstanceType,
-    LateValue, Metrics, PayloadType, ROM_BUS_ID,
+    BusDevice, BusId, CheckPoint, ChunkId, CollectorBytes, CounterStats, Instance, InstanceCtx,
+    InstanceType, LateValue, Metrics, PayloadType, ROM_BUS_ID,
 };
 use zisk_core::{ZiskRom, ROM_EXIT};
 use zisk_pil::{RomTrace, MAIN_STEPS_PER_SEGMENT};
@@ -257,8 +257,8 @@ impl RomInstance {
 impl<F: PrimeField64> Instance<F> for RomInstance {
     /// Its collectors count into the instance's own per-instruction counters, which exist before
     /// any collect, and on the assembly path there are none: they hold nothing of their own.
-    fn collector_capacity_bytes(&self) -> u64 {
-        0
+    fn collector_capacity_bytes(&self) -> CollectorBytes {
+        CollectorBytes::default()
     }
 
     fn compute_witness(

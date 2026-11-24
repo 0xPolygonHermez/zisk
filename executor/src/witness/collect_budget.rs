@@ -10,6 +10,7 @@
 use std::time::{Duration, Instant};
 
 use proofman_common::WitnessState;
+use zisk_common::CollectorBytes;
 
 use crate::error::{ExecutorError, ExecutorResult};
 
@@ -29,17 +30,104 @@ const POLL: Duration = Duration::from_millis(10);
 /// How long a wait may go without any instance being computed before it says so in the log.
 const STALL_REPORT: Duration = Duration::from_secs(30);
 
-/// Bytes the collectors may hold at once, or `None` to collect everything in one pass.
+/// What the collectors may hold at once: `heap` bytes of the host's memory, and `total` bytes with
+/// a lent range's free bytes counted in.
+///
+/// Collectors fit when their [`CollectorBytes`] keep both: `heap ≤ budget.heap` and
+/// `total ≤ budget.total`. That is exactly "what lands in the heap fits in it": heap buffers always
+/// do, and lendable ones too once the lent range is full, so the heap holds
+/// `heap + max(0, lendable − lent)`, which is at most `budget.heap` if and only if both hold.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Budget {
+    pub heap: u64,
+    pub total: u64,
+}
+
+impl Budget {
+    /// The same bytes either way: no lent range to count.
+    pub fn heap_only(bytes: u64) -> Self {
+        Self { heap: bytes, total: bytes }
+    }
+
+    /// Whether collectors reserving `bytes` fit.
+    pub fn fits(self, bytes: CollectorBytes) -> bool {
+        bytes.heap <= self.heap && bytes.total() <= self.total
+    }
+
+    /// This budget, raised so that every instance of `pending` fits in it alone.
+    ///
+    /// A wave is never empty: an instance that exceeds the budget is collected anyway, alone, and
+    /// takes from the heap what its heap buffers need plus what the lent range cannot hold of the
+    /// others. The waves may as well hold that much at all times. Without this floor, a heap budget
+    /// of zero sends every instance with a single heap byte alone, however much of the lent range is
+    /// free, and the collect replays the chunks once per instance.
+    pub fn holding_any(self, pending: &[Pending]) -> Self {
+        let lent = self.total.saturating_sub(self.heap);
+        let floor = pending
+            .iter()
+            .map(|p| p.bytes.heap + p.bytes.lendable.saturating_sub(lent))
+            .max()
+            .unwrap_or(0);
+        let heap = self.heap.max(floor);
+        Self { heap, total: heap + lent }
+    }
+
+    /// The room left beside collectors that hold `held`, when `lent_free` bytes of the lent range
+    /// are free now.
+    ///
+    /// Where the held buffers are is measured, not taken from their kind: a lendable buffer that
+    /// found the range full went to the heap, and stays there after the ones in the range are
+    /// freed. Whatever the range does not hold of `held` is in the heap, and its heap buffers at
+    /// least.
+    pub fn room(self, held: CollectorBytes, lent_free: u64) -> Self {
+        let lent = self.total.saturating_sub(self.heap);
+        let lent_free = lent_free.min(lent);
+        let in_heap = held.total().saturating_sub(lent - lent_free).max(held.heap);
+        let heap = self.heap.saturating_sub(in_heap);
+        Self { heap, total: heap + lent_free }
+    }
+}
+
+/// `bytes` against `budget`, for the log. When a lent range counts, it says what the budget is made
+/// of, and how much of `bytes` only the heap can hold.
+pub fn describe(bytes: CollectorBytes, budget: Budget) -> String {
+    let mut out = format!("{:.1} GiB of a {:.1} GiB budget", gib(bytes.total()), gib(budget.total));
+    if budget.total > budget.heap {
+        out += &format!(
+            " ({:.1} GiB of heap + {:.1} GiB lent; {:.1} GiB in buffers that only go to the heap)",
+            gib(budget.heap),
+            gib(budget.total - budget.heap),
+            gib(bytes.heap)
+        );
+    }
+    out
+}
+
+/// [`describe`] for a collect in waves, which ran within `used`: when that is the measured `budget`
+/// raised by [`Budget::holding_any`], the log says to what.
+pub fn describe_waves(bytes: CollectorBytes, budget: Budget, used: Budget) -> String {
+    let mut out = describe(bytes, budget);
+    if used != budget {
+        out += &format!(", raised to {:.1} GiB", gib(used.total));
+        if used.total > used.heap {
+            out += &format!(" ({:.1} GiB of heap)", gib(used.heap));
+        }
+        out += " to hold the largest instance";
+    }
+    out
+}
+
+/// What the collectors may hold at once, or `None` to collect everything in one pass.
 ///
 /// `host_share` measures this process's share of the host memory available, after the margin
 /// (`host_memory::host_memory_share`); the budget leaves `reserve` of it for work of its
 /// own that runs alongside the collect. An explicit size is taken as is, without measuring.
-pub fn collect_budget(reserve: u64, host_share: impl FnOnce() -> Option<u64>) -> Option<u64> {
+pub fn collect_budget(reserve: u64, host_share: impl FnOnce() -> Option<u64>) -> Option<Budget> {
     match std::env::var(BUDGET_ENV) {
         Ok(value) if value.eq_ignore_ascii_case("off") => None,
         Ok(value) if !value.is_empty() && !value.eq_ignore_ascii_case("auto") => {
             match parse_size(&value) {
-                Some(bytes) => Some(bytes),
+                Some(bytes) => Some(Budget::heap_only(bytes)),
                 None => {
                     tracing::warn!("{BUDGET_ENV}={value} is not off, auto or a size; using auto");
                     available_budget(reserve, host_share)
@@ -53,12 +141,12 @@ pub fn collect_budget(reserve: u64, host_share: impl FnOnce() -> Option<u64>) ->
 /// What the host can give this process's collectors: its share of the memory available, less
 /// `reserve`. `None` when the platform reports no memory figures, so nothing is held back on a
 /// guess.
-fn available_budget(reserve: u64, host_share: impl FnOnce() -> Option<u64>) -> Option<u64> {
+fn available_budget(reserve: u64, host_share: impl FnOnce() -> Option<u64>) -> Option<Budget> {
     let Some(share) = host_share() else {
         tracing::warn!("no memory figures from the system; collecting without a budget");
         return None;
     };
-    Some(share.saturating_sub(reserve))
+    Some(Budget::heap_only(share.saturating_sub(reserve)))
 }
 
 /// Parses `24G`, `512M`, `64K` (powers of 1024) or plain bytes.
@@ -83,26 +171,26 @@ pub fn gib(bytes: u64) -> f64 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Pending {
     pub global_id: usize,
-    pub bytes: u64,
+    pub bytes: CollectorBytes,
 }
 
 /// The instances of one call that exceed the budget, in the order to collect them.
 #[derive(Debug)]
 pub struct WavePlan {
-    pub budget: u64,
+    pub budget: Budget,
     /// Bytes all of them reserve together.
-    pub total: u64,
+    pub total: CollectorBytes,
     pub pending: Vec<Pending>,
 }
 
 /// How many instances from the front of `pending` fit in `room` together; possibly none.
-pub fn fitting_prefix(pending: &[Pending], room: u64) -> usize {
-    let mut used = 0u64;
+pub fn fitting_prefix(pending: &[Pending], room: Budget) -> usize {
+    let mut used = CollectorBytes::default();
     pending
         .iter()
         .take_while(|p| {
-            used = used.saturating_add(p.bytes);
-            used <= room
+            used = used + p.bytes;
+            room.fits(used)
         })
         .count()
 }
@@ -110,37 +198,25 @@ pub fn fitting_prefix(pending: &[Pending], room: u64) -> usize {
 /// How many instances to take from the front of `pending` so their bytes fit in `room`.
 ///
 /// At least one, so an instance larger than the room is collected rather than never
-/// ([`holding_any`] sizes the waves' budget so that this takes no more than the budget).
-pub fn next_wave(pending: &[Pending], room: u64) -> usize {
+/// ([`Budget::holding_any`] sizes the waves' budget so that this takes no more than the budget).
+pub fn next_wave(pending: &[Pending], room: Budget) -> usize {
     fitting_prefix(pending, room).max(1).min(pending.len())
 }
 
-/// `budget`, raised so that every instance of `pending` fits in it alone.
-///
-/// A wave is never empty: an instance that exceeds the budget is collected anyway, alone. The waves
-/// may as well hold that much at all times. Without this floor, a budget of zero sends every
-/// instance alone, and the collect replays the chunks once per instance.
-pub fn holding_any(budget: u64, pending: &[Pending]) -> u64 {
-    budget.max(pending.iter().map(|p| p.bytes).max().unwrap_or(0))
-}
-
-/// `bytes` against the measured `budget`, for the log of a collect in waves, which ran within
-/// `used`: when that is the budget raised by [`holding_any`], the log says to what.
-pub fn describe_waves(bytes: u64, budget: u64, used: u64) -> String {
-    let mut out = format!("{:.1} GiB of a {:.1} GiB budget", gib(bytes), gib(budget));
-    if used != budget {
-        out += &format!(", raised to {:.1} GiB to hold the largest instance", gib(used));
-    }
-    out
-}
-
 /// Whether the next wave may start: once nothing collected is still held, or once what is held is
-/// at most half the budget and the next instance fits beside it.
+/// at most half the budget and the next instance fits beside it, with `lent_free` bytes of the lent
+/// range free now ([`Budget::room`]).
 ///
 /// The half keeps the waves large. A wave started at the first freed byte would hold one instance
 /// and replay its chunks on its own, which is what collecting one instance at a time costs.
-pub fn may_start(held: u64, next: u64, budget: u64) -> bool {
-    held == 0 || (held <= budget / 2 && held.saturating_add(next) <= budget)
+pub fn may_start(
+    held: CollectorBytes,
+    next: CollectorBytes,
+    budget: Budget,
+    lent_free: u64,
+) -> bool {
+    held.total() == 0
+        || (held.total() <= budget.total / 2 && budget.room(held, lent_free).fits(next))
 }
 
 /// The instances a call has collected whose collectors are still alive: announced, and not yet
@@ -157,7 +233,7 @@ impl Held {
     }
 
     /// Bytes still held.
-    pub fn bytes(&self) -> u64 {
+    pub fn bytes(&self) -> CollectorBytes {
         self.instances.iter().map(|p| p.bytes).sum()
     }
 
@@ -193,22 +269,24 @@ impl Held {
     }
 }
 
-/// Waits until the next wave, whose first instance reserves `next` bytes, may start.
+/// Waits until the next wave, whose first instance reserves `next`, may start.
 ///
 /// Only the instances in `held` can make room, and proofman computes them on its own threads. The
 /// wait ends with an error when the proof is cancelled, since they would then never be computed.
 /// Without progress it only reports, every [`STALL_REPORT`], which instances it waits on.
+/// `lent_free` measures the lent range's free bytes, read on every check.
 pub fn wait_for_room(
     held: &mut Held,
-    next: u64,
-    budget: u64,
+    next: CollectorBytes,
+    budget: Budget,
+    lent_free: impl Fn() -> u64,
     state: impl Fn(usize) -> WitnessState,
     cancelled: impl Fn() -> bool,
 ) -> ExecutorResult<()> {
     let started = Instant::now();
     let mut last_progress = started;
     held.refresh(&state);
-    while !may_start(held.bytes(), next, budget) {
+    while !may_start(held.bytes(), next, budget, lent_free()) {
         if cancelled() {
             return Err(ExecutorError::CollectCancelled);
         }
@@ -236,8 +314,25 @@ mod tests {
     use super::*;
     use std::cell::Cell;
 
+    fn heap(bytes: u64) -> CollectorBytes {
+        CollectorBytes::heap(bytes)
+    }
+
+    fn lendable(bytes: u64) -> CollectorBytes {
+        CollectorBytes { lendable: bytes, heap: 0 }
+    }
+
+    fn pending_of(bytes: &[CollectorBytes]) -> Vec<Pending> {
+        bytes.iter().enumerate().map(|(i, &bytes)| Pending { global_id: i, bytes }).collect()
+    }
+
+    /// Heap buffers only: the budget is then a single figure.
     fn pending(sizes: &[u64]) -> Vec<Pending> {
-        sizes.iter().enumerate().map(|(i, &bytes)| Pending { global_id: i, bytes }).collect()
+        pending_of(&sizes.iter().map(|&s| heap(s)).collect::<Vec<_>>())
+    }
+
+    fn budget(bytes: u64) -> Budget {
+        Budget::heap_only(bytes)
     }
 
     #[test]
@@ -255,72 +350,193 @@ mod tests {
     #[test]
     fn the_budget_is_the_host_share_less_the_reserve() {
         const GIB: u64 = 1 << 30;
-        assert_eq!(available_budget(4 * GIB, || Some(10 * GIB)), Some(6 * GIB));
+        assert_eq!(available_budget(4 * GIB, || Some(10 * GIB)), Some(budget(6 * GIB)));
         assert_eq!(
             available_budget(12 * GIB, || Some(10 * GIB)),
-            Some(0),
+            Some(budget(0)),
             "a reserve above the share"
         );
         assert_eq!(available_budget(0, || None), None, "no memory figures, no budget");
     }
 
     #[test]
+    fn the_two_limits_are_what_lands_in_the_heap() {
+        // Lendable bytes beyond the lent range fall back to the heap: the heap then holds
+        // `heap + max(0, lendable - lent)`. Both limits together say exactly that it fits.
+        for heap_room in 0..6u64 {
+            for lent in 0..6u64 {
+                let room = Budget { heap: heap_room, total: heap_room + lent };
+                for h in 0..8u64 {
+                    for l in 0..8u64 {
+                        let lands_in_heap = h + l.saturating_sub(lent);
+                        assert_eq!(
+                            room.fits(CollectorBytes { lendable: l, heap: h }),
+                            lands_in_heap <= heap_room,
+                            "heap {h} + lendable {l} in {room:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn heap_buffers_never_use_the_lent_range() {
+        let room = Budget { heap: 4, total: 10 };
+        assert_eq!(fitting_prefix(&pending(&[3, 3]), room), 1, "6 heap bytes in a 4-byte heap");
+        assert_eq!(fitting_prefix(&pending_of(&[lendable(5), lendable(4)]), room), 2);
+        assert_eq!(
+            fitting_prefix(&pending_of(&[lendable(5), lendable(6)]), room),
+            1,
+            "11 bytes: 6 in the lent range, 5 spilling into a 4-byte heap"
+        );
+        assert_eq!(fitting_prefix(&pending_of(&[lendable(6), heap(4)]), room), 2);
+    }
+
+    #[test]
+    fn the_waves_budget_holds_any_single_instance() {
+        // Nothing to raise: every instance already fits.
+        let room = Budget { heap: 4, total: 10 };
+        assert_eq!(room.holding_any(&pending_of(&[lendable(6) + heap(4), heap(1)])), room);
+        assert_eq!(room.holding_any(&[]), room);
+
+        // A heap of zero: raised to the instance that lands most in the heap, on its heap bytes
+        // (3) or on what the lent range (6) cannot hold of its lendable ones (9 - 6 + 1).
+        let none = Budget { heap: 0, total: 6 };
+        let p = pending_of(&[lendable(5) + heap(3), lendable(9) + heap(1), lendable(2)]);
+        let raised = none.holding_any(&p);
+        assert_eq!(raised, Budget { heap: 4, total: 10 });
+        for one in &p {
+            assert!(raised.fits(one.bytes), "{one:?} fits alone");
+        }
+        // Without a lent range it is the largest instance.
+        assert_eq!(budget(0).holding_any(&pending(&[3, 7, 5])), budget(7));
+    }
+
+    #[test]
+    fn a_heap_of_zero_does_not_send_every_instance_alone() {
+        // 12 bytes lent and free, no heap: small heap parts ride along up to the largest one.
+        let none = Budget { heap: 0, total: 12 };
+        let p = pending_of(&[
+            lendable(3) + heap(1),
+            lendable(3) + heap(1),
+            lendable(3) + heap(2),
+            lendable(3) + heap(4),
+        ]);
+        assert_eq!(next_wave(&p, none), 1, "as measured: one instance per wave");
+        let raised = none.holding_any(&p);
+        assert_eq!(raised, Budget { heap: 4, total: 16 });
+        assert_eq!(next_wave(&p, raised), 3, "heap 1 + 1 + 2 within the largest instance's 4");
+        assert_eq!(next_wave(&p[3..], raised), 1);
+    }
+
+    #[test]
+    fn the_room_left_counts_what_is_held_in_both() {
+        // 6 lendable bytes fill the range of 6, 1 heap byte is in the heap.
+        let room = Budget { heap: 4, total: 10 }.room(lendable(6) + heap(1), 0);
+        assert_eq!(room, Budget { heap: 3, total: 3 }, "the lent range is full");
+        assert!(room.fits(heap(3)));
+        assert!(!room.fits(lendable(4)), "a lendable buffer now spills into the heap");
+        // No lent range: everything held is in the heap.
+        assert_eq!(budget(100).room(heap(30) + lendable(10), 0), budget(60));
+    }
+
+    #[test]
+    fn held_buffers_count_where_they_landed() {
+        // A wave of 20 lendable bytes filled the range (10) and spilled 10 into the heap. The ones
+        // in the range were computed and freed: the 10 still held are in the heap, the range empty.
+        let all = Budget { heap: 10, total: 20 };
+        let room = all.room(lendable(10), 10);
+        assert_eq!(room, Budget { heap: 0, total: 10 });
+        assert!(!room.fits(heap(10)), "the heap is full, whatever kind the held bytes are");
+        assert!(room.fits(lendable(10)), "the range is free");
+        // The same 10 held in the range instead: the heap is free.
+        assert_eq!(all.room(lendable(10), 0), Budget { heap: 10, total: 10 });
+
+        // The range held by others: this collect's heap buffers are in the heap all the same.
+        assert_eq!(
+            Budget { heap: 5, total: 15 }.room(heap(3) + lendable(2), 0),
+            Budget { heap: 2, total: 2 }
+        );
+        // More free than the budget counted of the range: no more than it counted is used.
+        assert_eq!(all.room(lendable(4), 50), Budget { heap: 6, total: 16 });
+    }
+
+    #[test]
     fn a_wave_takes_the_prefix_that_fits() {
         let p = pending(&[3, 4, 5, 1]);
-        assert_eq!(next_wave(&p, 7), 2);
-        assert_eq!(next_wave(&p, 12), 3);
-        assert_eq!(next_wave(&p, 100), 4);
+        assert_eq!(next_wave(&p, budget(7)), 2);
+        assert_eq!(next_wave(&p, budget(12)), 3);
+        assert_eq!(next_wave(&p, budget(100)), 4);
     }
 
     #[test]
     fn a_fitting_prefix_may_be_empty() {
         let p = pending(&[10, 1]);
-        assert_eq!(fitting_prefix(&p, 5), 0, "the first instance alone exceeds the room");
-        assert_eq!(fitting_prefix(&p, 10), 1);
-        assert_eq!(fitting_prefix(&p, 11), 2);
-        assert_eq!(fitting_prefix(&[], 11), 0);
+        assert_eq!(fitting_prefix(&p, budget(5)), 0, "the first instance alone exceeds the room");
+        assert_eq!(fitting_prefix(&p, budget(10)), 1);
+        assert_eq!(fitting_prefix(&p, budget(11)), 2);
+        assert_eq!(fitting_prefix(&[], budget(11)), 0);
     }
 
     #[test]
     fn a_wave_never_comes_out_empty() {
         let p = pending(&[10, 1]);
-        assert_eq!(next_wave(&p, 5), 1, "an instance larger than the room goes alone");
-        assert_eq!(next_wave(&p, 0), 1);
+        assert_eq!(next_wave(&p, budget(5)), 1, "an instance larger than the room goes alone");
+        assert_eq!(next_wave(&p, budget(0)), 1);
     }
 
     #[test]
-    fn the_waves_budget_holds_any_single_instance() {
-        assert_eq!(holding_any(10, &pending(&[3, 7, 5])), 10, "nothing to raise");
-        assert_eq!(holding_any(4, &pending(&[3, 7, 5])), 7, "raised to the largest instance");
-        assert_eq!(holding_any(4, &[]), 4);
+    fn the_next_wave_waits_for_half_the_budget() {
+        assert!(may_start(heap(0), heap(1_000), budget(100), 0), "nothing held: always");
+        assert!(!may_start(heap(60), heap(10), budget(100), 0), "more than half held");
+        assert!(may_start(heap(50), heap(50), budget(100), 0));
+        assert!(
+            !may_start(heap(50), heap(51), budget(100), 0),
+            "the next instance does not fit beside"
+        );
+        // A range of 60 that holds the 50 lendable bytes: 10 of it free.
+        let with_lent = Budget { heap: 40, total: 100 };
+        assert!(may_start(lendable(50), heap(40), with_lent, 10));
+        assert!(
+            !may_start(lendable(50), heap(41), with_lent, 10),
+            "heap bytes never use the lent range"
+        );
+        assert!(
+            !may_start(lendable(50), heap(40), with_lent, 60),
+            "the range is empty: the 50 held bytes are in the heap"
+        );
     }
 
     #[test]
-    fn a_budget_of_zero_does_not_send_every_instance_alone() {
-        let p = pending(&[1, 1, 2, 4]);
-        assert_eq!(next_wave(&p, 0), 1, "one instance per wave");
-        let raised = holding_any(0, &p);
-        assert_eq!(raised, 4);
-        assert_eq!(next_wave(&p, raised), 3, "1 + 1 + 2 within the largest instance's 4");
-        assert_eq!(next_wave(&p[3..], raised), 1);
+    fn the_log_shows_what_the_budget_is_made_of_only_with_a_lent_range() {
+        const GIB: u64 = 1 << 30;
+        let bytes = lendable(6 * GIB) + heap(GIB);
+        assert_eq!(describe(bytes, budget(8 * GIB)), "7.0 GiB of a 8.0 GiB budget");
+        assert_eq!(
+            describe(bytes, Budget { heap: 2 * GIB, total: 12 * GIB }),
+            "7.0 GiB of a 12.0 GiB budget (2.0 GiB of heap + 10.0 GiB lent; 1.0 GiB in buffers \
+             that only go to the heap)"
+        );
     }
 
     #[test]
     fn the_waves_log_names_a_raised_budget() {
         const GIB: u64 = 1 << 30;
-        assert_eq!(describe_waves(7 * GIB, 2 * GIB, 2 * GIB), "7.0 GiB of a 2.0 GiB budget");
+        let bytes = lendable(6 * GIB) + heap(GIB);
+        let measured = Budget { heap: 0, total: 12 * GIB };
+        assert_eq!(describe_waves(bytes, measured, measured), describe(bytes, measured));
         assert_eq!(
-            describe_waves(7 * GIB, 0, GIB),
-            "7.0 GiB of a 0.0 GiB budget, raised to 1.0 GiB to hold the largest instance"
+            describe_waves(bytes, measured, Budget { heap: GIB / 2, total: 12 * GIB + GIB / 2 }),
+            "7.0 GiB of a 12.0 GiB budget (0.0 GiB of heap + 12.0 GiB lent; 1.0 GiB in buffers \
+             that only go to the heap), raised to 12.5 GiB (0.5 GiB of heap) to hold the largest \
+             instance"
         );
-    }
-
-    #[test]
-    fn the_next_wave_waits_for_half_the_budget() {
-        assert!(may_start(0, 1_000, 100), "nothing held: always");
-        assert!(!may_start(60, 10, 100), "more than half held");
-        assert!(may_start(50, 50, 100));
-        assert!(!may_start(50, 51, 100), "the next instance does not fit beside");
+        // Without a lent range the budget is one figure, raised or not.
+        assert_eq!(
+            describe_waves(bytes, budget(0), budget(7 * GIB)),
+            "7.0 GiB of a 0.0 GiB budget, raised to 7.0 GiB to hold the largest instance"
+        );
     }
 
     #[test]
@@ -334,7 +550,7 @@ mod tests {
             3 => WitnessState::Evicted,
             _ => WitnessState::Absent,
         });
-        assert_eq!(held.bytes(), 3);
+        assert_eq!(held.bytes(), heap(3));
         assert_eq!(held.len(), 2);
     }
 
@@ -352,8 +568,8 @@ mod tests {
                 WitnessState::Running
             }
         };
-        wait_for_room(&mut held, 30, 100, state, || false).unwrap();
-        assert_eq!(held.bytes(), 40);
+        wait_for_room(&mut held, heap(30), budget(100), || 0, state, || false).unwrap();
+        assert_eq!(held.bytes(), heap(40));
     }
 
     #[test]
@@ -361,7 +577,8 @@ mod tests {
         let mut held = Held::default();
         held.add(&pending(&[100]));
         let started = Instant::now();
-        let result = wait_for_room(&mut held, 1, 100, |_| WitnessState::Queued, || true);
+        let result =
+            wait_for_room(&mut held, heap(1), budget(100), || 0, |_| WitnessState::Queued, || true);
         assert!(matches!(result, Err(ExecutorError::CollectCancelled)));
         assert!(started.elapsed() < Duration::from_secs(1));
     }
@@ -373,8 +590,9 @@ mod tests {
         let cancelled = Cell::new(false);
         wait_for_room(
             &mut held,
-            10,
-            100,
+            heap(10),
+            budget(100),
+            || 0,
             |_| WitnessState::Running,
             || {
                 cancelled.set(true);

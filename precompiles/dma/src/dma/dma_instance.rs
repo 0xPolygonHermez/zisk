@@ -14,7 +14,8 @@ use proofman_common::{ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::sync::Arc;
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType, StatsType,
+    BusDevice, CheckPoint, ChunkId, CollectorBytes, Instance, InstanceCtx, InstanceType,
+    PayloadType, StatsType,
 };
 use zisk_pil::DmaTrace;
 
@@ -62,8 +63,10 @@ impl<F: PrimeField64> DmaInstance<F> {
 
 impl<F: PrimeField64> Instance<F> for DmaInstance<F> {
     /// Its collectors reserve their chunk's inputs, fixed-size values.
-    fn collector_capacity_bytes(&self) -> u64 {
-        DmaCheckPoint::of(&self.ictx).inputs() * std::mem::size_of::<crate::DmaInput>() as u64
+    fn collector_capacity_bytes(&self) -> CollectorBytes {
+        CollectorBytes::heap(
+            DmaCheckPoint::of(&self.ictx).inputs() * std::mem::size_of::<crate::DmaInput>() as u64,
+        )
     }
 
     /// Computes the witness for the Dma execution plan.

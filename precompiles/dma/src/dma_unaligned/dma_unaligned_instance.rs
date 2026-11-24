@@ -14,7 +14,9 @@ use proofman_fields::PrimeField64;
 use std::sync::Arc;
 use zisk_common::ChunkId;
 use zisk_common::StatsType;
-use zisk_common::{BusDevice, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType};
+use zisk_common::{
+    BusDevice, CheckPoint, CollectorBytes, Instance, InstanceCtx, InstanceType, PayloadType,
+};
 use zisk_pil::{DmaUnalignedTrace, DmaUnalignedTraceRow, DmaUnalignedTraceRowPacked};
 
 /// The `DmaUnalignedInstance` struct represents an instance for the Dma State Machine.
@@ -82,9 +84,9 @@ fn collector_bytes(inputs: u64, rows: u64) -> u64 {
 impl<F: PrimeField64> Instance<F> for DmaUnalignedInstance<F> {
     /// The inputs and the source words of the rows the instance was given
     /// ([`DmaUnalignedInput::from`] keeps those only).
-    fn collector_capacity_bytes(&self) -> u64 {
+    fn collector_capacity_bytes(&self) -> CollectorBytes {
         let checkpoint = DmaCheckPoint::of(&self.ictx);
-        collector_bytes(checkpoint.inputs(), checkpoint.rows())
+        CollectorBytes::heap(collector_bytes(checkpoint.inputs(), checkpoint.rows()))
     }
 
     /// Computes the witness for the Dma execution plan.

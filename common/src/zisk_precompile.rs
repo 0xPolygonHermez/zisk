@@ -396,7 +396,7 @@ macro_rules! zisk_precompile_explicit {
             }
 
             impl<F: ::proofman_fields::PrimeField64> $crate::Instance<F> for [<$name Instance>]<F> {
-                fn collector_capacity_bytes(&self) -> u64 {
+                fn collector_capacity_bytes(&self) -> $crate::CollectorBytes {
                     let meta = self.ictx.plan.meta.as_ref().unwrap();
                     let collect_info = meta
                         .downcast_ref::<::std::collections::HashMap<
@@ -404,7 +404,10 @@ macro_rules! zisk_precompile_explicit {
                             (u64, $crate::CollectSkipper),
                         >>()
                         .unwrap();
-                    $crate::precompile_collector_bytes(collect_info, ::std::mem::size_of::<$input>())
+                    $crate::CollectorBytes::heap($crate::precompile_collector_bytes(
+                        collect_info,
+                        ::std::mem::size_of::<$input>(),
+                    ))
                 }
 
                 fn compute_witness(

@@ -1,5 +1,5 @@
 use crate::{ChunkCollect, LTU_DIV_OP, XOR_KECCAK_OP};
-use zisk_common::{ExtOperationData, OperationBusData};
+use zisk_common::{CollectorBytes, ExtOperationData, OperationBusData};
 use zisk_core::zisk_ops::ZiskOp;
 
 pub struct BinaryInput {
@@ -27,13 +27,13 @@ impl BinaryInput {
         Self { op, a: OperationBusData::get_a(data), b: OperationBusData::get_b(data) }
     }
 
-    /// Heap bytes the collectors of one instance hold once they have collected: each one reserves
-    /// the [`ChunkCollect::total_count`] inputs of its chunk up front.
+    /// Bytes the collectors of one instance hold once they have collected: each one reserves the
+    /// [`ChunkCollect::total_count`] inputs of its chunk up front.
     pub fn capacity_bytes<'a, const K: usize>(
         collects: impl IntoIterator<Item = &'a ChunkCollect<K>>,
-    ) -> u64 {
+    ) -> CollectorBytes {
         let inputs: u64 = collects.into_iter().map(ChunkCollect::total_count).sum();
-        inputs * std::mem::size_of::<Self>() as u64
+        CollectorBytes::heap(inputs * std::mem::size_of::<Self>() as u64)
     }
 }
 
@@ -79,7 +79,7 @@ mod tests {
         let first = ChunkCollect { kinds: [kind(3), kind(4)], force_execute_to_end: false };
         let second = ChunkCollect { kinds: [kind(0), kind(5)], force_execute_to_end: true };
         assert_eq!(
-            BinaryInput::capacity_bytes([&first, &second]),
+            BinaryInput::capacity_bytes([&first, &second]).total(),
             12 * std::mem::size_of::<BinaryInput>() as u64
         );
     }

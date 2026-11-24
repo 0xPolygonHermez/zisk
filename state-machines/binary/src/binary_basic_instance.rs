@@ -11,7 +11,8 @@ use proofman_fields::PrimeField64;
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
+    BusDevice, CheckPoint, ChunkId, CollectorBytes, Instance, InstanceCtx, InstanceType,
+    PayloadType,
 };
 use zisk_pil::{
     BinaryHugeTrace, BinaryHugeTraceRow, BinaryHugeTraceRowPacked, BinaryLargeTrace,
@@ -144,7 +145,7 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
         &self.ictx.plan.check_point
     }
 
-    fn collector_capacity_bytes(&self) -> u64 {
+    fn collector_capacity_bytes(&self) -> CollectorBytes {
         BinaryInput::capacity_bytes(self.collect_info.values())
     }
 

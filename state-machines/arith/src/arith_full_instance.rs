@@ -11,8 +11,9 @@ use proofman_fields::PrimeField64;
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{
-    BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, OperationData, PayloadType, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, CollectorBytes, ExtOperationData,
+    Instance, InstanceCtx, InstanceType, OperationData, PayloadType, A, B, OP, OPERATION_BUS_ID,
+    OP_TYPE,
 };
 use zisk_core::frops::frops_multiplicity_from_asm;
 #[cfg(feature = "debug_frops")]
@@ -82,9 +83,9 @@ impl<F: PrimeField64> ArithFullInstance<F> {
 
 impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
     /// Its collectors reserve their chunk's operations ([`ArithInstanceCollector::new`]).
-    fn collector_capacity_bytes(&self) -> u64 {
+    fn collector_capacity_bytes(&self) -> CollectorBytes {
         let operations: u64 = self.collect_info.values().map(|(operations, _, _)| operations).sum();
-        operations * std::mem::size_of::<OperationData<u64>>() as u64
+        CollectorBytes::heap(operations * std::mem::size_of::<OperationData<u64>>() as u64)
     }
 
     /// Computes the witness for the arithmetic execution plan.

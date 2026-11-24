@@ -29,7 +29,8 @@ use proofman_common::{BufferPool, ProofCtx, SetupCtx, WitnessPriority};
 use proofman_fields::PrimeField64;
 use zisk_asm_runner::AsmRunnerRH;
 use zisk_common::{
-    CheckPoint, Instance, InstanceCtx, InstanceType, LateJoinHandle, LateValue, Plan, StatsScope,
+    CheckPoint, CollectorBytes, Instance, InstanceCtx, InstanceType, LateJoinHandle, LateValue,
+    Plan, StatsScope,
 };
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
@@ -519,24 +520,23 @@ impl<F: PrimeField64> WitnessPhase<F> {
         let Some(mut budget) = collect_budget::collect_budget(reserve, host_share) else {
             return Ok(None);
         };
-        let total: u64 = instances.values().map(|i| i.collector_capacity_bytes()).sum();
-        if total > budget && zisk_common::allocator::release_free_memory() {
+        let total: CollectorBytes = instances.values().map(|i| i.collector_capacity_bytes()).sum();
+        if !budget.fits(total) && zisk_common::allocator::release_free_memory() {
             // The allocator keeps the pages of the buffers freed so far resident, to serve its next
             // allocations, and the OS counts them as used: hand them back and measure again.
             let before = budget;
             budget = collect_budget::collect_budget(reserve, host_share).unwrap_or(before);
             tracing::info!(
                 "{label}: released the allocator's free pages: budget {:.1} -> {:.1} GiB",
-                collect_budget::gib(before),
-                collect_budget::gib(budget)
+                collect_budget::gib(before.total),
+                collect_budget::gib(budget.total)
             );
         }
-        if total <= budget {
+        if budget.fits(total) {
             tracing::info!(
-                "{label}: {} instances reserve {:.1} GiB of a {:.1} GiB budget: one pass",
+                "{label}: {} instances reserve {}: one pass",
                 instances.len(),
-                collect_budget::gib(total),
-                collect_budget::gib(budget)
+                collect_budget::describe(total, budget)
             );
             return Ok(None);
         }
@@ -576,14 +576,13 @@ impl<F: PrimeField64> WitnessPhase<F> {
     ) -> ExecutorResult<()> {
         let take = collect_budget::fitting_prefix(&plan.pending, plan.budget);
         let (now, later) = plan.pending.split_at(take);
-        let later_bytes: u64 = later.iter().map(|p| p.bytes).sum();
+        let later_bytes = later.iter().map(|p| p.bytes).sum::<CollectorBytes>().total();
         state.record_deferred_collect(later.len(), later_bytes);
         tracing::warn!(
-            "first-round collect: {} instances reserve {:.1} GiB of a {:.1} GiB budget: {} now, {} ({:.1} GiB) left for later, \
+            "first-round collect: {} instances reserve {}: {} now, {} ({:.1} GiB) left for later, \
              as they do not fit in the memory free beside the execution",
             plan.pending.len(),
-            collect_budget::gib(plan.total),
-            collect_budget::gib(plan.budget),
+            collect_budget::describe(plan.total, plan.budget),
             now.len(),
             later.len(),
             collect_budget::gib(later_bytes)
@@ -608,7 +607,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
         let mut held = collect_budget::Held::default();
         let mut waves = 0;
         // What the largest instance takes alone, the waves may hold at all times.
-        let budget = collect_budget::holding_any(plan.budget, &plan.pending);
+        let budget = plan.budget.holding_any(&plan.pending);
         let mut rest = &plan.pending[..];
         while !rest.is_empty() {
             if !held.is_empty() {
@@ -617,12 +616,14 @@ impl<F: PrimeField64> WitnessPhase<F> {
                     &mut held,
                     rest[0].bytes,
                     budget,
+                    zisk_common::lent_memory::free_bytes,
                     |global_id| pctx.dctx_witness_state(global_id),
                     || pctx.is_cancelled(),
                 )?;
                 waited += wait_started.elapsed();
             }
-            let take = collect_budget::next_wave(rest, budget.saturating_sub(held.bytes()));
+            let room = budget.room(held.bytes(), zisk_common::lent_memory::free_bytes());
+            let take = collect_budget::next_wave(rest, room);
             let (wave, tail) = rest.split_at(take);
             {
                 let secn_instances =
