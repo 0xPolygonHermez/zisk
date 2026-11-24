@@ -1,22 +1,45 @@
 //! Operations of the allocator precompile (`precompiles/allocator`).
 //!
+//! They have no opcode: the guest reaches them through the allocation mark CSR with the kinds
+//! `ALLOC_OP_*` of `zisk_definitions::alloc_mark`, and each one is transpiled to a `copyb` whose
+//! `func` is one of these (see [`alloc_op_func`]). The prover sees the `copyb`; the address an
+//! alloc returns is a free value for it, as the result of an fcall is.
+//!
 //! PROTOTYPE: only the plain emulation (`EmulationMode::Mem`, i.e. ziskemu) executes them. There
 //! is no minimal trace, no assembly emulator and no witness, so a program that uses them cannot
 //! be proved yet.
 //!
 //! | operation | a | b | c |
 //! |---|---|---|---|
-//! | `alloc_create_clean`, `alloc_create_dirty` | addr | size | 0 |
-//! | `alloc_alloc`, `alloc_calloc` | size | 0 | addr |
-//! | `alloc_dealloc` | addr | 0 | 0 |
+//! | create (clean, dirty) | addr | size | 0 |
+//! | alloc, calloc | size | 0 | addr |
+//! | dealloc | addr | 0 | 0 |
 //!
 //! An operation the allocator cannot serve (no free block, an address that is not in use, ...)
 //! has no proof, so the emulation stops there.
+
+use zisk_definitions::{
+    ALLOC_OP_ALLOC_ID, ALLOC_OP_CALLOC_ID, ALLOC_OP_CREATE_CLEAN_ID, ALLOC_OP_CREATE_DIRTY_ID,
+    ALLOC_OP_DEALLOC_ID,
+};
 
 use crate::{
     zisk_ops::OpStats, AllocError, AllocHeap, EmulationMode, InstContext,
     DMA_64_ALIGNED_MEMSET_COST, DMA_64_ALIGNED_MEMSET_DIVISOR, DMA_MEMSET_COST,
 };
+
+/// The `func` of the `copyb` an operation of the allocator precompile is transpiled to, by the
+/// kind of its mark; `None` for a kind that is not one of its operations.
+pub fn alloc_op_func(kind: u8) -> Option<fn(&mut InstContext)> {
+    match kind {
+        ALLOC_OP_CREATE_CLEAN_ID => Some(opc_alloc_create_clean),
+        ALLOC_OP_CREATE_DIRTY_ID => Some(opc_alloc_create_dirty),
+        ALLOC_OP_ALLOC_ID => Some(opc_alloc_alloc),
+        ALLOC_OP_CALLOC_ID => Some(opc_alloc_calloc),
+        ALLOC_OP_DEALLOC_ID => Some(opc_alloc_dealloc),
+        _ => None,
+    }
+}
 
 /// State of the allocator precompile along an execution.
 #[derive(Debug, Default)]
@@ -110,14 +133,9 @@ pub fn opc_alloc_dealloc(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented. The allocator operations can only be called from the system call context.
-#[inline(always)]
-pub fn op_alloc(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_alloc() is not implemented");
-}
-
 /// Cost of the operation just executed: its rows in the allocator air, and for a `calloc` over a
-/// used block the memset the precompile launches (which has no main step of its own).
+/// used block the memset the precompile launches (which has no main step of its own). The step
+/// of the main is charged as the one of its `copyb`.
 pub fn ops_alloc(ctx: &InstContext, stats: &mut dyn OpStats) {
     let mut cost = ctx.alloc.last_rows * ctx.alloc.heap.policy().row_cost();
     let words = ctx.alloc.last_memset_words;

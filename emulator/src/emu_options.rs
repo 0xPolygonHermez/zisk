@@ -236,20 +236,18 @@ pub struct EmuOptions {
     /// efficient number of operations per row can be chosen from measurements. Requires option: -X
     #[clap(long, value_name = "DMA_STATS", default_value = "false")]
     pub dma_stats: bool,
-    /// Row widths, in operations per row, measured by the DMA loop analysis: a comma-separated
-    /// list, e.g. `2,4,8,12,16,24,32` (the default). Today the DMA machines use 4 or 8 operations
-    /// per row for the aligned loop and 1 for the unaligned one; add 1 to the list to see the
-    /// latter as the baseline. Requires option: --dma-stats
-    #[clap(long, value_name = "LIST", default_value = DEFAULT_DMA_OPS_X_ROW)]
-    pub dma_ops_x_row: String,
-    /// Estimate the cost of the allocator precompile for this program. The calls to the allocation
-    /// entry points of the guest (`__rust_alloc` & co, `malloc`/`free`/..., `operator new`/`delete`,
-    /// found by their ELF symbols) are captured and replayed on shadow heaps that follow the rules
-    /// of the precompile. Reports the cost the guest spends in its allocator against the estimated
-    /// cost of `Allocator` and `AllocatorFlex`, and the distribution of sizes, alignments and
-    /// reallocs. Requires options: -X and -e (an ELF with symbols)
+    /// Analyze how the program uses its allocator: calls and what they cost, sizes and alignments
+    /// of the blocks, zeroed allocations, reallocations (growing, shrinking, moved or in place)
+    /// and live memory. The calls are taken from the allocation marks of the guest (a Rust guest
+    /// built with the `alloc-marks` feature of ziskos) or, when it has none, from the ELF symbols
+    /// of the allocation functions (`malloc`/`free`/..., `operator new`/`delete`, `__rust_alloc`
+    /// & co), which needs -e with an ELF that keeps its symbols. Requires option: -X
     #[clap(long, value_name = "ALLOC_STATS", default_value = "false")]
     pub alloc_stats: bool,
+    /// Write the sequence of calls to the allocator to a file, one line per call (the header of
+    /// the file documents the format), to replay it elsewhere. Implies --alloc-stats
+    #[clap(long, value_name = "FILE")]
+    pub alloc_trace: Option<String>,
     /// Variant of the allocator precompile that serves a guest built with the precompile allocator
     /// (prototype, only ziskemu executes it): `canonical` is `Allocator` (best fit and forced
     /// coalescing, one row per operation), `flex-eager` and `flex-lazy` are `AllocatorFlex` (every
@@ -257,6 +255,12 @@ pub struct EmuOptions {
     /// changes the addresses the guest gets and the cost of the operations.
     #[clap(long, value_name = "POLICY", default_value = "canonical")]
     pub alloc_policy: String,
+    /// Row widths, in operations per row, measured by the DMA loop analysis: a comma-separated
+    /// list, e.g. `2,4,8,12,16,24,32` (the default). Today the DMA machines use 4 or 8 operations
+    /// per row for the aligned loop and 1 for the unaligned one; add 1 to the list to see the
+    /// latter as the baseline. Requires option: --dma-stats
+    #[clap(long, value_name = "LIST", default_value = DEFAULT_DMA_OPS_X_ROW)]
+    pub dma_ops_x_row: String,
     /// Analyze the occupancy of the memory dual lanes: a dual lane holds, in a single memory lane,
     /// one read/write plus up to N reads on the same address (same value, only the step differs).
     /// A lane is the unit of the sorted memory sequence; a physical row packs `lanes_x_row` lanes.
@@ -436,6 +440,7 @@ impl Default for EmuOptions {
             mem_dual_reset_bits: 18,
             dma_stats: false,
             alloc_stats: false,
+            alloc_trace: None,
             alloc_policy: "canonical".to_string(),
             dma_ops_x_row: DEFAULT_DMA_OPS_X_ROW.to_string(),
             read_symbols: false,

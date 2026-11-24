@@ -2,8 +2,8 @@ use std::borrow::Cow;
 use std::mem;
 
 use crate::{
-    parse_ops_x_row, AllocStats, ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace,
-    FailureReason, MemDualStats, ParEmuOptions, RegStepCheck, MEM_DUAL_MAX,
+    parse_ops_x_row, AllocEstimate, AllocStats, ElfSymbolReader, EmuContext, EmuOptions,
+    EmuRegTrace, FailureReason, MemDualStats, ParEmuOptions, RegStepCheck, MEM_DUAL_MAX,
 };
 use proofman_fields::PrimeField64;
 use zisk_common::{
@@ -1817,23 +1817,31 @@ impl<'a> Emu<'a> {
                 Err(e) => panic!("--dma-ops-x-row '{}': {e}", options.dma_ops_x_row),
             }
         }
-        if options.alloc_stats {
+        if options.alloc_stats || options.alloc_trace.is_some() {
             if !options.stats {
                 panic!("Alloc stats feature needs at least stats option");
             }
-            let Some(elf_file) = &options.elf else {
-                panic!("Alloc stats feature needs the ELF file (-e) to find the allocator symbols");
-            };
+            // The symbols are the fallback for a program without allocation marks.
             let mut symbols = ElfSymbolReader::new();
-            let heap = match symbols.load_from_file(elf_file, &LOAD_SYMBOLS[..2]) {
-                Ok(heap) => heap,
-                Err(e) => panic!("--alloc-stats: cannot read the symbols of '{elf_file}': {e}"),
-            };
-            let alloc_stats = AllocStats::new(
+            // The size of the guest heap, for the shadow heaps of the estimation; 0 if unknown.
+            let mut heap_size = 0;
+            if let Some(elf_file) = &options.elf {
+                match symbols.load_from_file(elf_file, &LOAD_SYMBOLS[..2]) {
+                    Ok(heap) => heap_size = heap[1].saturating_sub(heap[0]),
+                    Err(e) => println!(
+                        "WARNING: --alloc-stats cannot read the symbols of '{elf_file}': {e}"
+                    ),
+                }
+            }
+            let mut alloc_stats = AllocStats::new(
                 symbols.functions().map(|symbol| (symbol.address, symbol.name.as_str())),
-                heap[1].saturating_sub(heap[0]),
             );
-            println!("Alloc stats entry points: {}", alloc_stats.entry_names().join(", "));
+            alloc_stats.set_estimate(AllocEstimate::new(heap_size));
+            if let Some(path) = &options.alloc_trace {
+                if let Err(e) = alloc_stats.set_trace(path) {
+                    panic!("--alloc-trace: cannot create '{path}': {e}");
+                }
+            }
             self.ctx.stats.set_alloc_stats(alloc_stats);
         }
         if let Some(duals) = options.mem_duals {

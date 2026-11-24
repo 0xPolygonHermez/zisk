@@ -124,7 +124,7 @@ edition = "2021"
 
 [dependencies]
 fib = { path = "../fib" }
-ziskos = "1.4.0-alpha"   # or { path = "<zisk checkout>/ziskos/entrypoint" }
+ziskos = "1.5.0-alpha"   # or { path = "<zisk checkout>/ziskos/entrypoint" }
 
 [profile.release]
 opt-level = 3

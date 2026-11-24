@@ -86,8 +86,7 @@ pub enum ZiskOperationType {
     Blake2s,
     Poseidon2KoalaBear, // Note: Add new core operations here
     Evm,
-    Dma,   // Note: To add extra params to precompiles calls
-    Alloc, // Allocator precompile (prototype, plain emulation only)
+    Dma, // Note: To add extra params to precompiles calls
     // ZisK Free Input Operations
     FcallParam,
     Fcall,
@@ -111,7 +110,6 @@ pub const EVM_OP_TYPE_ID: u32 = ZiskOperationType::Evm as u32;
 pub const FCALL_PARAM_OP_TYPE_ID: u32 = ZiskOperationType::FcallParam as u32;
 pub const FCALL_OP_TYPE_ID: u32 = ZiskOperationType::Fcall as u32;
 pub const DMA_OP_TYPE_ID: u32 = ZiskOperationType::Dma as u32;
-pub const ALLOC_OP_TYPE_ID: u32 = ZiskOperationType::Alloc as u32;
 pub const BLAKE2B_OP_TYPE_ID: u32 = ZiskOperationType::Blake2b as u32;
 pub const TWISTED_EDWARDS_OP_TYPE_ID: u32 = ZiskOperationType::TwistedEdwards as u32;
 pub const BLAKE3_OP_TYPE_ID: u32 = ZiskOperationType::Blake3 as u32;
@@ -167,6 +165,11 @@ pub struct ZiskInst {
     /// whose `func` is `opc_write_log`. Not part of the ROM the prover commits to; kept so
     /// that a ROM saved as ziskbin gets that `func` back
     pub write_log: bool,
+    /// An allocation mark (`SYSCALL_ALLOC_MARK_ID`, see `zisk_definitions::alloc_mark`): its kind,
+    /// or 0. The instruction is a plain `copyb` that stores nothing (all the prover sees), whose a
+    /// and b are the values of the mark, read by `ziskemu --alloc-stats`. Not part of the ROM the
+    /// prover commits to; kept so that a ROM saved as ziskbin keeps its marks
+    pub alloc_mark: u8,
 }
 
 /// Default constructor
@@ -211,6 +214,7 @@ impl Default for ZiskInst {
             meta_rs1: None,
             meta_rd: None,
             write_log: false,
+            alloc_mark: 0,
         }
     }
 }

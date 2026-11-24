@@ -18,8 +18,17 @@ Done:
 Not done:
 - No wiring into `pil/zisk.pil`, `pil/operations.pil`, `pil/opids.pil`. Opcodes `0xDB`-`0xDF` and
   bus ids `8300`/`8301` are provisional and only live in `pil/allocator_common.pil`.
-- No Rust: no opcode in the emulator, no ziskos syscall, no executor state, no witness, no
-  planner. `verify-constraints` has never run on these AIRs.
+- Emulation only (ziskemu). The operations have no opcode: the guest reaches them through the
+  allocation mark CSR `0x822` with the kinds `ALLOC_OP_*` (16-20) of
+  `definitions/src/alloc_mark.rs`, transpiled to a `copyb` whose `func`
+  (`core/src/operations/allocator.rs`) runs the operation on `core/src/alloc_heap.rs`; alloc and
+  calloc return the address in rd as a free value. `ziskemu --alloc-policy` picks the variant and
+  the stats charge the rows and memsets (`ops_alloc`). The ziskos allocator is the feature
+  `zisk-precompile-alloc` (`ziskos/entrypoint/src/alloc/precompile_alloc.rs`).
+  `ziskemu --alloc-stats` estimates the three variants for any guest by replaying its calls
+  (`emulator/src/stats/alloc_estimate.rs`).
+- No assembly emulator, no witness, no planner, no main-bus wiring (a provable version needs real
+  opcodes again for the operation bus). `verify-constraints` has never run on these AIRs.
 - No formal verification.
 
 **The models are not the PIL.** `verify()` is a hand transcription. Any change to a `.pil` must be

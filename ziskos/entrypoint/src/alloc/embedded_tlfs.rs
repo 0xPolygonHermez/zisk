@@ -4,8 +4,13 @@ use embedded_alloc::TlsfHeap as Heap;
 
 use super::kernel_heap::*;
 
+#[cfg(not(feature = "alloc-marks"))]
 #[global_allocator]
 static HEAP: EmbeddedAlloc = EmbeddedAlloc;
+
+#[cfg(feature = "alloc-marks")]
+#[global_allocator]
+static HEAP: super::AllocMarks<EmbeddedAlloc> = super::AllocMarks(EmbeddedAlloc);
 
 static INNER_HEAP: Heap = Heap::empty();
 

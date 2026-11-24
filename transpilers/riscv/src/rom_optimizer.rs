@@ -195,13 +195,15 @@ fn writes(i: &ZiskInst) -> u64 {
 }
 
 /// Ops whose only effect is (c, flag) = f(a, b): no precompile memory, no fcall state, and the
-/// standard handler (a `write_log` flag has its own, which prints).
+/// standard handler (a `write_log` flag has its own, which prints), and not an allocation mark
+/// (a `copyb` that ziskemu reads, so it must stay where it is).
 fn is_pure(i: &ZiskInst) -> bool {
     // An unknown opcode is taken as internal, as the emulator would run it.
     let op_type = ZiskOp::try_from_code(i.op).map(|o| o.op_type()).unwrap_or(OpType::Internal);
     // Not a precompile, not a debug print, and an operation computed from a and b alone.
     !i.is_precompiled
         && !i.write_log
+        && i.alloc_mark == 0
         && matches!(
             op_type,
             OpType::Internal

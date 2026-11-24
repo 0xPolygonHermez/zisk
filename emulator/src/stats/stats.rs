@@ -26,8 +26,9 @@ use zisk_sm_binary::{
     BinaryExtensionLegacyFrops, Sh3addShape,
 };
 
+use zisk_core::ops_alloc;
 use zisk_definitions::{
-    PROFILE_END_COST_ID, PROFILE_END_STEPS_ID, PROFILE_REPORT_END_COST_ID,
+    is_alloc_op, PROFILE_END_COST_ID, PROFILE_END_STEPS_ID, PROFILE_REPORT_END_COST_ID,
     PROFILE_REPORT_END_STEPS_ID, PROFILE_REPORT_START_COST_ID, PROFILE_REPORT_START_STEPS_ID,
     PROFILE_START_COST_ID, PROFILE_START_STEPS_ID,
 };
@@ -272,7 +273,7 @@ pub struct Stats {
     mem_duals: Option<Box<MemDualStats>>,
     /// DMA 64-bit loop occupancy analysis; `None` unless `--dma-stats` was given.
     dma_loops: Option<Box<DmaLoopStats>>,
-    /// Allocator precompile estimation; `None` unless `--alloc-stats` was given.
+    /// Analysis of the use of the allocator; `None` unless `--alloc-stats` was given.
     alloc_stats: Option<Box<AllocStats>>,
     /// What the allocator precompile did, set when the execution ends if the program used it.
     alloc_precompile: Option<AllocPrecompileSummary>,
@@ -1241,6 +1242,17 @@ impl Stats {
                     "WARNING: ignoring PROFILE mark at step {} pc 0x{:x}: {error}",
                     self.costs.steps, inst_ctx.pc
                 );
+            }
+        }
+        if inst.alloc_mark != 0 {
+            if is_alloc_op(inst.alloc_mark) {
+                // An operation of the allocator precompile (prototype): its rows and memset are
+                // a variable cost on top of the step of its copyb.
+                ops_alloc(inst_ctx, self);
+            } else if let Some(alloc_stats) = &mut self.alloc_stats {
+                let cost = self.costs.total_cost();
+                let kind = inst.alloc_mark as u64;
+                alloc_stats.on_mark(kind, inst_ctx.a, inst_ctx.b, self.costs.steps, cost);
             }
         }
         if self.store_ops
@@ -3737,7 +3749,7 @@ impl Stats {
         self.dma_loops = Some(Box::new(DmaLoopStats::new(ops_x_row)));
     }
 
-    /// Enables the allocator precompile estimation (`--alloc-stats`).
+    /// Enables the analysis of the use of the allocator (`--alloc-stats`).
     pub fn set_alloc_stats(&mut self, alloc_stats: AllocStats) {
         self.alloc_stats = Some(Box::new(alloc_stats));
     }
@@ -3996,6 +4008,9 @@ impl Stats {
             duals.flush();
         }
         self.ram_monitor.on_finish(inst_ctx);
+        if let Some(alloc_stats) = &mut self.alloc_stats {
+            alloc_stats.finish();
+        }
         self.alloc_precompile = AllocPrecompileSummary::new(&inst_ctx.alloc);
         let ram_usage = self.ram_monitor.ram_used;
         if let Some(profiler) = &mut self.profiler {

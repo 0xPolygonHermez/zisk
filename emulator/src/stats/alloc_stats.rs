@@ -1,46 +1,42 @@
-//! Allocator precompile estimation (`--alloc-stats`).
+//! Analysis of how a program uses its allocator (`--alloc-stats`).
 //!
-//! Estimates what the allocator precompile (`precompiles/allocator`) would cost for a program
-//! that today runs its own allocator inside the guest, without changing the guest:
+//! The calls to the allocator are captured from one of two sources:
 //!
-//! 1. **Capture.** The calls to the allocation entry points of the guest (`__rust_alloc` & co,
-//!    `malloc`/`free`/..., `operator new`/`delete`) are detected by their ELF symbols. Arguments
-//!    and result are read from the registers, and the cost the guest spends inside each call is
-//!    measured (inclusive: everything between the entry and the return).
-//! 2. **Replay.** The same sequence of allocations is replayed on shadow heaps that follow the
-//!    rules of the precompile, to count the rows each variant would need:
-//!    - `Allocator`: best fit and forced coalescing, one row per operation.
-//!    - `AllocatorFlex`, eager joins: same heap, but every join is a row of its own.
-//!    - `AllocatorFlex`, lazy joins: free blocks are only joined when no block fits.
-//! 3. **Report.** Guest cost against the estimated cost of each variant, plus the distributions
-//!    that drive the open design decisions: sizes, alignments and `realloc`.
+//! - **Allocation marks** (`SYSCALL_ALLOC_MARK_ID`, see `zisk_definitions::alloc_mark`): no-op
+//!   instructions the guest allocator emits around every call. This is what a Rust guest built
+//!   with the `alloc-marks` feature of ziskos does, and the only source that works when the
+//!   allocator is inlined at its call sites.
+//! - **ELF symbols**: when the program has no marks, the calls to the well-known entry points
+//!   (`malloc`/`free`/..., `operator new`/`delete`, `__rust_alloc` & co) are detected by their
+//!   address, and arguments and result are read from the registers. This covers C and C++ guests
+//!   without touching them.
 //!
-//! The shadow heaps have their own addresses: only the sequence of sizes is taken from the guest.
+//! As soon as a mark is seen the symbols are no longer watched, so a call is never counted twice.
 //!
-//! What the estimation assumes:
-//! - Sizes are rounded up to 8 bytes, a zero size counts as 8.
-//! - An alignment bigger than 8 is served by over-allocating `align - 8` bytes.
-//! - `realloc` is three instructions: `alloc`, `memcpy` and `dealloc`.
-//! - Each precompile operation costs one main step. The steps of the wrapper around it (rounding
-//!   the size, the alignment fix-up) are not counted.
-//! - A zeroed allocation only pays a `memset` when the block it gets has been used before.
+//! The report tells what the program asks its allocator for (sizes, alignments, zeroed
+//! allocations, reallocations growing and shrinking, how much memory is live) and what the
+//! allocator costs today. `--alloc-trace` additionally writes the sequence of calls to a file, to
+//! replay it on other allocator designs.
 
-use std::collections::{BTreeMap, HashMap};
-
-use zisk_core::{
-    AllocHeap, AllocInstContext, AllocPolicy, ALLOC_FLEX_ROW_COST, ALLOC_ROW_COST,
-    DMA_64_ALIGNED_MEMCPY_COST, DMA_64_ALIGNED_MEMCPY_DIVISOR, DMA_64_ALIGNED_MEMSET_COST,
-    DMA_64_ALIGNED_MEMSET_DIVISOR, DMA_MEMCPY_COST, DMA_MEMSET_COST, MAIN_COST,
+use std::{
+    collections::{BTreeMap, HashMap},
+    fs::File,
+    io::{BufWriter, Write},
 };
 
-use crate::{StatsReport, MEM_READ_COST, MEM_WRITE_COST};
+use zisk_definitions::{
+    ALLOC_MARK_ALLOC_ID, ALLOC_MARK_ALLOC_ZEROED_ID, ALLOC_MARK_DEALLOC_ID, ALLOC_MARK_END_ID,
+    ALLOC_MARK_LAYOUT_ID, ALLOC_MARK_REALLOC_ID,
+};
 
-/// Size of the shadow heap when the ELF does not tell the size of the guest heap.
-const DEFAULT_HEAP_SIZE: u64 = 1 << 31;
+use crate::{AllocEstimate, StatsReport, MAIN_COST};
 
 const REG_RA: usize = 1;
 const REG_SP: usize = 2;
 const REG_A0: usize = 10;
+
+/// Alignment recorded for the calls that do not state one (`malloc`, `operator new`).
+const ALIGN_NOT_STATED: u64 = 0;
 
 /// Signature of an allocation entry point, which tells how to read its arguments.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -110,139 +106,105 @@ impl AllocEntryKind {
 
     /// Reads the call from the argument registers `a0..a3`.
     fn decode(self, a: [u64; 4]) -> Call {
+        let none = ALIGN_NOT_STATED;
         match self {
             Self::RustAlloc | Self::NewAligned => {
                 Call::Alloc { size: a[0], align: a[1], zeroed: false }
             }
             Self::RustAllocZeroed => Call::Alloc { size: a[0], align: a[1], zeroed: true },
-            Self::RustDealloc | Self::Free => Call::Free { ptr: a[0] },
-            Self::RustRealloc => Call::Realloc { ptr: a[0], size: a[3], align: a[2] },
-            Self::Malloc => Call::Alloc { size: a[0], align: DEFAULT_ALIGN, zeroed: false },
-            Self::Calloc => {
-                Call::Alloc { size: a[0].saturating_mul(a[1]), align: DEFAULT_ALIGN, zeroed: true }
+            Self::RustDealloc => Call::Free { ptr: a[0], layout: Some((a[1], a[2])) },
+            Self::Free => Call::Free { ptr: a[0], layout: None },
+            Self::RustRealloc => {
+                Call::Realloc { ptr: a[0], layout: Some((a[1], a[2])), new_size: a[3] }
             }
-            Self::Realloc => Call::Realloc { ptr: a[0], size: a[1], align: DEFAULT_ALIGN },
+            Self::Malloc => Call::Alloc { size: a[0], align: none, zeroed: false },
+            Self::Calloc => {
+                Call::Alloc { size: a[0].saturating_mul(a[1]), align: none, zeroed: true }
+            }
+            Self::Realloc => Call::Realloc { ptr: a[0], layout: None, new_size: a[1] },
             Self::AlignedAlloc => Call::Alloc { size: a[1], align: a[0], zeroed: false },
         }
     }
 }
 
-/// Alignment recorded for the calls that do not state one (`malloc`, `operator new`).
-const DEFAULT_ALIGN: u64 = 0;
-
-#[derive(Clone, Copy, Debug)]
+/// A call to the allocator. `layout` is the `(size, align)` the caller states for the block it
+/// passes, when it does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Call {
     Alloc { size: u64, align: u64, zeroed: bool },
-    Free { ptr: u64 },
-    Realloc { ptr: u64, size: u64, align: u64 },
+    Free { ptr: u64, layout: Option<(u64, u64)> },
+    Realloc { ptr: u64, layout: Option<(u64, u64)>, new_size: u64 },
 }
 
-/// One of the heaps the allocations are replayed on: the heap of the precompile for one policy,
-/// with a single clean area, plus what the replay costs on it.
-#[derive(Debug)]
-struct ShadowHeap {
-    heap: AllocHeap,
-    /// Zeroed allocations that got a used block, the words they have to clear and their cost.
-    memsets: u64,
-    memset_words: u64,
-    memset_cost: u64,
-    /// Allocations that found no block, with the area exhausted.
-    failures: u64,
+/// The four kinds of call, as the report lists them.
+#[derive(Clone, Copy, Debug)]
+enum CallKind {
+    Alloc = 0,
+    AllocZeroed = 1,
+    Dealloc = 2,
+    Realloc = 3,
 }
 
-impl ShadowHeap {
-    fn new(policy: AllocPolicy, size: u64) -> Self {
-        let mut heap = AllocHeap::new(policy);
-        heap.create(0, size, false).expect("shadow heap area");
-        Self { heap, memsets: 0, memset_words: 0, memset_cost: 0, failures: 0 }
-    }
+const CALL_KINDS: [(CallKind, &str); 4] = [
+    (CallKind::Alloc, "alloc"),
+    (CallKind::AllocZeroed, "alloc zeroed"),
+    (CallKind::Dealloc, "dealloc"),
+    (CallKind::Realloc, "realloc"),
+];
 
-    fn alloc(&mut self, size: u64, zeroed: bool) -> Option<u64> {
-        let Ok(outcome) = self.heap.alloc(size) else {
-            self.failures += 1;
-            return None;
-        };
-        if zeroed && outcome.dirty {
-            self.memsets += 1;
-            self.memset_words += size / 8;
-            self.memset_cost += memset_cost(size / 8);
+impl Call {
+    fn kind(&self) -> CallKind {
+        match self {
+            Call::Alloc { zeroed: false, .. } => CallKind::Alloc,
+            Call::Alloc { zeroed: true, .. } => CallKind::AllocZeroed,
+            Call::Free { .. } => CallKind::Dealloc,
+            Call::Realloc { .. } => CallKind::Realloc,
         }
-        Some(outcome.addr)
-    }
-
-    fn dealloc(&mut self, addr: u64) {
-        self.heap.dealloc(addr).expect("block of the shadow heap");
-    }
-
-    /// Rows of the air, the create of the area included.
-    fn rows(&self) -> u64 {
-        self.heap.rows()
-    }
-
-    /// Operations the main sends along the replay (the create of the area is not one of them).
-    fn main_ops(&self) -> u64 {
-        self.heap.op_rows - 1
     }
 }
 
-/// Cost of a `memset` of `words` aligned 64-bit words launched by the precompile (no main step).
-fn memset_cost(words: u64) -> u64 {
-    DMA_MEMSET_COST
-        + words.div_ceil(DMA_64_ALIGNED_MEMSET_DIVISOR) * DMA_64_ALIGNED_MEMSET_COST
-        + words * MEM_WRITE_COST
+/// Steps and cost of the program at some point, or spent between two points.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Measure {
+    steps: u64,
+    cost: u64,
 }
 
-/// Cost of a `memcpy` of `words` aligned 64-bit words executed by the main.
-fn memcpy_cost(words: u64) -> u64 {
-    MAIN_COST
-        + DMA_MEMCPY_COST
-        + words.div_ceil(DMA_64_ALIGNED_MEMCPY_DIVISOR) * DMA_64_ALIGNED_MEMCPY_COST
-        + words * (MEM_READ_COST + MEM_WRITE_COST)
-}
-
-/// Size the precompile is asked for: a non-zero multiple of 8, with room to align inside it.
-fn shadow_size(size: u64, align: u64) -> u64 {
-    let size = size.max(1).div_ceil(8) * 8;
-    if align > 8 {
-        size + align - 8
-    } else {
-        size
-    }
-}
-
-const HEAPS: usize = AllocPolicy::ALL.len();
-
-/// A block the guest has allocated and not released yet.
-#[derive(Debug)]
-struct Live {
-    /// Size the guest asked for.
-    size: u64,
-    /// Size asked to the precompile.
-    shadow_size: u64,
-    /// Address of the block in each shadow heap, `None` if that heap was exhausted.
-    addr: [Option<u64>; HEAPS],
-}
-
-/// What the guest spends in one of its allocation entry points.
-#[derive(Debug)]
-struct EntryStats {
-    pc: u64,
-    name: String,
-    kind: AllocEntryKind,
+/// What the guest spends in one kind of call.
+#[derive(Clone, Copy, Debug, Default)]
+struct KindStats {
     calls: u64,
     steps: u64,
     cost: u64,
 }
 
-/// An entry point that has been entered and has not returned yet.
+/// A symbol of the ELF that is an allocation entry point.
+#[derive(Debug)]
+struct Entry {
+    pc: u64,
+    name: String,
+    kind: AllocEntryKind,
+    calls: u64,
+}
+
+/// A call that has started and has not ended yet. `ra` and `sp` identify the return of a call
+/// captured by its symbol.
 #[derive(Debug)]
 struct Pending {
     entry: usize,
     ra: u64,
     sp: u64,
     call: Call,
-    steps: u64,
-    cost: u64,
+    start: Measure,
+}
+
+/// A block the guest has allocated and not released yet.
+#[derive(Clone, Copy, Debug)]
+struct Live {
+    size: u64,
+    align: u64,
+    /// Times the block has been reallocated.
+    reallocs: u32,
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -251,39 +213,73 @@ struct Bucket {
     bytes: u64,
 }
 
+impl Bucket {
+    fn add(&mut self, bytes: u64) {
+        self.calls += 1;
+        self.bytes += bytes;
+    }
+}
+
+/// Reallocations that change the size of the block in one direction.
+#[derive(Default, Debug, Clone, Copy)]
+struct ReallocClass {
+    calls: u64,
+    /// The allocator returned a different address, so it copied the block.
+    moved: u64,
+    /// Bytes of the blocks before and after the call.
+    old_bytes: u64,
+    new_bytes: u64,
+    /// Bytes the allocator copied: the smaller of both sizes, for the calls that moved.
+    copied_bytes: u64,
+}
+
 #[derive(Default, Debug)]
 struct ReallocStats {
     calls: u64,
-    grow: u64,
-    shrink: u64,
-    /// The size asked to the precompile does not change: nothing to do.
-    same: u64,
-    /// Growing ones whose block could have grown without moving in the `Allocator` heap.
-    grow_in_place: u64,
-    copied_words: u64,
-    copy_cost: u64,
-    /// Words copied by reallocs that could have been served in place (same, shrink, grow in
-    /// place), and the cost of those copies.
-    avoidable_words: u64,
-    avoidable_cost: u64,
+    grow: ReallocClass,
+    shrink: ReallocClass,
+    same: ReallocClass,
+    /// Calls that change the size but not the number of 8-byte words of the block.
+    same_words: u64,
+    /// Longest chain of reallocations of one block.
+    max_chain: u32,
+    /// Blocks released (or still live at the end) by the number of reallocations they went
+    /// through, in power-of-two buckets indexed by the bit length of that number.
+    by_chain: [u64; 32],
 }
 
 #[derive(Debug)]
 pub struct AllocStats {
-    /// Entry points sorted by pc, to find them by binary search.
-    entries: Vec<EntryStats>,
+    /// Entry points sorted by pc, to find them by binary search. Empty once marks are seen.
+    entries: Vec<Entry>,
     min_pc: u64,
     max_pc: u64,
     pending: Option<Pending>,
-    heaps: [ShadowHeap; HEAPS],
-    heap_size: u64,
+    /// Allocation marks seen.
+    marks: u64,
+    /// Calls captured from the symbols before the first mark (a program mixing both sources).
+    calls_before_marks: u64,
+    /// Layout stated by a `LAYOUT` mark for the call that follows.
+    mark_layout: Option<(u64, u64)>,
+    /// Call opened by a mark and how many calls were opened inside it.
+    mark_open: Option<(Call, Measure)>,
+    mark_depth: u32,
+    bad_marks: u64,
+
+    kinds: [KindStats; 4],
     live: HashMap<u64, Live>,
     live_bytes: u64,
     peak_live_bytes: u64,
     peak_live_blocks: usize,
-    allocs: u64,
-    zeroed_allocs: u64,
+    /// Lowest and highest address handed out.
+    min_addr: u64,
+    high_water: u64,
+    allocated_bytes: u64,
+    zeroed: Bucket,
+    /// Zeroed allocations placed above every address handed out before.
+    zeroed_fresh: Bucket,
     frees: u64,
+    freed_bytes: u64,
     reallocs: ReallocStats,
     /// Calls to an entry point made from inside another one, which are not counted again.
     nested: u64,
@@ -294,25 +290,32 @@ pub struct AllocStats {
     failed_allocs: u64,
     /// Allocations that returned an address still in use: a release was not seen.
     reused: u64,
-    /// Allocations by size, in power-of-two buckets indexed by the bit length of the size.
+    /// Releases and reallocations stating a layout that is not the one of the allocation.
+    layout_mismatches: u64,
+    /// Blocks asked for, by size in power-of-two buckets indexed by the bit length of the size.
     by_size: [Bucket; 65],
-    /// Allocations by alignment, `DEFAULT_ALIGN` for those that do not state one.
+    /// Blocks asked for, by alignment.
     by_align: BTreeMap<u64, Bucket>,
+    /// Blocks with an alignment bigger than 8, by size (same buckets as `by_size`).
+    over_aligned_by_size: [Bucket; 65],
+
+    trace: Option<BufWriter<File>>,
+    trace_error: Option<String>,
+
+    /// Replay of the calls on the heaps of the allocator precompile (prototype).
+    estimate: Option<Box<AllocEstimate>>,
 }
 
 impl AllocStats {
-    /// `symbols` are the functions of the ELF as `(address, demangled name)`; `heap_size` the size
-    /// of the guest heap, `0` if unknown.
-    pub fn new<'a>(symbols: impl Iterator<Item = (u64, &'a str)>, heap_size: u64) -> Self {
-        let mut entries: Vec<EntryStats> = symbols
+    /// `symbols` are the functions of the ELF as `(address, demangled name)`.
+    pub fn new<'a>(symbols: impl Iterator<Item = (u64, &'a str)>) -> Self {
+        let mut entries: Vec<Entry> = symbols
             .filter_map(|(pc, name)| {
-                AllocEntryKind::from_symbol(name).map(|kind| EntryStats {
+                AllocEntryKind::from_symbol(name).map(|kind| Entry {
                     pc,
                     name: name.to_string(),
                     kind,
                     calls: 0,
-                    steps: 0,
-                    cost: 0,
                 })
             })
             .collect();
@@ -326,25 +329,29 @@ impl AllocStats {
                 false
             }
         });
-        let heap_size = if heap_size == 0 { DEFAULT_HEAP_SIZE } else { heap_size & !7 };
         Self {
             min_pc: entries.first().map_or(u64::MAX, |e| e.pc),
             max_pc: entries.last().map_or(0, |e| e.pc),
             entries,
             pending: None,
-            heaps: [
-                ShadowHeap::new(AllocPolicy::Canonical, heap_size),
-                ShadowHeap::new(AllocPolicy::FlexEager, heap_size),
-                ShadowHeap::new(AllocPolicy::FlexLazy, heap_size),
-            ],
-            heap_size,
+            marks: 0,
+            calls_before_marks: 0,
+            mark_layout: None,
+            mark_open: None,
+            mark_depth: 0,
+            bad_marks: 0,
+            kinds: [KindStats::default(); 4],
             live: HashMap::new(),
             live_bytes: 0,
             peak_live_bytes: 0,
             peak_live_blocks: 0,
-            allocs: 0,
-            zeroed_allocs: 0,
+            min_addr: u64::MAX,
+            high_water: 0,
+            allocated_bytes: 0,
+            zeroed: Bucket::default(),
+            zeroed_fresh: Bucket::default(),
             frees: 0,
+            freed_bytes: 0,
             reallocs: ReallocStats::default(),
             nested: 0,
             lost: 0,
@@ -352,9 +359,27 @@ impl AllocStats {
             unknown_frees: 0,
             failed_allocs: 0,
             reused: 0,
+            layout_mismatches: 0,
             by_size: [Bucket::default(); 65],
             by_align: BTreeMap::new(),
+            over_aligned_by_size: [Bucket::default(); 65],
+            trace: None,
+            trace_error: None,
+            estimate: None,
         }
+    }
+
+    /// Writes every call to `path` (`--alloc-trace`), one line each; see [`TRACE_HEADER`].
+    pub fn set_trace(&mut self, path: &str) -> std::io::Result<()> {
+        let mut trace = BufWriter::new(File::create(path)?);
+        trace.write_all(TRACE_HEADER.as_bytes())?;
+        self.trace = Some(trace);
+        Ok(())
+    }
+
+    /// Replays every call on the heaps of the allocator precompile, to estimate its cost.
+    pub fn set_estimate(&mut self, estimate: AllocEstimate) {
+        self.estimate = Some(Box::new(estimate));
     }
 
     /// Names of the entry points found in the ELF.
@@ -373,15 +398,17 @@ impl AllocStats {
     /// Called for the instructions `is_watched` selects, with the registers as they are before
     /// the instruction writes its result, and the steps and cost of the program up to it.
     pub fn on_step(&mut self, pc: u64, regs: &[u64], steps: u64, cost: u64) {
+        let now = Measure { steps, cost };
         let sp = regs[REG_SP];
         if let Some(pending) = &self.pending {
             if pending.ra == pc && pending.sp == sp {
                 let pending = self.pending.take().unwrap();
-                let entry = &mut self.entries[pending.entry];
-                entry.calls += 1;
-                entry.steps += steps - pending.steps;
-                entry.cost += cost - pending.cost;
-                self.on_call(pending.call, regs[REG_A0]);
+                self.entries[pending.entry].calls += 1;
+                let spent = Measure {
+                    steps: now.steps - pending.start.steps,
+                    cost: now.cost - pending.start.cost,
+                };
+                self.on_call(pending.call, regs[REG_A0], spent);
                 // the return address could be an entry point itself (a tail position), go on
             }
         }
@@ -400,15 +427,106 @@ impl AllocStats {
             self.lost += 1;
         }
         let a = [regs[REG_A0], regs[REG_A0 + 1], regs[REG_A0 + 2], regs[REG_A0 + 3]];
-        self.pending =
-            Some(Pending { entry, ra, sp, call: self.entries[entry].kind.decode(a), steps, cost });
+        let call = self.entries[entry].kind.decode(a);
+        self.pending = Some(Pending { entry, ra, sp, call, start: now });
     }
 
-    fn on_call(&mut self, call: Call, result: u64) {
+    /// Called for an allocation mark of kind `kind` with operands `a` and `b`. `steps` and `cost`
+    /// are the ones of the program with the mark itself already counted.
+    pub fn on_mark(&mut self, kind: u64, a: u64, b: u64, steps: u64, cost: u64) {
+        if self.marks == 0 {
+            // The program marks its allocator: from here on the symbols are not needed, and
+            // watching them would count every call twice.
+            self.calls_before_marks = self.kinds.iter().map(|k| k.calls).sum();
+            self.pending = None;
+            self.min_pc = u64::MAX;
+            self.max_pc = 0;
+        }
+        self.marks += 1;
+        let call = match u8::try_from(kind).unwrap_or(0) {
+            ALLOC_MARK_ALLOC_ID => Call::Alloc { size: a, align: b, zeroed: false },
+            ALLOC_MARK_ALLOC_ZEROED_ID => Call::Alloc { size: a, align: b, zeroed: true },
+            ALLOC_MARK_LAYOUT_ID => {
+                if self.mark_open.is_none() {
+                    self.mark_layout = Some((a, b));
+                }
+                return;
+            }
+            ALLOC_MARK_DEALLOC_ID => Call::Free { ptr: a, layout: self.mark_layout.take() },
+            ALLOC_MARK_REALLOC_ID => {
+                Call::Realloc { ptr: a, layout: self.mark_layout.take(), new_size: b }
+            }
+            ALLOC_MARK_END_ID => {
+                if self.mark_depth > 0 {
+                    self.mark_depth -= 1;
+                } else if let Some((call, start)) = self.mark_open.take() {
+                    // The mark that closes the call is not part of it.
+                    let spent = Measure {
+                        steps: steps - 1 - start.steps,
+                        cost: cost - MAIN_COST - start.cost,
+                    };
+                    self.on_call(call, a, spent);
+                } else {
+                    self.bad_marks += 1;
+                }
+                return;
+            }
+            _ => {
+                self.bad_marks += 1;
+                return;
+            }
+        };
+        if self.mark_open.is_some() {
+            // An allocator that allocates from itself: the outer call is the one counted.
+            self.mark_depth += 1;
+            self.nested += 1;
+        } else {
+            self.mark_open = Some((call, Measure { steps, cost }));
+        }
+    }
+
+    fn on_call(&mut self, call: Call, result: u64, spent: Measure) {
+        let kind = &mut self.kinds[call.kind() as usize];
+        kind.calls += 1;
+        kind.steps += spent.steps;
+        kind.cost += spent.cost;
+        self.write_trace(call, result, spent);
         match call {
             Call::Alloc { size, align, zeroed } => self.on_alloc(size, align, zeroed, result),
-            Call::Free { ptr } => self.on_free(ptr),
-            Call::Realloc { ptr, size, align } => self.on_realloc(ptr, size, align, result),
+            Call::Free { ptr, layout } => self.on_free(ptr, layout),
+            Call::Realloc { ptr, layout, new_size } => {
+                self.on_realloc(ptr, layout, new_size, result)
+            }
+        }
+    }
+
+    fn write_trace(&mut self, call: Call, result: u64, spent: Measure) {
+        let Some(trace) = &mut self.trace else {
+            return;
+        };
+        let (steps, cost) = (spent.steps, spent.cost);
+        let layout = |layout: Option<(u64, u64)>| match layout {
+            Some((size, align)) => format!("{size}\t{align}"),
+            None => "-\t-".to_string(),
+        };
+        let written = match call {
+            Call::Alloc { size, align, zeroed } => writeln!(
+                trace,
+                "{}\t{size}\t{align}\t{result:x}\t{steps}\t{cost}",
+                if zeroed { 'z' } else { 'a' }
+            ),
+            Call::Free { ptr, layout: l } => {
+                writeln!(trace, "f\t{ptr:x}\t{}\t{steps}\t{cost}", layout(l))
+            }
+            Call::Realloc { ptr, layout: l, new_size } => writeln!(
+                trace,
+                "r\t{ptr:x}\t{}\t{new_size}\t{result:x}\t{steps}\t{cost}",
+                layout(l)
+            ),
+        };
+        if let Err(error) = written {
+            self.trace_error = Some(error.to_string());
+            self.trace = None;
         }
     }
 
@@ -417,175 +535,186 @@ impl AllocStats {
             self.failed_allocs += 1;
             return;
         }
-        self.allocs += 1;
-        self.zeroed_allocs += zeroed as u64;
-        self.count_alloc(size, align);
-        self.shadow_alloc(ptr, size, align, zeroed);
-    }
-
-    fn count_alloc(&mut self, size: u64, align: u64) {
-        let bucket = &mut self.by_size[(64 - size.leading_zeros()) as usize];
-        bucket.calls += 1;
-        bucket.bytes += size;
-        let bucket = self.by_align.entry(align).or_default();
-        bucket.calls += 1;
-        bucket.bytes += size;
-    }
-
-    fn shadow_alloc(&mut self, ptr: u64, size: u64, align: u64, zeroed: bool) {
-        if self.live.contains_key(&ptr) {
-            self.reused += 1;
-            self.shadow_free(ptr);
-        }
-        let shadow_size = shadow_size(size, align);
-        let mut addr = [None; HEAPS];
-        for (heap, addr) in self.heaps.iter_mut().zip(addr.iter_mut()) {
-            *addr = heap.alloc(shadow_size, zeroed);
-        }
-        self.live.insert(ptr, Live { size, shadow_size, addr });
-        self.live_bytes += size;
-        self.peak_live_bytes = self.peak_live_bytes.max(self.live_bytes);
-        self.peak_live_blocks = self.peak_live_blocks.max(self.live.len());
-    }
-
-    fn shadow_free(&mut self, ptr: u64) -> bool {
-        let Some(live) = self.live.remove(&ptr) else {
-            return false;
-        };
-        self.live_bytes -= live.size;
-        for (heap, addr) in self.heaps.iter_mut().zip(live.addr) {
-            if let Some(addr) = addr {
-                heap.dealloc(addr);
+        if zeroed {
+            self.zeroed.add(size);
+            if ptr >= self.high_water {
+                self.zeroed_fresh.add(size);
             }
         }
-        true
+        if let Some(estimate) = &mut self.estimate {
+            estimate.on_alloc(ptr, size, align, zeroed);
+        }
+        self.insert(ptr, Live { size, align, reallocs: 0 });
     }
 
-    fn on_free(&mut self, ptr: u64) {
+    /// Records a block the allocator has just handed out.
+    fn insert(&mut self, ptr: u64, block: Live) {
+        let bits = (64 - block.size.leading_zeros()) as usize;
+        self.by_size[bits].add(block.size);
+        self.by_align.entry(block.align).or_default().add(block.size);
+        if block.align > 8 {
+            self.over_aligned_by_size[bits].add(block.size);
+        }
+        self.allocated_bytes += block.size;
+        if let Some(old) = self.live.insert(ptr, block) {
+            self.reused += 1;
+            self.live_bytes -= old.size;
+            self.count_chain(old.reallocs);
+        }
+        self.live_bytes += block.size;
+        self.peak_live_bytes = self.peak_live_bytes.max(self.live_bytes);
+        self.peak_live_blocks = self.peak_live_blocks.max(self.live.len());
+        self.min_addr = self.min_addr.min(ptr);
+        self.high_water = self.high_water.max(ptr.saturating_add(block.size));
+    }
+
+    fn count_chain(&mut self, reallocs: u32) {
+        self.reallocs.by_chain[chain_bucket(reallocs)] += 1;
+    }
+
+    /// Checks the layout a caller states for a block against the one it was allocated with.
+    fn check_layout(&mut self, block: Live, layout: Option<(u64, u64)>) {
+        if let Some((size, align)) = layout {
+            if size != block.size || (block.align != ALIGN_NOT_STATED && align != block.align) {
+                self.layout_mismatches += 1;
+            }
+        }
+    }
+
+    fn on_free(&mut self, ptr: u64, layout: Option<(u64, u64)>) {
         if ptr == 0 {
             self.null_frees += 1;
-        } else if self.shadow_free(ptr) {
+        } else if let Some(block) = self.live.remove(&ptr) {
+            if let Some(estimate) = &mut self.estimate {
+                estimate.on_free(ptr);
+            }
+            self.check_layout(block, layout);
             self.frees += 1;
+            self.freed_bytes += block.size;
+            self.live_bytes -= block.size;
+            self.count_chain(block.reallocs);
         } else {
             self.unknown_frees += 1;
         }
     }
 
-    fn on_realloc(&mut self, ptr: u64, size: u64, align: u64, new_ptr: u64) {
-        let Some(old) = self.live.get(&ptr) else {
+    fn on_realloc(&mut self, ptr: u64, layout: Option<(u64, u64)>, new_size: u64, new_ptr: u64) {
+        let Some(&old) = self.live.get(&ptr) else {
             // realloc(NULL, size) is a malloc; an unknown block can only be counted as one
             if ptr != 0 {
                 self.unknown_frees += 1;
             }
-            return self.on_alloc(size, align, false, new_ptr);
+            let align = layout.map_or(ALIGN_NOT_STATED, |(_, align)| align);
+            return self.on_alloc(new_size, align, false, new_ptr);
         };
         if new_ptr == 0 {
             // C: realloc(ptr, 0) releases the block; otherwise it failed and the block stays
-            if size == 0 {
-                self.on_free(ptr);
+            if new_size == 0 {
+                self.on_free(ptr, layout);
             } else {
                 self.failed_allocs += 1;
             }
             return;
         }
-        let new_shadow_size = shadow_size(size, align);
-        let words = old.shadow_size.min(new_shadow_size) / 8;
-        let copy_cost = memcpy_cost(words);
+        self.check_layout(old, layout);
+        if let Some(estimate) = &mut self.estimate {
+            estimate.on_realloc(ptr, new_size, new_ptr);
+        }
         let stats = &mut self.reallocs;
         stats.calls += 1;
-        stats.copied_words += words;
-        stats.copy_cost += copy_cost;
-        let in_place = if new_shadow_size == old.shadow_size {
-            stats.same += 1;
-            true
-        } else if new_shadow_size < old.shadow_size {
-            stats.shrink += 1;
-            true
-        } else {
-            stats.grow += 1;
-            let grows =
-                old.addr[0].is_some_and(|addr| self.heaps[0].heap.can_grow(addr, new_shadow_size));
-            stats.grow_in_place += grows as u64;
-            grows
+        let class = match new_size.cmp(&old.size) {
+            std::cmp::Ordering::Greater => &mut stats.grow,
+            std::cmp::Ordering::Less => &mut stats.shrink,
+            std::cmp::Ordering::Equal => &mut stats.same,
         };
-        if in_place {
-            stats.avoidable_words += words;
-            stats.avoidable_cost += copy_cost;
+        class.calls += 1;
+        class.old_bytes += old.size;
+        class.new_bytes += new_size;
+        if new_ptr != ptr {
+            class.moved += 1;
+            class.copied_bytes += old.size.min(new_size);
         }
-        // alloc + memcpy + dealloc. The guest may have returned the same address (it grew in
-        // place), so the old block is taken out of the map before the new one goes in.
-        let old = self.live.remove(&ptr).unwrap();
+        if new_size != old.size && new_size.div_ceil(8) == old.size.div_ceil(8) {
+            stats.same_words += 1;
+        }
+        let reallocs = old.reallocs + 1;
+        stats.max_chain = stats.max_chain.max(reallocs);
+        // The allocator may return the same address, so the old block leaves the map first.
+        self.live.remove(&ptr);
         self.live_bytes -= old.size;
-        self.count_alloc(size, align);
-        self.shadow_alloc(new_ptr, size, align, false);
-        for (heap, addr) in self.heaps.iter_mut().zip(old.addr) {
-            if let Some(addr) = addr {
-                heap.dealloc(addr);
-            }
-        }
-    }
-
-    /// Estimated cost of the variant `heap`: rows, main steps and memsets, plus the copies of the
-    /// reallocs.
-    fn estimated_cost(&self, heap: usize) -> u64 {
-        let h = &self.heaps[heap];
-        h.rows() * h.heap.policy().row_cost()
-            + h.main_ops() * MAIN_COST
-            + h.memset_cost
-            + self.reallocs.copy_cost
+        self.insert(new_ptr, Live { size: new_size, align: old.align, reallocs });
     }
 
     /// `total_cost` is the variable cost of the whole program (the base cost is not included), the
-    /// reference of the `% VAR` columns.
+    /// reference of the `% VAR` column.
     pub fn report(&self, report: &mut StatsReport, total_cost: u64) {
         let n = |v: u64| report.format_number(v);
         let mut out = String::new();
-        out += "\nALLOCATOR PRECOMPILE ESTIMATION\n";
-        out += "-------------------------------\n";
-        if self.entries.is_empty() {
-            out += "No allocation entry point found in the ELF symbols.\n";
+        out += "\nALLOCATOR USAGE\n";
+        out += "---------------\n";
+        if self.marks > 0 {
+            out += &format!(
+                "source: {} allocation marks (cost {}, included in the totals of the program)\n",
+                n(self.marks),
+                n(self.marks * MAIN_COST)
+            );
+            if self.calls_before_marks > 0 {
+                out += &format!(
+                    "WARNING: {} calls were captured from the ELF symbols before the first mark\n",
+                    n(self.calls_before_marks)
+                );
+            }
+        } else if self.entries.is_empty() {
+            out += "No allocation mark and no allocation entry point in the ELF symbols.\n";
             report.add(&out);
             return;
+        } else {
+            out += "source: ELF symbols (the program has no allocation marks)\n";
+            for e in &self.entries {
+                out += &format!("  {:>12} calls  {}\n", n(e.calls), e.name);
+            }
+        }
+        if let Some(error) = &self.trace_error {
+            out += &format!("WARNING: the trace is incomplete, writing it failed: {error}\n");
         }
 
-        // What the guest does today
-        let guest_cost: u64 = self.entries.iter().map(|e| e.cost).sum();
-        let guest_steps: u64 = self.entries.iter().map(|e| e.steps).sum();
-        let guest_calls: u64 = self.entries.iter().map(|e| e.calls).sum();
-        out += "\nGUEST ALLOCATOR (cost inside each entry point, callees included)\n";
-        out += &format!(
-            "{:<44} {:>12} {:>14} {:>16} {:>9} {:>8}\n",
-            "ENTRY POINT", "CALLS", "STEPS", "COST", "COST/CALL", "% VAR"
+        // What the guest spends in its allocator
+        out += "\nCALLS (steps and cost between the start and the end of each call)\n";
+        let header = format!(
+            "{:<16} {:>12} {:>14} {:>16} {:>11} {:>11} {:>8}\n",
+            "CALL", "CALLS", "STEPS", "COST", "STEPS/CALL", "COST/CALL", "% VAR"
         );
-        for e in &self.entries {
-            out += &format!(
-                "{:<44} {:>12} {:>14} {:>16} {:>9} {:>8}\n",
-                clip(&e.name, 44),
-                n(e.calls),
-                n(e.steps),
-                n(e.cost),
-                per(e.cost, e.calls),
-                perc(e.cost, total_cost),
-            );
+        out += &header;
+        let mut total = KindStats::default();
+        let row = |name: &str, k: &KindStats| {
+            format!(
+                "{:<16} {:>12} {:>14} {:>16} {:>11} {:>11} {:>8}\n",
+                name,
+                n(k.calls),
+                n(k.steps),
+                n(k.cost),
+                per(k.steps, k.calls),
+                per(k.cost, k.calls),
+                perc(k.cost, total_cost),
+            )
+        };
+        for (kind, name) in CALL_KINDS {
+            let k = &self.kinds[kind as usize];
+            total.calls += k.calls;
+            total.steps += k.steps;
+            total.cost += k.cost;
+            out += &row(name, k);
         }
-        out += &format!(
-            "{:<44} {:>12} {:>14} {:>16} {:>9} {:>8}\n",
-            "TOTAL",
-            n(guest_calls),
-            n(guest_steps),
-            n(guest_cost),
-            per(guest_cost, guest_calls),
-            perc(guest_cost, total_cost),
-        );
+        out += &row("TOTAL", &total);
 
-        // The sequence that was replayed
-        out += "\nOPERATIONS\n";
+        // Memory
+        out += "\nMEMORY\n";
         out += &format!(
-            "allocs {} ({} zeroed)   frees {}   reallocs {}\n",
-            n(self.allocs),
-            n(self.zeroed_allocs),
-            n(self.frees),
-            n(self.reallocs.calls)
+            "allocated {} bytes in {} blocks, released {} bytes in {} blocks\n",
+            n(self.allocated_bytes),
+            n(self.by_align.values().map(|b| b.calls).sum()),
+            n(self.freed_bytes),
+            n(self.frees)
         );
         out += &format!(
             "peak live: {} bytes in {} blocks   still live at the end: {} bytes in {} blocks\n",
@@ -594,13 +723,39 @@ impl AllocStats {
             n(self.live_bytes),
             n(self.live.len() as u64)
         );
+        if self.high_water > 0 {
+            let span = self.high_water - self.min_addr;
+            out += &format!(
+                "addresses handed out: 0x{:x} - 0x{:x} ({} bytes, {:.2}x the peak live)\n",
+                self.min_addr,
+                self.high_water,
+                n(span),
+                span as f64 / self.peak_live_bytes.max(1) as f64
+            );
+        }
+        if self.zeroed.calls > 0 {
+            let reused = Bucket {
+                calls: self.zeroed.calls - self.zeroed_fresh.calls,
+                bytes: self.zeroed.bytes - self.zeroed_fresh.bytes,
+            };
+            out += &format!(
+                "zeroed allocations: {} ({} bytes); {} of them ({} bytes) below the highest \
+                 address handed out before, memory that may have been used\n",
+                n(self.zeroed.calls),
+                n(self.zeroed.bytes),
+                n(reused.calls),
+                n(reused.bytes)
+            );
+        }
         let ignored = [
             ("free(NULL)", self.null_frees),
             ("free of an unknown block", self.unknown_frees),
             ("failed alloc", self.failed_allocs),
             ("address reused without a free", self.reused),
+            ("layout that does not match the allocation", self.layout_mismatches),
             ("nested call", self.nested),
             ("call that never returned", self.lost),
+            ("unexpected mark", self.bad_marks),
         ];
         let ignored: Vec<String> = ignored
             .iter()
@@ -608,222 +763,149 @@ impl AllocStats {
             .map(|(name, count)| format!("{name} {}", n(*count)))
             .collect();
         if !ignored.is_empty() {
-            out += &format!("not replayed: {}\n", ignored.join(", "));
+            out += &format!("anomalies: {}\n", ignored.join(", "));
         }
-
-        // Estimation
-        out += &format!(
-            "\nPRECOMPILE ESTIMATION (shadow heap of {} bytes; row cost {} / {})\n",
-            n(self.heap_size),
-            ALLOC_ROW_COST,
-            ALLOC_FLEX_ROW_COST
-        );
-        out += &format!(
-            "{:<20} {:>12} {:>12} {:>10} {:>14} {:>14} {:>14} {:>9} {:>8} {:>8}\n",
-            "VARIANT",
-            "ROWS",
-            "JOIN ROWS",
-            "MEMSETS",
-            "MEMSET COST",
-            "HIGH WATER",
-            "COST",
-            "COST/OP",
-            "% VAR",
-            "vs GUEST"
-        );
-        for (i, heap) in self.heaps.iter().enumerate() {
-            let cost = self.estimated_cost(i);
-            out += &format!(
-                "{:<20} {:>12} {:>12} {:>10} {:>14} {:>14} {:>14} {:>9} {:>8} {:>8}\n",
-                heap.heap.policy().name(),
-                n(heap.rows()),
-                n(heap.heap.join_rows),
-                n(heap.memsets),
-                n(heap.memset_cost),
-                n(heap.heap.high_water),
-                n(cost),
-                per(cost, guest_calls),
-                perc(cost, total_cost),
-                if guest_cost == 0 {
-                    "-".to_string()
-                } else {
-                    format!("{:.2}x", cost as f64 / guest_cost as f64)
-                },
-            );
-            if heap.failures > 0 {
-                out += &format!(
-                    "  WARNING: {} allocations did not fit in the shadow heap\n",
-                    n(heap.failures)
-                );
-            }
-        }
-        out += &format!(
-            "COST = rows x row cost + operations x {MAIN_COST} (one main step each) + memsets + \
-             realloc copies ({}).\n",
-            n(self.reallocs.copy_cost)
-        );
 
         // realloc
         let r = &self.reallocs;
         if r.calls > 0 {
-            out += "\nREALLOC (replayed as alloc + memcpy + dealloc)\n";
+            out += "\nREALLOC\n";
             out += &format!(
-                "calls {}: grow {} ({} could grow in place), shrink {}, same size {}\n",
-                n(r.calls),
-                n(r.grow),
-                n(r.grow_in_place),
-                n(r.shrink),
-                n(r.same)
+                "{:<12} {:>12} {:>9} {:>12} {:>12} {:>16} {:>16} {:>16}\n",
+                "", "CALLS", "%", "MOVED", "IN PLACE", "OLD BYTES", "NEW BYTES", "COPIED BYTES"
             );
-            out += &format!(
-                "copied {} bytes, cost {} ({} per call)\n",
-                n(r.copied_words * 8),
-                n(r.copy_cost),
-                per(r.copy_cost, r.calls)
-            );
-            // In place there is no copy, and no second row: one operation instead of two.
-            let in_place = r.same + r.shrink + r.grow_in_place;
-            out += &format!(
-                "an in-place realloc would avoid {} copies ({}), {} bytes, cost {} ({})\n",
-                n(in_place),
-                perc(in_place, r.calls),
-                n(r.avoidable_words * 8),
-                n(r.avoidable_cost),
-                perc(r.avoidable_cost, r.copy_cost)
-            );
+            for (name, c) in [("grow", &r.grow), ("shrink", &r.shrink), ("same size", &r.same)] {
+                out += &format!(
+                    "{:<12} {:>12} {:>9} {:>12} {:>12} {:>16} {:>16} {:>16}\n",
+                    name,
+                    n(c.calls),
+                    perc(c.calls, r.calls),
+                    n(c.moved),
+                    n(c.calls - c.moved),
+                    n(c.old_bytes),
+                    n(c.new_bytes),
+                    n(c.copied_bytes)
+                );
+            }
+            if r.grow.calls > 0 {
+                out += &format!(
+                    "a growing call multiplies the size by {:.2} on average\n",
+                    r.grow.new_bytes as f64 / r.grow.old_bytes.max(1) as f64
+                );
+            }
+            if r.same_words > 0 {
+                out += &format!(
+                    "{} calls change the size without changing the number of 8-byte words\n",
+                    n(r.same_words)
+                );
+            }
+            out += &format!("reallocations of one block: up to {}\n", r.max_chain);
+            out += &format!("{:<28} {:>12}\n", "REALLOCATIONS", "BLOCKS");
+            let mut by_chain = r.by_chain;
+            for block in self.live.values() {
+                by_chain[chain_bucket(block.reallocs)] += 1;
+            }
+            for (bits, &blocks) in by_chain.iter().enumerate() {
+                if blocks > 0 {
+                    out += &format!("{:<28} {:>12}\n", range_label(bits), n(blocks));
+                }
+            }
         }
 
         // Alignments
-        out += "\nALIGNMENT OF THE ALLOCATIONS (reallocs included)\n";
-        out += &format!("{:<28} {:>12} {:>9} {:>16} {:>9}\n", "ALIGN", "CALLS", "%", "BYTES", "%");
-        let total: Bucket = self.by_align.values().fold(Bucket::default(), |mut acc, b| {
+        let total = self.by_align.values().fold(Bucket::default(), |mut acc, b| {
             acc.calls += b.calls;
             acc.bytes += b.bytes;
             acc
         });
+        let bucket_row = |label: &str, bucket: &Bucket| {
+            format!(
+                "{:<28} {:>12} {:>9} {:>16} {:>9}\n",
+                label,
+                n(bucket.calls),
+                perc(bucket.calls, total.calls),
+                n(bucket.bytes),
+                perc(bucket.bytes, total.bytes)
+            )
+        };
+        let bucket_header = |label: &str| {
+            format!("{:<28} {:>12} {:>9} {:>16} {:>9}\n", label, "BLOCKS", "%", "BYTES", "%")
+        };
+        out += "\nALIGNMENT OF THE BLOCKS (allocations and reallocations)\n";
+        out += &bucket_header("ALIGN");
+        let mut over = Bucket::default();
         for (&align, bucket) in &self.by_align {
-            let label = if align == DEFAULT_ALIGN {
+            let label = if align == ALIGN_NOT_STATED {
                 "not stated (malloc/new)".to_string()
             } else {
                 align.to_string()
             };
-            out += &format!(
-                "{:<28} {:>12} {:>9} {:>16} {:>9}\n",
-                label,
-                n(bucket.calls),
-                perc(bucket.calls, total.calls),
-                n(bucket.bytes),
-                perc(bucket.bytes, total.bytes)
-            );
+            out += &bucket_row(&label, bucket);
+            if align > 8 {
+                over.calls += bucket.calls;
+                over.bytes += bucket.bytes;
+            }
         }
-        let over: Bucket = self.by_align.iter().filter(|(&align, _)| align > 8).fold(
-            Bucket::default(),
-            |mut acc, (_, b)| {
-                acc.calls += b.calls;
-                acc.bytes += b.bytes;
-                acc
-            },
-        );
-        out += &format!(
-            "bigger than 8: {} calls ({}), {} bytes ({})\n",
-            n(over.calls),
-            perc(over.calls, total.calls),
-            n(over.bytes),
-            perc(over.bytes, total.bytes)
-        );
+        out += &bucket_row("bigger than 8", &over);
 
         // Sizes
-        out += "\nSIZE OF THE ALLOCATIONS (reallocs included)\n";
-        out += &format!("{:<28} {:>12} {:>9} {:>16} {:>9}\n", "BYTES", "CALLS", "%", "BYTES", "%");
+        out += "\nSIZE OF THE BLOCKS (allocations and reallocations)\n";
+        out += &bucket_header("BYTES");
         for (bits, bucket) in self.by_size.iter().enumerate() {
-            if bucket.calls == 0 {
-                continue;
+            if bucket.calls > 0 {
+                out += &bucket_row(&range_label(bits), bucket);
             }
-            let label = match bits {
-                0 => "0".to_string(),
-                1 => "1".to_string(),
-                _ => format!("{}-{}", 1u128 << (bits - 1), (1u128 << bits) - 1),
-            };
-            out += &format!(
-                "{:<28} {:>12} {:>9} {:>16} {:>9}\n",
-                label,
-                n(bucket.calls),
-                perc(bucket.calls, total.calls),
-                n(bucket.bytes),
-                perc(bucket.bytes, total.bytes)
-            );
+        }
+        if over.calls > 0 {
+            out += "\nSIZE OF THE BLOCKS WITH AN ALIGNMENT BIGGER THAN 8\n";
+            out += &bucket_header("BYTES");
+            for (bits, bucket) in self.over_aligned_by_size.iter().enumerate() {
+                if bucket.calls > 0 {
+                    out += &bucket_row(&range_label(bits), bucket);
+                }
+            }
         }
         report.add(&out);
+        if let Some(estimate) = &self.estimate {
+            let guest_cost = self.kinds.iter().map(|k| k.cost).sum();
+            let guest_calls = self.kinds.iter().map(|k| k.calls).sum();
+            estimate.report(report, total_cost, guest_cost, guest_calls);
+        }
+    }
+
+    /// Flushes the trace file, if there is one.
+    pub fn finish(&mut self) {
+        if let Some(trace) = &mut self.trace {
+            if let Err(error) = trace.flush() {
+                self.trace_error = Some(error.to_string());
+            }
+        }
     }
 }
 
-/// What the allocator precompile did in an execution that uses it (a guest built with the
-/// precompile allocator), taken from the emulation context when the execution ends. Its cost is
-/// already part of the totals, under the `alloc_*` opcodes.
-#[derive(Debug)]
-pub struct AllocPrecompileSummary {
-    policy: AllocPolicy,
-    op_rows: u64,
-    join_rows: u64,
-    callocs: u64,
-    memsets: u64,
-    memset_words: u64,
-    used_bytes: u64,
-    used_blocks: u64,
-    peak_used_bytes: u64,
-    peak_used_blocks: u64,
-    high_water: u64,
+/// Header of the trace file, which documents its format.
+pub const TRACE_HEADER: &str = "\
+# ziskemu allocation trace, version 1. One call per line, in execution order, tab separated.
+# Pointers are hexadecimal, the rest decimal; '-' is a value the caller does not state, and an
+# alignment of 0 is not stated either. A pointer of 0 returned by a call means it failed.
+# steps and cost are what the program spent inside the call.
+#   a <size> <align> <ptr> <steps> <cost>                             alloc
+#   z <size> <align> <ptr> <steps> <cost>                             zeroed alloc
+#   f <ptr> <size> <align> <steps> <cost>                             free
+#   r <ptr> <old_size> <align> <new_size> <new_ptr> <steps> <cost>    realloc
+";
+
+/// Bucket of `by_chain` for a block reallocated `reallocs` times.
+fn chain_bucket(reallocs: u32) -> usize {
+    ((32 - reallocs.leading_zeros()) as usize).min(31)
 }
 
-impl AllocPrecompileSummary {
-    /// `None` when the program never called the precompile.
-    pub fn new(alloc: &AllocInstContext) -> Option<Self> {
-        let heap = &alloc.heap;
-        (heap.op_rows > 0).then(|| Self {
-            policy: heap.policy(),
-            op_rows: heap.op_rows,
-            join_rows: heap.join_rows,
-            callocs: alloc.callocs,
-            memsets: alloc.memsets,
-            memset_words: alloc.memset_words,
-            used_bytes: heap.used_bytes,
-            used_blocks: heap.used_blocks() as u64,
-            peak_used_bytes: heap.peak_used_bytes,
-            peak_used_blocks: heap.peak_used_blocks as u64,
-            high_water: heap.high_water,
-        })
-    }
-
-    pub fn report(&self, report: &mut StatsReport) {
-        let n = |v: u64| report.format_number(v);
-        let rows = self.op_rows + self.join_rows;
-        let mut out = String::new();
-        out += "\nALLOCATOR PRECOMPILE\n";
-        out += "--------------------\n";
-        out += &format!(
-            "variant {} (row cost {}): {} rows = {} operations + {} joins, cost of the rows {}\n",
-            self.policy.name(),
-            self.policy.row_cost(),
-            n(rows),
-            n(self.op_rows),
-            n(self.join_rows),
-            n(rows * self.policy.row_cost())
-        );
-        out += &format!(
-            "zeroed allocations {}, {} of them over a used block: {} bytes cleared\n",
-            n(self.callocs),
-            n(self.memsets),
-            n(self.memset_words * 8)
-        );
-        out += &format!(
-            "peak in use: {} bytes in {} blocks   still in use at the end: {} bytes in {} blocks\n",
-            n(self.peak_used_bytes),
-            n(self.peak_used_blocks),
-            n(self.used_bytes),
-            n(self.used_blocks)
-        );
-        out += &format!("highest address handed out: 0x{:x}\n", self.high_water);
-        report.add(&out);
+/// Label of the power-of-two bucket of the values with `bits` significant bits.
+fn range_label(bits: usize) -> String {
+    match bits {
+        0 => "0".to_string(),
+        1 => "1".to_string(),
+        _ => format!("{}-{}", 1u128 << (bits - 1), (1u128 << bits) - 1),
     }
 }
 
@@ -840,16 +922,6 @@ fn per(value: u64, count: u64) -> String {
         "-".to_string()
     } else {
         format!("{:.1}", value as f64 / count as f64)
-    }
-}
-
-fn clip(text: &str, width: usize) -> String {
-    if text.chars().count() <= width {
-        text.to_string()
-    } else {
-        let mut clipped: String = text.chars().take(width - 1).collect();
-        clipped.push('…');
-        clipped
     }
 }
 
@@ -874,7 +946,7 @@ mod tests {
             (RG_ALLOC, "__rg_alloc_zeroed"),
             (0x6000, "main"),
         ];
-        AllocStats::new(symbols.into_iter(), 1 << 20)
+        AllocStats::new(symbols.into_iter())
     }
 
     fn regs(ra: u64, sp: u64, a: [u64; 4]) -> [u64; 32] {
@@ -891,6 +963,17 @@ mod tests {
         stats.on_step(entry, &regs(CALLER, SP, a), 100, 1000);
         assert!(stats.is_watched(CALLER));
         stats.on_step(CALLER, &regs(CALLER, SP, [result, 0, 0, 0]), 110, 1500);
+    }
+
+    /// Emits a mark; every mark is a step of cost `MAIN_COST`, and so is everything in between.
+    fn mark(stats: &mut AllocStats, step: &mut u64, kind: u8, a: u64, b: u64) {
+        *step += 1;
+        stats.on_mark(kind as u64, a, b, *step, *step * MAIN_COST);
+    }
+
+    fn kind(stats: &AllocStats, kind: CallKind) -> (u64, u64, u64) {
+        let k = stats.kinds[kind as usize];
+        (k.calls, k.steps, k.cost)
     }
 
     #[test]
@@ -919,17 +1002,12 @@ mod tests {
         let mut stats = stats();
         assert!(!stats.is_watched(0x100));
         call(&mut stats, MALLOC, [24, 0, 0, 0], 0xA000);
-        assert_eq!((stats.allocs, stats.frees), (1, 0));
-        let malloc = stats.entries.iter().find(|e| e.name == "malloc").unwrap();
-        assert_eq!((malloc.calls, malloc.steps, malloc.cost), (1, 10, 500));
+        assert_eq!(kind(&stats, CallKind::Alloc), (1, 10, 500));
+        assert_eq!((stats.live_bytes, stats.live.len()), (24, 1));
         call(&mut stats, FREE, [0xA000, 0, 0, 0], 0);
-        assert_eq!((stats.allocs, stats.frees, stats.live.len()), (1, 1, 0));
-        // create + alloc + dealloc; the released block is joined back with the rest of the area
-        assert_eq!(stats.heaps[0].rows(), 3);
-        assert_eq!(stats.heaps[0].heap.free_blocks(), 1);
-        assert_eq!(stats.heaps[1].heap.join_rows, 1);
-        assert_eq!(stats.heaps[2].heap.join_rows, 0);
-        assert_eq!(stats.heaps[2].heap.free_blocks(), 2);
+        assert_eq!(kind(&stats, CallKind::Dealloc), (1, 10, 500));
+        assert_eq!((stats.frees, stats.freed_bytes, stats.live.len()), (1, 24, 0));
+        assert_eq!((stats.peak_live_bytes, stats.min_addr, stats.high_water), (24, 0xA000, 0xA018));
     }
 
     #[test]
@@ -940,7 +1018,8 @@ mod tests {
         stats.on_step(RG_ALLOC, &regs(CALLER, SP, [64, 8, 0, 0]), 1, 10);
         stats.on_step(MALLOC, &regs(RG_ALLOC + 8, SP - 16, [64, 0, 0, 0]), 2, 20);
         stats.on_step(CALLER, &regs(CALLER, SP, [0xB000, 0, 0, 0]), 9, 90);
-        assert_eq!((stats.allocs, stats.zeroed_allocs, stats.nested), (1, 1, 2));
+        assert_eq!(kind(&stats, CallKind::AllocZeroed), (1, 9, 90));
+        assert_eq!((stats.zeroed.calls, stats.nested), (1, 2));
         assert_eq!(stats.by_align.get(&8).map(|b| b.calls), Some(1));
     }
 
@@ -950,58 +1029,100 @@ mod tests {
         stats.on_step(MALLOC, &regs(CALLER, SP - 64, [8, 0, 0, 0]), 0, 0);
         // the stack was unwound past that frame and malloc is called again
         call(&mut stats, MALLOC, [8, 0, 0, 0], 0xA000);
-        assert_eq!((stats.allocs, stats.lost), (1, 1));
+        assert_eq!((stats.kinds[0].calls, stats.lost), (1, 1));
     }
 
     #[test]
-    fn a_zeroed_alloc_only_pays_a_memset_on_a_used_block() {
-        let mut heap = ShadowHeap::new(AllocPolicy::Canonical, 1 << 20);
-        let a = heap.alloc(64, true).unwrap();
-        let _b = heap.alloc(64, false).unwrap();
-        assert_eq!(heap.memsets, 0);
-        heap.dealloc(a);
-        // best fit takes the released block, which has been used
-        assert_eq!(heap.alloc(64, true), Some(a));
-        assert_eq!((heap.memsets, heap.memset_words), (1, 8));
-        assert_eq!(heap.memset_cost, memset_cost(8));
-        // create + 3 allocs + dealloc, and the create is not an operation of the main
-        assert_eq!((heap.rows(), heap.main_ops()), (5, 4));
-    }
-
-    #[test]
-    fn realloc_is_an_alloc_a_copy_and_a_dealloc() {
+    fn reallocs_are_classified_by_direction_and_by_whether_the_block_moved() {
         let mut stats = stats();
         call(&mut stats, MALLOC, [16, 0, 0, 0], 0xA000);
-        // nothing above the block: it could grow in place
         call(&mut stats, REALLOC, [0xA000, 40, 0, 0], 0xB000);
-        assert_eq!(
-            (stats.reallocs.calls, stats.reallocs.grow, stats.reallocs.grow_in_place),
-            (1, 1, 1)
-        );
-        assert_eq!(stats.reallocs.copied_words, 2);
-        assert_eq!(stats.reallocs.copy_cost, memcpy_cost(2));
-        assert_eq!(stats.live.get(&0xB000).map(|l| l.shadow_size), Some(40));
+        let r = &stats.reallocs;
+        assert_eq!((r.calls, r.grow.calls, r.grow.moved, r.grow.copied_bytes), (1, 1, 1, 16));
+        assert_eq!((r.grow.old_bytes, r.grow.new_bytes), (16, 40));
         assert!(!stats.live.contains_key(&0xA000));
-        // create + alloc + (alloc + dealloc)
-        assert_eq!(stats.heaps[0].rows(), 4);
-        // the hole it left is filled and a block lands right above it: now it has to move
-        call(&mut stats, MALLOC, [16, 0, 0, 0], 0xA000);
-        call(&mut stats, MALLOC, [8, 0, 0, 0], 0xC000);
+        assert_eq!(stats.live_bytes, 40);
+        // in place: nothing is copied
         call(&mut stats, REALLOC, [0xB000, 400, 0, 0], 0xB000);
-        assert_eq!((stats.reallocs.grow, stats.reallocs.grow_in_place), (2, 1));
-        assert_eq!(stats.live_bytes, 424);
-        // shrinking never needs to move
         call(&mut stats, REALLOC, [0xB000, 100, 0, 0], 0xB000);
-        assert_eq!((stats.reallocs.shrink, stats.reallocs.same), (1, 0));
-        call(&mut stats, REALLOC, [0xB000, 97, 0, 0], 0xB000);
-        assert_eq!(stats.reallocs.same, 1);
+        call(&mut stats, REALLOC, [0xB000, 97, 0, 0], 0xC000);
+        call(&mut stats, REALLOC, [0xC000, 97, 0, 0], 0xC000);
+        let r = &stats.reallocs;
+        assert_eq!((r.grow.calls, r.grow.moved, r.grow.copied_bytes), (2, 1, 16));
+        assert_eq!((r.shrink.calls, r.shrink.moved, r.shrink.copied_bytes), (2, 1, 97));
+        assert_eq!((r.same.calls, r.same.moved), (1, 0));
+        // 100 -> 97 bytes are 13 words both
+        assert_eq!((r.same_words, r.max_chain), (1, 5));
+        assert_eq!((stats.live_bytes, stats.peak_live_bytes), (97, 400));
+        // realloc(NULL) is a malloc and realloc(ptr, 0) a free
+        call(&mut stats, REALLOC, [0, 32, 0, 0], 0xD000);
+        call(&mut stats, REALLOC, [0xD000, 0, 0, 0], 0);
+        assert_eq!((stats.reallocs.calls, stats.frees, stats.live.len()), (5, 1, 1));
     }
 
     #[test]
-    fn an_alignment_over_8_is_served_by_over_allocating() {
-        assert_eq!(shadow_size(0, 0), 8);
-        assert_eq!(shadow_size(13, 8), 16);
-        assert_eq!(shadow_size(64, 64), 64 + 56);
-        assert_eq!(shadow_size(1, 4096), 8 + 4088);
+    fn marks_describe_whole_calls() {
+        let mut stats = stats();
+        let mut step = 0;
+        mark(&mut stats, &mut step, ALLOC_MARK_ALLOC_ZEROED_ID, 100, 64);
+        step += 5; // the allocator works
+        mark(&mut stats, &mut step, ALLOC_MARK_END_ID, 0xA000, 0);
+        // the five steps in between, without the marks
+        assert_eq!(kind(&stats, CallKind::AllocZeroed), (1, 5, 5 * MAIN_COST));
+        assert_eq!(stats.live.get(&0xA000).map(|b| (b.size, b.align)), Some((100, 64)));
+        assert_eq!((stats.zeroed.calls, stats.zeroed_fresh.calls), (1, 1));
+        assert_eq!(stats.over_aligned_by_size[7].calls, 1);
+
+        mark(&mut stats, &mut step, ALLOC_MARK_LAYOUT_ID, 100, 64);
+        mark(&mut stats, &mut step, ALLOC_MARK_REALLOC_ID, 0xA000, 300);
+        step += 9;
+        mark(&mut stats, &mut step, ALLOC_MARK_END_ID, 0xB000, 0);
+        assert_eq!(kind(&stats, CallKind::Realloc), (1, 9, 9 * MAIN_COST));
+        assert_eq!(stats.live.get(&0xB000).map(|b| (b.size, b.align)), Some((300, 64)));
+
+        mark(&mut stats, &mut step, ALLOC_MARK_LAYOUT_ID, 300, 64);
+        mark(&mut stats, &mut step, ALLOC_MARK_DEALLOC_ID, 0xB000, 0);
+        mark(&mut stats, &mut step, ALLOC_MARK_END_ID, 0, 0);
+        assert_eq!(kind(&stats, CallKind::Dealloc), (1, 0, 0));
+        assert_eq!((stats.live.len(), stats.layout_mismatches, stats.bad_marks), (0, 0, 0));
+
+        // a zeroed block below the highest address handed out may be reused memory
+        mark(&mut stats, &mut step, ALLOC_MARK_ALLOC_ZEROED_ID, 8, 8);
+        mark(&mut stats, &mut step, ALLOC_MARK_END_ID, 0xA000, 0);
+        assert_eq!((stats.zeroed.calls, stats.zeroed_fresh.calls), (2, 1));
+        assert_eq!(stats.marks, 10);
+    }
+
+    #[test]
+    fn marks_take_over_from_the_symbols() {
+        let mut stats = stats();
+        call(&mut stats, MALLOC, [8, 0, 0, 0], 0xA000);
+        // a marked call that goes through malloc, which is no longer watched
+        let mut step = 200;
+        mark(&mut stats, &mut step, ALLOC_MARK_ALLOC_ID, 16, 8);
+        assert!(!stats.is_watched(MALLOC));
+        mark(&mut stats, &mut step, ALLOC_MARK_END_ID, 0xB000, 0);
+        assert_eq!((stats.kinds[0].calls, stats.calls_before_marks), (2, 1));
+    }
+
+    #[test]
+    fn unbalanced_marks_are_counted_and_ignored() {
+        let mut stats = stats();
+        let mut step = 0;
+        mark(&mut stats, &mut step, ALLOC_MARK_END_ID, 0xA000, 0);
+        mark(&mut stats, &mut step, 99, 0, 0);
+        assert_eq!(stats.bad_marks, 2);
+        // an allocation made from inside the allocator belongs to the outer call
+        mark(&mut stats, &mut step, ALLOC_MARK_ALLOC_ID, 64, 8);
+        mark(&mut stats, &mut step, ALLOC_MARK_ALLOC_ID, 4096, 8);
+        mark(&mut stats, &mut step, ALLOC_MARK_END_ID, 0xF000, 0);
+        mark(&mut stats, &mut step, ALLOC_MARK_END_ID, 0xA000, 0);
+        assert_eq!((stats.kinds[0].calls, stats.nested), (1, 1));
+        assert_eq!(stats.live.get(&0xA000).map(|b| b.size), Some(64));
+        // a release stating another size than the allocation
+        mark(&mut stats, &mut step, ALLOC_MARK_LAYOUT_ID, 32, 8);
+        mark(&mut stats, &mut step, ALLOC_MARK_DEALLOC_ID, 0xA000, 0);
+        mark(&mut stats, &mut step, ALLOC_MARK_END_ID, 0, 0);
+        assert_eq!((stats.frees, stats.layout_mismatches), (1, 1));
     }
 }

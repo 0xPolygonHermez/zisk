@@ -7000,16 +7000,6 @@ impl ZiskRom2Asm {
             ZiskOp::Profile => {
                 unimplemented!("Internal opcode Profile");
             }
-            ZiskOp::AllocCreateClean
-            | ZiskOp::AllocCreateDirty
-            | ZiskOp::AllocAlloc
-            | ZiskOp::AllocCalloc
-            | ZiskOp::AllocDealloc => {
-                unimplemented!(
-                    "the allocator precompile is a prototype, the assembly emulator does not \
-                     support it"
-                );
-            }
             // add.uw and the .uw shift-and-adds are transpiled (and + add / and + sh<n>add), so
             // they never reach the assembly emulator as a single operation.
             ZiskOp::AddUW
