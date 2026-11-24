@@ -73,18 +73,30 @@ struct ChunkCounters {
     uint32_t write_byte;
 };
 
-// ZisK memory map (core/src/mem.rs, must match it): input 2 GB, ROM 128 MB, RAM 2 GB above
-// 4GB. Byte addresses are 33 bits wide (uint64_t); word addresses (byte address / 8) and the
-// compact addresses fit in a uint32_t.
+// ZisK memory map (core/src/mem.rs, must match it): input, ROM 128 MB, RAM. The input and RAM
+// sizes are the memory the executors reserve (MAX_INPUT_SIZE, RAM_SIZE): 1 GB and 512 MB, or
+// 2 GB with the input_2gb / ram_2gb features of zisk-core (ZISK_INPUT_2GB / ZISK_RAM_2GB, see
+// build.rs), a prefix of the 2 GB windows the memory airs cover. Byte addresses are 33 bits
+// wide (uint64_t); word addresses (byte address / 8) and the compact addresses fit in a uint32_t.
 constexpr uint64_t ZISK_INPUT_ADDR_BASE   = 0x20000000ull;
+#ifdef ZISK_INPUT_2GB
 constexpr uint64_t ZISK_INPUT_SIZE_BYTES  = 1ull << 31;
+#else
+constexpr uint64_t ZISK_INPUT_SIZE_BYTES  = 1ull << 30;
+#endif
 constexpr uint64_t ZISK_INPUT_ADDR_END    = ZISK_INPUT_ADDR_BASE + ZISK_INPUT_SIZE_BYTES;
 constexpr uint64_t ZISK_ROM_ADDR_BASE     = 0xA8000000ull;
 constexpr uint64_t ZISK_ROM_SIZE_BYTES    = 1ull << 27;
 constexpr uint64_t ZISK_ROM_ADDR_END      = ZISK_ROM_ADDR_BASE + ZISK_ROM_SIZE_BYTES;
 constexpr uint64_t ZISK_RAM_ADDR_BASE     = 0xC0000000ull;
+#ifdef ZISK_RAM_2GB
 constexpr uint64_t ZISK_RAM_SIZE_BYTES    = 1ull << 31;
+#else
+constexpr uint64_t ZISK_RAM_SIZE_BYTES    = 1ull << 29;
+#endif
 constexpr uint64_t ZISK_RAM_ADDR_END      = ZISK_RAM_ADDR_BASE + ZISK_RAM_SIZE_BYTES;
+// End of the RAM window, the address range of the Mem air: the last segment pads up to it
+constexpr uint64_t ZISK_RAM_WINDOW_END    = ZISK_RAM_ADDR_BASE + (1ull << 31);
 constexpr uint64_t ZISK_ALIGN_MASK        = ~0x7ull;
 // The region tests (compact_addr, the address check of the ROM/input retention) assume
 // input < ROM < RAM, without overlaps.
@@ -93,8 +105,8 @@ static_assert(ZISK_INPUT_ADDR_END <= ZISK_ROM_ADDR_BASE && ZISK_ROM_ADDR_END <= 
 
 // Compact address space: one entry per 8-byte word of each area, ROM then input then RAM.
 constexpr uint32_t N_ADDR_ROM   = (uint32_t)(ZISK_ROM_SIZE_BYTES >> 3);    // 2^24
-constexpr uint32_t N_ADDR_INPUT = (uint32_t)(ZISK_INPUT_SIZE_BYTES >> 3);  // 2^28
-constexpr uint32_t N_ADDR_RAM   = (uint32_t)(ZISK_RAM_SIZE_BYTES >> 3);    // 2^28
+constexpr uint32_t N_ADDR_INPUT = (uint32_t)(ZISK_INPUT_SIZE_BYTES >> 3);  // 2^27 (2^28 with 2 GB)
+constexpr uint32_t N_ADDR_RAM   = (uint32_t)(ZISK_RAM_SIZE_BYTES >> 3);    // 2^26 (2^28 with 2 GB)
 constexpr uint32_t N_ADDR = N_ADDR_ROM + N_ADDR_INPUT + N_ADDR_RAM;
 constexpr uint32_t REGION_ADDR_START[3] = {0, N_ADDR_ROM, N_ADDR_ROM + N_ADDR_INPUT};
 
@@ -154,9 +166,10 @@ struct AlignPlanDesc { uint32_t air_kind, air_id, segment, n_rows, entry_from, e
 struct AlignChunkEntry { uint32_t chunk; uint32_t skip[ALIGN_KINDS]; uint32_t count[ALIGN_KINDS]; };
 static_assert(sizeof(AlignPlanDesc) == 24 && sizeof(AlignChunkEntry) == 44, "align plan layout changed: update gpu_bindings.rs");
 
-// Word index of the first and last RAM addresses (full word addresses, 30 bits).
+// Word index of the first RAM address and of the last one of the RAM window (full word
+// addresses, 30 bits).
 constexpr uint32_t RAM_W_ADDR_BASE = (uint32_t)(ZISK_RAM_ADDR_BASE >> 3);
-constexpr uint32_t RAM_W_ADDR_LAST = (uint32_t)((ZISK_RAM_ADDR_END - 8u) >> 3);
+constexpr uint32_t RAM_W_ADDR_LAST = (uint32_t)((ZISK_RAM_WINDOW_END - 8u) >> 3);
 
 // What the block's preparation (prepare_fills) established, every family together. POD, mirrored
 // in mem_witness_types.rs.

@@ -18,14 +18,16 @@ use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use zisk_common::SegmentId;
-use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
+use zisk_core::{INPUT_ADDR, INPUT_WINDOW_SIZE};
 use zisk_pil::{
     InputDataAirValues, InputDataTrace, InputDataTraceRow, InputDataTraceRowOps,
     InputDataTraceRowPacked,
 };
 
 pub const INPUT_DATA_W_ADDR_INIT: u32 = INPUT_ADDR as u32 >> MEM_BYTES_BITS;
-pub const INPUT_DATA_W_ADDR_END: u32 = (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32 >> MEM_BYTES_BITS;
+// The InputData air covers the whole input window, whatever part of it the executors reserve
+pub const INPUT_DATA_W_ADDR_END: u32 =
+    (INPUT_ADDR + INPUT_WINDOW_SIZE - 1) as u32 >> MEM_BYTES_BITS;
 
 const OFFSET_USE_FLAG: u32 = 0x8000_0000;
 const OFFSET_VALUE_MASK: u32 = 0x7FFF_FFFF;
@@ -33,11 +35,11 @@ const OFFSET_VALUE_MASK: u32 = 0x7FFF_FFFF;
 #[allow(clippy::assertions_on_constants)]
 const _: () = {
     assert!(
-        INPUT_ADDR + MAX_INPUT_SIZE - 1 <= 0xFFFF_FFFF,
+        INPUT_ADDR + INPUT_WINDOW_SIZE - 1 <= 0xFFFF_FFFF,
         "INPUT_DATA memory exceeds the 32-bit addressable range"
     );
     assert!(
-        (MAX_INPUT_SIZE - 1) <= (2048 << 20),
+        (INPUT_WINDOW_SIZE - 1) <= (2048 << 20),
         "INPUT_DATA is too large. Input size must be <= 2048MB"
     );
 };
@@ -150,7 +152,7 @@ impl<F: PrimeField64> InputDataSM<F> {
         INPUT_ADDR as u32
     }
     pub fn get_to_addr() -> u32 {
-        (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32
+        (INPUT_ADDR + INPUT_WINDOW_SIZE - 1) as u32
     }
 
     #[cfg(feature = "debug_mem")]

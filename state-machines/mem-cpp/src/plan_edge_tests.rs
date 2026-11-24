@@ -13,7 +13,7 @@ use zisk_sm_mem_common::{MemAlignCheckPoint, MemModuleSegmentCheckPoint};
 
 // The memory map of core/src/mem.rs, as count_and_plan.cuh carries it (33-bit addresses).
 const INPUT_ADDR: u64 = 0x2000_0000;
-const INPUT_SIZE: u64 = 1 << 31;
+const INPUT_SIZE: u64 = zisk_core::MAX_INPUT_SIZE;
 const ROM_ADDR: u64 = 0xA800_0000;
 const ROM_SIZE: u64 = 1 << 27;
 const RAM_ADDR: u64 = 0xC000_0000;

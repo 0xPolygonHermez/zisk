@@ -16,7 +16,7 @@
 //! `      ...`
 //! `|--------------- INPUT_ADDR = FREE_INPUT_ADDR       (0x20000000)`
 //! `|`
-//! `| Contains program input data (2GB).`
+//! `| Contains program input data (2GB window; 1GB reserved, 2GB with input_2gb).`
 //! `| A load from FREE_INPUT_ADDR returns the free input (fcall result).`
 //! `|`
 //! `|--------------- ROM_ADDR: first program instruction (0xa8000000)`
@@ -72,7 +72,9 @@
 //! `| Contains program memory, available for normal R/W`
 //! `| used during program execution: .data, .bss and then the heap.`
 //! `|`
-//! `|--------------- END OF RAM                          (0x1_40000000)`
+//! `|--------------- END OF RAM (512MB, without ram_2gb) (0xe0000000)`
+//! `|`
+//! `|--------------- END OF RAM WINDOW (2GB, ram_2gb)     (0x1_40000000)`
 //! `      ...`
 //!
 //! ## Addresses above 32 bits
@@ -107,6 +109,16 @@
 //! * In general, setup and finalization instructions are located in low addresses, while the actual
 //!   program instructions are located in high addresses.
 //!
+//! ## Reserved memory
+//! * The input and the RAM windows are 2GB each ([`INPUT_WINDOW_SIZE`], [`RAM_WINDOW_SIZE`]):
+//!   that is what the memory airs cover, and it never changes. The executors (the Rust and the
+//!   assembly emulators) and the memory planners only reserve the first part of each window:
+//!   [`MAX_INPUT_SIZE`], 1GB or the whole window with the `input_2gb` feature, and [`RAM_SIZE`],
+//!   512MB or the whole window with the `ram_2gb` feature. An access to the rest of a window
+//!   fails as an access outside the memory map does. The BIOS reads the input every 128MB up to
+//!   [`MAX_INPUT_SIZE`], so `input_2gb` changes the BIOS ROM (and so the ROM commitment of the
+//!   program), but not the verification key.
+//!
 //! ## INPUT_ADDR
 //! * During the program initialization the input data for the program execution is copied in this
 //!   memory region, beginning with `INPUT_ADDR`.
@@ -133,8 +145,14 @@ use core::fmt;
 
 /// Fist input data memory address
 pub const INPUT_ADDR: u64 = 0x2000_0000;
-/// Maximum size of the input data
-pub const MAX_INPUT_SIZE: u64 = 0x8000_0000; // 2GB
+/// Size of the input window, the address range of the InputData air (pil/zisk.pil)
+pub const INPUT_WINDOW_SIZE: u64 = 0x8000_0000; // 2GB
+/// Maximum size of the input data: the part of the input window that the executors reserve
+#[cfg(feature = "input_2gb")]
+pub const MAX_INPUT_SIZE: u64 = INPUT_WINDOW_SIZE; // 2GB
+/// Maximum size of the input data: the part of the input window that the executors reserve
+#[cfg(not(feature = "input_2gb"))]
+pub const MAX_INPUT_SIZE: u64 = 0x4000_0000; // 1GB
 /// Maximum size of a guest's stdin: the input region less its first word, the free input, and its
 /// last one, as the ASM client checks an input file
 pub const MAX_STDIN_SIZE: u64 = MAX_INPUT_SIZE - 16;
@@ -159,8 +177,14 @@ pub const fn indirect_address_is_valid(pointer: u64, address: u64) -> bool {
 }
 /// First global RW memory address
 pub const RAM_ADDR: u64 = 0xC000_0000;
-/// Size of the global RW memory
-pub const RAM_SIZE: u64 = 0x8000_0000; // 2GB
+/// Size of the RAM window, the address range of the Mem air (pil/zisk.pil)
+pub const RAM_WINDOW_SIZE: u64 = 0x8000_0000; // 2GB
+/// Size of the global RW memory: the part of the RAM window that the executors reserve
+#[cfg(feature = "ram_2gb")]
+pub const RAM_SIZE: u64 = RAM_WINDOW_SIZE; // 2GB
+/// Size of the global RW memory: the part of the RAM window that the executors reserve
+#[cfg(not(feature = "ram_2gb"))]
+pub const RAM_SIZE: u64 = 0x2000_0000; // 512MB
 /// Last address the guest code can reach PC-relative: the guest is linked with the `medium`
 /// code model (`auipc`, +-2GiB), and its code starts at `ROM_ADDR`
 pub const PC_REACH_END: u64 = ROM_ADDR + 0x8000_0000;
@@ -216,10 +240,14 @@ const _: () = {
     // below the guard, which starts where the program ROM ends).
     assert!(MAX_ZISK_OS_ROM_ADDR < INPUT_ADDR, "the input window now overlaps the BIOS ROM");
     assert!(
-        INPUT_ADDR + MAX_INPUT_SIZE <= ROM_ADDR,
+        INPUT_ADDR + INPUT_WINDOW_SIZE <= ROM_ADDR,
         "the input window now reaches into the program ROM"
     );
-    assert!(RAM_ADDR + RAM_SIZE - 1 <= MAX_ADDR, "RAM reaches beyond the address space");
+    assert!(RAM_ADDR + RAM_WINDOW_SIZE - 1 <= MAX_ADDR, "RAM reaches beyond the address space");
+    // The reserved memory is a prefix of its window, made of whole 128MB planner pages
+    // (state-machines/mem-cpp/cpp/mem_config.hpp)
+    assert!(MAX_INPUT_SIZE <= INPUT_WINDOW_SIZE && MAX_INPUT_SIZE % (1 << 27) == 0);
+    assert!(RAM_SIZE <= RAM_WINDOW_SIZE && RAM_SIZE % (1 << 27) == 0);
     // The system regions and the libraries' RAM must be reachable PC-relative from the ROM.
     assert!(GENERAL_RAM_ADDR < PC_REACH_END, "the system regions are out of the PC reach");
 };

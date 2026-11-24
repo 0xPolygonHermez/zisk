@@ -7,9 +7,20 @@
 #define INPUT_ADDR 0x20000000ULL
 #define RAM_ADDR 0xC0000000ULL
 
+// The input and RAM sizes are the memory the executors reserve, a prefix of the 2GB windows the
+// memory airs cover (MAX_INPUT_SIZE and RAM_SIZE in core/src/mem.rs): build.rs defines
+// ZISK_INPUT_2GB and ZISK_RAM_2GB with the input_2gb and ram_2gb features of zisk-core.
 #define ROM_SIZE_MB 128
+#ifdef ZISK_INPUT_2GB
 #define INPUT_SIZE_MB 2048
+#else
+#define INPUT_SIZE_MB 1024
+#endif
+#ifdef ZISK_RAM_2GB
 #define RAM_SIZE_MB 2048
+#else
+#define RAM_SIZE_MB 512
+#endif
 
 #define CHUNK_SIZE_BITS 18
 #define CHUNK_SIZE (1 << CHUNK_SIZE_BITS)

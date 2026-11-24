@@ -20,7 +20,7 @@ use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 #[allow(unused_imports)]
 use zisk_common::{phase_end, phase_log, phase_ms, phase_start};
-use zisk_core::{RAM_ADDR, RAM_SIZE};
+use zisk_core::{RAM_ADDR, RAM_WINDOW_SIZE};
 
 use crate::mem_witness_split::{split_mem_slots, MemFillRange};
 use zisk_sm_mem_common::{
@@ -56,7 +56,7 @@ impl<F: PrimeField64> MemSM<F> {
     }
 
     pub fn get_to_addr() -> u32 {
-        (RAM_ADDR + RAM_SIZE - 1) as u32
+        (RAM_ADDR + RAM_WINDOW_SIZE - 1) as u32
     }
     #[cfg(feature = "debug_mem")]
     pub fn save_to_file<R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {

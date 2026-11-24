@@ -12,9 +12,9 @@ Current usage examples are based on an Ethereum client block validation.
 
 | Name | Limit | Max usage | Percentage |
 | :---- | :---- | :---- | :---- |
-| INPUT SIZE | < 2 GB | 20 MB (ETH) | 1 % |
+| INPUT SIZE | < 1 GB (< 2 GB with `input_2gb`) | 20 MB (ETH) | 2 % |
 | ROM SIZE | 127 MB | 4 MB (ETH) | 3 % |
-| RAM SIZE | 507.75 MB | 256 MB (ETH) | 50 % |
+| RAM SIZE | 507.5 MB (2043.5 MB with `ram_2gb`) | 256 MB (ETH) | 50 % |
 | TRACE SIZE | 32 GB | 7 GB (ETH) | 22 % |
 | MAX STEPS | 2^36 = 64 G | 2 G (ETH) | 3 % |
 | PROGRAM LENGTH | 2^22 = 4M | 600 k (ETH) | 14 % |
@@ -26,11 +26,13 @@ Current usage examples are based on an Ethereum client block validation.
 
 This limit consists of the maximum input binary data size in bytes.
 
-In order to inject the input data into the assembly emulator a shared memory mechanism is used.  Shared memory provides the maximum performance, and it allows consuming the input data with zero-copy.  The input shared memory size is 2 GB.  There is an overhead due to the use of some headers to manage the input data chunks, but they are very small, so in practice, the input data size is limited to almost 2 GB.
+In order to inject the input data into the assembly emulator a shared memory mechanism is used.  Shared memory provides the maximum performance, and it allows consuming the input data with zero-copy.  The input shared memory size is 1 GB, or 2 GB when ZisK is built with the `input_2gb` feature.  There is an overhead due to the use of some headers to manage the input data chunks, but they are very small, so in practice, the input data size is limited to almost 1 GB (2 GB).
 
-An Ethereum client block verification normally needs an input data size of 15 MB to 20 MB.  This is approximately 1 % of the maximum input data size.
+The input address window is 2 GB in both cases, and so is the address range the proof covers: the feature only changes how much memory the emulators and the memory planner reserve. It does change the BIOS, which reads the input every 128 MB up to its limit, so the ROM commitment of a program set up with `input_2gb` differs from the one without it; the verification key is the same.
 
-Some very specific programs might require a higher input data size.  Increasing the input data size would require PIL modification, assigning a larger virtual address space for the assembly, and it would consume more physical memory.
+An Ethereum client block verification normally needs an input data size of 15 MB to 20 MB.  This is approximately 2 % of the maximum input data size.
+
+Some very specific programs might require a higher input data size.  Increasing the input data size beyond 2 GB would require PIL modification, assigning a larger virtual address space for the assembly, and it would consume more physical memory.
 
 We have plans to add to ZisK the support to consume input data as a stream.  This is very useful if the guest program does not need to store input data after it is consumed.  In this case, the shared memory would be used as a ring buffer, becoming virtually infinite.  However, this will prevent the zero-copy nature of the current shared memory mechanism, and therefore the performance would be lower.
 
@@ -57,13 +59,13 @@ ZisK uses the following RAM virtual address map:
 | 0xC041_0000 | 0xC042_FFFF | output |
 | 0xC043_0000 | 0xC043_FFFF | float library RAM |
 | 0xC044_0000 | 0xC046_FFFF | ZisK library RAM |
-| 0xC047_0000 | 0x1_3FFF_FFFF | program RAM (including heap) |
+| 0xC047_0000 | 0xDFFF_FFFF | program RAM (including heap), up to 0x1_3FFF_FFFF with `ram_2gb` |
 
-Addresses are 33 bits wide (the RAM crosses the 4 GB boundary). This leaves an effective program RAM limit of about 2043.5 MB.
+The RAM address window is 2 GB (0xC000_0000 to 0x1_3FFF_FFFF, addresses are 33 bits wide, so the RAM can cross the 4 GB boundary), and so is the address range the proof covers. By default the emulators and the memory planner reserve only its first 512 MB, which leaves an effective program RAM limit of about 507.5 MB; built with the `ram_2gb` feature they reserve the whole window, about 2043.5 MB for the program. An access beyond the reserved RAM fails as any access outside the memory map does.
 
-An Ethereum client block verification normally consumes up to 256 MB (for very busy and complex real blocks).  This is approximately 12.5 % of the maximum ram size.
+An Ethereum client block verification normally consumes up to 256 MB (for very busy and complex real blocks).  This is approximately 50 % of the default RAM size.
 
-Increasing the RAM size would require PIL modification, assigning a larger virtual address for the assembly, and it would consume more physical memory.
+Increasing the RAM size beyond 2 GB would require PIL modification, assigning a larger virtual address for the assembly, and it would consume more physical memory.
 
 The current ZisK Ethereum client guest program uses a memory manager that does not free the used memory.  This increases the execution performance, but of course requires more RAM space.  We could use a normal memory manager that frees unused memory, at the cost of decreasing the performance.
 

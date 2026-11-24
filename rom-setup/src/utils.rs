@@ -6,6 +6,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use zisk_common::{ZiskPaths, PROGRAM_VK_LEN};
+use zisk_core::{INPUT_WINDOW_SIZE, MAX_INPUT_SIZE, RAM_SIZE, RAM_WINDOW_SIZE};
 use zisk_pil::{RomRomTrace, PILOUT_HASH};
 use zisk_sm_rom::CustomRom;
 
@@ -84,6 +85,18 @@ pub fn get_elf_data_hash(elf: &[u8]) -> String {
     blake3::hash(elf).to_hex().to_string()
 }
 
+/// Tag of the memory the executors reserve (the `input_2gb` and `ram_2gb` features of
+/// zisk-core), appended to the hash in the names of the setup files that depend on it: the
+/// assembly emulators reserve that memory, and the BIOS of the ROM reads the input up to its
+/// limit. Empty with both features, the sizes all these files had before the features existed.
+pub fn mem_config_tag() -> String {
+    if MAX_INPUT_SIZE == INPUT_WINDOW_SIZE && RAM_SIZE == RAM_WINDOW_SIZE {
+        String::new()
+    } else {
+        format!("_in{}m_ram{}m", MAX_INPUT_SIZE >> 20, RAM_SIZE >> 20)
+    }
+}
+
 /// Build the cache path of the ROM custom-commit binary for `hash`.
 ///
 /// The filename encodes the ELF hash, PILOUT hash, row count, and hash-mode
@@ -101,8 +114,9 @@ pub fn get_elf_bin_file_path_with_hash(
 
     let gpu_suffix = if gpu { "_gpu" } else { "" };
     let rom_cache_file_name = format!(
-        "{}_{}_{}_{}_{}_{}{}.bin",
+        "{}{}_{}_{}_{}_{}_{}{}.bin",
         hash,
+        mem_config_tag(),
         pilout_hash,
         n,
         hash_mode.file_tag(),
@@ -126,8 +140,9 @@ pub fn get_elf_bin_verkey_file_path_with_hash(
     let n = RomRomTrace::<Goldilocks>::NUM_ROWS;
 
     let rom_cache_file_name = format!(
-        "{}_{}_{}_{}_{}_{}.verkey.bin",
+        "{}{}_{}_{}_{}_{}_{}.verkey.bin",
         hash,
+        mem_config_tag(),
         pilout_hash,
         n,
         hash_mode.file_tag(),

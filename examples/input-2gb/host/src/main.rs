@@ -31,7 +31,8 @@ use std::time::{Duration, Instant};
 use zisk_sdk::{ExecuteResult, ProverClient, ZiskStdin};
 use zisk_test_artifacts::ELF_INPUT_2GB;
 
-/// Size of the input region (`MAX_INPUT_SIZE` in core/src/mem.rs).
+/// Size of the input region (`MAX_INPUT_SIZE` in core/src/mem.rs, with the `input_2gb` feature
+/// of zisk-sdk that this host enables; the ASM workers of `remote` need it as well).
 const MAX_INPUT_SIZE: usize = 2 << 30;
 /// Input data the guest can read: the region minus the free-input word at INPUT_ADDR and the
 /// length prefix of the input data.

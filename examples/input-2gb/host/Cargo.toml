@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-zisk-sdk = { workspace = true }
+zisk-sdk = { workspace = true, features = ["input_2gb"] }
 zisk-test-artifacts = { workspace = true, features = ["input_2gb"] }
 tokio = { version = "1.52.1", features = ["rt-multi-thread"] }

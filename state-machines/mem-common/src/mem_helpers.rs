@@ -3,7 +3,7 @@ use crate::{
     MEM_STEPS_BY_MAIN_STEP_BITS, MEM_STEP_BASE,
 };
 use zisk_common::ChunkId;
-use zisk_core::{CHUNK_SIZE_BITS, RAM_ADDR, RAM_SIZE};
+use zisk_core::{CHUNK_SIZE_BITS, RAM_ADDR, RAM_WINDOW_SIZE};
 
 const CHUNK_MEM_STEP_BITS: u64 = CHUNK_SIZE_BITS as u64 + MEM_STEPS_BY_MAIN_STEP_BITS;
 const CHUNK_MEM_STEPS: u64 = 1 << CHUNK_MEM_STEP_BITS;
@@ -81,7 +81,7 @@ impl MemHelpers {
     }
     #[inline(always)]
     pub fn is_dual(addr: u64) -> bool {
-        (RAM_ADDR..=RAM_ADDR + RAM_SIZE).contains(&addr)
+        (RAM_ADDR..=RAM_ADDR + RAM_WINDOW_SIZE).contains(&addr)
     }
     #[inline(always)]
     pub fn is_write(op: u8) -> bool {

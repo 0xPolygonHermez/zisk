@@ -25,6 +25,14 @@ else ifeq ($(TRACE_TARGET),RH)
     CFLAGS += -DTRACE_TARGET_RH
     ASMFLAGS += --defsym TRACE_TARGET=2
 endif
+# Memory reserved for the input and the RAM (zisk-core features input_2gb and ram_2gb, see
+# constants.hpp): 1GB and 512MB by default, the whole 2GB windows with INPUT_2GB=1 / RAM_2GB=1
+ifeq ($(INPUT_2GB),1)
+    CFLAGS += -DINPUT_2GB
+endif
+ifeq ($(RAM_2GB),1)
+    CFLAGS += -DRAM_2GB
+endif
 # Light memory-ops stream: one word per record, no values and no steps.
 ifeq ($(MOPS_LIGHT),1)
     ASMFLAGS += --defsym MOPS_LIGHT=1
