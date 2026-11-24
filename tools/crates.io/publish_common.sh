@@ -84,6 +84,7 @@ ZISK_CRATES=(
   "zisk-precomp-blake2"
   "zisk-precomp-blake3"
   "zisk-precomp-dma"
+  "zisk-precomp-dot-f8"
   "zisk-precomp-evm"
   "zisk-gpu-witness"
   "zisk-precomp-keccakf"
