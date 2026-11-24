@@ -62,7 +62,8 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
         #[cfg(feature = "debug_frops")]
         let check_frops = frops_check_enabled();
         Self {
-            inputs: Vec::new(),
+            // Sized to what the cursor will collect, so the replay never reallocates the inputs.
+            inputs: Vec::with_capacity(collect.total_count() as usize),
             cursor: BinaryCollectCursor::new(collect),
             frops_table_id,
             publish_frops,

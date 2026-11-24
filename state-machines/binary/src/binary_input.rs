@@ -27,8 +27,8 @@ impl BinaryInput {
         Self { op, a: OperationBusData::get_a(data), b: OperationBusData::get_b(data) }
     }
 
-    /// Heap bytes the collectors of one instance hold once they have collected: each one takes the
-    /// [`ChunkCollect::total_count`] inputs of its chunk.
+    /// Heap bytes the collectors of one instance hold once they have collected: each one reserves
+    /// the [`ChunkCollect::total_count`] inputs of its chunk up front.
     pub fn capacity_bytes<'a, const K: usize>(
         collects: impl IntoIterator<Item = &'a ChunkCollect<K>>,
     ) -> u64 {

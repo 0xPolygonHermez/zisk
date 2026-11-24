@@ -216,10 +216,10 @@ mod tests {
         assert_eq!(c.next(A, false), CollectAction::Pass);
     }
 
-    /// The instance bounds its collectors' bytes with `ChunkCollect::total_count`, so the cursor
-    /// must never collect more than that, and collects exactly that once the chunk has carried the
-    /// instance's whole share. Derived operations (Arith's Binary ones) reach the cursor like any
-    /// other.
+    /// The collectors reserve `ChunkCollect::total_count` inputs and the instance bounds their bytes
+    /// with it, so the cursor must never collect more than that, and collects exactly that once the
+    /// chunk has carried the instance's whole share. Derived operations (Arith's Binary ones) reach
+    /// the cursor like any other.
     #[test]
     fn collects_exactly_the_total_count() {
         let kind = |skip, count, owns| KindCollect {
