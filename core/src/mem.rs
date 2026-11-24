@@ -115,8 +115,11 @@
 //!   assembly emulators) and the memory planners only reserve the first part of each window:
 //!   [`MAX_INPUT_SIZE`], 1GB or the whole window with the `input_2gb` feature, and [`RAM_SIZE`],
 //!   512MB or the whole window with the `ram_2gb` feature. An access to the rest of a window
-//!   fails as an access outside the memory map does. Neither the ROM nor the verification key
-//!   depend on these sizes.
+//!   fails as an access outside the memory map does. The verification key does not depend on
+//!   these sizes, but a guest is linked for one RAM size, since its heap ends there: 512MB with
+//!   `ziskbuild/zisk_linker_script.ld`, 2GB with `zisk_linker_script_ram2gb.ld`
+//!   (`cargo-zisk build --ram-2gb`). It must not be linked for more RAM than the prover
+//!   reserves.
 //!
 //! ## INPUT_ADDR
 //! * During the program initialization the input data for the program execution is copied in this

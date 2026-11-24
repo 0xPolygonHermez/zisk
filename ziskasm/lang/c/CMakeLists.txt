@@ -57,9 +57,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   # The linker script is not optional: the archive's _start expects the symbols it
   # defines (_global_pointer, _init_stack_top, __init_array_*, _heap_start/_end),
   # so the two have to travel together.
+  # Both scripts: zisk_linker_script.ld links for 512 MB of RAM (the default prover) and
+  # zisk_linker_script_ram2gb.ld, which includes it, for 2 GB (a prover built with `ram_2gb`).
   set(ZISK_LINKER_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/../../../ziskbuild/zisk_linker_script.ld")
+  set(ZISK_LINKER_SCRIPT_RAM2GB "${CMAKE_CURRENT_SOURCE_DIR}/../../../ziskbuild/zisk_linker_script_ram2gb.ld")
   if(EXISTS "${ZISK_LINKER_SCRIPT}")
-    install(FILES "${ZISK_LINKER_SCRIPT}" DESTINATION ${CMAKE_INSTALL_DATADIR}/zisk)
+    install(FILES "${ZISK_LINKER_SCRIPT}" "${ZISK_LINKER_SCRIPT_RAM2GB}"
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/zisk)
   else()
     message(WARNING
       "zisk_linker_script.ld not found at ${ZISK_LINKER_SCRIPT}; the installed "

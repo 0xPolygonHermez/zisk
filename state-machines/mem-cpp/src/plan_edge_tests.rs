@@ -220,7 +220,8 @@ fn a_wide_block_record_in_every_region() {
         ("ROM", ROM_ADDR + 0x8A90),
         ("input", INPUT_ADDR + 0x1000),
         ("RAM", RAM_ADDR + 0x10_0000),
-        ("RAM above 4 GB", 1 << 32),
+        // The last 16 KB of the RAM the executors reserve: above 4 GB with `ram_2gb`.
+        ("end of the reserved RAM", RAM_ADDR + zisk_core::RAM_SIZE - 0x4000),
     ];
     for (region, addr) in regions {
         // block read, block write, aligned block read, aligned block write

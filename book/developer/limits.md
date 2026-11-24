@@ -63,6 +63,8 @@ ZisK uses the following RAM virtual address map:
 
 The RAM address window is 2 GB (0xC000_0000 to 0x1_3FFF_FFFF, addresses are 33 bits wide, so the RAM can cross the 4 GB boundary), and so is the address range the proof covers. By default the emulators and the memory planner reserve only its first 512 MB, which leaves an effective program RAM limit of about 507.5 MB; built with the `ram_2gb` feature they reserve the whole window, about 2043.5 MB for the program. An access beyond the reserved RAM fails as any access outside the memory map does.
 
+A guest is linked for one of the two RAM sizes, because its heap ends at the end of the RAM it is linked for: `cargo-zisk build` links for 512 MB (`ziskbuild/zisk_linker_script.ld`, heap up to 0xDFFF_FFFF) and `cargo-zisk build --ram-2gb` for 2 GB (`zisk_linker_script_ram2gb.ld`, heap up to 0x1_3FFF_FFFF). C and C++ guests pick the script themselves. Link the guest for the RAM of the prover that runs it: an allocator may write at the top of its heap as soon as it starts (talc does, and so does any guest arena that grows down from the heap end), so a guest linked for 2 GB can fault on a 512 MB prover however little memory it uses. A guest linked for 512 MB that runs out of heap gets an allocation error instead.
+
 An Ethereum client block verification normally consumes up to 256 MB (for very busy and complex real blocks).  This is approximately 50 % of the default RAM size.
 
 Increasing the RAM size beyond 2 GB would require PIL modification, assigning a larger virtual address for the assembly, and it would consume more physical memory.

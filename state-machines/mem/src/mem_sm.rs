@@ -55,8 +55,9 @@ impl<F: PrimeField64> MemSM<F> {
         Arc::new(Self { _phantom: std::marker::PhantomData })
     }
 
-    pub fn get_to_addr() -> u32 {
-        (RAM_ADDR + RAM_WINDOW_SIZE - 1) as u32
+    /// Last byte address of the RAM window; above 4GB, so it does not fit a `u32`.
+    pub fn get_to_addr() -> u64 {
+        RAM_ADDR + RAM_WINDOW_SIZE - 1
     }
     #[cfg(feature = "debug_mem")]
     pub fn save_to_file<R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
