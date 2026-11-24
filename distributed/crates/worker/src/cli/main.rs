@@ -96,7 +96,8 @@ struct Cli {
     #[clap(long, value_name = "SHARE|SIZE")]
     pub memory_margin: Option<HostMemoryMargin>,
 
-    #[clap(short = 'm', long, default_value_t = false)]
+    /// Deprecated, no effect: the witness phase fits its work in the free memory by itself
+    #[clap(short = 'm', long, default_value_t = false, hide = true)]
     pub minimal_memory: bool,
 
     #[cfg(not(feature = "cpu-only"))]
@@ -133,6 +134,15 @@ async fn main() -> Result<()> {
     .await?;
 
     println!("ZisK Worker v{}", env!("CARGO_PKG_VERSION"));
+    if cli.minimal_memory {
+        eprintln!(
+            "{}",
+            "Warning: -m/--minimal-memory is deprecated and has no effect: the witness phase fits \
+             its work in the free memory by itself"
+                .yellow()
+                .bold()
+        );
+    }
 
     #[cfg(not(feature = "cpu-only"))]
     let gpu = cli.gpu;
@@ -158,7 +168,6 @@ async fn main() -> Result<()> {
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,
         memory_margin: cli.memory_margin,
-        minimal_memory: cli.minimal_memory,
         preload_snark: cli.preload_snark,
         gpu,
         cpu_mops,

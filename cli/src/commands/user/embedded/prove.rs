@@ -13,7 +13,7 @@ use zisk_sdk::{
 use super::validate_asm_hints;
 use crate::common::{resolve_elf, resolve_output_path, ElfSelectorArgs};
 use crate::proof::{select_prove_kind, SnarkArgs};
-use crate::ux::{print_collect_memory, print_job_banner, print_random_seed};
+use crate::ux::{print_collect_memory, print_job_banner, print_random_seed, warn_minimal_memory};
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -63,8 +63,8 @@ pub(crate) struct ZiskEmbeddedProve {
     #[arg(short = 'w', long, alias = "proving-key-plonk")]
     proving_key_snark: Option<PathBuf>,
 
-    /// Reduce memory footprint during proving at the cost of speed
-    #[arg(short = 'm', long)]
+    /// Deprecated, no effect: the witness phase fits its work in the free memory by itself
+    #[arg(short = 'm', long, hide = true)]
     minimal_memory: bool,
 
     /// Maximum memory (bytes) for witness storage during proving
@@ -109,6 +109,7 @@ pub(crate) struct ZiskEmbeddedProve {
 
 impl ZiskEmbeddedProve {
     pub(crate) fn run(&mut self) -> Result<()> {
+        warn_minimal_memory(self.minimal_memory);
         let elf = resolve_elf(self.elf.take(), self.selector.profile(), self.selector.bin())?;
         validate_asm_hints(self.asm, self.hints.as_deref())?;
 
@@ -150,9 +151,6 @@ impl ZiskEmbeddedProve {
         }
 
         let mut opts = EmbeddedOpts::default();
-        if self.minimal_memory {
-            opts = opts.minimal_memory();
-        }
         if let Some(max) = self.max_witness_stored {
             opts = opts.max_witness_stored(max);
         }

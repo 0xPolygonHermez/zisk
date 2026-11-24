@@ -299,7 +299,6 @@ impl ProverBackend {
         stdin: ZiskStdin,
         seed: RandomSeed,
         debug_info: Option<Option<String>>,
-        minimal_memory: bool,
         _mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
@@ -331,7 +330,7 @@ impl ProverBackend {
         self.proofman
             .compute_witness_from_lib(
                 &debug_info,
-                ProofOptions::new(false, false, false, false, false, minimal_memory),
+                ProofOptions::new(false, false, false, false, false, false),
             )
             .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
@@ -432,7 +431,7 @@ impl ProverBackend {
                     true,
                     minimal,
                     prover_options.verify_proofs,
-                    prover_options.minimal_memory,
+                    false,
                 ),
                 ProvePhase::Full,
             )

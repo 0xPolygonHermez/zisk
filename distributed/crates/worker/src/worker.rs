@@ -298,9 +298,6 @@ pub struct ProverConfig {
     /// Flag to redirect ASM emulator output to file
     pub asm_out_file: bool,
 
-    /// Whether to use minimal memory mode
-    pub minimal_memory: bool,
-
     /// Enable GPU acceleration
     pub gpu: bool,
 
@@ -365,7 +362,6 @@ impl ProverConfig {
             debug_info,
             unlock_mapped_memory: prover_service_config.unlock_mapped_memory,
             asm_out_file: prover_service_config.asm_out_file,
-            minimal_memory: prover_service_config.minimal_memory,
             gpu: prover_service_config.gpu,
             cpu_mops: prover_service_config.cpu_mops,
             max_streams: prover_service_config.max_streams,
@@ -457,9 +453,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 prover_options.proving_key_snark(pk.clone()).snark(prover_config.preload_snark);
         }
 
-        if prover_config.minimal_memory {
-            prover_options = prover_options.minimal_memory();
-        }
         if prover_config.gpu {
             prover_options = prover_options.gpu();
         }
@@ -513,9 +506,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 prover_options.proving_key_snark(pk.clone()).snark(prover_config.preload_snark);
         }
 
-        if prover_config.minimal_memory {
-            prover_options = prover_options.minimal_memory();
-        }
         if prover_config.gpu {
             prover_options = prover_options.gpu();
         }
@@ -1681,7 +1671,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             aggregation: true,
             verify_proofs: false,
             rma: true,
-            minimal_memory: self.prover_config.minimal_memory,
+            minimal_memory: false,
             compressed: minimal,
         }
     }
@@ -1694,7 +1684,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             aggregation: false,
             verify_proofs: false,
             rma: true,
-            minimal_memory: self.prover_config.minimal_memory,
+            minimal_memory: false,
             compressed: false,
         }
     }

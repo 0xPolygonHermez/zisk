@@ -615,11 +615,10 @@ impl ProverEngine for AsmProver {
         stdin: ZiskStdin,
         seed: RandomSeed,
         debug_info: Option<Option<String>>,
-        minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         job.require_full_setup("stats")?;
-        self.core_prover.backend.stats(stdin, seed, debug_info, minimal_memory, mpi_node)
+        self.core_prover.backend.stats(stdin, seed, debug_info, mpi_node)
     }
 
     fn get_instance_trace(

@@ -9,7 +9,12 @@ use zisk_prover_backend::{BackendProverOpts, HostMemoryMargin};
 /// ASM-specific options are configured via [`crate::EmbeddedClientBuilder::asm_options`].
 #[derive(Default, Clone)]
 pub struct EmbeddedOpts {
-    /// Reduce memory footprint during proving at the cost of speed.
+    /// No effect any more: the witness phase fits what it collects in the memory free, and a proof
+    /// says when it ran short of it (`ProveOutput::get_collect_memory`).
+    #[deprecated(
+        note = "no effect: the witness phase fits its work in the free memory by itself; see \
+                `ProveOutput::get_collect_memory` and `memory_margin`"
+    )]
     pub minimal_memory: bool,
 
     /// Path to the proving key directory.
@@ -39,10 +44,14 @@ pub struct EmbeddedOpts {
 }
 
 impl EmbeddedOpts {
-    /// Reduce memory footprint during proving at the cost of speed.
+    /// No effect any more: the witness phase fits what it collects in the memory free, and a proof
+    /// says when it ran short of it (`ProveOutput::get_collect_memory`).
+    #[deprecated(
+        note = "no effect: the witness phase fits its work in the free memory by itself; see \
+                `ProveOutput::get_collect_memory` and `memory_margin`"
+    )]
     #[must_use]
-    pub fn minimal_memory(mut self) -> Self {
-        self.minimal_memory = true;
+    pub fn minimal_memory(self) -> Self {
         self
     }
 
@@ -113,10 +122,6 @@ impl EmbeddedOpts {
     /// The backend options of these, for a prover that runs the final SNARK when `final_snark`.
     pub(crate) fn into_backend_opts(self, gpu: bool, final_snark: bool) -> BackendProverOpts {
         let mut opts = BackendProverOpts::default().aggregation(true);
-
-        if self.minimal_memory {
-            opts = opts.minimal_memory();
-        }
 
         if let Some(pk) = self.proving_key {
             opts = opts.proving_key(pk);

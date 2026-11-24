@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     stdin.write(&1000u32);
     stdin.write(&233u32);
 
-    let embedded_opts = EmbeddedOpts::default().minimal_memory();
+    let embedded_opts = EmbeddedOpts::default();
     let builder = ProverClient::embedded().with_embedded_opts(embedded_opts);
     #[cfg(feature = "gpu")]
     let builder = builder.gpu();

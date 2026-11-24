@@ -208,8 +208,6 @@ pub struct ProverServiceConfigDto {
     pub max_witness_stored: Option<usize>,
     /// Host memory left free for everything else while proving; `None` for the default margin.
     pub memory_margin: Option<HostMemoryMargin>,
-    /// Prefer lower memory usage over speed.
-    pub minimal_memory: bool,
     /// Use the GPU proving path.
     pub gpu: bool,
     /// Prove final SNARKs, of the protocol of the SNARK proving key.

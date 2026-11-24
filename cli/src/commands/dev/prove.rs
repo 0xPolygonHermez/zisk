@@ -2,7 +2,7 @@ use crate::common::{detect_current_project_elf, resolve_output_path};
 use crate::proof::{ensure_snark_key, select_prove_kind, SnarkArgs};
 use crate::ux::{
     print_banner, print_banner_command, print_banner_field, print_collect_memory,
-    print_execution_summary,
+    print_execution_summary, warn_minimal_memory,
 };
 use anyhow::Result;
 
@@ -86,8 +86,8 @@ pub(crate) struct ProveCmd {
     #[arg(short = 'x', long)]
     max_witness_stored: Option<usize>,
 
-    /// Reduce memory footprint during proving at the cost of speed
-    #[arg(short = 'm', long)]
+    /// Deprecated, no effect: the witness phase fits its work in the free memory by itself
+    #[arg(short = 'm', long, hide = true)]
     minimal_memory: bool,
 
     /// Host memory left free for everything else while proving, out of what the witness phase
@@ -141,6 +141,7 @@ pub(crate) struct ProveCmd {
 
 impl ProveCmd {
     pub(crate) fn run(&mut self) -> Result<()> {
+        warn_minimal_memory(self.minimal_memory);
         if self.elf.is_none() {
             self.elf = match detect_current_project_elf()? {
                 Some(elf) => Some(elf),
@@ -179,9 +180,6 @@ impl ProveCmd {
         let mut prover_options =
             BackendProverOpts::default().aggregation(!self.no_aggregation).verbose(self.verbose);
 
-        if self.minimal_memory {
-            prover_options = prover_options.minimal_memory();
-        }
         if self.verify_proofs {
             prover_options = prover_options.verify_proofs();
         }
