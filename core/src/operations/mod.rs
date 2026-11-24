@@ -1,3 +1,4 @@
+mod allocator;
 mod dma_inputcpy;
 mod dma_memcmp;
 mod dma_memcpy;
@@ -6,6 +7,7 @@ mod dma_proof_reads;
 mod evm_jump_dest;
 mod profile;
 
+pub use allocator::*;
 pub use dma_inputcpy::*;
 pub use dma_memcmp::*;
 pub use dma_memcpy::*;

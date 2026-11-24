@@ -7,7 +7,8 @@
 use ziskos::zisklib::{keccakf_cache::KeccakfCache, RANDOM_SEED_WORDS};
 
 use crate::{
-    Mem, FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
+    AllocInstContext, Mem, FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE, REGS_IN_MAIN_TOTAL_NUMBER,
+    ROM_ENTRY,
 };
 
 /// Zisk precompiled emulation mode
@@ -126,6 +127,9 @@ pub struct InstContext {
     /// Fcall data
     pub fcall: FcallInstContext,
 
+    /// Allocator precompile state (prototype, plain emulation only)
+    pub alloc: AllocInstContext,
+
     /// Keccak-f input state -> index cache, fed by the keccakf cache fcalls. Lives as long as
     /// this context, i.e. as long as the execution it belongs to
     pub keccakf_cache: KeccakfCache,
@@ -179,6 +183,7 @@ impl InstContext {
             emulation_mode: EmulationMode::default(),
             precompiled: PrecompiledInstContext::default(),
             fcall: FcallInstContext::default(),
+            alloc: AllocInstContext::default(),
             keccakf_cache: KeccakfCache::default(),
             blake2b_chain: [0; 32],
             blake2b_chain_cached: false,

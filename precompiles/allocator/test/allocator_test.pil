@@ -1,0 +1,12 @@
+require "std_direct.pil"
+require "operations.pil"
+require "opids.pil"
+require "config.pil"
+require "allocator/pil/allocator_flex.pil"
+require "allocator/pil/allocator.pil"
+
+airgroup AllocTest {
+    AllocatorFlex(N: 2**22);
+    Allocator(N: 2**22);
+    allocator_init();
+}

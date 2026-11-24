@@ -21,6 +21,9 @@ extern crate alloc as alloc_crate;
 #[cfg(zisk_guest)]
 pub(crate) use alloc_crate as alloc_extern;
 
+#[cfg(all(zisk_guest, feature = "alloc-marks"))]
+pub use alloc::AllocMarks;
+
 mod profile;
 #[cfg(zisk_guest)]
 pub use fcall::*;
@@ -455,14 +458,16 @@ pub mod ziskos {
                 feature = "zisk-embedded-alloc",
                 feature = "zisk-embedded-dlmalloc-alloc",
                 feature = "zisk-embedded-talc-alloc",
-                feature = "zisk-embedded-tlfs-alloc"
+                feature = "zisk-embedded-tlfs-alloc",
+                feature = "zisk-precompile-alloc"
             ))]
             crate::alloc::embedded::init();
             #[cfg(all(
                 not(feature = "zisk-embedded-alloc"),
                 not(feature = "zisk-embedded-dlmalloc-alloc"),
                 not(feature = "zisk-embedded-talc-alloc"),
-                not(feature = "zisk-embedded-tlfs-alloc")
+                not(feature = "zisk-embedded-tlfs-alloc"),
+                not(feature = "zisk-precompile-alloc")
             ))]
             crate::alloc::init_sys_alloc();
 

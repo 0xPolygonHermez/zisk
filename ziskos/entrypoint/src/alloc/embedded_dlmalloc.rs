@@ -55,8 +55,13 @@ static mut DLMALLOC: Dlmalloc<ZiskSystem> = Dlmalloc::new_with_allocator(ZiskSys
 
 struct Allocator;
 
+#[cfg(not(feature = "alloc-marks"))]
 #[global_allocator]
 static GLOBAL: Allocator = Allocator;
+
+#[cfg(feature = "alloc-marks")]
+#[global_allocator]
+static GLOBAL: super::AllocMarks<Allocator> = super::AllocMarks(Allocator);
 
 unsafe impl core::alloc::GlobalAlloc for Allocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {

@@ -51,6 +51,7 @@
 //!
 //! The zisk_core crate contains basic structures and functionality used by several other modules:
 //! opcodes, instructions and transpilation
+pub mod alloc_heap;
 pub mod fcall;
 pub mod frops;
 pub mod frops_asm;
@@ -60,7 +61,9 @@ pub mod inst_context;
 pub mod mem;
 mod operations;
 /// Exported for the parity tests against the DMA memory-input generators.
-pub use operations::{report_memcmp_proof_reads, report_memcpy_proof_ops};
+pub use operations::{
+    alloc_op_func, ops_alloc, report_memcmp_proof_reads, report_memcpy_proof_ops, AllocInstContext,
+};
 pub mod ops_core;
 mod ops_core_context;
 pub mod rom_layout;
@@ -76,6 +79,7 @@ pub mod zisk_rom;
 pub mod zisk_rom_2_asm;
 pub mod ziskbin;
 
+pub use alloc_heap::*;
 pub use fcall::*;
 pub use frops::*;
 pub use helpers::*;

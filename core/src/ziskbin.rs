@@ -28,8 +28,9 @@ const MAGIC: &[u8; 4] = b"ZKRM";
 /// Container format version. 2: r32..r39 are main-trace registers (`SRC_REG` /
 /// `STORE_REG`), where version 1 ROMs address them as RAM. 3: the IDs of the zkvmcalls
 /// the guest uses follow the data sections, and nothing may follow them. 4: flag f23
-/// marks a write_log call site. See ziskbin.md §8.
-const VERSION: u8 = 4;
+/// marks a write_log call site. 5: flag f24 carries the kind of an allocation mark. See
+/// ziskbin.md §8.
+const VERSION: u8 = 5;
 /// Private ELF machine id marking a ziskbin ELF ("ZK").
 pub const EM_ZISK: u16 = 0x5a4b;
 /// Section name holding the ROM container blob.
@@ -133,9 +134,9 @@ impl<'a> Reader<'a> {
 /// Flag-bitmap width in bytes. The format defines f0..f27 (ziskbin.md §5.4) at
 /// 7 flags per byte, so the bitmap is at most 4 bytes; there is no fifth flag byte.
 const FLAG_BYTES: u32 = 4;
-/// Flags the format assigns a meaning: f0..f23. f24..f27 are reserved (ziskbin.md
+/// Flags the format assigns a meaning: f0..f24. f25..f27 are reserved (ziskbin.md
 /// §5.4) and, being unassigned, carry no payload -- see `read_flags`.
-const FLAG_DEFINED_MASK: u32 = (1 << 24) - 1;
+const FLAG_DEFINED_MASK: u32 = (1 << 25) - 1;
 
 /// Writes the 7-bits-per-byte flag bitmap (bit 7 = continuation).
 fn put_flags(out: &mut Vec<u8>, flags: u32) {
@@ -178,7 +179,7 @@ fn read_flags(r: &mut Reader) -> Result<u32, String> {
     let undefined = flags & !FLAG_DEFINED_MASK;
     if undefined != 0 {
         return Err(format!(
-            "ziskbin: reserved flag bits set (0x{undefined:08x}); f24..f27 are reserved"
+            "ziskbin: reserved flag bits set (0x{undefined:08x}); f25..f27 are reserved"
         ));
     }
     Ok(flags)
@@ -286,6 +287,10 @@ fn encode_inst(i: &ZiskInst, out: &mut Vec<u8>) {
     if i.write_log {
         bit!(23);
     }
+    if i.alloc_mark != 0 {
+        bit!(24);
+        pay.push(i.alloc_mark);
+    }
 
     put_flags(out, flags);
     out.extend_from_slice(&pay);
@@ -382,6 +387,20 @@ fn decode_inst(r: &mut Reader, paddr: u64) -> Result<ZiskInst, String> {
         }
         i.write_log = true;
         i.func = crate::opc_write_log;
+    }
+    // An allocation mark: a plain copyb, its kind is all that tells it apart
+    if has(24) {
+        if z != ZiskOp::CopyB {
+            return Err(format!("ziskbin: alloc_mark marks a {}, not a copyb", z.name()));
+        }
+        i.alloc_mark = r.u8()?;
+        if i.alloc_mark == 0 {
+            return Err("ziskbin: alloc_mark with kind 0".to_string());
+        }
+        // An operation of the allocator precompile (prototype) runs it in its `func`
+        if let Some(func) = crate::alloc_op_func(i.alloc_mark) {
+            i.func = func;
+        }
     }
 
     Ok(i)
@@ -698,6 +717,7 @@ mod tests {
         assert_eq!(a.is_external_op, b.is_external_op);
         assert_eq!(a.m32, b.m32);
         assert_eq!(a.write_log, b.write_log);
+        assert_eq!(a.alloc_mark, b.alloc_mark);
         assert_eq!(a.func as usize, b.func as usize);
     }
 
@@ -727,10 +747,11 @@ mod tests {
 
     /// A blob of an older version is refused (version 1 addressed r32..r39 as RAM;
     /// version 2 had no zkvmcall IDs, so a ROM that uses zkvm_random_u64 would lose them;
-    /// version 3 had no write_log marker, so its call sites would stop printing).
+    /// version 3 had no write_log marker, so its call sites would stop printing; version 4 had no
+    /// allocation marks).
     #[test]
     fn rejects_other_versions() {
-        for version in [1, 2, 3] {
+        for version in [1, 2, 3, 4] {
             let mut blob = encode_rom(&sample_rom());
             blob[MAGIC.len()] = version;
             let err = decode_rom(&blob).unwrap_err();
@@ -820,13 +841,13 @@ mod tests {
 
     #[test]
     fn rejects_reserved_flag_bits() {
-        // f24..f27 are reserved and carry no payload, so a decoder that ignored them
-        // would read the next instruction's bytes as this one's fields. f24 is bit 3
+        // f25..f27 are reserved and carry no payload, so a decoder that ignored them
+        // would read the next instruction's bytes as this one's fields. f25 is bit 4
         // of flag byte 3.
         let mut blob = blob_header(1, 0, 0);
         put_uvarint(&mut blob, 0x1000);
         blob.push(0);
-        blob.extend_from_slice(&[0x80, 0x80, 0x80, 0x08]); // f24 set, terminated
+        blob.extend_from_slice(&[0x80, 0x80, 0x80, 0x10]); // f25 set, terminated
 
         let err = decode_rom(&blob).unwrap_err();
         assert!(err.contains("reserved flag bits set"), "{err}");
@@ -882,6 +903,44 @@ mod tests {
         zib.i.write_log = true;
         let err = decode_rom(&encode_rom(&rom)).unwrap_err();
         assert!(err.contains("not a flag"), "{err}");
+    }
+
+    /// An allocation mark: a `copyb` that stores nothing, with the kind of the mark
+    fn alloc_mark_site() -> ZiskInst {
+        let copyb = ZiskOp::CopyB.code();
+        let mut i = ZiskInst { paddr: crate::mem::ROM_ADDR + 8, op: copyb, ..Default::default() };
+        derive(&mut i);
+        i.a_src = crate::SRC_REG;
+        i.a_offset_imm0 = 10;
+        i.b_src = crate::SRC_IMM;
+        i.jmp_offset1 = 8;
+        i.jmp_offset2 = 8;
+        i.alloc_mark = 6;
+        i
+    }
+
+    #[test]
+    fn alloc_marks_keep_their_kind() {
+        let mut rom = sample_rom();
+        let site = alloc_mark_site();
+        let addr = site.paddr;
+        rom.insts.insert(addr, ZiskInstBuilder { i: site });
+        let decoded = decode_rom(&encode_rom(&rom)).unwrap();
+        for (addr, zib) in &rom.insts {
+            assert_inst_eq(&decoded.insts[addr].i, &zib.i);
+        }
+        assert_eq!(decoded.insts[&addr].i.alloc_mark, 6);
+        assert_eq!(decoded.insts[&addr].i.op_str, "copyb");
+    }
+
+    #[test]
+    fn rejects_alloc_mark_on_other_ops() {
+        let mut rom = sample_rom();
+        let (_, zib) = rom.insts.iter_mut().nth(1).unwrap();
+        assert_ne!(zib.i.op, ZiskOp::CopyB.code());
+        zib.i.alloc_mark = 1;
+        let err = decode_rom(&encode_rom(&rom)).unwrap_err();
+        assert!(err.contains("not a copyb"), "{err}");
     }
 
     #[test]

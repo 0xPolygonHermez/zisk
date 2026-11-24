@@ -1,3 +1,5 @@
+mod alloc_estimate;
+mod alloc_stats;
 mod dma_loop_stats;
 mod mem_dual_stats;
 mod mem_operations_stats;
@@ -12,6 +14,8 @@ mod stats;
 mod stats_costs;
 mod stats_coverage_report;
 mod stats_report;
+pub use alloc_estimate::*;
+pub use alloc_stats::*;
 pub use dma_loop_stats::*;
 pub use mem_dual_stats::*;
 pub use mem_operations_stats::*;

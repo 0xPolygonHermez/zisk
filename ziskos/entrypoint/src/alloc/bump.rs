@@ -4,8 +4,13 @@ use crate::alloc::{inline_bump_alloc_aligned, sys_alloc_aligned, sys_alloc_log};
 use crate::ziskos_memcpy;
 use crate::ziskos_memset;
 
+#[cfg(not(feature = "alloc-marks"))]
 #[global_allocator]
 pub static HEAP: BumpPointerAlloc = BumpPointerAlloc;
+
+#[cfg(feature = "alloc-marks")]
+#[global_allocator]
+pub static HEAP: super::AllocMarks<BumpPointerAlloc> = super::AllocMarks(BumpPointerAlloc);
 
 pub struct BumpPointerAlloc;
 

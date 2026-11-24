@@ -236,6 +236,25 @@ pub struct EmuOptions {
     /// efficient number of operations per row can be chosen from measurements. Requires option: -X
     #[clap(long, value_name = "DMA_STATS", default_value = "false")]
     pub dma_stats: bool,
+    /// Analyze how the program uses its allocator: calls and what they cost, sizes and alignments
+    /// of the blocks, zeroed allocations, reallocations (growing, shrinking, moved or in place)
+    /// and live memory. The calls are taken from the allocation marks of the guest (a Rust guest
+    /// built with the `alloc-marks` feature of ziskos) or, when it has none, from the ELF symbols
+    /// of the allocation functions (`malloc`/`free`/..., `operator new`/`delete`, `__rust_alloc`
+    /// & co), which needs -e with an ELF that keeps its symbols. Requires option: -X
+    #[clap(long, value_name = "ALLOC_STATS", default_value = "false")]
+    pub alloc_stats: bool,
+    /// Write the sequence of calls to the allocator to a file, one line per call (the header of
+    /// the file documents the format), to replay it elsewhere. Implies --alloc-stats
+    #[clap(long, value_name = "FILE")]
+    pub alloc_trace: Option<String>,
+    /// Variant of the allocator precompile that serves a guest built with the precompile allocator
+    /// (prototype, only ziskemu executes it): `canonical` is `Allocator` (best fit and forced
+    /// coalescing, one row per operation), `flex-eager` and `flex-lazy` are `AllocatorFlex` (every
+    /// join is a row) joining free blocks as soon as possible or only when no block fits. It
+    /// changes the addresses the guest gets and the cost of the operations.
+    #[clap(long, value_name = "POLICY", default_value = "canonical")]
+    pub alloc_policy: String,
     /// Row widths, in operations per row, measured by the DMA loop analysis: a comma-separated
     /// list, e.g. `2,4,8,12,16,24,32` (the default). Today the DMA machines use 4 or 8 operations
     /// per row for the aligned loop and 1 for the unaligned one; add 1 to the list to see the
@@ -420,6 +439,9 @@ impl Default for EmuOptions {
             mem_duals: None,
             mem_dual_reset_bits: 18,
             dma_stats: false,
+            alloc_stats: false,
+            alloc_trace: None,
+            alloc_policy: "canonical".to_string(),
             dma_ops_x_row: DEFAULT_DMA_OPS_X_ROW.to_string(),
             read_symbols: false,
             roi_callers: 10,

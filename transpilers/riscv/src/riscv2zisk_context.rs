@@ -6,20 +6,22 @@ use std::collections::BTreeSet;
 
 use crate::{riscv_interpreter, RiscvInst, RiscvInstName};
 use zisk_definitions::{
-    zkvmcall_by_id, SYSCALL_ADD256_ID, SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID,
-    SYSCALL_ARITH384_MOD_ID, SYSCALL_BABYJUBJUB_ADD_ID, SYSCALL_BLAKE2B_ROUND_ID,
-    SYSCALL_BLAKE2SF_ID, SYSCALL_BLAKE3F_ID, SYSCALL_BLS12_381_COMPLEX_ADD_ID,
-    SYSCALL_BLS12_381_COMPLEX_MUL_ID, SYSCALL_BLS12_381_COMPLEX_SUB_ID,
-    SYSCALL_BLS12_381_CURVE_ADD_ID, SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID,
-    SYSCALL_BN254_COMPLEX_MUL_ID, SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID,
-    SYSCALL_BN254_CURVE_DBL_ID, SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID,
-    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_ED25519_ADD_ID, SYSCALL_JUMP_DEST_ID,
-    SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID, SYSCALL_POSEIDON2_KOALABEAR_ID,
-    SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID,
-    SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END,
-    ZKVMCALL_ADDR_START, ZKVMCALL_ARG_ADDR_END, ZKVMCALL_ARG_ADDR_START,
+    alloc_op_has_result, zkvmcall_by_id, SYSCALL_ADD256_ID, SYSCALL_ALLOC_MARK_ID,
+    SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID, SYSCALL_ARITH384_MOD_ID,
+    SYSCALL_BABYJUBJUB_ADD_ID, SYSCALL_BLAKE2B_ROUND_ID, SYSCALL_BLAKE2SF_ID, SYSCALL_BLAKE3F_ID,
+    SYSCALL_BLS12_381_COMPLEX_ADD_ID, SYSCALL_BLS12_381_COMPLEX_MUL_ID,
+    SYSCALL_BLS12_381_COMPLEX_SUB_ID, SYSCALL_BLS12_381_CURVE_ADD_ID,
+    SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID, SYSCALL_BN254_COMPLEX_MUL_ID,
+    SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID, SYSCALL_BN254_CURVE_DBL_ID,
+    SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID, SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID,
+    SYSCALL_ED25519_ADD_ID, SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID,
+    SYSCALL_POSEIDON2_ID, SYSCALL_POSEIDON2_KOALABEAR_ID, SYSCALL_PROFILE_ID,
+    SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID,
+    SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END, ZKVMCALL_ADDR_START,
+    ZKVMCALL_ARG_ADDR_END, ZKVMCALL_ARG_ADDR_START,
 };
 
+use zisk_core::alloc_op_func;
 use zisk_core::rom_layout::InlineBody;
 use zisk_core::zisk_inst::{SRC_IMM, SRC_REG};
 use zisk_core::zisk_rom::ZiskRom;
@@ -37,7 +39,7 @@ use zisk_core::{FREG_F0, FREG_INST, FREG_RA, MTVEC, REG_X0};
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 // Important: The order should be the same as in such file.
-const CSR_PRECOMPILED: [&str; 34] = [
+const CSR_PRECOMPILED: [&str; 35] = [
     "keccak",
     "arith256",
     "arith256_mod",
@@ -72,6 +74,7 @@ const CSR_PRECOMPILED: [&str; 34] = [
     "blake2s",
     "ed25519_add",
     "poseidon2_koalabear",
+    "alloc_mark",
 ];
 const CSR_PRECOMPILED_ADDR_START: u16 = SYSCALL_KECCAKF_ID;
 const CSR_FCALL_ADDR_START: u16 = 0x8C0;
@@ -1804,6 +1807,11 @@ impl<'a> Riscv2ZiskContext<'a> {
             SYSCALL_ADD256_ID if i.rs1 != 0 => {
                 return self.transpile_add256(i, next_instructions);
             }
+            // The operations of the allocator precompile (prototype) that return an address use
+            // rd, the marks do not
+            SYSCALL_ALLOC_MARK_ID if i.rs1 != 0 => {
+                return self.transpile_alloc_mark_pattern(i, next_instructions);
+            }
             _ => {}
         }
         if i.rd == i.rs1 {
@@ -1871,6 +1879,9 @@ impl<'a> Riscv2ZiskContext<'a> {
                 SYSCALL_PROFILE_ID => {
                     assert!(!next_instructions.is_empty());
                     self.transpile_profile_pattern(i, next_instructions);
+                }
+                SYSCALL_ALLOC_MARK_ID => {
+                    self.transpile_alloc_mark_pattern(i, next_instructions);
                 }
                 // Precompiles called with two direct operands (see transpile_precompiled_ab_pattern)
                 SYSCALL_SECP256K1_ADD_ID
@@ -2834,6 +2845,70 @@ impl<'a> Riscv2ZiskContext<'a> {
         let rs1 = i.rs1;
         let rs2 = next_instructions[0].imm as u32;
         self.create_extended_precompiles_op(i, "profile", rs1, rs2 as u64, 0, 0, true, next_pc);
+    }
+
+    fn transpile_alloc_mark_pattern(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
+        if i.imme == 0
+            && next_instructions.len() > 1
+            && next_instructions[0].inst_name == RiscvInstName::Addi
+            && next_instructions[0].rd == 0
+        {
+            // alloc mark transpilation pattern (see zisk_definitions::alloc_mark):
+            //
+            //  csrs  0x822, reg(a)          ===>  copyb reg(a), reg(b) [alloc_mark kind] ─┐
+            //  addi  x0, reg(b), imm(kind)        addi x0, reg(b), imm(kind)              │ jmp+8
+            //  ..........                         ..........   <──────────────────────────┘
+            //
+            // The prover sees a copyb that stores nothing; the kind lives in the instruction
+            // (`ZiskInst::alloc_mark`) for ziskemu. reg(b) may be x0 for the marks that carry a
+            // single value: x0 is not a main-trace register, it is read as the immediate 0.
+            //
+            // The operations of the allocator precompile (prototype, kinds `ALLOC_OP_*`) follow
+            // the same pattern, with a `func` that runs them in ziskemu, and alloc and calloc
+            // store the address in rd (`csrrs rd, 0x822, reg(size)`).
+            let kind = next_instructions[0].imm;
+            assert!(
+                (1..=u8::MAX as i32).contains(&kind),
+                "Invalid alloc mark kind {kind} at address 0x{:08x}",
+                i.rom_address
+            );
+            let kind = kind as u8;
+            assert!(
+                i.rd == 0 || alloc_op_has_result(kind),
+                "Invalid use of CSR (0x{:03X}) at address 0x{:08x}: alloc mark kind {kind} has no \
+                 result, rd must be x0",
+                i.csr,
+                i.rom_address
+            );
+            let b = next_instructions[0].rs1;
+            let next_pc = next_instructions[1].rom_address;
+            let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
+            zib.src_a("reg", i.rs1 as u64, false);
+            if b == 0 {
+                zib.src_b("imm", 0, false);
+            } else {
+                zib.src_b("reg", b as u64, false);
+            }
+            zib.op("copyb").unwrap();
+            zib.i.alloc_mark = kind;
+            if let Some(func) = alloc_op_func(kind) {
+                zib.i.func = func;
+            }
+            if i.rd != 0 {
+                zib.store("reg", i.rd as i64, false, false);
+            }
+            let jmp_offset = next_pc as i64 - i.rom_address as i64;
+            zib.j(jmp_offset, jmp_offset);
+            zib.verbose(&format!("alloc_mark({kind}) r{}, r{}, r{b}", i.rd, i.rs1));
+            zib.build(self.rom);
+            return;
+        }
+        let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
+        panic!(
+            "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as alloc_mark with a \
+                        consecutive addi x0, reg, imm (next[0]:{})",
+            i.csr, i.rom_address, next_0
+        );
     }
 
     pub fn create_single_source_register_op(
