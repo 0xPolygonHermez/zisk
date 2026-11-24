@@ -660,6 +660,20 @@ pub fn ziskbin2rom(elf: &[u8]) -> Result<Option<ZiskRom>, String> {
 mod tests {
     use super::*;
 
+    /// Signed fields (offsets, `incsp(N)`) take any i64, the extremes included. `v << 1` only
+    /// panics for a shift amount of 64 or more, never for bits shifted out, so the zig-zag
+    /// encoding is exact for `i64::MIN` even in debug builds.
+    #[test]
+    fn svarint_round_trips_the_i64_extremes() {
+        for v in [i64::MIN, i64::MIN + 1, -1, 0, 1, i64::MAX - 1, i64::MAX] {
+            let mut out = Vec::new();
+            put_svarint(&mut out, v);
+            let mut r = Reader::new(&out);
+            assert_eq!(r.svarint().unwrap(), v);
+            assert_eq!(r.pos, out.len());
+        }
+    }
+
     /// Populates the opcode-derived fields, mirroring what the builder/decoder do,
     /// so a hand-built sample matches a real assembled ROM.
     fn derive(i: &mut ZiskInst) {

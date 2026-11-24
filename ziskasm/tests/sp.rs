@@ -221,6 +221,17 @@ fn sp_i64_extremes_round_trip() {
             .map(|i| i.to_zisk_asm())
             .collect();
         assert_eq!(again, vec![line.to_string()], "round trip of `{line}`");
+        // And through ziskbin, whose signed fields are zig-zag varints.
+        let decoded = zisk_core::ziskbin::decode_rom(&zisk_core::ziskbin::encode_rom(&rom))
+            .unwrap_or_else(|e| panic!("ziskbin round trip of `{line}`: {e}"));
+        let again: Vec<String> = decoded
+            .insts
+            .values()
+            .map(|b| &b.i)
+            .filter(|i| i.uses_sp())
+            .map(|i| i.to_zisk_asm())
+            .collect();
+        assert_eq!(again, vec![line.to_string()], "ziskbin round trip of `{line}`");
     }
     let parse_err = |line: &str| {
         let src = format!("main:\n\t{line}\n\tret\n");

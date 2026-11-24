@@ -2886,41 +2886,31 @@ impl<'a> Emu<'a> {
     where
         R: MainTraceRowOps<F>,
     {
-        let jmp_offset1 = if inst.jmp_offset1 >= 0 {
-            inst.jmp_offset1 as u64
-        } else {
-            F::neg(F::from_u64((-inst.jmp_offset1) as u64)).as_canonical_u64()
-        };
-        let jmp_offset2 = if inst.jmp_offset2 >= 0 {
-            inst.jmp_offset2 as u64
-        } else {
-            F::neg(F::from_u64((-inst.jmp_offset2) as u64)).as_canonical_u64()
-        };
-        let store_offset = if inst.store_offset >= 0 {
-            inst.store_offset as u64
-        } else {
-            F::neg(F::from_u64((-inst.store_offset) as u64)).as_canonical_u64()
-        };
-        let a_offset_imm0 = if inst.a_offset_imm0 as i64 >= 0 {
-            inst.a_offset_imm0
-        } else {
-            F::neg(F::from_u64((-(inst.a_offset_imm0 as i64)) as u64)).as_canonical_u64()
-        };
-        let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
-            inst.b_offset_imm0
-        } else {
-            F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64)).as_canonical_u64()
-        };
-
         // The Main AIR is instantiated without `stack_enabled`, so it has no sp columns and
         // `a_imm1`/`b_imm1` are plain immediates: an instruction that reads or updates sp
-        // cannot be proven yet, and must not silently become one that ignores sp.
+        // cannot be proven yet, and must not silently become one that ignores sp. Checked
+        // before anything else reads the instruction.
         assert!(
             !inst.uses_sp(),
             "Main AIR does not support the sp register yet (stack_enabled=0): pc=0x{:x} {}",
             inst.paddr,
             inst.to_zisk_asm()
         );
+
+        // A signed offset as a field element: v, or p - |v| when negative. `unsigned_abs`
+        // keeps i64::MIN exact (2^63 < p).
+        let signed = |v: i64| -> u64 {
+            if v >= 0 {
+                v as u64
+            } else {
+                F::neg(F::from_u64(v.unsigned_abs())).as_canonical_u64()
+            }
+        };
+        let jmp_offset1 = signed(inst.jmp_offset1);
+        let jmp_offset2 = signed(inst.jmp_offset2);
+        let store_offset = signed(inst.store_offset);
+        let a_offset_imm0 = signed(inst.a_offset_imm0 as i64);
+        let b_offset_imm0 = signed(inst.b_offset_imm0 as i64);
 
         trace.set_pc(lane, inst.paddr as u32);
         trace.set_a_src_imm(lane, inst.a_src == SRC_IMM);
