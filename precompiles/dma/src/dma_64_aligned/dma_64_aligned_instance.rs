@@ -67,9 +67,10 @@ impl<F: PrimeField64> Dma64AlignedInstance<F> {
         self._build_dma_collector(chunk_id)
     }
 
-    fn _build_dma_collector(&self, chunk_id: ChunkId) -> Dma64AlignedCollector {
+    /// Source words one row of this instance's air takes.
+    fn ops_by_row(&self) -> usize {
         // A `Large` sibling packs its operations exactly as the air it is a taller copy of does.
-        let ops_by_row = match self.ictx.plan.air_id {
+        match self.ictx.plan.air_id {
             Dma64AlignedTrace::<()>::AIR_ID | Dma64AlignedLargeTrace::<()>::AIR_ID => {
                 DMA_64_ALIGNED_OPS_BY_ROW
             }
@@ -79,8 +80,11 @@ impl<F: PrimeField64> Dma64AlignedInstance<F> {
                 DMA_64_ALIGNED_MEM_OPS_BY_ROW
             }
             _ => panic!("Dma64AlignedInstance: Unsupported air_id: {:?}", self.ictx.plan.air_id),
-        };
+        }
+    }
 
+    fn _build_dma_collector(&self, chunk_id: ChunkId) -> Dma64AlignedCollector {
+        let ops_by_row = self.ops_by_row();
         let meta = self.ictx.plan.meta.as_ref().unwrap();
         let collect_info = meta.downcast_ref::<DmaCheckPoint>().unwrap();
         let (num_inputs, collect_counters) = collect_info.chunks[&chunk_id];
@@ -94,7 +98,22 @@ impl<F: PrimeField64> Dma64AlignedInstance<F> {
     }
 }
 
+/// Heap bytes the collectors of an instance with `inputs` inputs over `rows` rows hold: the inputs,
+/// and the source words of those rows, `ops_by_row` each.
+fn collector_bytes(inputs: u64, rows: u64, ops_by_row: usize) -> u64 {
+    inputs * std::mem::size_of::<crate::Dma64AlignedInput>() as u64
+        + rows * ops_by_row as u64 * std::mem::size_of::<u64>() as u64
+}
+
 impl<F: PrimeField64> Instance<F> for Dma64AlignedInstance<F> {
+    /// The inputs and the source words of the rows the instance was given. An input whose copy
+    /// runs on into the next instance holds the rest of that copy too
+    /// ([`crate::Dma64AlignedInput::from`]): at most that one input goes beyond this.
+    fn collector_capacity_bytes(&self) -> u64 {
+        let checkpoint = DmaCheckPoint::of(&self.ictx);
+        collector_bytes(checkpoint.inputs(), checkpoint.rows(), self.ops_by_row())
+    }
+
     /// Computes the witness for the Dma execution plan.
     ///
     /// This method leverages the `Dma64AlignedSM` to generate an `AirInstance` using the collected

@@ -61,6 +61,17 @@ impl<const K: usize> Default for ChunkCollect<K> {
     }
 }
 
+impl<const K: usize> ChunkCollect<K> {
+    /// Operations this instance takes from the chunk, every kind together.
+    ///
+    /// It is exactly what the instance's collector pushes: the cursor collects each kind up to its
+    /// count and no further, whether the operation comes from the guest or another state machine
+    /// derived it (Arith sends Binary operations of its own, which the counter counts as well).
+    pub fn total_count(&self) -> u64 {
+        self.kinds.iter().map(|kind| kind.count).sum()
+    }
+}
+
 /// One air taking part in a distribution.
 #[derive(Clone, Debug)]
 pub struct AirSlot<const K: usize> {

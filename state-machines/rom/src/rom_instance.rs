@@ -255,6 +255,12 @@ impl RomInstance {
 }
 
 impl<F: PrimeField64> Instance<F> for RomInstance {
+    /// Its collectors count into the instance's own per-instruction counters, which exist before
+    /// any collect, and on the assembly path there are none: they hold nothing of their own.
+    fn collector_capacity_bytes(&self) -> u64 {
+        0
+    }
+
     fn compute_witness(
         &self,
         _pctx: &ProofCtx<F>,

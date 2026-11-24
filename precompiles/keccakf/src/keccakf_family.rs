@@ -363,6 +363,12 @@ impl<F: PrimeField64> KeccakfInstance<F> {
 }
 
 impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
+    /// Its collectors reserve their window's invocations ([`KeccakfCollector::new`]).
+    fn collector_capacity_bytes(&self) -> u64 {
+        let invocations: u64 = self.meta().windows.values().map(|(count, _)| count).sum();
+        invocations * std::mem::size_of::<KeccakfInput>() as u64
+    }
+
     fn compute_witness(
         &self,
         _pctx: &ProofCtx<F>,

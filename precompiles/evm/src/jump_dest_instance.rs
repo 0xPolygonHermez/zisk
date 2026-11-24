@@ -372,7 +372,29 @@ impl<F: PrimeField64> JumpDestInstance<F> {
     }
 }
 
+/// Heap bytes the collector of a chunk the instance takes `rows` rows from holds. Every 64
+/// bytecode bytes are `JUMP_DEST_ROWS_X_BLOCK` rows and 8 source words, `JUMP_DEST_OPS_X_ROW` a
+/// row; an operation takes at least one such block, the window may cut one at each end, and each
+/// may read one more word for an unaligned start.
+pub(crate) fn chunk_collector_bytes(rows: u64) -> u64 {
+    let inputs = rows.div_ceil(JUMP_DEST_ROWS_X_BLOCK as u64) + 1;
+    let words = rows * JUMP_DEST_OPS_X_ROW as u64 + inputs;
+    inputs * std::mem::size_of::<JumpDestInput>() as u64 + words * std::mem::size_of::<u64>() as u64
+}
+
 impl<F: PrimeField64> Instance<F> for JumpDestInstance<F> {
+    /// The inputs and source words of the rows each chunk gives the instance. An operation the
+    /// instance shares with the previous or the next one keeps all its source words
+    /// ([`JumpDestCollector`]), not only those of its rows here: at most those two operations go
+    /// beyond this.
+    fn collector_capacity_bytes(&self) -> u64 {
+        Self::checkpoint(&self.ictx)
+            .chunks
+            .values()
+            .map(|(rows, _)| chunk_collector_bytes(*rows))
+            .sum()
+    }
+
     fn compute_witness(
         &self,
         _pctx: &ProofCtx<F>,

@@ -147,6 +147,10 @@ impl<F: PrimeField64> Instance<F> for MemAlignReadByteInstance<F> {
         Ok(Some(instance))
     }
 
+    fn collector_capacity_bytes(&self) -> u64 {
+        MemAlignCollector::capacity_bytes(self.checkpoint.values())
+    }
+
     fn check_point(&self) -> &CheckPoint {
         &self.ictx.plan.check_point
     }

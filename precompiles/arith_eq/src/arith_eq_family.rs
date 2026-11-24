@@ -462,6 +462,12 @@ impl<F: PrimeField64> ArithEqInstance<F> {
 }
 
 impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
+    /// Its collectors reserve their window's operations ([`ArithEqCollector::new`]).
+    fn collector_capacity_bytes(&self) -> u64 {
+        let operations: u64 = self.checkpoint.0.iter().map(|window| window.count() as u64).sum();
+        operations * std::mem::size_of::<ArithEqInput>() as u64
+    }
+
     fn compute_witness(
         &self,
         _pctx: &ProofCtx<F>,

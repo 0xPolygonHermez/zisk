@@ -193,6 +193,44 @@ mod tests {
         assert_eq!(rows, 2 * block);
     }
 
+    /// What the collector holds on the heap: its inputs and their source words.
+    fn held_bytes(counts: &[u64], rows: u64, skip: u64) -> u64 {
+        let mut collector =
+            JumpDestCollector::new(ChunkId(0), rows, CollectSkipper::new(skip), true);
+        for &count in counts {
+            let words = vec![0u64; count.div_ceil(8) as usize];
+            collector.process_data(&OPERATION_BUS_ID, &bus_data(count), &words);
+        }
+        let words: usize = collector.inputs.iter().map(|input| input.words.len()).sum();
+        (collector.inputs.len() * std::mem::size_of::<JumpDestInput>()
+            + words * std::mem::size_of::<u64>()) as u64
+    }
+
+    #[test]
+    fn the_instance_bound_covers_what_the_collector_holds() {
+        use crate::jump_dest_instance::chunk_collector_bytes;
+        let block = JUMP_DEST_ROWS_X_BLOCK as u64;
+        // Operations inside the window, of every size.
+        for (counts, rows) in [
+            (vec![64, 64, 64], 3 * block),
+            (vec![1, 1, 1, 1], 4 * block),
+            (vec![640], 10 * block),
+            (vec![64; 100], 100 * block),
+            (vec![64, 64, 64, 64], 2 * block),
+        ] {
+            assert!(
+                held_bytes(&counts, rows, 0) <= chunk_collector_bytes(rows),
+                "{counts:?} in {rows} rows"
+            );
+        }
+        // An operation shared with the previous instance keeps all its words: only that one
+        // goes beyond the bound.
+        let shared = 192u64;
+        let over = held_bytes(&[shared], 2 * block, block)
+            .saturating_sub(chunk_collector_bytes(2 * block));
+        assert!(over <= shared.div_ceil(8) * 8, "{over} bytes beyond the bound");
+    }
+
     #[test]
     fn collecting_stops_once_the_window_is_full() {
         let block = JUMP_DEST_ROWS_X_BLOCK as u64;

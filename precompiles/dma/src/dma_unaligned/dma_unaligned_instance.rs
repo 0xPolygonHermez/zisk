@@ -72,7 +72,21 @@ impl<F: PrimeField64> DmaUnalignedInstance<F> {
     }
 }
 
+/// Heap bytes the collectors of an instance with `inputs` inputs over `rows` rows hold: the inputs,
+/// and their source words, one per row plus the one an unaligned copy reads past its last row.
+fn collector_bytes(inputs: u64, rows: u64) -> u64 {
+    inputs * std::mem::size_of::<crate::DmaUnalignedInput>() as u64
+        + (rows + inputs) * std::mem::size_of::<u64>() as u64
+}
+
 impl<F: PrimeField64> Instance<F> for DmaUnalignedInstance<F> {
+    /// The inputs and the source words of the rows the instance was given
+    /// ([`DmaUnalignedInput::from`] keeps those only).
+    fn collector_capacity_bytes(&self) -> u64 {
+        let checkpoint = DmaCheckPoint::of(&self.ictx);
+        collector_bytes(checkpoint.inputs(), checkpoint.rows())
+    }
+
     /// Computes the witness for the Dma execution plan.
     ///
     /// This method leverages the `DmaUnalignedSM` to generate an `AirInstance` using the collected

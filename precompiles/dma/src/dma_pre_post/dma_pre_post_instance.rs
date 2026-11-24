@@ -59,6 +59,12 @@ impl<F: PrimeField64> DmaPrePostInstance<F> {
 }
 
 impl<F: PrimeField64> Instance<F> for DmaPrePostInstance<F> {
+    /// Its collectors reserve their chunk's inputs, fixed-size values.
+    fn collector_capacity_bytes(&self) -> u64 {
+        DmaCheckPoint::of(&self.ictx).inputs()
+            * std::mem::size_of::<crate::DmaPrePostInput>() as u64
+    }
+
     /// Computes the witness for the Dma execution plan.
     ///
     /// This method leverages the `DmaPrePostSM` to generate an `AirInstance` using the collected

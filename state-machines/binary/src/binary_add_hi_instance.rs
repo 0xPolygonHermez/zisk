@@ -4,7 +4,7 @@
 //! It manages collected inputs and interacts with the `BinaryAddHiSM` to compute witnesses for
 //! execution plans.
 
-use crate::{BinaryAddHiCollector, BinaryAddHiSM, ChunkCollect, ADD_KINDS};
+use crate::{BinaryAddHiCollector, BinaryAddHiSM, BinaryInput, ChunkCollect, ADD_KINDS};
 use pil2_std_lib::Std;
 use proofman_common::{ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
@@ -155,6 +155,10 @@ impl<F: PrimeField64> Instance<F> for BinaryAddHiInstance<F> {
     /// A `CheckPoint` object representing the checkpoint of the execution plan.
     fn check_point(&self) -> &CheckPoint {
         &self.ictx.plan.check_point
+    }
+
+    fn collector_capacity_bytes(&self) -> u64 {
+        BinaryInput::capacity_bytes(self.collect_info.values())
     }
 
     /// Retrieves the type of this instance.

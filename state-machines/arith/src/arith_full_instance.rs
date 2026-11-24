@@ -81,6 +81,12 @@ impl<F: PrimeField64> ArithFullInstance<F> {
 }
 
 impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
+    /// Its collectors reserve their chunk's operations ([`ArithInstanceCollector::new`]).
+    fn collector_capacity_bytes(&self) -> u64 {
+        let operations: u64 = self.collect_info.values().map(|(operations, _, _)| operations).sum();
+        operations * std::mem::size_of::<OperationData<u64>>() as u64
+    }
+
     /// Computes the witness for the arithmetic execution plan.
     ///
     /// This method leverages the `ArithFullSM` to generate an `AirInstance` using the collected

@@ -1,4 +1,6 @@
-use crate::{mem_module_collector::MemModuleCollector, MemModule, MemOps, MemPreviousSegment};
+use crate::{
+    mem_module_collector::MemModuleCollector, MemInput, MemModule, MemOps, MemPreviousSegment,
+};
 use proofman_common::{ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::sync::Arc;
@@ -12,8 +14,6 @@ use zisk_common::{
 };
 use zisk_sm_mem_common::MemModuleSegmentCheckPoint;
 
-#[cfg(feature = "legacy_mem_count_and_plan")]
-use crate::MemInput;
 #[cfg(feature = "legacy_mem_count_and_plan")]
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 #[cfg(feature = "legacy_mem_count_and_plan")]
@@ -214,6 +214,12 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         //     collector.init_with_mem_sections(mem_sections);
         // }
         Some(Box::new(collector))
+    }
+
+    fn collector_capacity_bytes(&self) -> u64 {
+        let inputs: usize =
+            self.check_point.chunks.values().map(MemModuleCollector::reserved_inputs).sum();
+        (inputs * std::mem::size_of::<MemInput>()) as u64
     }
 
     fn check_point(&self) -> &CheckPoint {

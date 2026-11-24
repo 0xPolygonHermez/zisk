@@ -1,4 +1,4 @@
-use crate::{LTU_DIV_OP, XOR_KECCAK_OP};
+use crate::{ChunkCollect, LTU_DIV_OP, XOR_KECCAK_OP};
 use zisk_common::{ExtOperationData, OperationBusData};
 use zisk_core::zisk_ops::ZiskOp;
 
@@ -25,6 +25,15 @@ impl BinaryInput {
             op => op,
         };
         Self { op, a: OperationBusData::get_a(data), b: OperationBusData::get_b(data) }
+    }
+
+    /// Heap bytes the collectors of one instance hold once they have collected: each one takes the
+    /// [`ChunkCollect::total_count`] inputs of its chunk.
+    pub fn capacity_bytes<'a, const K: usize>(
+        collects: impl IntoIterator<Item = &'a ChunkCollect<K>>,
+    ) -> u64 {
+        let inputs: u64 = collects.into_iter().map(ChunkCollect::total_count).sum();
+        inputs * std::mem::size_of::<Self>() as u64
     }
 }
 
@@ -53,6 +62,25 @@ impl Drop for FlattenReport {
             flat,
             total,
             if total > 0.0 { 100.0 * flat / total } else { 0.0 }
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::KindCollect;
+    use zisk_common::CollectSkipper;
+
+    #[test]
+    fn capacity_bytes_counts_every_kind_of_every_chunk() {
+        let kind =
+            |count| KindCollect { count, skipper: CollectSkipper::new(0), owns_frops: false };
+        let first = ChunkCollect { kinds: [kind(3), kind(4)], force_execute_to_end: false };
+        let second = ChunkCollect { kinds: [kind(0), kind(5)], force_execute_to_end: true };
+        assert_eq!(
+            BinaryInput::capacity_bytes([&first, &second]),
+            12 * std::mem::size_of::<BinaryInput>() as u64
         );
     }
 }
