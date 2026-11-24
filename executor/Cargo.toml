@@ -32,6 +32,7 @@ zisk-precomp-hints = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 arc-swap = { workspace = true }
+sysinfo = { workspace = true }
 paste = { workspace = true }
 crossbeam = "0.8.4"
 

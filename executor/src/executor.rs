@@ -15,10 +15,13 @@
 //! maintaining clarity and modularity in the computation process.
 
 use crate::{
-    plan::MemPlanArtifacts, ports::GlobalId, ports::ProofRegistry, sm::MEM_POSITION,
-    witness::WitnessContext, AirClassifier, AsmJob, AsmResources, EmulatorAsm, ExecutionPhase,
-    ExecutionState, InstanceAssigner, NoopProofRegistry, PlanPhase, ProofmanAdapter,
-    StaticSMBundle, WitnessPhase,
+    plan::MemPlanArtifacts,
+    ports::GlobalId,
+    ports::ProofRegistry,
+    sm::MEM_POSITION,
+    witness::{CollectMode, WitnessContext},
+    AirClassifier, AsmJob, AsmResources, EmulatorAsm, ExecutionPhase, ExecutionState,
+    InstanceAssigner, NoopProofRegistry, PlanPhase, ProofmanAdapter, StaticSMBundle, WitnessPhase,
 };
 use proofman_common::{lease_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
 use proofman_fields::PrimeField64;
@@ -537,12 +540,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             let collecting = match (self.witness.as_ref(), proofman_extras) {
                 (Some(witness), Some(extras)) if two_rounds && !first_round.is_empty() => {
                     Some(scope.spawn(|| {
+                        // One pass: this thread must never wait. Under -m nobody computes what it
+                        // announces until it returns, and the round's registration waits for it.
                         witness.pre_calculate(
                             extras.pctx(),
                             extras,
                             &self.state,
                             &first_round,
                             is_asm_emulator,
+                            CollectMode::OnePass,
                         )
                     }))
                 }
@@ -806,7 +812,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let witness = self.witness_or_panic();
 
         pool.install(|| {
-            witness.pre_calculate(&pctx, &adapter, &self.state, global_ids, is_asm_emulator)
+            witness.pre_calculate(
+                &pctx,
+                &adapter,
+                &self.state,
+                global_ids,
+                is_asm_emulator,
+                CollectMode::Waves,
+            )
         })?;
 
         stats_end!(self.state.stats, &_pre_scope);

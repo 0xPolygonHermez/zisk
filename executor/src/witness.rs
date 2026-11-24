@@ -6,14 +6,17 @@
 //! The ROM-backend selection is read at runtime from the [`WitnessContext`]'s `is_asm_emulator` flag.
 
 pub mod air_classifier;
+pub mod collect_budget;
 pub mod collector;
 pub mod generator;
 pub mod handlers;
+pub mod host_memory;
 
 pub use air_classifier::*;
 pub use collector::*;
 pub use generator::*;
 pub use handlers::*;
+pub use host_memory::{HostMemoryMargin, ParseHostMemoryMarginError};
 
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
@@ -22,7 +25,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use proofman_common::{BufferPool, ProofCtx, SetupCtx};
+use proofman_common::{BufferPool, ProofCtx, SetupCtx, WitnessPriority};
 use proofman_fields::PrimeField64;
 use zisk_asm_runner::AsmRunnerRH;
 use zisk_common::{
@@ -89,6 +92,18 @@ impl<'a, F: PrimeField64> WitnessContext<'a, F> {
         let info = self.registry.instance_info(GlobalId(global_id))?;
         Ok((info.airgroup_id, info.air_id))
     }
+}
+
+/// How [`WitnessPhase::pre_calculate`] may collect the instances it is given.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CollectMode {
+    /// One replay of the chunks for every instance, whatever they reserve.
+    OnePass,
+    /// Within the memory budget ([`collect_budget`]): in one pass when everything fits, else in
+    /// waves, each waiting for proofman to compute what the earlier ones announced. Only for a
+    /// caller that holds nothing those computations need; it falls back to one pass where proofman
+    /// does not compute the announces while the call runs.
+    Waves,
 }
 
 /// Phase-4 actor — classifies each global id and dispatches to one
@@ -390,8 +405,9 @@ impl<F: PrimeField64> WitnessPhase<F> {
     /// Pre-calculates witnesses by determining which instances need collection.
     ///
     /// `pctx` is still required because [`ChunkDataCollector::collect`]
-    /// takes `&ProofCtx<F>` directly (cross-crate, library-coupled).
-    /// All other `pctx`-equivalent lookups (`instance_info`,
+    /// takes `&ProofCtx<F>` directly (cross-crate, library-coupled), and
+    /// because the [`CollectMode::Waves`] budget reads the proof's runtime
+    /// state from it. All other `pctx`-equivalent lookups (`instance_info`,
     /// `announce_witness_ready`) route through `registry`.
     pub fn pre_calculate(
         &self,
@@ -400,6 +416,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
         state: &ExecutionState<F>,
         global_ids: &[usize],
         is_asm_emulator: bool,
+        mode: CollectMode,
     ) -> ExecutorResult<()> {
         let secn_instances_guard =
             state.instance_set.secn_instances.read_or_poison("secn_instances")?;
@@ -439,11 +456,133 @@ impl<F: PrimeField64> WitnessPhase<F> {
             }
         }
 
-        // Collect all instances that need collection
-        if !instances_to_collect.is_empty() {
-            self.collector.collect(pctx, state, instances_to_collect)?;
+        if instances_to_collect.is_empty() {
+            return Ok(());
+        }
+        let plan = match mode {
+            CollectMode::OnePass => None,
+            CollectMode::Waves => self.plan_waves(pctx, registry, &instances_to_collect)?,
+        };
+        let Some(plan) = plan else {
+            return self.collector.collect(pctx, state, instances_to_collect);
+        };
+        // The waves wait for proofman's witness threads, which read the instances too: hold the
+        // instances only while each wave is collected, never across a wait.
+        drop(instances_to_collect);
+        drop(secn_instances_guard);
+        self.collect_waves(pctx, state, plan)
+    }
+
+    /// The waves to collect `instances` in, or `None` to collect them in one pass: when they fit in
+    /// the budget, or when there is no budget to keep.
+    ///
+    /// Waves wait for proofman to compute what earlier waves announced, so they are planned only
+    /// where proofman computes the announces on its own threads while this call runs (`witness_tx`
+    /// set: its admission thread is live). Anywhere else nobody would compute them in time.
+    fn plan_waves(
+        &self,
+        pctx: &ProofCtx<F>,
+        registry: &dyn Dctx,
+        instances: &HashMap<usize, &dyn Instance<F>>,
+    ) -> ExecutorResult<Option<collect_budget::WavePlan>> {
+        let announces_computed = pctx.witness_tx.read_or_poison("witness_tx")?.is_some();
+        if instances.len() < 2 || !announces_computed {
+            return Ok(None);
+        }
+        let node_processes = pctx.mpi_ctx.node_n_processes.max(1) as usize;
+        let host_share = || host_memory::host_memory_share(node_processes, None);
+        let Some(budget) = collect_budget::collect_budget(host_share) else {
+            return Ok(None);
+        };
+        let total: u64 = instances.values().map(|i| i.collector_capacity_bytes()).sum();
+        if total <= budget {
+            tracing::info!(
+                "collect: {} instances reserve {:.1} GiB of a {:.1} GiB budget: one pass",
+                instances.len(),
+                collect_budget::gib(total),
+                collect_budget::gib(budget)
+            );
+            return Ok(None);
         }
 
+        // `Last` instances go last: proofman computes them only after every other instance, so a
+        // wave waiting on one would wait for itself. The memory instances, which touch chunks from
+        // the whole block, follow the rest, which go in block order to replay contiguous chunks.
+        let mut order = Vec::with_capacity(instances.len());
+        for (&global_id, instance) in instances {
+            let air_id = registry.instance_info(GlobalId(global_id))?.air_id;
+            let last = pctx.dctx_instance_priority(global_id) == WitnessPriority::Last;
+            let memory = AirClassifier::is_memory_related(air_id);
+            let first_chunk = match instance.check_point() {
+                CheckPoint::Single(chunk) => chunk.as_usize(),
+                CheckPoint::Multiple(chunks) => {
+                    chunks.iter().map(|c| c.as_usize()).min().unwrap_or(0)
+                }
+                CheckPoint::None => 0,
+            };
+            let pending =
+                collect_budget::Pending { global_id, bytes: instance.collector_capacity_bytes() };
+            order.push(((last, memory, first_chunk, global_id), pending));
+        }
+        order.sort_unstable_by_key(|(key, _)| *key);
+        let pending = order.into_iter().map(|(_, pending)| pending).collect();
+        Ok(Some(collect_budget::WavePlan { budget, total, pending }))
+    }
+
+    /// Collects `plan` wave by wave, each one once the instances the earlier ones announced have
+    /// freed enough of the budget.
+    fn collect_waves(
+        &self,
+        pctx: &ProofCtx<F>,
+        state: &ExecutionState<F>,
+        plan: collect_budget::WavePlan,
+    ) -> ExecutorResult<()> {
+        let started = std::time::Instant::now();
+        let mut waited = std::time::Duration::ZERO;
+        let mut held = collect_budget::Held::default();
+        let mut waves = 0;
+        let mut rest = &plan.pending[..];
+        while !rest.is_empty() {
+            if !held.is_empty() {
+                let wait_started = std::time::Instant::now();
+                collect_budget::wait_for_room(
+                    &mut held,
+                    rest[0].bytes,
+                    plan.budget,
+                    |global_id| pctx.dctx_witness_state(global_id),
+                    || pctx.is_cancelled(),
+                )?;
+                waited += wait_started.elapsed();
+            }
+            let take = collect_budget::next_wave(rest, plan.budget.saturating_sub(held.bytes()));
+            let (wave, tail) = rest.split_at(take);
+            {
+                let secn_instances =
+                    state.instance_set.secn_instances.read_or_poison("secn_instances")?;
+                let wave_instances = wave
+                    .iter()
+                    .map(|p| {
+                        secn_instances
+                            .get(&p.global_id)
+                            .map(|instance| (p.global_id, &**instance))
+                            .ok_or(ExecutorError::InstanceNotFound { global_id: p.global_id })
+                    })
+                    .collect::<ExecutorResult<HashMap<_, _>>>()?;
+                self.collector.collect(pctx, state, wave_instances)?;
+            }
+            held.add(wave);
+            waves += 1;
+            rest = tail;
+        }
+        tracing::info!(
+            "collect: {} instances reserve {:.1} GiB of a {:.1} GiB budget: {} waves in {:.1} s, {:.1} s waiting",
+            plan.pending.len(),
+            collect_budget::gib(plan.total),
+            collect_budget::gib(plan.budget),
+            waves,
+            started.elapsed().as_secs_f64(),
+            waited.as_secs_f64()
+        );
         Ok(())
     }
 

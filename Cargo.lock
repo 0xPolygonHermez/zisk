@@ -7870,6 +7870,7 @@ dependencies = [
  "proofman-util",
  "proofman-witness",
  "rayon",
+ "sysinfo 0.38.4",
  "thiserror 2.0.21",
  "tracing",
  "zisk-asm-runner",
