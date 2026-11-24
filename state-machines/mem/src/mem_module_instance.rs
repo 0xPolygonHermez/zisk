@@ -226,11 +226,14 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
     /// One collector per chunk, with a buffer of packed accesses and one of values
     /// ([`MemModuleCollector::reserved_bytes`]).
     fn collector_capacity_bytes(&self) -> CollectorBytes {
+        let is_dual = self.module.is_dual();
         let keep_read_values = !self.module.derives_read_values();
         self.check_point
             .chunks
             .values()
-            .map(|check_point| MemModuleCollector::reserved_bytes(check_point, keep_read_values))
+            .map(|check_point| {
+                MemModuleCollector::reserved_bytes(check_point, is_dual, keep_read_values)
+            })
             .sum()
     }
 

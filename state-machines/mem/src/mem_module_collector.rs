@@ -49,24 +49,27 @@ pub struct MemModuleCollector {
 
 impl MemModuleCollector {
     /// Words a collector reserves for one chunk, as `(accesses, values)`. `count` is the lanes the
-    /// planner counted for the chunk. A lane holds up to two accesses (dual), and every write opens
-    /// a lane of its own, so at most `count` of them are writes that carry a value; reads carry one
-    /// too when the collector keeps read values. `new` sizes its inputs with it, and the instance
-    /// sums it to bound its collectors' bytes.
+    /// planner counted for the chunk. A lane holds one access, or up to two in a dual memory. Every
+    /// write opens a lane of its own, so at most `count` of the accesses are writes that carry a
+    /// value; reads carry one too when the collector keeps read values. `new` sizes its inputs with
+    /// it, and the instance sums it to bound its collectors' bytes.
     pub fn reserved_words(
         mem_check_point: &MemModuleCheckPoint,
+        is_dual: bool,
         keep_read_values: bool,
     ) -> (usize, usize) {
         let count = mem_check_point.count as usize;
-        (count * 2, if keep_read_values { count * 2 } else { count })
+        let accesses = if is_dual { count * 2 } else { count };
+        (accesses, if keep_read_values { accesses } else { count })
     }
 
     /// Bytes [`reserved_words`](Self::reserved_words) stands for: two buffers of `u64` words.
     pub fn reserved_bytes(
         mem_check_point: &MemModuleCheckPoint,
+        is_dual: bool,
         keep_read_values: bool,
     ) -> CollectorBytes {
-        let (accesses, values) = Self::reserved_words(mem_check_point, keep_read_values);
+        let (accesses, values) = Self::reserved_words(mem_check_point, is_dual, keep_read_values);
         let word = std::mem::size_of::<u64>();
         CollectorBytes::of_buffer(accesses * word) + CollectorBytes::of_buffer(values * word)
     }
@@ -90,7 +93,8 @@ impl MemModuleCollector {
         let aligned_max_addr = mem_check_point.to_addr;
         Self {
             inputs: {
-                let (accesses, values) = Self::reserved_words(mem_check_point, keep_read_values);
+                let (accesses, values) =
+                    Self::reserved_words(mem_check_point, is_dual, keep_read_values);
                 MemInputs::with_capacity(accesses, values, keep_read_values)
             },
             mem_check_point: mem_check_point.clone(),
@@ -610,20 +614,25 @@ mod tests {
     use super::*;
 
     /// The instance bounds its collectors' bytes with `reserved_bytes`, so `new` must reserve
-    /// exactly that, with read values kept or derived.
+    /// exactly that: with read values kept or derived, and one access per lane or two.
     #[test]
     fn new_reserves_the_bytes_the_bound_counts() {
         let check_point = MemModuleCheckPoint::new(0x1000, 3, 700);
-        for (keep_read_values, words) in [(false, 1400 + 700), (true, 1400 + 1400)] {
+        for (is_dual, keep_read_values, words) in [
+            (true, false, 1400 + 700),
+            (true, true, 1400 + 1400),
+            (false, true, 700 + 700),
+            (false, false, 700 + 700),
+        ] {
             let collector = MemModuleCollector::new(
                 &check_point,
                 0,
                 SegmentId(0),
                 true,
-                false,
+                is_dual,
                 keep_read_values,
             );
-            let bound = MemModuleCollector::reserved_bytes(&check_point, keep_read_values);
+            let bound = MemModuleCollector::reserved_bytes(&check_point, is_dual, keep_read_values);
             assert_eq!(bound, CollectorBytes { lendable: 0, heap: words * 8 }, "small buffers");
             assert_eq!(collector.inputs.heap_bytes().1 as u64, bound.total());
         }
