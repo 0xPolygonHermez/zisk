@@ -76,7 +76,7 @@ pub const JUMP_DEST_COST: u64 = 66_u64.div_ceil(2);
 // A DotF8 row does 8 multiply-adds and costs its column count. A call costs one row, like a Dma
 // call; the block sums are memory writes.
 pub const DOT_F8_COST: u64 = DMA_COST;
-pub const DOT_F8_ROW_COST: u64 = 149;
+pub const DOT_F8_ROW_COST: u64 = 156;
 pub const DOT_F8_MACS_PER_ROW: u64 = 8;
 
 // Costs for DMA PrePost (a single instance proves every operation)

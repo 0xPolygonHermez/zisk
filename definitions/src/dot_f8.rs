@@ -52,7 +52,7 @@ pub const fn dot_f8_bits(fmt: u8) -> u32 {
 /// The largest absolute value of format `fmt`, in its units.
 pub const fn dot_f8_max_units(fmt: u8) -> i32 {
     match fmt {
-        DOT_F8_I8 => 127,
+        DOT_F8_I8 => 128,
         DOT_F8_E4M3 => 448 << 9,
         DOT_F8_E4M3_FNUZ => 240 << 10,
         DOT_F8_E2M1 => 6 << 1,
@@ -219,7 +219,7 @@ mod tests {
     fn largest_values_and_products_fit() {
         for f in 0..DOT_F8_FORMATS {
             let max = (0..=255u8).map(|c| dot_f8_decode_code(f, c).abs()).max().unwrap();
-            assert_eq!(max, if f == DOT_F8_I8 { 128 } else { dot_f8_max_units(f) });
+            assert_eq!(max, dot_f8_max_units(f));
             assert!((max as i64) * (max as i64) < 1 << 36);
         }
     }

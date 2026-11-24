@@ -127,11 +127,10 @@ impl<F: PrimeField64> DotF8SM<F> {
         let bk = input.block_rows() as i128;
         let ow = (input.p[5] / 8) as i128;
         let (cl, ch, csg) = limbs(input.c as i64);
-        let sums = input.block_sums();
         let (xw0, yw0) = (input.p[0] / 8, input.p[1] / 8);
         let rep = input.repeat_y();
         let (xs, ys) = input.words.split_at(input.x_words());
-        let (mut bidx, mut accb, mut tot, mut ob, mut block) = (0i128, 0i128, 0i128, ow, 0usize);
+        let (mut bidx, mut accb, mut tot, mut ob) = (0i128, 0i128, 0i128, ow);
         for (i, row) in rows.iter_mut().enumerate() {
             let par = (i % 2) as u64;
             let (lx, ly) = (1 - ex * par, 1 - ey * par);
@@ -187,7 +186,7 @@ impl<F: PrimeField64> DotF8SM<F> {
             row.set_step(field::<F>(input.step as i128));
             row.set_pw(field::<F>(input.params as i128 / 8));
             row.set_R(field::<F>(r));
-            row.set_r_inv(inv::<F>(r));
+            row.set_r_inv(inv::<F>(if nz == 0 { bk } else { r }));
             row.set_idx(field::<F>(i as i128));
             row.set_rem_inv(inv::<F>(rem));
             row.set_Bk(field::<F>(bk));
@@ -201,8 +200,8 @@ impl<F: PrimeField64> DotF8SM<F> {
             row.set_all_x_word(&[xword & 0xffff_ffff, xword >> 32]);
             row.set_all_y_word(&[yword & 0xffff_ffff, yword >> 32]);
             row.set_all_xc(&xc);
-            row.set_all_xv(&xv.map(field::<F>));
             row.set_all_yc(&yc);
+            row.set_all_xv(&xv.map(field::<F>));
             row.set_all_yv(&yv.map(field::<F>));
             row.set_accb(field::<F>(accb));
             row.set_s(field::<F>(s));
@@ -211,22 +210,39 @@ impl<F: PrimeField64> DotF8SM<F> {
             row.set_all_cl(&cl);
             row.set_all_ch(&ch);
             if w == 1 {
-                assert_eq!(s, sums[block] as i128, "dot_f8: block sum");
-                let (bl, bh, bsg) = limbs(sums[block]);
+                let (bl, bh, bsg) = limbs(s as i64);
                 row.set_all_bl(&bl);
                 row.set_all_bh(&bh);
                 row.set_bsg(bsg == 1);
-            }
-            if be == 1 {
-                block += 1;
             }
             ob += be as i128;
             (bidx, accb) = if be == 1 { (0, 0) } else { (bidx + 1, s) };
             tot = t;
         }
-        if nz == 1 {
-            assert_eq!(tot as i64 as u64, input.c, "dot_f8: total differs from the emulator");
+        if nz == 0 {
+            Self::fill_empty_descriptor(input, &mut rows[0]);
         }
+        assert_eq!(tot as i64 as u64, input.c, "dot_f8: total differs from the emulator");
+    }
+
+    fn fill_empty_descriptor<R: DotF8TraceRowOps<F>>(input: &DotF8Input, row: &mut R) {
+        let (fx, fy) = input.formats();
+        let fp4 = fx == DOT_F8_E2M1 || fy == DOT_F8_E2M1;
+        let mut high = [0; 8];
+        let mut low_limb = [0; 4];
+        let mut upper_limb = [0; 4];
+        for (j, value) in [input.p[0], input.p[1], input.p[4], input.p[5]].into_iter().enumerate() {
+            let alignment = if j == 2 && fp4 { 16 } else { 8 };
+            let units = (value & 0xffff_ffff) / alignment;
+            high[j] = value >> 32;
+            low_limb[j] = units & 0xffff;
+            upper_limb[j] = units >> 16;
+        }
+        row.set_all_xv(&high);
+        row.set_all_cl(&[low_limb[0], low_limb[1]]);
+        row.set_all_ch(&[upper_limb[0], upper_limb[1]]);
+        row.set_all_bl(&[low_limb[2], low_limb[3]]);
+        row.set_all_bh(&[upper_limb[2], upper_limb[3]]);
     }
 
     /// An empty row: one n = 0 call that is not in use.
@@ -312,6 +328,17 @@ mod tests {
     type F = Goldilocks;
 
     #[test]
+    fn packed_row_matches_prover_metadata() {
+        use zisk_pil::{DotF8Trace, DotF8TraceRowPacked, PACKED_INFO};
+
+        let (_, _, info) = PACKED_INFO
+            .iter()
+            .find(|(group, air, _)| (*group, *air) == (ZISK_AIRGROUP_ID, DotF8Trace::<()>::AIR_ID))
+            .unwrap();
+        assert_eq!(DotF8TraceRowPacked::<F>::PACKED_WORDS as u64, info.num_packed_words);
+    }
+
+    #[test]
     fn limbs_rebuild_the_value() {
         for v in [0i64, 1, -1, (1 << 62) - 1, -(1 << 62), 0x1234_5678_9abc, -0x1234_5678_9abc] {
             let ([l0, l1], [h0, h1], sg) = limbs(v);
@@ -376,12 +403,22 @@ mod tests {
     fn fill(input: &DotF8Input) -> Vec<DotF8TraceRow<F>> {
         let mut rows = vec![DotF8TraceRow::<F>::default(); dot_f8_rows(input.n())];
         DotF8SM::<F>::fill_call(input, &mut rows);
+        if input.p[5] != 0 {
+            let writes: Vec<_> = rows.iter().filter(|row| row.get_w()).collect();
+            let sums = input.block_sums();
+            assert_eq!(writes.len(), sums.len());
+            for (row, sum) in writes.into_iter().zip(sums) {
+                let (lo, hi, sign) = limbs(sum);
+                assert_eq!([row.get_bl(0), row.get_bl(1)], lo);
+                assert_eq!([row.get_bh(0), row.get_bh(1)], hi);
+                assert_eq!(row.get_bsg(), sign != 0);
+            }
+        }
         rows
     }
 
     #[test]
     fn every_format_pair_matches_the_reference() {
-        // fill_call checks each block sum and the total against the reference.
         for fx in 0..DOT_F8_FORMATS {
             for fy in 0..DOT_F8_FORMATS {
                 for (block, out) in [(0, 0), (0, 0x9000), (16, 0x9000), (32, 0)] {
@@ -400,7 +437,6 @@ mod tests {
 
     #[test]
     fn repeat_y_restarts_y_with_each_block() {
-        // fill_call checks each block sum and the total against the reference.
         for fx in 0..DOT_F8_FORMATS {
             for fy in 0..DOT_F8_FORMATS {
                 for (block, out) in [(16, 0x9000), (32, 0), (64, 0x9000)] {
@@ -453,6 +489,31 @@ mod tests {
         assert_eq!(reads.0.get(&0x8010), None);
         assert_eq!(reads.0[&0x2000], 1);
         assert_eq!(reads.0[&0x1000], 1);
+    }
+
+    #[test]
+    fn empty_descriptor_preserves_all_64_bits() {
+        let block = u64::MAX - 15;
+        for (fx, fy) in [(0, 0), (DOT_F8_E2M1, 0), (0, DOT_F8_E2M1)] {
+            let mut input = call_with(fx, fy, 0, block, 1 << 40, 0, true);
+            input.p[0] = 1 << 32;
+            input.p[1] = u64::MAX - 7;
+            let rows = fill(&input);
+            let row = &rows[0];
+            assert_eq!(rows.len(), 1);
+            assert!(!row.get_active() && !row.get_w());
+            for (j, expected) in [input.p[0], input.p[1], block, input.p[5]].into_iter().enumerate()
+            {
+                let align = if j == 2 && (fx == DOT_F8_E2M1 || fy == DOT_F8_E2M1) { 16 } else { 8 };
+                let (lo, hi) = if j < 2 {
+                    (row.get_cl(j), row.get_ch(j))
+                } else {
+                    (row.get_bl(j - 2), row.get_bh(j - 2))
+                };
+                let low = align * (lo + (hi << 16));
+                assert_eq!((row.get_xv(j) << 32) | low, expected);
+            }
+        }
     }
 
     #[test]

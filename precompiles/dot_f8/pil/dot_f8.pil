@@ -44,11 +44,11 @@ airtemplate DotF8DecodeTable(int N = DOT_F8_DECODE_TABLE_SIZE) {
 
 // One call per run of rows, 8 multiply-adds per row. The parameter block [x, y, n, formats,
 // block, out] is at word `pw`, with n = 8*R and block = 8*Bk (0: one block).
-// Decoded values are below 2^18 in magnitude and a call has at most 8*N <= 2^26 products, so
-// every sum stays below 2^62 and never wraps the field.
+// Decoded values are below 2^18 in magnitude and a call has at most 8*N <= 2^24 products, so
+// every sum stays below 2^60 and never wraps the field.
 // Addresses are word indices; the memory bus proves they are 29-bit.
 airtemplate DotF8(const int N = 2**21, const int with_bus = 1) {
-    assert(N <= 2**23);
+    assert(N <= 2**21);
     col fixed FIRST = [1,0...];
     col fixed LAST = [0...,1];
 
@@ -124,7 +124,9 @@ airtemplate DotF8(const int N = 2**21, const int with_bus = 1) {
     ly === 1 - ey * par;
     rep * bz === 0;
     yr === keep * rep * 'be;
-    yr * ey * par === 0;
+    // A block containing FP4 must end on the upper half of a word.
+    be * (1 - par) * ex === 0;
+    be * (1 - par) * ey === 0;
     keep * (xw - 'xw - lx) === 0;
     (keep - yr) * (yw - 'yw - ly) === 0;
     (start + yr) * (yw - yb) === 0;
@@ -168,17 +170,19 @@ airtemplate DotF8(const int N = 2**21, const int with_bus = 1) {
     const expr c_hi = ch[0] + 2**16 * ch[1] + 2**31 * csg;
     const expr b_lo = bl[0] + 2**16 * bl[1];
     const expr b_hi = bh[0] + 2**16 * bh[1] + 2**31 * bsg;
-    in_use * end * (t - (c_lo + 2**32 * c_hi - 2**64 * csg)) === 0;
+    active * end * (t - (c_lo + 2**32 * c_hi - 2**64 * csg)) === 0;
     w * (s - (b_lo + 2**32 * b_hi - 2**64 * bsg)) === 0;
     const expr call = start * in_use;
+    const expr empty = in_use - active;
+    const expr block_limbs_used = w + empty;
     for (int i = 0; i < 2; i++) {
         range_check(cl[i], 0, 2**16 - 1, call, 1);
-        range_check(bl[i], 0, 2**16 - 1, w, 1);
+        range_check(bl[i], 0, 2**16 - 1, block_limbs_used, 1);
     }
     range_check(ch[0], 0, 2**16 - 1, call, 1);
     range_check(ch[1], 0, 2**15 - 1, call);
-    range_check(bh[0], 0, 2**16 - 1, w, 1);
-    range_check(bh[1], 0, 2**15 - 1, w);
+    range_check(bh[0], 0, 2**16 - 1, block_limbs_used, 1);
+    range_check(bh[1], 0, 2**15 - 1, block_limbs_used);
 
     // Block sums go to out + 8*b, unless out is 0.
     oz === 1 - ow * ow_inv;
@@ -187,14 +191,30 @@ airtemplate DotF8(const int N = 2**21, const int with_bus = 1) {
     start * (ob - ow) === 0;
     keep * (ob - 'ob - 'be) === 0;
 
+    // Empty calls read the descriptor but never access x, y or out. Their aligned
+    // addresses and block size can therefore use all 64 bits. The result is zero;
+    // reuse its limbs and the idle block-sum limbs for the aligned low words.
+    const expr low_limb[4] = [cl[0], cl[1], bl[0], bl[1]];
+    const expr upper_limb[4] = [ch[0], ch[1], bh[0], bh[1]];
+    const expr descriptor_words[4] = [xw, yw, Bk, ow];
+    const expr fp4 = ex + ey - ex * ey;
+    expr descriptor_hi[4];
+    for (int j = 0; j < 4; j++) {
+        descriptor_hi[j] = empty * xv[j];
+        const expr quotient = low_limb[j] + 2**16 * upper_limb[j];
+        const expr words_per_unit = j == 2 ? 1 + fp4 : 1;
+        empty * (descriptor_words[j] - 2**29 * xv[j] - words_per_unit * quotient) === 0;
+    }
+    empty * (Bk * r_inv - (1 - bz)) === 0;
+
     if (with_bus) {
-        proves_operation(op: OP_DOT_F8, b: [8 * pw, 0], c: [c_lo, c_hi], main_step: step, mul: call);
-        precompiled_mem_load(addr: 8 * pw, main_step: step, value: [8 * xw, 0], sel: call);
-        precompiled_mem_load(addr: 8 * pw + 8, main_step: step, value: [8 * yw, 0], sel: call);
+        proves_operation(op: OP_DOT_F8, b: [8 * pw, 0], c: [nz * c_lo, nz * c_hi], main_step: step, mul: call);
+        precompiled_mem_load(addr: 8 * pw, main_step: step, value: [8 * xw - 2**32 * descriptor_hi[0], descriptor_hi[0]], sel: call);
+        precompiled_mem_load(addr: 8 * pw + 8, main_step: step, value: [8 * yw - 2**32 * descriptor_hi[1], descriptor_hi[1]], sel: call);
         precompiled_mem_load(addr: 8 * pw + 16, main_step: step, value: [8 * R, 0], sel: call);
         precompiled_mem_load(addr: 8 * pw + 24, main_step: step, value: [fmt_x + 256 * fmt_y + 2**16 * rep, 0], sel: call);
-        precompiled_mem_load(addr: 8 * pw + 32, main_step: step, value: [(1 - bz) * 8 * Bk, 0], sel: call);
-        precompiled_mem_load(addr: 8 * pw + 40, main_step: step, value: [8 * ow, 0], sel: call);
+        precompiled_mem_load(addr: 8 * pw + 32, main_step: step, value: [(1 - bz) * 8 * Bk - 2**32 * descriptor_hi[2], descriptor_hi[2]], sel: call);
+        precompiled_mem_load(addr: 8 * pw + 40, main_step: step, value: [8 * ow - 2**32 * descriptor_hi[3], descriptor_hi[3]], sel: call);
         precompiled_mem_load(addr: 8 * xw, main_step: step, value: x_word, sel: active * lx);
         precompiled_mem_load(addr: 8 * yw, main_step: step, value: y_word, sel: active * ly);
         precompiled_mem_store(addr: 8 * ob, main_step: step, value: [b_lo, b_hi], sel: w);

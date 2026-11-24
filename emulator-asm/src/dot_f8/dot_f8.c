@@ -4,10 +4,11 @@
 // Called through the wrappers in dot_f8.asm, which save the registers the generated code keeps
 // values in. The parameter block p holds six qwords: x address, y address, n, formats (bits 0..8
 // format of x, 8..16 format of y, bit 16 REPEAT_Y: y is one block, read again for each block),
-// block (0 = n) and out (0 = no block sums). The Rust emulator checks the parameters; this code
-// trusts them.
+// block (0 = n) and out (0 = no block sums).
 
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include <emmintrin.h>
 
 #include "dot_f8.h"
@@ -24,13 +25,13 @@
 #define SGN(c, mag) (((c) & 0x80) ? -(mag) : (mag))
 #define EXP(c) (((c) >> 3) & 15)
 #define MAN(c) ((c) & 7)
-#define MAG43(c) (EXP(c) == 0 ? MAN(c) : (8 + MAN(c)) << (EXP(c) - 1))
+#define MAG43(c) (EXP(c) == 0 ? MAN(c) : ((8 + MAN(c)) << EXP(c)) / 2)
 #define D_I8(c) ((c) < 128 ? (c) : (c) - 256)
 #define D_E4M3(c) ((((c) & 0x7f) == 0x7f) ? 0 : SGN(c, MAG43(c)))
 #define D_E4M3_FNUZ(c) (((c) == 0x80) ? 0 : SGN(c, MAG43(c)))
 #define E21(c) ((((c) & 15) >> 1) & 3)
 #define M21(c) ((c) & 1)
-#define D_E2M1(c) ((((c) & 8) ? -1 : 1) * (E21(c) == 0 ? M21(c) : (2 + M21(c)) << (E21(c) - 1)))
+#define D_E2M1(c) ((((c) & 8) ? -1 : 1) * (E21(c) == 0 ? M21(c) : ((2 + M21(c)) << E21(c)) / 2))
 
 #define R4(F, b) F(b), F((b) + 1), F((b) + 2), F((b) + 3)
 #define R16(F, b) R4(F, b), R4(F, (b) + 4), R4(F, (b) + 8), R4(F, (b) + 12)
@@ -100,7 +101,24 @@ static int64_t block_sum_i8(const uint8_t *x, const uint8_t *y, uint64_t start, 
     return acc;
 }
 
-int64_t dot_f8_compute(const uint64_t *p)
+static void validate_params(const uint64_t *p)
+{
+    if ((uintptr_t)p & 7) abort();
+    const uint64_t formats = p[3], n = p[2], block = p[4];
+    const unsigned fx = formats & 255, fy = (formats >> 8) & 255;
+    const uint64_t alignment = fx == F_E2M1 || fy == F_E2M1 ? 16 : 8;
+    if (formats >> 17 || fx > F_E2M1 || fy > F_E2M1 ||
+        ((p[0] | p[1] | p[5]) & 7) || n > (1ULL << 24) ||
+        n % alignment || block % alignment || ((formats & REPEAT_Y) && !block) ||
+        (block && n % block)) abort();
+}
+
+static int overlaps(uintptr_t a, size_t a_len, uintptr_t b, size_t b_len)
+{
+    return a <= b ? b - a < a_len : a - b < b_len;
+}
+
+static int64_t compute(const uint64_t *p)
 {
     const uint8_t *x = (const uint8_t *)p[0];
     const uint8_t *y = (const uint8_t *)p[1];
@@ -114,6 +132,16 @@ int64_t dot_f8_compute(const uint64_t *p)
     int x4 = fx == F_E2M1, y4 = fy == F_E2M1;
     int64_t total = 0;
     int repeat_y = (p[3] & REPEAT_Y) != 0;
+    size_t out_bytes = n / block * sizeof(*out);
+    int64_t *sums = out;
+    // The VM reads both vectors before the first output write.
+    if (out && (overlaps((uintptr_t)out, out_bytes, (uintptr_t)x, n / (x4 ? 2 : 1)) ||
+                overlaps((uintptr_t)out, out_bytes, (uintptr_t)y,
+                         (repeat_y ? block : n) / (y4 ? 2 : 1))))
+    {
+        sums = malloc(out_bytes);
+        if (!sums) abort();
+    }
     for (uint64_t b = 0, start = 0; start < n; b++, start += block)
     {
         int64_t s;
@@ -123,14 +151,26 @@ int64_t dot_f8_compute(const uint64_t *p)
         else if (x4 && !y4) s = block_sum(x, tx, 1, y, ty, 0, start, ys, block);
         else if (!x4 && y4) s = block_sum(x, tx, 0, y, ty, 1, start, ys, block);
         else s = block_sum(x, tx, 1, y, ty, 1, start, ys, block);
-        if (out) out[b] = s;
+        if (sums) sums[b] = s;
         total += s;
+    }
+    if (sums != out)
+    {
+        memcpy(out, sums, out_bytes);
+        free(sums);
     }
     return total;
 }
 
+int64_t dot_f8_compute(const uint64_t *p)
+{
+    validate_params(p);
+    return compute(p);
+}
+
 dot_f8_mtrace_ret dot_f8_mtrace_c(const uint64_t *p, uint64_t *trace)
 {
+    validate_params(p);
     // Header: the parameter block and the result, then both vectors as words (y one block with
     // REPEAT_Y)
     uint64_t n = p[2];
@@ -142,7 +182,7 @@ dot_f8_mtrace_ret dot_f8_mtrace_c(const uint64_t *p, uint64_t *trace)
     uint64_t *t = trace + 7;
     for (uint64_t i = 0; i < xw; i++) *t++ = x[i];
     for (uint64_t i = 0; i < yw; i++) *t++ = y[i];
-    int64_t total = dot_f8_compute(p);
+    int64_t total = compute(p);
     trace[6] = (uint64_t)total;
     dot_f8_mtrace_ret r = { total, 7 + xw + yw };
     return r;

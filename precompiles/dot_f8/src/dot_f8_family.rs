@@ -216,14 +216,15 @@ impl<F: PrimeField64> DotF8CounterInputGen<F> {
         if data[OP_TYPE] != ZiskOperationType::DotF8 as u64 {
             return true;
         }
-        let full = [data, extended].concat();
         match self.mode {
             BusDeviceMode::Counter => {
-                self.measure(&full);
+                self.measure(data);
+                let full = [data, extended].concat();
                 DotF8SM::<F>::generate(data[B] as u32, data[STEP], &full, true, memory);
             }
-            BusDeviceMode::CounterAsm => self.measure(&full),
+            BusDeviceMode::CounterAsm => self.measure(data),
             BusDeviceMode::InputGenerator => {
+                let full = [data, extended].concat();
                 if !DotF8SM::<F>::should_skip(data[B] as u32, &full, memory) {
                     DotF8SM::<F>::generate(data[B] as u32, data[STEP], &full, false, memory);
                 }
@@ -253,5 +254,40 @@ impl<F> Add for DotF8CounterInputGen<F> {
 impl<F: PrimeField64> BusDevice<u64> for DotF8CounterInputGen<F> {
     fn as_any(self: Box<Self>) -> Box<dyn Any> {
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proofman_fields::Goldilocks;
+    use zisk_definitions::DOT_F8_MAX_N;
+
+    #[test]
+    fn planner_keeps_calls_whole_across_sparse_chunks() {
+        fn chunk(id: usize, lengths: &[u64]) -> (ChunkId, Box<dyn BusDeviceMetrics>) {
+            let mut counter = DotF8CounterInputGen::<Goldilocks>::new(BusDeviceMode::Counter);
+            counter.lengths.extend_from_slice(lengths);
+            (ChunkId(id), Box::new(counter))
+        }
+
+        let planner = DotF8Planner::<Goldilocks>(PhantomData);
+        let plans = planner.plan(vec![chunk(9, &[0, DOT_F8_MAX_N]), chunk(2, &[DOT_F8_MAX_N - 8])]);
+        let windows: Vec<_> = plans
+            .iter()
+            .map(|plan| {
+                plan.meta
+                    .as_ref()
+                    .unwrap()
+                    .downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[0].len(), 2);
+        assert_eq!(windows[0][&ChunkId(2)], (1, CollectSkipper::new(0)));
+        assert_eq!(windows[0][&ChunkId(9)], (1, CollectSkipper::new(0)));
+        assert_eq!(windows[1].len(), 1);
+        assert_eq!(windows[1][&ChunkId(9)], (1, CollectSkipper::new(1)));
     }
 }

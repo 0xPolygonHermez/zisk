@@ -90,7 +90,11 @@ dot_f8_fast:
 dot_f8_mtrace:
     # Bytes this call appends to the trace: 7 header qwords and the words of both vectors.
     # Words of a vector: n/8, or n/16 for E2M1 (format 3).
+    test    rdi, 7
+    jne     .Linvalid_dot_f8
     mov     rcx, [rdi + 16]         # n
+    cmp     rcx, 1 << 24
+    ja      .Linvalid_dot_f8
     mov     rdx, rcx
     shr     rdx, 3                  # x words if 8-bit
     cmp     byte ptr [rdi + 24], 3
@@ -98,6 +102,11 @@ dot_f8_mtrace:
     shr     rdx, 1                  # x words if E2M1
 1:
     mov     rsi, rcx
+    test    dword ptr [rdi + 24], 1 << 16
+    jz      .Ldot_f8_y_length
+    cmp     rsi, [rdi + 32]
+    cmova   rsi, [rdi + 32]
+.Ldot_f8_y_length:
     shr     rsi, 3                  # y words if 8-bit
     cmp     byte ptr [rdi + 25], 3
     jne     2f
@@ -115,5 +124,8 @@ dot_f8_mtrace:
     RESTORE_FROM_C
     add     r13, rdx
     ret
+
+.Linvalid_dot_f8:
+    ud2
 
 .section .note.GNU-stack,"",%progbits

@@ -58,7 +58,7 @@ function rnd(seed) {
 function call({fx, fy, R, Bk = R, bz = 0, ow = 0, rep = 0, seed = 1, x, y, step = 100, pw = 7, xw = 50, yw = 90}) {
     const r = rnd(seed), per = f => f === 3 ? 4 : 8; // bytes per row
     x = x ?? Array.from({length: per(fx) * R}, r);
-    y = y ?? Array.from({length: per(fy) * (rep ? Bk : R)}, r);
+    y = y ?? Array.from({length: per(fy) * (rep ? Math.min(Bk, R) : R)}, r);
     const codes = (f, b, i) => f === 3
         ? Array.from({length: 8}, (_, j) => (b[4 * i + (j >> 1)] >> (4 * (j & 1))) & 15)
         : b.slice(8 * i, 8 * i + 8);
@@ -106,6 +106,18 @@ function call({fx, fy, R, Bk = R, bz = 0, ow = 0, rep = 0, seed = 1, x, y, step 
     }
     const [cl, ch, csg] = limbs(total);
     for (const row of rows) Object.assign(row, {cl: [...cl], ch: [...ch], csg});
+    if (!R) {
+        const row = rows[0];
+        row.bz = Number(Bk === 0);
+        row.r_inv = inv(Bk);
+        [xw, yw, Bk, ow].forEach((words, j) => {
+            const raw = 8n * BigInt(words);
+            const units = (raw & 0xffffffffn) / (j === 2 && (ex || ey) ? 16n : 8n);
+            row.xv[j] = raw >> 32n;
+            (j < 2 ? row.cl : row.bl)[j % 2] = units & 0xffffn;
+            (j < 2 ? row.ch : row.bh)[j % 2] = units >> 16n;
+        });
+    }
     return {rows, total, blocks, x, y};
 }
 
@@ -127,17 +139,18 @@ function check(rows) {
     const w = rows.map(r => sm.witness(strip(r)));
     const failed = [];
     for (let i = 0; i < N; i++)
-        failed.push(...sm.failures(w[i], false, {rowIndex: i, neighbors: {[-1]: w[(i + N - 1) % N]}}));
+        failed.push(...sm.failures(w[i], {rowIndex: i, neighbors: {[-1]: w[(i + N - 1) % N]}}));
     let lookups = 0, ranges = 0;
     for (const r of rows) {
         if (r.active) for (let j = 0; j < 8; j++) {
             if (!entries.has(`${r.fx[0] + 2 * r.fx[1]},${r.xc[j]},${mod(r.xv[j])}`)) lookups++;
             if (!entries.has(`${r.fy[0] + 2 * r.fy[1]},${r.yc[j]},${mod(r.yv[j])}`)) lookups++;
         }
-        const u16 = v => BigInt(v) < 65536n, u15 = v => BigInt(v) < 32768n;
+        const u16 = v => BigInt(v) >= 0n && BigInt(v) < 65536n;
+        const u15 = v => BigInt(v) >= 0n && BigInt(v) < 32768n;
         const limbs_ok = (l, h) => u16(l[0]) && u16(l[1]) && u16(h[0]) && u15(h[1]);
         if (r.start && r.in_use && !limbs_ok(r.cl, r.ch)) ranges++;
-        if (r.w && !limbs_ok(r.bl, r.bh)) ranges++;
+        if ((r.w || (r.in_use && !r.active)) && !limbs_ok(r.bl, r.bh)) ranges++;
     }
     return {failed, lookups, ranges};
 }
@@ -145,9 +158,11 @@ const ok = rows => {
     const c = check(rows);
     assert.deepEqual(c, {failed: [], lookups: 0, ranges: 0});
 };
+let rejected = 0;
 const rejects = (rows, what) => {
     const c = check(rows);
     assert.ok(c.failed.length + c.lookups + c.ranges > 0, `accepted forgery: ${what}`);
+    rejected++;
 };
 
 // Reference sums from the bytes, independent of the trace.
@@ -175,6 +190,7 @@ const calls = [
     call({fx: 0, fy: 3, R: 6, Bk: 2, rep: 1, seed: 19}),
     call({fx: 2, fy: 0, R: 3, Bk: 1, ow: 900, rep: 1, seed: 23}),
     call({fx: 1, fy: 3, R: 2, Bk: 2, rep: 1, seed: 29}),
+    call({fx: 3, fy: 0, R: 0, Bk: 2 ** 30 + 2, rep: 1, xw: 2 ** 32, yw: 2 ** 31, ow: 2 ** 29}),
 ];
 for (const [k, c] of calls.entries()) {
     const r0 = c.rows[0], fx = r0.fx[0] + 2 * r0.fx[1], fy = r0.fy[0] + 2 * r0.fy[1], n = 8 * r0.R;
@@ -223,5 +239,4 @@ forge('rep: block word 0', r => { for (const x of r.slice(16, 20)) x.bz = 1; });
 forge('rep: restart without a block start', r => { r[17].yr = 1; r[17].yw = r[16].yw; });
 const odd = call({fx: 1, fy: 3, R: 2, Bk: 1, rep: 1, seed: 31}); // E2M1 y of 8 values: half a word
 rejects(all().concat(odd.rows), 'rep: E2M1 y block of 8 values');
-const forgeries = 12 + 9;
-console.log(`dot_f8 constraints: ${calls.length} calls honest, ${forgeries} forgeries rejected, decode table ${entries.size} entries`);
+console.log(`dot_f8 constraints: ${calls.length} calls honest, ${rejected} forgeries rejected, decode table ${entries.size} entries`);

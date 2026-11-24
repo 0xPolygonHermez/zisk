@@ -66,15 +66,18 @@ pub unsafe extern "C" fn syscall_dot_f8(params: &SyscallDotF8Params) -> i64 {
         let (fx, fy) = (params.formats as u8, (params.formats >> 8) as u8);
         let repeat_y = params.formats & DOT_F8_REPEAT_Y != 0;
         let n = params.n as usize;
+        if n == 0 {
+            return 0;
+        }
         let block = if params.block == 0 { n } else { params.block as usize };
         let bytes = |p: *const u8, f: u8, len: usize| unsafe {
             core::slice::from_raw_parts(p, len * dot_f8_bits(f) as usize / 8)
         };
         let x = bytes(params.x, fx, n);
         let y = bytes(params.y, fy, if repeat_y { block.min(n) } else { n });
-        let out = (!params.out.is_null() && n > 0)
+        let out = (!params.out.is_null())
             .then(|| unsafe { core::slice::from_raw_parts_mut(params.out, n / block) });
-        zisk_definitions::dot_f8_reference_with(fx, x, fy, y, n, block.max(1), repeat_y, out)
+        zisk_definitions::dot_f8_reference_with(fx, x, fy, y, n, block, repeat_y, out)
     }
     #[cfg(zisk_guest)]
     {

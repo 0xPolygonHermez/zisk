@@ -197,8 +197,8 @@ pub const DMA_PRE_POST_INSTANCE_COST: usize = 4741;
 /// `JumpDest`: 3.40 GB.
 pub const JUMP_DEST_INSTANCE_COST: usize = 3482;
 
-/// `DotF8`: 5.41 GB.
-pub const DOT_F_8_INSTANCE_COST: usize = 5540;
+/// `DotF8`: 5.73 GB.
+pub const DOT_F_8_INSTANCE_COST: usize = 5868;
 
 #[cfg(test)]
 mod tests {
