@@ -6,7 +6,8 @@ use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::RandomSeedArgs;
 use zisk_sdk::{
-    AsmOptions, EmbeddedClientBuilder, EmbeddedOpts, GuestProgram, ProofKind, ZiskHints, ZiskStdin,
+    AsmOptions, EmbeddedClientBuilder, EmbeddedOpts, GuestProgram, HostMemoryMargin, ProofKind,
+    ZiskHints, ZiskStdin,
 };
 
 use super::validate_asm_hints;
@@ -69,6 +70,12 @@ pub(crate) struct ZiskEmbeddedProve {
     /// Maximum memory (bytes) for witness storage during proving
     #[arg(short = 'x', long)]
     max_witness_stored: Option<usize>,
+
+    /// Host memory left free for everything else while proving, out of what the witness phase
+    /// may use: a share of the total memory (`5%`) or a size (`4G`, `512M`). Default: the larger
+    /// of 2 GiB and 5 %
+    #[arg(long, value_name = "SHARE|SIZE")]
+    memory_margin: Option<HostMemoryMargin>,
 
     /// Unlock the memory map for the ROM file. Only applies with `--asm`.
     #[arg(short = 'u', long, requires = "asm")]
@@ -148,6 +155,9 @@ impl ZiskEmbeddedProve {
         }
         if let Some(max) = self.max_witness_stored {
             opts = opts.max_witness_stored(max);
+        }
+        if let Some(margin) = self.memory_margin {
+            opts = opts.memory_margin(margin);
         }
         builder = builder.with_embedded_opts(opts);
 

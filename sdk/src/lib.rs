@@ -75,6 +75,7 @@ pub use zisk_prover_backend::{
 };
 
 pub use opts::EmbeddedOpts;
+pub use zisk_prover_backend::{HostMemoryMargin, ParseHostMemoryMarginError};
 
 // Re-export result and data types from backend (public outputs)
 pub use zisk_prover_backend::{setup_logger, ExecuteOutput, ProveOutput, VerifyConstraintsOutput};

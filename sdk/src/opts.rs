@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use zisk_prover_backend::BackendProverOpts;
+use zisk_prover_backend::{BackendProverOpts, HostMemoryMargin};
 
 /// Public prover configuration for the SDK.
 ///
@@ -32,6 +32,10 @@ pub struct EmbeddedOpts {
 
     /// Maximum number of per-GPU recursive (aggregation) streams during proving.
     pub max_recursive_streams: Option<usize>,
+
+    /// Host memory left free for everything else while proving, out of what the witness phase may
+    /// use; `None` for the default margin, the larger of 2 GiB and 5 % of the total memory.
+    pub memory_margin: Option<HostMemoryMargin>,
 }
 
 impl EmbeddedOpts {
@@ -98,6 +102,14 @@ impl EmbeddedOpts {
         self
     }
 
+    /// Set the host memory left free for everything else while proving, replacing the default
+    /// margin.
+    #[must_use]
+    pub fn memory_margin(mut self, margin: HostMemoryMargin) -> Self {
+        self.memory_margin = Some(margin);
+        self
+    }
+
     /// The backend options of these, for a prover that runs the final SNARK when `final_snark`.
     pub(crate) fn into_backend_opts(self, gpu: bool, final_snark: bool) -> BackendProverOpts {
         let mut opts = BackendProverOpts::default().aggregation(true);
@@ -141,6 +153,10 @@ impl EmbeddedOpts {
             opts = opts.max_recursive_streams(max);
         }
 
+        if let Some(margin) = self.memory_margin {
+            opts = opts.memory_margin(margin);
+        }
+
         opts
     }
 }
@@ -148,6 +164,7 @@ impl EmbeddedOpts {
 #[cfg(test)]
 mod tests {
     use super::EmbeddedOpts;
+    use zisk_prover_backend::HostMemoryMargin;
 
     #[test]
     fn a_final_snark_is_declared_to_proofman() {
@@ -167,5 +184,14 @@ mod tests {
     fn a_stark_prover_runs_no_final_snark() {
         let opts = EmbeddedOpts::default().into_backend_opts(false, false);
         assert!(opts.build_proofman_options().final_snark.is_none());
+    }
+
+    #[test]
+    fn the_memory_margin_reaches_the_backend_options() {
+        let default = EmbeddedOpts::default().into_backend_opts(false, false);
+        assert_eq!(default.get_memory_margin(), None, "the default margin");
+        let margin = HostMemoryMargin::Percent(10);
+        let opts = EmbeddedOpts::default().memory_margin(margin).into_backend_opts(true, false);
+        assert_eq!(opts.get_memory_margin(), Some(margin));
     }
 }

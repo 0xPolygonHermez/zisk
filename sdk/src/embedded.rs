@@ -378,6 +378,7 @@ impl<Out> EmbeddedClientBuilder<Out> {
             true,                                  // shared_tables
             backend_opts.build_proofman_options(), // options
             None,                                  // logging_config
+            backend_opts.get_memory_margin(),      // memory_margin
         )
         .map_err(SdkError::backend)?;
         Ok(EmbeddedProver::Emu(ZiskProver::<Emu>::new(emu, backend_opts)))
@@ -403,6 +404,7 @@ impl<Out> EmbeddedClientBuilder<Out> {
             false,                                 // is_distributed
             None,                                  // logging_config
             backend_opts.cpu_mops_enabled(),       // cpu_mops
+            backend_opts.get_memory_margin(),      // memory_margin
         )
         .map_err(SdkError::backend)?;
         Ok(EmbeddedProver::Asm(ZiskProver::<Asm>::new(asm, backend_opts)))

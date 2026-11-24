@@ -30,7 +30,9 @@ use zisk_common::{
     StatsCostPerType, VadcopKind, ZiskExecutorTime, ZiskPaths,
 };
 use zisk_core::ZiskRom;
-use zisk_executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
+use zisk_executor::{
+    AsmResources, AsmSharedResources, GpuBufferSource, HostMemoryMargin, ZiskExecutor,
+};
 use zisk_precomp_hints::HintsProcessor;
 use zisk_rom_setup::{generate_assembly, get_output_path};
 use zisk_transpiler_common::ZiskTranspiler;
@@ -123,6 +125,7 @@ impl AsmProver {
         is_distributed: bool,
         logging_config: Option<LoggingConfig>,
         cpu_mops: bool,
+        memory_margin: Option<HostMemoryMargin>,
     ) -> Result<Self> {
         AsmServices::cleanup_stale_shmem();
         let core_prover = AsmCoreProver::new(
@@ -138,6 +141,7 @@ impl AsmProver {
             is_distributed,
             logging_config,
             cpu_mops,
+            memory_margin,
         )?;
         Ok(Self {
             core_prover,
@@ -878,6 +882,7 @@ impl AsmCoreProver {
         is_distributed: bool,
         logging_config: Option<LoggingConfig>,
         cpu_mops: bool,
+        memory_margin: Option<HostMemoryMargin>,
     ) -> Result<Self> {
         check_paths_exist(&proving_key)?;
         zisk_setup::check_setup_version(&proving_key)?;
@@ -920,6 +925,7 @@ impl AsmCoreProver {
             shared_tables,
             true,
             options.packed,
+            memory_margin,
         )?;
 
         // The ROM-histogram assembly counts every frequent operation of the whole execution in one

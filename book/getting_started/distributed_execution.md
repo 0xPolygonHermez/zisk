@@ -252,6 +252,7 @@ TOML:
 | `-n`, `--number-threads-witness`| (none)                | Threads for witness computation          |
 | `-g`, `--gpu`                   | `false`               | Enable GPU mode (CUDA build only)        |
 | `-t`, `--max-streams`           | (none)                | Maximum GPU streams                      |
+| `--memory-margin`               | 2 GiB or 5 %, larger  | Host memory left free while proving: `5%` of the total or a size such as `4G` |
 
 CLI flags override the config file for one-off testing:
 

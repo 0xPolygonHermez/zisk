@@ -17,8 +17,8 @@ use zisk_common::{
 };
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
-    snark_protocol_of_key, Asm, AsmOptions, BackendProverOpts, Emu, ProverClientBuilder,
-    ProverEngine, ProverJob, ZiskBackend, ZiskProver,
+    snark_protocol_of_key, Asm, AsmOptions, BackendProverOpts, Emu, HostMemoryMargin,
+    ProverClientBuilder, ProverEngine, ProverJob, ZiskBackend, ZiskProver,
 };
 
 use crate::stream_ordering::StreamOrderingActor;
@@ -321,6 +321,9 @@ pub struct ProverConfig {
 
     /// Maximum witness buffers stored in memory
     pub max_witness_stored: Option<usize>,
+
+    /// Host memory left free for everything else while proving; `None` for the default margin
+    pub memory_margin: Option<HostMemoryMargin>,
 }
 
 impl ProverConfig {
@@ -369,6 +372,7 @@ impl ProverConfig {
             max_recursive_streams: prover_service_config.max_recursive_streams,
             number_threads_witness: prover_service_config.number_threads_witness,
             max_witness_stored: prover_service_config.max_witness_stored,
+            memory_margin: prover_service_config.memory_margin,
             preload_snark,
         })
     }
@@ -474,6 +478,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         if let Some(max) = prover_config.max_witness_stored {
             prover_options = prover_options.max_witness_stored(max);
         }
+        if let Some(margin) = prover_config.memory_margin {
+            prover_options = prover_options.memory_margin(margin);
+        }
 
         let prover = Arc::new(
             ProverClientBuilder::new().emu().prove().with_prover_options(prover_options).build()?,
@@ -526,6 +533,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         }
         if let Some(max) = prover_config.max_witness_stored {
             prover_options = prover_options.max_witness_stored(max);
+        }
+        if let Some(margin) = prover_config.memory_margin {
+            prover_options = prover_options.memory_margin(margin);
         }
 
         // ASM-specific options for distributed worker

@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
-use zisk_prover_backend::{Asm, Emu};
+use zisk_prover_backend::{Asm, Emu, HostMemoryMargin};
 use zisk_worker::{
     config::{ProverServiceConfigDto, WorkerServiceConfig},
     ProverConfig, WorkerNode,
@@ -90,6 +90,12 @@ struct Cli {
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
+    /// Host memory left free for everything else while proving, out of what the witness phase
+    /// may use: a share of the total memory (`5%`) or a size (`4G`, `512M`). Default: the larger
+    /// of 2 GiB and 5 %
+    #[clap(long, value_name = "SHARE|SIZE")]
+    pub memory_margin: Option<HostMemoryMargin>,
+
     #[clap(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
 
@@ -151,6 +157,7 @@ async fn main() -> Result<()> {
         max_recursive_streams: cli.max_recursive_streams,
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,
+        memory_margin: cli.memory_margin,
         minimal_memory: cli.minimal_memory,
         preload_snark: cli.preload_snark,
         gpu,

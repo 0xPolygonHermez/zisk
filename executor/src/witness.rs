@@ -128,10 +128,17 @@ pub struct WitnessPhase<F: PrimeField64> {
 
     /// The ROM witness may be recomputed in the same proof; the FROPS column is published once.
     frops_published: AtomicBool,
+
+    /// Host memory left out of what the collect may use; the default margin when `None`.
+    memory_margin: Option<HostMemoryMargin>,
 }
 
 impl<F: PrimeField64> WitnessPhase<F> {
-    pub fn new(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
+    pub fn new(
+        chunk_size: u64,
+        sm_bundle: Arc<StaticSMBundle<F>>,
+        memory_margin: Option<HostMemoryMargin>,
+    ) -> Self {
         let collector = ChunkDataCollector::new(sm_bundle.clone());
         let witness_generator = WitnessGenerator::new(chunk_size);
         let trace_buffer_rom = Mutex::new(vec![F::ZERO; RomTrace::<F>::NUM_ROWS]);
@@ -141,6 +148,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
             witness_generator,
             trace_buffer_rom,
             frops_published: AtomicBool::new(false),
+            memory_margin,
         }
     }
 
@@ -507,7 +515,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
         label: &str,
     ) -> ExecutorResult<Option<collect_budget::WavePlan>> {
         let node_processes = pctx.mpi_ctx.node_n_processes.max(1) as usize;
-        let host_share = || host_memory::host_memory_share(node_processes, None);
+        let host_share = || host_memory::host_memory_share(node_processes, self.memory_margin);
         let Some(mut budget) = collect_budget::collect_budget(reserve, host_share) else {
             return Ok(None);
         };

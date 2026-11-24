@@ -7,7 +7,7 @@ use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::{ExecutorStatsHandle, RandomSeed, RandomSeedArgs, Stats};
 use zisk_pil::*;
 use zisk_prover_backend::GuestProgram;
-use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProverClientBuilder};
+use zisk_prover_backend::{AsmOptions, BackendProverOpts, HostMemoryMargin, ProverClientBuilder};
 
 use crate::common::detect_current_project_elf;
 use crate::ux::{print_banner, print_banner_command, print_banner_field, print_random_seed};
@@ -65,6 +65,12 @@ pub(crate) struct StatsCmd {
     /// Reduce memory footprint during proving at the cost of speed
     #[arg(short = 'm', long)]
     minimal_memory: bool,
+
+    /// Host memory left free for everything else while proving, out of what the witness phase
+    /// may use: a share of the total memory (`5%`) or a size (`4G`, `512M`). Default: the larger
+    /// of 2 GiB and 5 %
+    #[arg(long, value_name = "SHARE|SIZE")]
+    memory_margin: Option<HostMemoryMargin>,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
@@ -197,6 +203,9 @@ impl StatsCmd {
         if let Some(threads) = self.number_threads_witness {
             prover_options = prover_options.number_threads_witness(threads);
         }
+        if let Some(margin) = self.memory_margin {
+            prover_options = prover_options.memory_margin(margin);
+        }
 
         let prover = ProverClientBuilder::new()
             .emu()
@@ -243,6 +252,9 @@ impl StatsCmd {
         }
         if let Some(threads) = self.number_threads_witness {
             prover_options = prover_options.number_threads_witness(threads);
+        }
+        if let Some(margin) = self.memory_margin {
+            prover_options = prover_options.memory_margin(margin);
         }
 
         // ASM-specific options (only used if not emulator)

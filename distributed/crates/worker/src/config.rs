@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use zisk_cluster_common::Environment;
 use zisk_cluster_common::{ComputeCapacity, LoggingConfig, WorkerId};
+use zisk_prover_backend::HostMemoryMargin;
 
 /// Worker Service Configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -205,6 +206,8 @@ pub struct ProverServiceConfigDto {
     pub number_threads_witness: Option<usize>,
     /// Cap on witnesses kept in memory at once.
     pub max_witness_stored: Option<usize>,
+    /// Host memory left free for everything else while proving; `None` for the default margin.
+    pub memory_margin: Option<HostMemoryMargin>,
     /// Prefer lower memory usage over speed.
     pub minimal_memory: bool,
     /// Use the GPU proving path.

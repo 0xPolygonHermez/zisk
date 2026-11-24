@@ -29,7 +29,7 @@ use zisk_common::{
     StatsCostPerType, VadcopKind, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
-use zisk_executor::AsmJob;
+use zisk_executor::{AsmJob, HostMemoryMargin};
 use zisk_precomp_hints::HintsProcessor;
 
 use crate::{ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
@@ -111,6 +111,7 @@ pub struct BackendProverOpts {
     pub(crate) number_threads_witness: Option<usize>,
     pub(crate) max_streams: Option<usize>,
     pub(crate) max_recursive_streams: Option<usize>,
+    pub(crate) memory_margin: Option<HostMemoryMargin>,
 
     // ASM-specific options
     pub(crate) asm_options: AsmOptions,
@@ -136,6 +137,7 @@ impl Default for BackendProverOpts {
             number_threads_witness: None,
             max_streams: None,
             max_recursive_streams: None,
+            memory_margin: None,
             asm_options: AsmOptions::default(),
         }
     }
@@ -263,6 +265,11 @@ impl BackendProverOpts {
         self.cpu_mops
     }
 
+    /// The host memory margin given, if any (otherwise the default margin is used).
+    pub fn get_memory_margin(&self) -> Option<HostMemoryMargin> {
+        self.memory_margin
+    }
+
     // Builder methods for all configuration
     /// Enable or disable proof aggregation.
     pub fn aggregation(mut self, value: bool) -> Self {
@@ -373,6 +380,14 @@ impl BackendProverOpts {
     /// Cap the number of concurrent recursive (aggregation) streams.
     pub fn max_recursive_streams(mut self, max: usize) -> Self {
         self.max_recursive_streams = Some(max);
+        self
+    }
+
+    /// Set the host memory left free for everything else while proving, out of what the witness
+    /// phase may use, replacing the default margin (the larger of 2 GiB and 5 % of the total
+    /// memory).
+    pub fn memory_margin(mut self, margin: HostMemoryMargin) -> Self {
+        self.memory_margin = Some(margin);
         self
     }
 

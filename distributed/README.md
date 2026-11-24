@@ -219,6 +219,7 @@ Additional CLI-only flags:
 | `--verify-constraints` | `false` | Verify constraints after witness generation |
 | `-n`, `--number-threads-witness` | — | Threads for witness computation |
 | `-t`, `--max-streams` | — | Maximum GPU streams |
+| `--memory-margin` | larger of 2 GiB and 5 % | Host memory left free for everything else while proving: a share of the total memory (`5%`, of the cgroup's limit within one) or a size (`4G`, `512M`) |
 
 #### Example: production config
 

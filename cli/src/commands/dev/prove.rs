@@ -10,7 +10,9 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::{ProofKind, RandomSeedArgs, ZiskExecutorTime};
 use zisk_prover_backend::GuestProgram;
-use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProveOutput, ProverClientBuilder};
+use zisk_prover_backend::{
+    AsmOptions, BackendProverOpts, HostMemoryMargin, ProveOutput, ProverClientBuilder,
+};
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -84,6 +86,12 @@ pub(crate) struct ProveCmd {
     /// Reduce memory footprint during proving at the cost of speed
     #[arg(short = 'm', long)]
     minimal_memory: bool,
+
+    /// Host memory left free for everything else while proving, out of what the witness phase
+    /// may use: a share of the total memory (`5%`) or a size (`4G`, `512M`). Default: the larger
+    /// of 2 GiB and 5 %
+    #[arg(long, value_name = "SHARE|SIZE")]
+    memory_margin: Option<HostMemoryMargin>,
 
     /// Use GPU acceleration
     #[cfg(not(feature = "cpu-only"))]
@@ -202,6 +210,9 @@ impl ProveCmd {
         }
         if let Some(max) = self.max_recursive_streams {
             prover_options = prover_options.max_recursive_streams(max);
+        }
+        if let Some(margin) = self.memory_margin {
+            prover_options = prover_options.memory_margin(margin);
         }
 
         // ASM-specific options (only used if not emulator)

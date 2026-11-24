@@ -43,6 +43,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         number_threads_witness: None,
         max_streams: None,
         max_recursive_streams: None,
+        memory_margin: None,
     };
 
     // Minimize memory usage; the remaining None fields let ZisK pick sensible defaults.
