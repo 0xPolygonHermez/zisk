@@ -303,6 +303,11 @@ impl<H: AsmShmemHeader> AsmMultiShmem<H> {
     pub fn total_mapped_size(&self) -> usize {
         self.total_mapped_size
     }
+
+    /// Whether the mapping can be written (`read_write` at open).
+    pub fn is_writable(&self) -> bool {
+        self.read_write
+    }
 }
 
 #[cfg(test)]

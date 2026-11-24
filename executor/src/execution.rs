@@ -94,6 +94,15 @@ impl ExecutionPhase {
         Ok(())
     }
 
+    /// The memory-operations output of the last ASM run that may be lent until the next run, as
+    /// `(address, length)`; `None` off the ASM path or when its mapping is read-only.
+    pub fn mo_lendable_region(&self) -> ExecutorResult<Option<(usize, usize)>> {
+        match self.asm_emulator() {
+            Some(asm) => asm.mo_lendable_region(),
+            None => Ok(None),
+        }
+    }
+
     /// Returns the ASM execution info captured during the last run,
     /// or `None` when the Rust backend was the active one or the executor is emu-only.
     pub fn get_asm_execution_info(&self) -> ExecutorResult<Option<AsmExecutionInfo>> {

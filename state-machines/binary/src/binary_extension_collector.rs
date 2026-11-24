@@ -69,7 +69,7 @@ impl<F: PrimeField64> BinaryExtensionCollector<F> {
         let check_frops = frops_check_enabled();
         Self {
             // Sized to what the cursor will collect, so the replay never reallocates the inputs.
-            inputs: Vec::with_capacity(collect.total_count() as usize),
+            inputs: zisk_common::lent_memory::lent_vec(collect.total_count() as usize),
             cursor: BinaryCollectCursor::new(collect),
             frops_table_id,
             publish_frops,

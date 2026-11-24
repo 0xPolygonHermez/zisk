@@ -121,7 +121,8 @@ pub fn describe_waves(bytes: CollectorBytes, budget: Budget, used: Budget) -> St
 ///
 /// `host_share` measures this process's share of the host memory available, after the margin
 /// (`host_memory::host_memory_share`); the budget leaves `reserve` of it for work of its
-/// own that runs alongside the collect. An explicit size is taken as is, without measuring.
+/// own that runs alongside the collect. An explicit size is taken as is, without measuring, and
+/// without counting a lent range.
 pub fn collect_budget(reserve: u64, host_share: impl FnOnce() -> Option<u64>) -> Option<Budget> {
     match std::env::var(BUDGET_ENV) {
         Ok(value) if value.eq_ignore_ascii_case("off") => None,
@@ -139,14 +140,16 @@ pub fn collect_budget(reserve: u64, host_share: impl FnOnce() -> Option<u64>) ->
 }
 
 /// What the host can give this process's collectors: its share of the memory available, less
-/// `reserve`. `None` when the platform reports no memory figures, so nothing is held back on a
-/// guess.
+/// `reserve`, and that plus the lent range still free. `None` when the platform reports no memory
+/// figures, so nothing is held back on a guess.
 fn available_budget(reserve: u64, host_share: impl FnOnce() -> Option<u64>) -> Option<Budget> {
     let Some(share) = host_share() else {
         tracing::warn!("no memory figures from the system; collecting without a budget");
         return None;
     };
-    Some(Budget::heap_only(share.saturating_sub(reserve)))
+    let heap = share.saturating_sub(reserve);
+    // A lent range is this process's alone and already resident: the OS counts it as used.
+    Some(Budget { heap, total: heap + zisk_common::lent_memory::free_bytes() })
 }
 
 /// Parses `24G`, `512M`, `64K` (powers of 1024) or plain bytes.
@@ -160,6 +163,32 @@ pub(super) fn parse_size(value: &str) -> Option<u64> {
         _ => (value, 0),
     };
     digits.trim().parse::<u64>().ok()?.checked_mul(1 << shift)
+}
+
+/// Environment variable: `off` (or `0`) keeps the memory-operations output from being lent to the
+/// collectors once a run has consumed it ([`zisk_common::lent_memory`]). Lent by default, in GPU
+/// builds, which are the ones that map the output for writing; the switch is there to rule the
+/// lending out, as it rests on jemalloc's experimental arena API.
+pub const LEND_ENV: &str = "ZISK_LEND_MO";
+
+/// Whether to lend the memory-operations output to the collectors ([`LEND_ENV`]).
+pub fn lending_enabled() -> bool {
+    !matches!(std::env::var(LEND_ENV).as_deref(), Ok("off") | Ok("0"))
+}
+
+/// Takes back the memory-operations output lent to the collectors, before the next run writes it.
+///
+/// By then every collector is gone, so a buffer still alive in it is a bug, and the next run
+/// would overwrite it. Nothing can make that run safe, so the process stops here; its supervisor
+/// starts it again.
+pub fn take_back_lent_memory() {
+    if let Err(e) = zisk_common::lent_memory::take_back() {
+        tracing::error!(
+            "{e} when the memory-operations output must be taken back; stopping the process, as \
+             the next run would overwrite them"
+        );
+        std::process::abort();
+    }
 }
 
 /// Bytes in GiB, for the log.
@@ -348,12 +377,16 @@ mod tests {
     }
 
     #[test]
-    fn the_budget_is_the_host_share_less_the_reserve() {
+    fn the_budget_is_the_host_share_less_the_reserve_plus_the_lent_range() {
         const GIB: u64 = 1 << 30;
-        assert_eq!(available_budget(4 * GIB, || Some(10 * GIB)), Some(budget(6 * GIB)));
+        let lent = zisk_common::lent_memory::free_bytes();
+        assert_eq!(
+            available_budget(4 * GIB, || Some(10 * GIB)),
+            Some(Budget { heap: 6 * GIB, total: 6 * GIB + lent })
+        );
         assert_eq!(
             available_budget(12 * GIB, || Some(10 * GIB)),
-            Some(budget(0)),
+            Some(Budget { heap: 0, total: lent }),
             "a reserve above the share"
         );
         assert_eq!(available_budget(0, || None), None, "no memory figures, no budget");

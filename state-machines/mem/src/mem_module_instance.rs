@@ -217,10 +217,17 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         Some(Box::new(collector))
     }
 
+    /// One collector, with one buffer, per chunk ([`MemModuleCollector::new`]).
     fn collector_capacity_bytes(&self) -> CollectorBytes {
-        let inputs: usize =
-            self.check_point.chunks.values().map(MemModuleCollector::reserved_inputs).sum();
-        CollectorBytes::heap((inputs * std::mem::size_of::<MemInput>()) as u64)
+        self.check_point
+            .chunks
+            .values()
+            .map(|cp| {
+                CollectorBytes::of_buffer(
+                    MemModuleCollector::reserved_inputs(cp) * std::mem::size_of::<MemInput>(),
+                )
+            })
+            .sum()
     }
 
     fn check_point(&self) -> &CheckPoint {

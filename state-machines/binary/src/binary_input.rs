@@ -27,13 +27,19 @@ impl BinaryInput {
         Self { op, a: OperationBusData::get_a(data), b: OperationBusData::get_b(data) }
     }
 
-    /// Bytes the collectors of one instance hold once they have collected: each one reserves the
-    /// [`ChunkCollect::total_count`] inputs of its chunk up front.
+    /// Bytes the collectors of one instance hold once they have collected: each one builds one
+    /// buffer, sized with the [`ChunkCollect::total_count`] of its chunk.
     pub fn capacity_bytes<'a, const K: usize>(
         collects: impl IntoIterator<Item = &'a ChunkCollect<K>>,
     ) -> CollectorBytes {
-        let inputs: u64 = collects.into_iter().map(ChunkCollect::total_count).sum();
-        CollectorBytes::heap(inputs * std::mem::size_of::<Self>() as u64)
+        collects
+            .into_iter()
+            .map(|collect| {
+                CollectorBytes::of_buffer(
+                    collect.total_count() as usize * std::mem::size_of::<Self>(),
+                )
+            })
+            .sum()
     }
 }
 
@@ -78,9 +84,13 @@ mod tests {
             |count| KindCollect { count, skipper: CollectSkipper::new(0), owns_frops: false };
         let first = ChunkCollect { kinds: [kind(3), kind(4)], force_execute_to_end: false };
         let second = ChunkCollect { kinds: [kind(0), kind(5)], force_execute_to_end: true };
+        let bytes =
+            |inputs: usize| CollectorBytes::of_buffer(inputs * std::mem::size_of::<BinaryInput>());
+        assert_eq!(BinaryInput::capacity_bytes([&first, &second]), bytes(7) + bytes(5));
         assert_eq!(
             BinaryInput::capacity_bytes([&first, &second]).total(),
-            12 * std::mem::size_of::<BinaryInput>() as u64
+            12 * std::mem::size_of::<BinaryInput>() as u64,
+            "small buffers"
         );
     }
 }

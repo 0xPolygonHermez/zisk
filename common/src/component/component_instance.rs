@@ -59,6 +59,15 @@ pub struct CollectorBytes {
 }
 
 impl CollectorBytes {
+    /// One buffer of `bytes`, built with [`crate::lent_memory::lent_vec`]: lendable when a lent
+    /// range could hold it, at what it takes there; heap otherwise.
+    pub fn of_buffer(bytes: usize) -> Self {
+        match crate::lent_memory::lent_size(bytes) {
+            Some(lent) => Self { lendable: lent as u64, heap: 0 },
+            None => Self::heap(bytes as u64),
+        }
+    }
+
     /// `bytes` in buffers that always go to the heap.
     pub fn heap(bytes: u64) -> Self {
         Self { lendable: 0, heap: bytes }

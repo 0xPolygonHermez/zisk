@@ -68,6 +68,10 @@ impl EmulatorAsm {
         unsupported()
     }
 
+    pub fn mo_lendable_region(&self) -> ExecutorResult<Option<(usize, usize)>> {
+        Ok(None)
+    }
+
     pub fn reset(&self) -> ExecutorResult<()> {
         unsupported()
     }

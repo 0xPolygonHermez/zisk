@@ -301,7 +301,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         resources.activate(&claim)?;
         resources.clear_cancellation()?;
         self.set_asm_resources(Arc::clone(&resources))?;
-        Ok(AsmJob::new(resources, self.rom_histogram(), claim))
+        Ok(AsmJob::new(
+            resources,
+            self.rom_histogram(),
+            self.state.collector_store.inner.clone(),
+            claim,
+        ))
     }
 
     /// Joins a ROM-histogram runner left unconsumed by a previous execution and releases
@@ -355,6 +360,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         }
 
         self.state.reset();
+        // An earlier execution of this job may still lend the memory-operations output; its
+        // collectors went with the reset. Take it back before this run's service writes it.
+        crate::witness::collect_budget::take_back_lent_memory();
         if let Some(witness) = self.witness.as_ref() {
             witness.reset()?;
         }
@@ -612,6 +620,23 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             }
             Ok(mem_artifacts)
         })?;
+
+        // The memory-operations output has been consumed, and the first round collected: lend its
+        // pages to the witness phase's collectors until the job ends (`AsmJob` takes them back
+        // before the next run can be requested).
+        if is_asm_emulator
+            && self.witness.is_some()
+            && crate::witness::collect_budget::lending_enabled()
+        {
+            if let Some((base, len)) = self.execution.mo_lendable_region()? {
+                if zisk_common::lent_memory::lend(base, len) {
+                    tracing::info!(
+                        "lent {:.1} GiB of the memory-operations output to the collectors",
+                        len as f64 / (1u64 << 30) as f64
+                    );
+                }
+            }
+        }
 
         stats_end!(self.state.stats, &_config_scope);
 

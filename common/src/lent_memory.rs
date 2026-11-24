@@ -553,4 +553,16 @@ mod tests {
         // SAFETY: allocated above with `layout`; nothing lives in it any more.
         unsafe { System.dealloc(base as *mut u8, layout) };
     }
+
+    #[test]
+    fn a_collector_buffer_is_counted_where_it_goes() {
+        use crate::CollectorBytes;
+        let cache_max = imp::thread_cache_max().unwrap();
+        assert_eq!(CollectorBytes::of_buffer(cache_max), CollectorBytes::heap(cache_max as u64));
+        let big = 4 << 20;
+        assert_eq!(
+            CollectorBytes::of_buffer(big),
+            CollectorBytes { lendable: lent_size(big).unwrap() as u64, heap: 0 }
+        );
+    }
 }
