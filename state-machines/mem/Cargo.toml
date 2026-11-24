@@ -48,3 +48,6 @@ save_mem_counters = []
 mem_align_stats = []
 save_addr_action = []
 legacy_mem_count_and_plan = []
+# Keep the read values the Mem fill would derive, and assert that the derived value equals the
+# collected one on every read. A validation mode for real runs; off by default.
+check_derived_reads = []

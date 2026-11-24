@@ -1,4 +1,4 @@
-use crate::{MemInput, MemPreviousSegment};
+use crate::{MemInput, MemInputs, MemPreviousSegment};
 use proofman_common::{AirInstance, ProofmanResult};
 #[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]
 use std::{
@@ -14,24 +14,34 @@ impl MemInput {
     }
 }
 
-/// An instance's operations as the collectors handed them over: one vector per chunk, walked as a
-/// single sequence and **never concatenated**.
+/// An instance's operations as the collectors handed them over: one packed [`MemInputs`] per
+/// chunk, walked as a single sequence and **never concatenated**.
 ///
 /// Concatenating them used to be the largest single cost of a `Mem` witness computation -- 65M
 /// operations at 24 bytes is 1.5 GB copied, and `Iterator::flatten` gives `collect` no usable size
 /// hint, so the destination was grown and recopied as it went. Nothing on the offsets path needs a
 /// contiguous slice: it only ever walks the operations in order, placing each one straight into the
 /// slot the offsets table names. So the flatten is simply not performed; `iter` chains the chunks
-/// lazily instead.
+/// lazily instead, decoding each access as it goes.
 #[derive(Clone, Copy)]
 pub struct MemOps<'a> {
-    chunks: &'a [Vec<MemInput>],
+    chunks: &'a [MemInputs],
     len: usize,
 }
 
 impl<'a> MemOps<'a> {
-    pub fn new(chunks: &'a [Vec<MemInput>]) -> Self {
+    pub fn new(chunks: &'a [MemInputs]) -> Self {
         Self { chunks, len: chunks.iter().map(|c| c.len()).sum() }
+    }
+
+    /// Whether the reads arrive without their value, so the fill must derive it (see
+    /// [`MemInputs`]). Every chunk of an instance is collected the same way.
+    pub fn reads_derived(&self) -> bool {
+        debug_assert!(
+            self.chunks.windows(2).all(|w| w[0].keeps_read_values() == w[1].keeps_read_values()),
+            "MemOps: chunks disagree on keeping read values"
+        );
+        self.chunks.first().is_some_and(|c| !c.keeps_read_values())
     }
 
     /// Total operations across every chunk.
@@ -45,7 +55,7 @@ impl<'a> MemOps<'a> {
 
     /// The operations in chunk order, which is the order they were collected in.
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = &'a MemInput> + Clone {
+    pub fn iter(&self) -> impl Iterator<Item = MemInput> + Clone + 'a {
         self.chunks.iter().flat_map(|c| c.iter())
     }
 
@@ -55,9 +65,7 @@ impl<'a> MemOps<'a> {
     pub fn to_flat_vec(self) -> Vec<MemInput> {
         let mut out = Vec::with_capacity(self.len);
         for chunk in self.chunks {
-            out.extend(
-                chunk.iter().map(|op| MemInput::new(op.addr, op.is_write, op.step, op.value)),
-            );
+            out.extend(chunk.iter());
         }
         out
     }
@@ -87,6 +95,12 @@ pub trait MemModule<F: Clone>: Send + Sync {
     fn is_dual(&self) -> bool;
     fn get_mem_name(&self) -> &str;
     fn is_initializable(&self) -> bool;
+    /// Whether this memory's fill derives read values instead of storing them (see
+    /// [`MemInputs`]). Only the mutable memory can: in `RomData` and `InputData` a read's value
+    /// is the data itself.
+    fn derives_read_values(&self) -> bool {
+        false
+    }
 }
 
 #[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]

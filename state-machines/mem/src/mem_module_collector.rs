@@ -1,5 +1,5 @@
-use crate::{MemInput, MemPreviousSegment};
-use zisk_common::{BusDevice, BusId, MemBusData, SegmentId, MEM_BUS_ID};
+use crate::{MemInputs, MemPreviousSegment};
+use zisk_common::{BusDevice, BusId, CollectorBytes, MemBusData, SegmentId, MEM_BUS_ID};
 use zisk_sm_mem_common::{
     MemHelpers, MemModuleCheckPoint, MEMORY_INIT_STEP, MEM_BYTES, MEM_BYTES_BITS,
 };
@@ -26,8 +26,8 @@ pub struct MemModuleCollector {
     /// Binary Basic state machine
     pub mem_check_point: MemModuleCheckPoint,
 
-    /// Collected inputs
-    pub inputs: Vec<MemInput>,
+    /// Collected inputs, packed (see [`MemInputs`]).
+    pub inputs: MemInputs,
     pub prev_segment: Option<MemPreviousSegment>,
     pub min_addr: u32,
     /// byte address filters (33 bits)
@@ -48,10 +48,27 @@ pub struct MemModuleCollector {
 }
 
 impl MemModuleCollector {
-    /// Inputs a collector reserves for one chunk: a row can be dual, so up to two per counted row.
-    /// `new` sizes its inputs with it, and the instance sums it to bound its collectors' bytes.
-    pub fn reserved_inputs(mem_check_point: &MemModuleCheckPoint) -> usize {
-        mem_check_point.count as usize * 2
+    /// Words a collector reserves for one chunk, as `(accesses, values)`. `count` is the lanes the
+    /// planner counted for the chunk. A lane holds up to two accesses (dual), and every write opens
+    /// a lane of its own, so at most `count` of them are writes that carry a value; reads carry one
+    /// too when the collector keeps read values. `new` sizes its inputs with it, and the instance
+    /// sums it to bound its collectors' bytes.
+    pub fn reserved_words(
+        mem_check_point: &MemModuleCheckPoint,
+        keep_read_values: bool,
+    ) -> (usize, usize) {
+        let count = mem_check_point.count as usize;
+        (count * 2, if keep_read_values { count * 2 } else { count })
+    }
+
+    /// Bytes [`reserved_words`](Self::reserved_words) stands for: two buffers of `u64` words.
+    pub fn reserved_bytes(
+        mem_check_point: &MemModuleCheckPoint,
+        keep_read_values: bool,
+    ) -> CollectorBytes {
+        let (accesses, values) = Self::reserved_words(mem_check_point, keep_read_values);
+        let word = std::mem::size_of::<u64>();
+        CollectorBytes::of_buffer(accesses * word) + CollectorBytes::of_buffer(values * word)
     }
 
     pub fn new(
@@ -60,6 +77,7 @@ impl MemModuleCollector {
         segment_id: SegmentId,
         is_first_chunk_of_segment: bool,
         is_dual: bool,
+        keep_read_values: bool,
         #[cfg(feature = "save_addr_action")] instance_name: &str,
         #[cfg(feature = "save_addr_action")] chunk_id: usize,
     ) -> Self {
@@ -71,7 +89,10 @@ impl MemModuleCollector {
         let aligned_min_addr = std::cmp::max(min_addr, mem_check_point.from_addr);
         let aligned_max_addr = mem_check_point.to_addr;
         Self {
-            inputs: zisk_common::lent_memory::lent_vec(Self::reserved_inputs(mem_check_point)),
+            inputs: {
+                let (accesses, values) = Self::reserved_words(mem_check_point, keep_read_values);
+                MemInputs::with_capacity(accesses, values, keep_read_values)
+            },
             mem_check_point: mem_check_point.clone(),
             prev_segment: None,
             min_addr,
@@ -475,7 +496,7 @@ impl MemModuleCollector {
         match action {
             InputAction::Discard => {}
             InputAction::Accept => {
-                self.inputs.push(MemInput::new(addr_w, is_write, step, value));
+                self.inputs.push(addr_w, is_write, step, value);
             }
             InputAction::SetPrevious => {
                 self.prev_segment = Some(MemPreviousSegment { addr: addr_w, step, value });
@@ -588,13 +609,23 @@ impl BusDevice<u64> for MemModuleCollector {
 mod tests {
     use super::*;
 
-    /// The instance bounds its collectors' bytes with `reserved_inputs`, so `new` must reserve
-    /// exactly that.
+    /// The instance bounds its collectors' bytes with `reserved_bytes`, so `new` must reserve
+    /// exactly that, with read values kept or derived.
     #[test]
-    fn new_reserves_the_inputs_the_bound_counts() {
+    fn new_reserves_the_bytes_the_bound_counts() {
         let check_point = MemModuleCheckPoint::new(0x1000, 3, 700);
-        let collector = MemModuleCollector::new(&check_point, 0, SegmentId(0), true, false);
-        assert_eq!(MemModuleCollector::reserved_inputs(&check_point), 1400);
-        assert_eq!(collector.inputs.capacity(), MemModuleCollector::reserved_inputs(&check_point));
+        for (keep_read_values, words) in [(false, 1400 + 700), (true, 1400 + 1400)] {
+            let collector = MemModuleCollector::new(
+                &check_point,
+                0,
+                SegmentId(0),
+                true,
+                false,
+                keep_read_values,
+            );
+            let bound = MemModuleCollector::reserved_bytes(&check_point, keep_read_values);
+            assert_eq!(bound, CollectorBytes { lendable: 0, heap: words * 8 }, "small buffers");
+            assert_eq!(collector.inputs.heap_bytes().1 as u64, bound.total());
+        }
     }
 }

@@ -17,6 +17,7 @@
 //! that assumed order. That is exactly the bug this pair of runs exists to catch.
 
 use super::*;
+use crate::MemInputs;
 use proofman_fields::Goldilocks;
 
 type Row = MemTraceRow<Goldilocks>;
@@ -58,7 +59,8 @@ fn segment_and_ops(
                 base + a,
                 o > 0, // the first access is a read, the rest are writes
                 step,
-                0xDEAD_0000_0000_0000 | ((a as u64) << 8) | o as u64,
+                // `mem.pil`: a read that opens an address reads 0.
+                if o > 0 { 0xDEAD_0000_0000_0000 | ((a as u64) << 8) | o as u64 } else { 0 },
             ));
             step += 1;
         }
@@ -89,27 +91,45 @@ fn snapshot(rows: &[Row]) -> Vec<u64> {
     out
 }
 
-/// Runs the fill over `chunks`, which stand in for the per-chunk vectors the collectors hand over.
-/// Several chunks are worth using: `MemOps` chains them lazily, and a bug in that chaining would
-/// only show with more than one.
-fn run_chunks(
+/// Packs `ops` the way a collector does. `keep_read_values` as in `RomData`/`InputData` (or the
+/// check builds); without it reads drop their value and the fill derives it.
+fn pack(ops: &[MemInput], keep_read_values: bool) -> MemInputs {
+    MemInputs::from_inputs(ops.iter().copied(), keep_read_values)
+}
+
+/// Runs the fill over `chunks`, which stand in for the per-chunk collections the collectors hand
+/// over, continuing `prev` as segment `segment_id`.
+fn run_fill(
     n_rows: usize,
     seg: &MemModuleSegmentCheckPoint,
-    chunks: &[Vec<MemInput>],
+    chunks: &[MemInputs],
+    prev: &MemPreviousSegment,
+    segment_id: SegmentId,
     n_ranges: usize,
 ) -> (Vec<u64>, MemFillOutput) {
     let mut rows = vec![Row::default(); n_rows];
-    let prev = MemPreviousSegment { addr: RAM_W_ADDR_INIT, step: 0, value: 0 };
     let out = fill_mem_trace::<Goldilocks, Row>(
         &mut rows,
         MemOps::new(chunks),
         seg,
-        &prev,
-        SegmentId(0),
+        prev,
+        segment_id,
         true,
         n_ranges,
     );
     (snapshot(&rows), out)
+}
+
+/// Runs the fill over `chunks` as the first segment. Several chunks are worth using: `MemOps`
+/// chains them lazily, and a bug in that chaining would only show with more than one.
+fn run_chunks(
+    n_rows: usize,
+    seg: &MemModuleSegmentCheckPoint,
+    chunks: &[MemInputs],
+    n_ranges: usize,
+) -> (Vec<u64>, MemFillOutput) {
+    let prev = MemPreviousSegment { addr: RAM_W_ADDR_INIT, step: 0, value: 0 };
+    run_fill(n_rows, seg, chunks, &prev, SegmentId(0), n_ranges)
 }
 
 /// The same operations as a single chunk.
@@ -119,17 +139,17 @@ fn run(
     ops: &[MemInput],
     n_ranges: usize,
 ) -> (Vec<u64>, MemFillOutput) {
-    let one =
-        vec![ops.iter().map(|o| MemInput::new(o.addr, o.is_write, o.step, o.value)).collect()];
-    run_chunks(n_rows, seg, &one, n_ranges)
+    run_chunks(n_rows, seg, &[pack(ops, true)], n_ranges)
 }
 
 /// Splits `ops` into `n` chunks in order, the shape the collectors produce.
-fn in_chunks(ops: &[MemInput], n: usize) -> Vec<Vec<MemInput>> {
+fn in_chunks(ops: &[MemInput], n: usize) -> Vec<MemInputs> {
+    in_chunks_packed(ops, n, true)
+}
+
+fn in_chunks_packed(ops: &[MemInput], n: usize, keep_read_values: bool) -> Vec<MemInputs> {
     let per = ops.len().div_ceil(n).max(1);
-    ops.chunks(per)
-        .map(|c| c.iter().map(|o| MemInput::new(o.addr, o.is_write, o.step, o.value)).collect())
-        .collect()
+    ops.chunks(per).map(|c| pack(c, keep_read_values)).collect()
 }
 
 /// Deterministic shuffle: a fixed multiplier walk, so a failure is reproducible. Operations of the
@@ -366,7 +386,13 @@ fn padding_after_an_access_to_the_last_word_of_memory_stays_inside_it() {
     let mut step = 1u64;
     for a in 0..n_addrs {
         for o in 0..slots_per_addr {
-            ops.push(MemInput::new(base + a, o > 0, step, 0x1234 + a as u64));
+            // `mem.pil`: a read that opens an address reads 0.
+            ops.push(MemInput::new(
+                base + a,
+                o > 0,
+                step,
+                if o > 0 { 0x1234 + a as u64 } else { 0 },
+            ));
             step += 1;
         }
     }
@@ -503,4 +529,135 @@ fn impossible_device_scalars_are_an_error() {
         MemFillResult { prev_addr_w: RAM_W_ADDR_END, last_addr_w: RAM_W_ADDR_INIT, ..good };
     assert!(check_scalars(&backwards, num_slots).is_err(), "a continuation past the last lane");
     assert!(mem_report(&backwards, n_rows).is_err());
+}
+
+// ---------------------------------------------------------------------------------------------
+// Derived read values
+//
+// The collectors of the mutable memory drop every read's value (`MemInputs`); the fill derives it
+// from the previous lane of the same address, `0` on an address change, or the previous segment's
+// value on the segment's first lane, which is what `mem.pil` forces. These tests prove that a fill
+// fed without read values writes exactly the trace a fill fed with them writes, as long as the
+// values obey `mem.pil` (as real executions do).
+// ---------------------------------------------------------------------------------------------
+
+/// A deterministic generator, so a failure is reproducible.
+struct Lcg(u64);
+
+impl Lcg {
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 >> 11
+    }
+}
+
+/// A memory access sequence that obeys `mem.pil`, with the segment the fill needs for it.
+///
+/// Per address, accesses come in step order. A read returns the last value written to its address,
+/// `0` on the address's first access, or `halo`'s value when the address continues the previous
+/// segment. Steps advance by up to 1/16 of a chunk, so lanes see both same-chunk dual reads and
+/// cross-chunk ones.
+///
+/// The offsets follow the fill's lane rules: every access opens a lane, except a read that finds
+/// the address's current lane dual-available and in its own chunk, which shares that lane. An access
+/// that opens a lane makes it dual-available; a shared (dual) read uses that up. The continued
+/// address starts with no dual available (`OFFSET_USE_FLAG`), so its first access opens lane 0.
+fn consistent_segment(
+    n_addrs: u32,
+    ops_per_addr: u32,
+    seed: u64,
+    halo: Option<&MemPreviousSegment>,
+) -> (MemModuleSegmentCheckPoint, Vec<MemInput>, usize) {
+    let mut rng = Lcg(seed);
+    let base = halo.map_or(RAM_W_ADDR_INIT + 100, |h| h.addr);
+    let mut seg = MemModuleSegmentCheckPoint::default();
+    let mut ops = Vec::new();
+    let mut slots = 0usize;
+    let mut step = halo.map_or(16, |h| h.step + 1);
+    for a in 0..n_addrs {
+        let addr = base + a;
+        let continued = a == 0 && halo.is_some();
+        // `add_addr_offset` takes the address's first slot plus one, or 0 for the continued one.
+        seg.add_addr_offset(addr, if continued { 0 } else { slots as u32 + 1 });
+        let mut value = halo.filter(|_| continued).map_or(0, |h| h.value);
+        let mut lane_step: Option<u64> = None;
+        let mut dual_available = false;
+        for i in 0..ops_per_addr {
+            step += 1 + rng.next() % (1 << 16);
+            // The continued address opens with a read, so the previous segment's value is used.
+            let is_write = !(continued && i == 0) && rng.next() % 3 == 0;
+            if is_write {
+                value = rng.next();
+            }
+            let shares_lane = !is_write
+                && dual_available
+                && lane_step.is_some_and(|s| MemHelpers::mem_steps_belongs_to_same_chunk(s, step));
+            if shares_lane {
+                dual_available = false;
+            } else {
+                slots += 1;
+                lane_step = Some(step);
+                dual_available = true;
+            }
+            ops.push(MemInput::new(addr, is_write, step, value));
+        }
+    }
+    assert!(step < 1 << 24, "keep the test's steps inside one MemInputs base window");
+    (seg, ops, slots)
+}
+
+/// Fills `ops` once with every read value collected and once with them dropped, over several chunk
+/// splits, range counts and both orders, and requires the same trace and scalars every time.
+fn assert_derived_matches_collected(
+    seg: &MemModuleSegmentCheckPoint,
+    ops: &[MemInput],
+    slots: usize,
+    prev: &MemPreviousSegment,
+    segment_id: SegmentId,
+) {
+    let n_rows = slots.div_ceil(lanes_x_row()) + 1;
+    for order in [ops.to_vec(), shuffled(ops)] {
+        for n_chunks in [1usize, 3, 7] {
+            let kept = in_chunks_packed(&order, n_chunks, true);
+            let derived = in_chunks_packed(&order, n_chunks, false);
+            assert!(MemOps::new(&derived).reads_derived() && !MemOps::new(&kept).reads_derived());
+            for k in [1usize, 2, 3, 5] {
+                let (want_rows, want) = run_fill(n_rows, seg, &kept, prev, segment_id, k);
+                let (got_rows, got) = run_fill(n_rows, seg, &derived, prev, segment_id, k);
+                assert_eq!(got_rows, want_rows, "chunks={n_chunks} ranges={k}: traces differ");
+                assert_eq!(got.last_addr, want.last_addr, "chunks={n_chunks} ranges={k}");
+                assert_eq!(got.last_step, want.last_step, "chunks={n_chunks} ranges={k}");
+                assert_eq!(got.last_value, want.last_value, "chunks={n_chunks} ranges={k}");
+                assert_eq!(got.distance_base, want.distance_base, "chunks={n_chunks} ranges={k}");
+                assert_eq!(got.distance_end, want.distance_end, "chunks={n_chunks} ranges={k}");
+            }
+        }
+    }
+}
+
+#[test]
+fn derived_read_values_fill_what_collected_values_fill() {
+    let prev = MemPreviousSegment { addr: RAM_W_ADDR_INIT, step: 0, value: 0 };
+    for (n_addrs, per_addr, seed) in [(16u32, 6u32, 1u64), (40, 9, 2), (7, 25, 3), (3, 60, 4)] {
+        let (seg, ops, slots) = consistent_segment(n_addrs, per_addr, seed, None);
+        assert!(ops.iter().any(|o| !o.is_write && o.value != 0), "no read with a value to derive");
+        assert_derived_matches_collected(&seg, &ops, slots, &prev, SegmentId(0));
+    }
+}
+
+#[test]
+fn a_continued_address_reads_the_previous_segments_value() {
+    let prev = MemPreviousSegment {
+        addr: RAM_W_ADDR_INIT + 500,
+        step: 1 << 20,
+        value: 0xABCD_0123_4567_89EF,
+    };
+    for (n_addrs, per_addr, seed) in [(5u32, 8u32, 11u64), (12, 4, 12)] {
+        let (seg, ops, slots) = consistent_segment(n_addrs, per_addr, seed, Some(&prev));
+        assert!(
+            ops.iter().any(|o| o.addr == prev.addr && !o.is_write && o.value == prev.value),
+            "the continued address must start with a read of the previous segment's value"
+        );
+        assert_derived_matches_collected(&seg, &ops, slots, &prev, SegmentId(1));
+    }
 }

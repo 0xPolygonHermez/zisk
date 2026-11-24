@@ -791,6 +791,14 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
     fn get_addr_range(&self) -> (u32, u32) {
         (RAM_W_ADDR_INIT, RAM_W_ADDR_END)
     }
+    fn derives_read_values(&self) -> bool {
+        !cfg!(any(
+            feature = "legacy_mem_count_and_plan",
+            feature = "debug_mem",
+            feature = "check_derived_reads"
+        ))
+    }
+
     fn is_dual(&self) -> bool {
         true
     }
@@ -1262,6 +1270,30 @@ pub(crate) fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
     }
 }
 
+/// The value `mem.pil` forces on a read that opens lane `islot` of the mutable memory: `0` when the
+/// address changes, the previous segment's value on the segment's first lane, and otherwise the
+/// value of the previous lane, which the offsets table gives to the same address. That lane was
+/// filled earlier in this same pass: a range owns whole addresses and walks each address's
+/// accesses in step order.
+#[inline(always)]
+fn read_value<F: PrimeField64, R: MemTraceRowOps<F>>(
+    rows: &mut RowView<'_, R>,
+    lanes: MemLanes,
+    islot: usize,
+    addr_changes: bool,
+    previous_segment: &MemPreviousSegment,
+) -> u64 {
+    if addr_changes {
+        0
+    } else if islot == 0 {
+        previous_segment.value
+    } else {
+        let (prow, plane) = lanes.split(islot - 1);
+        let row = rows.at(prow);
+        row.get_value(plane, 0) as u64 | (row.get_value(plane, 1) as u64) << 32
+    }
+}
+
 /// Fills one range's slots. Pure by design -- no `&self`, no `MemSM` state -- which is what lets
 /// the equivalence test run the same fill with one range and with many and compare the traces.
 #[allow(clippy::too_many_arguments)]
@@ -1307,6 +1339,8 @@ fn fill_mem_range<F: PrimeField64, R: MemTraceRowOps<F>>(
     if addr_base == 0 && seg.offset_at(0) == 0 {
         current_offsets[0] = OFFSET_USE_FLAG;
     }
+    // Reads arrive without their value when the collectors dropped it; the fill derives it.
+    let derive_reads = mem_ops.reads_derived();
     for (index, mem_op) in mem_ops.iter().enumerate() {
         let step = mem_op.step;
 
@@ -1481,7 +1515,26 @@ fn fill_mem_range<F: PrimeField64, R: MemTraceRowOps<F>>(
             rows.at(row).set_step(lane, step);
             rows.at(row).set_addr_changes(lane, addr_changes);
             rows.at(row).set_wr(lane, mem_op.is_write);
-            let (low_val, high_val) = (mem_op.value as u32, (mem_op.value >> 32) as u32);
+            let value = if mem_op.is_write {
+                mem_op.value
+            } else if derive_reads {
+                read_value(&mut rows, lanes, islot, addr_changes, previous_segment)
+            } else {
+                #[cfg(any(feature = "debug_mem", feature = "check_derived_reads"))]
+                {
+                    let derived =
+                        read_value(&mut rows, lanes, islot, addr_changes, previous_segment);
+                    assert_eq!(
+                        derived,
+                        mem_op.value,
+                        "MemSM: derived read value differs from the collected one \
+                         (addr 0x{:X}, step {step}, slot {islot})",
+                        mem_op.addr as u64 * 8
+                    );
+                }
+                mem_op.value
+            };
+            let (low_val, high_val) = (value as u32, (value >> 32) as u32);
             rows.at(row).set_value(lane, 0, low_val);
             rows.at(row).set_value(lane, 1, high_val);
             // rows.at(row).set_read_same_addr(lane, (addr_changes || mem_op.is_write) == false);
