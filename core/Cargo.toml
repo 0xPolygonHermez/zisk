@@ -36,8 +36,7 @@ default = []
 # Memory the executors reserve for the input data and the RAM. Neither changes the address map
 # nor the arithmetization, whose windows stay 2GB each (INPUT_WINDOW_SIZE, RAM_WINDOW_SIZE).
 # Without them the input is limited to 1GB and the RAM to 512MB; with them, to the whole 2GB
-# window. `input_2gb` also changes the BIOS, which reads the input every 128MB up to its limit,
-# and so the ROM commitment of every program; the verification key does not change.
+# window. Neither changes the ROM of a program nor the verification key.
 input_2gb = []
 ram_2gb = []
 # Cross-checks the FROPS multiplicity column the state-machine collectors build

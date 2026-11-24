@@ -115,9 +115,8 @@
 //!   assembly emulators) and the memory planners only reserve the first part of each window:
 //!   [`MAX_INPUT_SIZE`], 1GB or the whole window with the `input_2gb` feature, and [`RAM_SIZE`],
 //!   512MB or the whole window with the `ram_2gb` feature. An access to the rest of a window
-//!   fails as an access outside the memory map does. The BIOS reads the input every 128MB up to
-//!   [`MAX_INPUT_SIZE`], so `input_2gb` changes the BIOS ROM (and so the ROM commitment of the
-//!   program), but not the verification key.
+//!   fails as an access outside the memory map does. Neither the ROM nor the verification key
+//!   depend on these sizes.
 //!
 //! ## INPUT_ADDR
 //! * During the program initialization the input data for the program execution is copied in this

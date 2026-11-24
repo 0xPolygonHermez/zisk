@@ -17,8 +17,7 @@ const INPUT_SIZE: u64 = zisk_core::MAX_INPUT_SIZE;
 const ROM_ADDR: u64 = 0xA800_0000;
 const ROM_SIZE: u64 = 1 << 27;
 const RAM_ADDR: u64 = 0xC000_0000;
-/// The largest gap two consecutive addresses of an immutable region may have (2^24 words), the
-/// step of the BIOS anchor reads.
+/// A step of 2^24 words between input reads, the largest gap the planner sees in this test.
 const ANCHOR_STEP: u64 = (1 << 24) * 8;
 
 // Light records (mops_format.hpp): a header word per record, no values, no steps. The address
@@ -166,8 +165,8 @@ fn small_chunk(salt: u32) -> Vec<u64> {
 
 /// The last word of the ROM and input regions is accessed, with enough input accesses for more
 /// than one InputData instance, so the instance cuts of the input and RAM regions depend on a
-/// prefix that the scan of the region before them must not have shifted. The anchor reads keep
-/// every address gap within what an immutable region allows, as the BIOS does.
+/// prefix that the scan of the region before them must not have shifted. The reads every
+/// ANCHOR_STEP cover every 128MB page of the input region.
 #[test]
 fn the_last_word_of_a_region_leaves_the_next_region_prefix_intact() {
     let input_rows = (zisk_pil::InputDataTrace::<()>::NUM_ROWS

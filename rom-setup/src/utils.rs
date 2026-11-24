@@ -86,9 +86,9 @@ pub fn get_elf_data_hash(elf: &[u8]) -> String {
 }
 
 /// Tag of the memory the executors reserve (the `input_2gb` and `ram_2gb` features of
-/// zisk-core), appended to the hash in the names of the setup files that depend on it: the
-/// assembly emulators reserve that memory, and the BIOS of the ROM reads the input up to its
-/// limit. Empty with both features, the sizes all these files had before the features existed.
+/// zisk-core), appended to the hash in the names of the assembly emulator binaries, which reserve
+/// that memory. The ROM, and so its commitment and verkey, does not depend on it. Empty with both
+/// features, the sizes the binaries had before the features existed.
 pub fn mem_config_tag() -> String {
     if MAX_INPUT_SIZE == INPUT_WINDOW_SIZE && RAM_SIZE == RAM_WINDOW_SIZE {
         String::new()
@@ -114,9 +114,8 @@ pub fn get_elf_bin_file_path_with_hash(
 
     let gpu_suffix = if gpu { "_gpu" } else { "" };
     let rom_cache_file_name = format!(
-        "{}{}_{}_{}_{}_{}_{}{}.bin",
+        "{}_{}_{}_{}_{}_{}{}.bin",
         hash,
-        mem_config_tag(),
         pilout_hash,
         n,
         hash_mode.file_tag(),
@@ -140,9 +139,8 @@ pub fn get_elf_bin_verkey_file_path_with_hash(
     let n = RomRomTrace::<Goldilocks>::NUM_ROWS;
 
     let rom_cache_file_name = format!(
-        "{}{}_{}_{}_{}_{}_{}.verkey.bin",
+        "{}_{}_{}_{}_{}_{}.verkey.bin",
         hash,
-        mem_config_tag(),
         pilout_hash,
         n,
         hash_mode.file_tag(),

@@ -1164,7 +1164,10 @@ bool CountAndPlan::fill_all_rom_instances(uint32_t n_rows, MemFillPrepared* prep
 // ─── InputData: the input accesses retained in arrival order, per instance ──────────────────────
 //
 // An InputData lane is one read: address, step, the word's value, sel 1, addr_changes on the first
-// lane of each word, is_free_read on the free-input word (the region's first word). A read's value
+// lane of each word, is_free_read on the free-input word (the region's first word), and on the
+// lanes that change address delta_addr_hi, the high 16 bits of delta_addr - 1 (the previous
+// address being the previous lane's, or the region's first word on the first lane of the first
+// instance, as the PIL sees it for free input memory). A read's value
 // is the word of the input image, which the guest sees unchanged; the free-input word is written
 // by the emulator per read and its reads carry the value in the stream. The first lane of the
 // block changes address unless it is the free-input word. Padding lanes repeat the last lane with
@@ -1176,7 +1179,7 @@ constexpr uint32_t INPUT_W_ADDR_BASE = ZISK_INPUT_ADDR_BASE >> 3;
 bool CountAndPlan::set_input_layout(const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row,
                                     uint32_t lanes_x_row) {
     RowPackLayout l;
-    if (lanes_x_row == 0 || n_cols != 9 * lanes_x_row || !rowpack_layout(l, col_widths, n_cols, words_per_row))
+    if (lanes_x_row == 0 || n_cols != 10 * lanes_x_row || !rowpack_layout(l, col_widths, n_cols, words_per_row))
         return false;
     for (uint32_t c = 0; c < n_cols; ++c) input_col_widths_[c] = col_widths[c];
     input_n_cols_ = n_cols;
@@ -1186,9 +1189,10 @@ bool CountAndPlan::set_input_layout(const uint32_t* col_widths, uint32_t n_cols,
 }
 
 // Column index of an InputData lane's field: groups addr, step, addr_changes, sel, value_word[4],
-// is_free_read, each with one column per lane (four for value_word), in the trace's declaration order.
+// is_free_read, delta_addr_hi, each with one column per lane (four for value_word), in the trace's
+// declaration order.
 __device__ __forceinline__ uint32_t input_col(uint32_t lanes, uint32_t group, uint32_t lane, uint32_t idx) {
-    return group < 4 ? group * lanes + lane : group == 4 ? 4 * lanes + lane * 4 + idx : 8 * lanes + lane;
+    return group < 4 ? group * lanes + lane : group == 4 ? 4 * lanes + lane * 4 + idx : (group + 3) * lanes + lane;
 }
 
 __host__ __device__ __forceinline__ uint64_t input_word(const uint64_t* image, size_t image_words, uint32_t off) {
@@ -1214,7 +1218,7 @@ __global__ void input_rows_kernel(RowPackLayout layout, uint32_t lanes_x_row, si
     const uint64_t last_value = rf_kind(m_last) == RF_KIND_READ ? input_word(image, image_words, last_off) : rec.value(k_last);
     for (uint32_t lane = 0; lane < lanes_x_row; ++lane) {
         const uint32_t v = r * lanes_x_row + lane;
-        uint32_t off; uint64_t step, value; bool change, sel;
+        uint32_t off, delta_hi = 0; uint64_t step, value; bool change, sel;
         if (v < n_lanes_inst) {
             const size_t g = lane_from + v;
             const uint32_t k = idx[g];
@@ -1227,6 +1231,8 @@ __global__ void input_rows_kernel(RowPackLayout layout, uint32_t lanes_x_row, si
             // value; a plain read of it has no value the image could give.
             if (off == 0 && rf_kind(m) == RF_KIND_READ) atomicOr(fault, 1u);
             change = (g == 0 ? prev_addr : addr_sorted[g - 1]) != a;
+            // delta_addr - 1 = a - previous - 1, the previous of the very first lane being base
+            if (change) delta_hi = (g == 0 ? off - 1 : a - addr_sorted[g - 1] - 1) >> 16;
             sel = true;
         } else {
             off = last_off; step = last_step; value = last_value; change = false; sel = false;
@@ -1239,6 +1245,7 @@ __global__ void input_rows_kernel(RowPackLayout layout, uint32_t lanes_x_row, si
         for (uint32_t i = 0; i < 4; ++i)
             rowpack_put(layout, w, input_col(lanes_x_row, 4, lane, i), (value >> (16 * i)) & 0xFFFFu);
         rowpack_put(layout, w, input_col(lanes_x_row, 5, lane, 0), off == 0 ? 1 : 0);
+        rowpack_put(layout, w, input_col(lanes_x_row, 6, lane, 0), delta_hi);
     }
     uint64_t* dst = out_rows + (size_t)r * layout.words_per_row;
     for (uint32_t k = 0; k < layout.words_per_row; ++k) dst[k] = w[k];

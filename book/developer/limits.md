@@ -28,7 +28,7 @@ This limit consists of the maximum input binary data size in bytes.
 
 In order to inject the input data into the assembly emulator a shared memory mechanism is used.  Shared memory provides the maximum performance, and it allows consuming the input data with zero-copy.  The input shared memory size is 1 GB, or 2 GB when ZisK is built with the `input_2gb` feature.  There is an overhead due to the use of some headers to manage the input data chunks, but they are very small, so in practice, the input data size is limited to almost 1 GB (2 GB).
 
-The input address window is 2 GB in both cases, and so is the address range the proof covers: the feature only changes how much memory the emulators and the memory planner reserve. It does change the BIOS, which reads the input every 128 MB up to its limit, so the ROM commitment of a program set up with `input_2gb` differs from the one without it; the verification key is the same.
+The input address window is 2 GB in both cases, and so is the address range the proof covers: the feature only changes how much memory the emulators and the memory planner reserve, not the ROM of a program nor the verification key.
 
 An Ethereum client block verification normally needs an input data size of 15 MB to 20 MB.  This is approximately 2 % of the maximum input data size.
 

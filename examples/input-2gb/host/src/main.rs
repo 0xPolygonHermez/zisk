@@ -16,7 +16,7 @@
 //! Arguments: backend (`emu` | `asm` | `remote`), input data size in MB (default: as large as the
 //! input region allows, `MAX_DATA_BYTES`), and read stride (default 1). With the maximum size the
 //! input data starts at INPUT_ADDR + 16 and ends at the last word of the region, so it exercises
-//! the region boundaries and every 128MB step the BIOS reads. `remote` executes on the coordinator
+//! the region boundaries and address gaps up to the whole region. `remote` executes on the coordinator
 //! at `ZISK_COORDINATOR_URL` (default `http://127.0.0.1:7000`); an input over the 128MB inline
 //! limit of a request travels through the job's gRPC input stream.
 //!

@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "1261aeef2e2540b855791901cccd778a2a5c72f12883eef3d82efd9a80011ef1";
+pub const PILOUT_HASH: &str = "8107cb5e6ce8da12c74a55fb566b5602441cc87de8599713bfbda4fd6b2d77a9";
 
 //AIRGROUP CONSTANTS
 
@@ -215,7 +215,7 @@ trace_row!(InputDataFixedRow<F> {
 pub type InputDataFixed<F> = GenericTrace<InputDataFixedRow<F>, 4194304, 0, 3>;
 
 trace_row!(InputDataTraceRow<F> {
- addr:[ubit(30); 1], step:[ubit(38); 1], addr_changes:[bit; 1], sel:[bit; 1], value_word:[[u16; 4]; 1], is_free_read:[bit; 1],
+ addr:[ubit(30); 1], step:[ubit(38); 1], addr_changes:[bit; 1], sel:[bit; 1], value_word:[[u16; 4]; 1], is_free_read:[bit; 1], delta_addr_hi:[u16; 1],
 });
 
 pub type InputDataTrace<R> = GenericTrace<R, 4194304, 0, 3>;
@@ -1137,7 +1137,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 3, PackedInfoConst {
         is_packed: true,
         num_packed_words: 3,
-        unpack_info: &[30, 38, 1, 1, 16, 16, 16, 16, 1],
+        unpack_info: &[30, 38, 1, 1, 16, 16, 16, 16, 1, 16],
     }),
     (0, 4, PackedInfoConst {
         is_packed: true,

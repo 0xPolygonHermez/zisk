@@ -10,9 +10,7 @@ use std::{
 use zisk_sm_mem_common::MemHelpers;
 
 use crate::{MemModule, MemOps, MemPreviousSegment};
-use zisk_sm_mem_common::{
-    MemLanes, MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_DISTANCE,
-};
+use zisk_sm_mem_common::{MemLanes, MemModuleSegmentCheckPoint, MEM_BYTES_BITS};
 
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
@@ -44,6 +42,15 @@ const _: () = {
     );
 };
 
+/// High 16 bits of `delta_addr - 1` for a lane at `addr` whose previous address, as the PIL sees
+/// it, is `previous_addr`: the PIL range checks it and the low 16 bits (state-machines/mem/pil/mem.pil).
+#[inline(always)]
+fn delta_addr_hi(addr: u64, previous_addr: u64) -> u16 {
+    let delta = addr - previous_addr - 1;
+    debug_assert!(delta < 1 << 32, "InputDataSM: address delta {delta} beyond 32 bits");
+    (delta >> 16) as u16
+}
+
 /// Lane layout of the `InputData` trace, read from the generated row so it always
 /// follows `lanes_x_row` in `state-machines/mem/pil/mem.pil`.
 #[inline]
@@ -70,6 +77,7 @@ fn set_input_data_padding_lane<F: PrimeField64, R: InputDataTraceRowOps<F>>(
     row.set_sel(lane, false);
     row.set_is_free_read(lane, is_free_read);
     row.set_addr_changes(lane, false);
+    row.set_delta_addr_hi(lane, 0);
     for (index, &word) in value_words.iter().enumerate() {
         row.set_value_word(lane, index, word);
     }
@@ -276,60 +284,17 @@ impl<F: PrimeField64> InputDataSM<F> {
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
         let mut last_value: u64 = previous_segment.value;
+        // The previous address as the PIL sees it, previous_segment_addr on the first lane (free
+        // input memory does not subtract is_first_segment)
+        let mut previous_addr = previous_segment.addr as u64;
         // `i` is a virtual row: `lanes.split(i)` gives the physical row and the lane inside it.
         let mut i = 0;
 
+        // Any distance between consecutive addresses fits the PIL (delta_addr - 1 is checked as two
+        // 16-bit chunks), so no internal reads are needed to bridge large gaps
         for mem_op in mem_ops.iter() {
-            let distance = mem_op.addr - last_addr;
-
             if i >= num_slots {
                 break;
-            }
-
-            if distance > SEGMENT_ADDR_MAX_DISTANCE as u32 {
-                let mut internal_reads = (distance - 1) / SEGMENT_ADDR_MAX_DISTANCE as u32;
-
-                let incomplete = (i + internal_reads as usize) >= num_slots;
-                if incomplete {
-                    internal_reads = (num_slots - i) as u32;
-                }
-
-                let (row, lane) = lanes.split(i);
-                trace[row].set_addr_changes(lane, true);
-                last_addr += SEGMENT_ADDR_MAX_DISTANCE as u32;
-                trace[row].set_addr(lane, last_addr);
-
-                // the step, value of internal reads isn't relevant
-                last_step = 0;
-                trace[row].set_step(lane, 0);
-                trace[row].set_sel(lane, false);
-                trace[row].set_is_free_read(lane, false);
-
-                // setting value to zero, is not relevant for internal reads
-                last_value = 0;
-                for j in 0..4 {
-                    trace[row].set_value_word(lane, j, 0);
-                }
-                i += 1;
-
-                for _j in 1..internal_reads {
-                    // same lane content as the previous internal read, only the address moves on
-                    let (row, lane) = lanes.split(i);
-                    last_addr += SEGMENT_ADDR_MAX_DISTANCE as u32;
-                    trace[row].set_addr(lane, last_addr);
-                    trace[row].set_addr_changes(lane, true);
-                    trace[row].set_step(lane, 0);
-                    trace[row].set_sel(lane, false);
-                    trace[row].set_is_free_read(lane, false);
-                    for j in 0..4 {
-                        trace[row].set_value_word(lane, j, 0);
-                    }
-
-                    i += 1;
-                }
-                if incomplete {
-                    break;
-                }
             }
 
             let (row, lane) = lanes.split(i);
@@ -347,9 +312,13 @@ impl<F: PrimeField64> InputDataSM<F> {
             let addr_changes = last_addr != mem_op.addr;
             if addr_changes {
                 trace[row].set_addr_changes(lane, true);
+                trace[row]
+                    .set_delta_addr_hi(lane, delta_addr_hi(mem_op.addr as u64, previous_addr));
             } else {
                 trace[row].set_addr_changes(lane, false);
+                trace[row].set_delta_addr_hi(lane, 0);
             }
+            previous_addr = mem_op.addr as u64;
 
             last_addr = mem_op.addr;
             last_step = mem_op.step;
@@ -384,6 +353,7 @@ impl<F: PrimeField64> InputDataSM<F> {
             trace[row].set_is_free_read(lane, is_free_read);
 
             trace[row].set_addr_changes(lane, false);
+            trace[row].set_delta_addr_hi(lane, 0);
 
             // address doesn't change in padding lanes, no range check is required
         }
@@ -614,12 +584,16 @@ impl<F: PrimeField64> InputDataSM<F> {
 
             if addr_changes {
                 trace[row].set_addr_changes(lane, true);
+                // The previous address as the PIL sees it: the previous lane's, or on the first lane
+                // previous_segment_addr (free input memory does not subtract is_first_segment)
                 let previous_addr = seg
                     .previous_change_addr_w(addr_index as u32)
                     .unwrap_or(previous_segment.addr as u64);
-                let distance = mem_op.addr as i64 - previous_addr as i64 - 1;
+                trace[row]
+                    .set_delta_addr_hi(lane, delta_addr_hi(mem_op.addr as u64, previous_addr));
             } else {
                 trace[row].set_addr_changes(lane, false);
+                trace[row].set_delta_addr_hi(lane, 0);
             }
         }
 

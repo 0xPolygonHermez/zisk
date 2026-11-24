@@ -452,6 +452,10 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         const expr air.read_same_addr[lanes_x_row];
 
         const expr delta_addr[lanes_x_row];
+        if (free_input_mem) {
+            // High 16 bits of delta_addr - 1 (free input memory, see below)
+            col witness bits(16) air.delta_addr_hi[lanes_x_row];
+        }
 
         for (int lane = 0; lane < lanes_x_row; ++lane) {
             delta_addr[lane] = addr[lane] - previous_addr[lane];
@@ -460,6 +464,13 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
             if (continuous_addresses) {
                 // If the address changes, the difference must be one
                 addr_changes[lane] * (delta_addr[lane] - 1) === 0;
+            } else if (free_input_mem) {
+                // The input is read sparsely, anywhere in its window: delta_addr - 1 is checked as
+                // two 16-bit chunks, up to 2^32 words, so any two consecutive input addresses can be
+                // as far apart as the window allows, and the BIOS does not have to read the input
+                // every 2^24 words to bridge them.
+                range_check(expression: delta_addr[lane] - 1 - 2**16 * delta_addr_hi[lane], min: 0, max: 2**16 - 1, sel: addr_changes[lane]);
+                range_check(expression: delta_addr_hi[lane], min: 0, max: 2**16 - 1, sel: addr_changes[lane]);
             } else {
                 range_check(expression: delta_addr[lane] - 1, min: 0, max: 2**24 - 1, sel: addr_changes[lane]);
             }
