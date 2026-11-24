@@ -272,6 +272,8 @@ fn is_pure_jump(i: &ZiskInst) -> bool {
         && !i.store_pc
         && !i.set_pc
         && !i.end
+        // Skipping a jump that moves sp would lose the update.
+        && !i.updates_sp()
 }
 
 /// Static successors, or `None` when the next pc is computed (`set_pc`).
@@ -447,8 +449,11 @@ fn pass_fold(insts: &mut BTreeMap<u64, ZiskInstBuilder>, cf: bool, af: bool, st:
         // - plain, with a single successor (j1 == j2), so Y is the only way on;
         // - writing a register (the one Y should read);
         // - not reading c, which the merged instruction (now after X's predecessor) would not see;
-        // - not a load: its result comes from memory, so it cannot become an operand of Y.
+        // - not a load: its result comes from memory, so it cannot become an operand of Y;
+        // - not moving sp: the merged instruction is Y's, which would drop the update and read
+        //   Y's sp-relative operands with sp as it was before X.
         if a & 1 != 0
+            || x.updates_sp()
             || x.next_internal_inst.is_some()
             || !is_plain(x)
             || x.jmp_offset1 != x.jmp_offset2
@@ -649,8 +654,10 @@ fn pass_simplify(insts: &mut BTreeMap<u64, ZiskInstBuilder>, st: &mut RomOptStat
 /// target from rX: the `jr rX` shape (no link), or a `jalr rX, rX` (the link goes to rX).
 /// Returns whether it links.
 fn jalr_through(y: &ZiskInst, rx: u64) -> Option<bool> {
-    // One step, an indirect jump on the masked register, and nothing else
+    // One step, an indirect jump on the masked register, and nothing else (no sp update, which
+    // the merged instruction would drop)
     let is_jalr = y.set_pc
+        && !y.updates_sp()
         && y.next_internal_inst.is_none()
         && !y.end
         && !y.is_precompiled
@@ -769,8 +776,10 @@ fn pass_load_jump(insts: &mut BTreeMap<u64, ZiskInstBuilder>, st: &mut RomOptSta
         let Some(y) = insts.get(&ya).map(|b| &b.i) else { continue };
         let t = x.store_offset as u64;
         // Y must be exactly a `jr t`, as the transpiler lowers it: `and(!1, t)` with set_pc, which
-        // stores nothing and is not a call (store_pc), in one step.
+        // stores nothing and is not a call (store_pc), in one step. No sp update, which the fused
+        // instruction would drop.
         let is_jr = y.set_pc
+            && !y.updates_sp()
             && !y.store_pc
             && y.store == STORE_NONE
             && y.op == ZiskOp::AND

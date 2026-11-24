@@ -347,6 +347,15 @@ impl ZiskInst {
         sp_relative
     }
 
+    /// Returns true if the instruction changes sp (`set_sp` or a non-zero `inc_sp`). Always false
+    /// without the `sp` feature. Code that removes, merges or skips instructions must keep these.
+    pub fn updates_sp(&self) -> bool {
+        #[cfg(feature = "sp")]
+        return self.set_sp || self.inc_sp != 0;
+        #[cfg(not(feature = "sp"))]
+        false
+    }
+
     /// Generates a single line of ZisK assembly code representing this instruction,
     /// following the syntax specified in `ziskasm/ziskasm.md`.
     ///
