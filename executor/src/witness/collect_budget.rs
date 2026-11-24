@@ -109,9 +109,29 @@ pub fn fitting_prefix(pending: &[Pending], room: u64) -> usize {
 
 /// How many instances to take from the front of `pending` so their bytes fit in `room`.
 ///
-/// At least one, so an instance larger than the whole budget is collected alone rather than never.
+/// At least one, so an instance larger than the room is collected rather than never
+/// ([`holding_any`] sizes the waves' budget so that this takes no more than the budget).
 pub fn next_wave(pending: &[Pending], room: u64) -> usize {
     fitting_prefix(pending, room).max(1).min(pending.len())
+}
+
+/// `budget`, raised so that every instance of `pending` fits in it alone.
+///
+/// A wave is never empty: an instance that exceeds the budget is collected anyway, alone. The waves
+/// may as well hold that much at all times. Without this floor, a budget of zero sends every
+/// instance alone, and the collect replays the chunks once per instance.
+pub fn holding_any(budget: u64, pending: &[Pending]) -> u64 {
+    budget.max(pending.iter().map(|p| p.bytes).max().unwrap_or(0))
+}
+
+/// `bytes` against the measured `budget`, for the log of a collect in waves, which ran within
+/// `used`: when that is the budget raised by [`holding_any`], the log says to what.
+pub fn describe_waves(bytes: u64, budget: u64, used: u64) -> String {
+    let mut out = format!("{:.1} GiB of a {:.1} GiB budget", gib(bytes), gib(budget));
+    if used != budget {
+        out += &format!(", raised to {:.1} GiB to hold the largest instance", gib(used));
+    }
+    out
 }
 
 /// Whether the next wave may start: once nothing collected is still held, or once what is held is
@@ -266,6 +286,33 @@ mod tests {
         let p = pending(&[10, 1]);
         assert_eq!(next_wave(&p, 5), 1, "an instance larger than the room goes alone");
         assert_eq!(next_wave(&p, 0), 1);
+    }
+
+    #[test]
+    fn the_waves_budget_holds_any_single_instance() {
+        assert_eq!(holding_any(10, &pending(&[3, 7, 5])), 10, "nothing to raise");
+        assert_eq!(holding_any(4, &pending(&[3, 7, 5])), 7, "raised to the largest instance");
+        assert_eq!(holding_any(4, &[]), 4);
+    }
+
+    #[test]
+    fn a_budget_of_zero_does_not_send_every_instance_alone() {
+        let p = pending(&[1, 1, 2, 4]);
+        assert_eq!(next_wave(&p, 0), 1, "one instance per wave");
+        let raised = holding_any(0, &p);
+        assert_eq!(raised, 4);
+        assert_eq!(next_wave(&p, raised), 3, "1 + 1 + 2 within the largest instance's 4");
+        assert_eq!(next_wave(&p[3..], raised), 1);
+    }
+
+    #[test]
+    fn the_waves_log_names_a_raised_budget() {
+        const GIB: u64 = 1 << 30;
+        assert_eq!(describe_waves(7 * GIB, 2 * GIB, 2 * GIB), "7.0 GiB of a 2.0 GiB budget");
+        assert_eq!(
+            describe_waves(7 * GIB, 0, GIB),
+            "7.0 GiB of a 0.0 GiB budget, raised to 1.0 GiB to hold the largest instance"
+        );
     }
 
     #[test]

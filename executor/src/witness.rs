@@ -607,6 +607,8 @@ impl<F: PrimeField64> WitnessPhase<F> {
         let mut waited = std::time::Duration::ZERO;
         let mut held = collect_budget::Held::default();
         let mut waves = 0;
+        // What the largest instance takes alone, the waves may hold at all times.
+        let budget = collect_budget::holding_any(plan.budget, &plan.pending);
         let mut rest = &plan.pending[..];
         while !rest.is_empty() {
             if !held.is_empty() {
@@ -614,13 +616,13 @@ impl<F: PrimeField64> WitnessPhase<F> {
                 collect_budget::wait_for_room(
                     &mut held,
                     rest[0].bytes,
-                    plan.budget,
+                    budget,
                     |global_id| pctx.dctx_witness_state(global_id),
                     || pctx.is_cancelled(),
                 )?;
                 waited += wait_started.elapsed();
             }
-            let take = collect_budget::next_wave(rest, plan.budget.saturating_sub(held.bytes()));
+            let take = collect_budget::next_wave(rest, budget.saturating_sub(held.bytes()));
             let (wave, tail) = rest.split_at(take);
             {
                 let secn_instances =
@@ -642,11 +644,10 @@ impl<F: PrimeField64> WitnessPhase<F> {
         }
         state.record_split_collect(waves, waited);
         tracing::warn!(
-            "collect: {} instances reserve {:.1} GiB of a {:.1} GiB budget: {} waves in {:.1} s, {:.1} s waiting, as they \
+            "collect: {} instances reserve {}: {} waves in {:.1} s, {:.1} s waiting, as they \
              do not fit in the memory free at once",
             plan.pending.len(),
-            collect_budget::gib(plan.total),
-            collect_budget::gib(plan.budget),
+            collect_budget::describe_waves(plan.total, plan.budget, budget),
             waves,
             started.elapsed().as_secs_f64(),
             waited.as_secs_f64()
