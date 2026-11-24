@@ -13,7 +13,7 @@ use zisk_sdk::{
 use super::validate_asm_hints;
 use crate::common::{resolve_elf, resolve_output_path, ElfSelectorArgs};
 use crate::proof::{select_prove_kind, SnarkArgs};
-use crate::ux::{print_job_banner, print_random_seed};
+use crate::ux::{print_collect_memory, print_job_banner, print_random_seed};
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -206,6 +206,7 @@ impl ZiskEmbeddedProve {
             result.get_execution_steps()
         );
         print_random_seed(result.get_random_seed());
+        print_collect_memory(result.get_collect_memory());
         if saved {
             info!("Proof saved to {}", output_file.display());
         } else if self.verify_proof {

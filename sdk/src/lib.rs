@@ -85,7 +85,8 @@ pub use proofman_common::VerboseMode;
 
 // Re-export types from zisk_common
 pub use zisk_common::{
-    PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind, PublicValues, RandomSeed,
+    CollectMemoryReport, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind,
+    PublicValues, RandomSeed,
 };
 
 pub use zisk_build::*;

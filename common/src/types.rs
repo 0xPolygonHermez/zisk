@@ -203,6 +203,64 @@ pub struct ZiskExecutorSummary {
     /// Host randomness seed the execution ran with. `None` only for summaries that do not come
     /// from an execution.
     pub random_seed: Option<RandomSeed>,
+    /// How the witness phase's collect fitted in the memory it had, over the whole proof.
+    #[serde(default)]
+    pub collect_memory: CollectMemoryReport,
+}
+
+/// How the witness phase's collect fitted in the memory it was given, over one proof.
+///
+/// With enough free memory each collect runs in one pass. Short of it, the work still completes
+/// but takes longer: the first registration round leaves instances for later, and a collect runs in
+/// waves, each one waiting for proofman to compute the instances of the previous ones.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CollectMemoryReport {
+    /// Instances the first registration round left for later, as they did not fit beside the
+    /// execution.
+    pub deferred_instances: u64,
+    /// Bytes the collectors of those instances reserve.
+    pub deferred_bytes: u64,
+    /// Collects that ran in waves, as their collectors did not fit in memory at once.
+    pub split_collects: u64,
+    /// Waves those collects ran in, all together.
+    pub waves: u64,
+    /// Milliseconds the waves waited for room.
+    pub wave_wait_ms: u64,
+}
+
+impl CollectMemoryReport {
+    /// Whether the proof ran short of memory: work one pass would have done was deferred or split.
+    pub fn constrained(&self) -> bool {
+        self.deferred_instances > 0 || self.split_collects > 0
+    }
+}
+
+impl fmt::Display for CollectMemoryReport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if !self.constrained() {
+            return write!(f, "every collect ran in one pass");
+        }
+        let mut parts = Vec::new();
+        if self.deferred_instances > 0 {
+            parts.push(format!(
+                "the first round left {} instances ({:.1} GiB) for later",
+                self.deferred_instances,
+                self.deferred_bytes as f64 / (1u64 << 30) as f64
+            ));
+        }
+        if self.split_collects > 0 {
+            let collects = match self.split_collects {
+                1 => "1 collect".to_string(),
+                n => format!("{n} collects"),
+            };
+            parts.push(format!(
+                "{collects} ran in {} waves, {:.1} s waiting",
+                self.waves,
+                self.wave_wait_ms as f64 / 1000.0
+            ));
+        }
+        write!(f, "{}", parts.join("; "))
+    }
 }
 
 impl ZiskExecutorSummary {
@@ -330,5 +388,39 @@ pub struct AsmExecutionInfo {
 impl fmt::Display for AsmExecutionInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:.3}s ({:.0} MHz)", self.time, self.mhz)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_collect_report_says_what_running_short_of_memory_took() {
+        let none = CollectMemoryReport::default();
+        assert!(!none.constrained());
+        assert_eq!(none.to_string(), "every collect ran in one pass");
+
+        let deferred =
+            CollectMemoryReport { deferred_instances: 44, deferred_bytes: 9 << 30, ..none };
+        assert!(deferred.constrained());
+        assert_eq!(deferred.to_string(), "the first round left 44 instances (9.0 GiB) for later");
+
+        let both =
+            CollectMemoryReport { split_collects: 1, waves: 5, wave_wait_ms: 200, ..deferred };
+        assert_eq!(
+            both.to_string(),
+            "the first round left 44 instances (9.0 GiB) for later; 1 collect ran in 5 waves, 0.2 s \
+             waiting"
+        );
+    }
+
+    /// Summaries serialized before the report existed still read.
+    #[test]
+    fn a_summary_without_a_collect_report_reads_as_one_pass() {
+        let mut json = serde_json::to_value(ZiskExecutorSummary::default()).unwrap();
+        json.as_object_mut().unwrap().remove("collect_memory");
+        let summary: ZiskExecutorSummary = serde_json::from_value(json).unwrap();
+        assert_eq!(summary.collect_memory, CollectMemoryReport::default());
     }
 }

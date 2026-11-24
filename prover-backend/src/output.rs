@@ -2,8 +2,8 @@ use anyhow::Result;
 use std::path::Path;
 use std::time::Duration;
 use zisk_common::{
-    PlonkVkey, ProgramVK, ProofBody, PublicValues, RandomSeed, StatsCostPerType,
-    ZiskExecutorSummary, ZiskExecutorTime, ZiskVerifyBuilder, ZISK_PUBLICS,
+    CollectMemoryReport, PlonkVkey, ProgramVK, ProofBody, PublicValues, RandomSeed,
+    StatsCostPerType, ZiskExecutorSummary, ZiskExecutorTime, ZiskVerifyBuilder, ZISK_PUBLICS,
 };
 use zisk_executor::{AirClassifier, PlanSummaryEntry};
 
@@ -26,6 +26,8 @@ pub(crate) struct ExecutionSummary {
     time: u64,
     steps: u64,
     cost: u64,
+    /// `None` when the run's report did not come back (a remote coordinator).
+    collect_memory: Option<CollectMemoryReport>,
 }
 
 impl ExecutionSummary {
@@ -34,11 +36,17 @@ impl ExecutionSummary {
             time: time.as_millis() as u64,
             steps: executor_summary.steps,
             cost: executor_summary.cost_per_type.total_cost(),
+            collect_memory: Some(executor_summary.collect_memory),
         }
     }
 
     pub fn from_remote(time: Duration, steps: u64, cost_per_type: &StatsCostPerType) -> Self {
-        Self { time: time.as_millis() as u64, steps, cost: cost_per_type.total_cost() }
+        Self {
+            time: time.as_millis() as u64,
+            steps,
+            cost: cost_per_type.total_cost(),
+            collect_memory: None,
+        }
     }
 }
 
@@ -318,6 +326,13 @@ impl ProveOutput {
         self.summary.cost
     }
 
+    /// How the witness phase's collect fitted in the memory it had: whether the proof ran short of
+    /// it ([`CollectMemoryReport::constrained`]), and what that took. `None` for a proof a remote
+    /// coordinator returned.
+    pub fn get_collect_memory(&self) -> Option<&CollectMemoryReport> {
+        self.summary.collect_memory.as_ref()
+    }
+
     /// The host randomness seed the proven execution ran with (see
     /// [`ExecuteOutput::get_random_seed`]). `None` for proofs that do not come from a single
     /// execution (aggregates), or when a remote coordinator that predates this field ran it.
@@ -501,6 +516,17 @@ mod tests {
             ProveOutput::new(executed(), Duration::ZERO, Proof::default().with_random_seed(other));
         assert_eq!(output.get_random_seed(), Some(SEED));
         assert_eq!(output.get_proof().random_seed, Some(SEED));
+    }
+
+    #[test]
+    fn prove_output_reports_how_the_collect_fitted_in_memory() {
+        let report = CollectMemoryReport { split_collects: 1, waves: 4, ..Default::default() };
+        let summary = ZiskExecutorSummary { collect_memory: report, ..executed() };
+        let output = ProveOutput::new(summary, Duration::ZERO, Proof::default());
+        assert_eq!(output.get_collect_memory(), Some(&report));
+        let remote =
+            ProveOutput::from_remote(Proof::default(), 0, Duration::ZERO, Default::default());
+        assert_eq!(remote.get_collect_memory(), None, "a remote proof brings no report");
     }
 
     /// Ranks that end a prove without the final proof still report what they ran with.

@@ -1,6 +1,9 @@
 use crate::common::{detect_current_project_elf, resolve_output_path};
 use crate::proof::{ensure_snark_key, select_prove_kind, SnarkArgs};
-use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
+use crate::ux::{
+    print_banner, print_banner_command, print_banner_field, print_collect_memory,
+    print_execution_summary,
+};
 use anyhow::Result;
 
 use colored::Colorize;
@@ -279,6 +282,7 @@ impl ProveCmd {
         }
 
         info!("Proof Time: {:.3} seconds", result.get_proving_time() as f64 / 1000.0);
+        print_collect_memory(result.get_collect_memory());
 
         print_execution_summary(
             &executor_time,

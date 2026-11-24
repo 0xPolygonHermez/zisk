@@ -576,14 +576,17 @@ impl<F: PrimeField64> WitnessPhase<F> {
     ) -> ExecutorResult<()> {
         let take = collect_budget::fitting_prefix(&plan.pending, plan.budget);
         let (now, later) = plan.pending.split_at(take);
-        tracing::info!(
-            "first-round collect: {} instances reserve {:.1} GiB of a {:.1} GiB budget: {} now, {} ({:.1} GiB) left for later",
+        let later_bytes: u64 = later.iter().map(|p| p.bytes).sum();
+        state.record_deferred_collect(later.len(), later_bytes);
+        tracing::warn!(
+            "first-round collect: {} instances reserve {:.1} GiB of a {:.1} GiB budget: {} now, {} ({:.1} GiB) left for later, \
+             as they do not fit in the memory free beside the execution",
             plan.pending.len(),
             collect_budget::gib(plan.total),
             collect_budget::gib(plan.budget),
             now.len(),
             later.len(),
-            collect_budget::gib(later.iter().map(|p| p.bytes).sum())
+            collect_budget::gib(later_bytes)
         );
         if now.is_empty() {
             return Ok(());
@@ -637,8 +640,10 @@ impl<F: PrimeField64> WitnessPhase<F> {
             waves += 1;
             rest = tail;
         }
-        tracing::info!(
-            "collect: {} instances reserve {:.1} GiB of a {:.1} GiB budget: {} waves in {:.1} s, {:.1} s waiting",
+        state.record_split_collect(waves, waited);
+        tracing::warn!(
+            "collect: {} instances reserve {:.1} GiB of a {:.1} GiB budget: {} waves in {:.1} s, {:.1} s waiting, as they \
+             do not fit in the memory free at once",
             plan.pending.len(),
             collect_budget::gib(plan.total),
             collect_budget::gib(plan.budget),
