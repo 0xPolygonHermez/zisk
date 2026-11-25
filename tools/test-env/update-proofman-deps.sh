@@ -1,7 +1,9 @@
 #!/bin/bash
 #
-# Run `cargo update` in every workspace of this repo that depends, directly or
-# indirectly, on a crate from pil2-proofman.
+# Run `cargo update -p <crate>` for the pil2-proofman crates in every workspace
+# of this repo that depends on them, directly or indirectly. Only the proofman
+# crates (and whatever they strictly require) are updated; other entries in
+# Cargo.lock are left untouched.
 #
 # A crate is a proofman crate when its `repository` or its `source` points to
 # github.com/0xPolygonHermez/pil2-proofman. This works the same when the
@@ -16,8 +18,9 @@
 #   update-proofman-deps.sh [--list] [--] [cargo update args...]
 #
 #   --list     Only print the workspace directories that would be updated.
-#   Any remaining arguments are passed to `cargo update`
-#   (e.g. `--dry-run`, `-p proofman`).
+#   Any remaining arguments are passed to `cargo update` (e.g. `--dry-run`).
+#   If they include `-p`/`--package`, those packages are updated instead of
+#   the detected proofman crates.
 
 set -euo pipefail
 
@@ -44,6 +47,11 @@ while [ $# -gt 0 ]; do
 done
 CARGO_UPDATE_ARGS=("$@")
 
+USER_PACKAGES=0
+for arg in "${CARGO_UPDATE_ARGS[@]+"${CARGO_UPDATE_ARGS[@]}"}"; do
+    case "$arg" in -p|-p*|--package|--package=*) USER_PACKAGES=1 ;; esac
+done
+
 for cmd in cargo jq; do
     command -v "$cmd" >/dev/null 2>&1 || { err "'$cmd' is required"; exit 1; }
 done
@@ -55,7 +63,8 @@ relpath() {
     local rel=${1#"$REPO_ROOT"}; rel=${rel#/}; echo "${rel:-.}"
 }
 
-# Print the proofman crates found in the resolved graph of a workspace root manifest.
+# Print the proofman crates found in the resolved graph of a workspace root manifest,
+# one per line as "<package id spec>\t<name>".
 proofman_in_workspace() {
     local root_manifest="$1" metadata
     if ! metadata=$(cargo metadata --frozen --format-version 1 --manifest-path "$root_manifest" 2>/dev/null); then
@@ -63,7 +72,7 @@ proofman_in_workspace() {
         metadata=$(cargo metadata --format-version 1 --manifest-path "$root_manifest") || return 1
     fi
     echo "$metadata" | jq -r --arg repo "$PROOFMAN_REPO" \
-        '[.packages[] | select(((.repository // "") | contains($repo)) or ((.source // "") | contains($repo))) | .name] | unique | .[]'
+        '[.packages[] | select(((.repository // "") | contains($repo)) or ((.source // "") | contains($repo))) | [.id, .name]] | unique | .[] | @tsv'
 }
 
 info "Locating workspace roots"
@@ -72,19 +81,22 @@ WORKSPACE_ROOTS=$(find . -name Cargo.toml -not -path '*/target/*' -not -path '*/
 done | sort -u)
 
 TO_UPDATE=()
+declare -A PKG_SPECS=()
 SKIPPED=()
 while read -r root_manifest; do
     [ -n "$root_manifest" ] || continue
     dir=$(dirname "$root_manifest")
     rel=$(relpath "$dir")
-    if ! found=$(proofman_in_workspace "$root_manifest" | tr '\n' ' '); then
+    if ! pkgs=$(proofman_in_workspace "$root_manifest"); then
         warn "cannot resolve $rel, skipping"
         SKIPPED+=("$rel")
         continue
     fi
-    if [ -n "$found" ]; then
-        echo "   ${GREEN}✔${RESET} $rel  ${YELLOW}[$found]${RESET}"
+    if [ -n "$pkgs" ]; then
+        names=$(cut -f2 <<< "$pkgs" | sort -u | tr '\n' ' ')
+        echo "   ${GREEN}✔${RESET} $rel  ${YELLOW}[${names% }]${RESET}"
         TO_UPDATE+=("$dir")
+        PKG_SPECS["$dir"]=$(cut -f1 <<< "$pkgs")
     else
         echo "   - $rel"
     fi
@@ -104,8 +116,14 @@ fi
 FAILED=()
 for dir in "${TO_UPDATE[@]}"; do
     rel=$(relpath "$dir")
-    info "cargo update in $rel ${CARGO_UPDATE_ARGS[*]:-}"
-    if ! (cd "$dir" && cargo update "${CARGO_UPDATE_ARGS[@]+"${CARGO_UPDATE_ARGS[@]}"}"); then
+    pkg_args=()
+    if [ "$USER_PACKAGES" -eq 0 ]; then
+        while read -r spec; do
+            [ -n "$spec" ] && pkg_args+=(-p "$spec")
+        done <<< "${PKG_SPECS[$dir]}"
+    fi
+    info "cargo update in $rel"
+    if ! (cd "$dir" && cargo update "${pkg_args[@]+"${pkg_args[@]}"}" "${CARGO_UPDATE_ARGS[@]+"${CARGO_UPDATE_ARGS[@]}"}"); then
         err "cargo update failed in $rel"
         FAILED+=("$rel")
     fi
