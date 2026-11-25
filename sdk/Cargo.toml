@@ -3,6 +3,7 @@ name = "zisk-sdk"
 description = "High-level client SDK for proving and verifying programs on the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }

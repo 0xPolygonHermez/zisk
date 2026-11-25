@@ -3,6 +3,7 @@ name = "zisk-frops-analyzer"
 description = "FROPS analyzer for ZisK state machines"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }

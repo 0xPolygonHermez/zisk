@@ -3,6 +3,7 @@ name = "zisk-circuit"
 description = "Gate-circuit builder (gates, pins, expressions) for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }

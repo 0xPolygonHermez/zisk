@@ -3,6 +3,7 @@ name = "zisk-gpu-witness"
 description = "Rust half of the ZisK GPU witness-kernel contract"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }

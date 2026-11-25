@@ -10,6 +10,7 @@ name = "ziskos-hints"
 description = "Guest runtime and entrypoint for programs targeting the ZisK zkVM with the hints feature enabled"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }

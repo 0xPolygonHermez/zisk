@@ -3,6 +3,7 @@ name = "zisk-cluster-api"
 description = "gRPC API layer for the ZisK distributed proving network"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }

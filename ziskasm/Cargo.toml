@@ -7,6 +7,7 @@ name = "zisk-asm"
 description = "Parser and assembler that turns ZisK assembly (.zisk) source into ROMs for the ZisK zkVM"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 keywords.workspace = true

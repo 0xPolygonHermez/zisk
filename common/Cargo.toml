@@ -3,6 +3,7 @@ name = "zisk-common"
 description = "Common utilities and shared types for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }

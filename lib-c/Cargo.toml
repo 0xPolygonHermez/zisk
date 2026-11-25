@@ -3,6 +3,7 @@ name = "zisk-lib-c"
 description = "Rust FFI bindings to C implementations of elliptic-curve and field arithmetic for ZisK"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }

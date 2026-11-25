@@ -3,6 +3,7 @@ name = "zisk-sm-rom"
 description = "ROM state machine for the ZisK proving pipeline"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }

@@ -3,6 +3,7 @@ name = "zisk-setup"
 description = "Version of the ZisK proving key (setup) a build proves against"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }
