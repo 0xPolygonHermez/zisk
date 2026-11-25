@@ -1,6 +1,6 @@
 # Plan: a `dot_bf16` precompile
 
-Status: steps 1–7 are implemented (emulator only), and step 8 has started: the llama2 example runs with BF16 weights and activations (`--weights bf16`), with its results in the [llama2 README](../examples/llama2/README.md#bf16-with-dot_bf16). The reference, `ziskemu` and the assembly emulator pass the guest test program with the same step count, and the assembly emulator's C kernel matches the reference on 300,000 random cases.
+Status: steps 1–7 are implemented (emulator only), and step 8 has started: the llama2 example runs with BF16 weights and activations (`--weights bf16`), with its results in the [llama2 README](../../examples/llama2/README.md#bf16-with-dot_bf16). The reference, `ziskemu` and the assembly emulator pass the guest test program with the same step count, and the assembly emulator's C kernel matches the reference on 300,000 random cases.
 
 ## Goal
 
@@ -19,7 +19,7 @@ The guest passes the address of a parameter block of six `u64`, laid out like `d
 | `x` | address of the first vector, 8-byte aligned |
 | `y` | address of the second vector, 8-byte aligned |
 | `n` | number of values in each vector: a multiple of 4 (4 BF16 per 64-bit word), at most 2^20 |
-| `flags` | 0 for two BF16 vectors; 1 and 2 select MXFP4 or NVFP4 weights in `x` (see [`dot-bf16-fp4-plan.md`](dot-bf16-fp4-plan.md)) |
+| `flags` | 0 for two BF16 vectors; 1 and 2 select MXFP4 or NVFP4 weights in `x` (see [`fp4.md`](fp4.md)) |
 | `block` | values per block, a multiple of 4 dividing `n`; 0 for a single block of `n` values |
 | `out` | when not 0, receives the result of each block as `f32` bits in a `u32` (`n / block` of them), 8-byte aligned |
 

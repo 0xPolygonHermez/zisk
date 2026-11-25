@@ -219,7 +219,7 @@ core/src/operations/dot_bf16.rs
 ziskos/entrypoint/src/syscalls/dot_bf16.rs
 emulator-asm/src/dot_bf16/
 test-artifacts/programs/syscalls/dot_bf16/   # a guest that tests dot_bf16 on both emulators
-docs/dot-bf16-plan.md                # dot_bf16's design, semantics and tests
+precompiles/dot_bf16/                         # dot_bf16's design, semantics and tests, BF16 and FP4
 ```
 
 ## Measured cost
@@ -640,7 +640,7 @@ The `dot_i8` rows of [Cheaper calls and larger groups](#cheaper-calls-and-larger
 
 ### BF16 with `dot_bf16`
 
-Most published models, such as SmolLM2, Qwen3 and Llama 3, are trained and published in BF16: the upper 16 bits of an `f32`, with its range and 8 significant bits. `--weights bf16` runs this model that way, with the experimental `dot_bf16` precompile. Its design, exact semantics and tests are in [`docs/dot-bf16-plan.md`](../../docs/dot-bf16-plan.md).
+Most published models, such as SmolLM2, Qwen3 and Llama 3, are trained and published in BF16: the upper 16 bits of an `f32`, with its range and 8 significant bits. `--weights bf16` runs this model that way, with the experimental `dot_bf16` precompile. Its design, exact semantics and tests are in [`precompiles/dot_bf16/README.md`](../../precompiles/dot_bf16/README.md).
 
 **How the model uses BF16.**
 - **The weights** are the checkpoint's `f32` values rounded to the nearest BF16. There are no groups and no scales: BF16 has the range of `f32`.
@@ -690,7 +690,7 @@ The precompile must give the same bits everywhere: the Rust reference, `ziskemu`
 **In this example**, every BF16 run produced the same tokens on `ziskemu` and natively, with the committed hash matching, and the assembly emulator printed the same tokens with the same step count as `ziskemu`.
 
 **The FP4 variants** (MXFP4 and NVFP4 weights, see [below](#bf16-mxfp4-and-nvfp4-compared)) were tested the same way:
-- 13 more reference tests, from [`docs/dot-bf16-fp4-plan.md`](../../docs/dot-bf16-fp4-plan.md): the scales applied, cancellation at the top of the range, underflow, overflow, one scale per block, block results, NaN scales, BF16 specials, a tie across blocks, NVFP4's fractional, largest, smallest and negative scales, 5,000 random rows per format against an exact `i128` oracle, the order of the blocks, and every value with every scale (2 × 16 × 256).
+- 13 more reference tests, from [`precompiles/dot_bf16/fp4.md`](../../precompiles/dot_bf16/fp4.md): the scales applied, cancellation at the top of the range, underflow, overflow, one scale per block, block results, NaN scales, BF16 specials, a tie across blocks, NVFP4's fractional, largest, smallest and negative scales, 5,000 random rows per format against an exact `i128` oracle, the order of the blocks, and every value with every scale (2 × 16 × 256).
 - The guest test program gained them, plus random rows of 2,880 values (90 MXFP4 blocks, 180 NVFP4 blocks) with a partial last word of scales: 35 calls in all, passing on `ziskemu` and the assembly emulator (fast and minimal trace) with the same 3,307,716 steps.
 - The C routine's cross-check now covers all three variants: 450,000 cases, 150,000 of each, with 0 mismatches. It fills the bytes after the scales with `0xFF`, which must be ignored. Two broken copies, with an FP4 product position off by one, gave 101,198 and 112,928 mismatches. It is now in the repository: [`emulator-asm/tests/dot_bf16/run.sh`](../../emulator-asm/tests/dot_bf16/run.sh).
 
@@ -732,7 +732,7 @@ Where the cost of the `dot_bf16` run goes: the precompile 25% (its estimated cos
 
 ### BF16, MXFP4 and NVFP4 compared
 
-Most published models are BF16, and the FP4 ones are MXFP4 or NVFP4. All three run through the `dot_bf16` precompile: `flags` = 1 and 2 select MXFP4 or NVFP4 weights, with BF16 activations, as these models usually run. The design is in [`docs/dot-bf16-fp4-plan.md`](../../docs/dot-bf16-fp4-plan.md); how it was tested is [above](#how-dot_bf16-was-tested).
+Most published models are BF16, and the FP4 ones are MXFP4 or NVFP4. All three run through the `dot_bf16` precompile: `flags` = 1 and 2 select MXFP4 or NVFP4 weights, with BF16 activations, as these models usually run. The design is in [`precompiles/dot_bf16/fp4.md`](../../precompiles/dot_bf16/fp4.md); how it was tested is [above](#how-dot_bf16-was-tested).
 
 ```bash
 cargo run --release --bin llama2-zisk -- --ziskemu ../../../target/release/ziskemu \
@@ -824,7 +824,7 @@ Every token reads all the weights, so a 1 B-parameter BF16 model does about 1 G 
 3. **Make `dot_f8` provable.** It needs a state machine (the PIL, witness generation, the memory inputs and the planner), as described in the [`mlp` README](../mlp/README.md#dot-product-precompile), with one 256-entry decoding table per format as a lookup. That would also replace the estimated costs above with measured ones.
 4. **Faster float formats on the assembly emulator**, with SIMD decoding: for example `pshufb` on the 16 FP4 codes, or a gather on the FP8 table.
 5. **Run a model published in FP8 or FP4**, to measure the formats with weights trained for them.
-6. **A BF16 model:** SmolLM2-135M, then Qwen3-0.6B, which fit in ZisK's 2 GB input region (see [`docs/dot-bf16-plan.md`](../../docs/dot-bf16-plan.md)). They use the same `dot_bf16` path, with a loader for their checkpoints and tokenizers.
+6. **A BF16 model:** SmolLM2-135M, then Qwen3-0.6B, which fit in ZisK's 2 GB input region (see [`precompiles/dot_bf16/README.md`](../../precompiles/dot_bf16/README.md)). They use the same `dot_bf16` path, with a loader for their checkpoints and tokenizers.
 7. **Sketch `dot_bf16`'s state machine**, to replace its placeholder cost: the exact accumulator is the expensive part, and MXFP4 and NVFP4 add their decoding to it.
 8. **A model published in MXFP4 or NVFP4** that fits in 2 GB, to measure FP4 with weights trained or calibrated for it. NVFP4's tensor scale could also move into fixed point (see above).
 9. **Bind the model** in the commitment with a hash of the blob, using the SHA-256 or Keccak precompile. Storing the fixed-point scales in the blob would also remove their conversion when loading.

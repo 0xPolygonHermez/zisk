@@ -1,6 +1,6 @@
 # Plan: MXFP4 and NVFP4 weights with BF16 activations in `dot_bf16`
 
-Status: implemented for both formats, MXFP4 (`flags` = 1) and NVFP4 (`flags` = 2), emulator only, as described below. It extends the `dot_bf16` precompile described in [`dot-bf16-plan.md`](dot-bf16-plan.md). The results on the llama2 example, and a comparison of BF16, MXFP4 and NVFP4, are in the [llama2 README](../examples/llama2/README.md#bf16-mxfp4-and-nvfp4-compared).
+Status: implemented for both formats, MXFP4 (`flags` = 1) and NVFP4 (`flags` = 2), emulator only, as described below. It extends the `dot_bf16` precompile described in [`README.md`](README.md). The results on the llama2 example, and a comparison of BF16, MXFP4 and NVFP4, are in the [llama2 README](../../examples/llama2/README.md#bf16-mxfp4-and-nvfp4-compared).
 
 ## Goal
 
@@ -133,7 +133,7 @@ The `test-artifacts/programs/syscalls/dot_bf16` guest gains these cases through 
 
 ### Cross-check of the C kernel
 
-The random-case generator and checker now cover all three variants, including NaN scales, and fill the bytes after the scales with `0xFF` to check that they are ignored. They are in the repository: [`emulator-asm/tests/dot_bf16/run.sh`](../emulator-asm/tests/dot_bf16/run.sh).
+The random-case generator and checker now cover all three variants, including NaN scales, and fill the bytes after the scales with `0xFF` to check that they are ignored. They are in the repository: [`emulator-asm/tests/dot_bf16/run.sh`](../../emulator-asm/tests/dot_bf16/run.sh).
 
 ## Open questions
 

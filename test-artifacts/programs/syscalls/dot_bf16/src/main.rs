@@ -1,6 +1,6 @@
-//! Tests the experimental dot_bf16 precompile (emulator only, see docs/dot-bf16-plan.md): the
-//! basic cases of the plan, with their exact expected results, then longer random vectors with
-//! blocks, checked against the reference semantics computed in software in the guest.
+//! Tests the experimental dot_bf16 precompile (emulator only, see precompiles/dot_bf16/README.md):
+//! the basic cases of the plan, with their exact expected results, then longer random vectors
+//! with blocks, checked against the reference semantics computed in software in the guest.
 //!
 //! Not registered as a test-artifacts feature: no state machine proves dot_bf16 yet, so the
 //! program only runs on ziskemu.
@@ -73,7 +73,7 @@ impl Rng {
 }
 
 fn main() {
-    // The basic tests of docs/dot-bf16-plan.md, numbered as there
+    // The basic tests of precompiles/dot_bf16/README.md, numbered as there
     assert_eq!(dot4([ONE, TWO, 0x4040, 0x4080], [ONE; 4]), 0x4120_0000, "1: 1+2+3+4");
     assert_eq!(dot4([pow2(100), ONE, neg(pow2(100)), 0], [ONE, ONE, ONE, 0]), 0x3f80_0000, "2");
     assert_eq!(dot4([ONE, pow2(-24), 0, 0], [ONE, ONE, 0, 0]), 0x3f80_0000, "3");
@@ -168,7 +168,7 @@ fn fp4_tests(r: &mut Rng) {
     const NV: u64 = DOT_BF16_FLAGS_NVFP4;
     let ones = Aligned([ONE; 64]);
 
-    // The basic tests of docs/dot-bf16-fp4-plan.md, numbered as there
+    // The basic tests of precompiles/dot_bf16/fp4.md, numbered as there
     let c = codes_at_start(32, &[E2M1_1, E2M1_2, E2M1_3, E2M1_4]);
     assert_eq!(dot_fp4(MX, &c[..32], &[e8m0(0)], &ones.0[..32], 0, None), 0x4120_0000, "fp4 1");
     assert_eq!(dot_fp4(MX, &c[..32], &[e8m0(-3)], &ones.0[..32], 0, None), 0x3fa0_0000, "fp4 2");

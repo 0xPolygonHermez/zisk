@@ -1,4 +1,5 @@
-//! Reference semantics of the experimental `dot_bf16` precompile (see `docs/dot-bf16-plan.md`).
+//! Reference semantics of the experimental `dot_bf16` precompile (see
+//! `precompiles/dot_bf16/README.md`).
 //!
 //! A BF16 value is 1 sign bit, 8 exponent bits (bias 127) and 7 mantissa bits: the upper half of
 //! an `f32`. `dot_bf16` computes `Σ x[i]·y[i]` over two BF16 vectors **exactly**, then rounds the
@@ -402,7 +403,7 @@ mod tests {
         assert_eq!(bf(10.0), 0x4120);
     }
 
-    // The basic tests of docs/dot-bf16-plan.md, numbered as there.
+    // The basic tests of precompiles/dot_bf16/README.md, numbered as there.
 
     #[test]
     fn t01_simple_sum() {
@@ -652,7 +653,7 @@ mod tests {
         dot_bf16_fp4_reference(flags, &pack(x), scales, y, x.len(), 0, None)
     }
 
-    // The basic tests of docs/dot-bf16-fp4-plan.md, numbered as there.
+    // The basic tests of precompiles/dot_bf16/fp4.md, numbered as there.
 
     #[test]
     fn fp4_01_basic() {

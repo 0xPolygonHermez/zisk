@@ -1,6 +1,6 @@
 //! `dot_bf16`: exact dot product of two BF16 vectors, rounded once to `f32` (experimental,
 //! emulator only). The semantics are in `zisk_definitions::dot_bf16` and in
-//! `docs/dot-bf16-plan.md`.
+//! `precompiles/dot_bf16/README.md`.
 //!
 //! `b` is the address of a parameter block of six `u64` (`SyscallDotBf16Params` in ziskos):
 //!
