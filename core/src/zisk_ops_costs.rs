@@ -5,7 +5,7 @@
 /// - any cost in this file, or in `emulator/src/emu_costs.rs` (memory, main, rom, tables, ...),
 /// - the way costs are accumulated (what is charged for an operation, a memory access, ...),
 /// - the FROPS (frequent operations) tables or the way they are evaluated.
-pub const ZISK_COSTS_VERSION: u32 = 2;
+pub const ZISK_COSTS_VERSION: u32 = 3;
 
 // Cost definitions: Area x Op
 //
@@ -21,19 +21,19 @@ pub const ARITHAM32_COST: u64 = 97;
 pub const KECCAK_COST: u64 = (615 * 135_u64).div_ceil(2); // 135 clocks per slot of 2 Keccak-f
 pub const SHA256_COST: u64 = 72 * 122;
 pub const POSEIDON_COST: u64 = 14 * 392;
-pub const ARITH_EQ_COST: u64 = 90 * 16; // ArithEq (all equations), only air proving secp256r1
-pub const ARITH_256_COST: u64 = 54 * 16; // Arith256X (arith256, arith256_mod)
-pub const ARITH_SECP256K1_COST: u64 = 72 * 16; // ArithSecp256K1
-pub const ARITH_BN254_COST: u64 = 78 * 16; // ArithBn254 (curve and complex ops)
+pub const ARITH_EQ_COST: u64 = 91 * 16; // ArithEq (all equations), only air proving secp256r1
+pub const ARITH_256_COST: u64 = 55 * 16; // Arith256X (arith256, arith256_mod)
+pub const ARITH_SECP256K1_COST: u64 = 73 * 16; // ArithSecp256K1
+pub const ARITH_BN254_COST: u64 = 79 * 16; // ArithBn254 (curve and complex ops)
 pub const FCALL_COST: u64 = INTERNAL_COST;
 pub const ARITH_EQ_384_COST: u64 = 80 * 24;
-pub const ADD256_COST: u64 = 104;
+pub const ADD256_COST: u64 = 108;
 pub const TWISTED_EDWARDS_COST: u64 = 109 * 16;
-pub const BLAKE2B_COST: u64 = 8 * 233;
+pub const BLAKE2B_COST: u64 = 8 * 266;
 pub const BLAKE3_COST: u64 = (56 * 221_u64).div_ceil(2); // 2 lanes
 pub const BLAKE2S_COST: u64 = 80 * 115;
 pub const POSEIDON2_KOALABEAR_COST: u64 = 30 * 499;
-pub const MAIN_COST: u64 = 245_u64.div_ceil(4); // Main (4 lanes)
+pub const MAIN_COST: u64 = 241_u64.div_ceil(4); // Main (4 lanes)
 
 // Zba costs. sh<n>add and slli.uw are proven natively (a single Binary / BinaryExtension
 // operation); the .uw shift-and-adds are transpiled to `and` + native sh<n>add, and add.uw to
@@ -65,13 +65,13 @@ pub const SLL_U_W_COST: u64 = BINARY_E_COST; // native slli.uw: a single binary 
 // Costs for DMA
 
 // A single Dma instance (all operations enabled) proves every DMA operation, so all pay its row.
-pub const DMA_COST: u64 = 63;
+pub const DMA_COST: u64 = 67;
 pub const DMA_INPUTCPY_COST: u64 = DMA_COST;
 pub const DMA_MEMCMP_COST: u64 = DMA_COST;
 pub const DMA_MEMCPY_COST: u64 = DMA_COST;
 pub const DMA_MEMSET_COST: u64 = DMA_COST;
 // Cost for computing the jumpdest bitmap of 1 64-bit source word: one op of JumpDest (2 ops x row)
-pub const JUMP_DEST_COST: u64 = 66_u64.div_ceil(2);
+pub const JUMP_DEST_COST: u64 = 68_u64.div_ceil(2);
 
 // Costs for DMA PrePost (a single instance proves every operation)
 
@@ -83,28 +83,28 @@ pub const DMA_PRE_POST_MEMSET_COST: u64 = DMA_PRE_POST_COST;
 
 // Costs for DMA 64-bits aligned loops
 
-pub const DMA_64_ALIGNED_COST: u64 = 77;
+pub const DMA_64_ALIGNED_COST: u64 = 79;
 pub const DMA_64_ALIGNED_DIVISOR: u64 = 4;
 
 // Only the general airs (Dma64Aligned, Dma64AlignedLarge) prove an input copy.
 pub const DMA_64_ALIGNED_INPUTCPY_COST: u64 = DMA_64_ALIGNED_COST;
 pub const DMA_64_ALIGNED_INPUTCPY_DIVISOR: u64 = DMA_64_ALIGNED_DIVISOR;
 
-pub const DMA_64_ALIGNED_MEM_COST: u64 = 50;
+pub const DMA_64_ALIGNED_MEM_COST: u64 = 52;
 pub const DMA_64_ALIGNED_MEM_DIVISOR: u64 = 4;
 
 pub const DMA_64_ALIGNED_MEMCMP_COST: u64 = DMA_64_ALIGNED_MEM_COST;
 pub const DMA_64_ALIGNED_MEMCMP_DIVISOR: u64 = DMA_64_ALIGNED_MEM_DIVISOR;
 
-pub const DMA_64_ALIGNED_MEMCPY_COST: u64 = 67;
+pub const DMA_64_ALIGNED_MEMCPY_COST: u64 = 69;
 pub const DMA_64_ALIGNED_MEMCPY_DIVISOR: u64 = 8;
 
-pub const DMA_64_ALIGNED_MEMSET_COST: u64 = 35;
+pub const DMA_64_ALIGNED_MEMSET_COST: u64 = 36;
 pub const DMA_64_ALIGNED_MEMSET_DIVISOR: u64 = 8;
 
 // Costs for DMA unaligned loops
 
-pub const DMA_UNALIGNED_COST: u64 = 42;
+pub const DMA_UNALIGNED_COST: u64 = 44;
 pub const DMA_UNALIGNED_INPUTCPY_COST: u64 = DMA_UNALIGNED_COST;
 pub const DMA_UNALIGNED_MEMCMP_COST: u64 = DMA_UNALIGNED_COST;
 pub const DMA_UNALIGNED_MEMCPY_COST: u64 = DMA_UNALIGNED_COST;

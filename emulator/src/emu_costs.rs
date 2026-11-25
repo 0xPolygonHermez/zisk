@@ -25,13 +25,13 @@ pub const MEM_ALIGN_WRITE_UNALIGNED_2_COST: u64 = MEM_ALIGN_COST * 5;
 pub const ROM_READ_COST: u64 = 22_u64.div_ceil(2); // RomData (2 lanes)
 pub const ROM_INIT_COST: u64 = ROM_READ_COST;
 
-pub const INPUT_READ_COST: u64 = 29;
+pub const INPUT_READ_COST: u64 = 33;
 
 pub const ROM_COST: usize = 16 << 22;
-pub const TABLES_COST: usize = (65 + 39) << 21; // VirtualTableZisk1 + VirtualTableZisk0
+pub const TABLES_COST: usize = (70 + 39) << 21; // VirtualTableZisk1 + VirtualTableZisk0
 pub const BASE_COST: usize = ROM_COST + TABLES_COST;
 
-pub const MAIN_COST: u64 = 245_u64.div_ceil(4); // Main (4 lanes)
+pub const MAIN_COST: u64 = 241_u64.div_ceil(4); // Main (4 lanes)
 
 /// Reduced cost of an ADD that can be proven by BinaryAddHi (hi32(a)=hi32(c)=0, hi32(b) all-0 or
 /// all-1). Cheaper than the regular ADD (BINARY_ADD_COST = 21). Used for the add_hi breakdown.

@@ -9,8 +9,9 @@ cheapest one and **Max** the most expensive one among those able to prove it.
 Constants live in `core/src/zisk_ops_costs.rs` (opcodes) and `emulator/src/emu_costs.rs` (memory,
 main, base).
 
-Cost model version: `ZISK_COSTS_VERSION = 2`. It must be increased whenever these costs, the way
-they are accumulated, or the FROPS change.
+Cost model version: `ZISK_COSTS_VERSION = 3`. It must be increased whenever these costs, the way
+they are accumulated, or the FROPS change. The tables below are the version 2 ones; the constants
+that version 3 changed are listed in [Version 3](#version-3-33-bit-addresses).
 
 ## Main and standard operations
 
@@ -101,3 +102,33 @@ dual operation cost (22): read ⌈22 × 0.5⌉ = 11, write ⌈22 × 0.8⌉ = 18.
   direct `a`/`b` calls and the ones that still use a parameter struct (arith256, arith256_mod,
   arith384_mod, add256). Keccak now uses `ops_keccak` (25 reads + 25 writes); before it charged no
   memory.
+
+## Version 3: 33-bit addresses
+
+Totals of the setup with 33-bit addresses. Only the constants that changed are listed; the rule and
+the accumulation are the ones of version 2.
+
+| Cost | Instances (Total / ops x row) | Version 2 | Version 3 |
+|---|---|---:|---:|
+| `MAIN_COST` (per step) | Main 241/4 | 62 | **61** |
+| `BLAKE2B_COST` (per round) | Blake2br 266 × 8 | 1,864 | **2,128** |
+| `ARITH_256_COST` | Arith256X 55 × 16 | 864 | **880** |
+| `ARITH_SECP256K1_COST` | ArithSecp256K1 73 × 16 | 1,152 | **1,168** |
+| `ARITH_BN254_COST` | ArithBn254 79 × 16 | 1,248 | **1,264** |
+| `ARITH_EQ_COST` | ArithEq 91 × 16 | 1,440 | **1,456** |
+| `ADD256_COST` | Add256 108 | 104 | **108** |
+| `JUMP_DEST_COST` (per 64-bit source word) | JumpDest 68/2 | 33 | **34** |
+| `DMA_COST` (all Dma operations) | Dma 67 | 63 | **67** |
+| `DMA_64_ALIGNED_COST` / DIVISOR | Dma64Aligned/Large 79/4 | 77 / 4 | **79 / 4** |
+| `DMA_64_ALIGNED_MEM_COST` / DIVISOR | Dma64AlignedMem/MemLarge 52/4 | 50 / 4 | **52 / 4** |
+| `DMA_64_ALIGNED_MEMCPY_COST` / DIVISOR | Dma64AlignedMemCpy 69/8 | 67 / 8 | **69 / 8** |
+| `DMA_64_ALIGNED_MEMSET_COST` / DIVISOR | Dma64AlignedMemSet 36/8 | 35 / 8 | **36 / 8** |
+| `DMA_UNALIGNED_COST` | DmaUnaligned 44 | 42 | **44** |
+| `INPUT_READ_COST` | InputData 33/1 | 29 | **33** |
+| `TABLES_COST` | VirtualTableZisk1 70 + VirtualTableZisk0 39, × 2²¹ | 104 << 21 | **109 << 21** |
+
+The hash and curve precompiles that keep their step and addresses in a `step_addr` column (Keccakf,
+Sha256f, Poseidon, Poseidon2KoalaBear, Blake2s, Blake3f, ArithEq384, TwistedEdwards) store the high
+bit of each address in a free row of that column, so their totals and costs are the ones of version
+2. Blake2br does the same; its total had already changed before version 3.
+
