@@ -28,7 +28,12 @@ const MAGIC: &[u8; 4] = b"ZKRM";
 /// Container format version. 2: r32..r39 are main-trace registers (`SRC_REG` /
 /// `STORE_REG`), where version 1 ROMs address them as RAM. 3: the IDs of the zkvmcalls
 /// the guest uses follow the data sections, and nothing may follow them. 4: flag f23
-/// marks a write_log call site. See ziskbin.md §8.
+/// marks a write_log call site. 5 (`sp` feature only): flags f24 (`set_sp`) and f25
+/// (`inc_sp`) carry the sp register update; a build without the feature stays at 4, whose
+/// format is version 5 minus those two flags. See ziskbin.md §8.
+#[cfg(feature = "sp")]
+const VERSION: u8 = 5;
+#[cfg(not(feature = "sp"))]
 const VERSION: u8 = 4;
 /// Private ELF machine id marking a ziskbin ELF ("ZK").
 pub const EM_ZISK: u16 = 0x5a4b;
@@ -133,9 +138,15 @@ impl<'a> Reader<'a> {
 /// Flag-bitmap width in bytes. The format defines f0..f27 (ziskbin.md §5.4) at
 /// 7 flags per byte, so the bitmap is at most 4 bytes; there is no fifth flag byte.
 const FLAG_BYTES: u32 = 4;
-/// Flags the format assigns a meaning: f0..f23. f24..f27 are reserved (ziskbin.md
-/// §5.4) and, being unassigned, carry no payload -- see `read_flags`.
+/// Flags the format assigns a meaning: f0..f25 (f0..f23 without the `sp` feature). The
+/// rest, up to f27, are reserved (ziskbin.md §5.4) and, being unassigned, carry no payload
+/// -- see `read_flags`.
+#[cfg(feature = "sp")]
+const FLAG_DEFINED_MASK: u32 = (1 << 26) - 1;
+#[cfg(not(feature = "sp"))]
 const FLAG_DEFINED_MASK: u32 = (1 << 24) - 1;
+/// The first reserved flag, for error messages.
+const FIRST_RESERVED_FLAG: u32 = FLAG_DEFINED_MASK.count_ones();
 
 /// Writes the 7-bits-per-byte flag bitmap (bit 7 = continuation).
 fn put_flags(out: &mut Vec<u8>, flags: u32) {
@@ -178,7 +189,8 @@ fn read_flags(r: &mut Reader) -> Result<u32, String> {
     let undefined = flags & !FLAG_DEFINED_MASK;
     if undefined != 0 {
         return Err(format!(
-            "ziskbin: reserved flag bits set (0x{undefined:08x}); f24..f27 are reserved"
+            "ziskbin: reserved flag bits set (0x{undefined:08x}); f{FIRST_RESERVED_FLAG}..f27 are \
+             reserved"
         ));
     }
     Ok(flags)
@@ -286,6 +298,15 @@ fn encode_inst(i: &ZiskInst, out: &mut Vec<u8>) {
     if i.write_log {
         bit!(23);
     }
+    #[cfg(feature = "sp")]
+    if i.set_sp {
+        bit!(24);
+    }
+    #[cfg(feature = "sp")]
+    if i.inc_sp != 0 {
+        bit!(25);
+        put_svarint(&mut pay, i.inc_sp);
+    }
 
     put_flags(out, flags);
     out.extend_from_slice(&pay);
@@ -383,6 +404,13 @@ fn decode_inst(r: &mut Reader, paddr: u64) -> Result<ZiskInst, String> {
         i.write_log = true;
         i.func = crate::opc_write_log;
     }
+    #[cfg(feature = "sp")]
+    {
+        i.set_sp = has(24);
+        if has(25) {
+            i.inc_sp = r.svarint()?;
+        }
+    }
 
     Ok(i)
 }
@@ -457,9 +485,18 @@ pub fn decode_rom(blob: &[u8]) -> Result<ZiskRom, String> {
     }
     let version = r.u8()?;
     if version != VERSION {
+        // Version 5 is version 4 plus the sp flags, which only a build with `sp` reads.
+        let hint = match (version, cfg!(feature = "sp")) {
+            (5, false) => {
+                "; it uses the sp register, so read it with a build that enables \
+                           the `sp` feature"
+            }
+            (4, true) => "; or read it with a build without the `sp` feature",
+            _ => "",
+        };
         return Err(format!(
             "ziskbin: unsupported version {version} (this build reads version {VERSION}); \
-             rebuild the program with `zisk2zisk --elf`"
+             rebuild the program with `zisk2zisk --elf`{hint}"
         ));
     }
     let _profile = r.u8()?;
@@ -623,6 +660,20 @@ pub fn ziskbin2rom(elf: &[u8]) -> Result<Option<ZiskRom>, String> {
 mod tests {
     use super::*;
 
+    /// Signed fields (offsets, `incsp(N)`) take any i64, the extremes included. `v << 1` only
+    /// panics for a shift amount of 64 or more, never for bits shifted out, so the zig-zag
+    /// encoding is exact for `i64::MIN` even in debug builds.
+    #[test]
+    fn svarint_round_trips_the_i64_extremes() {
+        for v in [i64::MIN, i64::MIN + 1, -1, 0, 1, i64::MAX - 1, i64::MAX] {
+            let mut out = Vec::new();
+            put_svarint(&mut out, v);
+            let mut r = Reader::new(&out);
+            assert_eq!(r.svarint().unwrap(), v);
+            assert_eq!(r.pos, out.len());
+        }
+    }
+
     /// Populates the opcode-derived fields, mirroring what the builder/decoder do,
     /// so a hand-built sample matches a real assembled ROM.
     fn derive(i: &mut ZiskInst) {
@@ -687,7 +738,12 @@ mod tests {
         assert_eq!(a.store, b.store);
         assert_eq!(a.store_offset, b.store_offset);
         assert_eq!(a.store_pc, b.store_pc);
+        assert_eq!(a.store_use_sp, b.store_use_sp);
         assert_eq!(a.set_pc, b.set_pc);
+        #[cfg(feature = "sp")]
+        assert_eq!(a.set_sp, b.set_sp);
+        #[cfg(feature = "sp")]
+        assert_eq!(a.inc_sp, b.inc_sp);
         assert_eq!(a.ind_width, b.ind_width);
         assert_eq!(a.end, b.end);
         assert_eq!(a.jmp_offset1, b.jmp_offset1);
@@ -820,16 +876,54 @@ mod tests {
 
     #[test]
     fn rejects_reserved_flag_bits() {
-        // f24..f27 are reserved and carry no payload, so a decoder that ignored them
-        // would read the next instruction's bytes as this one's fields. f24 is bit 3
-        // of flag byte 3.
+        // Reserved flags carry no payload, so a decoder that ignored them would read the
+        // next instruction's bytes as this one's fields. The first reserved flag is f26
+        // (bit 5 of flag byte 3) with the `sp` feature, f24 (bit 3) without it.
         let mut blob = blob_header(1, 0, 0);
         put_uvarint(&mut blob, 0x1000);
         blob.push(0);
-        blob.extend_from_slice(&[0x80, 0x80, 0x80, 0x08]); // f24 set, terminated
+        let first_reserved = 1u8 << (FIRST_RESERVED_FLAG - 21);
+        blob.extend_from_slice(&[0x80, 0x80, 0x80, first_reserved]); // terminated
 
         let err = decode_rom(&blob).unwrap_err();
         assert!(err.contains("reserved flag bits set"), "{err}");
+    }
+
+    /// An instruction using every sp field: sp-relative a, b (indirect) and store, plus
+    /// set_sp and a negative inc_sp (f24, f25)
+    #[cfg(feature = "sp")]
+    fn sp_inst() -> ZiskInst {
+        let mut i = ZiskInst {
+            paddr: crate::mem::ROM_ADDR + 8,
+            op: ZiskOp::Add.code(),
+            ..Default::default()
+        };
+        derive(&mut i);
+        i.a_src = crate::SRC_MEM;
+        i.a_offset_imm0 = (-16_i64) as u64;
+        i.a_use_sp_imm1 = 1;
+        i.b_src = crate::SRC_IND;
+        i.b_offset_imm0 = 8;
+        i.b_use_sp_imm1 = 1;
+        i.ind_width = 4;
+        i.store = crate::STORE_MEM;
+        i.store_offset = -24;
+        i.store_use_sp = true;
+        i.set_sp = true;
+        i.inc_sp = -32;
+        i
+    }
+
+    #[cfg(feature = "sp")]
+    #[test]
+    fn sp_fields_round_trip() {
+        let mut rom = sample_rom();
+        let i = sp_inst();
+        let addr = i.paddr;
+        rom.insts.insert(addr, ZiskInstBuilder { i });
+        let decoded = decode_rom(&encode_rom(&rom)).unwrap();
+        assert_inst_eq(&decoded.insts[&addr].i, &rom.insts[&addr].i);
+        assert!(decoded.insts[&addr].i.uses_sp());
     }
 
     /// A write_log call site: a `flag` marked write_log, whose `func` prints
@@ -849,11 +943,13 @@ mod tests {
 
     #[test]
     fn accepts_the_full_defined_flag_range() {
-        // f23 is the highest assigned flag and sits in the 4th byte, so a legitimate
+        // f23 (f25 with `sp`) is the highest assigned flag and sits in the 4th byte, so a legitimate
         // 4-byte bitmap must still decode.
         let mut rom = sample_rom();
         let site = write_log_site();
         rom.insts.insert(site.paddr, ZiskInstBuilder { i: site });
+        #[cfg(feature = "sp")]
+        rom.insts.insert(crate::mem::ROM_ADDR + 8, ZiskInstBuilder { i: sp_inst() });
         let decoded = decode_rom(&encode_rom(&rom)).unwrap();
         for (addr, zib) in &rom.insts {
             assert_inst_eq(&decoded.insts[addr].i, &zib.i);

@@ -146,6 +146,15 @@ fn emit_inst(paddr: u64, i: &ZiskInst) -> Result<String, String> {
             i.op_str, i.op
         ));
     }
+    // The Lean model has sp-relative operands but no sp update: reject the instruction
+    // rather than silently drop it.
+    #[cfg(feature = "sp")]
+    if i.set_sp || i.inc_sp != 0 {
+        return Err(format!(
+            "sp update (setsp={}, incsp={}) is not in the zisk-sw-fv model",
+            i.set_sp, i.inc_sp
+        ));
+    }
     Ok(format!(
         "    (0x{:x}, {{ op := .{}, aSrc := {}, bSrc := {}, store := {}, \
          storePc := {}, setPc := {}, indWidth := {}, \
@@ -490,4 +499,35 @@ fn main() {
         process::exit(1);
     });
     println!("wrote {out} ({} instructions)", rom.insts.len());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zisk_core::ZiskInstBuilder;
+
+    fn copyb(update: impl FnOnce(&mut ZiskInstBuilder)) -> ZiskInst {
+        let mut b = ZiskInstBuilder::new(0x1000);
+        b.src_a("imm", 0, false);
+        b.src_b("mem", 8, true);
+        b.store("reg", 5, false, false);
+        b.op("copyb").unwrap();
+        update(&mut b);
+        b.i
+    }
+
+    #[test]
+    fn sp_relative_operands_are_exported() {
+        let line = emit_inst(0x1000, &copyb(|_| {})).expect("sp-relative operand");
+        assert!(line.contains("(.mem 0x8 true)"), "{line}");
+    }
+
+    #[cfg(feature = "sp")]
+    #[test]
+    fn sp_updates_are_rejected() {
+        let err = emit_inst(0x1000, &copyb(|b| b.inc_sp(8))).unwrap_err();
+        assert!(err.contains("sp update"), "{err}");
+        let err = emit_inst(0x1000, &copyb(|b| b.set_sp())).unwrap_err();
+        assert!(err.contains("sp update"), "{err}");
+    }
 }
