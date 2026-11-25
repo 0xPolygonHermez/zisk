@@ -202,7 +202,8 @@ mod tests {
 
     #[test]
     fn a_keccak_xor_row_carries_the_block_and_the_xored_state() {
-        let state: [u64; LANES] = core::array::from_fn(|i| 0x1111_2222_3333_4444 * (i as u64 + 1));
+        let state: [u64; LANES] =
+            core::array::from_fn(|i| 0x1111_2222_3333_4444_u64.wrapping_mul(i as u64 + 1));
         let block: [u64; KECCAKF_XOR_LANES] =
             core::array::from_fn(|i| 0xfedc_ba98_7654_3210 ^ (i as u64) << 17);
         let mut input = KeccakfInput::permutation(5, 0xc100_0000, state, 0);
