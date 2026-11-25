@@ -27,3 +27,7 @@ wat = { workspace = true }
 [features]
 default = []
 float = ["zisk-riscv/float", "zisk-core/float"]
+# Lower the wasm frame onto the ZisK `sp` register (emulation only: the prover does not support
+# sp yet). Frame slots become `[sp + off]` operands that any instruction can read or write, so
+# operators work on them without loading them into registers first.
+sp = ["zisk-core/sp"]

@@ -823,9 +823,11 @@ requires `_start` to do this, and the linker script's `KEEP`'d `.init_array` is
 inert without it. Verified with a guest carrying two constructors and two
 destructors: the emitted order is `01 02 5A 82 81`.
 
-There is a **single** guest linker script, `ziskbuild/zisk_linker_script.ld`
+There is a **single** guest memory layout, `ziskbuild/zisk_linker_script.ld`
 (embedded for Rust guests via `ZISK_LINKER_SCRIPT`, and referenced directly by the C
-example). It sets `ENTRY(_start)` and lays out clean W^X segments via `PHDRS`:
+example). It links for 512 MB of RAM, what a prover reserves by default;
+`zisk_linker_script_ram2gb.ld` sets the RAM to 2 GB (a prover built with `ram_2gb`,
+`cargo-zisk build --ram-2gb`) and includes it, so the heap end is the only difference. It sets `ENTRY(_start)` and lays out clean W^X segments via `PHDRS`:
 `text FLAGS(1)` — **execute-only**, the form ZisK prefers for performance and the
 stricter of the two the standard permits — with `rodata` `FLAGS(4)` and `data`/`bss`
 `FLAGS(6)`, and it KEEPs `.init_array`/`.fini_array` for C++ ctors/dtors.
@@ -849,6 +851,7 @@ cross toolchain file (`zisk-guest-toolchain.cmake`) and stages it:
 dist/include/{zisklib.h,zkvm_accelerators.h,zkvm_io.h,zkvm_random.h,zkvm_u256.h}
 dist/lib/libzisklib_c.a
 dist/share/zisk/zisk_linker_script.ld
+dist/share/zisk/zisk_linker_script_ram2gb.ld
 ```
 
 The archive and the script are installed together because the archive's `_start`

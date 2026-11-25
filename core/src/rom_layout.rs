@@ -6,7 +6,7 @@
 
 use crate::{
     DataSection, ZiskInst, ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, INPUT_ADDR,
-    MAX_INPUT_SIZE, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, RAM_ADDR, ROM_ENTRY, ROM_EXIT,
+    MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, RAM_ADDR, ROM_ENTRY, ROM_EXIT,
 };
 
 #[cfg(feature = "float")]
@@ -29,27 +29,17 @@ const ENTRY_EXIT_JMP_ADDR: u64 = ROM_ENTRY + 4 * 68;
 #[cfg(not(feature = "float"))]
 const ENTRY_EXIT_JMP_ADDR: u64 = ROM_ENTRY + 4 * 2;
 
-/// Distance between the input reads the BIOS does at the end of the execution: the largest
-/// distance between consecutive addresses of a Mem AIR segment, whose `delta_addr - 1` is range
-/// checked to 24 bits (state-machines/mem/pil/mem.pil), i.e. 2^24 words of 8 bytes = 128MB.
-const INPUT_ANCHOR_STEP: u64 = (1 << 24) * 8;
-
-/// Number of BIOS input reads, at `INPUT_ADDR + k * INPUT_ANCHOR_STEP` for k = 1.., so that any two
-/// consecutive input addresses accessed are never more than `INPUT_ANCHOR_STEP` apart, however
-/// sparsely the program reads the input. `INPUT_ADDR` itself (k = 0) is the free input.
-const INPUT_ANCHOR_READS: u64 = MAX_INPUT_SIZE / INPUT_ANCHOR_STEP - 1;
-
-const _: () = assert!(
-    MAX_INPUT_SIZE % INPUT_ANCHOR_STEP == 0,
-    "MAX_INPUT_SIZE must be a multiple of the BIOS input read step"
-);
-
 /// ROM address of the ecall trap handler that [`add_entry_exit_jmp`] stores in MTVEC: after the 13
-/// setup and output instructions, the input reads and the jump to the end.
+/// setup and output instructions and the jump to the end.
+///
+/// The BIOS does not read the input: the InputData air checks the distance between consecutive
+/// input addresses as two 16-bit chunks (state-machines/mem/pil/mem.pil), so however sparsely
+/// the program reads the input, nothing has to bridge the gaps. The BIOS is thus the same
+/// whatever input size the executors reserve (`MAX_INPUT_SIZE`).
 ///
 /// It depends on this crate's `float` feature, which selects the BIOS layout, so code that jumps
 /// to the handler directly must use this constant rather than derive it from its own features.
-pub const ECALL_HANDLER_ADDR: u64 = ENTRY_EXIT_JMP_ADDR + 4 * (13 + INPUT_ANCHOR_READS + 1);
+pub const ECALL_HANDLER_ADDR: u64 = ENTRY_EXIT_JMP_ADDR + 4 * (13 + 1);
 
 /// A library routine's body for an inline zkvmcall (see `ZiskLibrary::inline_body`),
 /// as a small control-flow graph: the instructions, entry first, and for each one
@@ -246,23 +236,6 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.verbose("Set reg12 to reg12 + 1");
     zib.build(rom);
     rom.next_init_inst_addr += 4;
-
-    // We read the input data boundaries of 128MB chunks to make sure we can prove large input data
-    // sizes that are not continuous, i.e. when the program reads 2 input data chunks distant more
-    // than 128MB, we can still prove the program by reading the input data in 128MB steps
-
-    // :0034.. -> read input[k * 128M], k = 1..=INPUT_ANCHOR_READS
-    for k in 1..=INPUT_ANCHOR_READS {
-        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-        zib.src_a("imm", INPUT_ADDR + k * INPUT_ANCHOR_STEP, false);
-        zib.src_b("ind", 0, false);
-        zib.ind_width(8);
-        zib.op("copyb").unwrap();
-        zib.j(4, 4);
-        zib.verbose(&format!("Read input[{}M]", (k * INPUT_ANCHOR_STEP) >> 20));
-        zib.build(rom);
-        rom.next_init_inst_addr += 4;
-    }
 
     // jump to end (success)
     // Jump to the last instruction (ROM_EXIT) to properly finish the program execution
@@ -651,25 +624,20 @@ mod tests {
         assert_eq!(set_mtvec.b_offset_imm0, ECALL_HANDLER_ADDR);
     }
 
-    /// The BIOS reads the input every INPUT_ANCHOR_STEP bytes up to its end, so no two
-    /// consecutive input addresses of a Mem segment are farther apart than the PIL accepts, and
-    /// the exit check still jumps back to the output block.
+    /// The BIOS does not read the input (the InputData air bridges any gap between input
+    /// addresses), and the exit check still jumps back to the output block.
     #[test]
-    fn bios_input_reads_cover_the_whole_input() {
+    fn bios_does_not_read_the_input() {
         let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
         add_end_and_lib(&mut rom);
         add_entry_exit_jmp(&mut rom, crate::ROM_ADDR);
 
-        let reads: Vec<u64> = (ENTRY_EXIT_JMP_ADDR..ECALL_HANDLER_ADDR)
+        let reads = (ENTRY_EXIT_JMP_ADDR..ECALL_HANDLER_ADDR)
             .step_by(4)
             .map(|pc| &rom.insts[&pc].i)
             .filter(|i| i.op_str == "copyb" && i.ind_width == 8 && i.a_offset_imm0 > INPUT_ADDR)
-            .map(|i| i.a_offset_imm0)
-            .collect();
-        let expected: Vec<u64> =
-            (1..=INPUT_ANCHOR_READS).map(|k| INPUT_ADDR + k * INPUT_ANCHOR_STEP).collect();
-        assert_eq!(reads, expected);
-        assert_eq!(expected.last().unwrap() + INPUT_ANCHOR_STEP, INPUT_ADDR + MAX_INPUT_SIZE);
+            .count();
+        assert_eq!(reads, 0);
 
         // ECALL_HANDLER_ADDR + 8: beq r10, 0 jumps back to the output block (:0014)
         let exit_check = &rom.insts[&(ECALL_HANDLER_ADDR + 8)].i;

@@ -1,11 +1,15 @@
-use zisk_core::{MAX_ADDR, RAM_ADDR, RAM_SIZE};
+use zisk_core::{MAX_ADDR, RAM_ADDR, RAM_WINDOW_SIZE};
 
 /// Word addresses (byte address / 8) fit in a `u32`: the address space is 33 bits wide.
 pub const RAM_W_ADDR_INIT: u32 = (RAM_ADDR >> MEM_BYTES_BITS) as u32;
-pub const RAM_W_ADDR_END: u32 = ((RAM_ADDR + RAM_SIZE - 1) >> MEM_BYTES_BITS) as u32;
+// The Mem air covers the whole RAM window, whatever part of it the executors reserve
+pub const RAM_W_ADDR_END: u32 = ((RAM_ADDR + RAM_WINDOW_SIZE - 1) >> MEM_BYTES_BITS) as u32;
 
 const _: () = {
-    assert!((RAM_ADDR + RAM_SIZE - 1) <= MAX_ADDR, "RAM memory exceeds the addressable range");
+    assert!(
+        (RAM_ADDR + RAM_WINDOW_SIZE - 1) <= MAX_ADDR,
+        "RAM memory exceeds the addressable range"
+    );
     assert!((MAX_ADDR >> MEM_BYTES_BITS) <= u32::MAX as u64, "word addresses must fit in a u32");
 };
 

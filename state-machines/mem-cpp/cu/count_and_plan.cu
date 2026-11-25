@@ -21,7 +21,8 @@
 // =====================================================================
 
 // Decodes the record starting at word `start`. `flags` loses the tag and the relocated top bit;
-// the payload gets the value's bit 63 back (a no-op for step-field payloads).
+// the payload gets the value's bit 63 back (a no-op for step-field payloads; on a value block it
+// sets bit 63 of the mask word, which no reader consumes: tops come from the raw word).
 __host__ __device__ __forceinline__ MemOp load_record(const uint64_t* words, uint32_t start) {
     const uint64_t hdr = words[start];
     MemOp op;
@@ -81,11 +82,11 @@ constexpr uint32_t POT_KIND_UNKNOWN = 3;
 constexpr uint32_t POT_META_OFF_SHIFT   = 2;
 constexpr uint32_t POT_META_WIDTH_SHIFT = 5;
 constexpr uint32_t POT_META_STEP_SHIFT  = 9;
-constexpr uint32_t MOPS_STEP_FIELD_MASK = (1u << 20) - 1;
+static_assert(MOPS_STEP_SHIFT + MOPS_STEP_FIELD_BITS <= MOPS_NO_VALUE_BIT, "step field must fit op_flags()");
+static_assert(MOPS_VALUES_STEP_SHIFT + MOPS_STEP_FIELD_BITS <= 63, "value-block step must end below the tag");
 // Step field of a record: bits 39-58 of the header for non-block modes, of the payload for blocks.
 __host__ __device__ __forceinline__ uint32_t mops_step_field(const MemOp& op, bool block) {
-    return block ? (uint32_t)((op.payload >> MOPS_STEP_SHIFT) & MOPS_STEP_FIELD_MASK)
-                 : (uint32_t)((op_flags(op) >> 6) & MOPS_STEP_FIELD_MASK);
+    return mops_hdr_step_field(block ? op.payload : op.hdr);
 }
 __host__ __device__ __forceinline__ uint32_t pot_meta(uint32_t kind, uint32_t off, uint32_t width, uint32_t step) {
     return kind | (off << POT_META_OFF_SHIFT) | (width << POT_META_WIDTH_SHIFT) | (step << POT_META_STEP_SHIFT);
@@ -172,10 +173,6 @@ bool is_ram_addr(uint64_t addr) {
     return (addr >= ZISK_RAM_ADDR_BASE) && (addr < ZISK_RAM_ADDR_END);
 }
 
-__host__ __device__ __forceinline__
-uint32_t ram_compact(uint64_t aligned_addr) {
-    return (uint32_t)((aligned_addr - ZISK_RAM_ADDR_BASE) >> 3);
-}
 // The RAM word index of a compact (whole map) address of the RAM.
 __host__ __device__ __forceinline__
 uint32_t ram_compact_of_compact(uint32_t compact) {
@@ -243,8 +240,17 @@ bool decode(MemOp op,
         case MOPS_BLOCK_WRITE        + 0x00: case MOPS_BLOCK_WRITE        + 0x10:
         case MOPS_BLOCK_WRITE        + 0x20: case MOPS_BLOCK_WRITE        + 0x30:
         case MOPS_ALIGNED_BLOCK_WRITE+ 0x00: case MOPS_ALIGNED_BLOCK_WRITE+ 0x10:
-        case MOPS_ALIGNED_BLOCK_WRITE+ 0x20: case MOPS_ALIGNED_BLOCK_WRITE+ 0x30:
+        case MOPS_ALIGNED_BLOCK_WRITE+ 0x20: case MOPS_ALIGNED_BLOCK_WRITE+ 0x30: {
+            // Block bases are 8-aligned at every producer; the CPU planner implements no other
+            // case either (its counters abort). An unaligned plain block fails the plan, so the
+            // whole block falls back to the CPU path and dies there with the message.
+            const uint32_t nib = (uint32_t)(op_flags(op) & 0x0Fu);
+            if ((nib == MOPS_BLOCK_READ || nib == MOPS_BLOCK_WRITE) && (op_addr(op) & 0x07u)) {
+                atomicOr(d_invalid_mode_flag, INVALID_ADDRESS);
+                *count_out = 0; return false;
+            }
             *count_out = op_flags(op) >> MOPS_BLOCK_COUNT_SBITS; return true;
+        }
         case MOPS_BLOCK_VALUES + 0x00: case MOPS_BLOCK_VALUES + 0x10:
         case MOPS_BLOCK_VALUES + 0x20: case MOPS_BLOCK_VALUES + 0x30:
             *count_out = (op_flags(op) >> MOPS_BLOCK_COUNT_SBITS) & 63u; return true;
@@ -259,8 +265,10 @@ bool decode(MemOp op,
 // `aligned_addr_packed` of a potential at the aligned byte address `aligned`: its compact word
 // address shifted by 2 (a 33-bit byte address does not fit the field) and the flag bits, with
 // POT_FLAG_INVALID when the address is outside the memory map.
-// Not inlined on purpose: inlined into the emit helpers, nvcc 12.9 (sm_120) stores a stale
-// register for the input-region branch, which the planner tests catch (plan_edge_tests.rs).
+// Not inlined on purpose: inlined into blockop_emit_kernel, ptxas (12.9 and 13.0, sm_120) leaves
+// the high word of the 64-bit `aligned - base` unset (the PTX is right), which sets bit 31 of
+// the packed address of a ROM block record wider than BLOCKOP_SPILL_THRESH_VAL. Caught by
+// plan_edge_tests.rs `a_wide_block_record_in_every_region`.
 __host__ __device__ __noinline__ uint32_t pack_aligned(uint64_t aligned) {
     if (aligned >= ZISK_RAM_ADDR_BASE) {
         if (aligned >= ZISK_RAM_ADDR_END) return POT_FLAG_INVALID;
@@ -319,14 +327,14 @@ void emit_store(uint64_t addr, uint32_t width, PotentialEmit* out, uint32_t step
 
 // The MemAlign record of an access, and the slot tags of its reads: tag = (2 * index + word) + 1.
 __device__ __forceinline__
-void write_align_record(AlignRecord* rec, uint32_t addr, uint32_t chunk, uint32_t chunk_bits, uint32_t step_field,
+void write_align_record(AlignRecord* rec, uint64_t addr, uint32_t chunk, uint32_t chunk_bits, uint32_t step_field,
                         uint32_t kind, uint32_t width, bool wr, uint64_t value) {
     const uint64_t main_step = ((uint64_t)chunk << chunk_bits) + (step_field >> 2);
     const uint64_t mem_step  = 1ull + (main_step << 2) + (step_field & 3u);
-    rec->addr  = addr;
-    rec->chunk = chunk;
-    rec->info  = mem_step | ((uint64_t)kind << ALIGN_KIND_SHIFT) | ((uint64_t)width << ALIGN_WIDTH_SHIFT)
-               | ((uint64_t)(wr ? 1 : 0) << ALIGN_WR_SHIFT);
+    rec->addr_w = (uint32_t)(addr >> 3);
+    rec->chunk  = chunk;
+    rec->info   = mem_step | ((uint64_t)kind << ALIGN_KIND_SHIFT) | ((uint64_t)width << ALIGN_WIDTH_SHIFT)
+                | ((uint64_t)(wr ? 1 : 0) << ALIGN_WR_SHIFT) | ((addr & 7u) << ALIGN_OFF_SHIFT);
     rec->value = wr ? value : 0;
     rec->old[0] = 0; rec->old[1] = 0;
 }
@@ -387,11 +395,14 @@ void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block, const uin
         // the InputData fill takes the value from the record; the word never belongs to RAM.
         case MOPS_READ_8_VALUE:
             emit_one_w(addr, out, step, kind_full, op.payload); break;
+        // Block bases are 8-aligned at every producer, so each element is exactly one word:
+        // decode() and the host walk reject an unaligned plain block (the CPU counters abort).
         case MOPS_BLOCK_READ        + 0x00: case MOPS_BLOCK_READ        + 0x10:
         case MOPS_BLOCK_READ        + 0x20: case MOPS_BLOCK_READ        + 0x30:
         case MOPS_ALIGNED_BLOCK_READ+ 0x00: case MOPS_ALIGNED_BLOCK_READ+ 0x10:
         case MOPS_ALIGNED_BLOCK_READ+ 0x20: case MOPS_ALIGNED_BLOCK_READ+ 0x30: {
             if (skip_block) break;
+            if ((mode & 0x0Fu) == MOPS_BLOCK_READ && (addr & 0x07u)) break;   // rejected by decode()
             const uint32_t count = op_flags(op) >> MOPS_BLOCK_COUNT_SBITS;
             const uint32_t bstep = mops_step_field(op, true);
             for (uint32_t i = 0; i < count; i++) emit_one_r(addr + i * 8, out + i, bstep);
@@ -402,6 +413,7 @@ void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block, const uin
         case MOPS_ALIGNED_BLOCK_WRITE+ 0x00: case MOPS_ALIGNED_BLOCK_WRITE+ 0x10:
         case MOPS_ALIGNED_BLOCK_WRITE+ 0x20: case MOPS_ALIGNED_BLOCK_WRITE+ 0x30: {
             if (skip_block) break;
+            if ((mode & 0x0Fu) == MOPS_BLOCK_WRITE && (addr & 0x07u)) break;   // rejected by decode()
             const uint32_t count = op_flags(op) >> MOPS_BLOCK_COUNT_SBITS;
             const uint32_t bstep = mops_step_field(op, true);
             for (uint32_t i = 0; i < count; i++) emit_one_w(addr + i * 8, out + i, bstep, POT_KIND_UNKNOWN, 0);
@@ -410,7 +422,8 @@ void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block, const uin
         case MOPS_BLOCK_VALUES + 0x00: case MOPS_BLOCK_VALUES + 0x10:
         case MOPS_BLOCK_VALUES + 0x20: case MOPS_BLOCK_VALUES + 0x30: {
             const uint32_t count = (op_flags(op) >> MOPS_BLOCK_COUNT_SBITS) & 63u;
-            const uint32_t vstep = (op_flags(op) >> (MOPS_VALUES_STEP_SHIFT - MOPS_MODE_SHIFT)) & MOPS_STEP_FIELD_MASK;
+            // From the header word: the step ends at bit 62, above the bits op_flags() returns.
+            const uint32_t vstep = mops_values_step_field(op.hdr);
             const uint64_t tops  = rec[1];
             for (uint32_t i = 0; i < count; i++) {
                 const uint64_t v = rec[2 + i] | (((tops >> i) & 1ull) << 63);
@@ -566,7 +579,7 @@ void blockop_emit_kernel(const BlockOpSpill* __restrict__ d_spill,
         const uint32_t count       = s.count;
         const uint32_t base_offset = d_potential_offsets[s.memop_idx];
         PotentialEmit* base = d_potentials + base_offset;
-        const uint32_t step = (uint32_t)((s.payload >> MOPS_STEP_SHIFT) & MOPS_STEP_FIELD_MASK);
+        const uint32_t step = mops_hdr_step_field(s.payload);
         for (uint32_t i = threadIdx.x; i < count; i += blockDim.x) {
             const uint64_t a = base_addr + (uint64_t)i * 8u;
             if (s.kind_w) emit_one_w(a, base + i, step, POT_KIND_UNKNOWN, 0);
@@ -624,20 +637,6 @@ inline uint64_t expand_addr(uint32_t compact) {
     if (compact < N_ADDR_ROM)
         return ((uint64_t)compact << 3) + ZISK_ROM_ADDR_BASE;
     return ((uint64_t)(compact - N_ADDR_ROM) << 3) + ZISK_INPUT_ADDR_BASE;
-}
-
-// Whether `raw` is inside the memory map, and its compact address when it is.
-__device__ __forceinline__ bool compact_addr_dev(uint64_t raw, uint32_t& compact) {
-    if (raw >= ZISK_RAM_ADDR_BASE) {
-        compact = (uint32_t)((raw - ZISK_RAM_ADDR_BASE) >> 3) + N_ADDR_ROM + N_ADDR_INPUT;
-        return raw < ZISK_RAM_ADDR_END;
-    }
-    if (raw >= ZISK_ROM_ADDR_BASE) {
-        compact = (uint32_t)((raw - ZISK_ROM_ADDR_BASE) >> 3);
-        return raw < ZISK_ROM_ADDR_END;
-    }
-    compact = (uint32_t)((raw - ZISK_INPUT_ADDR_BASE) >> 3) + N_ADDR_ROM;
-    return raw >= ZISK_INPUT_ADDR_BASE && raw < ZISK_INPUT_ADDR_END;
 }
 
 // =====================================================================
@@ -1680,6 +1679,13 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
             case MOPS_BLOCK_VALUES + 0x00: case MOPS_BLOCK_VALUES + 0x10:
             case MOPS_BLOCK_VALUES + 0x20: case MOPS_BLOCK_VALUES + 0x30:
                 add_pot(addr, (op_flags(op) >> MOPS_BLOCK_COUNT_SBITS) & 63u); break;
+            case MOPS_BLOCK_READ  + 0x00: case MOPS_BLOCK_READ  + 0x10:
+            case MOPS_BLOCK_READ  + 0x20: case MOPS_BLOCK_READ  + 0x30:
+            case MOPS_BLOCK_WRITE + 0x00: case MOPS_BLOCK_WRITE + 0x10:
+            case MOPS_BLOCK_WRITE + 0x20: case MOPS_BLOCK_WRITE + 0x30:
+                // Same rejection as decode(): block bases are 8-aligned at every producer.
+                if (off != 0) return malformed(k, "unaligned block record (block bases must be 8-aligned)");
+                add_pot(addr, op_flags(op) >> MOPS_BLOCK_COUNT_SBITS); break;
             default: add_pot(addr, op_flags(op) >> MOPS_BLOCK_COUNT_SBITS); break;
         }
         if (dp > piece_potentials_) {
@@ -1695,7 +1701,8 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
             for (uint32_t done = 0; done < count;) {
                 const uint32_t part = std::min(count - done, piece_potentials_);
                 Piece sp{k, len, part, is_ram_addr(addr) ? part : 0u, len, {0, 0}};
-                sp.sub[0] = (hdr & ~count_mask & ~MOPS_ADDR_MASK) | ((uint64_t)part << MOPS_BLOCK_COUNT_SHIFT) | (uint64_t)(addr + done * 8u);
+                sp.sub[0] = (hdr & ~count_mask & ~MOPS_ADDR_MASK) | ((uint64_t)part << MOPS_BLOCK_COUNT_SHIFT)
+                           | ((addr + (uint64_t)done * 8u) & MOPS_ADDR_MASK);
                 if (len == 2) sp.sub[1] = words[k + 1];
                 pieces.push_back(sp);
                 pot_total += part; ram_total += sp.ram;

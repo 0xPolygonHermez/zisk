@@ -101,6 +101,7 @@ pub fn execute_build_program(
         Some(program_dir.as_std_path()),
         false,
         &target_features,
+        args.ram_2gb,
     )?;
 
     let target_elf_paths = generate_elf_paths(&program_metadata, Some(args))?;

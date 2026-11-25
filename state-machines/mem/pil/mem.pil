@@ -18,8 +18,8 @@ require "opids.pil"
 
 
     - Allows to define a memory on a region. Initially the distance between address could up
-      to 2^(36+3) bits = 2^39 = 512 GB, but executor use only 32 bits for address, so the maximum
-      memory size is 4 GB
+      to 2^(36+3) bits = 2^39 = 512 GB, but addresses are 33 bits (a 32-bit low part and a
+      high bit), so the address space is 8 GB
       - Inside this component the address are mem-byte address, to translate internal adress to
       external need to multiply by bytes.    
       - The memory regions must be exclusive, to avoid collisions between different memories.
@@ -118,6 +118,11 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     // by bytes to get the real address.
 
     assert(size_mb <= 128 || large_mem);
+    // A memory area is at most 4GB, and its last byte must be inside the 33-bit address space
+    // (ADDR_BITS): the address columns are ADDR_W_BITS wide and nothing else bounds the area.
+    assert(size_mb <= 4096, `${AIR_NAME}: memory area of ${size_mb} MB, the maximum is 4096 MB (4GB)`);
+    assert(base_address + size_mb * 1024 * 1024 - 1 < 2**ADDR_BITS,
+           `${AIR_NAME}: last address of the memory area (base_address ${base_address} + ${size_mb} MB - 1) is not below 2^${ADDR_BITS}`);
     assert(lanes_x_row >= 1);
     assert(bytes == 8);
     
@@ -447,6 +452,10 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         const expr air.read_same_addr[lanes_x_row];
 
         const expr delta_addr[lanes_x_row];
+        if (free_input_mem) {
+            // High 16 bits of delta_addr - 1 (free input memory, see below)
+            col witness bits(16) air.delta_addr_hi[lanes_x_row];
+        }
 
         for (int lane = 0; lane < lanes_x_row; ++lane) {
             delta_addr[lane] = addr[lane] - previous_addr[lane];
@@ -455,6 +464,13 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
             if (continuous_addresses) {
                 // If the address changes, the difference must be one
                 addr_changes[lane] * (delta_addr[lane] - 1) === 0;
+            } else if (free_input_mem) {
+                // The input is read sparsely, anywhere in its window: delta_addr - 1 is checked as
+                // two 16-bit chunks, up to 2^32 words, so any two consecutive input addresses can be
+                // as far apart as the window allows, and the BIOS does not have to read the input
+                // every 2^24 words to bridge them.
+                range_check(expression: delta_addr[lane] - 1 - 2**16 * delta_addr_hi[lane], min: 0, max: 2**16 - 1, sel: addr_changes[lane]);
+                range_check(expression: delta_addr_hi[lane], min: 0, max: 2**16 - 1, sel: addr_changes[lane]);
             } else {
                 range_check(expression: delta_addr[lane] - 1, min: 0, max: 2**24 - 1, sel: addr_changes[lane]);
             }
@@ -520,7 +536,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
             l_increment[lane] + 2**22 * h_increment[lane] + 1 === addr_changes[lane] * (delta_addr[lane] - delta_step[lane]) + delta_step[lane];
 
-            // addr_change == 1 => 22 + 16 = 38 bits + 3 => 41 bits => 2 TB (limit address 32 bits)
+            // addr_change == 1 => 22 + 16 = 38 bits + 3 => 41 bits => 2 TB (limit address 33 bits)
             // addr_change == 0 => 22 + 16 = 38 bits => 4 slots => 2^36 => 32 GB steps (16K main instances)
             // 38 bits x 2^22 = 2^60 + 2^32 address = 2^61 secure.
             // using control in the middle of instance, reduce to 2^60

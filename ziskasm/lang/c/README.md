@@ -75,6 +75,7 @@ It stages:
 dist/include/zkvm_*.h
 dist/lib/libzisklib_c.a
 dist/share/zisk/zisk_linker_script.ld
+dist/share/zisk/zisk_linker_script_ram2gb.ld
 ```
 
 and then checks the archive really exports `_start`, `abort`, `read_input`, `write_output`,
@@ -88,6 +89,12 @@ riscv64-unknown-elf-gcc -march=rv64ima_zicsr -mabi=lp64 -mcmodel=medany \
     -Idist/include -T dist/share/zisk/zisk_linker_script.ld \
     -o guest.elf guest.c dist/lib/libzisklib_c.a
 ```
+
+That links for 512 MB of RAM, what a prover reserves by default: the heap ends at
+`0xE000_0000`. For a prover built with its `ram_2gb` feature, link with
+`-L dist/share/zisk -T dist/share/zisk/zisk_linker_script_ram2gb.ld` (the heap then ends at
+`0x1_4000_0000`; `-L` lets it include the base script). A guest must not be linked for more
+RAM than the prover reserves: the first access beyond it faults.
 
 `--gc-sections` drops the zkvmcall thunks the guest never calls. Without it every
 thunk stays in the ELF, and `elf2rom` then assembles the ZisK library even for a

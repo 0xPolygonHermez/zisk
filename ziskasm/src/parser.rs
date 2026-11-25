@@ -119,6 +119,10 @@ pub struct Op {
     pub b: BSource,
     pub store: Option<Store>,
     pub control: Control,
+    /// `setsp` modifier: after the store, sp = c (+ inc_sp).
+    pub set_sp: bool,
+    /// `incsp(N)` modifier: signed increment added to sp after the store.
+    pub inc_sp: i64,
     pub end: bool,
 }
 
@@ -128,7 +132,11 @@ pub enum ASource {
     C,
     Reg(u64),
     Mem(Num),
+    /// `[sp ± N]`: memory at sp plus a signed offset.
+    SpMem(i64),
     Imm(Num),
+    /// `sp`: the current value of the sp register.
+    Sp,
 }
 
 /// `b_source` (adds `ind`).
@@ -137,15 +145,29 @@ pub enum BSource {
     C,
     Reg(u64),
     Mem(Num),
+    /// `[sp ± N]`: memory at sp plus a signed offset.
+    SpMem(i64),
     Imm(Num),
-    Ind { width: u64, offset: i64 },
+    /// `W[a ± N]`, or `W[a + sp ± N]` when `sp` is set.
+    Ind {
+        width: u64,
+        offset: i64,
+        sp: bool,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub enum Store {
     Reg(u64),
     Mem(Num),
-    Ind { width: u64, offset: i64 },
+    /// `[sp ± N]`: memory at sp plus a signed offset.
+    SpMem(i64),
+    /// `W[a ± N]`, or `W[a + sp ± N]` when `sp` is set.
+    Ind {
+        width: u64,
+        offset: i64,
+        sp: bool,
+    },
 }
 
 /// Control-flow field of an instruction.
@@ -365,6 +387,8 @@ pub fn parse_program_seeded(
                             b: BSource::Imm(Num::Lit(8)),
                             store: Some(Store::Reg(sp)),
                             control: Control::Fallthrough,
+                            set_sp: false,
+                            inc_sp: 0,
                             end: false,
                         },
                         // [sp] = rN
@@ -372,8 +396,10 @@ pub fn parse_program_seeded(
                             op: "copyb".into(),
                             a: ASource::Reg(sp),
                             b: BSource::Reg(n),
-                            store: Some(Store::Ind { width: 8, offset: 0 }),
+                            store: Some(Store::Ind { width: 8, offset: 0, sp: false }),
                             control: Control::Fallthrough,
+                            set_sp: false,
+                            inc_sp: 0,
                             end: false,
                         },
                     )
@@ -383,9 +409,11 @@ pub fn parse_program_seeded(
                         Op {
                             op: "copyb".into(),
                             a: ASource::Reg(sp),
-                            b: BSource::Ind { width: 8, offset: 0 },
+                            b: BSource::Ind { width: 8, offset: 0, sp: false },
                             store: Some(Store::Reg(n)),
                             control: Control::Fallthrough,
+                            set_sp: false,
+                            inc_sp: 0,
                             end: false,
                         },
                         // sp += 8
@@ -395,6 +423,8 @@ pub fn parse_program_seeded(
                             b: BSource::Imm(Num::Lit(8)),
                             store: Some(Store::Reg(sp)),
                             control: Control::Fallthrough,
+                            set_sp: false,
+                            inc_sp: 0,
                             end: false,
                         },
                     )
@@ -606,7 +636,7 @@ fn parse_jump_target(s: &str) -> Result<JumpTarget, String> {
 
 fn parse_op(s: &str) -> Result<Op, String> {
     // Split at top-level commas: parts[0] = `op(a, b) [-> store]`, the rest are
-    // the optional `j(...)`, `setpc(...)`, `sp`, `end` modifiers.
+    // the optional `j(...)`, `setpc(...)`, `setsp`, `incsp(...)`, `end` modifiers.
     let parts = split_top_level(s, ',');
     let head = parts.first().ok_or("empty instruction")?.trim();
 
@@ -638,15 +668,36 @@ fn parse_op(s: &str) -> Result<Op, String> {
         None => None,
     };
 
+    // An instruction has a single `ind_width` field, shared by the `b` indirection and the
+    // store indirection, so both must use the same width.
+    if let (BSource::Ind { width: wb, .. }, Some(Store::Ind { width: ws, .. })) = (&b, &store) {
+        if wb != ws {
+            return Err(format!(
+                "the `b` indirection ({wb}[...]) and the store indirection ({ws}[...]) must \
+                 use the same width: an instruction has a single ind_width"
+            ));
+        }
+    }
+
     // Modifiers.
     let mut control = Control::Fallthrough;
+    let mut set_sp = false;
+    let mut inc_sp = 0i64;
     let mut end = false;
     for m in parts.iter().skip(1) {
         let m = m.trim();
         if m == "end" {
             end = true;
+        } else if m == "setsp" {
+            require_sp("`setsp`")?;
+            set_sp = true;
+        } else if let Some(inner) = strip_call(m, "incsp") {
+            require_sp("`incsp(...)`")?;
+            inc_sp = parse_i64(inner.trim())?;
         } else if m == "sp" {
-            return Err("the `sp` modifier is not supported yet".into());
+            return Err("there is no `sp` modifier: write sp-relative operands as `[sp + N]` or \
+                 `W[a + sp + N]`"
+                .into());
         } else if let Some(inner) = strip_call(m, "j") {
             let targets = split_top_level(&inner, ',');
             match targets.len() {
@@ -666,7 +717,7 @@ fn parse_op(s: &str) -> Result<Op, String> {
         }
     }
 
-    Ok(Op { op, a, b, store, control, end })
+    Ok(Op { op, a, b, store, control, set_sp, inc_sp, end })
 }
 
 /// If `s` is `name(...)`, returns the inner text.
@@ -683,8 +734,15 @@ fn strip_call(s: &str, name: &str) -> Option<String> {
 fn parse_a_source(s: &str) -> Result<ASource, String> {
     Ok(match s {
         "c" => ASource::C,
+        "sp" => {
+            require_sp("the `sp` source")?;
+            ASource::Sp
+        }
         _ if is_reg(s) => ASource::Reg(parse_reg(s)?),
-        _ if s.starts_with('[') => ASource::Mem(parse_mem(s)?),
+        _ if s.starts_with('[') => match parse_sp_mem(s)? {
+            Some(offset) => ASource::SpMem(offset),
+            None => ASource::Mem(parse_mem(s)?),
+        },
         _ if is_ind(s) => {
             return Err("`a` source cannot be an indirect (`W[a + N]`) operand".into())
         }
@@ -695,11 +753,15 @@ fn parse_a_source(s: &str) -> Result<ASource, String> {
 fn parse_b_source(s: &str) -> Result<BSource, String> {
     Ok(match s {
         "c" => BSource::C,
+        "sp" => return Err("`sp` is only valid as the `a` source".into()),
         _ if is_reg(s) => BSource::Reg(parse_reg(s)?),
-        _ if s.starts_with('[') => BSource::Mem(parse_mem(s)?),
+        _ if s.starts_with('[') => match parse_sp_mem(s)? {
+            Some(offset) => BSource::SpMem(offset),
+            None => BSource::Mem(parse_mem(s)?),
+        },
         _ if is_ind(s) => {
-            let (width, offset) = parse_ind(s)?;
-            BSource::Ind { width, offset }
+            let (width, offset, sp) = parse_ind(s)?;
+            BSource::Ind { width, offset, sp }
         }
         _ => BSource::Imm(parse_num(s)?),
     })
@@ -708,10 +770,13 @@ fn parse_b_source(s: &str) -> Result<BSource, String> {
 fn parse_store(s: &str) -> Result<Store, String> {
     Ok(match s {
         _ if is_reg(s) => Store::Reg(parse_reg(s)?),
-        _ if s.starts_with('[') => Store::Mem(parse_mem(s)?),
+        _ if s.starts_with('[') => match parse_sp_mem(s)? {
+            Some(offset) => Store::SpMem(offset),
+            None => Store::Mem(parse_mem(s)?),
+        },
         _ if is_ind(s) => {
-            let (width, offset) = parse_ind(s)?;
-            Store::Ind { width, offset }
+            let (width, offset, sp) = parse_ind(s)?;
+            Store::Ind { width, offset, sp }
         }
         _ => return Err(format!("invalid storage `{s}`")),
     })
@@ -797,6 +862,58 @@ fn parse_mem(s: &str) -> Result<Num, String> {
     parse_num(inner.trim())
 }
 
+/// If `s` is an sp-relative memory operand, `[sp]` or `[sp ± N]`, returns its signed
+/// offset; `None` for any other `[...]` operand. `sp` is therefore a reserved name: it
+/// cannot be used as a symbol in a memory operand.
+fn parse_sp_mem(s: &str) -> Result<Option<i64>, String> {
+    let inner = s
+        .strip_prefix('[')
+        .and_then(|x| x.strip_suffix(']'))
+        .ok_or_else(|| format!("malformed memory operand `{s}`"))?
+        .trim();
+    match strip_sp(inner) {
+        Some(rest) => {
+            require_sp(&format!("`{s}`"))?;
+            Ok(Some(parse_signed_offset(rest, s)?))
+        }
+        None => Ok(None),
+    }
+}
+
+/// Errors unless this build supports the sp register (the `sp` feature); `what` names
+/// the construct that needs it.
+fn require_sp(what: &str) -> Result<(), String> {
+    if cfg!(feature = "sp") {
+        Ok(())
+    } else {
+        Err(format!("{what} uses the sp register, which needs a build with the `sp` feature"))
+    }
+}
+
+/// If `s` starts with the word `sp` (not a longer identifier such as `spill`), returns
+/// the text after it, trimmed.
+fn strip_sp(s: &str) -> Option<&str> {
+    let rest = s.strip_prefix("sp")?;
+    if rest.chars().next().is_some_and(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return None;
+    }
+    Some(rest.trim())
+}
+
+/// Parses an optional `+ N` / `- N` offset (empty means 0); `operand` is for errors.
+fn parse_signed_offset(s: &str, operand: &str) -> Result<i64, String> {
+    if s.is_empty() {
+        Ok(0)
+    } else if let Some(n) = s.strip_prefix('+') {
+        parse_i64(n.trim())
+    } else if let Some(n) = s.strip_prefix('-') {
+        // Negate inside parse_i64 (which accepts i64::MIN), not here.
+        parse_i64(&format!("-{}", n.trim()))
+    } else {
+        Err(format!("offset must be `+ N` or `- N`: `{operand}`"))
+    }
+}
+
 /// `W[a ± N]` — a width digit immediately followed by `[a ...]`.
 fn is_ind(s: &str) -> bool {
     let s = s.trim();
@@ -807,8 +924,9 @@ fn is_ind(s: &str) -> bool {
     bracket > 0 && s[..bracket].chars().all(|c| c.is_ascii_digit()) && s.ends_with(']')
 }
 
-/// Parses `W[a + N]` / `W[a - N]` into (width, signed offset).
-fn parse_ind(s: &str) -> Result<(u64, i64), String> {
+/// Parses `W[a + N]` / `W[a - N]`, optionally sp-relative as `W[a + sp ± N]`, into
+/// (width, signed offset, sp).
+fn parse_ind(s: &str) -> Result<(u64, i64, bool), String> {
     let s = s.trim();
     let bracket = s.find('[').ok_or_else(|| format!("malformed indirect operand `{s}`"))?;
     let width = s[..bracket].parse::<u64>().map_err(|_| format!("invalid width in `{s}`"))?;
@@ -820,16 +938,17 @@ fn parse_ind(s: &str) -> Result<(u64, i64), String> {
         .strip_prefix('a')
         .ok_or_else(|| format!("indirect operand must be based on `a`: `{s}`"))?
         .trim();
-    let offset = if inner.is_empty() {
-        0
-    } else if let Some(n) = inner.strip_prefix('+') {
-        parse_i64(n.trim())?
-    } else if let Some(n) = inner.strip_prefix('-') {
-        -parse_i64(n.trim())?
-    } else {
-        return Err(format!("indirect offset must be `+ N` or `- N`: `{s}`"));
+    // An optional `+ sp` right after `a` makes the address sp-relative.
+    let (inner, sp) = match inner.strip_prefix('+').and_then(|r| strip_sp(r.trim())) {
+        Some(rest) => {
+            require_sp(&format!("`{s}`"))?;
+            (rest, true)
+        }
+        None => (inner, false),
     };
-    Ok((width, offset))
+    let offset = parse_signed_offset(inner, s)
+        .map_err(|_| format!("indirect offset must be `+ N` or `- N`: `{s}`"))?;
+    Ok((width, offset, sp))
 }
 
 /// Parses an unsigned integer, decimal or `0x` hexadecimal.
@@ -850,13 +969,16 @@ fn parse_i64(s: &str) -> Result<i64, String> {
         Some(b) => (true, b.trim()),
         None => (false, s.strip_prefix('+').map(str::trim).unwrap_or(s)),
     };
+    // Parse the magnitude as a u64 so that `-2^63` (i64::MIN), whose magnitude does not
+    // fit in an i64, is accepted.
     let mag = if let Some(h) = body.strip_prefix("0x").or_else(|| body.strip_prefix("0X")) {
-        i64::from_str_radix(h, 16)
+        u64::from_str_radix(h, 16)
     } else {
-        body.parse::<i64>()
+        body.parse::<u64>()
     }
     .map_err(|_| format!("invalid number `{s}`"))?;
-    Ok(if neg { -mag } else { mag })
+    if neg { 0i64.checked_sub_unsigned(mag) } else { i64::try_from(mag).ok() }
+        .ok_or_else(|| format!("number `{s}` is out of the i64 range"))
 }
 
 /// Splits `s` at occurrences of `delim` that are not nested inside `()` or `[]`.

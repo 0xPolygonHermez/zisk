@@ -550,17 +550,26 @@ fn load_and_check_args(code: &mut Code, f: &Function, out_of_bounds: LabelId, un
     }
 }
 
+/// The register the ZisK library routines use as their stack pointer (the RISC-V `sp`).
+const LIBRARY_SP: u64 = 2;
+const _: () = assert!(LIBRARY_SP == REG_FP);
+
 /// Calls the routine at `entry` with the arguments in place.
 fn call_routine(code: &mut Code, name: &str, frame: i64, entry: u64) {
     // The routines keep return addresses on a stack at `sp` (`push r1` / `pop r1`), which the
-    // caller provides, and `sp` is `r2`, the wasm frame pointer: point it at the free stack below
-    // this stub's frame for the call, as the next callee's frame would sit, and put it back
-    // after. Each nested library call pushes 8 bytes.
-    code.alu_ri("add", REG_FP, REG_FP, -frame);
-    code.alu_ri("add", R_END, REG_FP, -LIBRARY_STACK_BYTES);
+    // caller provides; that `sp` is the RISC-V `r2`, not the ZisK sp register. Point it at the
+    // free stack below this stub's frame for the call, as the next callee's frame would sit.
+    // Without the `sp` feature `r2` is the wasm frame pointer, so it is put back after. Each
+    // nested library call pushes 8 bytes.
+    #[cfg(not(feature = "sp"))]
+    code.adjust_frame(-frame);
+    #[cfg(feature = "sp")]
+    code.frame_plus_to_reg(LIBRARY_SP, -frame);
+    code.alu_ri("add", R_END, LIBRARY_SP, -LIBRARY_STACK_BYTES);
     let stack_ok = code.new_label();
     code.cmp_imm_branch("ltu", R_END, WASM_STACK_LIMIT as i64, stack_ok, false);
-    code.alu_ri("add", REG_FP, REG_FP, frame);
+    #[cfg(not(feature = "sp"))]
+    code.adjust_frame(frame);
     emit_console_str(code, &format!("wasm: {name}: call stack exhausted\n"));
     code.trap();
     code.bind(stack_ok);
@@ -575,8 +584,9 @@ fn call_routine(code: &mut Code, name: &str, frame: i64, entry: u64) {
     zib.j(0, 4);
     zib.set_meta_rd(REG_RA as u8);
     code.push_raw(zib, Fixup::None);
-    // The routine restored `sp` to where it was set above (it is callee-saved).
-    code.alu_ri("add", REG_FP, REG_FP, frame);
+    // The routine restored `r2` to where it was set above (it is callee-saved).
+    #[cfg(not(feature = "sp"))]
+    code.adjust_frame(frame);
     // It preserved `REG_MEM_END` too, but not the limit registers, which are RISC-V temporaries.
     code.set_mem_limits();
 }

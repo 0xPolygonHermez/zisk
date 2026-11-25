@@ -34,6 +34,16 @@ _zisklib_ram_data_size       = 0x30000;   /* 192 KB reserved (ZisK library scrat
    pointers. Keep in sync with PC_REACH_END in core/src/mem.rs. */
 _pc_reach_end                = ORIGIN(rom) + 0x80000000;
 
+/* RAM the program uses, from ORIGIN(ram); the heap ends there. A ZisK prover reserves only part
+   of the 2 GB RAM window: 512 MB by default, the whole window when built with its `ram_2gb`
+   feature, and any access beyond what it reserved faults. So the heap must end at the RAM of the
+   prover that runs the ELF. This script, used on its own, links for 512 MB;
+   zisk_linker_script_ram2gb.ld sets ZISK_RAM_SIZE and includes it to link for 2 GB. Keep in
+   sync with RAM_SIZE in core/src/mem.rs. */
+_zisk_ram_size               = DEFINED(ZISK_RAM_SIZE) ? ZISK_RAM_SIZE : 0x20000000;
+ASSERT(_zisk_ram_size == 0x20000000 || _zisk_ram_size == 0x80000000,
+       "ZISK_RAM_SIZE must be 512 MB (0x20000000) or 2 GB (0x80000000)")
+
 /*
 
 0x2000_0000    ┌────────────────────┐← free input entry
@@ -71,9 +81,9 @@ _pc_reach_end                = ORIGIN(rom) + 0x80000000;
                ├────────────────────┤ ← _bss_end, _heap_bottom (must stay below _pc_reach_end)
                │   heap ↓           │
                │                    │
+0xE000_0000    ├────────────────────┤ ← _heap_top with 512 MB of RAM (default)
                │                    │
-               │                    │
-0x1_4000_0000  └────────────────────┘ ← _heap_top
+0x1_4000_0000  └────────────────────┘ ← _heap_top with 2 GB of RAM (ram2gb script)
 
 */
 
@@ -167,8 +177,10 @@ SECTIONS
 
   ASSERT(. <= _pc_reach_end, "guest .data/.bss end beyond the PC-relative reach of the code (2GiB from the ROM)")
 
+  ASSERT(. < ORIGIN(ram) + _zisk_ram_size, "guest .data/.bss end beyond ZISK_RAM_SIZE")
+
   PROVIDE(_heap_bottom = .);
-  PROVIDE(_heap_top = ORIGIN(ram) + LENGTH(ram));
+  PROVIDE(_heap_top = ORIGIN(ram) + _zisk_ram_size);
   PROVIDE(_heap_size = _heap_top - _heap_bottom);
 
   /* EF zkVM standard §9 names the allocator bounds `_heap_start` / `_heap_end`.
@@ -184,7 +196,7 @@ SECTIONS
      are recomputed rather than aliased so they do not depend on the PROVIDEs above
      having materialized either. */
   _heap_start = .;
-  _heap_end = ORIGIN(ram) + LENGTH(ram);
+  _heap_end = ORIGIN(ram) + _zisk_ram_size;
 
   _end = .;
 }

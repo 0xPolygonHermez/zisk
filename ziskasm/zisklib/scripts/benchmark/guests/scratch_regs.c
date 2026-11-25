@@ -55,7 +55,7 @@ int main(void) {
         y ^= (y << 13); y ^= (y >> 7); y ^= (y << 17);
         if ((n & 15) == 0) { x &= 0xffff; y |= 0x8000000000000000ULL; }
     }
-    volatile uint64_t *o = (volatile uint64_t *)0xA0410000ULL;
+    volatile uint64_t *o = (volatile uint64_t *)0xC0410000ULL;
     for (int i = 0; i < 8; i++) o[i] = acc[i];
     return 0;
 }

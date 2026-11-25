@@ -8,6 +8,9 @@ keywords = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
+# Exposes the memory size features to the build scripts of the crates that compile C, C++ or
+# CUDA code with the memory map (DEP_ZISK_CORE_INPUT_2GB, DEP_ZISK_CORE_RAM_2GB)
+links = "zisk_core"
 
 [lib]
 name = "zisk_core"
@@ -30,6 +33,12 @@ zisk-lib-float = { workspace = true, optional = true }
 
 [features]
 default = []
+# Memory the executors reserve for the input data and the RAM. Neither changes the address map
+# nor the arithmetization, whose windows stay 2GB each (INPUT_WINDOW_SIZE, RAM_WINDOW_SIZE).
+# Without them the input is limited to 1GB and the RAM to 512MB; with them, to the whole 2GB
+# window. Neither changes the ROM of a program nor the verification key.
+input_2gb = []
+ram_2gb = []
 # Cross-checks the FROPS multiplicity column the state-machine collectors build
 # against an independent reference for the same execution: the ROM-histogram
 # assembly's column on the ASM path, a Rust replay of the minimal traces on the
@@ -39,7 +48,7 @@ default = []
 debug_frops = []
 debug_dma = []
 log_dma_ops = []
-# sp = []
+sp = []
 float = ["dep:zisk-lib-float", "zisk-lib-float/float"]
 zba = []
 zbc = []

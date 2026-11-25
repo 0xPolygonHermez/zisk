@@ -219,7 +219,7 @@ airtemplate Dma(int N = 2**21,
     const expr sel = _sel;
     sel * (1 - sel) === 0;      
 
-    // assuming max memory of 4GB (32 bits)
+    // count fits in 32 bits: the address space is 8GB (33 bits), but no region reaches 4GB
     // count: 24 bits RC + 8 bits T
     col witness bits(24) h_count;
 

@@ -13,11 +13,25 @@
 #define ROM_ADDR          (uint64_t)0xA8000000
 #define ROM_SIZE          (uint64_t)0x08000000 // 128MB
 #define INPUT_ADDR        (uint64_t)0x20000000
+#define INPUT_WINDOW_SIZE (uint64_t)0x80000000 // 2GB, the address range of the InputData air
+// Memory reserved for the input, a prefix of its window: the input_2gb feature of zisk-core,
+// which rom-setup passes to the Makefile as INPUT_2GB=1
+#ifdef INPUT_2GB
 #define MAX_INPUT_SIZE    (uint64_t)0x80000000 // 2048MB = 2GB
+#else
+#define MAX_INPUT_SIZE    (uint64_t)0x40000000 // 1024MB = 1GB
+#endif
 #define LOCKED_INPUT_SIZE (uint64_t)0x08000000 // 128MB, the part of the input that is mapped with MAP_LOCKED to ensure it is always resident in RAM
 // The RAM crosses the 4GB boundary (addresses are 33 bits wide)
 #define RAM_ADDR          (uint64_t)0xC0000000
+#define RAM_WINDOW_SIZE   (uint64_t)0x80000000 // 2GB, the address range of the Mem air
+// Memory reserved for the RAM, a prefix of its window: the ram_2gb feature of zisk-core, which
+// rom-setup passes to the Makefile as RAM_2GB=1
+#ifdef RAM_2GB
 #define RAM_SIZE          (uint64_t)0x80000000 // 2GB
+#else
+#define RAM_SIZE          (uint64_t)0x20000000 // 512MB
+#endif
 #define SYS_ADDR          (uint64_t)0xC0400000
 // Guard span between the top of ROM and the bottom of the stack (= RAM_ADDR).
 // EF zkVM standard 6 requires a >=4 kB region immediately below the stack bottom that

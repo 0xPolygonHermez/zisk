@@ -12,6 +12,8 @@ build = "build.rs"
 
 [dependencies]
 zisk-common = { workspace = true }
+# Direct dependency so that build.rs gets its memory size metadata (DEP_ZISK_CORE_*)
+zisk-core = { workspace = true }
 zisk-sm-mem-common = { workspace = true }
 zisk-pil = { workspace = true }
 

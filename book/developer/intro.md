@@ -310,9 +310,9 @@ This is the ZisK high-level address map:
 |From|To|Usage|
 |---|---|---|
 |0x1000|0x0FFFFFFF|ziskos ROM|
-|0x20000000|0x9FFFFFFF|Input data|
+|0x20000000|0x9FFFFFFF|Input data (2 GB window, 1 GB reserved unless built with `input_2gb`)|
 |0xA8000000|0xAFFFFFFF|ROM|
-|0xC0000000|0x13FFFFFFF|RAM (2 GB; addresses are 33 bits wide)|
+|0xC0000000|0x13FFFFFFF|RAM (2 GB window, 512 MB reserved unless built with `ram_2gb`; addresses are 33 bits wide)|
 
 
 ZisK code is the result of the RISC-V code transpilation, but it also contains some additional ziskos code that implements some infrastructure tasks.  The following tables describe the different address ranges and their usage.

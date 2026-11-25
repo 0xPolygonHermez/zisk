@@ -61,7 +61,7 @@ int main(void) {
         if (c == 6) { setv(pk.data, 0); pk.data[40] = 3; }
         ver(&SIG, &pk);
     }
-    volatile uint8_t *O = (volatile uint8_t *)0xA0410000ULL;
+    volatile uint8_t *O = (volatile uint8_t *)0xC0410000ULL;
     for (unsigned i = 0; i < k; i++) O[i] = o[i];
     return 0;
 }

@@ -1,5 +1,6 @@
 #include "mem_counter.hpp"
 #include <cstdio>
+#include <cstdlib>
 #include <cassert>
 #include <assert.h>
 #include <string.h>
@@ -217,18 +218,14 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
                         c_addr += (MAX_THREADS * 8);
                     }
                 } else {
-                    // increase range, because if width = 8 and not aligned means
-                    // each access is double, addr and addr + 8 
-                    const uint64_t from_addr = (addr & ~(uint64_t)0x07);
-                    const uint64_t to_addr = from_addr + ((uint64_t)count + 1) * 8;
-                    uint64_t c_addr = (from_addr & ~(uint64_t)ADDR_MASK) + addr_mask;
-                    if (c_addr < from_addr) {
-                        c_addr += (MAX_THREADS * 8);
-                    }
-                    while (c_addr < to_addr) {                
-                        incr_counter(c_addr , chunk_id, false, write);
-                        c_addr += (MAX_THREADS * 8);
-                    }
+                    // Block bases are 8-aligned at every producer; the GPU planner relies on it
+                    // (it treats every block element as one word). An unaligned base here means a
+                    // new producer broke the invariant: fail loudly instead of diverging.
+                    fprintf(stderr,
+                            "MemCounter FATAL: unaligned block record (mode 0x%02X, addr 0x%09lX, count %u);"
+                            " block bases must be 8-aligned\n",
+                            bytes, (unsigned long)addr, count);
+                    abort();
                 }
                 break;
             }

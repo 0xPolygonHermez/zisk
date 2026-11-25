@@ -134,9 +134,6 @@ airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom
     // areas. Also for security send is_last_segment to avoid reuse end of last segment as start of
     // new cycle of segments
 
-    const expr internal_base_address = base_address / bytes;
-    const expr internal_end_address = (base_address + (size_mb * 1024 * 1024) - 1) / bytes;
-
     direct_update_assumes(ROM_DATA_CONTINUATION_ID, [ segment_id, is_first_segment, previous_segment_addr, ...previous_segment_value]);
 
     direct_update_proves(ROM_DATA_CONTINUATION_ID, [ segment_id+1, 0, segment_last_addr, ...segment_last_value], sel: (1 - is_last_segment));

@@ -60,12 +60,28 @@ int load_from_file(size_t chunk_id, BusDataChunk** chunk) {
 }
 
 
-MemCountersBusData *compact_and_save(int chunk, BusDataChunk* chunk_data, int count) {
-    int size = sizeof(MemCountersBusData) * count;
-    MemCountersBusData *out_data = (MemCountersBusData *)malloc(size);
+// Converts a chunk of raw bus data (MemBusData: op, addr, step, bytes, ...) into the compact file
+// that load_from_compact_file reads: one light-form MOPS header per access (mops_format.hpp), the
+// same stream that MemCounters::save_to_compact_file writes.
+uint64_t *compact_and_save(int chunk, BusDataChunk* chunk_data, int count) {
+    const uint64_t MOPS_TAG = 1ULL << 63;
+    int size = sizeof(uint64_t) * count;
+    uint64_t *out_data = (uint64_t *)malloc(size);
     for (int i = 0; i < count; ++i) {
-        out_data[i].addr = chunk_data[i].data[1];
-        out_data[i].flags = chunk_data[i].data[3] + ((chunk_data[i].data[0] - 1) << 16);
+        const uint64_t addr = chunk_data[i].data[1] & MOPS_ADDR_MASK;
+        const bool is_write = chunk_data[i].data[0] == 2;   // MEMORY_STORE_OP
+        uint64_t mode, no_value;
+        if (is_write) {
+            mode = (chunk_data[i].data[3] & 0x0F) | MOPS_WRITE_FLAG;
+            no_value = 1;
+        } else if (addr == INPUT_ADDR) {   // the free-input word
+            mode = MOPS_READ_8_VALUE;
+            no_value = 1;
+        } else {
+            mode = chunk_data[i].data[3] & 0x0F;
+            no_value = 0;
+        }
+        out_data[i] = MOPS_TAG | addr | (mode << MOPS_MODE_SHIFT) | (no_value << MOPS_NO_VALUE_BIT);
     }
     char filename[256];
     snprintf(filename, sizeof(filename), "../bus_data/mem_count_data/mem_count_data_%d.bin", chunk);

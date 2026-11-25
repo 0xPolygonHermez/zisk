@@ -139,6 +139,57 @@ cargo-zisk build --release
 
 In this case, the `guest` ELF file will be generated in the `./target/elf/riscv64ima-zisk-zkvm-elf/release` directory.
 
+### Building for 2 GB of input and/or 2 GB of RAM
+
+The memory map has a 2 GB window for the input and another for the RAM, but by default the ZisK tools (emulators, prover, memory planners) only reserve **1 GB of input** and **512 MB of RAM**, which keeps the memory a proof needs low. Two Cargo features of ZisK raise each limit to the whole 2 GB window:
+
+| Feature | Input | RAM |
+| :---- | :---- | :---- |
+| (none, default) | 1 GB | 512 MB |
+| `input_2gb` | 2 GB | 512 MB |
+| `ram_2gb` | 1 GB | 2 GB |
+| `input_2gb,ram_2gb` | 2 GB | 2 GB |
+
+The proving circuit and its verification key are the same in every configuration; only the memory the tools reserve changes. The released binaries (`ziskup`) are built with the defaults, so a larger configuration means building the ZisK tools from source (see [Installation](./installation.md)) with the features you need:
+
+```bash
+cargo build --release --features input_2gb,ram_2gb   # or just one of them
+```
+
+**2 GB of input.** The guest does not change: build it as usual. Only the tools that run it (`cargo-zisk`, `ziskemu`, the prover, or your host through the SDK) must be built with `input_2gb`. With the defaults, an input larger than 1 GB is rejected.
+
+**2 GB of RAM.** The guest has to be linked for it, because its heap ends at the end of the RAM it is linked for:
+
+```bash
+cargo-zisk build --release --ram-2gb
+```
+
+and it must then run on tools built with `ram_2gb`. Plain `cargo-zisk build` links for 512 MB (heap up to `0xDFFF_FFFF`); `--ram-2gb` links for 2 GB (heap up to `0x1_3FFF_FFFF`). Always link the guest for the RAM of the prover that runs it:
+
+* A guest linked for 512 MB runs on both configurations, with 512 MB of RAM; if it runs out of heap it fails with an allocation error.
+* A guest linked for 2 GB can fail on a 512 MB prover even if it uses little memory: some allocators write at the top of their heap as soon as they start, and that address is outside the reserved RAM.
+
+`cargo-zisk run` builds and runs the guest in one step, so it links the guest for the RAM of the `cargo-zisk` binary itself: 2 GB when `cargo-zisk` was built with `ram_2gb`.
+
+**Host programs using the SDK.** Enable the features on `zisk-sdk`, and if the host's `build.rs` builds the guest, link it for 2 GB of RAM too:
+
+```toml
+# host/Cargo.toml
+zisk-sdk = { version = "...", features = ["input_2gb", "ram_2gb"] }
+```
+
+```rust
+// host/build.rs
+fn main() {
+    zisk_sdk::build_program_with_args(
+        "../guest",
+        zisk_sdk::BuildArgs::default().release(true).ram_2gb(true),
+    );
+}
+```
+
+**C and C++ guests** choose the linker script themselves: `zisk_linker_script.ld` links for 512 MB and `zisk_linker_script_ram2gb.ld` for 2 GB (pass `-L` with its directory too, since it includes the first one). See [Limits](../developer/limits.md) for the details of each limit.
+
 ## Execute
 
 You can test your compiled program using the emulator before generating a proof. Use the `-i` (`--inputs`) flag to specify the location of the input file:

@@ -98,15 +98,8 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         data: &ArithEq384StepAddr,
         trace: &mut [R],
     ) {
-        // addr_hi is binary on every row and holds the high limb of the addresses in step_addr
-        // (the operands a and b, and the pointers read from the parameter struct on the ADDR_IND
-        // rows): clear it everywhere first
-        for row in trace.iter_mut().take(ARITH_EQ_384_ROWS_BY_OP) {
-            row.set_addr_hi(false);
-        }
         trace[0].set_step_addr(data.main_step);
         trace[1].set_step_addr(data.addr_op);
-        trace[1].set_addr_hi(zisk_core::addr_hi(data.addr_op) == 1);
         trace[2].set_step_addr(data.addr_x1);
         trace[3].set_step_addr(data.addr_y1);
         trace[4].set_step_addr(data.addr_x2);
@@ -115,13 +108,21 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         trace[7].set_step_addr(data.addr_y3);
         for (i, addr_ind) in data.addr_ind.iter().enumerate() {
             trace[i + 8].set_step_addr(*addr_ind);
-            trace[i + 8].set_addr_hi(zisk_core::addr_hi(*addr_ind) == 1);
         }
         // ADDR_A row (right after the indirections) carries the main operand a
         let addr_a_row = 8 + data.addr_ind.len();
         trace[addr_a_row].set_step_addr(data.addr_a);
-        trace[addr_a_row].set_addr_hi(zisk_core::addr_hi(data.addr_a) == 1);
-        for row in trace.iter_mut().take(ARITH_EQ_384_ROWS_BY_OP).skip(addr_a_row + 1) {
+        // The high limb (bit 32) of the addresses that arrive as two 32-bit limbs (the operands a
+        // and b, and the pointers read from the parameter struct) lives in the next rows of
+        // step_addr: ADDR_OP_HI, ADDR_IND_x_HI, ADDR_A_HI
+        let hi_row = addr_a_row + 1;
+        trace[hi_row].set_step_addr(zisk_core::addr_hi(data.addr_op));
+        for (i, addr_ind) in data.addr_ind.iter().enumerate() {
+            trace[hi_row + 1 + i].set_step_addr(zisk_core::addr_hi(*addr_ind));
+        }
+        let addr_a_hi_row = hi_row + 1 + data.addr_ind.len();
+        trace[addr_a_hi_row].set_step_addr(zisk_core::addr_hi(data.addr_a));
+        for row in trace.iter_mut().take(ARITH_EQ_384_ROWS_BY_OP).skip(addr_a_hi_row + 1) {
             row.set_step_addr(0);
         }
     }

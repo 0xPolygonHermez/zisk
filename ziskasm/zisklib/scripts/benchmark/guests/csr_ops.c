@@ -9,7 +9,7 @@
    Build with -march=rv64ima_zicsr. */
 #include <stdint.h>
 
-static volatile uint8_t *const O = (volatile uint8_t *)0xA0410000ULL;
+static volatile uint8_t *const O = (volatile uint8_t *)0xC0410000ULL;
 static unsigned n;
 
 static void set(uint64_t v) { __asm__ volatile("csrw mscratch, %0" ::"r"(v)); }
