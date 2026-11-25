@@ -156,7 +156,7 @@ airgroup Zisk {
     virtual ArithEqLtTable(ARITH_EQ_LT_TABLE_SIZE);
 
     Keccakf(N: 2**21, lanes_per_row: 5);
-    KeccakfProxy(N: 2**19);
+    KeccakfProxy(N: 2**21);
     virtual KeccakfChiTable(KECCAKF_CHI_TABLE_SIZE);
     virtual KeccakfXor5Table(KECCAKF_XOR5_TABLE_SIZE);
 

@@ -149,8 +149,8 @@ pub const TWISTED_EDWARDS_INSTANCE_COST: usize = 543;
 /// `Keccakf`: 19.85 GB.
 pub const KECCAKF_INSTANCE_COST: usize = 20326;
 
-/// `KeccakfProxy`: 2.67 GB.
-pub const KECCAKF_PROXY_INSTANCE_COST: usize = 2734;
+/// `KeccakfProxy`: 10.94 GB.
+pub const KECCAKF_PROXY_INSTANCE_COST: usize = 11203;
 
 /// `Sha256f`: 0.74 GB.
 pub const SHA_256_F_INSTANCE_COST: usize = 758;

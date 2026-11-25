@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "c143c220a614aed313ee0bdbcdd2121e05a1856af46ff3745e13af1f48ea2de6";
+pub const PILOUT_HASH: &str = "78a233f7286ecdeefa18fd3267f40e1d8e4f5845e0ea67d18b3076efd119c7b9";
 
 //AIRGROUP CONSTANTS
 
@@ -588,13 +588,13 @@ pub type KeccakfTrace<R> = GenericTrace<R, 2097152, 0, 36>;
 trace_row!(KeccakfProxyFixedRow<F> {
  __L1__: F,
 });
-pub type KeccakfProxyFixed<F> = GenericTrace<KeccakfProxyFixedRow<F>, 524288, 0, 37>;
+pub type KeccakfProxyFixed<F> = GenericTrace<KeccakfProxyFixedRow<F>, 2097152, 0, 37>;
 
 trace_row!(KeccakfProxyTraceRow<F> {
  in_use:bit, is_replica:bit, replicas:ubit(24), step:ubit(40), addr_w_lo:ubit(24), addr_w_hi:ubit(5), addr_hi:bit, state_in:[u32; 50], state_out:[u32; 50], is_xor:bit, blk_addr_w_lo:ubit(24), blk_addr_w_hi:ubit(5), blk_addr_hi:bit, block:[u32; 34], perm_in:[u32; 34],
 });
 
-pub type KeccakfProxyTrace<R> = GenericTrace<R, 524288, 0, 37>;
+pub type KeccakfProxyTrace<R> = GenericTrace<R, 2097152, 0, 37>;
 
 trace_row!(Sha256fFixedRow<F> {
  CLK_0: F, __L1__: F,
