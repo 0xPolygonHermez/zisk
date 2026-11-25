@@ -192,9 +192,10 @@ impl MemPlanner {
                     segment.chunks.insert(
                         chunk_id,
                         MemModuleCheckPoint {
-                            from_addr: checkpoint.from_addr >> 3,
+                            // the C++ checkpoints already hold word addresses
+                            from_addr: checkpoint.from_addr,
                             from_skip: checkpoint.from_skip,
-                            to_addr: checkpoint.to_addr >> 3,
+                            to_addr: checkpoint.to_addr,
                             to_count: checkpoint.to_count,
                             count: checkpoint.count,
                         },
@@ -202,18 +203,18 @@ impl MemPlanner {
                 }
 
                 // Collect paged-dense offsets for this segment
-                let mut offsets_base_addr: u32 = 0;
+                let mut offsets_base_addr_w: u32 = 0;
                 let off = unsafe {
                     bindings::get_mem_segment_offset_pages(
                         self.inner,
                         mem_id as u32,
                         segment_id,
-                        &mut offsets_base_addr as *mut u32,
+                        &mut offsets_base_addr_w as *mut u32,
                     )
                 };
                 if !off.page_starts.is_null() && off.num_pages > 0 {
-                    assert!(offsets_base_addr > 0);
-                    segment.offsets_base_addr = offsets_base_addr;
+                    assert!(offsets_base_addr_w > 0);
+                    segment.offsets_base_addr_w = offsets_base_addr_w;
                     segment.addr_range_slots = off.addr_range_slots;
                     segment.num_pages = off.num_pages;
                     segment.present_count = off.present_count;

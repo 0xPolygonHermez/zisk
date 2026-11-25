@@ -73,10 +73,8 @@ direct_dma_inputcpy_mops:
 
     mov     rax, rdx
     shr     rax, 3                       
-    shl     rax, MOPS_BLOCK_WORDS_RS      # 1 cycle - shift to block words field position
-    mov     r9, MOPS_ALIGNED_BLOCK_WRITE  # 1 cycle - rcx = block write flags
-    add     r9, rax
-    add     r9, rdi                       # rdi aligned 
+    shl     rax, MOPS_DESC_WORDS_RS       # 1 cycle - shift to the descriptor's count field
+    lea     r9, [rax + rdi]               # rdi aligned 
 
     mov     [r12 + r13 * 8], r9           # ~4 cycles - write block descriptor, expanded after the copy
 
@@ -106,10 +104,8 @@ direct_dma_inputcpy_mops:
     # BRANCH 1 - specific MOPS block write
     # set rcx = qwords to write
 
-    shl     r9, MOPS_BLOCK_WORDS_RS        # 1 cycle - shift to block words field position
-    mov     rax, MOPS_ALIGNED_BLOCK_WRITE  # 1 cycle - rcx = block write flags
-    add     rax, r9
-    add     rax, rdi                       # rdi is aligned in this path
+    shl     r9, MOPS_DESC_WORDS_RS         # 1 cycle - shift to the descriptor's count field
+    lea     rax, [r9 + rdi]                # rdi is aligned in this path
 
     mov     [r12 + r13 * 8], rax            # ~4 cycles - write block descriptor, expanded after the copy
 
@@ -145,9 +141,7 @@ direct_dma_inputcpy_mops:
     mov     rax, rdi
     and     rax, ALIGN_MASK
     shr     rcx, 3
-    shl     rcx, MOPS_BLOCK_WORDS_RS        # 1 cycle - shift to block words field position
-    mov     r9, MOPS_ALIGNED_BLOCK_WRITE    # 1 cycle - rcx = block write flags
-    add     rcx, r9
+    shl     rcx, MOPS_DESC_WORDS_RS         # 1 cycle - shift to the descriptor's count field
     add     rcx, rax
 
     mov     [r12 + r13 * 8 + 8], rcx        # ~4 cycles - write block descriptor after the read record
@@ -168,9 +162,8 @@ direct_dma_inputcpy_mops:
     # rcx = (rdi & 0x7) + rdx + 7  ==> (rcx >> 3) qwords
 
     shr     rcx, 3   
-    shl     rcx, MOPS_BLOCK_WORDS_RS       # 1 cycle - shift to block words field position
-    mov     rax, MOPS_ALIGNED_BLOCK_WRITE  # 1 cycle - rcx = block write flags
-    add     rax, rcx                       # rax = MOPS_ALIGNED_BLOCK_WRITE | (count_q <<  MOPS_BLOCK_WORDS_RS)
+    shl     rcx, MOPS_DESC_WORDS_RS        # 1 cycle - shift to the descriptor's count field
+    mov     rax, rcx                       # rax = count_q << MOPS_DESC_WORDS_RS
     mov     rcx, rdi
     and     rcx, ALIGN_MASK
     add     rax, rcx                       # rax |= rdi & ALIGN MASK

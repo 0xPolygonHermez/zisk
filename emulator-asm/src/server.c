@@ -120,6 +120,29 @@ void server_signal_handler(void)
 
 // ROM histogram
 static void save_rom_histogram_to_file (void);
+
+// Reserves [addr, addr + size) PROT_NONE, as the guard region below, so that any access faults
+// and no later mmap(NULL, ...) or large malloc can be placed there. Used for the part of the
+// input and RAM windows above the memory this build reserves (MAX_INPUT_SIZE, RAM_SIZE): the
+// assembly code does no bounds checking, so an access beyond the reserved memory must fault.
+static void reserve_no_access (uint64_t addr, uint64_t size, const char * name)
+{
+    if (size == 0) return;
+    void * p = mmap((void *)addr, size, PROT_NONE,
+                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_NORESERVE, -1, 0);
+    if (p == MAP_FAILED)
+    {
+        asm_printf("ERROR: Failed calling mmap(%s) errno=%d=%s\n", name, errno, strerror(errno));
+        exit(-1);
+    }
+    if ((uint64_t)p != addr)
+    {
+        asm_printf("ERROR: Called mmap(%s) but returned address = %p != 0x%08lx\n", name, p, addr);
+        exit(-1);
+    }
+    if (verbose) asm_printf("Reserved %s 0x%08lx-0x%08lx (%lu MB) as PROT_NONE\n",
+                            name, addr, addr + size - 1, size >> 20);
+}
 uint64_t histogram_size = 0;
 uint64_t rom_length = 0;
 uint64_t frops_length = 0;
@@ -420,6 +443,9 @@ void server_setup (void)
             exit(-1);
         }
         shmem_input_fd = -1;
+
+        // The rest of the input window, beyond the reserved input
+        reserve_no_access(INPUT_ADDR + MAX_INPUT_SIZE, INPUT_WINDOW_SIZE - MAX_INPUT_SIZE, "input window tail");
         
         // Report duration
         if (verbose)
@@ -832,6 +858,9 @@ void server_setup (void)
         }
         if (verbose) asm_printf("Reserved guard region 0x%08lx-0x%08lx (%lu MB) as PROT_NONE\n",
                                 GUARD_ADDR, GUARD_ADDR + GUARD_SIZE - 1, GUARD_SIZE >> 20);
+
+        // The rest of the RAM window, beyond the reserved RAM
+        reserve_no_access(RAM_ADDR + RAM_SIZE, RAM_WINDOW_SIZE - RAM_SIZE, "RAM window tail");
 
         // Report duration
         if (verbose)

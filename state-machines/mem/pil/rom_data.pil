@@ -41,7 +41,7 @@ airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom
     const int LAST_LANE = lanes_x_row - 1;
 
     col witness bits(1) addr_change[lanes_x_row];
-    col witness bits(29) addr[lanes_x_row];
+    col witness bits(ADDR_W_BITS) addr[lanes_x_row];
     col witness bits(40) step[lanes_x_row];
     col witness bits(32) value[lanes_x_row][RC];
 
@@ -133,9 +133,6 @@ airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom
     // In columns sent to the bus, we add base_address to avoid collisions between different memory
     // areas. Also for security send is_last_segment to avoid reuse end of last segment as start of
     // new cycle of segments
-
-    const expr internal_base_address = base_address / bytes;
-    const expr internal_end_address = (base_address + (size_mb * 1024 * 1024) - 1) / bytes;
 
     direct_update_assumes(ROM_DATA_CONTINUATION_ID, [ segment_id, is_first_segment, previous_segment_addr, ...previous_segment_value]);
 

@@ -3,8 +3,8 @@ use zisk_precomp_helpers::DmaInfo;
 
 #[derive(Debug)]
 pub struct DmaPrePostInput {
-    pub src: u32,
-    pub dst: u32,
+    pub src: u64, // byte address
+    pub dst: u64, // byte address
     pub step: u64,
     pub encoded: u64, // contains fill_byte/memcmp_result
     pub src_values: [u64; 2],
@@ -30,8 +30,8 @@ impl DmaPrePostInput {
             } else {
                 let src_offset = DmaInfo::get_pre_data_offset(encoded);
                 let input = Self {
-                    dst: data[A] as u32,
-                    src: data[B] as u32,
+                    dst: data[A],
+                    src: data[B],
                     step: data[STEP],
                     encoded,
                     src_values: [
@@ -53,8 +53,8 @@ impl DmaPrePostInput {
             let src_offset = DmaInfo::get_post_data_offset(encoded);
             let loop_count = DmaInfo::get_loop_count(encoded);
             let input = Self {
-                dst: data[A] as u32 + pre_count as u32 + loop_count as u32 * 8,
-                src: data[B] as u32 + pre_count as u32 + loop_count as u32 * 8,
+                dst: data[A] + pre_count as u64 + loop_count as u64 * 8,
+                src: data[B] + pre_count as u64 + loop_count as u64 * 8,
                 step: data[STEP],
                 encoded,
                 src_values: [
@@ -83,7 +83,7 @@ impl DmaPrePostInput {
                 skipped += 1;
             } else {
                 inputs.push(Self {
-                    dst: data[A] as u32,
+                    dst: data[A],
                     src: 0,
                     step: data[STEP],
                     encoded,
@@ -97,8 +97,8 @@ impl DmaPrePostInput {
         if post_count > 0 && skipped >= skip && max_count as usize > inputs.len() {
             let loop_count = DmaInfo::get_loop_count(encoded);
             inputs.push(Self {
-                dst: data[A] as u32 + pre_count as u32 + loop_count as u32 * 8,
-                src: pre_count as u32 + loop_count as u32 * 8,
+                dst: data[A] + pre_count as u64 + loop_count as u64 * 8,
+                src: pre_count as u64 + loop_count as u64 * 8,
                 step: data[STEP],
                 encoded,
                 src_values: [0, 0],
@@ -112,13 +112,13 @@ impl DmaPrePostInput {
     // memcmp has different format, because need to read dst and src, for this reason has a more
     // easy format, first all dst (a), and after all src (b)
     pub fn from_memcmp(data: &[u64], data_ext: &[u64], skip: u32, max_count: u32) -> Vec<Self> {
-        let dst = data[A] as u32;
-        let src = data[B] as u32;
+        let dst = data[A];
+        let src = data[B];
         let encoded = data[DMA_ENCODED];
         let count = DmaInfo::get_count(encoded);
         let op = data[OP] as u8;
-        let dst_words = (((dst + count as u32 + 7) >> 3) - (dst >> 3)) as usize;
-        let src_words = (((src + count as u32 + 7) >> 3) - (src >> 3)) as usize;
+        let dst_words = (((dst + count as u64 + 7) >> 3) - (dst >> 3)) as usize;
+        let src_words = (((src + count as u64 + 7) >> 3) - (src >> 3)) as usize;
         let mut inputs = Vec::new();
         let pre_count = DmaInfo::get_pre_count(encoded);
         let mut skipped = 0;
@@ -159,8 +159,8 @@ impl DmaPrePostInput {
                 dst_words + src_words - 1 - DmaInfo::is_double_read_post(encoded) as usize;
             let loop_count = DmaInfo::get_loop_count(encoded);
             let input = Self {
-                dst: dst + pre_count as u32 + loop_count as u32 * 8,
-                src: src + pre_count as u32 + loop_count as u32 * 8,
+                dst: dst + pre_count as u64 + loop_count as u64 * 8,
+                src: src + pre_count as u64 + loop_count as u64 * 8,
                 step: data[STEP],
                 encoded,
                 src_values: [

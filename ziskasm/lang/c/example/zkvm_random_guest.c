@@ -12,7 +12,7 @@
 static uint64_t vals[N];
 
 static void emit64(unsigned slot, uint64_t v) {
-    volatile uint32_t *o = (volatile uint32_t *)0xA0410000ULL;
+    volatile uint32_t *o = (volatile uint32_t *)0xC0410000ULL;
     o[2 * slot] = (uint32_t)v;
     o[2 * slot + 1] = (uint32_t)(v >> 32);
 }

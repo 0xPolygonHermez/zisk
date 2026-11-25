@@ -13,7 +13,7 @@ fn sum_const_array_into_ram() {
 const u64 TABLE = 10, 20, 30, 40   ; ROM array (sum = 100)
 u64 count = 4                      ; RAM scalar
 u64 acc = 0                        ; RAM accumulator
-define OUTPUT_ADDR 0xa0410000
+define OUTPUT_ADDR 0xc0410000
 
 main:
 \tcopyb(0, TABLE) -> r10           ; r10 = ADDRESS of TABLE (a pointer)
@@ -55,7 +55,7 @@ u64 RPTR = FOUR                    ; RAM pointer
 const u64 ONE = 1
 u64 TWO = 2
 u64 FOUR = 4
-define OUTPUT_ADDR 0xa0410000
+define OUTPUT_ADDR 0xc0410000
 
 main:
 \tcopyb(0, PTRS) -> r10

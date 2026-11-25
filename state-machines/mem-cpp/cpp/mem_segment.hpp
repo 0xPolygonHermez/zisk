@@ -17,7 +17,7 @@ class MemSegment {
     MemCheckPoint *chunks;
 public:
     bool is_last_segment;
-    uint32_t offsets_base_addr;
+    uint32_t offsets_base_addr_w;   // word address of slot 0 of the offsets
     PagedOffsets offsets;
 
     MemSegment(const MemSegment&) = delete;
@@ -25,13 +25,13 @@ public:
     MemSegment(MemSegment&&) noexcept = delete;
 
     MemSegment()
-        : is_last_segment(false), offsets_base_addr(0),
+        : is_last_segment(false), offsets_base_addr_w(0),
           offsets{nullptr, nullptr, nullptr, 0, 0, 0} {
         chunks = nullptr;
         init();
     }
-    MemSegment(uint32_t chunk_id, uint32_t from_addr, uint32_t skip, uint32_t count)
-        : is_last_segment(false), offsets_base_addr(0),
+    MemSegment(uint32_t chunk_id, uint64_t from_addr, uint32_t skip, uint32_t count)
+        : is_last_segment(false), offsets_base_addr_w(0),
           offsets{nullptr, nullptr, nullptr, 0, 0, 0} {
         chunks = nullptr;
         init();
@@ -51,14 +51,14 @@ public:
         }
         chunks = (MemCheckPoint *)malloc(sizeof(MemCheckPoint) * MAX_CHUNKS);
     }
-    void push(uint32_t chunk_id, uint32_t from_addr, uint32_t skip, uint32_t count) {
+    void push(uint32_t chunk_id, uint64_t from_addr, uint32_t skip, uint32_t count) {
         if (chunks_count >= MAX_CHUNKS) return;
         uint32_t next_index = chunks_count++;
         mapping.emplace(chunk_id, next_index);
         chunks[next_index].set(chunk_id, from_addr, skip, count);
     }
 
-    void push(uint32_t chunk_id, uint32_t from_addr, uint32_t skip, uint32_t to_addr, uint32_t to_count, uint32_t count) {
+    void push(uint32_t chunk_id, uint64_t from_addr, uint32_t skip, uint64_t to_addr, uint32_t to_count, uint32_t count) {
         if (chunks_count >= MAX_CHUNKS) return;
         uint32_t next_index = chunks_count++;
         mapping.emplace(chunk_id, next_index);
@@ -73,7 +73,7 @@ public:
         mapping[chunks[chunks_count - 1].chunk_id] = chunks_count - 1;
     }
 
-    void add_or_update(uint32_t chunk_id, uint32_t from_addr, uint32_t skip, uint32_t count ) {
+    void add_or_update(uint32_t chunk_id, uint64_t from_addr, uint32_t skip, uint32_t count ) {
         auto it = mapping.find(chunk_id);
         if (it != mapping.end()) {
             chunks[it->second].add_rows(from_addr, count);

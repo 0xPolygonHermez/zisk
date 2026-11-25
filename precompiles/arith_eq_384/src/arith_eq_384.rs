@@ -30,16 +30,16 @@ pub struct ArithEq384SM<F: PrimeField64> {
 struct ArithEq384StepAddr {
     main_step: u64,
     /// Main operand b: the parameter-struct address, or the p2/f2 address of the direct a/b ops.
-    addr_op: u32,
+    addr_op: u64,
     /// Main operand a: the p1/f1 address of the ops called with two direct operands, 0 otherwise.
-    addr_a: u32,
-    addr_x1: u32,
-    addr_y1: u32,
-    addr_x2: u32,
-    addr_y2: u32,
-    addr_x3: u32,
-    addr_y3: u32,
-    addr_ind: [u32; 5],
+    addr_a: u64,
+    addr_x1: u64,
+    addr_y1: u64,
+    addr_x2: u64,
+    addr_y2: u64,
+    addr_x3: u64,
+    addr_y3: u64,
+    addr_ind: [u64; 5],
 }
 
 impl<F: PrimeField64> ArithEq384SM<F> {
@@ -99,20 +99,30 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         trace: &mut [R],
     ) {
         trace[0].set_step_addr(data.main_step);
-        trace[1].set_step_addr(data.addr_op as u64);
-        trace[2].set_step_addr(data.addr_x1 as u64);
-        trace[3].set_step_addr(data.addr_y1 as u64);
-        trace[4].set_step_addr(data.addr_x2 as u64);
-        trace[5].set_step_addr(data.addr_y2 as u64);
-        trace[6].set_step_addr(data.addr_x3 as u64);
-        trace[7].set_step_addr(data.addr_y3 as u64);
+        trace[1].set_step_addr(data.addr_op);
+        trace[2].set_step_addr(data.addr_x1);
+        trace[3].set_step_addr(data.addr_y1);
+        trace[4].set_step_addr(data.addr_x2);
+        trace[5].set_step_addr(data.addr_y2);
+        trace[6].set_step_addr(data.addr_x3);
+        trace[7].set_step_addr(data.addr_y3);
         for (i, addr_ind) in data.addr_ind.iter().enumerate() {
-            trace[i + 8].set_step_addr(*addr_ind as u64);
+            trace[i + 8].set_step_addr(*addr_ind);
         }
         // ADDR_A row (right after the indirections) carries the main operand a
         let addr_a_row = 8 + data.addr_ind.len();
-        trace[addr_a_row].set_step_addr(data.addr_a as u64);
-        for row in trace.iter_mut().take(ARITH_EQ_384_ROWS_BY_OP).skip(addr_a_row + 1) {
+        trace[addr_a_row].set_step_addr(data.addr_a);
+        // The high limb (bit 32) of the addresses that arrive as two 32-bit limbs (the operands a
+        // and b, and the pointers read from the parameter struct) lives in the next rows of
+        // step_addr: ADDR_OP_HI, ADDR_IND_x_HI, ADDR_A_HI
+        let hi_row = addr_a_row + 1;
+        trace[hi_row].set_step_addr(zisk_core::addr_hi(data.addr_op));
+        for (i, addr_ind) in data.addr_ind.iter().enumerate() {
+            trace[hi_row + 1 + i].set_step_addr(zisk_core::addr_hi(*addr_ind));
+        }
+        let addr_a_hi_row = hi_row + 1 + data.addr_ind.len();
+        trace[addr_a_hi_row].set_step_addr(zisk_core::addr_hi(data.addr_a));
+        for row in trace.iter_mut().take(ARITH_EQ_384_ROWS_BY_OP).skip(addr_a_hi_row + 1) {
             row.set_step_addr(0);
         }
     }

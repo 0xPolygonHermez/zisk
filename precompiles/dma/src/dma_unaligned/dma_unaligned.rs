@@ -51,8 +51,8 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
         let initial_count = DmaInfo::get_loop_count(input.encoded) - input.skip as usize;
         let mut count = initial_count;
         let src_offset = DmaInfo::get_loop_src_offset(input.encoded);
-        let mut dst64 = (input.dst >> 3) + input.skip;
-        let mut src64 = (input.src >> 3) + input.skip;
+        let mut dst64 = ((input.dst >> 3) as u32) + input.skip;
+        let mut src64 = ((input.src >> 3) as u32) + input.skip;
 
         let mut src_values_index = 0;
 
@@ -67,7 +67,10 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
             row.set_previous_seq_end(input.skip == 0 && irow == 0);
 
             row.set_dst64(dst64);
+            // bit 32 of the byte address is bit 29 of the word address
+            row.set_dst_addr_hi((dst64 >> 29) & 1 == 1);
             row.set_src64(src64);
+            row.set_src_addr_hi((src64 >> 29) & 1 == 1);
             dst64 += 1;
             src64 += 1;
 

@@ -5,7 +5,10 @@ use std::{
     process::{Command, Stdio},
 };
 use zisk_common::ZiskPaths;
-use zisk_core::{is_elf_file, is_wasm_file, AsmGenerationMethod};
+use zisk_core::{
+    is_elf_file, is_wasm_file, AsmGenerationMethod, INPUT_WINDOW_SIZE, MAX_INPUT_SIZE, RAM_SIZE,
+    RAM_WINDOW_SIZE,
+};
 use zisk_transpiler_common::ZiskTranspiler;
 
 use crate::get_elf_data_hash;
@@ -192,10 +195,11 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
 /// The single definition of the base name. The `-mt`/`-rh`/`-mo` suffixes are added
 /// where the files are generated and resolved.
 fn asm_file_base(hash: &str, hints: bool) -> String {
+    let tag = crate::mem_config_tag();
     if hints {
-        format!("{hash}-hints")
+        format!("{hash}{tag}-hints")
     } else {
-        hash.to_string()
+        format!("{hash}{tag}")
     }
 }
 
@@ -323,6 +327,9 @@ pub fn generate_assembly(
             .arg(format!("OUT_PATH={}", out_file_str))
             .arg(format!("TRACE_TARGET={trace_target}"))
             .arg(format!("MOPS_LIGHT={}", if light { 1 } else { 0 }))
+            // The memory the emulator reserves must match this build's zisk-core
+            .arg(format!("INPUT_2GB={}", (MAX_INPUT_SIZE == INPUT_WINDOW_SIZE) as u8))
+            .arg(format!("RAM_2GB={}", (RAM_SIZE == RAM_WINDOW_SIZE) as u8))
             .current_dir(emulator_asm_path)
             .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
             .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })

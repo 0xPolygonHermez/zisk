@@ -13,7 +13,7 @@ use ziskemu::{Emu, EmuOptions, ZiskEmulator};
 
 /// sp-relative lines of [`SRC`], exactly as `ZiskInst::to_zisk_asm` renders them back.
 const SP_LINES: &[&str] = &[
-    "copyb(0x0, 0xa0100000), setsp",
+    "copyb(0x0, 0xc0100000), setsp",
     "copyb(0x0, 0xb) -> [sp + 0]",
     "copyb(0x0, 0x16) -> [sp - 8]",
     "add([sp + 0], [sp - 8]) -> [sp + 16]",
@@ -25,14 +25,14 @@ const SP_LINES: &[&str] = &[
     "copyb(0x0, [sp - 16]) -> r8",
     "copyb(0x0, 0x1000), setsp, incsp(16)",
     "add(sp, 0x0) -> r12",
-    "copyb(0x0, 0xa0100000), setsp, incsp(-8)",
+    "copyb(0x0, 0xc0100000), setsp, incsp(-8)",
     "add(sp, 0x0) -> r14",
 ];
 
 const SRC: &str = "\
-define OUTPUT_ADDR 0xa0410000
+define OUTPUT_ADDR 0xc0410000
 main:
-\tcopyb(0, 0xa0100000), setsp                ; sp = 0xa0100000 (B)
+\tcopyb(0, 0xc0100000), setsp                ; sp = 0xc0100000 (B)
 \tcopyb(0, 11) -> [sp + 0]                   ; mem[B] = 11
 \tcopyb(0, 22) -> [sp - 8]                   ; mem[B - 8] = 22
 \tadd([sp + 0], [sp - 8]) -> [sp + 16]       ; mem[B + 16] = 33
@@ -46,7 +46,7 @@ main:
 \tand(r8, 0xffffffff) -> r8                  ; ... and nothing else was ever written there
 \tcopyb(0, 0x1000), setsp, incsp(16)         ; sp = c + 16 = 0x1010
 \tadd(sp, 0) -> r12                          ; r12 = 0x1010
-\tcopyb(0, 0xa0100000), setsp, incsp(-8)     ; sp = B - 8: the store below sees the old sp
+\tcopyb(0, 0xc0100000), setsp, incsp(-8)     ; sp = B - 8: the store below sees the old sp
 \tcopyb(0, OUTPUT_ADDR) -> r13
 \tcopyb(r13, r5) -> 8[a + 0]
 \tcopyb(r13, r6) -> 8[a + 8]
@@ -68,7 +68,7 @@ fn sp_register_end_to_end() {
         .expect("emulation should succeed");
     let word = |k: usize| u64::from_le_bytes(out[8 * k..8 * k + 8].try_into().unwrap());
 
-    let base = 0xa010_0000u64;
+    let base = 0xc010_0000u64;
     assert_eq!(word(0), 33, "[sp + N] a/b sources and store");
     assert_eq!(word(1), base - 8, "incsp(-8) and the sp a-source");
     assert_eq!(word(2), 11, "8[a + sp + N] b source");
@@ -181,13 +181,13 @@ fn sp_syntax_errors() {
 #[test]
 fn sp_addresses_wrap_modulo_2_64() {
     const WRAP_SRC: &str = "\
-define OUTPUT_ADDR 0xa0410000
+define OUTPUT_ADDR 0xc0410000
 main:
 \tcopyb(0, 0x8000000000000000), setsp
-\tcopyb(0, 0x80000000a0100000) -> r9
+\tcopyb(0, 0x80000000c0100000) -> r9
 \tcopyb(0, 77) -> r5
 \tcopyb(r9, r5) -> 8[a + sp + 0]
-\tcopyb(0, 0x80000000a0100008) -> r10
+\tcopyb(0, 0x80000000c0100008) -> r10
 \tcopyb(r10, 8[a + sp - 8]) -> r6
 \tcopyb(0, OUTPUT_ADDR) -> r13
 \tcopyb(r13, r6) -> 8[a + 0]

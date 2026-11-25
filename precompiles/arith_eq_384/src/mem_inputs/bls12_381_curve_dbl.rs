@@ -13,7 +13,7 @@ pub const BLS12_381_CURVE_DBL_MEM_CONFIG: ArithEq384MemInputConfig = ArithEq384M
 };
 
 pub fn generate_bls12_381_curve_dbl_mem_inputs<P: MemProcessor>(
-    addr_main: u32,
+    addr_main: u64,
     step_main: u64,
     data: &[u64],
     only_counters: bool,
@@ -37,7 +37,7 @@ pub fn generate_bls12_381_curve_dbl_mem_inputs<P: MemProcessor>(
 }
 
 pub fn skip_bls12_381_curve_dbl_mem_inputs<P: MemProcessor>(
-    addr_main: u32,
+    addr_main: u64,
     data: &[u64],
     mem_processors: &mut P,
 ) -> bool {

@@ -210,23 +210,17 @@ direct_dma_xmemcpy_common_entry_point:
 .L_src_to_mops:
     # Extract loop_count (number of aligned qwords to copy)
     mov     rcx, rax                   # 1 cycle - rcx = encoded
-    shr     rcx, DMA_LOOP_COUNT_RS         # 1 cycle - rcx = loop_count
+    shr     rcx, DMA_LOOP_COUNT_RS         # 1 cycle - rcx = loop_count (words)
     jz      .L_save_dst_with_loop_count_zero  # 2 cycles - no aligned bulk
-    shl     rcx, MOPS_BLOCK_WORDS_RS   # 1 cycle - format for mops block entry
-
-    # Check if source is unaligned (needs extra word per iteration)
-    test    rax, DMA_UNALIGNED_DST_SRC_MASK  # 1 cycle
-    jnz     .L_src_extra_for_unaligned_loop  # 2 cycles (predicted)
-
+    mov     r8, rcx                        # 1 cycle - r8 = words of the source block
     mov     r9, MOPS_ALIGNED_BLOCK_READ    # 1 cycle - aligned block read flag
-    jmp     .L_src_block_before_address    # 2 cycles
 
-.L_src_extra_for_unaligned_loop:    
-    # Unaligned source requires one extra word per block
-    mov     r9, MOPS_ALIGNED_BLOCK_READ + MOPS_BLOCK_ONE_WORD  # 1 cycle
+    # An unaligned source needs one extra word
+    test    rax, DMA_UNALIGNED_DST_SRC_MASK  # 1 cycle
+    jz      .L_src_block_before_address    # 2 cycles (predicted)
+    inc     r8                             # 1 cycle
 
 .L_src_block_before_address:
-    add     r9, rcx                        # 1 cycle - add block word count
     test    rax, DMA_SRC64_INC_BY_PRE_MASK     # 1 cycle - check pre-alignment offset
     jnz     .L_src_incr_by_pre             # 2 cycles (predicted)
     add     r9, rsi                        # 1 cycle - use base src address
@@ -238,20 +232,18 @@ direct_dma_xmemcpy_common_entry_point:
 
 .L_src_to_mops_ready:
     and     r9, ALIGN_MASK                 # 1 cycle - align address
-    MOPS_REC_BLOCK r9
+    MOPS_REC_BLOCK_WORDS r9, r8, r11       # rcx keeps loop_count for the destination block
 
 .L_save_dst_addr_reusing_rcx:
     # Record destination write block
     # Strategy: treat all writes as one block (cannot write same address twice per step)
   
+    shl     rcx, MOPS_DESC_WORDS_RS        # 1 cycle - loop words in the descriptor's count field
     mov     r9, rax                        # 1 cycle - r9 = encoded
     and     r9, DMA_PRE_WRITES_MASK        # 1 cycle - extract pre_writes count
-    shl     r9, PRE_WRITES_TO_MOPS_BLOCK   # 1 cycle - format for mops block
+    shl     r9, PRE_WRITES_TO_DESC         # 1 cycle - format for the descriptor
     add     r9, rcx                        # 1 cycle - add loop block count
     add     r9, rdi                        # 1 cycle - add dst base address
-
-    mov     rcx, MOPS_ALIGNED_BLOCK_WRITE  # 1 cycle - write block flag
-    add     r9, rcx                        # 1 cycle - add mops flags
     and     r9, ALIGN_MASK                 # 1 cycle - align address
 
     mov     [r12 + r13 * 8], r9            # ~4 cycles - write block descriptor, expanded after the copy
@@ -262,11 +254,8 @@ direct_dma_xmemcpy_common_entry_point:
 
     mov     r9, rax                        # 1 cycle - r9 = encoded
     and     r9, DMA_PRE_WRITES_MASK            # 1 cycle - extract pre_writes count
-    shl     r9, PRE_WRITES_TO_MOPS_BLOCK   # 1 cycle - format for mops block
+    shl     r9, PRE_WRITES_TO_DESC         # 1 cycle - format for the descriptor
     add     r9, rdi                        # 1 cycle - add dst base address
-
-    mov     rcx, MOPS_ALIGNED_BLOCK_WRITE  # 1 cycle - write block flag
-    add     r9, rcx                        # 1 cycle - add mops flags
     and     r9, ALIGN_MASK                 # 1 cycle - align address
 
     mov     [r12 + r13 * 8], r9            # ~4 cycles - write block descriptor, expanded after the copy

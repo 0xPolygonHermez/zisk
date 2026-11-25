@@ -770,7 +770,7 @@ today: input and ROM data are proven one operation per lane, so their lines are 
 show what enabling duals there would save, and so does the **TOTAL** that includes them. The real
 saving today is the RAM line. Registers do not appear: they are proven by the main state machine,
 not by the memory one. Inside the input zone there is one address that never duals: the very first
-one, `0x10000000`, is the **free-input** address, and each read of it yields a different value — the
+one, `0x20000000`, is the **free-input** address, and each read of it yields a different value — the
 input provides it, memory does not store it — so two of its operations can never share a lane. Those
 reads are counted (they do need a lane each) but they are not blamed on the reset or on the lane
 width.

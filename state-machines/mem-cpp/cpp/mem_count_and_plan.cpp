@@ -350,9 +350,10 @@ static void generate_mem_segments_into(MemSegments dest[MEM_TYPES], const std::v
             uint32_t count = instance.count_per_chunk[chunk_id];
             if (count == 0) continue;
 
-            uint32_t from_addr = instance.first_addr;
+            // the metas hold word addresses; the segment setters take byte addresses
+            uint64_t from_addr = (uint64_t)instance.first_addr << 3;
             uint32_t skip = 0;
-            uint32_t to_addr = instance.last_addr;
+            uint64_t to_addr = (uint64_t)instance.last_addr << 3;
 
             if (chunk_id < first_chunk) {
                 from_addr += 8;
@@ -372,7 +373,7 @@ static void generate_mem_segments_into(MemSegments dest[MEM_TYPES], const std::v
             }
         }
         segment->is_last_segment = instance.inst_id == last_segments[instance.kind];
-        segment->offsets_base_addr = instance.first_addr;
+        segment->offsets_base_addr_w = instance.first_addr;
         segment->offsets = instance.offsets;
         dest[instance.kind].set(instance.inst_id, segment);
     }
@@ -429,7 +430,7 @@ bool inject_gpu_metas_from_pointers(MemCountAndPlan *mcp, const void *gpu_metas_
             return false;
         }
         const PagedOffsets &o = m.offsets;
-        const uint32_t expected_slots = ((m.last_addr - m.first_addr) >> 3) + 1;
+        const uint32_t expected_slots = (m.last_addr - m.first_addr) + 1;
         if (o.addr_range_slots != expected_slots) {
             fprintf(stderr,
                     "inject_gpu_metas_from_pointers: meta %u has addr_range_slots=%u, expected %u from addr range; reject\n",
@@ -484,15 +485,15 @@ const MemCheckPoint *get_mem_segment_check_points(MemCountAndPlan *mcp, uint32_t
 }
 
 PagedOffsets get_mem_segment_offset_pages(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id,
-                                          uint32_t &offsets_base_addr_out)
+                                          uint32_t &offsets_base_addr_w_out)
 {
-    if (!mcp || mem_id >= MEM_TYPES) { offsets_base_addr_out = 0; return PagedOffsets{nullptr, nullptr, nullptr, 0, 0, 0}; }
+    if (!mcp || mem_id >= MEM_TYPES) { offsets_base_addr_w_out = 0; return PagedOffsets{nullptr, nullptr, nullptr, 0, 0, 0}; }
     auto segment = mcp->segments[mem_id].get(segment_id);
     if (segment) {
-        offsets_base_addr_out = segment->offsets_base_addr;
+        offsets_base_addr_w_out = segment->offsets_base_addr_w;
         return segment->offsets;
     }
-    offsets_base_addr_out = 0;
+    offsets_base_addr_w_out = 0;
     return PagedOffsets{nullptr, nullptr, nullptr, 0, 0, 0};
 }
 

@@ -18,7 +18,7 @@
 #include "zkvm_u256_le.h"
 #include "zkvm_zisklib.h"
 
-static volatile uint8_t* const O = (volatile uint8_t*)0xA0410000ULL;
+static volatile uint8_t* const O = (volatile uint8_t*)0xC0410000ULL;
 
 /* little-endian limbs */
 static const uint64_t A[4] = {0x0123456789abcdef, 0xfedcba9876543210, 0x0f1e2d3c4b5a6978, 0x1122334455667788};

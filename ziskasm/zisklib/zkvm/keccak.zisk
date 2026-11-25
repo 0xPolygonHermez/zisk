@@ -21,7 +21,7 @@ u64 ZKVM_KECCAK_STATE[25] =
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 ZKVM_KECCAK_PAD[17] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
-define ZZK_DMA_COUNT 0xa0400f00         ; dma_memcpy reads its byte count here
+define ZZK_DMA_COUNT 0xc0400f00         ; dma_memcpy reads its byte count here
 
 ; The state is zeroed and the message copied with the DMA precompiles, which cost
 ; much less than one main step per word. The first 136-byte block is copied

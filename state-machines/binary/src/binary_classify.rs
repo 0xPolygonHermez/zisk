@@ -271,7 +271,7 @@ mod tests {
             0x1_0000_0000, // dirty: does not fit in 32 bits
             u64::MAX,      // dirty: negative sign-extended
             0xFFFF_FFFF_0000_0008,
-            0xA000_0000, // a zisk RAM base address
+            0xC000_0000, // a zisk RAM base address
             0xFFFF_FFFE,
         ];
         for &a in &interesting {
@@ -331,7 +331,7 @@ mod tests {
             8,
             0x1FFF_FFFF,
             0x2000_0000,
-            0xA000_1000,
+            0xC000_1000,
             0xFFFF_FFFF,
             0x1_0000_0000,
             u64::MAX,

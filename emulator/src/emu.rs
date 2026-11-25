@@ -377,7 +377,7 @@ impl<'a> Emu<'a> {
                     self.ctx.inst_ctx.a = mem_reads[*mem_reads_index];
                     *mem_reads_index += 1;
                     let payload = MemHelpers::mem_load(
-                        address as u32,
+                        address,
                         self.ctx.inst_ctx.step,
                         0,
                         8,
@@ -397,7 +397,7 @@ impl<'a> Emu<'a> {
                     self.ctx.inst_ctx.a =
                         Mem::get_double_not_aligned_data(address, 8, raw_data_1, raw_data_2);
                     let payload = MemHelpers::mem_load(
-                        address as u32,
+                        address,
                         self.ctx.inst_ctx.step,
                         0,
                         8,
@@ -780,7 +780,7 @@ impl<'a> Emu<'a> {
 
                     *mem_reads_index += 1;
                     let payload = MemHelpers::mem_load(
-                        address as u32,
+                        address,
                         self.ctx.inst_ctx.step,
                         1,
                         8,
@@ -797,7 +797,7 @@ impl<'a> Emu<'a> {
                         self.ctx.inst_ctx.b =
                             Mem::get_single_not_aligned_data(address, 8, raw_data);
                         let payload = MemHelpers::mem_load(
-                            address as u32,
+                            address,
                             self.ctx.inst_ctx.step,
                             1,
                             8,
@@ -814,7 +814,7 @@ impl<'a> Emu<'a> {
                         self.ctx.inst_ctx.b =
                             Mem::get_double_not_aligned_data(address, 8, raw_data_1, raw_data_2);
                         let payload = MemHelpers::mem_load(
-                            address as u32,
+                            address,
                             self.ctx.inst_ctx.step,
                             1,
                             8,
@@ -848,7 +848,7 @@ impl<'a> Emu<'a> {
                     self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
                     *mem_reads_index += 1;
                     let payload = MemHelpers::mem_load(
-                        address as u32,
+                        address,
                         self.ctx.inst_ctx.step,
                         1,
                         8,
@@ -856,9 +856,11 @@ impl<'a> Emu<'a> {
                     );
                     data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                 } else {
-                    if instruction.ind_width == 0 || address > 0xFFFF_FFFF {
+                    if instruction.ind_width == 0
+                        || !zisk_core::indirect_address_is_valid(self.ctx.inst_ctx.a, address)
+                    {
                         println!(
-                            "ILLEGAL INSTRUCTION/ADDRESS 0x{:08X} {} S:{} {:?}",
+                            "ILLEGAL INSTRUCTION/ADDRESS 0x{:09X} {} S:{} {:?}",
                             address, instruction.ind_width, self.ctx.inst_ctx.step, instruction
                         );
                     }
@@ -874,7 +876,7 @@ impl<'a> Emu<'a> {
                             raw_data,
                         );
                         let payload = MemHelpers::mem_load(
-                            address as u32,
+                            address,
                             self.ctx.inst_ctx.step,
                             1,
                             instruction.ind_width as u8,
@@ -895,7 +897,7 @@ impl<'a> Emu<'a> {
                             raw_data_2,
                         );
                         let payload = MemHelpers::mem_load(
-                            address as u32,
+                            address,
                             self.ctx.inst_ctx.step,
                             1,
                             instruction.ind_width as u8,
@@ -1288,7 +1290,7 @@ impl<'a> Emu<'a> {
 
                 if Mem::is_full_aligned(address, 8) {
                     let payload = MemHelpers::mem_write(
-                        address as u32,
+                        address,
                         self.ctx.inst_ctx.step,
                         2,
                         8,
@@ -1307,7 +1309,7 @@ impl<'a> Emu<'a> {
                         *mem_reads_index += 1;
 
                         let payload = MemHelpers::mem_write(
-                            address as u32,
+                            address,
                             self.ctx.inst_ctx.step,
                             2,
                             8,
@@ -1324,7 +1326,7 @@ impl<'a> Emu<'a> {
                         *mem_reads_index += 1;
 
                         let payload = MemHelpers::mem_write(
-                            address as u32,
+                            address,
                             self.ctx.inst_ctx.step,
                             2,
                             8,
@@ -1345,7 +1347,7 @@ impl<'a> Emu<'a> {
                 // Otherwise, if aligned
                 if Mem::is_full_aligned(address, instruction.ind_width) {
                     let payload = MemHelpers::mem_write(
-                        address as u32,
+                        address,
                         self.ctx.inst_ctx.step,
                         2,
                         instruction.ind_width as u8,
@@ -1364,7 +1366,7 @@ impl<'a> Emu<'a> {
                         *mem_reads_index += 1;
 
                         let payload = MemHelpers::mem_write(
-                            address as u32,
+                            address,
                             self.ctx.inst_ctx.step,
                             2,
                             instruction.ind_width as u8,
@@ -1381,7 +1383,7 @@ impl<'a> Emu<'a> {
                         *mem_reads_index += 1;
 
                         let payload = MemHelpers::mem_write(
-                            address as u32,
+                            address,
                             self.ctx.inst_ctx.step,
                             2,
                             instruction.ind_width as u8,
@@ -2854,9 +2856,6 @@ impl<'a> Emu<'a> {
             (reg_trace.store_reg_prev_value & 0xFFFFFFFF) as u32,
             ((reg_trace.store_reg_prev_value >> 32) & 0xFFFFFFFF) as u32,
         ];
-        let addr1 = (inst.b_offset_imm0 as i64
-            + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u32;
-
         for limb in 0..2 {
             trace.set_a(lane, limb, a[limb]);
             trace.set_b(lane, limb, b[limb]);
@@ -2864,7 +2863,6 @@ impl<'a> Emu<'a> {
             trace.set_store_reg_prev_value(lane, limb, store_prev_value[limb]);
         }
         trace.set_flag(lane, inst_ctx.flag);
-        trace.set_addr1(lane, addr1);
         trace.set_a_reg_prev_mem_step(lane, reg_trace.reg_prev_steps[0]);
         trace.set_b_reg_prev_mem_step(lane, reg_trace.reg_prev_steps[1]);
         trace.set_store_reg_prev_mem_step(lane, reg_trace.reg_prev_steps[2]);
@@ -2909,6 +2907,8 @@ impl<'a> Emu<'a> {
         let jmp_offset1 = signed(inst.jmp_offset1);
         let jmp_offset2 = signed(inst.jmp_offset2);
         let store_offset = signed(inst.store_offset);
+        // A constant memory address (SRC_MEM / STORE_MEM) is a 33-bit value, never negative, so
+        // the signed conversion leaves it untouched.
         let a_offset_imm0 = signed(inst.a_offset_imm0 as i64);
         let b_offset_imm0 = signed(inst.b_offset_imm0 as i64);
 

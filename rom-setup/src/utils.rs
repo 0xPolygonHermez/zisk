@@ -6,6 +6,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use zisk_common::{ZiskPaths, PROGRAM_VK_LEN};
+use zisk_core::{MAX_INPUT_SIZE, RAM_SIZE};
 use zisk_pil::{RomRomTrace, PILOUT_HASH};
 use zisk_sm_rom::CustomRom;
 
@@ -82,6 +83,15 @@ pub fn get_elf_data_hash_from_path(elf_path: &Path) -> Result<String> {
 /// name and locate all of a program's cached artifacts.
 pub fn get_elf_data_hash(elf: &[u8]) -> String {
     blake3::hash(elf).to_hex().to_string()
+}
+
+/// Tag of the memory the executors reserve (the `input_2gb` and `ram_2gb` features of
+/// zisk-core), appended to the hash in the names of the assembly emulator binaries, which reserve
+/// that memory. The ROM, and so its commitment and verkey, does not depend on it. Every
+/// configuration has its own tag, the default one included, so a cached binary is never taken
+/// for one that reserves other sizes.
+pub fn mem_config_tag() -> String {
+    format!("_in{}m_ram{}m", MAX_INPUT_SIZE >> 20, RAM_SIZE >> 20)
 }
 
 /// Build the cache path of the ROM custom-commit binary for `hash`.

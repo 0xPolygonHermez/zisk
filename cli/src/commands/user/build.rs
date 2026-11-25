@@ -35,6 +35,11 @@ pub(crate) struct BuildCmd {
     #[arg(short = 'p', long = "package", value_name = "PACKAGE")]
     packages: Vec<String>,
 
+    /// Link for 2 GB of RAM, for a prover built with its `ram_2gb` feature; 512 MB by default.
+    /// The heap ends at the end of the RAM the guest is linked for.
+    #[arg(long)]
+    ram_2gb: bool,
+
     /// Toolchain name to use
     #[arg(long, hide = true)]
     toolchain_name: Option<String>,
@@ -57,8 +62,13 @@ impl BuildCmd {
         // they are user-exported and cargo would apply them to the guest.
         let target_features =
             zisk_build::target_features_from_features(self.features.as_deref(), self.all_features);
-        let _linker_script =
-            zisk_build::apply_guest_rustflags(&mut command, None, true, &target_features)?;
+        let _linker_script = zisk_build::apply_guest_rustflags(
+            &mut command,
+            None,
+            true,
+            &target_features,
+            self.ram_2gb,
+        )?;
 
         // Set up the command to inherit the parent's stdout and stderr
         command.stdout(Stdio::inherit());

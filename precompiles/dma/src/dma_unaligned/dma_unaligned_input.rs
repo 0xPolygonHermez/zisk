@@ -4,8 +4,8 @@ use zisk_precomp_helpers::DmaInfo;
 
 #[derive(Debug)]
 pub struct DmaUnalignedInput {
-    pub src: u32,
-    pub dst: u32,
+    pub src: u64, // byte address
+    pub dst: u64, // byte address
     pub is_last_instance_input: bool,
     pub is_mem_eq: bool,
     pub trace_offset: u32, // offset inside trace to paralelize
@@ -54,7 +54,7 @@ impl DmaUnalignedInput {
                 || op == ZiskOp::DMA_XMEMCMP,
             "Unexpected operation on DmaUnalignedInput 0x{op:02X}",
         );
-        let pre_count = DmaInfo::get_pre_count(encoded) as u32;
+        let pre_count = DmaInfo::get_pre_count(encoded) as u64;
         let data_offset = DmaInfo::get_loop_data_offset(encoded) + skip;
 
         // unaligned need an extra row to read part of next bytes
@@ -67,8 +67,8 @@ impl DmaUnalignedInput {
         let op = data[OP] as u8;
         assert!(DmaInfo::get_loop_count(encoded) > 0);
         Self {
-            dst: data[A] as u32 + pre_count,
-            src: data[B] as u32 + DmaInfo::get_src64_inc_by_pre(encoded) as u32 * 8,
+            dst: data[A] + pre_count,
+            src: data[B] + DmaInfo::get_src64_inc_by_pre(encoded) as u64 * 8,
             trace_offset: trace_offset as u32,
             is_last_instance_input: max_count < pending_count,
             step: data[STEP],

@@ -4,7 +4,7 @@
 ; Prefixes `bcp_` / `beq_`.
 ; ============================================================================
 
-define EXTRA_PARAMS_ADDR 0xa0400f00
+define EXTRA_PARAMS_ADDR 0xc0400f00
 
 ; void bn254_memcpy(const u64* src, u64* dst, u64 nwords)  [r10=src, r11=dst, r12=n]
 ;   Uses the ZisK dma_memcpy bulk-copy precompile: ONE op regardless of size

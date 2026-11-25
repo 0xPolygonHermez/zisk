@@ -9,7 +9,7 @@ use crate::MemHelpers;
 
 #[derive(Default, Debug, Clone)]
 struct MemOp {
-    addr: u32,
+    addr: u64,
     flags: u16, // internal(1) | order(1) |  offset(3) | bytes(3) |
     step: u64,
     step_dual: u64,
@@ -23,16 +23,16 @@ pub struct MemDebug {
     count: usize,
     indirect_count: usize,
     dual_count: usize,
-    from_addr: u32,
-    to_addr: u32,
+    from_addr: u64,
+    to_addr: u64,
     _is_dual: bool,
     max_step: u64,
 }
 
 #[derive(Debug, Copy, Clone)]
 struct ChunkInfo {
-    from_addr: u32,
-    to_addr: u32,
+    from_addr: u64,
+    to_addr: u64,
     from_skip: u32,
     to_count: u32,
     to_single_count: u32,
@@ -43,7 +43,7 @@ struct ChunkInfo {
 impl ChunkInfo {
     fn new() -> Self {
         Self {
-            from_addr: 0xFFFF_FFFF,
+            from_addr: u64::MAX,
             to_addr: 0,
             from_skip: 0,
             to_count: 0,
@@ -62,7 +62,7 @@ impl Default for ChunkInfo {
 
 #[allow(dead_code)]
 impl MemDebug {
-    pub fn new(from_addr: u32, to_addr: u32, is_dual: bool) -> Self {
+    pub fn new(from_addr: u64, to_addr: u64, is_dual: bool) -> Self {
         MemDebug {
             ops: Vec::new(),
             prepared: false,
@@ -84,7 +84,7 @@ impl MemDebug {
     }
     pub fn log(
         &mut self,
-        addr: u32,
+        addr: u64,
         step: u64,
         bytes: u8,
         is_write: bool,
@@ -98,7 +98,7 @@ impl MemDebug {
         assert!(!self.prepared);
         self.count += 1;
         let addr_w = MemHelpers::get_addr_w(addr);
-        let aligned_addr = addr_w * 8;
+        let aligned_addr = MemHelpers::get_addr(addr_w);
         if MemHelpers::is_aligned(addr, bytes) {
             let value = if is_write {
                 MemBusData::get_value(data)
@@ -154,7 +154,7 @@ impl MemDebug {
             }
         }
     }
-    fn push_op(&mut self, addr: u32, step: u64, flags: u16, value: u64, indirect: bool) {
+    fn push_op(&mut self, addr: u64, step: u64, flags: u16, value: u64, indirect: bool) {
         if indirect {
             self.indirect_count += 1;
         } else {
@@ -323,7 +323,7 @@ impl MemDebug {
                     Self::flags_to_order(op.flags),
                 )
             };
-            writeln!(writer, "{:#010X} {:#12}{}{}", op.addr, op.step, flags_info, extra).unwrap();
+            writeln!(writer, "{:#011X} {:#12}{}{}", op.addr, op.step, flags_info, extra).unwrap();
         }
         println!("[MemDebug] done");
     }
@@ -338,7 +338,7 @@ impl MemDebug {
 
             writeln!(
                 writer,
-                "#@# 0x{:08X}|{}|8|{}|{}|{}",
+                "#@# 0x{:09X}|{}|8|{}|{}|{}",
                 op.addr,
                 op.step,
                 if Self::flags_to_write(op.flags) { "W" } else { "R" },

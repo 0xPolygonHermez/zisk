@@ -8444,6 +8444,7 @@ dependencies = [
  "proofman-util",
  "tracing",
  "zisk-common",
+ "zisk-core",
  "zisk-cuda-build",
  "zisk-pil",
  "zisk-sm-mem-common",

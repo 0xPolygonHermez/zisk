@@ -16,7 +16,7 @@
 //! Arguments: backend (`emu` | `asm` | `remote`), input data size in MB (default: as large as the
 //! input region allows, `MAX_DATA_BYTES`), and read stride (default 1). With the maximum size the
 //! input data starts at INPUT_ADDR + 16 and ends at the last word of the region, so it exercises
-//! the region boundaries and every 128MB step the BIOS reads. `remote` executes on the coordinator
+//! the region boundaries and address gaps up to the whole region. `remote` executes on the coordinator
 //! at `ZISK_COORDINATOR_URL` (default `http://127.0.0.1:7000`); an input over the 128MB inline
 //! limit of a request travels through the job's gRPC input stream.
 //!
@@ -31,7 +31,8 @@ use std::time::{Duration, Instant};
 use zisk_sdk::{ExecuteResult, ProverClient, ZiskStdin};
 use zisk_test_artifacts::ELF_INPUT_2GB;
 
-/// Size of the input region (`MAX_INPUT_SIZE` in core/src/mem.rs).
+/// Size of the input region (`MAX_INPUT_SIZE` in core/src/mem.rs, with the `input_2gb` feature
+/// of zisk-sdk that this host enables; the ASM workers of `remote` need it as well).
 const MAX_INPUT_SIZE: usize = 2 << 30;
 /// Input data the guest can read: the region minus the free-input word at INPUT_ADDR and the
 /// length prefix of the input data.

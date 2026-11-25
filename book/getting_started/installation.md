@@ -115,6 +115,8 @@ To install the SNARK proving key (provingKeySnark, pilfflonk, of the hash mode o
 
     **Note**: The build process will automatically detect whether CUDA is available on your machine. If so, it will build the GPU-enabled binaries; otherwise, it will build the CPU version. To force the CPU version, use the `--features cpu-only` flag.
 
+    **Note**: By default the tools reserve 1 GB for the program input and 512 MB of RAM. To prove programs that need more, add the `input_2gb` and/or `ram_2gb` features (e.g. `cargo build --release --features input_2gb,ram_2gb`); a program that uses 2 GB of RAM must also be built with `cargo-zisk build --ram-2gb`. See [Building for 2 GB of input and/or 2 GB of RAM](./writing_programs.md#building-for-2-gb-of-input-andor-2-gb-of-ram).
+
     **Note**: By default, the build process auto-detects the GPU architecture of the host machine. Use the `CUDA_ARCHS` environment variable to control which architectures are compiled:
 
     ```bash

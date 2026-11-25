@@ -24,6 +24,7 @@ protected:
 public:
     TestDmaMemCmpMops(size_t max_count = 1024);
     void run(void);
+    void run_long(void);
 };
 
 TestDmaMemCmpMops::TestDmaMemCmpMops(size_t max_count):
@@ -55,6 +56,22 @@ void TestDmaMemCmpMops::run(void) {
         }
     }
     printf("\nAll %ld tests are [\x1B[1;32mOK\x1B[0m]\n", total_tests);
+}
+
+void TestDmaMemCmpMops::run_long(void) {
+    map_low(0x140000000);
+    fill_pattern(src, data_size, 3013102105130209);
+    const uint64_t words = (uint64_t)MOPS_BLOCK_COUNT_MAX + 5;
+    diff_dst_src = 0;
+    const struct { uint64_t dst_offset, src_offset, count; } cases[] = {{0, 0, words * 8}, {0, 3, words * 8 + 2}};
+    for (const auto &c : cases) {
+        dst_offset = c.dst_offset; src_offset = c.src_offset; count = c.count; bus_count = count;
+        if (!execute_single_test()) {
+            printf("\nTest is [\x1B[1;31mFAIL\x1B[0m]\n");
+            return;
+        }
+    }
+    printf("\nAll %ld long tests are [\x1B[1;32mOK\x1B[0m]\n", sizeof(cases) / sizeof(cases[0]));
 }
 
 bool TestDmaMemCmpMops::execute_single_test(void) {
@@ -117,10 +134,10 @@ bool TestDmaMemCmpMops::execute_single_test(void) {
         uint64_t dst_loop = pre_count > 0 ? (uint64_t)dst + 8 : (uint64_t)dst;
         size_t src_count = dst_offset == src_offset ? loop_count : (loop_count + 1);
 
-        if (!check_record(index, encode_aligned_block_read(src_loop, src_count), "LOOP src read")) {
+        if (!check_aligned_block_read(index, src_loop, src_count, "LOOP src read")) {
             return false;
         }
-        if (!check_record(index, encode_aligned_block_read(dst_loop, loop_count), "LOOP dst read (cmp)")) {
+        if (!check_aligned_block_read(index, dst_loop, loop_count, "LOOP dst read (cmp)")) {
             return false;
         }
     }
@@ -135,5 +152,7 @@ bool TestDmaMemCmpMops::execute_single_test(void) {
 void test_dma_memcmp_mops() {
     printf("\x1B[1;34mTEST DMA MEMCMP MOPS =================================================\x1B[0m\n");
     TestDmaMemCmpMops test(1024);
-    test.run();    
+    test.run();
+    TestDmaMemCmpMops long_test((size_t)MOPS_BLOCK_COUNT_MAX + 64);
+    long_test.run_long();
 }

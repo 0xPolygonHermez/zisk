@@ -140,7 +140,8 @@ impl MemPlanner {
                 from_addr: INPUT_DATA_W_ADDR_INIT,
                 last_addr: INPUT_DATA_W_ADDR_INIT,
                 rows: (InputDataTrace::<Goldilocks>::NUM_ROWS * input_data_lanes_x_row()) as u32,
-                max_addr_distance: 1 << 24,
+                // delta_addr - 1 is checked as two 16-bit chunks: no intermediate reads
+                max_addr_distance: 0xFFFF_FFFF,
             },
             counters.clone(),
         )));
