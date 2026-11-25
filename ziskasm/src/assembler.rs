@@ -732,6 +732,15 @@ fn encode_op(
         }
     }
 
+    // The parser only produces these with the `sp` feature.
+    #[cfg(feature = "sp")]
+    if op.set_sp {
+        zib.set_sp();
+    }
+    #[cfg(feature = "sp")]
+    if op.inc_sp != 0 {
+        zib.inc_sp(op.inc_sp);
+    }
     if op.end {
         zib.end();
     }
@@ -747,7 +756,9 @@ fn encode_a(
         ASource::C => zib.src_a("lastc", 0, false),
         ASource::Reg(n) => zib.src_a("reg", *n, false),
         ASource::Mem(n) => zib.src_a("mem", resolve_num(n, symbols)?, false),
+        ASource::SpMem(off) => zib.src_a("mem", *off as u64, true),
         ASource::Imm(n) => zib.src_a("imm", resolve_num(n, symbols)?, false),
+        ASource::Sp => zib.src_a("sp", 0, false),
     }
     Ok(())
 }
@@ -761,10 +772,11 @@ fn encode_b(
         BSource::C => zib.src_b("lastc", 0, false),
         BSource::Reg(n) => zib.src_b("reg", *n, false),
         BSource::Mem(n) => zib.src_b("mem", resolve_num(n, symbols)?, false),
+        BSource::SpMem(off) => zib.src_b("mem", *off as u64, true),
         BSource::Imm(n) => zib.src_b("imm", resolve_num(n, symbols)?, false),
-        BSource::Ind { width, offset } => {
+        BSource::Ind { width, offset, sp } => {
             zib.ind_width(*width);
-            zib.src_b("ind", *offset as u64, false);
+            zib.src_b("ind", *offset as u64, *sp);
         }
     }
     Ok(())
@@ -778,9 +790,10 @@ fn encode_store(
     match store {
         Store::Reg(n) => zib.store("reg", *n as i64, false, false),
         Store::Mem(n) => zib.store("mem", resolve_num(n, symbols)? as i64, false, false),
-        Store::Ind { width, offset } => {
+        Store::SpMem(off) => zib.store("mem", *off, true, false),
+        Store::Ind { width, offset, sp } => {
             zib.ind_width(*width);
-            zib.store("ind", *offset, false, false);
+            zib.store("ind", *offset, *sp, false);
         }
     }
     Ok(())

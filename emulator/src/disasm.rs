@@ -182,6 +182,8 @@ impl DisasmWriter {
 /// Convert a ZiskInst to assembly-like string representation
 /// Format: operation dest, a, b (RISC-V like syntax)
 fn inst_to_asm(inst: &ZiskInst, labels: &HashMap<u64, String>, next_pc: Option<u64>) -> String {
+    #[cfg(feature = "sp")]
+    use zisk_core::SRC_SP;
     use zisk_core::{
         SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
     };
@@ -211,10 +213,11 @@ fn inst_to_asm(inst: &ZiskInst, labels: &HashMap<u64, String>, next_pc: Option<u
                 }
             }
             STORE_IND => {
+                let base = if inst.store_use_sp { "a+sp" } else { "a" };
                 if inst.store_offset >= 0 {
-                    format!("[a+{}]", inst.store_offset)
+                    format!("[{}+{}]", base, inst.store_offset)
                 } else {
-                    format!("[a{}]", inst.store_offset)
+                    format!("[{}{}]", base, inst.store_offset)
                 }
             }
             _ => "?".to_string(),
@@ -248,6 +251,8 @@ fn inst_to_asm(inst: &ZiskInst, labels: &HashMap<u64, String>, next_pc: Option<u
                 format!("0x{:x}", imm as u64)
             }
         }
+        #[cfg(feature = "sp")]
+        SRC_SP => "sp".to_string(),
         _ => "?".to_string(),
     };
     operands.push(src_a);
@@ -370,6 +375,8 @@ fn inst_to_asm(inst: &ZiskInst, labels: &HashMap<u64, String>, next_pc: Option<u
 
     // 5. Additional flags/modifiers as comments
     let mut comments = Vec::new();
+    #[cfg(feature = "sp")]
+    let inc_sp;
 
     if inst.m32 {
         comments.push("32-bit");
@@ -385,6 +392,15 @@ fn inst_to_asm(inst: &ZiskInst, labels: &HashMap<u64, String>, next_pc: Option<u
     }
     if inst.is_precompiled {
         comments.push("with_step");
+    }
+    #[cfg(feature = "sp")]
+    if inst.set_sp {
+        comments.push("sp=c");
+    }
+    #[cfg(feature = "sp")]
+    if inst.inc_sp != 0 {
+        inc_sp = format!("sp+={}", inst.inc_sp);
+        comments.push(&inc_sp);
     }
 
     if !comments.is_empty() {

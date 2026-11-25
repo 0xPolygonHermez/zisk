@@ -225,6 +225,8 @@ One `ZiskInst` is `op` + a flag bitmap + payloads for the non-default fields.
 | 23 | `meta_rs1` | `Option<u8>` | `None` | `None` | V |
 | 24 | `meta_rd` | `Option<u8>` | `None` | `None` | V |
 | 24a | `write_log` | `bool` | `false` | `false` | V (only on `flag`) |
+| 24b | `set_sp` | `bool` | `false` | `false` | V |
+| 24c | `inc_sp` | `i64` | `0` | `0` | V |
 | 25 | `paddr` | `u64` | `0` | — | **C** (§3.2) |
 | 26 | `func` | `fn(&mut InstContext)` | `\|_\| ()` | — | **D** = `ZiskOp::try_from_code(op).get_call_function()`, or `opc_write_log` when `write_log` is set |
 | 27 | `op_str` | `&'static str` | `""` | — | **D** = `ZiskOp…name()` |
@@ -289,7 +291,9 @@ contribute a flag bit but no payload.
 | f9 | `store_use_sp` | — bool | | **f21** | `meta_rs1` | u8 (⇒`Some`) |
 | f10 | `set_pc` | — bool | | f22 | `meta_rd` | u8 (⇒`Some`) |
 | f11 | `end` | — bool | | f23 | `write_log` | — bool |
-| | | | | f24–f27 | *reserved* | — |
+| | | | | f24 | `set_sp` (`sp` feature) | — bool |
+| | | | | f25 | `inc_sp` (`sp` feature) | svarint |
+| | | | | f26–f27 | *reserved* | — |
 
 (**bold** = first flag of each new flag byte.) Behavioural fields cluster in
 bytes 0–1, so most instructions need only 1–2 flag bytes; bytes 2–3 (debug /
@@ -297,7 +301,7 @@ callstack metadata) are absent for a stripped, container-addressed ROM. `paddr`
 is class **C** (§3.2), so no flag bit is needed for it in a ROM.
 
 The bitmap is therefore **at most 4 bytes** — there is no fifth flag byte. A decoder
-must reject both a continuation out of byte 3 and any reserved bit (f24–f27) being
+must reject both a continuation out of byte 3 and any reserved bit (f26–f27) being
 set. Payloads are positional (§5.5), so a flag whose payload the decoder does not
 consume desynchronizes every later field *and* every later instruction; refusing the
 blob is the only safe response. New fields arrive with a `VERSION` bump (§3.1), never
@@ -371,9 +375,9 @@ Selected by header `profile` bit0:
 ## 8. Versioning & forward compatibility
 
 - The container `version` byte (§3.1) governs the whole format.
-- New `ZiskInst` fields take the next free flag bit (f24…). A decoder cannot skip
+- New `ZiskInst` fields take the next free flag bit (f26…). A decoder cannot skip
   an unknown payload-bearing flag, so **assigning a new payload flag requires a
-  version bump**. Reserved bits f24–f27 (and further continuation bytes) leave
+  version bump**. Reserved bits f26–f27 (and further continuation bytes) leave
   room to grow.
 - Reordering flag bits, changing a canonical default, or changing the header/
   section layout is a breaking change — bump `version` and record it here.
@@ -386,3 +390,4 @@ Selected by header `profile` bit0:
 | 2 | r32..r39 are main-trace registers: the assembler encodes them as `SRC_REG` / `STORE_REG`, where version 1 ROMs address them as RAM at `0xA0400100..`. The layout is unchanged, but a version 1 ROM's RAM accesses to that register area are now treated as a bug (the emulator's `Mem` debug-asserts against them), so it is rejected: rebuild it with `zisk2zisk --elf`. |
 | 3 | The zkvmcall IDs the guest uses follow the data sections (§4.1), and nothing may follow them. A version 2 ROM carries no zkvmcall IDs, so one built from a guest that uses `zkvm_random_u64` would pass the hints setup it must be refused; it is rejected: rebuild it with `zisk2zisk --elf`. |
 | 4 | f23 (`write_log`) marks a write_log call site (`zkvm_io.h`, draft eth-act PR #27): a `flag` whose `func` is `opc_write_log`, which `ziskemu --write-log` uses to print the guest's diagnostic text. It is not derived from the opcode, so without the flag a ROM saved as ziskbin would silently stop printing it. A decoder rejects f23 on any other opcode. A version 3 ROM cannot carry the marker, so it is rejected: rebuild it with `zisk2zisk --elf`. |
+| 5 | Only in builds with the `sp` Cargo feature; a build without it stays at version 4, which is version 5 minus f24/f25 (there they remain reserved). f24 (`set_sp`) and f25 (`inc_sp`) carry the update of the ZisK `sp` register, applied after the store: `sp = (set_sp ? c : sp) + inc_sp`. Together with the existing `use_sp` fields (f2, f5, f9) they make sp-relative operands usable (emulation only for now: the Main/ROM AIRs do not enable `stack_enabled` yet, so the prover refuses ROMs that use sp). A version 4 ROM never uses sp, but an `sp` build's version check refuses it: rebuild it with `zisk2zisk --elf`. |

@@ -60,9 +60,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use ziskos::zisklib::FCALL_RANDOM_SEED_ID;
 
-// #[cfg(feature = "sp")]
-// use crate::SRC_SP;
-
 /// Data section with 64-bit data, used for RW sections that contain initial data
 /// It is an evolution of DataSection
 #[derive(Debug, Clone)]
