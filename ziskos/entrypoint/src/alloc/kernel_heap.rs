@@ -33,6 +33,8 @@ pub fn heap_top() -> usize {
     struct Addr(*const u8);
     // SAFETY: read-only and never dereferenced; only its address value is read.
     unsafe impl Sync for Addr {}
+    // Older toolchains need `unsafe` to take the address of an extern static; newer ones don't.
+    #[allow(unused_unsafe)]
     static HEAP_TOP: Addr = Addr(unsafe { core::ptr::addr_of!(_heap_top) });
     // Volatile, so the compiler loads the word instead of folding it back into a PC-relative
     // address of `_heap_top`, which the link could not resolve.
