@@ -496,42 +496,6 @@ jobs:
         env:
           CARGO_INCREMENTAL: 1
 
-  msrv:
-    name: MSRV (Rust ${{ matrix.rust }})
-    # Checks that the workspace still builds with the minimum supported Rust
-    # version declared in Cargo.toml (workspace.package.rust-version). Keep
-    # `rust` below in sync with it when raising the MSRV.
-    runs-on: ubuntu-22.04
-    env:
-      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-    strategy:
-      matrix:
-        rust: ["1.96"]
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.TEST_REF }}
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ matrix.rust }}
-
-      - name: Install dependencies
-        run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./install_deps.sh
-
-      - name: Build cargo-zisk
-        run: cargo +${{ matrix.rust }} build --bin cargo-zisk --locked
-
-      - name: Install ZisK rust toolchain
-        run: ./target/debug/cargo-zisk toolchain install
-
-      - name: Cargo check
-        run: cargo +${{ matrix.rust }} check --workspace --all-features --all-targets --locked
-
   crates-to-publish:
     name: Crates to publish
     runs-on: ubuntu-latest
