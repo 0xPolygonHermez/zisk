@@ -43,15 +43,16 @@ fn state_limbs(state: &[u64; LANES]) -> [u32; LIMBS_PER_STATE] {
 }
 
 /// Bits of the low chunk of a word address, as `ADDR_W_LO_BITS` of the air.
-const ADDR_W_LO_BITS: u32 = 16;
+const ADDR_W_LO_BITS: u32 = 24;
 
-/// Splits an address into the two chunks of its word address, as the air commits it. The air
-/// only proves aligned addresses, so an unaligned one is a bug of whoever produced the input.
+/// Splits the low 32-bit limb of an address into the two chunks of its word address (24 + 5
+/// bits), as the air commits it; bit 32 goes to the `addr_hi` column. The air only proves aligned
+/// addresses, so an unaligned one is a bug of whoever produced the input.
 #[inline(always)]
-fn word_addr_chunks(addr: u64) -> (u16, u16) {
+fn word_addr_chunks(addr: u64) -> (u32, u8) {
     debug_assert_eq!(addr & 7, 0, "KeccakfProxy: unaligned address 0x{addr:x}");
-    let addr_w = addr >> 3;
-    (addr_w as u16, (addr_w >> ADDR_W_LO_BITS) as u16)
+    let addr_w = (addr as u32) >> 3;
+    (addr_w & ((1 << ADDR_W_LO_BITS) - 1), (addr_w >> ADDR_W_LO_BITS) as u8)
 }
 
 impl<F: PrimeField64> KeccakfProxySM<F> {
@@ -162,11 +163,13 @@ mod tests {
     /// Address of the state a row emits: 8 times the word address it commits.
     fn addr(row: &KeccakfProxyTraceRow<Goldilocks>) -> u64 {
         8 * (row.get_addr_w_lo() as u64 + ((row.get_addr_w_hi() as u64) << ADDR_W_LO_BITS))
+            + ((row.get_addr_hi() as u64) << 32)
     }
 
     /// Address of the block a row emits: 8 times the word address it commits.
     fn blk_addr(row: &KeccakfProxyTraceRow<Goldilocks>) -> u64 {
         8 * (row.get_blk_addr_w_lo() as u64 + ((row.get_blk_addr_w_hi() as u64) << ADDR_W_LO_BITS))
+            + ((row.get_blk_addr_hi() as u64) << 32)
     }
 
     #[test]

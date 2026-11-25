@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "74c5ee594e0af7e10c5362120b92db2f42a2ad0bc64fd03082456f095a1860a7";
+pub const PILOUT_HASH: &str = "c143c220a614aed313ee0bdbcdd2121e05a1856af46ff3745e13af1f48ea2de6";
 
 //AIRGROUP CONSTANTS
 
@@ -591,7 +591,7 @@ trace_row!(KeccakfProxyFixedRow<F> {
 pub type KeccakfProxyFixed<F> = GenericTrace<KeccakfProxyFixedRow<F>, 524288, 0, 37>;
 
 trace_row!(KeccakfProxyTraceRow<F> {
- in_use:bit, is_replica:bit, replicas:ubit(24), step:ubit(40), addr_w_lo:u16, addr_w_hi:ubit(14), addr_hi:bit, state_in:[u32; 50], state_out:[u32; 50], is_xor:bit, blk_addr_w_lo:u16, blk_addr_w_hi:ubit(14), blk_addr_hi:bit, block:[u32; 34], perm_in:[u32; 34],
+ in_use:bit, is_replica:bit, replicas:ubit(24), step:ubit(40), addr_w_lo:ubit(24), addr_w_hi:ubit(5), addr_hi:bit, state_in:[u32; 50], state_out:[u32; 50], is_xor:bit, blk_addr_w_lo:ubit(24), blk_addr_w_hi:ubit(5), blk_addr_hi:bit, block:[u32; 34], perm_in:[u32; 34],
 });
 
 pub type KeccakfProxyTrace<R> = GenericTrace<R, 524288, 0, 37>;
@@ -1323,8 +1323,8 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     }),
     (0, 37, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 87,
-        unpack_info: &[1, 1, 24, 40, 16, 14, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1, 16, 14, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32],
+        num_packed_words: 86,
+        unpack_info: &[1, 1, 24, 40, 24, 5, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1, 24, 5, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32],
     }),
     (0, 38, PackedInfoConst {
         is_packed: true,

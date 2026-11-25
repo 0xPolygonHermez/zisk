@@ -37,22 +37,26 @@ airtemplate KeccakfProxy(const int N = 2**19) {
     const int XOR_LANES = 17; // lanes of a block: the rate of keccak256, 136 bytes
     const int XOR_LIMBS = XOR_LANES * LIMBS_PER_LANE;
     const int MAX_REPLICAS = 2**24 - 1;
-    const int ADDR_W_LO_BITS = 16; // a word address is committed as a 16-bit chunk and the rest
-    const int ADDR_W_HI_BITS = ADDR_W_BITS - ADDR_W_LO_BITS;
+    // The low 32-bit limb of an address is committed as its word address (29 bits), split in a
+    // 24-bit and a 5-bit chunk; bit 32 is the addr_hi column. The split depends only on the limb
+    // size, not on ADDR_BITS, and it reuses tables other airs already use: the [0, 2^24 - 1] range
+    // for the low chunks and DualByte for both high chunks in a single lookup.
+    const int ADDR_W_LO_BITS = 24;
+    const int ADDR_W_HI_BITS = 32 - 3 - ADDR_W_LO_BITS;
 
     col witness bits(1) in_use;                        // 1 when the row holds an invocation
     col witness bits(1) is_replica;                    // 1 when the permutation was proven for an earlier row
     col witness bits(24) replicas;                     // originals only: number of replica rows of this permutation
     col witness bits(40) step;                         // main step of the invocation
-    col witness bits(ADDR_W_LO_BITS) addr_w_lo;        // word address of the state (read, then
-    col witness bits(ADDR_W_HI_BITS) addr_w_hi;        // overwritten), as two chunks
+    col witness bits(ADDR_W_LO_BITS) addr_w_lo;        // word address of the low limb of the state
+    col witness bits(ADDR_W_HI_BITS) addr_w_hi;        // (read, then overwritten), as two chunks
     col witness bits(1) addr_hi;                       // high limb (bit 32) of addr
     col witness bits(32) state_in[LIMBS_PER_STATE];    // lanes read from memory, as 32-bit limbs
     col witness bits(32) state_out[LIMBS_PER_STATE];   // output lanes, as 32-bit limbs
 
     col witness bits(1) is_xor;                        // 1 when the row is an OP_KECCAK_XOR
-    col witness bits(ADDR_W_LO_BITS) blk_addr_w_lo;    // word address of the block, as two chunks:
-    col witness bits(ADDR_W_HI_BITS) blk_addr_w_hi;    // 0 without the XOR
+    col witness bits(ADDR_W_LO_BITS) blk_addr_w_lo;    // word address of the low limb of the block,
+    col witness bits(ADDR_W_HI_BITS) blk_addr_w_hi;    // as two chunks: 0 without the XOR
     col witness bits(1) blk_addr_hi;                   // high limb (bit 32) of blk_addr
     col witness bits(32) block[XOR_LIMBS];          // lanes of the block, as 32-bit limbs
     col witness bits(32) perm_in[XOR_LIMBS];        // first lanes of the permutation input
@@ -62,29 +66,33 @@ airtemplate KeccakfProxy(const int N = 2**19) {
     is_replica * (1 - in_use) === 0;
 
     // Both addresses must be 8-byte aligned, as the 25 + 17 accesses are whole words. The machine
-    // commits the word address, in two range-checked chunks, and every address it emits is that
-    // word address times 8: an unaligned operand has no word address to match it on the operation
-    // bus, so such a call cannot be proven. Without the range checks the word address could be any
-    // field element, i.e. address / 8 in the field, and the accesses would be unaligned ones that
-    // MemAlign is able to prove. The word address is below 2^ADDR_W_BITS, so the address is below
-    // 2^ADDR_BITS.
+    // commits the word address of the low limb, in two range-checked chunks, and every low limb it
+    // emits is that word address times 8: an unaligned operand has no word address to match it on
+    // the operation bus, so such a call cannot be proven. Without the range checks the word
+    // address could be any field element, i.e. limb / 8 in the field, and the accesses would be
+    // unaligned ones that MemAlign is able to prove.
+    // The high chunks are only checked as bytes: the word address is then an integer below 2^32 and
+    // 8 times it, below 2^35, cannot wrap the field. Its match on the operation bus with a 32-bit
+    // limb is then an integer equality, which already bounds the word address by 2^29. Both high
+    // chunks share one DualByte lookup; blk_addr_w_hi is 0 on the rows without the XOR.
     range_check(expression: addr_w_lo, min: 0, max: 2**ADDR_W_LO_BITS - 1, sel: in_use);
-    range_check(expression: addr_w_hi, min: 0, max: 2**ADDR_W_HI_BITS - 1, sel: in_use);
     range_check(expression: blk_addr_w_lo, min: 0, max: 2**ADDR_W_LO_BITS - 1, sel: is_xor);
-    range_check(expression: blk_addr_w_hi, min: 0, max: 2**ADDR_W_HI_BITS - 1, sel: is_xor);
-    const expr addr = WORD_SIZE * (addr_w_lo + 2**ADDR_W_LO_BITS * addr_w_hi);
-    const expr blk_addr = WORD_SIZE * (blk_addr_w_lo + 2**ADDR_W_LO_BITS * blk_addr_w_hi);
+    range_dual_byte(addr_w_hi, blk_addr_w_hi, sel: in_use, sel_is_binary: 1);
 
     // The operation bus carries the address as two 32-bit limbs and this machine is the one that
     // joins them into a 33-bit address, so it is the one that checks the high limb is a bit: the
     // address is then below 2^33 and cannot wrap the field.
     addr_hi * (1 - addr_hi) === 0;
+    const expr state_lo = WORD_SIZE * (addr_w_lo + 2**ADDR_W_LO_BITS * addr_w_hi);
+    const expr addr = state_lo + 2**32 * addr_hi;
 
     is_xor * (1 - is_xor) === 0;
     is_xor * (1 - in_use) === 0;
     blk_addr_hi * (1 - blk_addr_hi) === 0;
+    const expr blk_lo = WORD_SIZE * (blk_addr_w_lo + 2**ADDR_W_LO_BITS * blk_addr_w_hi);
+    const expr blk_addr = blk_lo + 2**32 * blk_addr_hi;
     // Without the XOR there is no block: its address is what OP_KECCAK sends as a, i.e. 0
-    (1 - is_xor) * blk_addr === 0;
+    (1 - is_xor) * blk_lo === 0;
     (1 - is_xor) * blk_addr_hi === 0;
 
     // Input of the permutation: state_in ^ block on the absorbed lanes, proven by Binary, and
@@ -140,8 +148,6 @@ airtemplate KeccakfProxy(const int N = 2**19) {
     // The operations carry the addresses as two 32-bit limbs:
     //   OP_KECCAK:        a = 0,     b = state
     //   OP_KECCAK_XOR: a = state, b = block
-    const expr state_lo = addr - 2**32 * addr_hi;
-    const expr blk_lo = blk_addr - 2**32 * blk_addr_hi;
     proves_operation(op: OP_KECCAK + is_xor * (OP_KECCAK_XOR - OP_KECCAK),
                      a: [is_xor * state_lo, is_xor * addr_hi],
                      b: [state_lo + is_xor * (blk_lo - state_lo), addr_hi + is_xor * (blk_addr_hi - addr_hi)],
