@@ -166,6 +166,12 @@ impl BuildArgs {
         self.release = release;
         self
     }
+
+    /// Link for 2 GB of RAM (a prover built with its `ram_2gb` feature) instead of 512 MB.
+    pub fn ram_2gb(mut self, ram_2gb: bool) -> Self {
+        self.ram_2gb = ram_2gb;
+        self
+    }
 }
 
 /// LLVM target feature every guest is built with, ahead of any program or env rustflags.
