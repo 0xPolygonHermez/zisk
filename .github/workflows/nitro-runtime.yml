@@ -1,0 +1,137 @@
+name: Nitro runtime tests
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/nitro-runtime.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "transpilers/**"
+      - "emulator/**"
+      - "core/**"
+      - "common/**"
+      - "definitions/**"
+      - "ziskasm/**"
+      - "lib-float/**"
+      - "state-machines/**"
+      - "ziskos/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nitro-runtime:
+    # Fork code runs only on an ephemeral GitHub-hosted machine, without secrets.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ZISK_CI_NO_DOCKER_REBUILD: "1"
+      NITRO_CC: clang-18
+      NITRO_LD: ld.lld-18
+      LIBCLANG_PATH: /usr/lib/llvm-18/lib
+      CARGO_BUILD_JOBS: "2"
+      # Proofman's native build invokes make -j; limit its build load on hosted runners.
+      MAKEFLAGS: "-l2"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install helper and emulator build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config clang-18 llvm-18 lld-18 wabt curl \
+            libclang-18-dev libomp-18-dev libgmp-dev libsodium-dev libssl-dev \
+            nlohmann-json3-dev protobuf-compiler libopenmpi-dev nasm
+          echo /usr/lib/llvm-18/bin >> "$GITHUB_PATH"
+          rustup toolchain install stable --profile minimal
+          rustup toolchain install 1.93.0 --profile minimal \
+            --target wasm32-wasip1 --target wasm32-unknown-unknown
+
+      - name: Install the pinned ZisK Rust toolchain
+        run: |
+          zisk_archive="$RUNNER_TEMP/rust-toolchain-x86_64-unknown-linux-gnu.tar.gz"
+          zisk_toolchain="$RUNNER_TEMP/zisk-toolchain"
+          curl --fail --location --retry 3 \
+            https://github.com/0xPolygonHermez/rust/releases/download/zisk-4.1.0/rust-toolchain-x86_64-unknown-linux-gnu.tar.gz \
+            --output "$zisk_archive"
+          printf '%s  %s\n' 9a9921a558ca652dfc46e5043a92aa70a8ef8ec1be1bbb0f3c392dd7c0b5cfe1 "$zisk_archive" | sha256sum --check -
+          mkdir -p "$zisk_toolchain"
+          tar -xzf "$zisk_archive" -C "$zisk_toolchain"
+          rustup toolchain link zisk "$zisk_toolchain"
+          rustc +zisk --version
+
+      - name: Check out pinned Nitro sources
+        uses: actions/checkout@v4
+        with:
+          repository: OffchainLabs/nitro
+          ref: 62f0625ad9bdb4e1ff42f08688429fc33618f181
+          path: target/source-nitro
+          persist-credentials: false
+
+      - name: Initialize required Nitro submodules
+        run: >-
+          git -C target/source-nitro submodule update --init --depth=1 --
+          brotli crates/tools/wasmer crates/wasm-libraries/soft-float/SoftFloat
+
+      - name: Check out pinned target-lexicon sources
+        uses: actions/checkout@v4
+        with:
+          repository: OffchainLabs/target-lexicon
+          ref: b36201fb3efd8babeb625c26217bfb4fb7af32a5
+          path: target/source-target-lexicon
+          persist-credentials: false
+
+      - name: Check out pinned SHA-3 sources
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygonHermez/zisk-patch-hashes
+          ref: 08098df5827b672d604e2dc440446b86064b99f2
+          path: target/source-sha3
+          persist-credentials: false
+
+      - name: Build canonical Stylus and run adapter controls
+        run: >-
+          cargo run --locked --release -p zisk-transpiler-wasm --example nitro_tools -- stylus
+          --nitro-source target/source-nitro
+          --target-lexicon-source target/source-target-lexicon
+          --sha3-source target/source-sha3 --test
+
+      - name: Build the helper and run native controls
+        run: cargo run --locked --release -p zisk-transpiler-wasm --example nitro_tools -- build --test
+
+      - name: Test witness encoding and native state checks
+        run: |
+          cargo test --locked --release -p zisk-transpiler-wasm --example nitro_tools
+          mkdir -p target/nitro-runtime-state
+          clang-18 -std=c11 -Wall -Wextra -Werror -DNITRO_HOST_TEST \
+            -fsanitize=address,undefined transpilers/wasm/runtime/state-tests.c \
+            transpilers/wasm/runtime/state.c -lcrypto \
+            -o target/nitro-runtime-state/state-tests
+          target/nitro-runtime-state/state-tests
+
+      - name: Test transpiler import and memory boundaries
+        run: cargo test --locked --release -p zisk-transpiler-wasm --features float --lib
+
+      - name: Test shared Wasm, Go imports and rejected hints
+        run: >-
+          cargo test --locked --release -p ziskemu --features float
+          --test wasm --test wasm_float --test wasm_imports
+          --test wasm_zkvm --test wasm_precompiles
+          --test wasm_nitro_crypto --test native_crypto_failure
+          -- --test-threads=1
+
+      - name: Execute all helper VM controls
+        run: >-
+          cargo test --locked --release -p ziskemu --features float
+          --test wasm_nitro_state --test wasm_nitro_inbox
+          --test wasm_nitro_runtime --test wasm_nitro_brotli
+          --test wasm_nitro_stylus
+          -- --ignored --test-threads=1

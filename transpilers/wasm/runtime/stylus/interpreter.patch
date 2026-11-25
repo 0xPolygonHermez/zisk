@@ -1,0 +1,197 @@
+--- a/crates/prover/Cargo.toml
++++ b/crates/prover/Cargo.toml
+@@ -64,7 +64,8 @@
+ counters = []
+ kzg = ["dep:c-kzg"]
+ libc = ["dep:libc"]
+-native = ["dep:wasmer", "dep:wasmer-compiler-singlepass", "brotli/wasmer_traits"]
++interpreter = []
++native = ["interpreter", "dep:wasmer", "dep:wasmer-compiler-singlepass", "brotli/wasmer_traits"]
+ singlepass_rayon = ["wasmer-compiler-singlepass?/rayon"]
+ rayon = ["dep:rayon"]
+ cc_brotli = ["brotli/cc_brotli"]
+--- a/crates/prover/build.rs
++++ b/crates/prover/build.rs
+@@ -6,6 +6,6 @@
+     println!("cargo:rerun-if-changed=../wasm-libraries/forward");
+     let mut out = Vec::new();
+     forward::forward_stub(&mut out).expect("Failed to write stub");
+-    let mut file = File::create("src/forward_stub.wat").unwrap();
++    let mut file = File::create(std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap()).join("forward_stub.wat")).unwrap();
+     file.write_all(&out).unwrap();
+ }
+--- a/crates/prover/src/machine.rs
++++ b/crates/prover/src/machine.rs
+@@ -36,7 +36,7 @@
+
+ #[cfg(feature = "kzg")]
+ use crate::kzg::prove_kzg_preimage;
+-#[cfg(feature = "native")]
++#[cfg(feature = "interpreter")]
+ use crate::programs::meter::MeteredMachine;
+ use crate::{
+     binary::{
+@@ -334,7 +334,7 @@
+     static ref USER_IMPORTS: HashMap<String, AvailableImport> = {
+         let mut imports = HashMap::default();
+
+-        let forward = include_bytes!("forward_stub.wat");
++        let forward = include_bytes!(concat!(env!("OUT_DIR"), "/forward_stub.wat"));
+         let forward = wat::parse_bytes(forward).unwrap();
+         let forward = binary::parse(&forward, Path::new("forward")).unwrap();
+
+@@ -967,7 +967,7 @@
+         }
+     }
+
+-    #[cfg(feature = "native")]
++    #[cfg(feature = "interpreter")]
+     pub fn get(&mut self, context: u64, ty: PreimageType, hash: Bytes32) -> Option<&[u8]> {
+         // TODO: this is unnecessarily complicated by the rust borrow checker.
+         // This will probably be simplifiable when Polonius is shipped.
+@@ -983,7 +983,7 @@
+         }
+     }
+
+-    #[cfg(feature = "native")]
++    #[cfg(feature = "interpreter")]
+     pub fn get_const(&self, context: u64, ty: PreimageType, hash: Bytes32) -> Option<CBytes> {
+         if let Some(resolved) = &self.last_resolved
+             && resolved.0 == hash
+@@ -1172,7 +1172,7 @@
+ }
+
+ #[must_use]
+-#[cfg(feature = "native")]
++#[cfg(feature = "interpreter")]
+ fn exec_ibin_op<T>(a: T, b: T, op: IBinOpType) -> Option<T>
+ where
+     Wrapping<T>: ReinterpretAsSigned,
+@@ -1208,7 +1208,7 @@
+ }
+
+ #[must_use]
+-#[cfg(feature = "native")]
++#[cfg(feature = "interpreter")]
+ fn exec_iun_op<T>(a: T, op: IUnOpType) -> u32
+ where
+     T: PrimInt,
+@@ -1220,7 +1220,7 @@
+     }
+ }
+
+-#[cfg(feature = "native")]
++#[cfg(feature = "interpreter")]
+ fn exec_irel_op<T>(a: T, b: T, op: IRelOpType) -> Value
+ where
+     T: Ord,
+@@ -1860,7 +1860,7 @@
+         Ok(self.value_stacks[0].clone())
+     }
+
+-    #[cfg(feature = "native")]
++    #[cfg(feature = "interpreter")]
+     pub fn call_function(
+         &mut self,
+         module: &str,
+@@ -1873,7 +1873,7 @@
+         self.get_final_result()
+     }
+
+-    #[cfg(feature = "native")]
++    #[cfg(feature = "interpreter")]
+     pub fn call_user_func(
+         &mut self,
+         func: &str,
+@@ -1954,7 +1954,7 @@
+         Some(self.pc)
+     }
+
+-    #[cfg(feature = "native")]
++    #[cfg(feature = "interpreter")]
+     fn test_next_instruction(func: &Function, pc: &ProgramCounter) {
+         let inst: usize = pc.inst.try_into().unwrap();
+         debug_assert!(func.code.len() > inst);
+@@ -1964,7 +1964,7 @@
+         self.steps
+     }
+
+-    #[cfg(feature = "native")]
++    #[cfg(feature = "interpreter")]
+     pub fn step_n(&mut self, n: u64) -> Result<()> {
+         if self.is_halted() {
+             return Ok(());
+@@ -2676,7 +2676,7 @@
+         Ok(())
+     }
+
+-    #[cfg(feature = "native")]
++    #[cfg(feature = "interpreter")]
+     fn host_call_hook(
+         value_stack: &[Value],
+         module: &Module,
+--- a/crates/prover/src/programs/meter.rs
++++ b/crates/prover/src/programs/meter.rs
+@@ -24,7 +24,7 @@
+ use wasmparser::{BlockType, Operator};
+
+ use super::config::OpCosts;
+-#[cfg(feature = "native")]
++#[cfg(feature = "interpreter")]
+ use crate::Machine;
+ use crate::{
+     programs::{
+@@ -336,7 +336,7 @@
+     }
+ }
+
+-#[cfg(feature = "native")]
++#[cfg(feature = "interpreter")]
+ impl MeteredMachine for Machine {
+     fn ink_left(&self) -> MachineMeter {
+         macro_rules! convert {
+--- a/crates/prover/src/programs/depth.rs
++++ b/crates/prover/src/programs/depth.rs
+@@ -535,7 +535,7 @@
+     fn set_stack(&mut self, size: u32);
+ }
+
+-#[cfg(feature = "native")]
++#[cfg(feature = "interpreter")]
+ impl DepthCheckedMachine for Machine {
+     fn stack_left(&mut self) -> u32 {
+         let global = self.get_global(STYLUS_STACK_LEFT).unwrap();
+--- a/crates/prover/src/test.rs
++++ b/crates/prover/src/test.rs
+@@ -57,7 +57,7 @@
+
+ #[test]
+ pub fn test_compress() -> Result<()> {
+-    let data = include_bytes!("forward_stub.wat");
++    let data = include_bytes!(concat!(env!("OUT_DIR"), "/forward_stub.wat"));
+     let mut last = vec![];
+
+     for dict in [Dictionary::Empty, Dictionary::StylusProgram] {
+--- a/crates/wasm-libraries/user-host/Cargo.toml
++++ b/crates/wasm-libraries/user-host/Cargo.toml
+@@ -12,6 +12,10 @@
+ [lib]
+ crate-type = ["cdylib"]
+
++[features]
++# The outer native helper runs canonical Module::activate itself.
++native-activation = []
++
+ [dependencies]
+ arbutil = { workspace = true }
+ caller-env = { workspace = true, features = ["static_caller"] }
+--- a/crates/wasm-libraries/user-host/src/link.rs
++++ b/crates/wasm-libraries/user-host/src/link.rs
+@@ -42,6 +42,7 @@
+ /// The amount left is written back at the end of the call.
+ ///
+ /// pages_ptr: starts pointing to max allowed pages, returns number of pages used
++#[cfg(not(feature = "native-activation"))]
+ #[unsafe(no_mangle)]
+ pub unsafe extern "C" fn programs__activate_v2(
+     wasm_ptr: GuestPtr,

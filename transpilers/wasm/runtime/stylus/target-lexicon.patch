@@ -1,0 +1,26 @@
+--- a/src/targets.rs
++++ b/src/targets.rs
+@@ -450,6 +450,7 @@
+     Riscv64gc,
+     Riscv64imac,
+     Riscv64im,
++    Riscv64ima,
+     Riscv64a23,
+ }
+
+@@ -464,6 +465,7 @@
+             Riscv64gc => Cow::Borrowed("riscv64gc"),
+             Riscv64imac => Cow::Borrowed("riscv64imac"),
+             Riscv64im => Cow::Borrowed("riscv64im"),
++            Riscv64ima => Cow::Borrowed("riscv64ima"),
+             Riscv64a23 => Cow::Borrowed("riscv64a23"),
+         }
+     }
+@@ -1311,6 +1313,7 @@
+             "riscv64gc" => Riscv64gc,
+             "riscv64imac" => Riscv64imac,
+             "riscv64im" => Riscv64im,
++            "riscv64ima" => Riscv64ima,
+             "riscv64a23" => Riscv64a23,
+             _ => return Err(()),
+         })
