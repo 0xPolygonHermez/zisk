@@ -15,8 +15,12 @@ pub struct QMatrix<'a> {
     pub cols: usize,
     pub gs: usize,
     pub format: Format,
-    /// The values' bytes: one per value, or one per two values for E2M1.
+    /// The values' bytes: one per value, two per value for BF16, or one per two values for
+    /// E2M1, MXFP4 and NVFP4.
     pub q: &'a [u8],
+    /// MXFP4 and NVFP4 only: the block scales, `scale_stride` bytes per row.
+    pub block_scales: &'a [u8],
+    pub scale_stride: usize,
     pub scales: Vec<f32>,
     /// The scales in fixed point (see [`crate::fixed`]): `scales[g] ≈
     /// fixed_scales[g] · 2^-row_shift[row]`.
@@ -34,6 +38,10 @@ impl QMatrix<'_> {
             format: self.format,
             q: &self.q
                 [self.format.bytes(first * self.cols)..self.format.bytes((first + n) * self.cols)],
+            block_scales: &self.block_scales[(first * self.scale_stride)
+                .min(self.block_scales.len())
+                ..((first + n) * self.scale_stride).min(self.block_scales.len())],
+            scale_stride: self.scale_stride,
             scales: &self.scales[first * self.cols / self.gs..(first + n) * self.cols / self.gs],
             fixed_scales: &self.fixed_scales
                 [first * self.cols / self.gs..(first + n) * self.cols / self.gs],
@@ -53,6 +61,8 @@ pub struct QMatrixView<'a> {
     pub gs: usize,
     pub format: Format,
     pub q: &'a [u8],
+    pub block_scales: &'a [u8],
+    pub scale_stride: usize,
     pub scales: &'a [f32],
     pub fixed_scales: &'a [i32],
     pub row_shift: &'a [i32],
@@ -107,6 +117,14 @@ impl<'a> Cursor<'a> {
         let q = &self.blob[self.pos..self.pos + format.bytes(n)];
         self.pos += format.bytes(n);
         self.align8();
+        let (block_scales, scale_stride) = if format.is_fp4_weights() {
+            let stride = crate::checkpoint::fp4_scale_stride(format, cols);
+            let b = &self.blob[self.pos..self.pos + rows * stride];
+            self.pos += rows * stride;
+            (b, stride)
+        } else {
+            (&self.blob[self.pos..self.pos], 0)
+        };
         let scales = self.floats(n / gs);
         self.align8();
         assert!(cols <= fixed::MAX_LEN, "matrix rows of {cols} values are too long");
@@ -116,7 +134,18 @@ impl<'a> Cursor<'a> {
             .zip(fixed_scales.chunks_exact_mut(cols / gs))
             .map(|(s, f)| fixed::scales_to_fixed(s, f))
             .collect();
-        QMatrix { rows, cols, gs, format, q, scales, fixed_scales, row_shift }
+        QMatrix {
+            rows,
+            cols,
+            gs,
+            format,
+            q,
+            block_scales,
+            scale_stride,
+            scales,
+            fixed_scales,
+            row_shift,
+        }
     }
 }
 

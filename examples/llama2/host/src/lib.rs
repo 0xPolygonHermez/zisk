@@ -29,9 +29,12 @@ Options:
                        (16 with e2m1) that divides the row (default:
                        llama2.c's, a power of two up to 64)
   --weights FORMAT     format of the weights: int8 (default, as llama2.c),
-                       e4m3 (OCP FP8), e4m3fnuz (AMD FP8) or e2m1 (FP4)
+                       e4m3 (OCP FP8), e4m3fnuz (AMD FP8), e2m1 (FP4), bf16,
+                       mxfp4 or nvfp4 (FP4 with block scales)
   --activations FORMAT format the activations are quantized to before each
-                       matrix multiplication (default: the weights' format)";
+                       matrix multiplication (default: the weights' format,
+                       bf16 for mxfp4 and nvfp4; bf16 goes only with bf16,
+                       mxfp4 and nvfp4)";
 
 pub struct Options {
     pub model: PathBuf,
@@ -100,8 +103,10 @@ pub fn parse_options(extra: &[&str]) -> Result<Options> {
 }
 
 fn parse_format(name: &str, value: &str) -> Result<Format> {
-    Format::from_name(value)
-        .ok_or_else(|| format!("{name} must be int8, e4m3, e4m3fnuz or e2m1, not {value}").into())
+    Format::from_name(value).ok_or_else(|| {
+        format!("{name} must be int8, e4m3, e4m3fnuz, e2m1, bf16, mxfp4 or nvfp4, not {value}")
+            .into()
+    })
 }
 
 impl Options {
@@ -109,7 +114,11 @@ impl Options {
     pub fn quantization(&self) -> Quantization {
         Quantization {
             weights: self.weights,
-            activations: self.activations.unwrap_or(self.weights),
+            activations: self.activations.unwrap_or(if self.weights.uses_bf16() {
+                Format::Bf16
+            } else {
+                self.weights
+            }),
             max_group: self.max_group,
         }
     }

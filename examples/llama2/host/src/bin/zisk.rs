@@ -10,7 +10,7 @@
 //! `--save-input PATH` writes the guest input for the first prompt and exits.
 //!
 //! `--dot-product precompile` makes the guest use the experimental `dot_f8`
-//! precompile, which needs a `ziskemu` built from this repository (see
+//! precompile (`dot_bf16` for a BF16 model), which needs a `ziskemu` built from this repository (see
 //! `--ziskemu`) and cannot be proven yet. The default, `soft`, is plain Rust.
 
 use std::path::{Path, PathBuf};
@@ -137,7 +137,7 @@ fn main() -> Result<()> {
     print_model_info(&o, &l);
     println!("Guest ELF {GUEST_ELF}");
     if flags & USE_DOT_F8 != 0 {
-        println!("Dot products: dot_f8 precompile (experimental, emulator only)");
+        println!("Dot products: dot_f8 / dot_bf16 precompile (experimental, emulator only)");
     }
     if o.scales == Scales::Fixed {
         println!("Scales: fixed point");

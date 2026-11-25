@@ -35,6 +35,39 @@ pub fn dot_soft(w: &[u8], wf: Format, x: &[u8], xf: Format, n: usize, gs: usize,
     }
 }
 
+/// Computes the dot product of a matrix row `w` and a vector `x` of BF16
+/// values (as `u16` bits), exactly, rounded once to `f32`. This is what the
+/// `dot_bf16` precompile computes; [`forward`] calls it once per row of every
+/// matrix multiplication of a BF16 model.
+pub type DotBf16Fn = fn(w: &[u16], x: &[u16]) -> f32;
+
+/// [`DotBf16Fn`] in plain Rust: the reference semantics, with a 576-bit exact
+/// accumulator.
+pub fn dot_bf16_soft(w: &[u16], x: &[u16]) -> f32 {
+    f32::from_bits(zisk_definitions::dot_bf16_reference(w, x, w.len(), 0, None))
+}
+
+/// Computes the dot product of a matrix row of FP4 weights (`x`, packed E2M1 values, with
+/// `scales` one byte per block) and a vector `y` of BF16 values, exactly, rounded once to `f32`.
+/// `flags` selects MXFP4 or NVFP4 (`zisk_definitions::DOT_BF16_FLAGS_*`); NVFP4's tensor scale
+/// is not included. This is what the `dot_bf16` precompile computes with FP4 weights.
+pub type DotBf16Fp4Fn = fn(flags: u64, x: &[u8], scales: &[u8], y: &[u16]) -> f32;
+
+/// [`DotBf16Fp4Fn`] in plain Rust: the reference semantics.
+pub fn dot_bf16_fp4_soft(flags: u64, x: &[u8], scales: &[u8], y: &[u16]) -> f32 {
+    let n = y.len();
+    f32::from_bits(zisk_definitions::dot_bf16_fp4_reference(flags, x, scales, y, n, 0, None))
+}
+
+/// The bytes of BF16 values as `u16`. They are 2-byte aligned: rows of the
+/// blob start at multiples of 8 bytes, and activations are stored in `u64`.
+fn as_bf16(bytes: &[u8]) -> &[u16] {
+    // SAFETY: any two bytes are a valid u16; align_to checks the alignment.
+    let (head, values, tail) = unsafe { bytes.align_to::<u16>() };
+    assert!(head.is_empty() && tail.is_empty(), "BF16 values must be 2-byte aligned");
+    values
+}
+
 /// How the matrix multiplications combine each group's dot product with the
 /// group's two scales.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -52,12 +85,21 @@ pub struct MatmulMode {
     /// The dot products of one row.
     pub dot: DotFn,
     pub scales: Scales,
+    /// The dot product of one row of a BF16 model, whatever `scales` is.
+    pub dot_bf16: DotBf16Fn,
+    /// The dot product of one row of MXFP4 or NVFP4 weights and BF16 activations.
+    pub dot_bf16_fp4: DotBf16Fp4Fn,
 }
 
 impl MatmulMode {
     /// Plain Rust, with the given scales.
     pub fn soft(scales: Scales) -> Self {
-        MatmulMode { dot: dot_soft, scales }
+        MatmulMode {
+            dot: dot_soft,
+            scales,
+            dot_bf16: dot_bf16_soft,
+            dot_bf16_fp4: dot_bf16_fp4_soft,
+        }
     }
 }
 
@@ -87,13 +129,24 @@ struct QVec {
 
 impl QVec {
     fn new(n: usize, format: Format) -> Self {
-        let words = vec![0; n.div_ceil(8)];
+        let words = vec![0; Self::len(n, format).div_ceil(8)];
         QVec { words, n, format, scales: vec![0.0; n], fixed_scales: vec![0; n], shift: 0 }
     }
 
+    /// Bytes of the buffer: at least `n`, as `dot_soft` indexes int8 values,
+    /// and the 2 bytes per value of BF16.
+    fn len(n: usize, format: Format) -> usize {
+        n.max(format.bytes(n))
+    }
+
     fn bytes(&self) -> &[u8] {
-        // SAFETY: the words hold at least `n` bytes.
-        unsafe { core::slice::from_raw_parts(self.words.as_ptr().cast::<u8>(), self.n) }
+        // SAFETY: the words hold at least `len` bytes.
+        unsafe {
+            core::slice::from_raw_parts(
+                self.words.as_ptr().cast::<u8>(),
+                Self::len(self.n, self.format),
+            )
+        }
     }
 
     /// Quantizes `x` in groups of `gs` (llama2.c's `quantize` for int8), and
@@ -102,7 +155,10 @@ impl QVec {
         let f = self.format;
         // SAFETY: as in `bytes`, and `&mut self` makes the borrow unique.
         let q = unsafe {
-            core::slice::from_raw_parts_mut(self.words.as_mut_ptr().cast::<u8>(), self.n)
+            core::slice::from_raw_parts_mut(
+                self.words.as_mut_ptr().cast::<u8>(),
+                Self::len(self.n, self.format),
+            )
         };
         for (g, group) in x.chunks_exact(gs).enumerate() {
             self.scales[g] =
@@ -119,6 +175,12 @@ impl QVec {
 /// `out = W x`, with exact dot products per group (llama2.c's `matmul`).
 /// `sums` holds the group sums of one row.
 fn matmul(out: &mut [f32], x: &QVec, w: &QMatrixView, mode: MatmulMode, sums: &mut [i64]) {
+    if w.format == Format::Bf16 {
+        return matmul_bf16(out, x, w, mode.dot_bf16);
+    }
+    if w.format.is_fp4_weights() {
+        return matmul_fp4(out, x, w, mode.dot_bf16_fp4);
+    }
     let (n, gs) = (w.cols, w.gs);
     let (wf, xq) = (w.format, x.bytes());
     let groups = n / gs;
@@ -127,8 +189,11 @@ fn matmul(out: &mut [f32], x: &QVec, w: &QMatrixView, mode: MatmulMode, sums: &m
     // int8 sums fit an i64 with the scales applied (see fixed::MAX_LEN); the
     // floats need an i128.
     let wide = wf != Format::Int8 || x.format != Format::Int8;
+    // Bytes per row, computed once: Format::bytes matches on the format, which per row costs
+    // steps in ZisK
+    let row_bytes = wf.bytes(n);
     for (i, o) in out.iter_mut().enumerate().take(w.rows) {
-        let row = &w.q[wf.bytes(i * n)..wf.bytes((i + 1) * n)];
+        let row = &w.q[i * row_bytes..(i + 1) * row_bytes];
         (mode.dot)(row, wf, xq, x.format, n, gs, sums);
         let (g0, g1) = (i * groups, (i + 1) * groups);
         *o = match mode.scales {
@@ -154,6 +219,32 @@ fn matmul(out: &mut [f32], x: &QVec, w: &QMatrixView, mode: MatmulMode, sums: &m
                 fixed::wide_fixed_to_f32(acc, w.row_shift[i] + x.shift)
             }
         };
+    }
+}
+
+/// [`matmul`] for BF16 weights and activations: one exact dot product per
+/// row, rounded once to `f32`, with no scales.
+fn matmul_bf16(out: &mut [f32], x: &QVec, w: &QMatrixView, dot: DotBf16Fn) {
+    let n = w.cols;
+    let xq = &as_bf16(x.bytes())[..n];
+    let wq = as_bf16(w.q);
+    for (i, o) in out.iter_mut().enumerate().take(w.rows) {
+        *o = dot(&wq[i * n..(i + 1) * n], xq);
+    }
+}
+
+/// [`matmul`] for MXFP4 or NVFP4 weights and BF16 activations: one exact dot product per row,
+/// rounded once to `f32`, times NVFP4's tensor scale (1 for MXFP4).
+fn matmul_fp4(out: &mut [f32], x: &QVec, w: &QMatrixView, dot: DotBf16Fp4Fn) {
+    let n = w.cols;
+    let flags = w.format.dot_bf16_flags();
+    let xq = &as_bf16(x.bytes())[..n];
+    let blocks = n / w.format.fp4_block();
+    for (i, o) in out.iter_mut().enumerate().take(w.rows) {
+        let row = &w.q[i * n / 2..(i + 1) * n / 2];
+        let scales = &w.block_scales[i * w.scale_stride..i * w.scale_stride + blocks];
+        let v = dot(flags, row, scales, xq);
+        *o = if w.format == Format::Nvfp4 { v * w.scales[i] } else { v };
     }
 }
 
@@ -256,8 +347,20 @@ pub fn forward(model: &Model, s: &mut RunState, token: u32, pos: usize) {
     let e = &model.embedding;
     let t = token as usize;
     let row = &e.q[e.format.bytes(t * dim)..e.format.bytes((t + 1) * dim)];
-    for i in 0..dim {
-        s.x[i] = e.format.units(row, i) as f32 * e.scales[(t * dim + i) / e.gs];
+    if e.format == Format::Bf16 {
+        for (x, &b) in s.x.iter_mut().zip(as_bf16(row)) {
+            *x = zisk_definitions::bf16_to_f32(b);
+        }
+    } else if e.format.is_fp4_weights() {
+        let scales = &e.block_scales[t * e.scale_stride..(t + 1) * e.scale_stride];
+        let tensor = if e.format == Format::Nvfp4 { e.scales[t] } else { 1.0 };
+        for (i, x) in s.x.iter_mut().enumerate() {
+            *x = crate::formats::fp4_weight(e.format, row, scales, i) * tensor;
+        }
+    } else {
+        for i in 0..dim {
+            s.x[i] = e.format.units(row, i) as f32 * e.scales[(t * dim + i) / e.gs];
+        }
     }
 
     // RoPE rotation for this position; the same for every layer and head.

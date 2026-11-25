@@ -62,13 +62,13 @@ Options, for both programs:
 | `--seed S` | 42 | Sampler seed, used when `T > 0` |
 | `--group-size N` | llama2.c's: a power of two up to 64 | Quantize in groups of at most `N` values: the largest multiple of 8 that divides the row (see [below](#cheaper-calls-and-larger-groups)) |
 | `--scales float\|fixed` | `float` | How matrix multiplications apply the group scales: in `f32` like llama2.c, or in fixed point (see [below](#with-fixed-point-scales)) |
-| `--weights FORMAT` | `int8` | Format of the weights: `int8` (llama2.c), `e4m3` (OCP FP8), `e4m3fnuz` (AMD FP8) or `e2m1` (FP4); see [Number formats](#number-formats-int8-fp8-and-fp4) |
-| `--activations FORMAT` | the weights' format | Format the activations are quantized to before each matrix multiplication; the same choices |
+| `--weights FORMAT` | `int8` | Format of the weights: `int8` (llama2.c), `e4m3` (OCP FP8), `e4m3fnuz` (AMD FP8), `e2m1` (FP4), `bf16`, `mxfp4` or `nvfp4`; see [Number formats](#number-formats-int8-fp8-and-fp4), [BF16](#bf16-with-dot_bf16) and [BF16, MXFP4 and NVFP4 compared](#bf16-mxfp4-and-nvfp4-compared) |
+| `--activations FORMAT` | the weights' format (`bf16` for `mxfp4` and `nvfp4`) | Format the activations are quantized to before each matrix multiplication; `bf16` goes only with `bf16`, `mxfp4` and `nvfp4` weights |
 
 `llama2-zisk` also takes:
 
 - `--ziskemu PATH`: the `ziskemu` to run.
-- `--dot-product soft|precompile`: how the guest computes the dot products. The default, `soft`, is plain Rust. `precompile` uses the experimental `dot_f8` precompile, which needs a `ziskemu` built from this repository and cannot be proven yet (see [Number formats](#number-formats-int8-fp8-and-fp4)). An older `ziskemu`, such as an installed release, does not report an error: the run produces wrong tokens, and the last line says `same tokens as native: NO`. Pass the repository's build with `--ziskemu ../../../target/release/ziskemu`.
+- `--dot-product soft|precompile`: how the guest computes the dot products. The default, `soft`, is plain Rust. `precompile` uses the experimental `dot_f8` precompile (`dot_bf16` with `--weights bf16`), which needs a `ziskemu` built from this repository and cannot be proven yet (see [Number formats](#number-formats-int8-fp8-and-fp4)). An older `ziskemu`, such as an installed release, does not report an error: the run produces wrong tokens, and the last line says `same tokens as native: NO`. Pass the repository's build with `--ziskemu ../../../target/release/ziskemu`.
 - `--save-input PATH`: writes the guest input for the first prompt and exits, to run the guest directly:
 
 ```bash
@@ -214,6 +214,12 @@ definitions/src/dot_f8.rs            # format IDs, decoding tables, reference se
 core/src/operations/dot_f8.rs        # the operation in ziskemu, its checks and cost model
 ziskos/entrypoint/src/syscalls/dot_f8.rs   # syscall_dot_f8, for guests
 emulator-asm/src/dot_f8/             # the operation in the assembly emulator
+definitions/src/dot_bf16.rs          # the same four, for dot_bf16
+core/src/operations/dot_bf16.rs
+ziskos/entrypoint/src/syscalls/dot_bf16.rs
+emulator-asm/src/dot_bf16/
+test-artifacts/programs/syscalls/dot_bf16/   # a guest that tests dot_bf16 on both emulators
+docs/dot-bf16-plan.md                # dot_bf16's design, semantics and tests
 ```
 
 ## Measured cost
@@ -632,6 +638,185 @@ The `dot_i8` rows of [Cheaper calls and larger groups](#cheaper-calls-and-larger
 4. **One call per row is about as cheap as `dot_i8`'s optimized call site.** Fitting the two comparisons above, it saves roughly 3–4 steps per group, the per-group call, but adds roughly 25 steps per row: the 6-word parameter block, the call through the function pointer, its checks and the loop that reads the group sums back. That is a gain with llama2.c's groups (9 to 12 per row) and a loss with groups of 144 (2 to 6 per row). The per-row part could be reduced by writing the parameter block once per matrix.
 5. **On the assembly emulator, the float formats are 30–60% slower than int8.** int8 is computed with SSE2, 8 values at a time, but FP8 and FP4 use a table lookup per value ([`dot_f8.c`](../../emulator-asm/src/dot_f8/dot_f8.c)). The routine is written in C and called through an assembly wrapper that saves the registers the generated code uses; the int8 case is also slightly slower than `dot_i8`'s hand-written routine (0.57 s against 0.54 s, measured on different days).
 
+### BF16 with `dot_bf16`
+
+Most published models, such as SmolLM2, Qwen3 and Llama 3, are trained and published in BF16: the upper 16 bits of an `f32`, with its range and 8 significant bits. `--weights bf16` runs this model that way, with the experimental `dot_bf16` precompile. Its design, exact semantics and tests are in [`docs/dot-bf16-plan.md`](../../docs/dot-bf16-plan.md).
+
+**How the model uses BF16.**
+- **The weights** are the checkpoint's `f32` values rounded to the nearest BF16. There are no groups and no scales: BF16 has the range of `f32`.
+- **The activations** are rounded to BF16 before each matrix multiplication, which is how BF16 models run.
+- **Each output** of a matrix multiplication is one `dot_bf16` call. Its result is already the `f32` output: the exact dot product rounded once to `f32`, so there are no group sums or scales to combine.
+- **RMSNorm, attention, softmax, SiLU and RoPE** stay in `f32`, as reference implementations also compute them.
+- `--scales` and `--group-size` have no effect.
+
+**The `dot_bf16` precompile.** The guest passes six `u64`: the two vectors' addresses, `n` (a multiple of 4), a `flags` word (0), and an optional `block` size and `out` address for per-block results. It returns the `f32` bits of `Σ x[i]·y[i]`:
+- **computed exactly,** in a 576-bit fixed-point accumulator, so the result does not depend on the order of the additions;
+- **rounded once,** to nearest, ties to even, with subnormals and overflow as in IEEE 754;
+- **with two simplifications:** a zero sum is +0, and an infinite or NaN input gives the canonical NaN.
+
+As for `dot_f8`, it runs in the operation table, `ziskemu` and the assembly emulator, but **no state machine proves it yet**. Its cost is a placeholder: one row of about 120 columns per 4 multiply-adds, three times a `dot_f8` row for half the multiply-adds, since a state machine has to align each product into a wide accumulator.
+
+```bash
+cargo run --release --bin llama2-zisk -- --ziskemu ../../../target/release/ziskemu \
+    --model ../models/stories15M.bin --prompt "Once upon a time" --max-new 20 \
+    --weights bf16 --dot-product precompile
+```
+
+#### How `dot_bf16` was tested
+
+The precompile must give the same bits everywhere: the Rust reference, `ziskemu`, the assembly emulator and, later, a state machine. Each implementation was tested against the reference, and the reference against independent oracles. All of these pass.
+
+**The reference** ([`definitions/src/dot_bf16.rs`](../../definitions/src/dot_bf16.rs), `cargo test -p zisk-definitions dot_bf16`), 20 tests:
+
+| Test | What it checks |
+|---|---|
+| 14 cases from the plan, with their exact expected bits | a simple sum; exact cancellation (2^100 + 1 − 2^100 = 1, where an `f32` sum gives 0); ties to even, down and up; a tiny term that tips a tie (only an exact sum sees it); underflow to 0; the smallest `f32` subnormal; overflow to ∞; no intermediate overflow; zero is +0; ∞ and NaN inputs; blocks rounded on their own, with the total rounded from the exact total; an empty call |
+| 10,000 random vectors of up to 4,096 values | against an independent oracle that sums exactly in `i128` (exponents limited so that it can) |
+| 200,000 random single products, over the full range | against `f64`, which is exact for one product: subnormals, underflow and overflow included |
+| Order independence | random vectors over the full exponent range give the same result reversed and rotated |
+| All 65,536 BF16 codes | round-trip through `f32` |
+| `f32` → BF16 conversion | ties, the carry into the next exponent, overflow, NaN payloads, subnormals |
+
+**`ziskemu` and the assembly emulator**, with a guest that calls the precompile ([`test-artifacts/programs/syscalls/dot_bf16`](../../test-artifacts/programs/syscalls/dot_bf16/src/main.rs)):
+- It runs the 14 cases of the plan with their expected bits, then 4 random runs of up to 4,096 values with blocks, over moderate and full exponent ranges, checked against the reference computed in software in the guest: 18 calls.
+- It passes on `ziskemu`, and on the assembly emulator in its fast and minimal-trace modes, with the same 1,269,524 steps on both. Its 4,096-value calls go past the per-step trace budget, so they also exercise the path that grows the trace.
+- It is not registered as a test-artifacts feature, since nothing can prove it yet. It builds with `cargo-zisk build --release -p dot_bf16` in `test-artifacts/programs`.
+
+**The assembly emulator's C routine** ([`dot_bf16.c`](../../emulator-asm/src/dot_bf16/dot_bf16.c)) against the reference, natively:
+- 300,000 random cases generated with the reference, mixing infinities and NaN, subnormals, narrow exponent ranges with cancellation and ties, overflow, and random block sizes: 0 mismatches.
+- To check that the comparison catches errors, a copy of the routine with its rounding's sticky bit disabled gave 49,897 mismatches.
+- This check was rerun after each change to the routine's speed. The generator and the checker were scratch programs, not in the repository.
+
+**In this example**, every BF16 run produced the same tokens on `ziskemu` and natively, with the committed hash matching, and the assembly emulator printed the same tokens with the same step count as `ziskemu`.
+
+**The FP4 variants** (MXFP4 and NVFP4 weights, see [below](#bf16-mxfp4-and-nvfp4-compared)) were tested the same way:
+- 13 more reference tests, from [`docs/dot-bf16-fp4-plan.md`](../../docs/dot-bf16-fp4-plan.md): the scales applied, cancellation at the top of the range, underflow, overflow, one scale per block, block results, NaN scales, BF16 specials, a tie across blocks, NVFP4's fractional, largest, smallest and negative scales, 5,000 random rows per format against an exact `i128` oracle, the order of the blocks, and every value with every scale (2 × 16 × 256).
+- The guest test program gained them, plus random rows of 2,880 values (90 MXFP4 blocks, 180 NVFP4 blocks) with a partial last word of scales: 35 calls in all, passing on `ziskemu` and the assembly emulator (fast and minimal trace) with the same 3,307,716 steps.
+- The C routine's cross-check now covers all three variants: 450,000 cases, 150,000 of each, with 0 mismatches. It fills the bytes after the scales with `0xFF`, which must be ignored. Two broken copies, with an FP4 product position off by one, gave 101,198 and 112,928 mismatches. It is now in the repository: [`emulator-asm/tests/dot_bf16/run.sh`](../../emulator-asm/tests/dot_bf16/run.sh).
+
+#### Accuracy
+
+Measured as in [Number formats](#number-formats-int8-fp8-and-fp4), against the int8 `float` mode with groups of 8:
+
+| | `stories15M` top-1 differs | Largest logit difference | Mean of (largest difference / logit range) | `stories260K` mean |
+|---|---|---|---|---|
+| int8, llama2.c's groups | 1.0% | 0.74 | 1.31% | 1.10% |
+| E4M3, llama2.c's groups | 4.9% | 2.57 | 3.75% | 3.39% |
+| **BF16** | 0.8% | 0.44 | **0.80%** | **0.67%** |
+
+**BF16 is the most accurate format here.** BF16 and the reference are 0.80% apart, measured either way, so this reference can't tell how much closer to the unquantized model BF16 is. Taking BF16 as the reference instead, int8 with llama2.c's groups is at 1.25%.
+
+#### Performance
+
+`stories15M`, the same runs as in [Number formats](#number-formats-int8-fp8-and-fp4): the profile is 5 prompt + 6 generated tokens, end to end is 5 + 20, measured one at a time in the same session. The int8 and E4M3 rows were measured again with the current guest, which takes 0.9% more steps on them than the one measured above: the guest now also checks whether the formats are BF16.
+
+| | int8, `dot_f8` | E4M3, `dot_f8` | BF16, `soft` | BF16, `dot_bf16` |
+|---|---|---|---|---|
+| Profile steps | 275.4 M | 291.1 M | 10,388 M | **122.1 M** |
+| Profile cost | 29.72 G | 31.35 G | 884.7 G | **18.25 G** |
+| Main | 17.08 G | 18.05 G | 644.1 G | 7.57 G |
+| Opcodes | 8.63 G | 9.30 G | 193.3 G | 3.78 G |
+| Precompiles (estimated) | 0.79 G | 0.79 G | ~0 | 4.64 G |
+| Memory | 2.93 G | 2.92 G | 46.9 G | 1.97 G |
+| End-to-end steps | 709.4 M | 746.8 M | 24,991 M | 371.8 M |
+| `ziskemu` | 13.9 s | 14.4 s | ~400 s | 9.8 s |
+| Assembly emulator, minimal trace | 0.59 s | 0.79 s | 15.2 s | 1.84 s |
+
+Where the cost of the `dot_bf16` run goes: the precompile 25% (its estimated cost), the calls and the loop over the rows 17%, `expf` 22%, and the other `f32` code (RMSNorm, attention, RoPE) most of the rest.
+
+1. **BF16 is both the most accurate and the cheapest format here.** With the precompile, it costs 39% less than int8 and takes 56% fewer steps. It needs no quantization step with scales (int8's `quantize` alone was 3.1 G), no group sums and no scales to combine: each output is one call, and the guest only rounds the activations to BF16, which is a few integer instructions per value.
+2. **This holds even if the precompile's real cost is higher.** Its cost is a placeholder, 6 times a `dot_f8` row per multiply-add. If a state machine cost twice as much, BF16 would still cost about 23 G, less than int8.
+3. **Without the precompile BF16 is impractical**: the exact accumulator in software costs about 50 times the precompile version.
+4. **The assembly emulator is the exception: BF16 is 3 times slower than int8 there** (1.84 s against 0.59 s). Its C routine ([`dot_bf16.c`](../../emulator-asm/src/dot_bf16/dot_bf16.c)) takes about 11 cycles per multiply-add to keep the sum exact, against SSE2 for int8. Adding each product to a carry-save accumulator, with branch-free signs, already brought it down from 2.51 s; SIMD would be the next step.
+5. **`stories260K` gains too:** 75.3 M end-to-end steps against 117.1 M for int8 with `dot_f8` (measured before the BF16 changes). Its `hidden_dim` of 172, a multiple of 4, now goes through the precompile, where int8 groups of 4 could not.
+
+### BF16, MXFP4 and NVFP4 compared
+
+Most published models are BF16, and the FP4 ones are MXFP4 or NVFP4. All three run through the `dot_bf16` precompile: `flags` = 1 and 2 select MXFP4 or NVFP4 weights, with BF16 activations, as these models usually run. The design is in [`docs/dot-bf16-fp4-plan.md`](../../docs/dot-bf16-fp4-plan.md); how it was tested is [above](#how-dot_bf16-was-tested).
+
+```bash
+cargo run --release --bin llama2-zisk -- --ziskemu ../../../target/release/ziskemu \
+    --model ../models/stories15M.bin --prompt "Once upon a time" --max-new 20 \
+    --weights mxfp4 --dot-product precompile        # or nvfp4; the activations are BF16
+```
+
+#### The formats
+
+| | **BF16** | **MXFP4** | **NVFP4** |
+|---|---|---|---|
+| A value | 1 sign, 8 exponent, 7 mantissa bits | E2M1: ±{0, 0.5, 1, 1.5, 2, 3, 4, 6} | the same E2M1 |
+| Scaling | none: it has `f32`'s range | an E8M0 power of two per 32 values | an E4M3 (FP8) scale per 16 values, plus one `f32` per tensor |
+| Bits per weight | 16 | 4.25 | 4.5 |
+| Precision | 8 significant bits: about 0.4% rounding | 2 significant bits, and power-of-two scales: coarse | 2 significant bits, with fractional scales and smaller blocks: better than MXFP4 |
+| Defined by | Google; used everywhere | OCP Microscaling spec (multi-vendor) | NVIDIA |
+| Hardware | NVIDIA since A100, AMD MI series, TPUs, recent CPUs | NVIDIA Blackwell, AMD MI355X | NVIDIA Blackwell only |
+| Published models | most of them: Llama, Qwen, SmolLM2, Mistral, Gemma | gpt-oss, AMD's quantized releases | NVIDIA's checkpoints (DeepSeek-R1, Llama 3.x, Qwen3) |
+| Usual activations | BF16 | BF16 (W4A16) or MXFP8 | FP4 or FP8 on Blackwell, or BF16 |
+
+#### In ZisK
+
+| | BF16 | MXFP4 | NVFP4 |
+|---|---|---|---|
+| `dot_bf16` `flags` | 0 | 1 | 2 |
+| Exact semantics | yes | yes: the scale is a power of two | yes: the scale is an E4M3 value. The per-tensor `f32` scale is applied by the guest after the precompile, so the output is rounded twice |
+| Applying the weight's scale | nothing | an exponent addition | an E4M3 lookup, a small product and an exponent addition |
+| Product significand (with BF16 activations) | 16 bits | 10 bits | under 30 bits |
+| Weight memory read per multiply-add | 2 bytes | 0.53 bytes | 0.56 bytes |
+| Largest model in the 2 GB input region (see [below](#how-large-a-model-fits)) | ~1.07 B | ~4.0 B | ~3.8 B |
+| This example's quantization | the `f32` weights rounded to BF16 | per 32: scale exponent ⌊log2 max⌋ − 2, values rounded to E2M1 (OCP's recipe) | a tensor scale per layer's matrix, max / (6 · 448); per 16: an E4M3 scale, max / 6 / tensor scale; values rounded to E2M1 |
+| Rows of the model | any multiple of 4 | multiples of 32 | multiples of 16 |
+
+`stories260K` cannot use MXFP4 or NVFP4: its `hidden_dim` of 172 is not a multiple of 16.
+
+#### Measured on `stories15M`
+
+Measured as in the previous sections, in the same session, with the same guest for every format. Accuracy is against the int8 `float` mode with groups of 8. The profile is 5 prompt + 6 generated tokens, end to end is 5 + 20. Every run produced the same tokens as the native run with the same options, and the assembly emulator the same tokens and steps as `ziskemu`. int8 and E4M3 use `dot_f8` with llama2.c's groups, for comparison; this guest takes 2.6% more steps on int8 than the one in [Number formats](#number-formats-int8-fp8-and-fp4), from checking for the newer formats.
+
+| | int8 | E4M3 | **BF16** | **MXFP4** | **NVFP4** |
+|---|---|---|---|---|---|
+| Mean of (largest logit difference / range) | 1.31% | 3.75% | **0.80%** | 16.17% | 11.33% |
+| Top-1 token differs | 1.0% | 4.9% | 0.8% | 19.1% | 14.3% |
+| Guest input (mostly the model) | 17.0 MB | 17.0 MB | 30.6 MB | **8.6 MB** | 9.0 MB |
+| Profile steps, with the precompile | 280.0 M | 295.7 M | **122.6 M** | 130.6 M | 156.5 M |
+| Profile cost, with the precompile | 29.92 G | 31.55 G | 18.29 G | **18.19 G** | 20.82 G |
+| Main | 17.36 G | 18.33 G | 7.60 G | 8.10 G | 9.70 G |
+| Opcodes | 8.50 G | 9.17 G | 3.79 G | 3.99 G | 4.94 G |
+| Precompiles (estimated) | 0.79 G | 0.79 G | 4.64 G | 4.59 G | 4.59 G |
+| Memory | 2.98 G | 2.97 G | 1.97 G | **1.23 G** | 1.30 G |
+| Profile cost, plain Rust | 152.8 G | 281.4 G | 884.7 G | 959.7 G | 1,159.8 G |
+| End-to-end steps | 719.6 M | 757.0 M | **372.4 M** | 391.5 M | 453.5 M |
+| `ziskemu` | 14.4 s | 14.5 s | **10.2 s** | 10.3 s | 11.8 s |
+| Assembly emulator, minimal trace | **0.62 s** | 0.81 s | 1.85 s | 1.96 s | 2.39 s |
+
+1. **MXFP4 costs about the same as BF16, with a model 3.5 times smaller.** Its weights read less memory (1.23 G against 1.97 G), and its scales add a little guest work per row (8.10 G of Main against 7.60 G). Both cost about 40% less than int8.
+2. **NVFP4 costs 14% more than MXFP4,** almost all of it from one software-float multiplication per output, by the tensor scale: `__mulsf3` costs 2.3 G more. Applying the tensor scale in fixed point, or inside the precompile with a wider accumulator, would remove most of it.
+3. **On accuracy, BF16 is far ahead.** The FP4 formats are 14 to 20 times further from the reference. NVFP4 is clearly better than MXFP4 (11.3% against 16.2%), from its smaller blocks and fractional scales, as expected. These TinyStories models were trained in `f32`, not for FP4. Models published in FP4 are trained or calibrated for it, so these numbers overstate the error of such models.
+4. **The precompile's estimated cost is the same for all three formats,** one row of about 120 columns per 4 multiply-adds, since that is set by the BF16 activations. It is a placeholder until there is a state machine. The FP4 decoding needs smaller tables and products than BF16's, so it should not cost more.
+5. **Without the precompile, all three are impractical:** 48 to 56 times the cost with it.
+6. **The assembly emulator is the slow spot**, as for BF16: its exact accumulator in C takes about 11 cycles per multiply-add, and the FP4 decoding adds to it. On `ziskemu`, MXFP4 is as fast as BF16, and NVFP4 is 16% slower, from its tensor-scale multiplication.
+
+**So for running published models in ZisK:** BF16 for models up to about 1 B parameters, for its accuracy, then MXFP4 or NVFP4 to reach 3–4 B parameters in the same 2 GB of input. MXFP4 is the cheaper of the two to run here; NVFP4 is the more accurate.
+
+### How large a model fits
+
+The guest reads the model blob in place from ZisK's input region, which holds at most 2 GB (`MAX_INPUT_SIZE` in [`core/src/mem.rs`](../../core/src/mem.rs), less 16 bytes). The weights are nearly all of the blob, so the input region sets the largest model:
+
+| Weight format | Bytes per parameter | Largest model | Examples that fit |
+|---|---|---|---|
+| BF16 (`dot_bf16`) | 2 | **~1.07 B** | Qwen3-0.6B (1.2 GB), SmolLM2-360M; Gemma 3 1B is right at the limit |
+| int8 or FP8, groups of 64 with an `f32` scale each | 1.06 | **~2.0 B** | Llama 3.2 1B (~1.3 GB), SmolLM2-1.7B (~1.8 GB) |
+| FP4 E2M1, groups of 32 with an `f32` scale each (`dot_f8`) | 0.625 | **~3.4 B** | Llama 3.2 3B (~2.0 GB, at the limit) |
+| MXFP4 (`dot_bf16`): an E8M0 scale per 32 | 0.53 | **~4.0 B** | Llama 3.2 3B (~1.7 GB); Qwen3-4B at the limit |
+| NVFP4 (`dot_bf16`): an E4M3 scale per 16 | 0.56 | **~3.8 B** | Llama 3.2 3B (~1.8 GB) |
+
+Llama 3.2 1B (2.47 GB) and TinyLlama 1.1B (2.2 GB) do not fit in BF16. The smaller formats trade accuracy for size (see [Number formats](#number-formats-int8-fp8-and-fp4)), unless the model was trained for them.
+
+Before reaching these sizes, the example needs two changes to stay within the guest's 512 MB of RAM:
+- **The scales.** `Model::parse` copies each matrix's scales into RAM, with a fixed-point copy: 8 bytes per group, so about 500 MB for 2 B parameters in groups of 32. Reading them in place from the input would remove this. BF16 has no scales.
+- **The KV cache.** It is allocated in full for the model's context length, in `f32`. That is fine for the TinyStories models, but Qwen3-0.6B's 40,960-token context would need about 9 GB. The cache should be sized to the prompt plus the tokens to generate, and could be stored in BF16 (about 110 KB per token for Qwen3-0.6B).
+
+Every token reads all the weights, so a 1 B-parameter BF16 model does about 1 G multiply-adds per token, about 65 times `stories15M`. For proving, reading most of a 2 GB input also needs checking against the assembly backend's memory planner (see the [`input-2gb` example](../input-2gb/host/src/main.rs)). Larger models would need a different memory layout in ZisK, or to be split into several proofs, for example by layers, chained by hashes.
+
 ## Next steps
 
 1. **Fixed point in the rest of the model.** After [cheaper calls and larger groups](#cheaper-calls-and-larger-groups), the float code outside the matrix multiplications is the largest part of the cost: `expf`, `quantize`, RMSNorm, attention and RoPE. Moving it to fixed point would also make the model fully integer, which a proof-friendly model needs anyway. Accuracy has to be measured as above. A cheap first step is `quantize`, which divides every value by its scale with software floats.
@@ -639,5 +824,8 @@ The `dot_i8` rows of [Cheaper calls and larger groups](#cheaper-calls-and-larger
 3. **Make `dot_f8` provable.** It needs a state machine (the PIL, witness generation, the memory inputs and the planner), as described in the [`mlp` README](../mlp/README.md#dot-product-precompile), with one 256-entry decoding table per format as a lookup. That would also replace the estimated costs above with measured ones.
 4. **Faster float formats on the assembly emulator**, with SIMD decoding: for example `pshufb` on the 16 FP4 codes, or a gather on the FP8 table.
 5. **Run a model published in FP8 or FP4**, to measure the formats with weights trained for them.
-6. **Bind the model** in the commitment with a hash of the blob, using the SHA-256 or Keccak precompile. Storing the fixed-point scales in the blob would also remove their conversion when loading.
-7. **Prove** a short generation with `cargo-zisk prove`, and measure proving time per token.
+6. **A BF16 model:** SmolLM2-135M, then Qwen3-0.6B, which fit in ZisK's 2 GB input region (see [`docs/dot-bf16-plan.md`](../../docs/dot-bf16-plan.md)). They use the same `dot_bf16` path, with a loader for their checkpoints and tokenizers.
+7. **Sketch `dot_bf16`'s state machine**, to replace its placeholder cost: the exact accumulator is the expensive part, and MXFP4 and NVFP4 add their decoding to it.
+8. **A model published in MXFP4 or NVFP4** that fits in 2 GB, to measure FP4 with weights trained or calibrated for it. NVFP4's tensor scale could also move into fixed point (see above).
+9. **Bind the model** in the commitment with a hash of the blob, using the SHA-256 or Keccak precompile. Storing the fixed-point scales in the blob would also remove their conversion when loading.
+10. **Prove** a short generation with `cargo-zisk prove`, and measure proving time per token.

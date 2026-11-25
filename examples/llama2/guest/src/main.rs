@@ -5,7 +5,8 @@
 //! 2. the generation parameters (`llama2_common::params::GenParams`);
 //! 3. guest options, one `u64` of flags: bit 0 ([`USE_DOT_F8`]) computes the
 //!    dot products of the matrix multiplications with the experimental
-//!    `dot_f8` precompile, which ZisK's emulator runs but cannot prove yet;
+//!    `dot_f8` precompile (`dot_bf16` for a BF16 model), which ZisK's
+//!    emulators run but cannot prove yet;
 //!    bit 1 ([`FIXED_SCALES`]) applies the group scales in fixed point
 //!    instead of `f32`.
 //!
@@ -21,13 +22,18 @@ ziskos::entrypoint!(main);
 use core::fmt::Write;
 
 use llama2_common::formats::Format;
-use llama2_common::forward::{DotFn, MatmulMode, Scales, dot_soft};
+use llama2_common::forward::{
+    DotBf16Fn, DotBf16Fp4Fn, DotFn, MatmulMode, Scales, dot_bf16_fp4_soft, dot_bf16_soft, dot_soft,
+};
 use llama2_common::generate::generate_with;
 use llama2_common::model::Model;
 use llama2_common::params::GenParams;
 use sha2::{Digest, Sha256};
 
-use ziskos::syscalls::{SyscallDotF8Params, dot_f8_formats, syscall_dot_f8};
+use ziskos::syscalls::{
+    SyscallDotBf16Fp4Params, SyscallDotBf16Params, SyscallDotF8Params, dot_f8_formats,
+    syscall_dot_bf16, syscall_dot_bf16_fp4, syscall_dot_f8,
+};
 
 /// Guest option: use the `dot_f8` precompile.
 const USE_DOT_F8: u64 = 1;
@@ -49,8 +55,10 @@ fn dot_precompile(
     gs: usize,
     out: &mut [i64],
 ) {
-    let per_word = 64 / wf.bits().min(xf.bits());
-    if (w.as_ptr() as usize | x.as_ptr() as usize) % 8 != 0 || gs % per_word != 0 {
+    // Values per 64-bit word: 16 with E2M1, else 8. A mask, not a division,
+    // since divisions are expensive in ZisK and this runs once per row.
+    let per_word = if wf == Format::E2m1 || xf == Format::E2m1 { 16 } else { 8 };
+    if (w.as_ptr() as usize | x.as_ptr() as usize) % 8 != 0 || gs & (per_word - 1) != 0 {
         return dot_soft(w, wf, x, xf, n, gs, out);
     }
     let params = SyscallDotF8Params {
@@ -66,6 +74,45 @@ fn dot_precompile(
     unsafe { syscall_dot_f8(&params) };
 }
 
+/// The dot product of one row of a BF16 model with the `dot_bf16` precompile,
+/// which needs 8-byte aligned vectors and a length that is a multiple of 4.
+fn dot_bf16_precompile(w: &[u16], x: &[u16]) -> f32 {
+    if (w.as_ptr() as usize | x.as_ptr() as usize) % 8 != 0 || w.len() % 4 != 0 {
+        return dot_bf16_soft(w, x);
+    }
+    let params = SyscallDotBf16Params {
+        x: w.as_ptr(),
+        y: x.as_ptr(),
+        n: w.len() as u64,
+        flags: 0,
+        block: 0,
+        out: core::ptr::null_mut(),
+    };
+    // SAFETY: both vectors hold `n` values; the emulator checks the alignment.
+    unsafe { syscall_dot_bf16(&params) }
+}
+
+/// The dot product of one row of MXFP4 or NVFP4 weights and BF16 activations with the
+/// `dot_bf16` precompile, which needs 8-byte aligned values and scales. The rows of the model
+/// blob are aligned, so the plain-Rust path is only a safety net.
+fn dot_bf16_fp4_precompile(flags: u64, x: &[u8], scales: &[u8], y: &[u16]) -> f32 {
+    if (x.as_ptr() as usize | scales.as_ptr() as usize | y.as_ptr() as usize) % 8 != 0 {
+        return dot_bf16_fp4_soft(flags, x, scales, y);
+    }
+    let params = SyscallDotBf16Fp4Params {
+        x: x.as_ptr(),
+        y: y.as_ptr(),
+        n: y.len() as u64,
+        flags,
+        block: 0,
+        out: core::ptr::null_mut(),
+        scales: scales.as_ptr(),
+    };
+    // SAFETY: the vectors and scales hold `n` values; the emulator checks the alignment, and
+    // the scales' last word is within the row's padded scales.
+    unsafe { syscall_dot_bf16_fp4(&params) }
+}
+
 fn main() {
     let blob = ziskos::io::read_slice();
     let params_bytes = ziskos::io::read_slice();
@@ -79,6 +126,8 @@ fn main() {
     let mut mode = MatmulMode::soft(scales);
     if flags & USE_DOT_F8 != 0 {
         mode.dot = dot_precompile as DotFn;
+        mode.dot_bf16 = dot_bf16_precompile as DotBf16Fn;
+        mode.dot_bf16_fp4 = dot_bf16_fp4_precompile as DotBf16Fp4Fn;
     }
     let tokens = generate_with(&model, &params, mode, |_| {});
 

@@ -26,7 +26,8 @@
 //! u32 gs_dim, gs_hidden       group sizes for inputs of width dim / hidden_dim
 //! u32 weights, activations    formats of the weights and of the quantized
 //!                             activations ([`Format::id`]: 0 int8, 1 E4M3,
-//!                             2 E4M3FNUZ, 3 E2M1)
+//!                             2 E4M3FNUZ, 3 E2M1, 16 BF16; weights only:
+//!                             17 MXFP4, 18 NVFP4)
 //! f32 rms_att[layers*dim], rms_ffn[layers*dim], rms_final[dim]
 //! qtensor token_embedding, wq, wk, wv, wo, w1, w2, w3, [wcls]
 //! ```
@@ -37,6 +38,12 @@
 //! aligned, as the `dot_f8` precompile needs. Each scale is the value of one
 //! unit of its group (see [`crate::formats`]). The per-layer matrices are
 //! stored as one qtensor each, layers stacked by rows.
+//!
+//! With MXFP4 or NVFP4 weights, a qtensor is the packed E2M1 values (padded to
+//! 8 bytes), then the block scales of each row, one byte per block of 32
+//! (MXFP4) or 16 (NVFP4), each row's padded with zeros to a multiple of 8
+//! bytes so that it can be passed to the precompile, then one `f32` per row:
+//! 1 for MXFP4, the tensor scale of the row's layer for NVFP4.
 
 use alloc::vec::Vec;
 
@@ -71,8 +78,12 @@ impl Quantization {
         64 / self.weights.bits().min(self.activations.bits())
     }
 
-    /// The group size for rows of `n` values.
+    /// The group size for rows of `n` values: the whole row for BF16, which
+    /// has no scales.
     pub fn group_size(&self, n: usize) -> usize {
+        if self.weights.uses_bf16() {
+            return n;
+        }
         match self.max_group {
             Some(m) => group_size_at_most(n, m, self.group_multiple()),
             None => group_size(n),
@@ -168,7 +179,44 @@ fn pad8(blob: &mut Vec<u8>) {
     blob.resize(blob.len().next_multiple_of(8), 0);
 }
 
-fn push_qtensor(blob: &mut Vec<u8>, w: &[f32], gs: usize, f: Format) {
+/// Bytes of the block scales of one row of `cols` FP4 weights, padded to whole words.
+pub fn fp4_scale_stride(f: Format, cols: usize) -> usize {
+    (cols / f.fp4_block()).next_multiple_of(8)
+}
+
+/// Appends a matrix of FP4 weights (see the module documentation), with one NVFP4 tensor scale
+/// per `tensor_rows` rows (one layer's matrix).
+fn push_fp4_qtensor(blob: &mut Vec<u8>, w: &[f32], cols: usize, f: Format, tensor_rows: usize) {
+    let rows = w.len() / cols;
+    let stride = fp4_scale_stride(f, cols);
+    let mut q = alloc::vec![0u8; w.len() / 2];
+    let mut scales = alloc::vec![0u8; rows * stride];
+    let mut row_scales = Vec::with_capacity(rows);
+    for (t, tensor) in w.chunks(tensor_rows * cols).enumerate() {
+        let ts = if f == Format::Nvfp4 { crate::formats::nvfp4_tensor_scale(tensor) } else { 1.0 };
+        for (k, row) in tensor.chunks_exact(cols).enumerate() {
+            let r = t * tensor_rows + k;
+            let (qr, sr) = (&mut q[r * cols / 2..(r + 1) * cols / 2], &mut scales[r * stride..]);
+            if f == Format::Mxfp4 {
+                crate::formats::quantize_mxfp4_row(row, qr, sr);
+            } else {
+                crate::formats::quantize_nvfp4_row(row, ts, qr, sr);
+            }
+            row_scales.push(ts);
+        }
+    }
+    blob.extend_from_slice(&q);
+    pad8(blob);
+    blob.extend_from_slice(&scales);
+    push_floats(blob, &row_scales);
+    pad8(blob);
+}
+
+/// Appends a matrix of `rows · cols` weights; `tensor_rows` rows make one layer's tensor.
+fn push_qtensor(blob: &mut Vec<u8>, w: &[f32], gs: usize, f: Format, tensor_rows: usize) {
+    if f.is_fp4_weights() {
+        return push_fp4_qtensor(blob, w, gs, f, tensor_rows);
+    }
     let mut q = Vec::with_capacity(f.bytes(w.len()));
     let mut scales = Vec::with_capacity(w.len() / gs);
     quantize_into(f, w, gs, &mut q, &mut scales);
@@ -207,7 +255,18 @@ pub fn quantize_checkpoint(bytes: &[u8]) -> Result<Vec<u8>, &'static str> {
 
 /// [`quantize_checkpoint`], with the given formats and group sizes.
 pub fn quantize_checkpoint_with(bytes: &[u8], qz: Quantization) -> Result<Vec<u8>, &'static str> {
+    if qz.weights.uses_bf16() != (qz.activations == Format::Bf16) || qz.activations.is_fp4_weights()
+    {
+        return Err("BF16, MXFP4 and NVFP4 weights need BF16 activations, and BF16 activations \
+                    need one of them");
+    }
     let (c, shared) = read_config(bytes)?;
+    if qz.weights.is_fp4_weights()
+        && (c.dim % qz.weights.fp4_block() != 0 || c.hidden_dim % qz.weights.fp4_block() != 0)
+    {
+        return Err("MXFP4 and NVFP4 need dim and hidden_dim to be multiples of their block (32 \
+                    or 16)");
+    }
     let (dim, hidden, layers, kv_dim) = (c.dim, c.hidden_dim, c.n_layers, c.kv_dim());
     let (gs_dim, gs_hidden) = (qz.group_size(dim), qz.group_size(hidden));
     let format = qz.weights;
@@ -242,16 +301,16 @@ pub fn quantize_checkpoint_with(bytes: &[u8], qz: Quantization) -> Result<Vec<u8
     push_floats(&mut blob, &rms_att);
     push_floats(&mut blob, &rms_ffn);
     push_floats(&mut blob, &rms_final);
-    push_qtensor(&mut blob, &embedding, gs_dim, format);
-    push_qtensor(&mut blob, &wq, gs_dim, format);
-    push_qtensor(&mut blob, &wk, gs_dim, format);
-    push_qtensor(&mut blob, &wv, gs_dim, format);
-    push_qtensor(&mut blob, &wo, gs_dim, format);
-    push_qtensor(&mut blob, &w1, gs_dim, format);
-    push_qtensor(&mut blob, &w2, gs_hidden, format);
-    push_qtensor(&mut blob, &w3, gs_dim, format);
+    push_qtensor(&mut blob, &embedding, gs_dim, format, c.vocab_size);
+    push_qtensor(&mut blob, &wq, gs_dim, format, dim);
+    push_qtensor(&mut blob, &wk, gs_dim, format, kv_dim);
+    push_qtensor(&mut blob, &wv, gs_dim, format, kv_dim);
+    push_qtensor(&mut blob, &wo, gs_dim, format, dim);
+    push_qtensor(&mut blob, &w1, gs_dim, format, hidden);
+    push_qtensor(&mut blob, &w2, gs_hidden, format, dim);
+    push_qtensor(&mut blob, &w3, gs_dim, format, hidden);
     if let Some(wcls) = &wcls {
-        push_qtensor(&mut blob, wcls, gs_dim, format);
+        push_qtensor(&mut blob, wcls, gs_dim, format, c.vocab_size);
     }
     Ok(blob)
 }
