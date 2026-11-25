@@ -48,6 +48,7 @@ const PROGRAMS: &[&str] = &[
     "poseidon1",
     "poseidon2",
     "poseidon2_koalabear",
+    "precompiles_above_4gb",
     "ram_above_4gb",
     "secp256k1",
     "secp256k1_add",

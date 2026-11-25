@@ -466,17 +466,19 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
 
     col witness bits(40) step_addr;
 
-    // High limb (bit 32) of the addresses held in step_addr. The operation bus carries an operand
-    // as two 32-bit limbs and this machine is the one that joins them into a 33-bit address, so it
-    // is the one that checks the high limb is a bit: the address is then below 2^33 and cannot
-    // wrap the field.
-    col witness bits(1) addr_hi;
-    addr_hi * (1 - addr_hi) === 0;
+    // The high limb (bit 32) of each address held in step_addr lives in a free row of step_addr
+    // itself (the *_HI positions). The operation bus carries an operand as two 32-bit limbs and
+    // this machine is the one that joins them into a 33-bit address, so it is the one that checks
+    // the high limb is a bit: the address is then below 2^33 and cannot wrap the field.
 
     const int STEP_A = 0;
     const int ADDR_A = 1;
     const int STEP_B = 2;
     const int ADDR_B = 3;
+    const int ADDR_A_HI = 4; // bit 32 of op A's address
+    const int ADDR_B_HI = 5; // bit 32 of op B's address
+    CLK_0 * step_addr'(ADDR_A_HI) * (1 - step_addr'(ADDR_A_HI)) === 0;
+    CLK_0 * step_addr'(ADDR_B_HI) * (1 - step_addr'(ADDR_B_HI)) === 0;
 
     const int BITS_PER_LIMB = 32;
     const int WORD_SIZE = 64 / 8; // bytes per 64-bit word
@@ -526,8 +528,8 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
     // ═══════════════════════════════════════════════════════════════════════════
     // MAIN PROCESSOR INTEGRATION
     // ═══════════════════════════════════════════════════════════════════════════
-    proves_operation(op: OP_KECCAK, b: [step_addr'(ADDR_A) - 2**32 * addr_hi'(ADDR_A), addr_hi'(ADDR_A)], main_step: step_addr'(STEP_A), mul: in_use_a_clk_0);
-    proves_operation(op: OP_KECCAK, b: [step_addr'(ADDR_B) - 2**32 * addr_hi'(ADDR_B), addr_hi'(ADDR_B)], main_step: step_addr'(STEP_B), mul: in_use_b_clk_0);
+    proves_operation(op: OP_KECCAK, b: [step_addr'(ADDR_A) - 2**32 * step_addr'(ADDR_A_HI), step_addr'(ADDR_A_HI)], main_step: step_addr'(STEP_A), mul: in_use_a_clk_0);
+    proves_operation(op: OP_KECCAK, b: [step_addr'(ADDR_B) - 2**32 * step_addr'(ADDR_B_HI), step_addr'(ADDR_B_HI)], main_step: step_addr'(STEP_B), mul: in_use_b_clk_0);
 
     function rho(const expr a[]): const expr[] {
         const int len = length(a);

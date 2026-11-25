@@ -312,12 +312,10 @@ airtemplate TwistedEdwards (const int N = 2**18, const int curves = TE_ALL) {
     // step_addr column reused across clocks (see arith_eq.pil for the technique).
     col witness bits(40) step_addr;
 
-    // High limb (bit 32) of the addresses held in step_addr. The operation bus carries an operand
-    // as two 32-bit limbs and this machine is the one that joins them into a 33-bit address, so it
-    // is the one that checks the high limb is a bit: the address is then below 2^33 and cannot
-    // wrap the field.
-    col witness bits(1) addr_hi;
-    addr_hi * (1 - addr_hi) === 0;
+    // The high limb (bit 32) of each address held in step_addr lives in a free row of step_addr
+    // itself (the *_HI positions). The operation bus carries an operand as two 32-bit limbs and
+    // this machine is the one that joins them into a 33-bit address, so it is the one that checks
+    // the high limb is a bit: the address is then below 2^33 and cannot wrap the field.
 
     const int MAIN_STEP = 0;
 
@@ -338,6 +336,10 @@ airtemplate TwistedEdwards (const int N = 2**18, const int curves = TE_ALL) {
     const int ADDR_X3 = ADDR_X1 + 4;
     const int ADDR_Y3 = ADDR_X1 + 5;
     const int ADDR_A = ADDR_Y3 + 1;      // main operand a: p1 address
+    const int ADDR_OP_HI = ADDR_A + 1;   // bit 32 of the p2 address
+    const int ADDR_A_HI = ADDR_OP_HI + 1; // bit 32 of the p1 address
+    CLK_0 * step_addr'(ADDR_OP_HI) * (1 - step_addr'(ADDR_OP_HI)) === 0;
+    CLK_0 * step_addr'(ADDR_A_HI) * (1 - step_addr'(ADDR_A_HI)) === 0;
 
     // MEMORY ACCESS MAP
     //
@@ -436,8 +438,8 @@ airtemplate TwistedEdwards (const int N = 2**18, const int curves = TE_ALL) {
     const expr bus_op = _bus_op;
 
     // a = p1 address, b = p2 address
-    proves_operation(op: bus_op, a: [step_addr'(ADDR_A) - 2**32 * addr_hi'(ADDR_A), addr_hi'(ADDR_A)],
-                     b: [step_addr'(ADDR_OP) - 2**32 * addr_hi'(ADDR_OP), addr_hi'(ADDR_OP)], c:[0, 0], flag:0,
+    proves_operation(op: bus_op, a: [step_addr'(ADDR_A) - 2**32 * step_addr'(ADDR_A_HI), step_addr'(ADDR_A_HI)],
+                     b: [step_addr'(ADDR_OP) - 2**32 * step_addr'(ADDR_OP_HI), step_addr'(ADDR_OP_HI)], c:[0, 0], flag:0,
                      main_step: step_addr'(MAIN_STEP), mul: in_use_clk0);
 
     // selclk0 is the clock 0 dedicated to one operation

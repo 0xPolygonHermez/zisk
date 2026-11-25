@@ -1179,6 +1179,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "precompiles_above_4gb"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
 name = "prettyplease"
 version = "0.2.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"

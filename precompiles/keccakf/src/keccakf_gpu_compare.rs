@@ -24,7 +24,7 @@ fn random_inputs(count: usize, mut seed: u64) -> Vec<KeccakfInput> {
             }
             KeccakfInput {
                 step_main: 0x0000_00ab_cdef_0000 + i as u64,
-                // addresses on both sides of 2^32, so that addr_hi takes both values
+                // addresses on both sides of 2^32, so that the address high bits take both values
                 addr_main: 0xFFFF_F000 + (i as u64) * 200,
                 state,
             }
