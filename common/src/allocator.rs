@@ -52,7 +52,7 @@ unsafe impl Sync for MallocConf {}
 
 #[cfg(all(test, feature = "jemalloc"))]
 mod tests {
-    /// jemalloc read [`super::MALLOC_CONF`]: the option it sets is on.
+    /// jemalloc reads [`super::MALLOC_CONF`]: the option it sets is on.
     #[test]
     fn jemalloc_reads_the_compile_time_configuration() {
         let mut on = false;
