@@ -811,6 +811,16 @@ impl Stats {
         }
 
         if previous_roi_index != self.current_roi {
+            // The ROM optimizer's jump threading absorbs a tail call's `j callee` into the
+            // instruction before it (e.g. `addi sp, sp, 32; j callee` becomes one `add` that
+            // jumps to `callee`), so the jump is no longer a plain `j` the classifier can see.
+            // A jump that is not a call or a return and lands on the first instruction of
+            // another function is a tail call.
+            if !self.is_return && !self.is_call && !self.is_tail_call {
+                if let Some(roi_index) = self.current_roi {
+                    self.is_tail_call = regular_pc && self.rois[roi_index].from_pc == pc;
+                }
+            }
             if !self.is_return && !self.is_call && !self.is_tail_call && !self.call_stack.is_empty()
             {
                 #[cfg(feature = "debug_call_stack")]
