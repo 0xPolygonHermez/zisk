@@ -3,6 +3,7 @@ name = "zisk-asm-runner"
 description = "Runtime for managing the ZisK assembly emulator process and its shared-memory I/O"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }

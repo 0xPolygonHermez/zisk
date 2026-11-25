@@ -3,6 +3,7 @@ name = "zisk-coordinator-client"
 description = "ZisK Coordinator blocking client and remote job handle"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }

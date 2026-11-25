@@ -3,6 +3,7 @@ name = "zisk-precomp-twisted-edwards"
 description = "Twisted-Edwards point-addition precompiles for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }

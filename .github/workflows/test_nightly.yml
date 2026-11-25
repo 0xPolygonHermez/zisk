@@ -1,11 +1,13 @@
-name: Test ZisK Quickstart
+name: Test ZisK Nightly
 
-# Checks that the branch this workflow is launched from passes the steps of the
-# quickstart guide: ZisK and its setup (proving key + pilfflonk setup) are built
-# from the checked-out sources and the quickstart test is run against them.
+# Nightly checks of the branch this workflow is launched from:
 #
-# Sibling of test_install_bin.yml, which runs that same test against the
-# published binaries installed with ziskup.
+# - Quickstart: the branch passes the steps of the quickstart guide. ZisK and
+#   its setup (proving key + pilfflonk setup) are built from the checked-out
+#   sources and the quickstart test is run against them. Sibling of
+#   test_install_bin.yml, which runs that same test against the published
+#   binaries installed with ziskup.
+# - MSRV: the workspace still builds with the minimum supported Rust version.
 
 on:
   schedule:
@@ -29,7 +31,7 @@ jobs:
   #
   # A manual run tests the branch it is launched from. A scheduled one always
   # runs from the default branch, so the branch to test is taken from the
-  # TEST_QUICKSTART_BRANCH repository variable (Settings > Secrets and variables >
+  # TEST_NIGHTLY_BRANCH repository variable (Settings > Secrets and variables >
   # Actions > Variables); leaving it unset tests the default branch.
   quickstart-cpu:
     name: Test Quickstart (CPU)
@@ -37,7 +39,7 @@ jobs:
     with:
       runner: '"rocket"'
       variant: cpu
-      ref: ${{ (github.event_name == 'schedule' && vars.TEST_QUICKSTART_BRANCH) || github.ref_name }}
+      ref: ${{ (github.event_name == 'schedule' && vars.TEST_NIGHTLY_BRANCH) || github.ref_name }}
 
   quickstart-gpu:
     name: Test Quickstart (GPU)
@@ -45,11 +47,47 @@ jobs:
     with:
       runner: '{"group":"zisk-gpu"}'
       variant: gpu
-      ref: ${{ (github.event_name == 'schedule' && vars.TEST_QUICKSTART_BRANCH) || github.ref_name }}
+      ref: ${{ (github.event_name == 'schedule' && vars.TEST_NIGHTLY_BRANCH) || github.ref_name }}
+
+  msrv:
+    name: MSRV (Rust ${{ matrix.rust }})
+    # Checks that the workspace still builds with the minimum supported Rust
+    # version declared in Cargo.toml (workspace.package.rust-version). Keep
+    # `rust` below in sync with it when raising the MSRV.
+    runs-on: ubuntu-22.04
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    strategy:
+      matrix:
+        rust: ["1.96"]
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ (github.event_name == 'schedule' && vars.TEST_NIGHTLY_BRANCH) || github.ref_name }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: Install dependencies
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./install_deps.sh
+
+      - name: Build cargo-zisk
+        run: cargo +${{ matrix.rust }} build --bin cargo-zisk --locked
+
+      - name: Install ZisK rust toolchain
+        run: ./target/debug/cargo-zisk toolchain install
+
+      - name: Cargo check
+        run: cargo +${{ matrix.rust }} check --workspace --all-features --all-targets --locked
 
   notify:
     name: Notify Telegram
-    needs: [quickstart-cpu, quickstart-gpu]
+    needs: [quickstart-cpu, quickstart-gpu, msrv]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -61,9 +99,10 @@ jobs:
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           CPU_RESULT: ${{ needs.quickstart-cpu.result }}
           GPU_RESULT: ${{ needs.quickstart-gpu.result }}
+          MSRV_RESULT: ${{ needs.msrv.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           # The tested branch, not the one the workflow file comes from.
-          BRANCH: ${{ (github.event_name == 'schedule' && vars.TEST_QUICKSTART_BRANCH) || github.ref_name }}
+          BRANCH: ${{ (github.event_name == 'schedule' && vars.TEST_NIGHTLY_BRANCH) || github.ref_name }}
           # Commit the variants actually checked out; github.sha is the fallback
           # for a run that failed before reaching that step.
           SHA: ${{ needs.quickstart-gpu.outputs.sha || needs.quickstart-cpu.outputs.sha || github.sha }}
@@ -84,23 +123,24 @@ jobs:
             esac
           }
 
-          if [ "$CPU_RESULT" = success ] && [ "$GPU_RESULT" = success ]; then
-            HEADER='✅ Test Quickstart OK'
+          if [ "$CPU_RESULT" = success ] && [ "$GPU_RESULT" = success ] && [ "$MSRV_RESULT" = success ]; then
+            HEADER='✅ Test Nightly OK'
           else
-            HEADER='❌ Test Quickstart FAILED'
+            HEADER='❌ Test Nightly FAILED'
           fi
 
           # Telegram's HTML parser rejects bare &, < and > in the message text,
           # and a branch name is allowed to contain them.
           esc() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
-          TEXT=$(printf '<b>%s</b>\nrepo: %s\nbranch: <code>%s</code> (%s)\nCPU: %s %s\nGPU: %s %s\n<a href="%s">View run</a>' \
+          TEXT=$(printf '<b>%s</b>\nrepo: %s\nbranch: <code>%s</code> (%s)\nQuickstart CPU: %s %s\nQuickstart GPU: %s %s\nMSRV: %s %s\n<a href="%s">View run</a>' \
             "$HEADER" \
             "$(esc "$GITHUB_REPOSITORY")" \
             "$(esc "$BRANCH")" \
             "${SHA:0:8}" \
             "$(icon "$CPU_RESULT")" "$CPU_RESULT" \
             "$(icon "$GPU_RESULT")" "$GPU_RESULT" \
+            "$(icon "$MSRV_RESULT")" "$MSRV_RESULT" \
             "$RUN_URL")
 
           curl -sS --fail-with-body -X POST \

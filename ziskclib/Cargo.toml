@@ -3,6 +3,7 @@ name = "ziskclib"
 description = "C library routines for ZisK guest programs"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }

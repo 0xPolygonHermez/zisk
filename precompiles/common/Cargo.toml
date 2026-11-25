@@ -3,6 +3,7 @@ name = "zisk-precomp-common"
 description = "Common utilities and helpers for ZisK precompiles"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }

@@ -3,6 +3,7 @@ name = "zisk-transpiler-common"
 description = "Transpiles ZisK zkVM guest programs (RISC-V ELF, WebAssembly) into ZisK ROMs"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }
