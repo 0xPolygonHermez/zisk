@@ -5480,6 +5480,39 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
+            ZiskOp::DotBf16 => {
+                // Experimental: b = address of the parameter block (see
+                // core/src/operations/dot_bf16.rs). emulator-asm/src/dot_bf16/ computes the result,
+                // writes the block results and, for the minimal trace, appends the parameter
+                // block, the result and both vectors. It clobbers rax (b), rcx, rdx (flag), rsi,
+                // rdi and r9.
+                *code += &ctx.full_line_comment("DotBf16: rdi = b".to_string());
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rdi = b = parameter block address")
+                );
+                match ctx.mode {
+                    AsmGenerationMethod::AsmMinimalTraces => {
+                        assert_eq!(REG_MEM_READS_ADDRESS, "r12");
+                        assert_eq!(REG_MEM_READS_SIZE, "r13");
+                        assert_eq!(REG_STEP, "r14");
+                        *code += "\tcall dot_bf16_mtrace\n";
+                    }
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
+                        *code += "\tcall dot_bf16_fast\n";
+                    }
+                    AsmGenerationMethod::AsmMemOp | AsmGenerationMethod::AsmMemOpLight => {
+                        panic!(
+                            "dot_bf16 is experimental: the assembly emulator supports it only in \
+                             the fast, minimal trace and ROM histogram modes"
+                        );
+                    }
+                }
+                *code += &format!("\tmov {}, rax {}\n", REG_C, ctx.comment_str("c = rax"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
             ZiskOp::Poseidon2 | ZiskOp::Poseidon1 | ZiskOp::Poseidon2KoalaBear => {
                 // In-place state of input_size bytes, handled by _opcode_<name>
                 let pname = zisk_op.name();

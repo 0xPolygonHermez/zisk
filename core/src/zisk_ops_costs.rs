@@ -83,6 +83,15 @@ pub const DOT_F8_COST: u64 = DMA_COST;
 pub const DOT_F8_ROW_COST: u64 = 40;
 pub const DOT_F8_MACS_PER_ROW: u64 = 8;
 
+// Costs for the experimental dot_bf16 precompile (emulator only, no air yet). Placeholder
+// estimates for the planned air (see docs/dot-bf16-plan.md): one row per 64-bit word of each
+// vector, that is 4 multiply-adds, holding the 4 significand products (8 by 8 bits), their
+// exponents, the alignment of each product into the exact accumulator (~550 bits) and its limbs
+// and carries: about 120 columns. The call itself pays one row, like a Dma call.
+pub const DOT_BF16_COST: u64 = DMA_COST;
+pub const DOT_BF16_ROW_COST: u64 = 120;
+pub const DOT_BF16_MACS_PER_ROW: u64 = 4;
+
 // Costs for DMA PrePost (a single instance proves every operation)
 
 pub const DMA_PRE_POST_COST: u64 = 104;

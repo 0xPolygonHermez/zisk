@@ -13,7 +13,7 @@ use zisk_definitions::{
     SYSCALL_BLS12_381_CURVE_ADD_ID, SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID,
     SYSCALL_BN254_COMPLEX_MUL_ID, SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID,
     SYSCALL_BN254_CURVE_DBL_ID, SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID,
-    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_DOT_F8_ID, SYSCALL_ED25519_ADD_ID,
+    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_DOT_BF16_ID, SYSCALL_DOT_F8_ID, SYSCALL_ED25519_ADD_ID,
     SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID,
     SYSCALL_POSEIDON2_KOALABEAR_ID, SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID,
     SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID,
@@ -39,7 +39,7 @@ use zisk_core::{FREG_F0, FREG_INST, FREG_RA, MTVEC, REG_X0};
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 // Important: The order should be the same as in such file.
-const CSR_PRECOMPILED: [&str; 35] = [
+const CSR_PRECOMPILED: [&str; 36] = [
     "keccak",
     "arith256",
     "arith256_mod",
@@ -75,6 +75,7 @@ const CSR_PRECOMPILED: [&str; 35] = [
     "ed25519_add",
     "poseidon2_koalabear",
     "dot_f8",
+    "dot_bf16",
 ];
 const CSR_PRECOMPILED_ADDR_START: u16 = SYSCALL_KECCAKF_ID;
 const CSR_FCALL_ADDR_START: u16 = 0x8C0;
@@ -1965,6 +1966,10 @@ impl<'a> Riscv2ZiskContext<'a> {
             // dot_f8 returns the dot product in rd (experimental, emulator only)
             SYSCALL_DOT_F8_ID if i.rs1 != 0 => {
                 return self.transpile_precompiled_ret(i, next_instructions, "dot_f8");
+            }
+            // dot_bf16 returns the f32 bits of the dot product in rd (experimental, emulator only)
+            SYSCALL_DOT_BF16_ID if i.rs1 != 0 => {
+                return self.transpile_precompiled_ret(i, next_instructions, "dot_bf16");
             }
             _ => {}
         }

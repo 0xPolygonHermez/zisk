@@ -18,10 +18,10 @@ use crate::{
     ARITHAM32_COST, ARITH_256_COST, ARITH_BN254_COST, ARITH_EQ_384_COST, ARITH_EQ_COST,
     ARITH_SECP256K1_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST, BLAKE2B_COST, BLAKE2S_COST,
     BLAKE3_COST, DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST,
-    DMA_MEMCPY_COST, DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, DOT_F8_COST,
-    EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64,
-    MAX_INPUT_SIZE, POSEIDON2_KOALABEAR_COST, POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST,
-    SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR, TWISTED_EDWARDS_COST,
+    DMA_MEMCPY_COST, DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, DOT_BF16_COST,
+    DOT_F8_COST, EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST,
+    KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON2_KOALABEAR_COST, POSEIDON_COST, REG_A0, SHA256_COST,
+    SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR, TWISTED_EDWARDS_COST,
 };
 use crate::{BLAKE2B_GAP_SHIFT, BLAKE2B_RD_CHAIN, BLAKE2B_WR_CHAIN};
 use paste::paste;
@@ -74,6 +74,7 @@ pub enum OpType {
     Blake2s,
     Poseidon2KoalaBear,
     DotF8,
+    DotBf16,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -100,6 +101,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::Blake2s => ZiskOperationType::Blake2s,
             OpType::Poseidon2KoalaBear => ZiskOperationType::Poseidon2KoalaBear,
             OpType::DotF8 => ZiskOperationType::DotF8,
+            OpType::DotBf16 => ZiskOperationType::DotBf16,
         }
     }
 }
@@ -130,6 +132,7 @@ impl Display for OpType {
             Self::Blake2s => write!(f, "Blake2s"),
             Self::Poseidon2KoalaBear => write!(f, "Poseidon2KoalaBear"),
             Self::DotF8 => write!(f, "DotF8"),
+            Self::DotBf16 => write!(f, "DotBf16"),
         }
     }
 }
@@ -161,6 +164,7 @@ impl FromStr for OpType {
             "b2s" => Ok(Self::Blake2s),
             "p2kb" => Ok(Self::Poseidon2KoalaBear),
             "dotf8" => Ok(Self::DotF8),
+            "dotbf16" => Ok(Self::DotBf16),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -586,7 +590,10 @@ define_ops! {
     // input_size = 56: the minimal-trace header (the 6-word parameter block and the result),
     // followed by both vectors via data_ext_len.
     (DotF8, "dot_f8", DotF8, DOT_F8_COST, 0xc2, 56, 0, opc_dot_f8, op_dot_f8, ops_dot_f8),
-    // opcodes 0xc3-0xcf are available
+    // Experimental, emulator only (see operations/dot_bf16.rs). input_size = 56: the 6-word
+    // parameter block and the result, followed by both vectors via data_ext_len.
+    (DotBf16, "dot_bf16", DotBf16, DOT_BF16_COST, 0xc3, 56, 0, opc_dot_bf16, op_dot_bf16, ops_dot_bf16),
+    // opcodes 0xc4-0xcf are available
 
     (DmaMemCpy, "dma_memcpy", Dma, DMA_MEMCPY_COST, 0xd0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
     (DmaMemCmp, "dma_memcmp", Dma, DMA_MEMCMP_COST, 0xd1, 16, 0, opc_dma_memcmp, op_dma_memcmp, ops_dma_memcmp),

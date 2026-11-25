@@ -1,0 +1,11 @@
+[package]
+name = "dot-bf16-cases"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+zisk-definitions = { path = "../../../definitions" }
+
+# Standalone: not a member of the repository's workspace
+[workspace]
