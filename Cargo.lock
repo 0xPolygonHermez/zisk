@@ -7863,6 +7863,23 @@ name = "zisk-definitions"
 version = "1.5.0-alpha"
 
 [[package]]
+name = "zisk-estimate"
+version = "1.5.0-alpha"
+dependencies = [
+ "anyhow",
+ "clap",
+ "colored",
+ "libm",
+ "proofman",
+ "proofman-common",
+ "serde",
+ "serde_json",
+ "tracing",
+ "zisk-common",
+ "zisk-prover-backend",
+]
+
+[[package]]
 name = "zisk-executor"
 version = "1.5.0-alpha"
 dependencies = [

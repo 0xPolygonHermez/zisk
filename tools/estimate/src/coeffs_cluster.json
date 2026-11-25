@@ -1,0 +1,438 @@
+{
+ "setup": "zisk 1.4.0-alpha blake3 key; proof-time model v3.2 for coordinator jobs (see cluster_note). The `model` block (local prover) is not maintained in this file.",
+ "gpu": "NVIDIA GeForce RTX 5090, 1 basic stream + phase B (warm worker)",
+ "model": {
+  "commit_ms_per_work": 0.15505911303736192,
+  "phase_const_s": 0.14626013030703938,
+  "exec_factor": 1.0845780266435767,
+  "exec_ramp_s": 0.12473500139140431,
+  "proofs_factor": 0.9950636422393558,
+  "proofs_const_s": -0.05333077161480837,
+  "final_s": 0.246,
+  "overhead_s": -0.00046702999999956307
+ },
+ "fixed_instances": {
+  "VirtualTableZisk1": 1
+ },
+ "default": {
+  "basic_ms": 33.8,
+  "recursion_ms": 139.7,
+  "commit_work": 64.0,
+  "weight": 2617245696,
+  "phase_ms": 7.347
+ },
+ "cluster": {
+  "exec_ratio": 1.0294996224991868,
+  "phase_const_s": 0.06514672309466613,
+  "planning_s": 0.0013047262141537956,
+  "keccakf_saving_s": 0.02368198860047553,
+  "phase_sigma_s": 0.033,
+  "proofs_factor": 0.9990634524811468,
+  "proofs_const_s": -0.0584,
+  "nopair_s": 0.03,
+  "proofs_sigma_s": 0.0181,
+  "final_s": 0.246,
+  "final_plain_s": 0.123,
+  "link_mb_per_s": 294.0517365360282,
+  "rec2_mb": 0.953,
+  "rec2_s": 0.105,
+  "upload_s": 0.0144,
+  "fold_sigma_s": 0.0181,
+  "fold_replays": 100,
+  "arity": 2,
+  "rom_weight_extra": 100663296
+ },
+ "cluster_note": "proof-time model v3.2 (frozen 2026-11-23, tools/data/estimate-frozen-v3.2-2026-11-22: spec.json, table_v32.json, model_v32.py). Per-AIR phase_ms, exec_ratio, phase_const_s and planning_s: joint ridge fit on single-GPU partition records of reth mainnet and Osaka killer blocks; phase_const_s, proofs_factor and final_s calibrated on 200 one-worker jobs of the cluster; keccakf_saving_s, nopair_s, the sigmas and rec2_s measured on one GPU; link_mb_per_s is the 2.5 GbE coordinator link.",
+ "airs": {
+  "Add256": {
+   "basic_ms": 20.63026367652073,
+   "recursion_ms": 144.1023917804973,
+   "commit_work": 47.0,
+   "weight": 2617245696,
+   "phase_ms": 5.641396881913756
+  },
+  "Arith": {
+   "basic_ms": 37.75928229312031,
+   "recursion_ms": 139.54951683462718,
+   "commit_work": 90.0,
+   "weight": 2831155200,
+   "phase_ms": 11.19873149705926
+  },
+  "Arith256X": {
+   "basic_ms": 18.570557244597307,
+   "recursion_ms": 134.42004388964995,
+   "commit_work": 19.0,
+   "weight": 2688548864,
+   "phase_ms": 2.12888303965681
+  },
+  "Arith256XLarge": {
+   "basic_ms": 35.9004367472969,
+   "recursion_ms": 130.2672990544773,
+   "commit_work": 38.0,
+   "weight": 3003121664,
+   "phase_ms": 3.6433737463598033
+  },
+  "ArithBn254": {
+   "basic_ms": 26.617445232597856,
+   "recursion_ms": 148.14570115513624,
+   "commit_work": 33.0,
+   "weight": 2726297600,
+   "phase_ms": 3.7896806646275163
+  },
+  "ArithBn254Large": {
+   "basic_ms": 49.48476157325366,
+   "recursion_ms": 137.98445492581905,
+   "commit_work": 66.0,
+   "weight": 3078619136,
+   "phase_ms": 12.011041390467712
+  },
+  "ArithEq": {
+   "basic_ms": 32.855742756175154,
+   "recursion_ms": 145.71261152500534,
+   "commit_work": 45.0,
+   "weight": 2764046336,
+   "phase_ms": 5.281157939833204
+  },
+  "ArithEq384": {
+   "basic_ms": 35.10837256420488,
+   "recursion_ms": 151.37776688948833,
+   "commit_work": 35.0,
+   "weight": 2843738112,
+   "phase_ms": 4.114379809788525
+  },
+  "ArithEq384Large": {
+   "basic_ms": 72.20266859776618,
+   "recursion_ms": 155.65914819611012,
+   "commit_work": 70.0,
+   "weight": 3313500160,
+   "phase_ms": 13.844961074048312
+  },
+  "ArithEqLarge": {
+   "basic_ms": 65.64883015253272,
+   "recursion_ms": 145.57367575093366,
+   "commit_work": 90.0,
+   "weight": 3154116608,
+   "phase_ms": 13.515501179696448
+  },
+  "ArithSecp256K1": {
+   "basic_ms": 21.93250971328416,
+   "recursion_ms": 137.39782990788328,
+   "commit_work": 27.0,
+   "weight": 2713714688,
+   "phase_ms": 3.1616756193655506
+  },
+  "ArithSecp256K1Large": {
+   "basic_ms": 43.22111983654321,
+   "recursion_ms": 135.3809515956297,
+   "commit_work": 54.0,
+   "weight": 3053453312,
+   "phase_ms": 7.550978533423757
+  },
+  "Binary": {
+   "basic_ms": 54.16384622743148,
+   "recursion_ms": 145.51325611484955,
+   "commit_work": 156.0,
+   "weight": 2977955840,
+   "phase_ms": 17.72723534622709
+  },
+  "BinaryAdd": {
+   "basic_ms": 28.346364120974837,
+   "recursion_ms": 139.4361643556403,
+   "commit_work": 44.0,
+   "weight": 2692743168,
+   "phase_ms": 5.228230172580635
+  },
+  "BinaryAddHi": {
+   "basic_ms": 28.67750214984632,
+   "recursion_ms": 129.23377581721064,
+   "commit_work": 48.0,
+   "weight": 2726297600,
+   "phase_ms": 5.480891850358416
+  },
+  "BinaryAddHiHuge": {
+   "basic_ms": 69.34697606994467,
+   "recursion_ms": 132.1660648972888,
+   "commit_work": 192.0,
+   "weight": 3254779904,
+   "phase_ms": 22.139623828629745
+  },
+  "BinaryAddHiLarge": {
+   "basic_ms": 44.19095931303312,
+   "recursion_ms": 136.8841910428099,
+   "commit_work": 96.0,
+   "weight": 2902458368,
+   "phase_ms": 11.572059717285049
+  },
+  "BinaryAddHuge": {
+   "basic_ms": 64.84590499641861,
+   "recursion_ms": 135.81668557720658,
+   "commit_work": 176.0,
+   "weight": 3170893824,
+   "phase_ms": 20.43940209142303
+  },
+  "BinaryAddLarge": {
+   "basic_ms": 41.12610123888856,
+   "recursion_ms": 137.4477594036539,
+   "commit_work": 88.0,
+   "weight": 2860515328,
+   "phase_ms": 10.13111276811478
+  },
+  "BinaryExtension": {
+   "basic_ms": 50.740194158433624,
+   "recursion_ms": 140.92256707620632,
+   "commit_work": 136.0,
+   "weight": 2961178624,
+   "phase_ms": 15.822673570616816
+  },
+  "BinaryExtensionLarge": {
+   "basic_ms": 84.80926469525647,
+   "recursion_ms": 138.409512592609,
+   "commit_work": 272.0,
+   "weight": 3397386240,
+   "phase_ms": 31.951962491478323
+  },
+  "BinaryHuge": {
+   "basic_ms": 157.06459149324488,
+   "recursion_ms": 136.2852387056292,
+   "commit_work": 624.0,
+   "weight": 4311744512,
+   "phase_ms": 95.19932070162915
+  },
+  "BinaryLarge": {
+   "basic_ms": 86.74320565948523,
+   "recursion_ms": 136.3107517506196,
+   "commit_work": 312.0,
+   "weight": 3430940672,
+   "phase_ms": 38.30516864025712
+  },
+  "Blake2br": {
+   "basic_ms": 48.17417883430938,
+   "recursion_ms": 135.13921251311288,
+   "commit_work": 122.0,
+   "weight": 3001024512,
+   "phase_ms": 13.115361988195618
+  },
+  "Blake2s": {
+   "basic_ms": 31.3,
+   "recursion_ms": 139.7,
+   "commit_work": 57.0,
+   "weight": 3162505216,
+   "phase_ms": 6.544
+  },
+  "Blake3f": {
+   "basic_ms": 53.4,
+   "recursion_ms": 139.7,
+   "commit_work": 114.0,
+   "weight": 3233808384,
+   "phase_ms": 13.087
+  },
+  "Dma": {
+   "basic_ms": 27.496380032931995,
+   "recursion_ms": 143.33001084330596,
+   "commit_work": 72.0,
+   "weight": 2688548864,
+   "phase_ms": 9.018482008103524
+  },
+  "Dma64Aligned": {
+   "basic_ms": 33.43187727565493,
+   "recursion_ms": 146.8689702958803,
+   "commit_work": 70.0,
+   "weight": 2747269120,
+   "phase_ms": 8.102981512115479
+  },
+  "Dma64AlignedLarge": {
+   "basic_ms": 130.99819423439274,
+   "recursion_ms": 144.09801365783198,
+   "commit_work": 280.0,
+   "weight": 3867148288,
+   "phase_ms": 37.32695898682869
+  },
+  "Dma64AlignedMem": {
+   "basic_ms": 22.835379383183547,
+   "recursion_ms": 139.30578601880967,
+   "commit_work": 52.0,
+   "weight": 2634022912,
+   "phase_ms": 6.274264287041146
+  },
+  "Dma64AlignedMemCpy": {
+   "basic_ms": 28.699103694426835,
+   "recursion_ms": 142.17251014579534,
+   "commit_work": 62.0,
+   "weight": 2705326080,
+   "phase_ms": 7.137025273981836
+  },
+  "Dma64AlignedMemLarge": {
+   "basic_ms": 46.87364003142894,
+   "recursion_ms": 142.97483651507912,
+   "commit_work": 104.0,
+   "weight": 2894069760,
+   "phase_ms": 12.099683053848976
+  },
+  "Dma64AlignedMemSet": {
+   "basic_ms": 18.383063893150386,
+   "recursion_ms": 146.74937290703477,
+   "commit_work": 28.0,
+   "weight": 2571108352,
+   "phase_ms": 3.233924054305824
+  },
+  "DmaPrePost": {
+   "basic_ms": 41.60480417483228,
+   "recursion_ms": 142.10736291501394,
+   "commit_work": 132.0,
+   "weight": 2860515328,
+   "phase_ms": 16.13128780198132
+  },
+  "DmaUnaligned": {
+   "basic_ms": 20.353816378215726,
+   "recursion_ms": 135.40134038270173,
+   "commit_work": 48.0,
+   "weight": 2600468480,
+   "phase_ms": 7.073135168454275
+  },
+  "InputData": {
+   "basic_ms": 29.024689196335533,
+   "recursion_ms": 131.22165309799595,
+   "commit_work": 36.0,
+   "weight": 2717908992,
+   "phase_ms": 4.485385916241609
+  },
+  "JumpDest": {
+   "basic_ms": 29.349347850993684,
+   "recursion_ms": 142.86076288445355,
+   "commit_work": 64.0,
+   "weight": 2726297600,
+   "phase_ms": 7.675720987737538
+  },
+  "Keccakf": {
+   "basic_ms": 421.893385654178,
+   "recursion_ms": 139.92997620106522,
+   "commit_work": 934.0,
+   "weight": 8235515904,
+   "phase_ms": 84.48353842420323
+  },
+  "Main": {
+   "basic_ms": 182.51597967147958,
+   "recursion_ms": 143.40541259901963,
+   "commit_work": 608.0,
+   "weight": 4529848320,
+   "phase_ms": 92.98568605975973
+  },
+  "Mem": {
+   "basic_ms": 67.17577022019033,
+   "recursion_ms": 133.49153769218475,
+   "commit_work": 192.0,
+   "weight": 3204448256,
+   "phase_ms": 29.89579632483274
+  },
+  "MemAlign": {
+   "basic_ms": 22.16384162885915,
+   "recursion_ms": 129.0120281479843,
+   "commit_work": 64.0,
+   "weight": 2634022912,
+   "phase_ms": 7.382927692673559
+  },
+  "MemAlignByte": {
+   "basic_ms": 33.8,
+   "recursion_ms": 139.70000000000002,
+   "commit_work": 64.0,
+   "weight": 2759852032,
+   "phase_ms": 7.3601938607675335
+  },
+  "MemAlignByteLarge": {
+   "basic_ms": 69.22235931619355,
+   "recursion_ms": 143.05271592414556,
+   "commit_work": 128.0,
+   "weight": 3145728000,
+   "phase_ms": 14.938626224817304
+  },
+  "MemAlignLarge": {
+   "basic_ms": 87.00675829244553,
+   "recursion_ms": 126.48120846466846,
+   "commit_work": 256.0,
+   "weight": 3414163456,
+   "phase_ms": 31.767365554795127
+  },
+  "MemAlignReadByte": {
+   "basic_ms": 26.28168012173898,
+   "recursion_ms": 132.5469571482648,
+   "commit_work": 40.0,
+   "weight": 2684354560,
+   "phase_ms": 4.715322793514205
+  },
+  "MemAlignReadByteLarge": {
+   "basic_ms": 51.730167510324684,
+   "recursion_ms": 130.44592781935665,
+   "commit_work": 80.0,
+   "weight": 2994733056,
+   "phase_ms": 8.862012540748921
+  },
+  "MemAlignWriteByte": {
+   "basic_ms": 32.4,
+   "recursion_ms": 139.7,
+   "commit_work": 56.0,
+   "weight": 2743074816,
+   "phase_ms": 6.429
+  },
+  "Poseidon": {
+   "basic_ms": 9.6,
+   "recursion_ms": 139.7,
+   "commit_work": 10.5,
+   "weight": 2490892288,
+   "phase_ms": 1.205
+  },
+  "Poseidon2KoalaBear": {
+   "basic_ms": 88.5,
+   "recursion_ms": 139.7,
+   "commit_work": 195.0,
+   "weight": 5142216704,
+   "phase_ms": 22.386
+  },
+  "Rom": {
+   "basic_ms": 23.608010413328163,
+   "recursion_ms": 144.01917269615478,
+   "commit_work": 4.0,
+   "weight": 2608857088,
+   "phase_ms": 31.978853354976778
+  },
+  "RomData": {
+   "basic_ms": 24.92701117474923,
+   "recursion_ms": 132.91234584398728,
+   "commit_work": 40.0,
+   "weight": 2659188736,
+   "phase_ms": 4.843725672217548
+  },
+  "Sha256f": {
+   "basic_ms": 28.380297527634657,
+   "recursion_ms": 128.30833542429005,
+   "commit_work": 51.0,
+   "weight": 2778726400,
+   "phase_ms": 2.290742922745284
+  },
+  "TwistedEdwards": {
+   "basic_ms": 8.0,
+   "recursion_ms": 139.7,
+   "commit_work": 10.25,
+   "weight": 2476736512,
+   "phase_ms": 1.177
+  },
+  "VirtualTableZisk0": {
+   "basic_ms": 22.46944151592425,
+   "recursion_ms": 143.98995320067053,
+   "commit_work": 24.0,
+   "weight": 2587885568,
+   "phase_ms": 3.2866674443599986
+  },
+  "VirtualTableZisk1": {
+   "basic_ms": 30.69999999999777,
+   "recursion_ms": 139.69999999998984,
+   "commit_work": 46.0,
+   "weight": 2696937472,
+   "phase_ms": 5.281000000002759
+  }
+ },
+ "aliases": {},
+ "units_per_worker": 1,
+ "per_worker_airs": [
+  "VirtualTableZisk1"
+ ]
+}

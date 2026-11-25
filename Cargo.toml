@@ -65,6 +65,7 @@ members = [
   "stream",
   "tools/circuit",
   "tools/frops-analyzer",
+  "tools/estimate",
   "distributed/crates/coordinator",
   "distributed/crates/coordinator-server",
   "distributed/crates/coordinator-api",

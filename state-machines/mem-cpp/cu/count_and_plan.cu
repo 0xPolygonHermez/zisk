@@ -1391,7 +1391,14 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         arena_bytes_ = bytes;
         arena_owned_ = false;
     } else {
-        size_t want = fixed_bytes + ((size_t)2 << 30);
+        // Dynamic region of the self-allocated arena: 2 GB, or ZISK_MEM_STANDALONE_MB (dev knob). Without
+        // retention (light stream) all of it is ops pool; blocks above ~0.5 G pool entries need more.
+        size_t dyn_bytes = (size_t)2 << 30;
+        if (const char* e = std::getenv("ZISK_MEM_STANDALONE_MB")) {
+            const long v = std::atol(e);
+            if (v > 0) dyn_bytes = (size_t)v << 20;
+        }
+        size_t want = fixed_bytes + dyn_bytes;
         cudaError_t err = cudaMalloc(&arena_, want);
         if (err != cudaSuccess) {
             err = cudaMalloc(&arena_, fixed_bytes);

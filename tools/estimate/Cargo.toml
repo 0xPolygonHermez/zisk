@@ -1,0 +1,40 @@
+[package]
+name = "zisk-estimate"
+description = "Proof-time estimator for ZisK blocks, on one prover or on a cluster of workers"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+
+[[bin]]
+name = "zisk-estimate"
+path = "src/main.rs"
+
+[[bin]]
+name = "zisk-estimate-measure"
+path = "src/measure.rs"
+
+[[bin]]
+name = "zisk-estimate-fit"
+path = "src/fit_main.rs"
+
+[dependencies]
+zisk-common = { workspace = true }
+zisk-prover-backend = { workspace = true }
+proofman = { workspace = true }
+proofman-common = { workspace = true }
+
+anyhow = { workspace = true }
+clap = { workspace = true }
+colored = { workspace = true }
+libm = "0.2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+default = []
+cpu-only = ["zisk-prover-backend/cpu-only"]
