@@ -10,10 +10,19 @@ pub fn project(
     assert!(activations.len().is_multiple_of(columns));
     assert_eq!(matrices.len(), outputs.len());
     let row_bytes = columns.checked_mul(2).expect("BF16 row size overflow");
-    let inputs: Vec<u16> =
-        activations.iter().map(|&bits| bf16_from_f32(f32::from_bits(bits))).collect();
-    assert!(inputs.is_empty() || inputs.as_ptr().align_offset(8) == 0);
-    let positions = inputs.len() / columns;
+    // dot_bf16 reads its vectors as aligned 64-bit words, and a Vec<u16> is only 2-byte aligned:
+    // the BF16 activations are packed four per u64 (little endian, as the guest), which is 8-byte
+    // aligned. Each row is columns / 4 whole words, so every row starts aligned too
+    let row_words = columns / 4;
+    let inputs: Vec<u64> = activations
+        .chunks_exact(4)
+        .map(|values| {
+            values.iter().rev().fold(0u64, |word, &bits| {
+                word << 16 | u64::from(bf16_from_f32(f32::from_bits(bits)))
+            })
+        })
+        .collect();
+    let positions = inputs.len() / row_words;
 
     for (&matrix, output) in matrices.iter().zip(outputs) {
         assert_eq!(matrix.as_ptr().align_offset(8), 0, "unaligned BF16 weights");
@@ -22,7 +31,8 @@ pub fn project(
         assert!(rows > 0);
         assert_eq!(rows.checked_mul(positions), Some(output.len()));
 
-        for (input, output_row) in inputs.chunks_exact(columns).zip(output.chunks_exact_mut(rows)) {
+        for (input, output_row) in inputs.chunks_exact(row_words).zip(output.chunks_exact_mut(rows))
+        {
             for (weights, score) in matrix.chunks_exact(row_bytes).zip(output_row) {
                 let params = SyscallDotBf16Params {
                     x: weights.as_ptr().cast(),
