@@ -9,9 +9,10 @@ cheapest one and **Max** the most expensive one among those able to prove it.
 Constants live in `core/src/zisk_ops_costs.rs` (opcodes) and `emulator/src/emu_costs.rs` (memory,
 main, base).
 
-Cost model version: `ZISK_COSTS_VERSION = 3`. It must be increased whenever these costs, the way
+Cost model version: `ZISK_COSTS_VERSION = 4`. It must be increased whenever these costs, the way
 they are accumulated, or the FROPS change. The tables below are the version 2 ones; the constants
-that version 3 changed are listed in [Version 3](#version-3-33-bit-addresses).
+that version 3 changed are listed in [Version 3](#version-3-33-bit-addresses) and the ones version 4
+changed in [Version 4](#version-4-keccakfproxy).
 
 ## Main and standard operations
 
@@ -132,3 +133,16 @@ Sha256f, Poseidon, Poseidon2KoalaBear, Blake2s, Blake3f, ArithEq384, TwistedEdwa
 bit of each address in a free row of that column, so their totals and costs are the ones of version
 2. Blake2br does the same; its total had already changed before version 3.
 
+## Version 4: KeccakfProxy
+
+Keccakf proves each distinct permutation once and KeccakfProxy (one row per invocation) does the
+memory accesses and the operation bus; the new `keccak_xor` opcode absorbs a block before the
+permutation. Only the constants that changed are listed.
+
+| Cost | Opcodes | Instances (Total × rows per op) | Version 3 | Version 4 |
+|---|---|---|---:|---:|
+| `KECCAK_COST` | keccak | Keccakf 608 × 135 rows / 2 ops per slot + KeccakfProxy 326 × 1 | 41,513 | **41,366** |
+| `KECCAK_XOR_COST` | keccak_xor | KECCAK + 17 XOR in Binary (BinaryHuge 219/4 = 55 each) | – | **42,301** |
+
+A keccak that repeats an earlier permutation only takes the KeccakfProxy row (326), which a static
+cost cannot tell, so both constants are the cost of one that does not.

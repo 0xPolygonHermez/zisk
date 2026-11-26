@@ -38,6 +38,16 @@ pub const LT_ABS_PN_OP: u8 = 0x51;
 /// assigned to it while this tag uses it.
 pub const LTU_DIV_OP: u8 = 0x59;
 
+/// `XOR_KECCAK`: the bus tag for the `XOR` that `KeccakfProxy` assumes for every lane a
+/// `keccak_xor` absorbs.
+///
+/// Same idea as [`LTU_DIV_OP`]: those operations are injected by a precompile, not executed as
+/// instructions, so the ROM-histogram assembly never counts them and they must not become frequent
+/// operations (an absorbed lane often XORs two small values, e.g. a zero state with the padding).
+/// The collectors turn the tag back into [`ZiskOp::XOR`] when they build the input, so the air and
+/// the operation bus only ever see a plain `XOR`.
+pub const XOR_KECCAK_OP: u8 = 0x5B;
+
 /// The m32 offset: `Binary` proves `b_op + M32_OFFSET * mode32` (see `binary.pil`).
 pub const M32_OFFSET: u8 = 0x10;
 
@@ -77,17 +87,30 @@ mod tests {
         ops
     }
 
-    /// The division tag is a bus-level alias, so the only thing that must hold is that its code is
-    /// free: not a ZisK opcode and not one of the internal ones.
+    /// A bus tag is a bus-level alias, so the only thing that must hold is that its code is free:
+    /// not a ZisK opcode, not one of the internal ones and not another tag.
     #[test]
-    fn the_division_tag_uses_a_free_code() {
-        assert!(
-            ZiskOp::try_from_code(LTU_DIV_OP).is_err(),
-            "0x{LTU_DIV_OP:02x} is a ZisK opcode, it cannot also be the division tag"
-        );
-        assert!(!INTERNAL_OPS.contains(&LTU_DIV_OP));
-        for op in binary_opcodes() {
-            assert_ne!(op, LTU_DIV_OP, "the division tag collides with a binary opcode");
+    fn the_bus_tags_use_free_codes() {
+        assert_ne!(LTU_DIV_OP, XOR_KECCAK_OP);
+        for tag in [LTU_DIV_OP, XOR_KECCAK_OP] {
+            assert!(
+                ZiskOp::try_from_code(tag).is_err(),
+                "0x{tag:02x} is a ZisK opcode, it cannot also be a bus tag"
+            );
+            assert!(!INTERNAL_OPS.contains(&tag));
+            for op in binary_opcodes() {
+                assert_ne!(op, tag, "the bus tag 0x{tag:02x} collides with a binary opcode");
+            }
+        }
+    }
+
+    /// The tags only work if no frequent-operation box exists for their codes.
+    #[test]
+    fn the_bus_tags_are_never_frequent_operations() {
+        for tag in [LTU_DIV_OP, XOR_KECCAK_OP] {
+            for (a, b) in [(0, 0), (0, 1), (1, 0), (34, 34), (u64::MAX, 0)] {
+                assert!(!crate::BinaryBasicFrops::is_frequent_op(tag, a, b), "0x{tag:02x}");
+            }
         }
     }
 

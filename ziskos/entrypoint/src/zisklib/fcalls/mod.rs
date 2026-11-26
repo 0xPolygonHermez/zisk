@@ -31,8 +31,8 @@ pub const FCALL_UINT256_INV_ID: u16 = 20;
 pub const FCALL_UINT256_INV_MOD_ID: u16 = 21;
 pub const FCALL_BIGINT_DIV_ID: u16 = 22;
 pub const FCALL_INPUT_READY_ID: u16 = 23;
-pub const FCALL_SET_KECCAKF_CACHE_INDEX_ID: u16 = 24;
-pub const FCALL_GET_KECCAKF_CACHE_INDEX_ID: u16 = 25;
+// 24 and 25 are free: they were the Keccak-f software cache, replaced by the dedup of
+// KeccakfProxy.
 pub const FCALL_ED25519_FP_SQRT_RATIO_ID: u16 = 26;
 /// Returns the 256-bit host randomness seed (`zkvm_random_u64`), as [`RANDOM_SEED_WORDS`]
 /// little-endian words. Resolved by the executor, which receives the seed with each execution;
@@ -41,17 +41,12 @@ pub const FCALL_RANDOM_SEED_ID: u16 = 27;
 /// Size of the host randomness seed in 64-bit words (256 bits).
 pub const RANDOM_SEED_WORDS: usize = 4;
 
-/// Returned by [`fcall_get_keccakf_cache_index`] when the executor has not cached the state.
-/// Reserved: it cannot be used as a cache index.
-pub const KECCAKF_CACHE_INDEX_NOT_FOUND: u64 = u64::MAX;
-
 mod bigint_div;
 mod bin_decomp;
 mod bls12_381;
 mod bn254;
 mod ed25519;
 mod input;
-mod keccakf_cache;
 mod msb_pos_256;
 mod msb_pos_384;
 mod secp256k1;
@@ -64,7 +59,6 @@ pub use bls12_381::*;
 pub use bn254::*;
 pub use ed25519::*;
 pub use input::*;
-pub use keccakf_cache::*;
 pub use msb_pos_256::*;
 pub use msb_pos_384::*;
 pub use secp256k1::*;

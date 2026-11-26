@@ -25,10 +25,12 @@ define ZZK_DMA_COUNT 0xc0400f00         ; dma_memcpy reads its byte count here
 
 ; The state is zeroed and the message copied with the DMA precompiles, which cost
 ; much less than one main step per word. The first 136-byte block is copied
-; straight into the zeroed state; each later full block is XORed in, 2 steps per
-; word. The final (partial) block is copied and padded in place: into the zeroed
-; state when it is also the first block (every input up to 135 bytes), else into
-; ZKVM_KECCAK_PAD, which is then XORed into the state like a full block.
+; straight into the zeroed state; each later full block is absorbed with
+; keccak_xor (XOR + Keccak-f in one instruction) when the message is 8-byte
+; aligned, and XORed in, 2 steps per word, when it is not. The final (partial)
+; block is copied and padded in place: into the zeroed state when it is also the
+; first block (every input up to 135 bytes), else into ZKVM_KECCAK_PAD, which is
+; then absorbed into the state.
 ziskasm_zkvm_keccak256:
 	dma_xmemset(ZKVM_KECCAK_STATE, 200) -> r5, j(0, 4)
 	ltu(r11, 136), j(zzk_fresh)
@@ -38,8 +40,17 @@ ziskasm_zkvm_keccak256:
 	sub(r11, 136) -> r11
 
 ; --- full blocks into the live state, r11 = remaining bytes ---
+; keccak_xor XORs the block into the state and permutes it in one instruction, but it reads
+; the block as 8-byte aligned words. An unaligned message takes the XOR loop instead, whose
+; indirect loads go through MemAlign.
 zzk_full:
 	ltu(r11, 136), j(zzk_last)
+	unal8(r10, 0), j(zzk_full_unal)
+	keccak_xor(ZKVM_KECCAK_STATE, r10)
+	add(r10, 136) -> r10
+	sub(r11, 136) -> r11
+	jump(zzk_full)
+zzk_full_unal:
 	copyb(r10, 8[a + 0])
 	xor([ZKVM_KECCAK_STATE + 0], c) -> [ZKVM_KECCAK_STATE + 0]
 	copyb(r10, 8[a + 8])
@@ -88,42 +99,7 @@ zzk_last:
 	copyb(r6, 1) -> 1[a + 0]            ; the 0x01 after the message
 	copyb(0, [ZKVM_KECCAK_PAD + 128])
 	or(c, 0x8000000000000000) -> [ZKVM_KECCAK_PAD + 128]   ; the 0x80 in byte 135
-	copyb(0, ZKVM_KECCAK_PAD) -> r10
-	copyb(r10, 8[a + 0])
-	xor([ZKVM_KECCAK_STATE + 0], c) -> [ZKVM_KECCAK_STATE + 0]
-	copyb(r10, 8[a + 8])
-	xor([ZKVM_KECCAK_STATE + 8], c) -> [ZKVM_KECCAK_STATE + 8]
-	copyb(r10, 8[a + 16])
-	xor([ZKVM_KECCAK_STATE + 16], c) -> [ZKVM_KECCAK_STATE + 16]
-	copyb(r10, 8[a + 24])
-	xor([ZKVM_KECCAK_STATE + 24], c) -> [ZKVM_KECCAK_STATE + 24]
-	copyb(r10, 8[a + 32])
-	xor([ZKVM_KECCAK_STATE + 32], c) -> [ZKVM_KECCAK_STATE + 32]
-	copyb(r10, 8[a + 40])
-	xor([ZKVM_KECCAK_STATE + 40], c) -> [ZKVM_KECCAK_STATE + 40]
-	copyb(r10, 8[a + 48])
-	xor([ZKVM_KECCAK_STATE + 48], c) -> [ZKVM_KECCAK_STATE + 48]
-	copyb(r10, 8[a + 56])
-	xor([ZKVM_KECCAK_STATE + 56], c) -> [ZKVM_KECCAK_STATE + 56]
-	copyb(r10, 8[a + 64])
-	xor([ZKVM_KECCAK_STATE + 64], c) -> [ZKVM_KECCAK_STATE + 64]
-	copyb(r10, 8[a + 72])
-	xor([ZKVM_KECCAK_STATE + 72], c) -> [ZKVM_KECCAK_STATE + 72]
-	copyb(r10, 8[a + 80])
-	xor([ZKVM_KECCAK_STATE + 80], c) -> [ZKVM_KECCAK_STATE + 80]
-	copyb(r10, 8[a + 88])
-	xor([ZKVM_KECCAK_STATE + 88], c) -> [ZKVM_KECCAK_STATE + 88]
-	copyb(r10, 8[a + 96])
-	xor([ZKVM_KECCAK_STATE + 96], c) -> [ZKVM_KECCAK_STATE + 96]
-	copyb(r10, 8[a + 104])
-	xor([ZKVM_KECCAK_STATE + 104], c) -> [ZKVM_KECCAK_STATE + 104]
-	copyb(r10, 8[a + 112])
-	xor([ZKVM_KECCAK_STATE + 112], c) -> [ZKVM_KECCAK_STATE + 112]
-	copyb(r10, 8[a + 120])
-	xor([ZKVM_KECCAK_STATE + 120], c) -> [ZKVM_KECCAK_STATE + 120]
-	copyb(r10, 8[a + 128])
-	xor([ZKVM_KECCAK_STATE + 128], c) -> [ZKVM_KECCAK_STATE + 128]
-	keccak(0, ZKVM_KECCAK_STATE)
+	keccak_xor(ZKVM_KECCAK_STATE, ZKVM_KECCAK_PAD)   ; the padded block is aligned
 	jump(zzk_squeeze)
 
 ; --- the whole input is one partial block: pad it in the zeroed state ---

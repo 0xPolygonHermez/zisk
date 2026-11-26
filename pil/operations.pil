@@ -8,7 +8,8 @@
         - 0x56-0x58 (Zba shift-and-add)
         - 0x59 (LTU_DIV: bus tag of the LTU assumed by Arith on divisions, not an opcode)
         - 0x5A (UNAL8: 8-byte alignment predicate, ZisK-only)
-        - 0x5B-0x5F (free, reserved for binary)
+        - 0x5B (XOR_KECCAK: bus tag of the XORs assumed by KeccakfProxy, not an opcode)
+        - 0x5C-0x5F (free, reserved for binary)
       - Binary Extension Operations:
         - 0x21-0x29
         - 0x30-0x42 (Zbb/Zbs/Zbkb)
@@ -20,6 +21,7 @@
       - DMA Operations:
         - 0xDA-0xDF
       - Precompiles:
+        - 0xC1-0xC2
         - 0xE1-0xEF
         - 0xF0-0xF5
         - 0xF9-0xFE
@@ -142,6 +144,9 @@ const int OP_REM_W = 0xBF;
 const int OP_JUMP_DEST = 0xC0;
 
 const int OP_POSEIDON2_KOALABEAR = 0xC1;
+
+// Absorb step of the Keccak sponge: XOR a block into the state, then Keccak-f (KeccakfProxy)
+const int OP_KECCAK_XOR = 0xC2;
 
 const int OP_DMA_MEMCPY = 0xD0;
 const int OP_DMA_MEMCMP = 0xD1;

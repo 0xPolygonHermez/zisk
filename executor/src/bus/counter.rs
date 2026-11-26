@@ -10,7 +10,7 @@ use zisk_common::DataBusTrait;
 use zisk_common::{BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::{
     MemDataSection, ARITH_OP_TYPE_ID, BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID, DMA_OP_TYPE_ID,
-    EVM_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID,
+    EVM_OP_TYPE_ID, KECCAK_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID,
 };
 use zisk_precomp_common::MemCounterProcessor;
 use zisk_precomp_dma::DmaCounterInputGen;
@@ -136,7 +136,16 @@ impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
                     data_ext,
                     &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
                 ),
-                op => self.precompiles.dispatch_op(op, &bus_id, data, self.mem_counter.1.as_mut()),
+                op => {
+                    if op == KECCAK_OP_TYPE_ID {
+                        // The XORs of a keccak_xor are proven by Binary
+                        zisk_precomp_keccakf::keccakf_xor_binary_ops(
+                            data,
+                            &mut self.pending_transfers,
+                        );
+                    }
+                    self.precompiles.dispatch_op(op, &bus_id, data, self.mem_counter.1.as_mut())
+                }
             },
             _ => true,
         }

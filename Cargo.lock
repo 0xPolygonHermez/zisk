@@ -8142,6 +8142,7 @@ dependencies = [
  "zisk-pil",
  "zisk-precomp-common",
  "zisk-precomp-helpers",
+ "zisk-sm-binary",
  "zisk-test-artifacts",
 ]
 
