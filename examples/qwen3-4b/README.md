@@ -4,7 +4,7 @@ The example replays a saved transcript using the original BF16 weights of Qwen3-
 
 ## How the checkpoint fits
 
-[prepare.py](prepare.py) reads the checkpoint shards, verifies the tensor inventory and writes the inputs for 112 separate ZisK executions. [run.py](run.py) runs the same [guest](guest/src/main.rs) for each stage. Every invocation has a 256 MiB input limit.
+[prepare.rs](host/src/prepare.rs) reads the checkpoint shards, verifies the tensor inventory and writes the inputs for 112 separate ZisK executions. [run.rs](host/src/run.rs) runs the same [guest](guest/src/main.rs) for each stage. Every invocation has a 256 MiB input limit.
 
 | Stage | Executions | Input per execution on this transcript | Output |
 |---|---:|---:|---|
@@ -16,25 +16,31 @@ Each decoder receives one layer’s weights and the preceding guest’s actual o
 
 ## Reproduce the saved request
 
-Use Linux with the installed ZisK guest toolchain and runtime archive, the repository's native build prerequisites, Python with NumPy, and the Hugging Face CLI for the checkpoint download. Allow about 8 GB each for the checkpoint and the prepared inputs, plus build and run output. From the repository root:
+Use Linux with the installed ZisK guest toolchain and runtime archive, the repository's native build prerequisites, and curl for the checkpoint download. Allow about 8 GB each for the checkpoint and the prepared inputs, plus build and run output. From the repository root in Bash:
 
 ```sh
 root=$PWD
 example=$root/examples/qwen3-4b
 work=$root/target/qwen3-benchmark
-mkdir -p "$work"
-hf download Qwen/Qwen3-4B-Instruct-2507 --revision cdbee75f17c01a7cc42f958dc650907174af0554 \
-  --include 'config.json' 'model.safetensors.index.json' '*.safetensors' --local-dir "$work/checkpoint"
-python3 "$example/prepare.py" "$work/checkpoint" "$work/records"
+mkdir -p "$work/checkpoint"
+checkpoint_url=https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507/resolve/cdbee75f17c01a7cc42f958dc650907174af0554
+for file in config.json model.safetensors.index.json model-0000{1,2,3}-of-00003.safetensors; do
+  curl --fail --location --retry 3 "$checkpoint_url/$file" -o "$work/checkpoint/$file" || exit 1
+done
+cargo build --release --locked --manifest-path "$example/host/Cargo.toml"
+host=$example/host/target/release/qwen-host
+"$host" prepare "$work/checkpoint" "$work/records"
 cargo build --release --locked -p ziskemu
 (
   cd "$example/guest"
   RUSTFLAGS="--cfg zisk_guest -C target-feature=+unaligned-scalar-mem -C link-arg=-T$root/ziskbuild/zisk_linker_script.ld -L native=$HOME/.zisk/bin" \
     cargo +zisk build --release --locked --target riscv64ima-zisk-zkvm-elf
 )
-python3 "$example/run.py" --records "$work/records" --emulator "$root/target/release/ziskemu" \
+"$host" run --records "$work/records" --emulator "$root/target/release/ziskemu" \
   --elf "$example/guest/target/riscv64ima-zisk-zkvm-elf/release/qwen3-4b-guest" --output "$work/run"
 ```
+
+To check all 112 prepared files against the frozen input digests, run `QWEN_RECORDS="$work/records" cargo test --locked --manifest-path "$example/host/Cargo.toml" --test records -- --ignored`.
 
 The run directory contains per-job logs, public outputs, captured tensors, cost CSVs and a summary with total guest steps, emulator cost, greedy token IDs and the logit digest. To compare every logit with a separate reference, pass `--reference-logits FILE` containing 12 × 151,936 little-endian FP32 values in position-major order.
 
