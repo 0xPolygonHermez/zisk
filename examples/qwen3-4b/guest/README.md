@@ -43,6 +43,8 @@ The model crate contains the BF16 execution and receipt paths used by the
 original benchmark guest. It reads raw checkpoint tensors from each stage
 record. RMSNorm, RoPE, causal attention (including the prefill/decode
 boundary), SiLU and residual operations retain the frozen rounding rules.
+The runner reads `rope_theta` and `head_dim` from the checkpoint configuration. The decoder checks the layer profile and uses these fields to compute the rotary frequencies and the BF16 cosine and sine at each position. The rotary regression test covers all 40,960 positions supported by the runner. Its reference is the checkpoint’s `Qwen3RotaryEmbedding` under Transformers 5.15.1 and PyTorch CPU arm64 build `cf30153c`, with cosine and sine serialized as interleaved little-endian BF16 pairs.
+
 The build script computes a weight-independent BF16 SiLU lookup table.
 
 The seven decoder projections and the head call `bf16_projection::project`.

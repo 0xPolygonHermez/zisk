@@ -28,32 +28,11 @@ pub(crate) fn bf16_rmsnorm(out: &mut [f32], x: &[f32], weight: &[f32], eps: f32)
         *o = bf16_value(bf16_value(bf16_value(v) * inv) * w);
     }
 }
-fn inv_freq() -> Vec<f32> {
-    const INV: [u32; 64] = [
-        1065353216, 1061760040, 1058936413, 1056470439, 1052983098, 1050242642, 1047602217,
-        1044217596, 1041557859, 1038748123, 1035463194, 1032881799, 1029907739, 1026719568,
-        1024214207, 1021080662, 1017986398, 1015554831, 1012266501, 1009263377, 1006903432,
-        1003464873, 1000550206, 998259773, 994675411, 991846595, 989391507, 985897756, 983152262,
-        980522405, 977131561, 974466934, 971667455, 968376488, 965790347, 962826240, 959632207,
-        957122241, 953998356, 950898404, 948462368, 945183413, 942174768, 939810486, 936381026,
-        933461001, 931166358, 927590827, 924756811, 922312630, 918812458, 916061916, 913442645,
-        910045568, 907376043, 904586837, 901289821, 898698926, 895744792, 892544887, 890030307,
-        886916101, 883810449, 881369935,
-    ];
-    INV.iter().copied().map(f32::from_bits).collect()
-}
-const TRIG_FIX: &[(usize, usize, u16, u16)] = &[(25212, 39, 48893, 16223)];
-// Queries and keys at a given position share these angles across every head.
+// Queries and keys share these angles across every head at the same position.
 fn rope_angles(pos: usize, inv_freq: &[f32], angles: &mut [(f32, f32)]) {
-    for (i, (&freq, pair)) in inv_freq.iter().zip(angles).enumerate() {
-        let a = pos as f32 * freq;
-        let (c, s) = (libm::cosf(a), libm::sinf(a));
-        *pair = {
-            TRIG_FIX.iter().find(|v| v.0 == pos && v.1 == i).map_or_else(
-                || (bf16_value(c), bf16_value(s)),
-                |v| (f32::from_bits((v.2 as u32) << 16), f32::from_bits((v.3 as u32) << 16)),
-            )
-        };
+    for (&frequency, pair) in inv_freq.iter().zip(angles) {
+        let (cos, sin) = crate::rope_trig::cos_sin(pos as f32 * frequency);
+        *pair = (bf16_value(cos), bf16_value(sin));
     }
 }
 /// HF rotate_half rounds each product and each sum in the BF16 serving profile.
@@ -91,13 +70,15 @@ pub(crate) fn run_layer_batched(
     mut x: Vec<f32>,
     norm: &[Vec<f32>; 4],
     prefill: usize,
+    theta: f32,
+    hd: usize,
     claimed: ClaimedBatch,
 ) -> Vec<f32> {
     let [input_ln, q_norm, k_norm, post_ln] = norm;
-    let (dim, hd, hidden, heads, kv_heads) = (2560, 128, 9728, 32, 8);
+    let (dim, hidden, heads, kv_heads) = (2560, 9728, 32, 8);
     let n = x.len() / dim;
     let (qd, kvd) = (heads * hd, kv_heads * hd);
-    let inv_freq = inv_freq();
+    let inv_freq = crate::rope_freq::inverse_frequencies(theta, hd);
     let mut angles = vec![(0.0, 0.0); inv_freq.len()];
     let mut xn = vec![0.0f32; n * dim];
     let mut q = vec![0.0f32; n * qd];
@@ -151,4 +132,39 @@ pub(crate) fn run_layer_batched(
     claimed(3, &g, &mut [&mut o]);
     residual(&mut x, &o);
     x
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    #[test]
+    fn rotary_matches_reference_across_supported_context() {
+        // Reference from Qwen3RotaryEmbedding on the pinned arm64 PyTorch build.
+        // Hash the FP32 frequencies, then independently check every BF16 output bit
+        // via a digest in position-major order, with cosine before sine.
+        let frequencies = crate::rope_freq::inverse_frequencies(5_000_000.0, 128);
+        let mut hash = Sha256::new();
+        for frequency in &frequencies {
+            hash.update(frequency.to_le_bytes());
+        }
+        assert_eq!(
+            format!("{:x}", hash.finalize_reset()),
+            "29fc897bbb1fda6b314c1bcffa10e39b067913f538e4f07ed7cbd223b84c4cbf"
+        );
+        let mut angles = vec![(0.0, 0.0); frequencies.len()];
+        for position in 0..40_960 {
+            rope_angles(position, &frequencies, &mut angles);
+            for &(cos, sin) in &angles {
+                for v in [cos, sin] {
+                    hash.update(((v.to_bits() >> 16) as u16).to_le_bytes());
+                }
+            }
+        }
+        assert_eq!(
+            format!("{:x}", hash.finalize()),
+            "98352c6b6adc6275ba179eb4b092dd15d7e2dd4a657e2cd14df3fed57ef20db0"
+        );
+    }
 }

@@ -103,6 +103,8 @@ pub fn execute_batched(
     if record[112..FIXED] != profile {
         return Err("arithmetic profile");
     }
+    let theta = f32::from_bits(u32_at(record, 112 + 32));
+    let head_dim = u32_at(record, 112 + 20) as usize;
     let t = positions as usize;
     let act_bytes = t * DIM as usize * 4;
     let expected = FIXED + act_bytes + TENSOR_LEN.iter().map(|n| 2 * n).sum::<usize>();
@@ -147,6 +149,8 @@ pub fn execute_batched(
         x,
         &norm,
         (positions - predictions + 1) as usize,
+        theta,
+        head_dim,
         &mut claim,
     );
     if output.len() != t * DIM as usize || output.iter().any(|v| !v.is_finite()) {

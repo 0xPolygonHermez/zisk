@@ -63,26 +63,35 @@ fn stages() -> Vec<Stage> {
     stages
 }
 
-fn profile(t: u32, r: u32) -> [u8; 64] {
-    let fields = [
-        1,
-        DIM as u32,
-        9728,
-        32,
-        8,
-        128,
-        VOCAB as u32,
-        t,
-        5_000_000f32.to_bits(),
-        1e-6f32.to_bits(),
-        32,
-        r,
-    ];
-    let mut out = [0; 64];
-    for (slot, field) in out.chunks_exact_mut(4).zip(fields) {
-        slot.copy_from_slice(&field.to_le_bytes());
+#[derive(Deserialize)]
+struct RopeConfig {
+    rope_theta: f32,
+    head_dim: u32,
+    rope_scaling: Option<Value>,
+}
+
+impl RopeConfig {
+    fn profile(&self, t: u32, r: u32) -> [u8; 64] {
+        let fields = [
+            1,
+            DIM as u32,
+            9728,
+            32,
+            8,
+            self.head_dim,
+            VOCAB as u32,
+            t,
+            self.rope_theta.to_bits(),
+            1e-6f32.to_bits(),
+            32,
+            r,
+        ];
+        let mut out = [0; 64];
+        for (slot, field) in out.chunks_exact_mut(4).zip(fields) {
+            slot.copy_from_slice(&field.to_le_bytes());
+        }
+        out
     }
-    out
 }
 
 struct Tensor {
@@ -120,12 +129,16 @@ struct Entry {
 }
 
 struct Enrollment {
+    rope: RopeConfig,
     tensors: BTreeMap<String, Tensor>,
     model: Hash,
 }
 
 fn enroll(checkpoint: &Path, stages: &[Stage]) -> Result<Enrollment> {
     let config = fs::read(checkpoint.join("config.json"))?;
+    let rope: RopeConfig =
+        serde_json::from_slice(&config).context("reading RoPE config from config.json")?;
+    ensure!(rope.rope_scaling.is_none(), "expected unscaled RoPE (rope_scaling absent or null)");
     let index = fs::read(checkpoint.join("model.safetensors.index.json"))?;
     let mut files = BTreeMap::from([
         ("config.json".to_owned(), hex::encode(Sha256::digest(config))),
@@ -222,9 +235,9 @@ fn enroll(checkpoint: &Path, stages: &[Stage]) -> Result<Enrollment> {
     }
     let model = tagged(
         b"model/qwen3-4b/mac-arm64-bf16-sdpa-v1",
-        &[&checkpoint_id, &profile(0, 0), &(stages.len() as u32).to_le_bytes(), &roots],
+        &[&checkpoint_id, &rope.profile(0, 0), &(stages.len() as u32).to_le_bytes(), &roots],
     );
-    Ok(Enrollment { tensors, model })
+    Ok(Enrollment { tensors, model, rope })
 }
 
 struct RowTree(Vec<Vec<Hash>>);
@@ -305,7 +318,7 @@ pub fn prepare(checkpoint: &Path, records: &Path, req: &Request) -> Result<()> {
     ensure!(hex::decode(&req.nonce)?.len() == 32, "expected a 32-byte nonce");
 
     let stages = stages();
-    let Enrollment { tensors, model } = enroll(checkpoint, &stages)?;
+    let Enrollment { tensors, model, rope } = enroll(checkpoint, &stages)?;
     let tied = &tensors[TIED];
     let tree = RowTree::build(tied)?;
     let suite = tagged(b"suite", &[SUITE]);
@@ -335,7 +348,7 @@ pub fn prepare(checkpoint: &Path, records: &Path, req: &Request) -> Result<()> {
         frame(dir.join(format!("layer{i:02}.v1.stdin")), b"PCILAYR1", &ids, |f| {
             f.write_all(&(i as u32).to_le_bytes())?;
             f.write_all(&t.to_le_bytes())?;
-            f.write_all(&profile(t, r))?;
+            f.write_all(&rope.profile(t, r))?;
             f.seek(SeekFrom::Current(activation_bytes))?;
             for name in &stage.tensors {
                 let tensor = &tensors[name];

@@ -34,7 +34,7 @@ The matched tile uses layer 0’s key projection, rows 0–63, at all 39 positio
 
 The tile used 43.0× less emulator cost with `dot_bf16`. The full-layer comparison counts outgoing activation values. The 1,413 differences show that agreement on the tile does not establish layer-wide bit parity. These measurements cover emulator execution. Proof generation time and proof-planner memory remain unmeasured for this precompile.
 
-The rebuilt example reproduced all 99,840 layer-0 values from the archived BF16 run in 1,497,269,919 steps with total emulator cost 332,183,049,347.
+The rebuilt example reproduced all 99,840 layer-0 values from the archived BF16 run in 1,499,517,265 steps with total emulator cost 332,393,562,878.
 
 ### Full-request results
 
