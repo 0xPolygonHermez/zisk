@@ -1,5 +1,5 @@
 //! The fit: from measurements of single workers (`zisk-estimate-measure`) to the coefficients of
-//! the cluster model.
+//! the model.
 //!
 //! A record is one worker of a job of W workers: how long its two phases took, for a block whose
 //! plan and execution time the tool knows (`zisk-estimate -i <dir> --json-out`). What the worker
@@ -19,11 +19,11 @@
 //! The phase-1 fit is the frozen recipe of model v3.2 (tools/data/estimate-review-2026-11-20/
 //! p1table.py); the test at the end holds it to that table.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use crate::model::{estimate, Coeffs};
+use crate::model::{cost_plan, Coeffs};
 
 /// One worker of one job, as `zisk-estimate-measure` writes it.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -88,8 +88,7 @@ fn rows(records: &[Record], blocks: &BTreeMap<String, Block>, prior: &Coeffs) ->
         let airs = if r.airs.is_empty() {
             let plan: Vec<(String, usize)> =
                 b.lines.iter().map(|l| (l.air.clone(), l.instances)).collect();
-            let lines = estimate(&plan, 0, b.exec_s, prior).lines;
-            let mut load = prior.partition(&lines, r.workers);
+            let mut load = prior.partition(&cost_plan(&plan, prior), r.workers);
             if r.node >= load.len() {
                 continue;
             }
@@ -285,11 +284,7 @@ pub fn fit(
     options: Options,
 ) -> Result<Fit> {
     let Options { ridge: lam, sigma_workers, proofs_const, keep_proofs } = options;
-    let proofs_const = if keep_proofs {
-        Some(prior.cluster.as_ref().map_or(0.0, |c| c.proofs_const_s))
-    } else {
-        proofs_const
-    };
+    let proofs_const = if keep_proofs { Some(prior.cluster.proofs_const_s) } else { proofs_const };
     let corpora: Vec<Vec<Row>> = corpora.iter().map(|c| rows(c, blocks, prior)).collect();
     let all: Vec<&Row> = corpora.iter().flatten().collect();
     anyhow::ensure!(!all.is_empty(), "no measurement matches a block of the estimates");
@@ -297,15 +292,14 @@ pub fn fit(
     let mut airs: Vec<&str> = all.iter().flat_map(|r| r.airs.keys().map(String::as_str)).collect();
     airs.sort_unstable();
     airs.dedup();
-    let row_of = |a: &str| prior.lookup(a).unwrap_or(&prior.default);
     let counts = |r: &Row| -> Vec<f64> {
         airs.iter().map(|a| r.airs.get(*a).copied().unwrap_or(0) as f64).collect()
     };
-    let pi = prior.cluster.as_ref().map_or(0.0, |c| c.nopair_s);
+    let pi = prior.cluster.nopair_s;
     let pair = |r: &Row| r.owns("Keccakf") && r.owns("Main");
 
     // phase 1: c, rho, tau, -kappa, then the prices
-    let p1: Vec<f64> = airs.iter().map(|a| row_of(a).phase_ms / 1e3).collect();
+    let p1: Vec<f64> = airs.iter().map(|a| prior.row(a).phase_ms / 1e3).collect();
     let s1: Vec<f64> = p1.iter().map(|p| p.max(0.020)).collect();
     let x1: Vec<Vec<f64>> = all
         .iter()
@@ -319,7 +313,7 @@ pub fn fit(
 
     // proofs: c2 (its column is 0 when c2 is given), then the prices; pi is the prior's
     let p2: Vec<f64> =
-        airs.iter().map(|a| (row_of(a).basic_ms + row_of(a).recursion_ms) / 1e3).collect();
+        airs.iter().map(|a| (prior.row(a).basic_ms + prior.row(a).recursion_ms) / 1e3).collect();
     let s2: Vec<f64> = p2.iter().map(|p| p.max(1e-3)).collect();
     let intercept = if proofs_const.is_some() { 0.0 } else { 1.0 };
     let x2: Vec<Vec<f64>> =
@@ -389,7 +383,7 @@ pub fn fit(
 impl Fit {
     /// The prior with the fitted numbers written in. An AIR the prior has no row for keeps the
     /// default row; basic and recursion keep their prior proportion.
-    pub fn apply(&self, prior: &Coeffs) -> Result<Coeffs> {
+    pub fn apply(&self, prior: &Coeffs) -> Coeffs {
         let mut out = prior.clone();
         for (air, row) in out.airs.iter_mut() {
             if let Some(t1) = self.phase_s.get(air) {
@@ -402,7 +396,7 @@ impl Fit {
                 row.recursion_ms *= k;
             }
         }
-        let cm = out.cluster.as_mut().context("the prior has no `cluster` model")?;
+        let cm = &mut out.cluster;
         cm.exec_ratio = self.exec_ratio;
         cm.phase_const_s = self.phase_const_s;
         cm.planning_s = self.planning_s;
@@ -416,9 +410,8 @@ impl Fit {
         }
         if self.proofs_sigma_s > 0.0 {
             cm.proofs_sigma_s = self.proofs_sigma_s;
-            cm.fold_sigma_s = self.proofs_sigma_s;
         }
-        Ok(out)
+        out
     }
 }
 
@@ -430,13 +423,13 @@ pub fn calibrate_cluster(
     jobs: &[Record],
     blocks: &BTreeMap<String, Block>,
 ) -> Result<[f64; 3]> {
-    let cm = coeffs.cluster.clone().context("the coefficients have no `cluster` model")?;
+    let cm = coeffs.cluster.clone();
     let (mut d1, mut ratio, mut d3) = (Vec::new(), Vec::new(), Vec::new());
     for r in jobs.iter().filter(|r| r.workers == 1) {
         let Some(b) = blocks.get(&r.input) else { continue };
         let plan: Vec<(String, usize)> =
             b.lines.iter().map(|l| (l.air.clone(), l.instances)).collect();
-        let lines = estimate(&plan, 0, b.exec_s, coeffs).lines;
+        let lines = cost_plan(&plan, coeffs);
         let n: usize =
             lines.iter().filter(|l| !l.air.starts_with("VirtualTable")).map(|l| l.instances).sum();
         let t1: f64 = lines.iter().map(|l| l.phase_s).sum();
@@ -447,10 +440,9 @@ pub fn calibrate_cluster(
     }
     anyhow::ensure!(d1.len() >= 3, "fewer than 3 one-worker jobs match a block of the estimates");
     let found = [median(&mut d1), median(&mut ratio), median(&mut d3)];
-    let cm = coeffs.cluster.as_mut().unwrap();
-    cm.phase_const_s = found[0];
-    cm.proofs_factor = found[1];
-    cm.final_s = found[2];
+    coeffs.cluster.phase_const_s = found[0];
+    coeffs.cluster.proofs_factor = found[1];
+    coeffs.cluster.final_s = found[2];
     Ok(found)
 }
 
@@ -471,14 +463,11 @@ mod tests {
 
     #[test]
     fn recovers_the_numbers_that_made_the_records() {
-        let prior = Coeffs::embedded_cluster().unwrap();
+        let prior = Coeffs::embedded().unwrap();
         let (c, rho, tau, kappa, c2) = (0.070, 1.03, 0.0013, 0.024, -0.050);
-        let pi = prior.cluster.as_ref().unwrap().nopair_s;
-        let truth1 = |a: &str| 1.1 * prior.lookup(a).unwrap().phase_ms / 1e3;
-        let truth2 = |a: &str| {
-            let r = prior.lookup(a).unwrap();
-            0.9 * (r.basic_ms + r.recursion_ms) / 1e3
-        };
+        let pi = prior.cluster.nopair_s;
+        let truth1 = |a: &str| 1.1 * prior.airs[a].phase_ms / 1e3;
+        let truth2 = |a: &str| 0.9 * (prior.airs[a].basic_ms + prior.airs[a].recursion_ms) / 1e3;
         let mut blocks = BTreeMap::new();
         let mut records = Vec::new();
         for i in 0..40usize {
@@ -493,10 +482,10 @@ mod tests {
             let b = block(&format!("b{i}"), 0.2 + 0.01 * i as f64, &plan);
             let lines: Vec<(String, usize)> =
                 b.lines.iter().map(|l| (l.air.clone(), l.instances)).collect();
-            let est = estimate(&lines, 0, b.exec_s, &prior);
+            let lines = cost_plan(&lines, &prior);
             let n: usize = plan.iter().map(|(_, n)| n).sum();
             for workers in [1, 2, 4] {
-                for (node, load) in prior.partition(&est.lines, workers).iter().enumerate() {
+                for (node, load) in prior.partition(&lines, workers).iter().enumerate() {
                     // without the std tables: one per worker, which no fit tells from a constant
                     let airs: BTreeMap<String, usize> = load
                         .airs

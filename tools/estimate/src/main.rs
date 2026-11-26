@@ -1,8 +1,8 @@
 //! `zisk-estimate`: predict the proof time of a block from one execution of it.
 //!
 //! Runs the executor standalone (execution + count-and-plan: no witness, no proving key) and costs
-//! the planned instances with the model of this crate, for the local prover or, with
-//! `--workers W`, for a coordinator job on W workers.
+//! the planned instances with the model of this crate: a coordinator job on `--workers W` workers
+//! (one by default).
 //!
 //! `-i <dir>` estimates every file of the directory on one client: the ASM services and the
 //! planner arena are set up once, so each input costs its execution, not the 5 s startup.
@@ -14,8 +14,9 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 use zisk_common::io::ZiskStdin;
+use zisk_estimate::cluster::estimate;
 use zisk_estimate::files::{input_files, write_json};
-use zisk_estimate::model::{estimate, sort_by_planning_order, AirLine, Coeffs, Estimate};
+use zisk_estimate::model::{sort_by_planning_order, AirLine, Coeffs, Estimate};
 use zisk_prover_backend::{
     AsmOptions, BackendProverOpts, ExecuteClient, ExecuteOutput, GuestProgram, ProverClientBuilder,
 };
@@ -30,10 +31,10 @@ struct BatchEntry {
     pub est: Estimate,
 }
 
-/// How an input is costed: on the local prover, or as a coordinator job on `workers` workers.
+/// How an input is costed: as a coordinator job on `workers` workers.
 #[derive(Clone, Copy, Debug)]
 struct Target {
-    pub workers: Option<usize>,
+    pub workers: usize,
     /// The job's final proof is not compressed.
     pub plain_final: bool,
     /// Executions per input; the fastest one is the model's `exec`.
@@ -63,12 +64,17 @@ fn execute_and_estimate(
     }
     let result = best.expect("at least one execution");
     let plan = plan_of(&result)?;
-    let mut est = estimate(&plan, result.get_execution_steps(), exec_s(&result), coeffs);
-    est.input_mb =
+    let input_mb =
         input.and_then(|i| std::fs::metadata(i).ok()).map(|m| m.len() as f64 / 1e6).unwrap_or(0.0);
-    if let Some(w) = target.workers {
-        est = est.on_cluster(w, coeffs, target.plain_final);
-    }
+    let est = estimate(
+        &plan,
+        result.get_execution_steps(),
+        exec_s(&result),
+        input_mb,
+        target.workers,
+        target.plain_final,
+        coeffs,
+    );
     Ok((est, result))
 }
 
@@ -149,13 +155,12 @@ struct Args {
     #[arg(long)]
     json_out: Option<PathBuf>,
 
-    /// Estimate the proof as a coordinator job on this many workers (the `cluster` model)
-    /// instead of the local single-GPU prover.
-    #[arg(long)]
-    workers: Option<usize>,
+    /// Workers of the coordinator job the proof is estimated for
+    #[arg(long, default_value_t = 1)]
+    workers: usize,
 
-    /// The job's final proof is the plain one, not the compressed one (`--workers`).
-    #[arg(long, requires = "workers")]
+    /// The job's final proof is the plain one, not the compressed one
+    #[arg(long)]
     plain_final: bool,
 
     /// Execute each input this many times and take the fastest as its execution time.
@@ -220,10 +225,10 @@ fn last_phase(est: &Estimate) -> &'static str {
 
 /// The default report: the plan size and the three phases. `-v` prints the per-AIR table and
 /// the terms of each phase instead.
-fn print_summary(est: &Estimate, workers: Option<usize>) {
+fn print_summary(est: &Estimate) {
     info!("Instances: {}  steps: {}", est.instances, est.steps);
     info!("Execution {:.2}s", est.exec_s);
-    if workers.is_some() {
+    if est.workers > 1 {
         info!(
             "Workers: {} instances",
             est.workers_load
@@ -236,33 +241,26 @@ fn print_summary(est: &Estimate, workers: Option<usize>) {
     info!("{:<26} {:>6.2}s", "execution + contributions", est.phase_s);
     info!("{:<26} {:>6.2}s", "proofs", est.proofs_s);
     info!("{:<26} {:>6.2}s", last_phase(est), est.final_s);
-    if est.overhead_s != 0.0 {
-        info!("{:<26} {:>6.2}s", "overhead", est.overhead_s);
-    }
     info!(
-        "{} {}{}",
+        "{} {}  ({} worker{})",
         "Estimated proof time:".bright_white().bold(),
         format!("{:.2}s", est.total_s).bright_green().bold(),
-        workers.map(|w| format!("  ({w} workers)")).unwrap_or_default()
+        est.workers,
+        if est.workers == 1 { "" } else { "s" }
     );
 }
 
 /// The verbose report: the per-AIR table and how the estimate is composed.
-fn print_details(
-    est: &Estimate,
-    result: &ExecuteOutput,
-    coeffs: &Coeffs,
-    workers: Option<usize>,
-) -> Result<()> {
+fn print_details(est: &Estimate, result: &ExecuteOutput, coeffs: &Coeffs) {
     let t = result.get_executor_time();
     info!(
-        "{:<24} {:>5} {:>8} {:>8} {:>8}  {}",
+        "{:<24} {:>5} {:>8} {:>8} {:>8} {:>8}",
         "air".bold(),
         "inst".bold(),
+        "phase 1".bold(),
         "basic".bold(),
         "recurs".bold(),
-        "total".bold(),
-        "coeff row".dimmed()
+        "proofs".bold()
     );
     // costliest first; `lines` itself stays in registration order, which the placement follows
     let mut table: Vec<&AirLine> = est.lines.iter().collect();
@@ -271,19 +269,16 @@ fn print_details(
     });
     for l in table {
         info!(
-            "{:<24} {:>5} {:>7.2}s {:>7.2}s {:>7.2}s  {}",
+            "{:<24} {:>5} {:>7.2}s {:>7.2}s {:>7.2}s {:>7.2}s",
             l.air,
             l.instances,
+            l.phase_s,
             l.basic_s,
             l.recursion_s,
-            l.basic_s + l.recursion_s,
-            if l.source == l.air { String::new() } else { l.source.dimmed().to_string() }
+            l.basic_s + l.recursion_s
         );
     }
-    info!(
-        "Instances: {}  steps: {}  sum basic+recursion {:.2}s",
-        est.instances, est.steps, est.sum_proofs_raw_s
-    );
+    info!("Instances: {}  steps: {}", est.instances, est.steps);
     if !est.unknown_airs.is_empty() {
         info!("{} {}", "AIRs costed with the default row:".yellow(), est.unknown_airs.join(", "));
     }
@@ -291,59 +286,40 @@ fn print_details(
         "Execution {:.2}s (emulation {}ms, count-and-plan {}ms, mops {}ms)",
         est.exec_s, t.execution_duration, t.count_and_plan_duration, t.count_and_plan_mo_duration
     );
-    if let Some(w) = workers {
-        let cm = coeffs.cluster_model()?;
-        info!(
-            "Workers (instances, end of phase 1, proofs): {}",
-            est.workers_load
-                .iter()
-                .map(|l| format!("[{} {:.2}s {:.2}s]", l.instances, l.phase1_s, l.ready_s))
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
-        info!(
-            "{} {} workers: execution+contributions {:.2} + proofs {:.2} + {} {:.2} = {}  (each phase: expected slowest worker, noise {:.0} / {:.0} ms; input {:.2} MB)",
-            "Estimated proof time:".bright_white().bold(),
-            w,
-            est.phase_s,
-            est.proofs_s,
-            last_phase(est),
-            est.final_s,
-            format!("{:.2}s", est.total_s).bright_green().bold(),
-            1e3 * cm.phase_sigma_s,
-            1e3 * cm.proofs_sigma_s,
-            est.input_mb
-        );
-    } else {
-        info!(
-            "{} execution+contributions {:.2} ({}: {:.4} ms x {:.0} commit work + {:.2}) + proofs {:.2} (= {:.2} x {:.2} + {:.2}) + final {:.2} + overhead {:.2} = {}",
-            "Estimated proof time:".bright_white().bold(),
-            est.phase_s,
-            if est.guard_bound { "emulation guard" } else { "commit term" },
-            coeffs.model.commit_ms_per_work, est.commit_work, coeffs.model.phase_const_s,
-            est.proofs_s, coeffs.model.proofs_factor, est.sum_proofs_raw_s, coeffs.model.proofs_const_s,
-            est.final_s, est.overhead_s,
-            format!("{:.2}s", est.total_s).bright_green().bold()
-        );
-    }
-    Ok(())
+    info!(
+        "Workers (instances, end of phase 1, proofs): {}",
+        est.workers_load
+            .iter()
+            .map(|l| format!("[{} {:.2}s {:.2}s]", l.instances, l.phase1_s, l.ready_s))
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    info!(
+        "{} {} workers: execution+contributions {:.2} + proofs {:.2} + {} {:.2} = {}  (each phase: expected slowest worker, noise {:.0} / {:.0} ms; input {:.2} MB)",
+        "Estimated proof time:".bright_white().bold(),
+        est.workers,
+        est.phase_s,
+        est.proofs_s,
+        last_phase(est),
+        est.final_s,
+        format!("{:.2}s", est.total_s).bright_green().bold(),
+        1e3 * coeffs.cluster.phase_sigma_s,
+        1e3 * coeffs.cluster.proofs_sigma_s,
+        est.input_mb
+    );
 }
 
 impl Args {
     fn run(&self) -> Result<()> {
-        let coeffs = match (&self.coeffs, self.workers) {
-            (Some(p), _) => Coeffs::from_file(p)?,
-            (None, Some(_)) => Coeffs::embedded_cluster()?,
-            (None, None) => Coeffs::embedded()?,
+        let coeffs = match &self.coeffs {
+            Some(p) => Coeffs::from_file(p)?,
+            None => Coeffs::embedded()?,
         };
-        if let Some(w) = self.workers {
-            anyhow::ensure!(w >= 1, "--workers must be at least 1");
-            let cm = coeffs.cluster_model()?;
-            anyhow::ensure!(
-                !self.plain_final || cm.final_plain_s.is_some(),
-                "the coefficient file has no `final_plain_s` (--plain-final)"
-            );
-        }
+        anyhow::ensure!(self.workers >= 1, "--workers must be at least 1");
+        anyhow::ensure!(
+            !self.plain_final || coeffs.cluster.final_plain_s.is_some(),
+            "the coefficient file has no `final_plain_s` (--plain-final)"
+        );
         anyhow::ensure!(self.exec_runs >= 1, "--exec-runs must be at least 1");
         let target = Target {
             workers: self.workers,
@@ -362,10 +338,7 @@ impl Args {
         );
         banner_field("Setup", &coeffs.setup);
         banner_field("GPU", &coeffs.gpu);
-        banner_field(
-            "Workers",
-            self.workers.map(|w| format!("{w} (cluster)")).unwrap_or("local".into()),
-        );
+        banner_field("Workers", self.workers);
 
         if let Some(dir) = self.inputs.as_ref().map(PathBuf::from).filter(|p| p.is_dir()) {
             return self.run_batch(&dir, &coeffs, target);
@@ -377,9 +350,9 @@ impl Args {
         let tool_ms = tool_start.elapsed().as_millis() as u64;
         info!("{}", "--- ESTIMATE ------------------".bright_green().bold());
         if self.verbose == 0 {
-            print_summary(&est, self.workers);
+            print_summary(&est);
         } else {
-            print_details(&est, &result, &coeffs, self.workers)?;
+            print_details(&est, &result, &coeffs);
             info!("Estimator cost: {}ms (client setup + {} execution(s))", tool_ms, self.exec_runs);
         }
         if let Some(path) = &self.json_out {

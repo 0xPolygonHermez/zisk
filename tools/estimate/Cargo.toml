@@ -1,6 +1,6 @@
 [package]
 name = "zisk-estimate"
-description = "Proof-time estimator for ZisK blocks, on one prover or on a cluster of workers"
+description = "Proof-time estimator for ZisK blocks proved as coordinator jobs"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -22,6 +22,7 @@ name = "zisk-estimate-fit"
 path = "src/fit_main.rs"
 
 [dependencies]
+zisk-cluster-common = { workspace = true }
 zisk-common = { workspace = true }
 zisk-prover-backend = { workspace = true }
 proofman = { workspace = true }

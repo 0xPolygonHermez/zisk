@@ -7875,6 +7875,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+ "zisk-cluster-common",
  "zisk-common",
  "zisk-prover-backend",
 ]

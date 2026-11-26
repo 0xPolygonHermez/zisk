@@ -1,4 +1,4 @@
-//! The cluster model of `zisk-estimate --workers W` (proof-time model v3.2).
+//! The proof-time model (v3.2): a block proved as a coordinator job on W workers.
 //!
 //! The instances are placed on the W workers as proofman does (`partition`); every phase of the
 //! job then lasts as long as its slowest worker. Each worker's time carries noise, so a phase is
@@ -22,12 +22,13 @@
 //! table: t1 = `phase_ms`, t2 = `basic_ms + recursion_ms`. `hop` is one recursive2 proof over the
 //! link; every other symbol is a field of `ClusterModel`. D is the delivery of the input, with
 //! every worker remote from the coordinator.
-//! The reference implementation is tools/data/estimate-frozen-v3.2-2026-11-22/model_v32.py; the
-//! parity tests below hold this file to it.
+//! `tests/parity.rs` holds this file to the reference implementation of the model.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+use zisk_cluster_common::{AggDispatch, AggScheduler, AggSet, WorkerId};
 
-use crate::model::{Coeffs, Estimate, WorkerLoad};
+use crate::model::{cost_plan, AirLine, Coeffs, Estimate, WorkerLoad};
 
 // A key this struct does not know is an error: a default would silently drop the term.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -53,7 +54,8 @@ pub struct ClusterModel {
     /// pi: phase-2 wait exposed on a worker that lacks a Keccakf or a Main.
     #[serde(default)]
     pub nopair_s: f64,
-    /// sigma2: per-worker noise of phase 2 (standard deviation).
+    /// sigma2: per-worker noise of phase 2 (standard deviation), also on each worker's ready
+    /// time in the fold replays.
     #[serde(default)]
     pub proofs_sigma_s: f64,
     /// F1: final proof at one worker, compressed.
@@ -73,9 +75,6 @@ pub struct ClusterModel {
     /// Upload of a folded proof to the coordinator.
     #[serde(default)]
     pub upload_s: f64,
-    /// sigma2 again: noise on each worker's ready time in the fold replays.
-    #[serde(default)]
-    pub fold_sigma_s: f64,
     #[serde(default = "default_fold_replays")]
     pub fold_replays: usize,
     /// Aggregation arity of the key.
@@ -131,23 +130,25 @@ fn owns(load: &WorkerLoad, air: &str) -> bool {
     load.airs.get(air).copied().unwrap_or(0) >= 1
 }
 
-/// The model on `workers` workers. `rng_seed` seeds the fold replays (W >= 3).
+/// The model on `workers` workers for a block of these `lines`, execution time and input size.
+/// `rng_seed` seeds the fold replays (W >= 3).
 pub fn cluster_phases(
-    est: &Estimate,
+    lines: &[AirLine],
+    exec_s: f64,
+    input_mb: f64,
     workers: usize,
     coeffs: &Coeffs,
     final_s: f64,
     rng_seed: u64,
 ) -> ClusterPhases {
-    let cm = coeffs.cluster.as_ref().expect("cluster model");
-    let load = coeffs.partition(&est.lines, workers);
+    let cm = &coeffs.cluster;
+    let load = coeffs.partition(lines, workers);
     let multi = workers > 1;
     let block_instances: usize =
-        est.lines.iter().filter(|l| !l.air.starts_with("VirtualTable")).map(|l| l.instances).sum();
-    let common =
-        cm.exec_ratio * est.exec_s + cm.planning_s * block_instances as f64 + cm.phase_const_s;
+        lines.iter().filter(|l| !l.air.starts_with("VirtualTable")).map(|l| l.instances).sum();
+    let common = cm.exec_ratio * exec_s + cm.planning_s * block_instances as f64 + cm.phase_const_s;
     let delivery = if multi && cm.link_mb_per_s > 0.0 {
-        workers as f64 * est.input_mb / cm.link_mb_per_s
+        workers as f64 * input_mb / cm.link_mb_per_s
     } else {
         0.0
     };
@@ -175,25 +176,44 @@ pub fn cluster_phases(
     ClusterPhases { load, s, phase1, ready, phase: [p1, p2, p3] }
 }
 
-impl Estimate {
-    /// The same block proved on a cluster of `workers` workers; `plain` = the final proof is not
-    /// compressed.
-    pub fn on_cluster(mut self, workers: usize, coeffs: &Coeffs, plain: bool) -> Estimate {
-        let cm = coeffs.cluster.as_ref().expect("cluster model");
-        // the replays are seeded by the worker count: one input, one estimate
-        let c = cluster_phases(&self, workers, coeffs, cm.final_of(plain), workers as u64);
-        let mut load = c.load;
-        for (k, l) in load.iter_mut().enumerate() {
-            l.phase1_s = c.phase1[k];
-            l.ready_s = c.ready[k];
-        }
-        [self.phase_s, self.proofs_s, self.final_s] = c.phase;
-        self.guard_bound = false;
-        self.overhead_s = 0.0;
-        self.total_s = self.phase_s + self.proofs_s + self.final_s;
-        self.workers = workers;
-        self.workers_load = load;
-        self
+/// The estimate of a block as a job on `workers` workers, from one execution of it: its plan,
+/// steps, execution time and input size. `plain` = the final proof is not compressed.
+pub fn estimate(
+    plan: &[(String, usize)],
+    steps: u64,
+    exec_s: f64,
+    input_mb: f64,
+    workers: usize,
+    plain: bool,
+    coeffs: &Coeffs,
+) -> Estimate {
+    let lines = cost_plan(plan, coeffs);
+    let final_s = coeffs.cluster.final_of(plain);
+    // the replays are seeded by the worker count: one input, one estimate
+    let c = cluster_phases(&lines, exec_s, input_mb, workers, coeffs, final_s, workers as u64);
+    let mut workers_load = c.load;
+    for (k, l) in workers_load.iter_mut().enumerate() {
+        l.phase1_s = c.phase1[k];
+        l.ready_s = c.ready[k];
+    }
+    let [phase_s, proofs_s, final_s] = c.phase;
+    Estimate {
+        workers,
+        workers_load,
+        instances: lines.iter().map(|l| l.instances).sum(),
+        steps,
+        exec_s,
+        input_mb,
+        phase_s,
+        proofs_s,
+        final_s,
+        total_s: phase_s + proofs_s + final_s,
+        unknown_airs: lines
+            .iter()
+            .filter(|l| !coeffs.airs.contains_key(&l.air))
+            .map(|l| l.air.clone())
+            .collect(),
+        lines,
     }
 }
 
@@ -223,193 +243,70 @@ fn aggregation_s(ready: &[f64], cm: &ClusterModel, final_s: f64, rng_seed: u64) 
     let fold = cm.rec2_s + 2.0 * hop + cm.upload_s;
     let last_fold = final_s + cm.rec2_s + hop;
     let slowest = |r: &[f64]| r.iter().cloned().fold(f64::MIN, f64::max);
-    if ready.len() < 3 || cm.fold_sigma_s == 0.0 || cm.fold_replays == 0 {
+    if ready.len() < 3 || cm.proofs_sigma_s == 0.0 || cm.fold_replays == 0 {
         return fold_end(ready, cm.arity, fold, last_fold) - slowest(ready);
     }
     let mut rng = PyRandom::new(rng_seed);
     let mut sum = 0.0;
     for _ in 0..cm.fold_replays {
-        let noisy: Vec<f64> = ready.iter().map(|r| r + rng.gauss() * cm.fold_sigma_s).collect();
+        let noisy: Vec<f64> = ready.iter().map(|r| r + rng.gauss() * cm.proofs_sigma_s).collect();
         sum += fold_end(&noisy, cm.arity, fold, last_fold) - slowest(&noisy);
     }
     sum / cm.fold_replays as f64
 }
 
-/// A proof set waiting for a partner on the worker that holds it.
-#[derive(Clone)]
-struct FoldNode {
-    worker: usize,
-    /// Leaves under it.
-    covers: usize,
-    inputs: usize,
-    /// Leaves under it when it was opened: only sets of equal level pair up while more can come.
-    level: usize,
-}
-
-#[derive(Clone, Copy)]
-struct Dispatch {
-    worker: usize,
-    /// The dispatch completes its node: the worker runs the recursive2.
-    last: bool,
-    fin: bool,
-}
-
-enum FoldEvent {
-    Leaf(usize),
-    Done(Dispatch),
-}
-
-/// Replica of the coordinator's `AggScheduler` (cluster-common `agg_tree.rs`, distributed) driven
-/// by the workers' ready times; returns when the final proof completes.
-struct FoldSim {
-    n: usize,
-    arity: usize,
-    open: Vec<FoldNode>,
-    /// Nodes being folded, by worker.
-    live: Vec<Option<FoldNode>>,
-    seen: usize,
-}
-
-impl FoldSim {
-    fn more(&self, level: usize) -> bool {
-        self.live.iter().flatten().any(|nd| nd.covers == level) || self.n - self.seen >= level
-    }
-
-    fn partner(&self, covers: usize) -> Option<usize> {
-        if self.open.is_empty() {
-            return None;
-        }
-        if let Some(i) = self.open.iter().position(|nd| nd.level == covers) {
-            return Some(i);
-        }
-        if self.more(covers) {
-            return None;
-        }
-        (0..self.open.len()).min_by_key(|&i| self.open[i].level.abs_diff(covers))
-    }
-
-    fn schedule(&mut self, covers: usize, loc: usize, out: &mut Vec<Dispatch>) {
-        let Some(i) = self.partner(covers) else {
-            let node = FoldNode { worker: loc, covers, inputs: 1, level: covers };
-            if covers >= self.n {
-                self.live[loc] = Some(node);
-                out.push(Dispatch { worker: loc, last: true, fin: true });
-            } else {
-                self.open.push(node);
-            }
-            return;
-        };
-        let mut node = self.open.remove(i);
-        node.covers += covers;
-        node.inputs += 1;
-        let fin = node.covers >= self.n;
-        let last = fin || node.inputs >= self.arity;
-        let worker = node.worker;
-        if last {
-            self.live[worker] = Some(node);
-        } else {
-            self.open.push(node);
-        }
-        out.push(Dispatch { worker, last, fin });
-    }
-
-    /// Once every leaf is in and nothing is being folded, the leftovers merge into the largest.
-    fn flush(&mut self, out: &mut Vec<Dispatch>) {
-        if self.seen < self.n || self.live.iter().any(Option::is_some) || self.open.len() < 2 {
-            return;
-        }
-        let mut keep = 0;
-        for i in 1..self.open.len() {
-            if self.open[i].covers > self.open[keep].covers {
-                keep = i;
-            }
-        }
-        let kept = self.open.remove(keep);
-        let others = std::mem::replace(&mut self.open, vec![kept]);
-        for node in others {
-            if node.inputs == 1 {
-                self.schedule(node.covers, node.worker, out);
-                continue;
-            }
-            let worker = node.worker;
-            self.live[worker] = Some(node);
-            out.push(Dispatch { worker, last: true, fin: false });
-        }
-    }
-}
-
+/// When the final proof completes: the coordinator's fold scheduler driven by the workers' ready
+/// times. A fold costs `fold` and the last one `last_fold`; a dispatch that only hands a worker an
+/// input costs nothing.
 fn fold_end(ready: &[f64], arity: usize, fold: f64, last_fold: f64) -> f64 {
-    let n = ready.len();
-    let mut sim = FoldSim { n, arity, open: Vec::new(), live: vec![None; n], seen: 0 };
-    let mut inflight = vec![false; n];
-    let mut pending: Vec<Dispatch> = Vec::new();
-    // (time, sequence): ties go to the earlier event
-    let mut events: Vec<(f64, usize, FoldEvent)> = Vec::new();
-    let mut seq = 0;
-    let mut leaves: Vec<usize> = (0..n).collect();
+    enum Event {
+        Leaf(usize),
+        Done(AggDispatch),
+    }
+    let set =
+        |covers: BTreeSet<u32>, location: WorkerId| AggSet { proofs: Vec::new(), covers, location };
+    let mut scheduler = AggScheduler::new(arity, ready.len(), true);
+    let mut leaves: Vec<usize> = (0..ready.len()).collect();
     leaves.sort_by(|&a, &b| ready[a].partial_cmp(&ready[b]).unwrap().then(a.cmp(&b)));
-    for k in leaves {
-        events.push((ready[k], seq, FoldEvent::Leaf(k)));
-        seq += 1;
-    }
-    let mut start = |t: f64,
-                     d: Dispatch,
-                     inflight: &mut Vec<bool>,
-                     events: &mut Vec<(f64, usize, FoldEvent)>| {
-        inflight[d.worker] = true;
-        // a dispatch that only adds an input costs nothing
-        let cost = if d.fin {
-            last_fold
-        } else if d.last {
-            fold
-        } else {
-            0.0
-        };
-        events.push((t + cost, seq, FoldEvent::Done(d)));
-        seq += 1;
-    };
-    let mut end = ready.iter().cloned().fold(f64::MIN, f64::max);
+    // (time, sequence): ties go to the earlier event
+    let mut events: Vec<(f64, usize, Event)> =
+        leaves.into_iter().enumerate().map(|(seq, k)| (ready[k], seq, Event::Leaf(k))).collect();
+    let mut seq = events.len();
     while !events.is_empty() {
-        let mut first = 0;
-        for i in 1..events.len() {
-            if (events[i].0, events[i].1) < (events[first].0, events[first].1) {
-                first = i;
-            }
-        }
+        let first = (0..events.len())
+            .min_by(|&a, &b| {
+                (events[a].0, events[a].1).partial_cmp(&(events[b].0, events[b].1)).unwrap()
+            })
+            .unwrap();
         let (t, _, event) = events.swap_remove(first);
-        let mut out = Vec::new();
-        match event {
-            FoldEvent::Leaf(k) => {
-                sim.seen += 1;
-                sim.schedule(1, k, &mut out);
-                sim.flush(&mut out);
+        let dispatches = match event {
+            Event::Leaf(k) => {
+                scheduler.on_set_ready(set([k as u32].into(), WorkerId::from(k.to_string())))
             }
-            FoldEvent::Done(d) => {
-                inflight[d.worker] = false;
-                if let Some(i) = pending.iter().position(|p| !inflight[p.worker]) {
-                    let next = pending.remove(i);
-                    start(t, next, &mut inflight, &mut events);
+            Event::Done(done) => {
+                if done.final_proof {
+                    return t;
                 }
-                if d.fin {
-                    end = t;
-                    break;
+                let mut out: Vec<AggDispatch> =
+                    scheduler.on_ack(&done.worker).into_iter().collect();
+                if done.last_proof {
+                    let node = scheduler.take_live(&done.worker).expect("live fold node");
+                    out.extend(scheduler.on_set_ready(set(node.covers, done.worker)));
                 }
-                if d.last {
-                    let node = sim.live[d.worker].take().expect("live fold node");
-                    sim.schedule(node.covers, d.worker, &mut out);
-                    sim.flush(&mut out);
-                }
+                out
             }
-        }
-        for d in out {
-            if inflight[d.worker] {
-                pending.push(d);
-            } else {
-                start(t, d, &mut inflight, &mut events);
-            }
+        };
+        for d in dispatches {
+            let cost = match (d.last_proof, d.final_proof) {
+                (_, true) => last_fold,
+                (true, false) => fold,
+                (false, false) => 0.0,
+            };
+            events.push((t + cost, seq, Event::Done(d)));
+            seq += 1;
         }
     }
-    end
+    unreachable!("the scheduler ends every job with a final proof")
 }
 
 /// CPython's `random.Random(seed).gauss`: MT19937 seeded by `init_by_array`, 53-bit uniforms.
@@ -501,76 +398,51 @@ impl PyRandom {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::estimate;
-    use std::collections::BTreeMap;
-
-    #[derive(Deserialize)]
-    struct Block {
-        plan: Vec<(String, usize)>,
-        exec_s: f64,
-        mb: f64,
-    }
-
-    #[derive(Deserialize)]
-    struct Case {
-        b: String,
-        #[serde(rename = "W")]
-        w: usize,
-        seed: u64,
-        final_s: f64,
-        p: [f64; 3],
-        // `base` in the reference
-        #[serde(default, rename = "base")]
-        phase1: Vec<f64>,
-        #[serde(default)]
-        ready: Vec<f64>,
-    }
-
-    #[derive(Deserialize)]
-    struct Parity {
-        blocks: BTreeMap<String, Block>,
-        cases: Vec<Case>,
-    }
-
-    /// Checks every case against the reference; returns how many there are.
-    fn parity(text: &str) -> usize {
-        let parity: Parity = serde_json::from_str(text).unwrap();
-        let coeffs = Coeffs::embedded_cluster().unwrap();
-        for c in &parity.cases {
-            let b = &parity.blocks[&c.b];
-            // the reference plan already lists the fixed instances
-            let mut est = estimate(&b.plan, 0, b.exec_s, &coeffs);
-            est.input_mb = b.mb;
-            let got = cluster_phases(&est, c.w, &coeffs, c.final_s, c.seed);
-            let diff = |a: f64, r: f64, what: &str| {
-                assert!((a - r).abs() < 1e-9, "{} W={} {what}: {a} vs reference {r}", c.b, c.w);
-            };
-            for (k, r) in c.phase1.iter().enumerate() {
-                diff(got.phase1[k], *r, "phase 1 of a worker");
-            }
-            for (k, r) in c.ready.iter().enumerate() {
-                diff(got.ready[k], *r, "ready time of a worker");
-            }
-            for (i, what) in ["phase 1", "phase 2", "phase 3"].iter().enumerate() {
-                diff(got.phase[i], c.p[i], what);
-            }
-        }
-        parity.cases.len()
-    }
 
     #[test]
-    fn matches_the_reference_model_on_the_fixture() {
-        assert!(parity(include_str!("parity_v32.json")) > 50);
-    }
-
-    /// Every block of both test corpora: `ESTIMATE_PARITY_FILE=<parity_full.json> cargo test
-    /// -p cargo-zisk --lib matches_the_reference_model_on_every_block -- --ignored --nocapture`.
-    #[test]
-    #[ignore]
-    fn matches_the_reference_model_on_every_block() {
-        let path = std::env::var("ESTIMATE_PARITY_FILE").expect("ESTIMATE_PARITY_FILE");
-        let n = parity(&std::fs::read_to_string(path).unwrap());
-        println!("{n} cases within 1e-9 s of the reference");
+    fn an_estimate_composes_the_phases() {
+        let c = Coeffs::embedded().unwrap();
+        let cm = &c.cluster;
+        let plan: Vec<(String, usize)> = [("Rom", 1), ("Main", 3), ("Keccakf", 1), ("Mem", 1)]
+            .iter()
+            .map(|(a, n)| (a.to_string(), *n))
+            .collect();
+        let lines = cost_plan(&plan, &c);
+        // one worker: no noise to take a maximum over, no delivery, no fold
+        let w1 = estimate(&plan, 10, 0.5, 2.0, 1, false, &c);
+        let load = &c.partition(&lines, 1)[0];
+        let planning = cm.planning_s * 6.0;
+        let phase = cm.exec_ratio * 0.5 + planning + cm.phase_const_s + load.phase_s;
+        assert!((w1.phase_s - phase).abs() < 1e-12);
+        let proofs = cm.proofs_const_s + cm.proofs_factor * load.proofs_s;
+        assert!((w1.proofs_s - proofs).abs() < 1e-12);
+        assert_eq!(w1.final_s, cm.final_s);
+        assert_eq!(estimate(&plan, 10, 0.5, 2.0, 1, true, &c).final_s, cm.final_plain_s.unwrap());
+        assert_eq!(w1.instances, 7);
+        assert!(w1.unknown_airs.is_empty());
+        // two workers: the Rom and a Main leave worker 0 the lighter one when the Keccakf comes
+        let w2 = estimate(&plan, 10, 0.5, 2.0, 2, false, &c);
+        let load = c.partition(&lines, 2);
+        assert_eq!((load[0].airs["Rom"], load[0].airs["Main"], load[0].airs["Keccakf"]), (1, 1, 1));
+        assert_eq!((load[1].airs["Main"], load[1].airs["Mem"]), (2, 1));
+        let delivery = 2.0 * 2.0 / cm.link_mb_per_s;
+        let end = |k: usize, saving: f64| {
+            delivery + cm.exec_ratio * 0.5 + planning + cm.phase_const_s + load[k].phase_s - saving
+        };
+        assert!((w2.workers_load[0].phase1_s - end(0, cm.keccakf_saving_s)).abs() < 1e-12);
+        assert!((w2.workers_load[1].phase1_s - end(1, 0.0)).abs() < 1e-12);
+        // worker 1 has no Keccakf: it lacks the pair
+        let ready = |k: usize, nopair: f64| {
+            cm.proofs_const_s + cm.proofs_factor * load[k].proofs_s + nopair + cm.hop_s()
+        };
+        assert!((w2.workers_load[0].ready_s - ready(0, 0.0)).abs() < 1e-12);
+        assert!((w2.workers_load[1].ready_s - ready(1, cm.nopair_s)).abs() < 1e-12);
+        // each phase is at least its slowest worker, and the fold comes after the final proof
+        assert!(w2.phase_s >= end(0, cm.keccakf_saving_s).max(end(1, 0.0)));
+        assert!(w2.proofs_s >= ready(0, 0.0).max(ready(1, cm.nopair_s)));
+        assert!(w2.final_s > cm.final_s + cm.rec2_s);
+        assert!((w2.total_s - (w2.phase_s + w2.proofs_s + w2.final_s)).abs() < 1e-12);
+        assert!(w2.total_s < w1.total_s);
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! `zisk-estimate-fit`: the coefficients of the cluster model from measurements.
+//! `zisk-estimate-fit`: the coefficients of the model from measurements.
 //!
 //!   zisk-estimate -e <elf> -i <dir> -a -g --json-out blocks.json            (what the tool sees)
 //!   zisk-estimate-measure -e <elf> -i <dir> -k <key> -g --out workers.json   (what a worker takes)
@@ -36,7 +36,7 @@ struct Args {
     cluster_jobs: Option<PathBuf>,
 
     /// Prior coefficients: the prices the fit is pulled towards and everything it does not fit.
-    /// Defaults to the embedded cluster table.
+    /// Defaults to the embedded table.
     #[arg(long)]
     coeffs: Option<PathBuf>,
 
@@ -65,7 +65,7 @@ fn main() -> Result<()> {
     let args = Args::parse();
     let prior = match &args.coeffs {
         Some(p) => Coeffs::from_file(p)?,
-        None => Coeffs::embedded_cluster()?,
+        None => Coeffs::embedded()?,
     };
     let mut blocks: BTreeMap<String, Block> = BTreeMap::new();
     for p in &args.estimates {
@@ -83,7 +83,7 @@ fn main() -> Result<()> {
         keep_proofs: args.keep_proofs,
     };
     let f = fit(&corpora, &blocks, &prior, options)?;
-    let mut coeffs = f.apply(&prior)?;
+    let mut coeffs = f.apply(&prior);
 
     println!(
         "phase 1   c {:.1} ms  rho {:.4}  tau {:.3} ms  kappa {:.1} ms  sigma1 {:.1} ms",
