@@ -25,7 +25,9 @@ use std::{
 };
 use sysinfo::System;
 use zisk_common::{DataBusTrait, EmuTrace};
-use zisk_core::ZiskRom;
+use zisk_core::{
+    Mem, ZiskRom, GENERAL_RAM_ADDR, OUTPUT_ADDR, STACK_ADDR, SYS_ADDR, ZISKLIB_RAM_ADDR,
+};
 use zisk_transpiler_common::ZiskTranspiler;
 
 pub trait Emulator {
@@ -38,6 +40,21 @@ pub trait Emulator {
 use rayon::prelude::*;
 
 pub struct ZiskEmulator;
+
+/// Decode the fixed buffer descriptor only after successful execution.
+fn guest_buffer(mem: &Mem) -> Result<&[u8], ZiskEmulatorErr> {
+    let ptr = mem.read(OUTPUT_ADDR + 32, 8);
+    let len = mem.read(OUTPUT_ADDR + 40, 8);
+    let invalid = || ZiskEmulatorErr::Unknown("Buffer range is outside guest RAM".into());
+    let end = ptr.checked_add(len).ok_or_else(invalid)?;
+    if ![(STACK_ADDR, SYS_ADDR), (GENERAL_RAM_ADDR, ZISKLIB_RAM_ADDR)]
+        .iter()
+        .any(|&(lo, hi)| lo <= ptr && ptr < hi && end <= hi)
+    {
+        return Err(invalid());
+    }
+    mem.try_read_slice(ptr, len).ok_or_else(invalid)
+}
 
 impl ZiskEmulator {
     /// Lists all device-under-test riscof files in a directory (*dut*.elf) and calls
@@ -158,6 +175,12 @@ impl ZiskEmulator {
 
         // Get the emulation output
         let output = emu.get_output_8();
+
+        if let Some(path) = &options.dump_guest_buffer {
+            fs::write(path, guest_buffer(&emu.ctx.inst_ctx.mem)?).map_err(|e| {
+                ZiskEmulatorErr::Unknown(format!("Writing guest buffer {path}: {e}"))
+            })?;
+        }
 
         // OUTPUT:
         // Save output to a file if requested
@@ -449,5 +472,31 @@ fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
         s.clone()
     } else {
         "unknown panic payload".to_string()
+    }
+}
+
+#[cfg(test)]
+mod guest_buffer_tests {
+    use super::*;
+
+    #[test]
+    fn guest_buffer_checks_guest_range() {
+        let mut mem = Mem::new();
+        mem.add_write_section(OUTPUT_ADDR, GENERAL_RAM_ADDR - OUTPUT_ADDR + 8);
+        mem.write(GENERAL_RAM_ADDR, u64::from_le_bytes(*b"payload!"), 8);
+
+        for (ptr, len, expected) in [
+            (GENERAL_RAM_ADDR + 1, 7, Some(&b"ayload!"[..])),
+            (0, 7, None),
+            (OUTPUT_ADDR, 8, None),
+            (SYS_ADDR - 1, 2, None),
+            (ZISKLIB_RAM_ADDR - 1, 2, None),
+            (GENERAL_RAM_ADDR + 1, 8, None),
+            (GENERAL_RAM_ADDR + 1, u64::MAX, None),
+        ] {
+            mem.write(OUTPUT_ADDR + 32, ptr, 8);
+            mem.write(OUTPUT_ADDR + 40, len, 8);
+            assert_eq!(guest_buffer(&mem).ok(), expected);
+        }
     }
 }
