@@ -53,9 +53,11 @@ impl Dma64AlignedInput {
         let pre_count = DmaInfo::get_pre_count(encoded) as u64;
         let skip_count = skip_rows * ops_x_rows;
         let data_offset = DmaInfo::get_loop_data_offset(encoded) + skip_count;
-        let count = DmaInfo::get_loop_count(encoded) - skip_count;
         let total_rows = DmaInfo::get_loop_count(encoded).div_ceil(ops_x_rows);
         let rows = std::cmp::min(total_rows - skip_rows, max_rows) as u32;
+        // Only the words of the rows this input fills: an operation that runs on into the next
+        // instance leaves the rest of them to that instance's input.
+        let count = (DmaInfo::get_loop_count(encoded) - skip_count).min(rows as usize * ops_x_rows);
         Self {
             dst: data[A] + pre_count,
             src: data[B] + pre_count,
@@ -203,5 +205,40 @@ impl crate::DmaInputPosition for Dma64AlignedInput {
 
     fn must_be_last(&self) -> bool {
         self.is_last_instance_input
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An aligned memcpy of `words` words: its bus data and its source words, `1..=words`.
+    fn memcpy(words: usize) -> (Vec<u64>, Vec<u64>) {
+        let mut data = vec![0u64; DMA_ENCODED + 1];
+        data[OP] = ZiskOp::DMA_MEMCPY as u64;
+        data[A] = 0x1000;
+        data[B] = 0x8000;
+        data[DMA_ENCODED] = DmaInfo::encode_memcpy(data[A], data[B], words * 8);
+        let offset = DmaInfo::get_loop_data_offset(data[DMA_ENCODED]);
+        let mut data_ext = vec![0u64; offset];
+        data_ext.extend(1..=words as u64);
+        (data, data_ext)
+    }
+
+    #[test]
+    fn an_input_keeps_only_the_source_words_of_its_rows() {
+        let ops = DMA_64_ALIGNED_OPS_BY_ROW;
+        let (data, data_ext) = memcpy(100 * ops + 1);
+        let offset = DmaInfo::get_loop_data_offset(data[DMA_ENCODED]);
+        let words = |skip_rows, max_rows| {
+            Dma64AlignedInput::from(&data, &data_ext, 0, skip_rows, ops, max_rows).src_values
+        };
+
+        // The operation runs on into the next instance: only the words of these 10 rows.
+        assert_eq!(words(0, 10), data_ext[offset..offset + 10 * ops]);
+        // Rows skipped, taken by the previous instance: from the first word of its own rows.
+        assert_eq!(words(3, 10), data_ext[offset + 3 * ops..offset + 13 * ops]);
+        // The operation ends here: up to its last word, in a row it does not fill.
+        assert_eq!(words(95, 10), data_ext[offset + 95 * ops..]);
     }
 }

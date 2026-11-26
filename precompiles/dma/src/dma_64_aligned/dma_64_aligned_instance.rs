@@ -106,9 +106,8 @@ fn collector_bytes(inputs: u64, rows: u64, ops_by_row: usize) -> u64 {
 }
 
 impl<F: PrimeField64> Instance<F> for Dma64AlignedInstance<F> {
-    /// The inputs and the source words of the rows the instance was given. An input whose copy
-    /// runs on into the next instance holds the rest of that copy too
-    /// ([`crate::Dma64AlignedInput::from`]): at most that one input goes beyond this.
+    /// The inputs and the source words of the rows the instance was given
+    /// ([`crate::Dma64AlignedInput::from`] keeps those only).
     fn collector_capacity_bytes(&self) -> u64 {
         let checkpoint = DmaCheckPoint::of(&self.ictx);
         collector_bytes(checkpoint.inputs(), checkpoint.rows(), self.ops_by_row())
