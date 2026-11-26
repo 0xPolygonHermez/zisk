@@ -70,9 +70,13 @@ pub(crate) fn host_memory_share(
 ) -> Option<u64> {
     let mut system = System::new();
     system.refresh_memory();
+    let total = system.total_memory();
+    if total == 0 {
+        // No memory figures. sysinfo panics when asked for a cgroup's limits without a total.
+        return None;
+    }
     let cgroup = system.cgroup_limits().map(|limits| (limits.total_memory, limits.free_memory));
-    let (total, available) =
-        within_cgroup(system.total_memory(), system.available_memory(), cgroup);
+    let (total, available) = within_cgroup(total, system.available_memory(), cgroup);
     reported_share(total, available, node_processes, margin)
 }
 
