@@ -1,0 +1,11 @@
+[workspace]
+
+[package]
+name = "qwen-key-tile"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+pci-dotf8 = { git = "https://github.com/amiabix/qproof.git", rev = "3de0f3f12dd73df1a05deae5616ec5964622d4f9" }
+ziskos = { path = "../../../ziskos/entrypoint" }

@@ -8,6 +8,45 @@ Run models whose weights and activations are BF16 (SmolLM2, Qwen3-0.6B) with the
 
 Like `dot_f8`, the first version is **emulator only**: it runs in `ziskemu` and the assembly emulator with an estimated cost, and a state machine comes later.
 
+## Qwen3-4B emulator benchmark
+
+The [runnable example](../../examples/qwen3-4b/README.md) includes the checkpoint splitter, stage runner and reproduction commands. The tables below record the original benchmark binaries. The [matched tile](../../examples/qwen3-4b/tile/README.md) also reports counters from the rebuilt example.
+
+The Qproof harness splits Qwen3-4B-Instruct-2507 at layer boundaries. One replay of the saved request uses **112 separate ZisK executions** with the original BF16 checkpoint. The request contains 28 prompt tokens and 12 reply tokens. The last reply token is predicted at position 38, giving 39 consumed positions.
+
+| Stage | Executions | Framed input bytes per execution | Work |
+|---|---:|---:|---|
+| Embedding | 1 | 222,416 | Authenticate the selected embedding rows and produce the initial activations. |
+| Decoder | 36 | 202,261,176 | Load one layer’s weights and its incoming activations. Run all 39 positions and pass the output to the next layer. |
+| Vocabulary head | 75 | 2,370,912–10,890,592 | Read the final decoder activations and score one vocabulary shard at all 12 prediction positions. |
+
+Each decoder input is about **193 MiB**. The run uses `ziskemu --max-input-mem 268435456` (256 MiB) per execution. This limit applies to the guest input. The measured boundary tensor is 39 × 2,560 values stored as FP32 bits, or **399,360 bytes**. After each decoder execution the host reads that output and inserts its bytes into the next job. All head shards receive the same final tensor. The first 74 cover 2,048 vocabulary rows each and the last covers 384, accounting for all 151,936 logits per prediction.
+
+### Measured execution cost and parity
+
+The matched tile uses layer 0’s key projection, rows 0–63, at all 39 positions and 2,560 columns. Both modes run the same guest ELF on the same operands and hash their outputs. The baseline uses lossless `dot_f8` products and the pinned ordered FP32 accumulation. The BF16 arm uses `dot_bf16` and rounds the returned FP32 value to BF16. Measurements use `ziskemu -X` cost version 2 at commit `16bbae0a2`.
+
+| Workload | Kernel | Guest steps | Total emulator cost | Values matching pinned reference |
+|---|---|---:|---:|---:|
+| Key-projection tile | Ordered baseline | 333,622,869 | 29,950,370,697 | 2,496 / 2,496 |
+| Same tile | `dot_bf16` | 1,288,035 | 695,973,694 | 2,496 / 2,496 |
+| Full decoder layer 0 | `dot_bf16` on all seven learned projections | 1,499,964,933 | 332,446,825,026 | 98,427 / 99,840 |
+
+The tile used 43.0× less emulator cost with `dot_bf16`. The full-layer comparison counts outgoing activation values. The 1,413 differences show that agreement on the tile does not establish layer-wide bit parity. These measurements cover emulator execution. Proof generation time and proof-planner memory remain unmeasured for this precompile.
+
+The rebuilt example reproduced all 99,840 layer-0 values from the archived BF16 run in 1,497,269,919 steps with total emulator cost 332,183,049,347.
+
+### Full-request results
+
+| Stage | Guest steps | Total emulator cost |
+|---|---:|---:|
+| Embedding | 2,539,741 | 696,466,473 |
+| 36 decoder layers | 54,013,665,423 | 11,969,444,913,532 |
+| 75 vocabulary shards | 1,154,942,403 | 456,912,065,983 |
+| Entire request | 55,171,147,567 | 12,427,053,445,988 |
+
+On the saved transcript, the greedy token matched the pinned reference at all 12 prediction positions. Of 1,823,232 logits, 229,817 matched bit for bit. The maximum absolute logit difference was 0.5. The total includes all 112 emulator executions.
+
 ## Semantics
 
 ### Inputs
