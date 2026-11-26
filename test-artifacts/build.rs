@@ -41,7 +41,6 @@ const PROGRAMS: &[&str] = &[
     "hashes",
     "input_2gb",
     "keccak",
-    "keccakf_cache",
     "liveness",
     "missing_entrypoint",
     "panic_modes",

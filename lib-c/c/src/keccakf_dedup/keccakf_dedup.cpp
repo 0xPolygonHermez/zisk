@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Open-addressed, linearly probed hash table split in three arrays, as in keccakf_cache:
+// Open-addressed, linearly probed hash table split in three arrays:
 //   - tags: one byte per slot, 0 when empty, otherwise 7 bits of the input fingerprint
 //   - slot_entries: per slot, the number of the entry it holds; only read on a tag match
 //   - entries: the unique permutations, in order of first appearance, so the entry number is

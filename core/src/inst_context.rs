@@ -4,7 +4,7 @@
 //! * The state includes: memory, registers (a, b, c, flag, sp), program counter (pc), step and a
 //!   flag to mark the end of the program execution.
 
-use ziskos::zisklib::{keccakf_cache::KeccakfCache, RANDOM_SEED_WORDS};
+use ziskos::zisklib::RANDOM_SEED_WORDS;
 
 use crate::{
     KeccakfDedup, Mem, FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE, REGS_IN_MAIN_TOTAL_NUMBER,
@@ -127,12 +127,9 @@ pub struct InstContext {
     /// Fcall data
     pub fcall: FcallInstContext,
 
-    /// Keccak-f input state -> index cache, fed by the keccakf cache fcalls. Lives as long as
-    /// this context, i.e. as long as the execution it belongs to
-    pub keccakf_cache: KeccakfCache,
-
     /// Distinct Keccak-f permutations seen while generating the minimal trace, which give every
-    /// Keccak-f its dedup word. Lives as long as this context, as the cache above
+    /// Keccak-f its dedup word. Lives as long as this context, i.e. as long as the execution
+    /// it belongs to
     pub keccakf_dedup: KeccakfDedup,
 
     /// Output state and m of the last blake2b round handed to the chain, valid once cached in the
@@ -184,7 +181,6 @@ impl InstContext {
             emulation_mode: EmulationMode::default(),
             precompiled: PrecompiledInstContext::default(),
             fcall: FcallInstContext::default(),
-            keccakf_cache: KeccakfCache::default(),
             keccakf_dedup: KeccakfDedup::default(),
             blake2b_chain: [0; 32],
             blake2b_chain_cached: false,

@@ -36,10 +36,7 @@ use std::{
     str::FromStr,
 };
 use tiny_keccak::keccakf;
-use ziskos::zisklib::{
-    keccakf_cache::KECCAKF_STATE_WORDS, FCALL_GET_KECCAKF_CACHE_INDEX_ID, FCALL_INPUT_READY_ID,
-    FCALL_RANDOM_SEED_ID, FCALL_SET_KECCAKF_CACHE_INDEX_ID, RANDOM_SEED_WORDS,
-};
+use ziskos::zisklib::{FCALL_INPUT_READY_ID, FCALL_RANDOM_SEED_ID, RANDOM_SEED_WORDS};
 
 use crate::ops_core::*;
 use crate::ops_core_context::*;
@@ -632,22 +629,12 @@ pub fn opc_keccak(ctx: &mut InstContext) {
     const WORDS: usize = 25;
     let mut data = [0u64; WORDS];
 
-    // Index this permutation must be cached under, if fcall_set_keccakf_cache_index() asked for
-    // it. It is consumed whatever the emulation mode is, so that a request always applies to the
-    // Keccak-f that follows it
-    let cache_index = ctx.keccakf_cache.take_pending_index();
-
     // Get input data from memory or from the precompiled context
     match ctx.emulation_mode {
         EmulationMode::Mem => {
             // Read data from the memory address
             for (i, d) in data.iter_mut().enumerate() {
                 *d = ctx.mem.read(address + (8 * i as u64), 8);
-            }
-
-            // Cache the input state, before it is overwritten by the permutation
-            if let Some(index) = cache_index {
-                ctx.keccakf_cache.store(&data, index);
             }
 
             // Call keccakf
@@ -668,11 +655,6 @@ pub fn opc_keccak(ctx: &mut InstContext) {
             ctx.precompiled.input_data.clear();
             for (i, d) in data.iter_mut().enumerate() {
                 ctx.precompiled.input_data.push(*d);
-            }
-
-            // Cache the input state, before it is overwritten by the permutation
-            if let Some(index) = cache_index {
-                ctx.keccakf_cache.store(&data, index);
             }
 
             // Call keccakf, unless an earlier one had the same input state and its output is
@@ -740,9 +722,6 @@ pub fn opc_keccak_xor(ctx: &mut InstContext) {
         }
     }
 
-    // As for Keccak-f: a pending cache index applies to the permutation of this instruction
-    let cache_index = ctx.keccakf_cache.take_pending_index();
-
     if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
         // Check input data has the expected length: the state, the block and the dedup word
         if ctx.precompiled.input_data.len() != KECCAKF_XOR_MT_WORDS {
@@ -766,11 +745,6 @@ pub fn opc_keccak_xor(ctx: &mut InstContext) {
         let mut state: [u64; STATE] = data[..STATE].try_into().unwrap();
         for (lane, block) in state.iter_mut().zip(&data[STATE..]) {
             *lane ^= *block;
-        }
-
-        // Cache the input of the permutation, before it is overwritten
-        if let Some(index) = cache_index {
-            ctx.keccakf_cache.store(&state, index);
         }
 
         if let EmulationMode::GenerateMemReads = ctx.emulation_mode {
@@ -2456,29 +2430,6 @@ pub fn opc_fcall(ctx: &mut InstContext) {
             );
         }
         0
-    } else if function_id == FCALL_SET_KECCAKF_CACHE_INDEX_ID as u64 {
-        if ctx.fcall.parameters_size != 1 {
-            panic!(
-                "opc_fcall() FCALL_SET_KECCAKF_CACHE_INDEX_ID called with parameters_size={} != 1",
-                ctx.fcall.parameters_size
-            );
-        }
-
-        // The next keccak instruction will cache its input state under this index
-        ctx.keccakf_cache.set_pending_index(ctx.fcall.parameters[0]);
-        0
-    } else if function_id == FCALL_GET_KECCAKF_CACHE_INDEX_ID as u64 {
-        if ctx.fcall.parameters_size != KECCAKF_STATE_WORDS as u64 {
-            panic!(
-                "opc_fcall() FCALL_GET_KECCAKF_CACHE_INDEX_ID called with parameters_size={} != {}",
-                ctx.fcall.parameters_size, KECCAKF_STATE_WORDS
-            );
-        }
-
-        // Returns the index the state was cached under, or KECCAKF_CACHE_INDEX_NOT_FOUND
-        let index = ctx.keccakf_cache.get(&ctx.fcall.parameters[..KECCAKF_STATE_WORDS]);
-        ctx.fcall.result[0] = index;
-        1
     } else if function_id == FCALL_RANDOM_SEED_ID as u64 {
         if ctx.fcall.parameters_size != 0 {
             panic!(

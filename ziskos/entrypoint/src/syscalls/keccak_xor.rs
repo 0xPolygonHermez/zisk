@@ -38,9 +38,6 @@ pub unsafe extern "C" fn syscall_keccak_xor(
             *lane ^= *word;
         }
 
-        // As syscall_keccak_f: the state the permutation runs on is what the cache registers
-        crate::zisklib::keccakf_cache::keccakf_cache_on_keccakf(state);
-
         keccakf(state);
 
         #[cfg(feature = "hints")]

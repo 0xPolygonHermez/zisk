@@ -15,8 +15,7 @@
 #include "../../lib-c/c/src/ec/ec.hpp"
 #include "../../lib-c/c/src/secp256r1/secp256r1.hpp"
 #include "../../lib-c/c/src/fcall/fcall.hpp"
-#include "../../lib-c/c/src/keccakf_cache/keccakf_cache.hpp"
-#include "../../lib-c/c/src/keccakf_cache/keccakf_dedup.hpp"
+#include "../../lib-c/c/src/keccakf_dedup/keccakf_dedup.hpp"
 #include "../../lib-c/c/src/arith256/arith256.hpp"
 #include "../../lib-c/c/src/arith384/arith384.hpp"
 #include "../../lib-c/c/src/bn254/bn254.hpp"
@@ -102,8 +101,6 @@ static const char * asm_call_fcall_names[ASM_CALL_FCALL_IDS] = {
     [FCALL_UINT256_INV_ID] = "uint256_inv",
     [FCALL_UINT256_INV_MOD_ID] = "uint256_inv_mod",
     [FCALL_BIGINT_DIV_ID] = "bigint_div",
-    [FCALL_SET_KECCAKF_CACHE_INDEX_ID] = "set_keccakf_cache_index",
-    [FCALL_GET_KECCAKF_CACHE_INDEX_ID] = "get_keccakf_cache_index",
     [FCALL_ED25519_FP_SQRT_RATIO_ID] = "ed25519_fp_sqrt_ratio",
     [FCALL_RANDOM_SEED_ID] = "random_seed",
 };
@@ -488,10 +485,6 @@ extern int _opcode_keccak(uint64_t address)
 #endif
 #endif
 
-    // Cache the input state if fcall_set_keccakf_cache_index() asked for it, before the
-    // permutation overwrites it
-    keccakf_cache_on_keccakf((const uint64_t *)address);
-
 #ifdef ASM_PRECOMPILE_CACHE
     if (precompile_cache_storing)
     {
@@ -535,10 +528,6 @@ extern uint64_t _opcode_keccak_mt(uint64_t address)
     ASM_CALL_METRICS_START();
 
     uint64_t * state = (uint64_t *)address;
-
-    // Cache the input state if fcall_set_keccakf_cache_index() asked for it, before the
-    // permutation overwrites it
-    keccakf_cache_on_keccakf(state);
 
     uint64_t dedup_word;
     uint64_t fingerprint;

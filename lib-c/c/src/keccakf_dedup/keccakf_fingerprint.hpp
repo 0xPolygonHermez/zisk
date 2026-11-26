@@ -3,9 +3,9 @@
 
 #include <stdint.h>
 
-// Cheap, non-cryptographic 64-bit fingerprint of a Keccak-f[1600] state, shared by the hash
-// tables keyed by a state (keccakf_cache, keccakf_dedup). A fingerprint only selects the slots
-// to probe: the tables compare the whole state before reporting a match.
+// Cheap, non-cryptographic 64-bit fingerprint of a Keccak-f[1600] state, for the hash table
+// keyed by a state (keccakf_dedup). A fingerprint only selects the slots to probe: the table
+// compares the whole state before reporting a match.
 
 #ifndef KECCAKF_STATE_WORDS
 // Number of 64-bit words of a Keccak-f[1600] state

@@ -21,7 +21,7 @@ extern "C" {
 // unique permutation it is and whether it is the first one. That is the dedup word below, which
 // the minimal trace carries after the 25 input words of every Keccak-f.
 //
-// Same layout as keccakf_cache: an open-addressed table keyed by a cheap fingerprint, with the
+// The table is open-addressed and keyed by a cheap fingerprint, with the
 // whole input state compared on a fingerprint match, so results are exact.
 
 // Dedup word of a Keccak-f: index of its unique permutation, plus this flag when the Keccak-f is

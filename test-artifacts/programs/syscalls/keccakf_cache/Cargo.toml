@@ -1,7 +1,0 @@
-[package]
-name = "keccakf_cache"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-ziskos.workspace = true

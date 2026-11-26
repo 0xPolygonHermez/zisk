@@ -23,8 +23,7 @@
 #include "emu.hpp"
 #include "c_provided.hpp"
 #include "log.hpp"
-#include "../../lib-c/c/src/keccakf_cache/keccakf_cache.hpp"
-#include "../../lib-c/c/src/keccakf_cache/keccakf_dedup.hpp"
+#include "../../lib-c/c/src/keccakf_dedup/keccakf_dedup.hpp"
 #include "../../lib-c/c/src/fcall/fcall.hpp"
 
 /****************************/
@@ -1016,9 +1015,6 @@ void server_reset_fast (void)
 
 void server_reset_slow (void)
 {
-    // Release the Keccak-f cache built during the emulation that just finished
-    keccakf_cache_free();
-
     // The table of unique Keccak-f permutations is NOT released here: it is emptied when the
     // next emulation starts (keccakf_dedup_reset) and keeps its memory. Releasing it makes every
     // emulation fault its pages in again, which doubles what the table costs (measured: about
@@ -1087,9 +1083,6 @@ void server_run (void)
     {
         memset((void *)trace_address, 0, trace_size);
     }
-
-    // Start this emulation with an empty Keccak-f cache: it only lives for one execution
-    keccakf_cache_reset();
 
     // Start this emulation with no Keccak-f permutation registered as unique
     keccakf_dedup_reset();

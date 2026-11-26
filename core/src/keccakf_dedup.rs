@@ -8,7 +8,7 @@
 //! unique permutation, plus [`KECCAKF_DEDUP_REPLICA_FLAG`] when it is a replica.
 //!
 //! This is the Rust emulator's table; the assembly emulator keeps an equivalent one
-//! (`lib-c/c/src/keccakf_cache/keccakf_dedup.cpp`). Both number the unique permutations in the
+//! (`lib-c/c/src/keccakf_dedup/keccakf_dedup.cpp`). Both number the unique permutations in the
 //! same order, so they produce the same dedup words.
 
 use std::collections::HashMap;
