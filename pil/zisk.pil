@@ -39,6 +39,7 @@ require "poseidon/pil/poseidon2_koalabear.pil"
 require "blake2/pil/blake2br.pil"
 require "blake2/pil/blake2s.pil"
 require "blake3/pil/blake3f.pil"
+require "dot_f8/pil/dot_f8.pil"
 
 enable_range_stats();
 
@@ -193,6 +194,9 @@ airgroup Zisk {
     virtual JumpDestCompressorTable();
     virtual JumpDestBitmapTable();
     JumpDest(N: 2**21, enable_flag: enable_jump_dest);
+
+    DotF8(N: 2**21);
+    virtual DotF8DecodeTable();
 
     virtual DualRange(id: DUAL_RANGE_7_BITS_ID, min1: 0, max1: P2_7-1, min2: 0, max2: P2_7-1) alias DualRange7Bits;
     virtual DualRange(id: DUAL_RANGE_BYTE_ID, min1: 0, max1: P2_8-1, min2: 0, max2: P2_8-1) alias DualByte;

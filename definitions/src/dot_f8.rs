@@ -25,9 +25,9 @@ pub const DOT_F8_E2M1: u8 = 3;
 /// Number of formats; valid IDs are below it.
 pub const DOT_F8_FORMATS: u8 = 4;
 
-/// The largest vector length for which the `i64` sums cannot overflow: every product is below
-/// 2^36.
-pub const DOT_F8_MAX_N: u64 = 1 << 26;
+/// The largest vector length: a call must fit in one `DotF8` instance of 2^21 rows of 8 values.
+/// Every product is below 2^36, so the `i64` sums cannot overflow either.
+pub const DOT_F8_MAX_N: u64 = 1 << 24;
 
 /// Each value of format `fmt` is an integer number of units `2^-dot_f8_unit_shift(fmt)`.
 pub const fn dot_f8_unit_shift(fmt: u8) -> u32 {
@@ -52,7 +52,7 @@ pub const fn dot_f8_bits(fmt: u8) -> u32 {
 /// The largest absolute value of format `fmt`, in its units.
 pub const fn dot_f8_max_units(fmt: u8) -> i32 {
     match fmt {
-        DOT_F8_I8 => 127,
+        DOT_F8_I8 => 128,
         DOT_F8_E4M3 => 448 << 9,
         DOT_F8_E4M3_FNUZ => 240 << 10,
         DOT_F8_E2M1 => 6 << 1,
@@ -140,6 +140,10 @@ pub const fn dot_f8_formats(x: u8, y: u8) -> u64 {
     x as u64 | (y as u64) << 8
 }
 
+/// Flag of the `formats` word: `y` holds `block` values and is reused for every block of `x`, so
+/// one call computes a matrix-vector product. `block` must not be 0.
+pub const DOT_F8_REPEAT_Y: u64 = 1 << 16;
+
 /// The reference semantics of `dot_f8`, on byte slices: returns `Σ x[i]·y[i]` over `n` values
 /// in units `2^-(unit_shift(fx) + unit_shift(fy))`, and writes the sum of each block of `block`
 /// values to `out` when given. Checks nothing: the callers validate the parameters.
@@ -150,13 +154,30 @@ pub fn dot_f8_reference(
     y: &[u8],
     n: usize,
     block: usize,
+    out: Option<&mut [i64]>,
+) -> i64 {
+    dot_f8_reference_with(fx, x, fy, y, n, block, false, out)
+}
+
+/// [`dot_f8_reference`], with `repeat_y` for [`DOT_F8_REPEAT_Y`]: `y` holds `block` values and
+/// value `i` of `x` is multiplied by value `i % block` of `y`.
+#[allow(clippy::too_many_arguments)]
+pub fn dot_f8_reference_with(
+    fx: u8,
+    x: &[u8],
+    fy: u8,
+    y: &[u8],
+    n: usize,
+    block: usize,
+    repeat_y: bool,
     mut out: Option<&mut [i64]>,
 ) -> i64 {
     let mut total = 0i64;
     for b in 0..n / block {
         let mut acc = 0i64;
         for i in b * block..(b + 1) * block {
-            acc += dot_f8_value(fx, x, i) as i64 * dot_f8_value(fy, y, i) as i64;
+            let j = if repeat_y { i - b * block } else { i };
+            acc += dot_f8_value(fx, x, i) as i64 * dot_f8_value(fy, y, j) as i64;
         }
         if let Some(out) = out.as_deref_mut() {
             out[b] = acc;
@@ -198,7 +219,7 @@ mod tests {
     fn largest_values_and_products_fit() {
         for f in 0..DOT_F8_FORMATS {
             let max = (0..=255u8).map(|c| dot_f8_decode_code(f, c).abs()).max().unwrap();
-            assert_eq!(max, if f == DOT_F8_I8 { 128 } else { dot_f8_max_units(f) });
+            assert_eq!(max, dot_f8_max_units(f));
             assert!((max as i64) * (max as i64) < 1 << 36);
         }
     }
@@ -215,5 +236,15 @@ mod tests {
         assert_eq!(out[0] as f64 / unit, 1.0 + 3.0);
         assert_eq!(out[1] as f64 / unit, -1.0 - 2.0);
         assert_eq!(total as f64 / unit, 1.0);
+    }
+
+    #[test]
+    fn reference_repeat_y_is_a_matrix_vector_product() {
+        // x: 2 rows of int8 [1, 2], [3, -1]; y: [5, 7], read again for each row.
+        let (x, y) = ([1u8, 2, 3, 0xff], [5u8, 7]);
+        let mut out = [0i64; 2];
+        let total = dot_f8_reference_with(DOT_F8_I8, &x, DOT_F8_I8, &y, 4, 2, true, Some(&mut out));
+        assert_eq!(out, [5 + 14, 15 - 7]);
+        assert_eq!(total, 27);
     }
 }

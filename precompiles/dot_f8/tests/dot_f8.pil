@@ -1,0 +1,2 @@
+require "dot_f8/pil/dot_f8.pil"
+airgroup DotF8Test { DotF8(N: 64, with_bus: 0); DotF8DecodeTable(); }

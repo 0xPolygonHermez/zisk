@@ -7760,6 +7760,7 @@ dependencies = [
  "zisk-precomp-blake3",
  "zisk-precomp-common",
  "zisk-precomp-dma",
+ "zisk-precomp-dot-f8",
  "zisk-precomp-evm",
  "zisk-precomp-hints",
  "zisk-precomp-keccakf",
@@ -7952,6 +7953,19 @@ dependencies = [
  "zisk-pil",
  "zisk-precomp-common",
  "zisk-precomp-helpers",
+]
+
+[[package]]
+name = "zisk-precomp-dot-f8"
+version = "1.4.0-alpha"
+dependencies = [
+ "proofman-common",
+ "proofman-fields",
+ "zisk-common",
+ "zisk-core",
+ "zisk-definitions",
+ "zisk-pil",
+ "zisk-precomp-common",
 ]
 
 [[package]]

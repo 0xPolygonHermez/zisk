@@ -586,7 +586,6 @@ define_ops! {
     // source words), followed by the loaded words themselves via data_ext_len.
     (JumpDest, "jump_dest", Evm, JUMP_DEST_COST, 0xc0, 8, 0, opc_jump_dest, op_jump_dest, ops_jump_dest),
     (Poseidon2KoalaBear, "poseidon2_koalabear", Poseidon2KoalaBear, POSEIDON2_KOALABEAR_COST, 0xc1, 64, 64, opc_poseidon2_koalabear, op_poseidon2_koalabear, ops_poseidon2_koalabear),
-    // Experimental, emulator only: no state machine proves it yet (see operations/dot_f8.rs).
     // input_size = 56: the minimal-trace header (the 6-word parameter block and the result),
     // followed by both vectors via data_ext_len.
     (DotF8, "dot_f8", DotF8, DOT_F8_COST, 0xc2, 56, 0, opc_dot_f8, op_dot_f8, ops_dot_f8),

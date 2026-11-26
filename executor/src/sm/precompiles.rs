@@ -15,13 +15,14 @@
 use zisk_common::ComponentBuilder;
 use zisk_core::{
     ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, BIG_INT_OP_TYPE_ID, BLAKE2B_OP_TYPE_ID,
-    BLAKE2S_OP_TYPE_ID, BLAKE3_OP_TYPE_ID, KECCAK_OP_TYPE_ID, POSEIDON2_KOALABEAR_OP_TYPE_ID,
-    POSEIDON_OP_TYPE_ID, SHA256_OP_TYPE_ID, TWISTED_EDWARDS_OP_TYPE_ID,
+    BLAKE2S_OP_TYPE_ID, BLAKE3_OP_TYPE_ID, DOT_F8_OP_TYPE_ID, KECCAK_OP_TYPE_ID,
+    POSEIDON2_KOALABEAR_OP_TYPE_ID, POSEIDON_OP_TYPE_ID, SHA256_OP_TYPE_ID,
+    TWISTED_EDWARDS_OP_TYPE_ID,
 };
 use zisk_pil::{
     ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_384_LARGE_AIR_IDS, BLAKE_2_BR_AIR_IDS,
-    BLAKE_2_S_AIR_IDS, BLAKE_3_F_AIR_IDS, KECCAKF_AIR_IDS, POSEIDON_2_KOALA_BEAR_AIR_IDS,
-    POSEIDON_AIR_IDS, SHA_256_F_AIR_IDS, TWISTED_EDWARDS_AIR_IDS,
+    BLAKE_2_S_AIR_IDS, BLAKE_3_F_AIR_IDS, DOT_F_8_AIR_IDS, KECCAKF_AIR_IDS,
+    POSEIDON_2_KOALA_BEAR_AIR_IDS, POSEIDON_AIR_IDS, SHA_256_F_AIR_IDS, TWISTED_EDWARDS_AIR_IDS,
 };
 
 /// Every height of the `ArithEq384` air, which the planner sizes as one ladder. Keep in step with
@@ -42,6 +43,7 @@ use zisk_precomp_blake2::{
     Blake2sCounterInputGen, Blake2sInstance, Blake2sManager,
 };
 use zisk_precomp_blake3::{Blake3Collector, Blake3CounterInputGen, Blake3Instance, Blake3Manager};
+use zisk_precomp_dot_f8::{DotF8Collector, DotF8CounterInputGen, DotF8Instance, DotF8Manager};
 use zisk_precomp_keccakf::{
     KeccakfCollector, KeccakfCounterInputGen, KeccakfInstance, KeccakfManager,
 };
@@ -109,6 +111,12 @@ crate::register_precompiles! {
         air: ADD_256_AIR_IDS,
         rank_assign: false,
     ] => Add256Manager<F>,
+    DotF8 [
+        op: DOT_F8_OP_TYPE_ID,
+        air: DOT_F_8_AIR_IDS,
+        rank_assign: false,
+        extended: true,
+    ] => DotF8Manager<F>,
     TwistedEdwards [
         op: TWISTED_EDWARDS_OP_TYPE_ID,
         air: TWISTED_EDWARDS_AIR_IDS,

@@ -13,6 +13,9 @@ pub const OPERATION_BUS_ID: BusId = BusId(0);
 pub const OPERATION_BUS_DATA_SIZE: usize = 4; // op,op_type,a,b
 /// The size of the precompiled operation data payload, which includes an additional `step` parameter.
 pub const OPERATION_PRECOMPILED_BUS_DATA_SIZE: usize = 5; // op,op_type,a,b, step
+/// dot_f8 header: x, y, n, formats, block, out and the result c; the vector words travel as
+/// extended data.
+pub const OPERATION_BUS_DOT_F8_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 7;
 
 // worst case:
 // arith_256:     3 x 256 + 2 addr = 3 * 4 + 2 = 14
@@ -836,6 +839,14 @@ impl OperationBusData<u64> {
         let step = ctx.step;
 
         match inst.op_type {
+            ZiskOperationType::DotF8 => {
+                debug_assert_eq!(ctx.precompiled.input_data.len(), 7);
+                buffer[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
+                    .copy_from_slice(&[op, op_type, a, b, step]);
+                buffer[OPERATION_PRECOMPILED_BUS_DATA_SIZE..OPERATION_BUS_DOT_F8_DATA_SIZE]
+                    .copy_from_slice(&ctx.precompiled.input_data);
+                &buffer[..OPERATION_BUS_DOT_F8_DATA_SIZE]
+            }
             ZiskOperationType::Keccak => {
                 debug_assert_eq!(ctx.precompiled.input_data.len(), 25);
                 buffer[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]

@@ -95,9 +95,16 @@ pub enum ZiskOperationType {
     Fcall,
     FcallGet,
     Profile,
-    // Experimental, emulator only (no state machine yet). Kept last so the ids above don't move
+    // Kept last so the ids above don't move
     DotF8,
     DotBf16,
+}
+
+impl ZiskOperationType {
+    /// Operations whose replay must reach the secondary state-machine bus.
+    pub fn is_proof_operation(self) -> bool {
+        (self > Self::Internal && self < Self::FcallParam) || self == Self::DotF8
+    }
 }
 
 pub const NONE_OP_TYPE_ID: u32 = ZiskOperationType::None as u32;
@@ -121,6 +128,7 @@ pub const TWISTED_EDWARDS_OP_TYPE_ID: u32 = ZiskOperationType::TwistedEdwards as
 pub const BLAKE3_OP_TYPE_ID: u32 = ZiskOperationType::Blake3 as u32;
 pub const BLAKE2S_OP_TYPE_ID: u32 = ZiskOperationType::Blake2s as u32;
 pub const POSEIDON2_KOALABEAR_OP_TYPE_ID: u32 = ZiskOperationType::Poseidon2KoalaBear as u32;
+pub const DOT_F8_OP_TYPE_ID: u32 = ZiskOperationType::DotF8 as u32;
 
 /// ZisK instruction definition
 ///
