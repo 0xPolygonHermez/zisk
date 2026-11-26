@@ -1,4 +1,5 @@
-//! Prepare and replay the saved Qwen3-4B transcript on ziskemu.
+//! Prepare and replay the saved Qwen3-4B transcript on ziskemu or the assembly emulator.
+mod asm;
 mod prepare;
 mod run;
 mod tile;
@@ -42,10 +43,15 @@ enum Command {
 struct Run {
     #[arg(long)]
     records: PathBuf,
-    #[arg(long)]
-    elf: PathBuf,
+    /// The guest ELF, run by ziskemu (`--emulator`).
+    #[arg(long, required_unless_present = "asm", conflicts_with = "asm")]
+    elf: Option<PathBuf>,
     #[arg(long, default_value = "ziskemu")]
     emulator: PathBuf,
+    /// Run on this assembly emulator (`ziskemuasm`, built for the guest ELF in fast mode) instead
+    /// of ziskemu: much faster, but it reports steps only, no cost.
+    #[arg(long)]
+    asm: Option<PathBuf>,
     #[arg(long)]
     output: PathBuf,
     #[arg(long)]

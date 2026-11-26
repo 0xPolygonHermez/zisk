@@ -1,4 +1,5 @@
 //! Replay the saved transcript, feeding guest activations into private copies of stage inputs.
+use crate::asm::AsmServer;
 use anyhow::{ensure, Context, Result};
 use serde::Serialize;
 use serde_json::json;
@@ -73,17 +74,52 @@ fn with_activations(
     Ok(())
 }
 
-#[derive(Default, Serialize)]
+/// The steps of one or more executions, with their cost on ziskemu, or their emulation time on
+/// the assembly emulator.
+#[derive(Serialize)]
 struct Counts {
     steps: u64,
-    cost: u64,
+    cost: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    emulation_us: Option<u64>,
+}
+
+fn add(a: Option<u64>, b: Option<u64>, what: &str) -> Result<Option<u64>> {
+    match (a, b) {
+        (Some(a), Some(b)) => {
+            Ok(Some(a.checked_add(b).with_context(|| format!("{what} overflow"))?))
+        }
+        _ => Ok(None),
+    }
 }
 
 impl Counts {
+    fn zero(asm: bool) -> Self {
+        Self { steps: 0, cost: (!asm).then_some(0), emulation_us: asm.then_some(0) }
+    }
+
     fn add(&mut self, counts: &Self) -> Result<()> {
         self.steps = self.steps.checked_add(counts.steps).context("step total overflow")?;
-        self.cost = self.cost.checked_add(counts.cost).context("cost total overflow")?;
+        self.cost = add(self.cost, counts.cost, "cost total")?;
+        self.emulation_us = add(self.emulation_us, counts.emulation_us, "time total")?;
         Ok(())
+    }
+
+    fn describe(&self) -> String {
+        let mut text = format!("{} steps", self.steps);
+        if let Some(cost) = self.cost {
+            text += &format!(", {cost} cost");
+        }
+        if let Some(us) = self.emulation_us {
+            let rate = if us == 0 { 0.0 } else { self.steps as f64 / us as f64 };
+            let time = if us < 1_000_000 {
+                format!("{:.1} ms", us as f64 / 1e3)
+            } else {
+                format!("{:.2} s", us as f64 / 1e6)
+            };
+            text += &format!(", emulated in {time} ({rate:.1} Msteps/s)");
+        }
+        text
     }
 }
 
@@ -99,30 +135,63 @@ fn stats(path: &Path) -> Result<Counts> {
         ensure!(slot.is_none(), "duplicate statistic in {}", path.display());
         *slot = Some(fields.next().context("missing statistic value")?.trim().parse()?);
     }
-    Ok(Counts { steps: steps.context("missing STEPS")?, cost: cost.context("missing COST,TOTAL")? })
+    Ok(Counts {
+        steps: steps.context("missing STEPS")?,
+        cost: Some(cost.context("missing COST,TOTAL")?),
+        emulation_us: None,
+    })
 }
 
 #[derive(Serialize)]
 struct Measurement {
     stage: String,
+    /// The size of the input file the emulator read: the framed stage input.
+    input_bytes: u64,
     #[serde(flatten)]
     counts: Counts,
 }
 
+/// Runs stage `name`, number `of.0` (from 1) of the `of.1` stages of its kind.
 fn execute(
     args: &crate::Run,
+    asm: Option<&mut AsmServer>,
     name: &str,
+    of: (usize, usize),
     input: &Path,
     bytes: usize,
     measurements: &mut Vec<Measurement>,
 ) -> Result<()> {
     let base = args.output.join(name);
     let capture = base.with_extension("bin");
+    let log = base.with_extension("log");
+    let input_bytes = fs::metadata(input)?.len();
+    let counts = match asm {
+        Some(server) => {
+            let metrics = server.execute(name, input, &capture, &log)?;
+            Counts { steps: metrics.steps, cost: None, emulation_us: Some(metrics.duration_us) }
+        }
+        None => ziskemu(args, name, input, &base)?,
+    };
+    ensure!(
+        fs::metadata(&capture)?.len() == bytes as u64,
+        "{name}: expected {bytes} capture bytes"
+    );
+    let size = format!("input {input_bytes} bytes ({:.1} MiB)", input_bytes as f64 / 1048576.0);
+    let label = format!("{name} ({}/{})", of.0, of.1);
+    writeln!(fs::OpenOptions::new().append(true).open(&log)?, "{label}: {size}")?;
+    println!("{label}: {size}, {}", counts.describe());
+    measurements.push(Measurement { stage: name.into(), input_bytes, counts });
+    Ok(())
+}
+
+fn ziskemu(args: &crate::Run, name: &str, input: &Path, base: &Path) -> Result<Counts> {
+    let capture = base.with_extension("bin");
     let csv = base.with_extension("csv");
     let log = File::create(base.with_extension("log"))?;
+    let elf = args.elf.as_ref().context("--elf is required to run on ziskemu")?;
     let status = Command::new(&args.emulator)
         .args(["-X", "-m", "--max-input-mem", "268435456", "-n", "1000000000000", "-e"])
-        .arg(&args.elf)
+        .arg(elf)
         .arg("-i")
         .arg(input)
         .arg("-o")
@@ -140,14 +209,7 @@ fn execute(
         "{name} exited with {status}; see {}",
         base.with_extension("log").display()
     );
-    ensure!(
-        fs::metadata(&capture)?.len() == bytes as u64,
-        "{name}: expected {bytes} capture bytes"
-    );
-    let counts = stats(&csv).with_context(|| format!("reading {name} statistics"))?;
-    println!("{name}: {} steps, {} cost", counts.steps, counts.cost);
-    measurements.push(Measurement { stage: name.into(), counts });
-    Ok(())
+    stats(&csv).with_context(|| format!("reading {name} statistics"))
 }
 
 fn stage_prefix(magic: &[u8; 8], ids: &[u8; 96], fields: &[u32]) -> Vec<u8> {
@@ -225,8 +287,10 @@ pub fn run(args: &crate::Run, req: &crate::Request) -> anyhow::Result<()> {
     }
     fs::create_dir(&args.output)
         .with_context(|| format!("creating fresh output {}", args.output.display()))?;
+    let mut asm =
+        args.asm.as_ref().map(|asm| AsmServer::start(asm, &args.output, &embed)).transpose()?;
     let mut measurements = Vec::new();
-    execute(args, "embed", &embed, boundary_size, &mut measurements)?;
+    execute(args, asm.as_mut(), "embed", (1, 1), &embed, boundary_size, &mut measurements)?;
     let mut boundary = fs::read(args.output.join("embed.bin"))?;
     let tmp = tempfile::tempdir_in(&args.output)?;
     let input = tmp.path().join("stage.stdin");
@@ -240,7 +304,15 @@ pub fn run(args: &crate::Run, req: &crate::Request) -> anyhow::Result<()> {
             &prefix,
             &boundary,
         )?;
-        execute(args, &name, &input, boundary_size, &mut measurements)?;
+        execute(
+            args,
+            asm.as_mut(),
+            &name,
+            (index + 1, LAYERS),
+            &input,
+            boundary_size,
+            &mut measurements,
+        )?;
         boundary = fs::read(args.output.join(name).with_extension("bin"))?;
     }
     for (shard, first) in (0..VOCAB).step_by(SHARD_ROWS).enumerate() {
@@ -258,12 +330,23 @@ pub fn run(args: &crate::Run, req: &crate::Request) -> anyhow::Result<()> {
             &prefix,
             &boundary,
         )?;
-        execute(args, &name, &input, predictions * rows * 4, &mut measurements)?;
+        execute(
+            args,
+            asm.as_mut(),
+            &name,
+            (shard + 1, VOCAB.div_ceil(SHARD_ROWS)),
+            &input,
+            predictions * rows * 4,
+            &mut measurements,
+        )?;
     }
+    // Shut the server down before summarizing
+    drop(asm);
     let mut result = summarize_logits(args, req)?;
-    let mut total = Counts::default();
+    let asm = args.asm.is_some();
+    let mut total = Counts::zero(asm);
     for group in ["embed", "layer", "head"] {
-        let mut part = Counts::default();
+        let mut part = Counts::zero(asm);
         for item in measurements.iter().filter(|item| item.stage.starts_with(group)) {
             part.add(&item.counts)?;
         }
@@ -273,10 +356,13 @@ pub fn run(args: &crate::Run, req: &crate::Request) -> anyhow::Result<()> {
     result["stages"] = json!(measurements);
     result["total_steps"] = json!(total.steps);
     result["total_cost"] = json!(total.cost);
+    if let Some(us) = total.emulation_us {
+        result["total_emulation_us"] = json!(us);
+    }
     let mut summary = serde_json::to_string_pretty(&result)?;
     summary.push('\n');
     fs::write(args.output.join("summary.json"), summary)?;
-    println!("Full request: {} steps, {} cost", total.steps, total.cost);
+    println!("Full request: {}", total.describe());
     println!(
         "Greedy predictions matching the saved reply: {}/{predictions}",
         result["matching_ids"]
