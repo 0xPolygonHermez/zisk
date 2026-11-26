@@ -158,9 +158,10 @@ impl CustomRom {
                 data_row_index += 1;
             }
         }
-        // Pad the remaining rows by repeating the first row (the first instruction). An empty
-        // ROM has no first row, so its padding stays all zeros.
-        let padding_row = if data_row_index > 0 { trace[0] } else { RomRomTraceRow::default() };
+        // Pad the remaining rows by repeating the first row (the first instruction). Without
+        // instructions the first row is a data row or no row at all, so the padding stays all
+        // zeros.
+        let padding_row = if rom.insts.is_empty() { RomRomTraceRow::default() } else { trace[0] };
         trace.buffer[data_row_index..].fill(padding_row);
 
         Ok(trace)
@@ -294,6 +295,24 @@ mod tests {
         }
         // The last instruction row is untouched by the padding.
         assert_eq!(trace[2].line, F::from_u64(0x8000_0008));
+    }
+
+    #[test]
+    fn build_trace_pads_with_zeros_when_there_are_no_instructions() {
+        let rom = ZiskRom {
+            ro_data_64: vec![zisk_core::DataSection64 { addr: ROM_ADDR, data: vec![1, 2, 3, 4] }],
+            ..Default::default()
+        };
+
+        let trace = CustomRom::build_trace::<F>(&rom).expect("build_trace");
+
+        assert_eq!(trace[0].is_data, F::from_u64(1), "row 0 is the data row");
+        for index in [1, RomRomTrace::<F>::NUM_ROWS - 1] {
+            assert_eq!(trace[index].is_data, F::from_u64(0), "row {index}: is_data");
+            assert_eq!(trace[index].line, F::from_u64(0), "row {index}: line");
+            assert_eq!(trace[index].a_offset_imm0, F::from_u64(0), "row {index}: a_offset_imm0");
+            assert_eq!(trace[index].flags, F::from_u64(0), "row {index}: flags");
+        }
     }
 
     #[test]
