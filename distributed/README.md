@@ -221,6 +221,8 @@ Additional CLI-only flags:
 | `-t`, `--max-streams` | — | Maximum GPU streams |
 | `--memory-margin` | larger of 2 GiB and 5 % | Host memory left free for everything else while proving: a share of the total memory (`5%`, of the cgroup's limit within one) or a size (`4G`, `512M`) |
 
+The worker collects the witness inputs within the memory that margin leaves, in several passes when they do not fit at once. The `ZISK_COLLECT_BUDGET` environment variable overrides that: a size (`24G`, `512M`) fixes how much the collected inputs may hold at once, and `off` collects them in one pass whatever memory is free.
+
 #### Example: production config
 
 ```toml
