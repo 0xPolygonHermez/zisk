@@ -811,6 +811,16 @@ impl Stats {
         }
 
         if previous_roi_index != self.current_roi {
+            // The ROM optimizer's jump threading absorbs a tail call's `j callee` into the
+            // instruction before it (e.g. `addi sp, sp, 32; j callee` becomes one `add` that
+            // jumps to `callee`), so the jump is no longer a plain `j` the classifier can see.
+            // A jump that is not a call or a return and lands on the first instruction of
+            // another function is a tail call.
+            if !self.is_return && !self.is_call && !self.is_tail_call {
+                if let Some(roi_index) = self.current_roi {
+                    self.is_tail_call = regular_pc && self.rois[roi_index].from_pc == pc;
+                }
+            }
             if !self.is_return && !self.is_call && !self.is_tail_call && !self.call_stack.is_empty()
             {
                 #[cfg(feature = "debug_call_stack")]
@@ -4663,6 +4673,64 @@ mod tests {
         // A flush landing exactly on an access does not create a zero-length gap of its own.
         assert_eq!(Stats::flushed_distance(64, 100, 64), 36);
         assert_eq!(Stats::flushed_distance(50, 128, 64), 64);
+    }
+
+    /// Two ROIs, `caller` and `callee`, with the run inside `caller` and one frame on the call
+    /// stack (the call that entered `caller`). Returns the stats and both ROI indices.
+    fn stats_inside_caller() -> (Stats, usize, usize) {
+        let mut stats = Stats::default();
+        let caller = stats.rois.len();
+        stats.add_roi(0x1000, 0x10fc, "caller");
+        let callee = stats.rois.len();
+        stats.add_roi(0x2000, 0x20fc, "callee");
+        stats.current_roi = Some(caller);
+        stats.call_stack.push(CallStackEntry {
+            pc: 0x1000,
+            ra: 0x0f04,
+            caller_roi_index: None,
+            called_roi_index: Some(caller),
+            func_name: "caller".to_string(),
+            return_reg: 1,
+            tail_calls: Vec::new(),
+            costs: stats.clone_costs(),
+        });
+        (stats, caller, callee)
+    }
+
+    /// Runs `check_roi` for an instruction at `pc` that the classifier saw as neither a call, a
+    /// return nor a tail call: the shape of a jump that jump threading absorbed into an `addi`.
+    fn plain_jump_to(stats: &mut Stats, pc: u64) {
+        stats.is_call = false;
+        stats.is_return = false;
+        stats.is_tail_call = false;
+        let mut inst_ctx = InstContext::new();
+        inst_ctx.pc = pc;
+        stats.check_roi(&ZiskInst::default(), &inst_ctx);
+    }
+
+    #[test]
+    fn threaded_jump_to_a_function_entry_is_a_tail_call() {
+        let (mut stats, caller, callee) = stats_inside_caller();
+        plain_jump_to(&mut stats, 0x2000);
+
+        assert!(!stats.disable_call_stack, "the call stack must stay enabled");
+        assert_eq!(stats.current_roi, Some(callee));
+        assert_eq!(stats.call_stack.len(), 1, "a tail call pushes no frame");
+        let tail_calls = &stats.call_stack[0].tail_calls;
+        assert_eq!(tail_calls.len(), 1);
+        assert_eq!(tail_calls[0].0, callee);
+        assert_eq!(stats.rois[callee].calls, 1);
+        assert_eq!(stats.rois[callee].callers[&caller].calls, 1);
+    }
+
+    #[test]
+    fn plain_jump_into_the_middle_of_another_function_still_disables_the_call_stack() {
+        let (mut stats, _, callee) = stats_inside_caller();
+        plain_jump_to(&mut stats, 0x2010);
+
+        assert!(stats.disable_call_stack, "only a function entry is taken as a tail call");
+        assert!(stats.call_stack[0].tail_calls.is_empty());
+        assert_eq!(stats.rois[callee].calls, 0);
     }
 
     /// A static jump (`copyb` imm + `set_pc`, no store) at `pc` to `target`, the shape of a
