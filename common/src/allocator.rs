@@ -55,6 +55,14 @@ mod tests {
     /// jemalloc reads [`super::MALLOC_CONF`]: the option it sets is on.
     #[test]
     fn jemalloc_reads_the_compile_time_configuration() {
+        // The environment overrides the compile-time configuration: when it sets this option,
+        // jemalloc reports the override, which says nothing about what was exported.
+        if std::env::var_os("_RJEM_MALLOC_CONF")
+            .is_some_and(|conf| conf.to_string_lossy().contains("background_thread"))
+        {
+            return;
+        }
+
         let mut on = false;
         let mut len = std::mem::size_of::<bool>();
         // SAFETY: `opt.background_thread` is a `bool` the size `len` says.
