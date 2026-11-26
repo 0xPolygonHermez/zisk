@@ -544,9 +544,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             let collecting = match (self.witness.as_ref(), proofman_extras) {
                 (Some(witness), Some(extras)) if two_rounds && !first_round.is_empty() => {
                     Some(scope.spawn(|| {
-                        // Only what fits, never waiting: under -m nobody computes what this
-                        // announces until it returns, and the round's registration waits for it.
-                        // The rest is collected when proofman asks for it.
+                        // Only what fits, never waiting: the execution ends only once this collect
+                        // returns. The rest is collected when proofman asks for it.
                         witness.pre_calculate(
                             extras.pctx(),
                             extras,
