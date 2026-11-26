@@ -264,7 +264,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "qwen-host"
+name = "qwen3-4b"
 version = "0.1.0"
 dependencies = [
  "anyhow",

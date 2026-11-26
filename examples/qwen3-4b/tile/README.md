@@ -12,10 +12,10 @@ cargo build --locked --release -p ziskemu
 cd examples/qwen3-4b/tile
 RUSTFLAGS="--cfg zisk_guest -C target-feature=+unaligned-scalar-mem -C link-arg=-T$root/ziskbuild/zisk_linker_script.ld -L native=$HOME/.zisk/bin" \
   cargo +zisk build --locked --release --target riscv64ima-zisk-zkvm-elf
-cargo run --locked --release --manifest-path "$root/examples/qwen3-4b/host/Cargo.toml" -- tile "$MODEL" target/comparison --emulator "$root/target/release/ziskemu" --elf target/riscv64ima-zisk-zkvm-elf/release/qwen-key-tile
+cargo run --locked --release --manifest-path "$root/examples/qwen3-4b/runner/Cargo.toml" -- tile "$MODEL" target/comparison --emulator "$root/target/release/ziskemu" --elf target/riscv64ima-zisk-zkvm-elf/release/qwen-key-tile
 ```
 
-Choose a fresh output directory for each run. The Rust host uses the bundled `saved_request.json` and the pinned RMSNorm reduction to reconstruct the 39 activation rows. It checks each framed input against its archived SHA-256, runs `ziskemu -X`, and compares each public commitment with the frozen digest of all 2,496 reference values (`f7c1ceb9b4258f70eee60ef741e0a18e56aabe8ce331e25054aeb8ffd7d7cbf3`). The output directory retains inputs, public outputs, cost CSVs and emulator logs with the command and checked results.
+Choose a fresh output directory for each run. The `tile` command uses the bundled `saved_request.json` and the pinned RMSNorm reduction to reconstruct the 39 activation rows. It checks each framed input against its archived SHA-256, runs `ziskemu -X`, and compares each public commitment with the frozen digest of all 2,496 reference values (`f7c1ceb9b4258f70eee60ef741e0a18e56aabe8ce331e25054aeb8ffd7d7cbf3`). The output directory retains inputs, public outputs, cost CSVs and emulator logs with the command and checked results.
 
 | Build (emulator cost version 2) | Mode 5 steps | Mode 5 cost | Mode 6 steps | Mode 6 cost |
 |---|---:|---:|---:|---:|

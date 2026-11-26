@@ -20,7 +20,7 @@ The Qproof harness splits Qwen3-4B-Instruct-2507 at layer boundaries. One replay
 | Decoder | 36 | 202,261,176 | Load one layer’s weights and its incoming activations. Run all 39 positions and pass the output to the next layer. |
 | Vocabulary head | 75 | 2,370,912–10,890,592 | Read the final decoder activations and score one vocabulary shard at all 12 prediction positions. |
 
-Each decoder input is about **193 MiB**. The run uses `ziskemu --max-input-mem 268435456` (256 MiB) per execution. This limit applies to the guest input. The measured boundary tensor is 39 × 2,560 values stored as FP32 bits, or **399,360 bytes**. After each decoder execution the host reads that output and inserts its bytes into the next job. All head shards receive the same final tensor. The first 74 cover 2,048 vocabulary rows each and the last covers 384, accounting for all 151,936 logits per prediction.
+Each decoder input is about **193 MiB**. The run uses `ziskemu --max-input-mem 268435456` (256 MiB) per execution. This limit applies to the guest input. The measured boundary tensor is 39 × 2,560 values stored as FP32 bits, or **399,360 bytes**. After each decoder execution the runner reads that output and inserts its bytes into the next job. All head shards receive the same final tensor. The first 74 cover 2,048 vocabulary rows each and the last covers 384, accounting for all 151,936 logits per prediction.
 
 ### Measured execution cost and parity
 

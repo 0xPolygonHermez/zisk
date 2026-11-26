@@ -2,7 +2,7 @@
 
 One ZisK executable accepts the measured Qproof embedding, decoder-layer and
 vocabulary-shard records. Supply the original little-endian, length-prefixed
-stdin produced by the example host. The eight-byte magic inside the payload
+stdin written by `prepare`. The eight-byte magic inside the payload
 selects the stage.
 
 | Magic | Model entry point | Captured output |
@@ -14,7 +14,7 @@ selects the stage.
 Every capture contains row-major little-endian FP32 values. The guest commits
 the 32-byte stage receipt digest, the little-endian u64 guest address of the
 capture, and its little-endian u64 byte length. The buffer stays allocated
-through halt. The host can compare receipts across builds even when the
+through halt. Receipts can be compared across builds even when the
 allocator places the buffer at a different address.
 
 ## Build and run
