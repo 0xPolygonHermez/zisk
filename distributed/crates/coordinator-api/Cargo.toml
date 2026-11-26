@@ -3,9 +3,9 @@ name = "zisk-coordinator-api"
 description = "ZisK Coordinator gRPC types (generated from proto)"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
-homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }

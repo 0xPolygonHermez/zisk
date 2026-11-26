@@ -5,7 +5,7 @@ expected results from Python. Covers the degenerate inputs of its 16-entry table
 (R or the public key equal to +-G, +-phi(G), phi^2(G)), zero and equal scalars,
 results at infinity or equal to +-G, R = c*G for small c (equal x coordinates
 inside the ladder), and random recoveries.
-Output: one byte per case at 0xa0410000 (1 = wrong), then 1 once all have run."""
+Output: one byte per case at 0xc0410000 (1 = wrong), then 1 once all have run."""
 import random, sys
 
 P = 2**256 - 2**32 - 977
@@ -124,7 +124,7 @@ for pk in (G, neg(G), phi(G), mul(2, G)):
 o = []
 w = o.append
 w('#include "zkvm_accelerators.h"')
-w('static volatile uint8_t* const O = (volatile uint8_t*)0xA0410000ULL;')
+w('static volatile uint8_t* const O = (volatile uint8_t*)0xC0410000ULL;')
 w('typedef struct { uint8_t kind, recid, exp_ok; uint8_t z[32], r[32], s[32], pt[64]; } C;')
 w('static const C K[] = {')
 for c in cases:

@@ -289,7 +289,7 @@ for i, (kind, ins, n, outlen, exp) in enumerate(cases):
 L.append('int main(void){')
 L += body
 L += ['  uint8_t h[32]; zkvm_keccak256(T,tn,(void*)h);',
-      '  volatile uint32_t *O=(volatile uint32_t*)(0xA0410000ULL);',
+      '  volatile uint32_t *O=(volatile uint32_t*)(0xC0410000ULL);',
       f'  O[0]=fails; O[1]=first_fail; O[2]={len(cases)}; O[3]=tn;',
       '  for(unsigned k=0;k<8;k++) O[4+k]=(uint32_t)h[4*k]|((uint32_t)h[4*k+1]<<8)|((uint32_t)h[4*k+2]<<16)|((uint32_t)h[4*k+3]<<24);',
       '  return 0;}']

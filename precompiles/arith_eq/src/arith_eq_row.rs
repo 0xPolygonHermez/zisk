@@ -124,6 +124,7 @@ pub trait ArithEqRow<F: PrimeField64>: TraceRow {
 
     // Step/address packing — present in every config.
     fn set_step_addr(&mut self, v: u64);
+    fn set_addr_hi(&mut self, v: bool);
 
     // Concurrent-equation carries, full [MAX_CEQS=3][CBC=2]. Reduced configs (MAX_CEQS<3) delegate
     // only the rows they have; the shared logic always passes the full array.
@@ -224,6 +225,7 @@ macro_rules! impl_arith_eq_row {
                 fn set_x3(&mut self, v: u16) { self.set_x3(v); }
                 fn set_y3(&mut self, v: u16) { self.set_y3(v); }
                 fn set_step_addr(&mut self, v: u64) { self.set_step_addr(v); }
+                fn set_addr_hi(&mut self, v: bool) { self.set_addr_hi(v); }
                 fn set_carry(&mut self, carry: &[[u64; 2]; 3]) {
                     // The trace's carry is [[u64;2];CEQS]; take the first CEQS equation rows.
                     self.set_all_carry(

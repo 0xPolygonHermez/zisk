@@ -124,7 +124,7 @@ edition = "2021"
 
 [dependencies]
 fib = { path = "../fib" }
-ziskos = "1.4.0-alpha"   # or { path = "<zisk checkout>/ziskos/entrypoint" }
+ziskos = "1.5.0-alpha"   # or { path = "<zisk checkout>/ziskos/entrypoint" }
 
 [profile.release]
 opt-level = 3
@@ -544,12 +544,12 @@ The wasm machine lives inside the standard ZisK memory map ([layout.rs](src/layo
 |---|---|---|
 | Input | `INPUT_ADDR` | Standard ZisK input: 8-byte length, then data. Read by `fd_read`. |
 | Public output | `OUTPUT_ADDR` | First 256 bytes of stdout/stderr, published by `pubout` at exit. |
-| Globals | `0xa043_0000` | 8 bytes per global. |
-| Indirect-call table | `0xa044_0000` | 16 bytes per entry: `{ zisk_pc, canonical_type_id }`. |
-| Control cells | `0xa054_0000` | Memory size in pages, stdin cursor, stdout length, clock, RNG state. |
-| Linear memory | `0xa0fd_0000` … `0xbefd_0000` | wasm address 0 maps to `WASM_MEM_BASE`. |
-| Call / operand stack | grows down from `0xbffb_0000` to `0xbefd_0000` | One frame per active call. Above it: the ZisK library RAM (`0xbffc_0000`, used by the library routines) and the float library RAM. |
-| Float library RAM | above the stack | Used only by the soft-float library. |
+| Globals | `0xC047_0000` | 8 bytes per global. |
+| Indirect-call table | `0xC048_0000` | 16 bytes per entry: `{ zisk_pc, canonical_type_id }`. |
+| Control cells | `0xC058_0000` | Memory size in pages, stdin cursor, stdout length, clock, RNG state. |
+| Linear memory | `0xC100_0000` … `0xDF00_0000` | wasm address 0 maps to `WASM_MEM_BASE`. |
+| Call / operand stack | grows down from `0xDFFE_0000` to `0xDF00_0000` | One frame per active call. |
+| Float / ZisK library RAM | `0xC043_0000` / `0xC044_0000` | Below the globals; used only by the soft-float library and the ZisK library routines. |
 
 ### Registers and frames
 
@@ -612,6 +612,30 @@ writes the register locals changed since they were last in their slots. After it
 from their slots, and any still there at the next jump or label is reloaded into its register,
 so a local the code leaves alone between two calls costs nothing. `x32`–`x39` are not used: the
 float library uses them as scratch, and the float handler restores only `x1`–`x31`.
+
+### Frames on the `sp` register (`sp` feature)
+
+With the `sp` Cargo feature (`cargo build -p ziskemu --features sp`) the frame pointer is the
+ZisK `sp` register instead of `x2`, and every frame slot is an `[sp + offset]` operand. Unlike
+`W[a + offset]`, which needs `a` to hold the frame pointer, `a`, `b` and the store can each take
+such an operand, so an operator reads its operands from their slots and writes its result to one
+in a single instruction: `add([sp-40], [sp-48]) -> [sp-56]`. The lowering is the same in both
+builds; only where an operand can come from changes:
+
+- Operators, comparisons, compare-and-branches, `br_table` indexes, linear-memory stores and
+  `global.set` read a value that is in a slot (an operand slot or a local outside the registers)
+  directly, instead of loading it into a scratch register first.
+- A value computed into `x10` that goes straight to a slot (a `local.set` of a local outside the
+  registers, or the spill of `x10` at a flush) is written there by the instruction that computed
+  it.
+- The caller moves `sp` to the callee's frame as part of the call instruction (`incsp`) and back
+  with one instruction after it. The stack check reads `sp` directly. `x2` is only set, as their
+  stack pointer, right before a call into the ZisK library.
+
+This is emulation only for now: the prover does not support the `sp` register yet, so a ROM
+built this way cannot be proven. On the guests in `emulator/tests/data` and
+`integration-tests/tests/data` it runs 8–21% fewer steps, with the same output, and the
+WebAssembly test suite gives the same results (26,901 assertions pass, none fails).
 
 ### Control flow and calls
 
@@ -781,6 +805,7 @@ floating point, which goes through the float handler.
 | `emulator/tests/wasm_float.rs` | `f32`/`f64` operators against the wasm spec (requires `float`). |
 | `emulator/tests/wasm_zkvm.rs` | The `env` imports, using hand-written WAT modules: known digests through unaligned buffers, a failure status, bounds checks (including 64-bit lengths and the modexp result), a routine with nested calls, signature checks, U256 in both byte orders, the alignment check, `zkvm_random_u64`, `write_log`, 64-bit zisklib arguments and the fcalls. With `float`, it also runs the prebuilt [`ziskasm/lang/go`](../../ziskasm/lang/go/) example, built with TinyGo and with standard Go, which checks every function of the Go package (197 checks). |
 | `emulator/tests/zkvm_fcall.rs` | `zkvm_fcall.h` from a RISC-V C guest (`src/zkvm_fcall.s`). |
+| `transpilers/wasm/tests/sp_frame.rs` | With the `sp` feature (`cargo test -p zisk-transpiler-wasm --features sp`): the frame lives on the ZisK `sp` register, and `x2` is never read as a frame pointer. The emulator tests above, run with `--features sp`, cover the behaviour. |
 | `emulator/tests/wasm_example.rs` | Builds [`examples/wasm-fibonacci`](../../examples/wasm-fibonacci) for `wasm32-wasip1` and runs it end to end. Skipped with a notice when the target is not installed. |
 | `emulator/tests/wasm_precompiles.rs` | The `env` precompile imports: keccak-f, sha256-f and secp256k1 against reference implementations, the block-taking big-int ops, bad-pointer traps and import-signature checks; and the `ziskasm/lang/go/precompiles` package on a prebuilt Go guest: Keccak-256/SHA-256 built on `KeccakF`/`Sha256F` against `tiny_keccak`/`sha2`. |
 | `emulator/tests/wasm_spec.rs` | The official [WebAssembly test suite](https://github.com/WebAssembly/testsuite) (core `.wast` scripts, pinned commit in the file): every module is transpiled and its `assert_return`, `assert_trap`, `assert_exhaustion`, `assert_invalid` and `assert_malformed` are checked on the emulator. Assertions outside the supported subset (SIMD, GC, memory64, table operations, ...) count as unsupported, and linking between modules and text-format errors are skipped. With `float`, 26,901 assertions pass and none fails (13,423 without `float`). Needs a checkout of the suite (`WASM_TESTSUITE`); ignored by default. |

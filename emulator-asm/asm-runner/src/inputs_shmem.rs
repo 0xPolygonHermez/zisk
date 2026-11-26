@@ -305,9 +305,8 @@ mod tests {
         unlink_segment(&control_seg);
     }
 
-    /// A run reads input addresses past the end of its input (the BIOS reads one every 128 MB of
-    /// the region), which the prover takes as zeros: a reset leaves nothing of the previous
-    /// input, whether it was written whole or appended.
+    /// A run may read input addresses past the end of its input, which the prover takes as zeros:
+    /// a reset leaves nothing of the previous input, whether it was written whole or appended.
     #[test]
     fn reset_zeroes_what_the_previous_input_wrote() {
         let prefix = format!("ZISK_unittest_zeroed_{}", std::process::id());

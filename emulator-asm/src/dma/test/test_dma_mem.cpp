@@ -7,6 +7,7 @@
 #include <chrono>
 #include <assert.h>
 #include "test_dma_mem.hpp"
+#include <sys/mman.h>
 #include "test_dma_tools.hpp"
 #include "test_dma_encode.hpp"
 
@@ -23,7 +24,35 @@ TestDmaMem::TestDmaMem(size_t max_count, bool use_src):
 }
 
 TestDmaMem::~TestDmaMem(void) {
+    if (low_mapped) {
+        if (src) munmap(src, data_size);
+        munmap(dst, data_size);
+        munmap(test_trace, trace_size);
+        return;
+    }
     if (src) free(src);
     free(dst);
     free(test_trace);
+}
+
+void TestDmaMem::map_low(uint64_t base) {
+    auto map = [&](size_t bytes) -> uint8_t * {
+        void *p = mmap((void *)base, bytes, PROT_READ | PROT_WRITE,
+                       MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+        if (p == MAP_FAILED || (uint64_t)p != base) {
+            printf("ERROR: cannot map %ld bytes at 0x%lX\n", bytes, base);
+            exit(1);
+        }
+        base += (bytes + 0xFFFFF) & ~(uint64_t)0xFFFFF;
+        return (uint8_t *)p;
+    };
+    if (src) { free(src); src = map(data_size); }
+    free(dst);
+    dst = map(data_size);
+    free(test_trace);
+    test_trace = (uint64_t *)map(trace_size);
+    aligned_dst = (uint64_t *)dst;
+    aligned_src = (uint64_t *)src;
+    mtrace = test_trace + 1;
+    low_mapped = true;
 }

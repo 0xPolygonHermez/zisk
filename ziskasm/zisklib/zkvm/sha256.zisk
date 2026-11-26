@@ -27,7 +27,7 @@ const u64 SHA_STATE_INIT[4] =
 u64 SHA_STATE[4] = 0, 0, 0, 0
 u64 SHA_INPUT[8] = 0, 0, 0, 0, 0, 0, 0, 0
 
-define SH_DMA_COUNT 0xa0400f00          ; dma_memcpy reads its byte count here
+define SH_DMA_COUNT 0xc0400f00          ; dma_memcpy reads its byte count here
 
 ; ----------------------------------------------------------------------------
 ; zkvm_status ziskasm_zkvm_sha256(const u8* input, u64 len, u8* output) -> r10 = 0

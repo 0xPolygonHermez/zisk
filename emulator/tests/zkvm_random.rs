@@ -10,7 +10,7 @@ use zisk_common::{EmuTrace, RandomSeed};
 use zisk_core::{ziskbin, AsmGenerationMethod, ZiskRom2Asm};
 use zisk_transpiler_common::{program2rom, program2romfile, HINTS_WITH_RANDOM_ERROR};
 use ziskemu::{EmuOptions, Emulator, ZiskEmulator};
-use ziskos::zisklib::{FCALL_GET_KECCAKF_CACHE_INDEX_ID, FCALL_RANDOM_SEED_ID};
+use ziskos::zisklib::{FCALL_INPUT_READY_ID, FCALL_RANDOM_SEED_ID};
 
 /// The 32 seed bytes 00 01 .. 1f: all distinct, so a byte or word order slip shows
 const SEED: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
@@ -193,6 +193,6 @@ fn the_hints_setup_rejects_a_zisk_program_that_reads_the_seed() {
     assert_eq!(hints_setup(&reads_seed, true), Err(HINTS_WITH_RANDOM_ERROR.to_string()));
     assert_eq!(hints_setup(&reads_seed, false), Ok(()));
 
-    let other_fcall = ziskbin_program("other_fcall", &program(FCALL_GET_KECCAKF_CACHE_INDEX_ID));
+    let other_fcall = ziskbin_program("other_fcall", &program(FCALL_INPUT_READY_ID));
     assert_eq!(hints_setup(&other_fcall, true), Ok(()));
 }

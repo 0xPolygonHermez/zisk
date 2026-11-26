@@ -259,7 +259,7 @@ A dot-product precompile would reuse most of this, with a different per-row cons
 
 ### Measured with the experimental precompile
 
-Step 1 is now done as an experiment: ZisK has an operation `dot_f8` (opcode `0xc2`, syscall `0x822`) that runs in the operation table, the emulator and, except for the memory-operations mode, `emulator-asm`. It computes the exact dot product of two vectors of int8, FP8 or FP4 values; this example uses int8. **No state machine proves it yet**, so a program that uses it cannot be proven. The SDK's execution cannot run it either, because it also prepares proof inputs; it runs in `ziskemu`. The [`llama2` README](../llama2/README.md#number-formats-int8-fp8-and-fp4) describes the operation and its estimated costs.
+Step 1 is now done as an experiment: ZisK has an operation `dot_f8` (opcode `0xc3`, syscall `0x823`) that runs in the operation table, the emulator and, except for the memory-operations mode, `emulator-asm`. It computes the exact dot product of two vectors of int8, FP8 or FP4 values; this example uses int8. **No state machine proves it yet**, so a program that uses it cannot be proven. The SDK's execution cannot run it either, because it also prepares proof inputs; it runs in `ziskemu`. The [`llama2` README](../llama2/README.md#number-formats-int8-fp8-and-fp4) describes the operation and its estimated costs.
 
 It replaced `dot_i8`, the first version, which only took int8 vectors and a 3-word parameter block. `dot_f8`'s 6-word block costs about 6 more steps per neuron: with `dot_i8`, the three sizes below took 8,562, 47,196 and 91,228 steps, and cost 1.77 M, 11.1 M and 29.8 M.
 

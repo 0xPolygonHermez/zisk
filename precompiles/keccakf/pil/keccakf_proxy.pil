@@ -1,0 +1,155 @@
+require "std_lookup.pil"
+require "std_range_check.pil"
+require "operations.pil"
+require "opids.pil"
+
+// Memory and main-processor side of the Keccak-f[1600] precompile.
+//
+// Keccakf proves every permutation it computes exactly once, as one KECCAKF_ID tuple of 100 field
+// elements: the 25 input lanes then the 25 output lanes, two 32-bit little-endian limbs per lane.
+// This air handles the invocations, one per row: it reads the 25 input words of the state at the
+// main step, writes the 25 output words back to the same address and proves the operation to the
+// main processor. There are two operations:
+//   - OP_KECCAK(b = state): the permutation of the state;
+//   - OP_KECCAK_XOR(a = state, b = block): one absorb step of the sponge. The first
+//     XOR_LANES lanes of the state are XORed with the block, read from memory, and the result
+//     is permuted. Every XOR is assumed from Binary on the operation bus. The XORed state never
+//     touches memory: what is read is the state before the XOR and what is written is the output
+//     of the permutation.
+// So the permutation a row carries (perm_in -> state_out) is the one of the XORed state, which
+// is the one Keccakf proves and the one a replica repeats.
+//
+// A row is either an ORIGINAL or a REPLICA of the permutation it carries:
+//   - an original assumes its tuple from Keccakf (KECCAKF_ID) and republishes it on the
+//     KECCAKF_REPLICA_ID bus with multiplicity `replicas`, the number of replica rows that repeat
+//     the same permutation (0 when there are none);
+//   - a replica assumes its tuple from KECCAKF_REPLICA_ID, i.e. from an original of the proof.
+// So a repeated permutation costs a Keccakf slot once and a row here per invocation, and the
+// Keccakf instances can be generated as the permutations are computed: only this air has to wait
+// for the whole execution to know the multiplicities. A replica cannot republish (its `replicas`
+// is 0), so every tuple on the replica bus descends from a permutation proven by Keccakf.
+
+airtemplate KeccakfProxy(const int N = 2**21) {
+    const int LANES = 25;
+    const int LIMBS_PER_LANE = 2;
+    const int LIMBS_PER_STATE = LANES * LIMBS_PER_LANE;
+    const int WORD_SIZE = 8; // bytes per lane
+    const int XOR_LANES = 17; // lanes of a block: the rate of keccak256, 136 bytes
+    const int XOR_LIMBS = XOR_LANES * LIMBS_PER_LANE;
+    const int MAX_REPLICAS = 2**24 - 1;
+    // The low 32-bit limb of an address is committed as its word address (29 bits), split in a
+    // 24-bit and a 5-bit chunk; bit 32 is the addr_hi column. The split depends only on the limb
+    // size, not on ADDR_BITS, and it reuses tables other airs already use: the [0, 2^24 - 1] range
+    // for the low chunks and DualByte for both high chunks in a single lookup.
+    const int ADDR_W_LO_BITS = 24;
+    const int ADDR_W_HI_BITS = 32 - 3 - ADDR_W_LO_BITS;
+
+    col witness bits(1) in_use;                        // 1 when the row holds an invocation
+    col witness bits(1) is_replica;                    // 1 when the permutation was proven for an earlier row
+    col witness bits(24) replicas;                     // originals only: number of replica rows of this permutation
+    col witness bits(40) step;                         // main step of the invocation
+    col witness bits(ADDR_W_LO_BITS) addr_w_lo;        // word address of the low limb of the state
+    col witness bits(ADDR_W_HI_BITS) addr_w_hi;        // (read, then overwritten), as two chunks
+    col witness bits(1) addr_hi;                       // high limb (bit 32) of addr
+    col witness bits(32) state_in[LIMBS_PER_STATE];    // lanes read from memory, as 32-bit limbs
+    col witness bits(32) state_out[LIMBS_PER_STATE];   // output lanes, as 32-bit limbs
+
+    col witness bits(1) is_xor;                        // 1 when the row is an OP_KECCAK_XOR
+    col witness bits(ADDR_W_LO_BITS) blk_addr_w_lo;    // word address of the low limb of the block,
+    col witness bits(ADDR_W_HI_BITS) blk_addr_w_hi;    // as two chunks: 0 without the XOR
+    col witness bits(1) blk_addr_hi;                   // high limb (bit 32) of blk_addr
+    col witness bits(32) block[XOR_LIMBS];          // lanes of the block, as 32-bit limbs
+    col witness bits(32) perm_in[XOR_LIMBS];        // first lanes of the permutation input
+
+    in_use * (1 - in_use) === 0;
+    is_replica * (1 - is_replica) === 0;
+    is_replica * (1 - in_use) === 0;
+
+    // Both addresses must be 8-byte aligned, as the 25 + 17 accesses are whole words. The machine
+    // commits the word address of the low limb, in two range-checked chunks, and every low limb it
+    // emits is that word address times 8: an unaligned operand has no word address to match it on
+    // the operation bus, so such a call cannot be proven. Without the range checks the word
+    // address could be any field element, i.e. limb / 8 in the field, and the accesses would be
+    // unaligned ones that MemAlign is able to prove.
+    // The high chunks are only checked as bytes: the word address is then an integer below 2^32 and
+    // 8 times it, below 2^35, cannot wrap the field. Its match on the operation bus with a 32-bit
+    // limb is then an integer equality, which already bounds the word address by 2^29. Both high
+    // chunks share one DualByte lookup; blk_addr_w_hi is 0 on the rows without the XOR.
+    range_check(expression: addr_w_lo, min: 0, max: 2**ADDR_W_LO_BITS - 1, sel: in_use);
+    range_check(expression: blk_addr_w_lo, min: 0, max: 2**ADDR_W_LO_BITS - 1, sel: is_xor);
+    range_dual_byte(addr_w_hi, blk_addr_w_hi, sel: in_use, sel_is_binary: 1);
+
+    // The operation bus carries the address as two 32-bit limbs and this machine is the one that
+    // joins them into a 33-bit address, so it is the one that checks the high limb is a bit: the
+    // address is then below 2^33 and cannot wrap the field.
+    addr_hi * (1 - addr_hi) === 0;
+    const expr state_lo = WORD_SIZE * (addr_w_lo + 2**ADDR_W_LO_BITS * addr_w_hi);
+    const expr addr = state_lo + 2**32 * addr_hi;
+
+    is_xor * (1 - is_xor) === 0;
+    is_xor * (1 - in_use) === 0;
+    blk_addr_hi * (1 - blk_addr_hi) === 0;
+    const expr blk_lo = WORD_SIZE * (blk_addr_w_lo + 2**ADDR_W_LO_BITS * blk_addr_w_hi);
+    const expr blk_addr = blk_lo + 2**32 * blk_addr_hi;
+    // Without the XOR there is no block: its address is what OP_KECCAK sends as a, i.e. 0
+    (1 - is_xor) * blk_lo === 0;
+    (1 - is_xor) * blk_addr_hi === 0;
+
+    // Input of the permutation: state_in ^ block on the absorbed lanes, proven by Binary, and
+    // state_in everywhere when is_xor is 0. The limbs of block come from memory and
+    // those of perm_in from Binary, so both are 32-bit values.
+    for (int i = 0; i < XOR_LANES; i++) {
+        const int l = LIMBS_PER_LANE * i;
+        assumes_operation(op: OP_XOR, a: [state_in[l], state_in[l + 1]], b: [block[l], block[l + 1]],
+                          c: [perm_in[l], perm_in[l + 1]], sel: is_xor);
+        (1 - is_xor) * (perm_in[l] - state_in[l]) === 0;
+        (1 - is_xor) * (perm_in[l + 1] - state_in[l + 1]) === 0;
+        precompiled_mem_load(addr: blk_addr + WORD_SIZE * i, main_step: step,
+                             value: [block[l], block[l + 1]], sel: is_xor);
+    }
+
+    // Only an original in use may republish: replicas = 0 on replica rows and on unused rows
+    replicas * (1 - in_use + is_replica) === 0;
+    range_check(expression: replicas, min: 0, max: MAX_REPLICAS, sel: in_use);
+
+    // (input, output) is a Keccak-f permutation: proven by Keccakf for an original, republished by
+    // an original for a replica
+    const expr tuple[2 * LIMBS_PER_STATE];
+    for (int i = 0; i < LIMBS_PER_STATE; i++) {
+        if (i < XOR_LIMBS) {
+            tuple[i] = perm_in[i];
+        } else {
+            tuple[i] = state_in[i];
+        }
+        tuple[LIMBS_PER_STATE + i] = state_out[i];
+    }
+    const expr bus_id = KECCAKF_ID + is_replica * (KECCAKF_REPLICA_ID - KECCAKF_ID);
+    lookup_assumes_dynamic([KECCAKF_ID, KECCAKF_REPLICA_ID], bus_id, tuple, sel: in_use);
+    lookup_proves(KECCAKF_REPLICA_ID, tuple, mul: replicas);
+
+    /*
+        MEMORY ACCESS MAP
+        ======================================================
+          0 | STEP_MAIN     | R | ADDR       |  state_in[0..1]
+          . |    ...        | . |    ...     |     ...
+         24 | STEP_MAIN     | R | ADDR + 192 |  state_in[48..49]
+         25 | STEP_MAIN + 1 | W | ADDR       |  state_out[0..1]
+          . |    ...        | . |    ...     |     ...
+         49 | STEP_MAIN + 1 | W | ADDR + 192 |  state_out[48..49]
+        ======================================================
+    */
+    for (int i = 0; i < LANES; i++) {
+        precompiled_mem_load(addr: addr + WORD_SIZE * i, main_step: step,
+                             value: [state_in[LIMBS_PER_LANE * i], state_in[LIMBS_PER_LANE * i + 1]], sel: in_use);
+        precompiled_mem_store(addr: addr + WORD_SIZE * i, main_step: step,
+                              value: [state_out[LIMBS_PER_LANE * i], state_out[LIMBS_PER_LANE * i + 1]], sel: in_use);
+    }
+
+    // The operations carry the addresses as two 32-bit limbs:
+    //   OP_KECCAK:        a = 0,     b = state
+    //   OP_KECCAK_XOR: a = state, b = block
+    proves_operation(op: OP_KECCAK + is_xor * (OP_KECCAK_XOR - OP_KECCAK),
+                     a: [is_xor * state_lo, is_xor * addr_hi],
+                     b: [state_lo + is_xor * (blk_lo - state_lo), addr_hi + is_xor * (blk_addr_hi - addr_hi)],
+                     main_step: step, mul: in_use);
+}

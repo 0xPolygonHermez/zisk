@@ -15,7 +15,7 @@ int main(void){
   zkvm_status sm=zkvm_bn254_g1_mul((const void*)mul_p,(const void*)mul_k,(void*)mul_o);
   zkvm_status spa=zkvm_bn254_pairing((const void*)pairA,2,&okA);
   zkvm_status spr=zkvm_bn254_pairing((const void*)pairR,1,&okR);
-  volatile uint8_t *O=(volatile uint8_t*)(0xA0410000ULL); unsigned k2=0;
+  volatile uint8_t *O=(volatile uint8_t*)(0xC0410000ULL); unsigned k2=0;
   for(unsigned i=0;i<64;i++)O[k2++]=add_o[i];
   for(unsigned i=0;i<64;i++)O[k2++]=mul_o[i];
   O[k2++]=(uint8_t)sa; O[k2++]=(uint8_t)sm; O[k2++]=(uint8_t)spa; O[k2++]=(uint8_t)okA; O[k2++]=(uint8_t)spr; O[k2++]=(uint8_t)okR;

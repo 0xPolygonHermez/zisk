@@ -23,7 +23,7 @@
 #include "emu.hpp"
 #include "c_provided.hpp"
 #include "log.hpp"
-#include "../../lib-c/c/src/keccakf_cache/keccakf_cache.hpp"
+#include "../../lib-c/c/src/keccakf_dedup/keccakf_dedup.hpp"
 #include "../../lib-c/c/src/fcall/fcall.hpp"
 
 /****************************/
@@ -121,6 +121,29 @@ void server_signal_handler(void)
 // ROM histogram
 static void save_rom_histogram_to_file (void);
 static void dump_guest_buffer (void);
+
+// Reserves [addr, addr + size) PROT_NONE, as the guard region below, so that any access faults
+// and no later mmap(NULL, ...) or large malloc can be placed there. Used for the part of the
+// input and RAM windows above the memory this build reserves (MAX_INPUT_SIZE, RAM_SIZE): the
+// assembly code does no bounds checking, so an access beyond the reserved memory must fault.
+static void reserve_no_access (uint64_t addr, uint64_t size, const char * name)
+{
+    if (size == 0) return;
+    void * p = mmap((void *)addr, size, PROT_NONE,
+                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_NORESERVE, -1, 0);
+    if (p == MAP_FAILED)
+    {
+        asm_printf("ERROR: Failed calling mmap(%s) errno=%d=%s\n", name, errno, strerror(errno));
+        exit(-1);
+    }
+    if ((uint64_t)p != addr)
+    {
+        asm_printf("ERROR: Called mmap(%s) but returned address = %p != 0x%08lx\n", name, p, addr);
+        exit(-1);
+    }
+    if (verbose) asm_printf("Reserved %s 0x%08lx-0x%08lx (%lu MB) as PROT_NONE\n",
+                            name, addr, addr + size - 1, size >> 20);
+}
 uint64_t histogram_size = 0;
 uint64_t rom_length = 0;
 uint64_t frops_length = 0;
@@ -421,6 +444,9 @@ void server_setup (void)
             exit(-1);
         }
         shmem_input_fd = -1;
+
+        // The rest of the input window, beyond the reserved input
+        reserve_no_access(INPUT_ADDR + MAX_INPUT_SIZE, INPUT_WINDOW_SIZE - MAX_INPUT_SIZE, "input window tail");
         
         // Report duration
         if (verbose)
@@ -834,6 +860,9 @@ void server_setup (void)
         if (verbose) asm_printf("Reserved guard region 0x%08lx-0x%08lx (%lu MB) as PROT_NONE\n",
                                 GUARD_ADDR, GUARD_ADDR + GUARD_SIZE - 1, GUARD_SIZE >> 20);
 
+        // The rest of the RAM window, beyond the reserved RAM
+        reserve_no_access(RAM_ADDR + RAM_SIZE, RAM_WINDOW_SIZE - RAM_SIZE, "RAM window tail");
+
         // Report duration
         if (verbose)
         {
@@ -987,8 +1016,10 @@ void server_reset_fast (void)
 
 void server_reset_slow (void)
 {
-    // Release the Keccak-f cache built during the emulation that just finished
-    keccakf_cache_free();
+    // The table of unique Keccak-f permutations is NOT released here: it is emptied when the
+    // next emulation starts (keccakf_dedup_reset) and keeps its memory. Releasing it makes every
+    // emulation fault its pages in again, which doubles what the table costs (measured: about
+    // 100 ns per Keccak-f instead of 50). It is released in server_cleanup().
 
     // Reset RAM and ROM data for next emulation
     {
@@ -1054,8 +1085,8 @@ void server_run (void)
         memset((void *)trace_address, 0, trace_size);
     }
 
-    // Start this emulation with an empty Keccak-f cache: it only lives for one execution
-    keccakf_cache_reset();
+    // Start this emulation with no Keccak-f permutation registered as unique
+    keccakf_dedup_reset();
 
 #ifdef ASM_CALL_METRICS
     reset_asm_call_metrics();
@@ -1294,6 +1325,16 @@ void server_run (void)
     print_asm_call_metrics(assembly_duration);
 #endif
 
+    // Report how many Keccak-f permutations of this execution repeat an earlier one
+    if ((gen_method == MinimalTrace) && (metrics || verbose))
+    {
+        uint64_t unique = keccakf_dedup_unique_count();
+        uint64_t replicas = keccakf_dedup_replica_count();
+        asm_printf("Keccak-f dedup: total=%lu unique=%lu replicas=%lu (%.2f%%)\n",
+            unique + replicas, unique, replicas,
+            (unique + replicas) ? (100.0 * (double)replicas / (double)(unique + replicas)) : 0.0);
+    }
+
     // Log trace
     if ((gen_method == MinimalTrace) && trace)
     {
@@ -1321,11 +1362,12 @@ void server_run (void)
 // multiplicity, see get_rom_histogram_trace_address() in core/src/zisk_rom_2_asm.rs) to
 // /tmp/<shm_prefix>_RH_output.bin, so it can be compared against the same tables computed in Rust.
 // The guest regions a dumped buffer may lie in, as in ziskemu's guest_buffer(): the stack,
-// [STACK_ADDR, SYS_ADDR), and the general RAM, [GENERAL_RAM_ADDR, ZISKLIB_RAM_ADDR). The values
-// must match core/src/mem.rs
+// [STACK_ADDR, SYS_ADDR), and the general RAM, [GENERAL_RAM_ADDR, RAM_ADDR + RAM_SIZE), above
+// the output (OUTPUT_MAX_SIZE = 128K), float lib (64K) and zisklib (192K) RAM. The values must
+// match core/src/mem.rs
 #define DUMP_STACK_ADDR       RAM_ADDR
-#define DUMP_GENERAL_RAM_ADDR (OUTPUT_ADDR + 0x20000)                          // OUTPUT_MAX_SIZE = 128K
-#define DUMP_ZISKLIB_RAM_ADDR (RAM_ADDR + RAM_SIZE - 0x10000 - 0x30000)        // FLOAT_LIB_RAM, ZISKLIB_RAM
+#define DUMP_GENERAL_RAM_ADDR (OUTPUT_ADDR + 0x20000 + 0x10000 + 0x30000)
+#define DUMP_RAM_END          (RAM_ADDR + RAM_SIZE)
 
 // Writes the buffer whose guest address and length are public output bytes 32..40 and 40..48 to
 // dump_guest_buffer_file. On an invalid range or a write error, reports it and leaves no file, so
@@ -1337,7 +1379,7 @@ static void dump_guest_buffer (void)
     uint64_t len = pOutput[5];
     uint64_t end = ptr + len;
     bool in_stack = (end >= ptr) && (ptr >= DUMP_STACK_ADDR) && (ptr < SYS_ADDR) && (end <= SYS_ADDR);
-    bool in_ram = (end >= ptr) && (ptr >= DUMP_GENERAL_RAM_ADDR) && (ptr < DUMP_ZISKLIB_RAM_ADDR) && (end <= DUMP_ZISKLIB_RAM_ADDR);
+    bool in_ram = (end >= ptr) && (ptr >= DUMP_GENERAL_RAM_ADDR) && (ptr < DUMP_RAM_END) && (end <= DUMP_RAM_END);
     unlink(dump_guest_buffer_file);
     if (!in_stack && !in_ram)
     {
@@ -1382,6 +1424,9 @@ static void save_rom_histogram_to_file (void)
 
 void server_cleanup (void)
 {
+    // Release the table of unique Keccak-f permutations, kept across emulations
+    keccakf_dedup_free();
+
     // Cleanup ROM
     int result = munmap((void *)ROM_ADDR, ROM_SIZE);
     if (result == -1)

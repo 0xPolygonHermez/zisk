@@ -85,7 +85,7 @@ public:
     inline uint32_t get_next_slot_pos();
     inline void update_addr_count(uint32_t &count, bool is_aligned, bool is_write, bool is_ram);
     inline uint32_t init_addr_count(bool is_aligned, bool is_write, bool is_ram);
-    void incr_counter(uint32_t addr, uint32_t chunk_id, bool is_aligned, bool is_write);
+    void incr_counter(uint64_t addr, uint32_t chunk_id, bool is_aligned, bool is_write);
     inline uint32_t incr_st_counter_aligned(uint32_t count, bool is_write);
     inline uint32_t incr_st_counter_unaligned(uint32_t count, bool is_write);
 
@@ -94,11 +94,11 @@ public:
         return elapsed_ms;
     }
     inline static uint32_t offset_to_page(uint32_t offset);
-    inline static void offset_info(uint32_t offset, uint32_t &page, uint32_t &addr, uint32_t thread_index);        
-    inline static uint32_t offset_to_addr(uint32_t offset, uint32_t thread_index);
-    inline static uint32_t addr_to_offset(uint32_t addr, uint32_t chunk_id = 0);
-    inline static uint32_t addr_to_page(uint32_t addr, uint32_t chunk_id = 0);
-    inline static uint32_t page_to_addr(uint8_t page);
+    inline static void offset_info(uint32_t offset, uint32_t &page, uint64_t &addr, uint32_t thread_index);        
+    inline static uint64_t offset_to_addr(uint32_t offset, uint32_t thread_index);
+    inline static uint32_t addr_to_offset(uint64_t addr, uint32_t chunk_id = 0);
+    inline static uint32_t addr_to_page(uint64_t addr, uint32_t chunk_id = 0);
+    inline static uint64_t page_to_addr(uint8_t page);
     inline static const char *page_to_tag(uint8_t page);
     inline uint32_t get_used_slots(void) const;
     inline uint64_t get_first_chunk_us(void) const;
@@ -202,25 +202,25 @@ uint32_t MemCounter::offset_to_page(uint32_t offset) {
     return (offset >> ADDR_PAGE_BITS);
 }
 
-void MemCounter::offset_info(uint32_t offset, uint32_t &page, uint32_t &addr, uint32_t thread_index) {
+void MemCounter::offset_info(uint32_t offset, uint32_t &page, uint64_t &addr, uint32_t thread_index) {
     page = offset >> ADDR_PAGE_BITS;
-    uint32_t base_addr = page_to_addr(page);
-    addr = ((offset & RELATIVE_OFFSET_MASK) << ADDR_LOW_BITS) + base_addr + thread_index * 8;
+    uint64_t base_addr = page_to_addr(page);
+    addr = ((uint64_t)(offset & RELATIVE_OFFSET_MASK) << ADDR_LOW_BITS) + base_addr + thread_index * 8;
 }
 
-uint32_t MemCounter::offset_to_addr(uint32_t offset, uint32_t thread_index) {
+uint64_t MemCounter::offset_to_addr(uint32_t offset, uint32_t thread_index) {
     uint32_t page = offset >> ADDR_PAGE_BITS;
-    uint32_t base_addr = page_to_addr(page);
-    return ((offset & RELATIVE_OFFSET_MASK) << ADDR_LOW_BITS) + base_addr + thread_index * 8;
+    uint64_t base_addr = page_to_addr(page);
+    return ((uint64_t)(offset & RELATIVE_OFFSET_MASK) << ADDR_LOW_BITS) + base_addr + thread_index * 8;
 }
 
-#define ROM_FIRST_BLOCK (ROM_ADDR >> ADDR_BLOCK_BITS)
-#define INPUT_FIRST_BLOCK (INPUT_ADDR >> ADDR_BLOCK_BITS)
-#define RAM_FIRST_BLOCK (RAM_ADDR >> ADDR_BLOCK_BITS)
-#define ADDR_BLOCK_MASK ((1 << ADDR_BLOCK_BITS) - 1)
+#define ROM_FIRST_BLOCK ((uint32_t)(ROM_ADDR >> ADDR_BLOCK_BITS))
+#define INPUT_FIRST_BLOCK ((uint32_t)(INPUT_ADDR >> ADDR_BLOCK_BITS))
+#define RAM_FIRST_BLOCK ((uint32_t)(RAM_ADDR >> ADDR_BLOCK_BITS))
+#define ADDR_BLOCK_MASK ((1ULL << ADDR_BLOCK_BITS) - 1)
 
-uint32_t MemCounter::addr_to_offset(uint32_t addr, uint32_t chunk_id) {
-    return (addr_to_page(addr, chunk_id) << ADDR_PAGE_BITS) + ((addr & ADDR_BLOCK_MASK) >> ADDR_LOW_BITS);
+uint32_t MemCounter::addr_to_offset(uint64_t addr, uint32_t chunk_id) {
+    return (addr_to_page(addr, chunk_id) << ADDR_PAGE_BITS) + (uint32_t)((addr & ADDR_BLOCK_MASK) >> ADDR_LOW_BITS);
 }
 const char *MemCounter::page_to_tag(uint8_t page) {
     if (page < INPUT_FIRST_PAGE) return "rom_data";
@@ -228,9 +228,9 @@ const char *MemCounter::page_to_tag(uint8_t page) {
     if (page < MAX_PAGES) return "mem";
     return "??";
 }
-uint32_t MemCounter::addr_to_page(uint32_t addr, uint32_t chunk_id) {
+uint32_t MemCounter::addr_to_page(uint64_t addr, uint32_t chunk_id) {
     // unsigned subtraction: a block below the first block of the area wraps to a large value
-    const uint32_t block = addr >> ADDR_BLOCK_BITS;
+    const uint32_t block = (uint32_t)(addr >> ADDR_BLOCK_BITS);
     if ((block - RAM_FIRST_BLOCK) < RAM_PAGES) return RAM_FIRST_PAGE + (block - RAM_FIRST_BLOCK);
     if ((block - INPUT_FIRST_BLOCK) < INPUT_PAGES) return INPUT_FIRST_PAGE + (block - INPUT_FIRST_BLOCK);
     if ((block - ROM_FIRST_BLOCK) < ROM_PAGES) return ROM_FIRST_PAGE + (block - ROM_FIRST_BLOCK);
@@ -239,11 +239,11 @@ uint32_t MemCounter::addr_to_page(uint32_t addr, uint32_t chunk_id) {
     throw std::runtime_error(msg.str());
 }
 
-uint32_t MemCounter::page_to_addr(uint8_t page) {
-    if (page < INPUT_FIRST_PAGE) return ROM_ADDR + ((uint32_t)(page - ROM_FIRST_PAGE) << ADDR_BLOCK_BITS);
-    if (page < RAM_FIRST_PAGE) return INPUT_ADDR + ((uint32_t)(page - INPUT_FIRST_PAGE) << ADDR_BLOCK_BITS);
-    if (page < MAX_PAGES) return RAM_ADDR + ((uint32_t)(page - RAM_FIRST_PAGE) << ADDR_BLOCK_BITS);
-    if (page == 0xFF) return 0xFFFFFFFF;
+uint64_t MemCounter::page_to_addr(uint8_t page) {
+    if (page < INPUT_FIRST_PAGE) return ROM_ADDR + ((uint64_t)(page - ROM_FIRST_PAGE) << ADDR_BLOCK_BITS);
+    if (page < RAM_FIRST_PAGE) return INPUT_ADDR + ((uint64_t)(page - INPUT_FIRST_PAGE) << ADDR_BLOCK_BITS);
+    if (page < MAX_PAGES) return RAM_ADDR + ((uint64_t)(page - RAM_FIRST_PAGE) << ADDR_BLOCK_BITS);
+    if (page == 0xFF) return 0xFFFFFFFFFFFFFFFFULL;
     std::ostringstream msg;
     msg << "ERROR: MemCounter page_to_address page: " << (int)page;
     throw std::runtime_error(msg.str());

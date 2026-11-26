@@ -1,11 +1,4 @@
 #![cfg_attr(zisk_guest, no_std)]
-// `linkage` is needed for the weak C++ runtime symbols (`__cxa_atexit`,
-// `__cxa_finalize`, `__dso_handle`) declared in `_zisk_main`. The linker-provided
-// init/fini array bounds are declared as *strong* externs (a weak static would be
-// reached through a hidden pointer slot, so `addr_of!` would not yield the section
-// address); standard linkers (GNU ld, LLD) always define those symbols. Guest-only,
-// so native/stable builds of this crate are unaffected.
-#![cfg_attr(zisk_guest, feature(linkage))]
 #![allow(unexpected_cfgs)]
 #![allow(unused_imports)]
 
@@ -533,11 +526,28 @@ pub mod ziskos {
     // destructors at construction time via `__cxa_atexit(dtor, obj, &__dso_handle)`
     // and expects them to run at exit via `__cxa_finalize`. Single-threaded guest,
     // so a plain fixed-capacity `static mut` table suffices. Weak so a host C++
-    // runtime (e.g. libsupc++), if linked, takes precedence.
-
-    #[no_mangle]
-    #[linkage = "weak"]
-    pub static __dso_handle: u8 = 0;
+    // runtime (e.g. newlib, picolibc or crtbegin), if linked, takes precedence.
+    //
+    // The weak symbols are published from assembly rather than with
+    // `#[linkage = "weak"]`, which needs `#![feature(linkage)]` and so a nightly
+    // or `-dev` compiler: release toolchains reject any `#![feature]`. The
+    // functions are ordinary Rust items under private names, and `.weak` + `.set`
+    // make `__cxa_atexit` / `__cxa_finalize` weak aliases for them, which is what
+    // `#[linkage = "weak"]` produced. `__dso_handle` is only ever used for its
+    // address, so it is defined in assembly directly.
+    core::arch::global_asm!(
+        ".weak __cxa_atexit",
+        ".set __cxa_atexit, __ziskos_cxa_atexit",
+        ".weak __cxa_finalize",
+        ".set __cxa_finalize, __ziskos_cxa_finalize",
+        ".pushsection .data.__dso_handle,\"aw\",@progbits",
+        ".weak __dso_handle",
+        ".type __dso_handle, @object",
+        ".size __dso_handle, 1",
+        "__dso_handle:",
+        ".byte 0",
+        ".popsection",
+    );
 
     const MAX_ATEXIT: usize = 64;
     static mut ATEXIT_FNS: [(Option<extern "C" fn(*mut u8)>, *mut u8); MAX_ATEXIT] =
@@ -545,8 +555,7 @@ pub mod ziskos {
     static mut ATEXIT_LEN: usize = 0;
 
     #[no_mangle]
-    #[linkage = "weak"]
-    pub unsafe extern "C" fn __cxa_atexit(
+    pub unsafe extern "C" fn __ziskos_cxa_atexit(
         func: extern "C" fn(*mut u8),
         arg: *mut u8,
         _dso: *mut u8,
@@ -563,8 +572,7 @@ pub mod ziskos {
     }
 
     #[no_mangle]
-    #[linkage = "weak"]
-    pub unsafe extern "C" fn __cxa_finalize(_dso: *mut u8) {
+    pub unsafe extern "C" fn __ziskos_cxa_finalize(_dso: *mut u8) {
         // Reverse registration order; idempotent (drains the table), so a second
         // call (e.g. from `.fini_array`) is a no-op.
         let base =
@@ -576,6 +584,13 @@ pub mod ziskos {
                 func(arg);
             }
         }
+    }
+
+    // Called through the public symbol, not `__ziskos_cxa_finalize`: when a host
+    // C++ runtime overrides the weak aliases, its `__cxa_finalize` is the one that
+    // knows the destructors its `__cxa_atexit` registered.
+    extern "C" {
+        fn __cxa_finalize(dso: *mut u8);
     }
 
     unsafe fn run_exit_handlers() {

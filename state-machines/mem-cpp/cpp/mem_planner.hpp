@@ -32,8 +32,8 @@
 struct SegmentStats {
     uint32_t addr_count;
     uint32_t offset_count;
-    uint32_t first_addr;
-    uint32_t last_addr;
+    uint64_t first_addr;
+    uint64_t last_addr;
     uint32_t chunks;
 };
 #define MAX_SEGMENTS 1024
@@ -46,10 +46,10 @@ private:
     uint32_t to_page;
     uint32_t rows_available;
     uint32_t reference_addr_chunk;
-    uint32_t reference_addr;
+    uint64_t reference_addr;
     uint32_t reference_skip;
     uint32_t current_chunk;
-    uint32_t last_addr;
+    uint64_t last_addr;
     uint32_t locators_done;
     #ifndef MEM_CHECK_POINT_MAP
     uint32_t *chunk_table;
@@ -80,21 +80,21 @@ public:
     MemPlanner& operator=(const MemPlanner&) = delete;
     MemPlanner(MemPlanner&&) noexcept = default;
     
-    MemPlanner(uint32_t id, uint32_t rows, uint32_t from_addr, uint32_t mb_size);
+    MemPlanner(uint32_t id, uint32_t rows, uint64_t from_addr, uint32_t mb_size);
     ~MemPlanner();
     const MemLocator *get_next_locator(MemLocators &locators, uint32_t &segment_id, uint32_t us_timeout = 10);
     void execute_from_locators(const std::vector<MemCounter *> &workers, MemLocators &locators, MemSegments &segments);        
     void execute_from_locator(const std::vector<MemCounter *> &workers, uint32_t segment_id, const MemLocator *locator);
     #ifdef MEM_PLANNER_STATS
-    void update_segment_stats(uint32_t addr_count, uint32_t offset_count, uint32_t first_segment_addr, uint32_t last_segment_addr);
+    void update_segment_stats(uint32_t addr_count, uint32_t offset_count, uint64_t first_segment_addr, uint64_t last_segment_addr);
     #endif
     void generate_locators(const std::vector<MemCounter *> &workers, MemLocators &locators);
     void get_offset_limits(const std::vector<MemCounter *> &workers, uint32_t page, uint32_t &first_offset, uint32_t &last_offset);
     uint32_t get_max_offset(const std::vector<MemCounter *> &workers, uint32_t page);
-    bool add_chunk(uint32_t chunk_id, uint32_t addr, uint32_t count, uint32_t skip = 0);
-    void current_segment_add(uint32_t chunk_id, uint32_t addr, uint32_t count);
+    bool add_chunk(uint32_t chunk_id, uint64_t addr, uint32_t count, uint32_t skip = 0);
+    void current_segment_add(uint32_t chunk_id, uint64_t addr, uint32_t count);
     void precompute_locator_requirements(const std::vector<MemCounter *> &workers, const MemLocator *locator,
-                                         uint32_t &first_addr, uint32_t &last_addr, uint32_t &num_addrs);
+                                         uint64_t &first_addr, uint64_t &last_addr, uint32_t &num_addrs);
     void stats();
     inline uint64_t *get_locators_times(uint32_t &count);
 };

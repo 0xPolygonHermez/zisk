@@ -227,9 +227,9 @@ impl MemAlignInstanceCounter {
 
     /// Clears the collected data for all memory alignment types.
     fn clear_collect_data(&mut self) {
-        for i in 0..MA_TYPES {
-            self.collect_data[i].skip = 0;
-            self.collect_data[i].count = 0;
+        for data in &mut self.collect_data {
+            data.skip = 0;
+            data.count = 0;
         }
     }
 

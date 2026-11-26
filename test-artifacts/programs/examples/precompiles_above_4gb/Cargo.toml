@@ -1,5 +1,5 @@
 [package]
-name = "keccakf_cache"
+name = "precompiles_above_4gb"
 version.workspace = true
 edition.workspace = true
 

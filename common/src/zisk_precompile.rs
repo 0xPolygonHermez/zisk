@@ -627,7 +627,7 @@ macro_rules! zisk_precompile_explicit {
                     }
 
                     let step_main = data[$crate::STEP];
-                    let addr_main = data[$crate::B] as u32;
+                    let addr_main = data[$crate::B];
 
                     match self.mode {
                         $crate::BusDeviceMode::Counter => {

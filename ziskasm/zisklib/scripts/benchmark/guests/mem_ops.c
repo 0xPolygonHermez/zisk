@@ -6,7 +6,7 @@
    of src/zkvm_mem.s, and the JUMPDEST bitmap of pseudo-random bytecode (full of
    PUSHes) against a software walk, including the cases the precompile refuses
    (unaligned, empty), which must write nothing.
-   Output: one byte per test group at 0xa0410000, 1 = a failure in that group, and
+   Output: one byte per test group at 0xc0410000, 1 = a failure in that group, and
    1 in the byte after the last group once all have run. check.sh compares it with a
    golden snapshot. Build with -march=rv64ima_zicsr. */
 #include <stddef.h>
@@ -17,7 +17,7 @@
 #include "zkvm_mem.h"
 #include "zkvm_evm.h"
 
-static volatile uint8_t* const O = (volatile uint8_t*)0xA0410000ULL;
+static volatile uint8_t* const O = (volatile uint8_t*)0xC0410000ULL;
 
 static uint64_t rng = 0x9e3779b97f4a7c15ULL;
 static uint8_t rnd8(void) { rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17; return (uint8_t)rng; }

@@ -34,7 +34,7 @@ w('''; -------------------------------------------------------------------------
 ;     X = B and enters the body just below it.
 ; Each precompile call uses a preset parameter block, so it is a single step.
 ; ---------------------------------------------------------------------------
-define ZME_DMA_COUNT 0xa0400f00         ; dma_memcpy reads its byte count here
+define ZME_DMA_COUNT 0xc0400f00         ; dma_memcpy reads its byte count here
 
 u64 ZME_RA[1]   = 0
 u64 ZME_BUF[6]  = 0, 0, 0, 0, 0, 0      ; a right-aligned big-endian operand

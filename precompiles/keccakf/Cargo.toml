@@ -3,9 +3,9 @@ name = "zisk-precomp-keccakf"
 description = "Keccak-f permutation precompile for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
-homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
@@ -15,6 +15,7 @@ build = "build.rs"
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
+zisk-sm-binary = { workspace = true }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
@@ -40,6 +41,11 @@ zisk-test-artifacts = { workspace = true }
 
 [build-dependencies]
 zisk-cuda-build = { workspace = true }
+
+[lints.cargo]
+# `zisk-gpu-witness` is only named under `cfg(gpu)`, which build.rs sets when CUDA is detected.
+# A Cargo.toml cannot express that cfg, so on a non-GPU build the dependency looks unused.
+unused_dependencies = "allow"
 
 [lints.rust]
 # `gpu` is set by build.rs only when CUDA is detected; declare it so the

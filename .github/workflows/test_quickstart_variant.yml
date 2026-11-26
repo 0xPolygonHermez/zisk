@@ -3,7 +3,7 @@ name: Test ZisK Quickstart (variant)
 # Reusable workflow that builds ZisK, its blake3 proving key and the pilfflonk setup
 # on top of it from the checked-out sources on the ZisK runner
 # container, and runs the quickstart test against them. It is called once per variant (CPU and GPU) by
-# test_quickstart.yml.
+# test_nightly.yml.
 
 on:
   workflow_call:

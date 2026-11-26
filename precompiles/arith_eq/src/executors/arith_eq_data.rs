@@ -35,6 +35,7 @@ impl ArithEqData {
             assert!(self.q0[i] >= 0 && self.q0[i] <= max_range);
             assert!(self.q1[i] >= 0 && self.q1[i] <= max_range);
             assert!(self.q2[i] >= 0 && self.q2[i] <= max_range);
+            #[allow(clippy::needless_range_loop)]
             for j in 0..2 {
                 assert!(
                     self.cout[i][j] >= MIN_CARRY && self.cout[i][j] <= MAX_CARRY,

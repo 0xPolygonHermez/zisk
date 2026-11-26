@@ -13,7 +13,55 @@ pub use aggregation::{
 use clap::Parser;
 
 pub const RUSTUP_TOOLCHAIN_NAME: &str = "zisk";
+/// Guest linker script: the memory map, with the heap ending at 512 MB of RAM (what a prover
+/// built without its `ram_2gb` feature reserves).
 pub const ZISK_LINKER_SCRIPT: &[u8] = include_bytes!("../zisk_linker_script.ld");
+/// Guest linker script for a prover built with its `ram_2gb` feature: sets the RAM to 2 GB and
+/// includes [`ZISK_LINKER_SCRIPT`], which must sit in a directory on the linker search path.
+pub const ZISK_LINKER_SCRIPT_RAM2GB: &[u8] = include_bytes!("../zisk_linker_script_ram2gb.ld");
+/// File names of the two scripts; the 2 GB one includes the base one by this name.
+pub const ZISK_LINKER_SCRIPT_NAME: &str = "zisk_linker_script.ld";
+pub const ZISK_LINKER_SCRIPT_RAM2GB_NAME: &str = "zisk_linker_script_ram2gb.ld";
+
+/// The guest linker scripts written for one build, in their own temporary directory, and the one
+/// the guest links with. Keep it alive until cargo finishes: dropping it removes the files.
+pub struct GuestLinkerScript {
+    dir: tempfile::TempDir,
+    script: std::path::PathBuf,
+}
+
+impl GuestLinkerScript {
+    /// Writes both scripts and picks the 2 GB one when `ram_2gb`.
+    fn write(ram_2gb: bool) -> anyhow::Result<Self> {
+        use anyhow::Context;
+        // A uniquely-named directory: a predictable path (`$TMPDIR/zisk.ld`) can race across
+        // concurrent invocations and is exposed to temp-file symlink attacks.
+        let dir = tempfile::Builder::new()
+            .prefix("zisk-ld-")
+            .tempdir()
+            .context("Failed to create the temporary directory of the Zisk linker scripts")?;
+        for (name, content) in [
+            (ZISK_LINKER_SCRIPT_NAME, ZISK_LINKER_SCRIPT),
+            (ZISK_LINKER_SCRIPT_RAM2GB_NAME, ZISK_LINKER_SCRIPT_RAM2GB),
+        ] {
+            std::fs::write(dir.path().join(name), content)
+                .with_context(|| format!("Failed to write the Zisk linker script {name}"))?;
+        }
+        let name = if ram_2gb { ZISK_LINKER_SCRIPT_RAM2GB_NAME } else { ZISK_LINKER_SCRIPT_NAME };
+        let script = dir.path().join(name);
+        Ok(Self { dir, script })
+    }
+
+    /// The script the guest links with.
+    pub fn path(&self) -> &std::path::Path {
+        &self.script
+    }
+
+    /// The directory holding both scripts, on the linker search path for the `INCLUDE`.
+    pub fn dir(&self) -> &std::path::Path {
+        self.dir.path()
+    }
+}
 
 pub const ZISK_VERSION_MESSAGE: &str = concat!(
     env!("CARGO_PKG_VERSION"),
@@ -106,11 +154,22 @@ pub struct BuildArgs {
 
     #[clap(long = "bin", value_name = "BIN")]
     pub binaries: Vec<String>,
+
+    /// Link for 2 GB of RAM (a prover built with its `ram_2gb` feature) instead of 512 MB: the
+    /// heap ends at the end of the RAM the guest is linked for.
+    #[clap(long)]
+    pub ram_2gb: bool,
 }
 
 impl BuildArgs {
     pub fn release(mut self, release: bool) -> Self {
         self.release = release;
+        self
+    }
+
+    /// Link for 2 GB of RAM (a prover built with its `ram_2gb` feature) instead of 512 MB.
+    pub fn ram_2gb(mut self, ram_2gb: bool) -> Self {
+        self.ram_2gb = ram_2gb;
         self
     }
 }
@@ -163,8 +222,9 @@ pub fn target_features_from_features(features: Option<&str>, all_features: bool)
 /// Rustflags environment for compiling a Zisk guest: the flags
 /// `.cargo/config.toml` declares for the guest target (resolved from
 /// `program_dir`, defaulting to the current directory) plus `--cfg zisk_guest`
-/// and the Zisk linker script. Returns the script's temp file — keep it alive
-/// until cargo finishes — and the `CARGO_ENCODED_RUSTFLAGS` value.
+/// and the Zisk linker script, for 512 MB of RAM or, with `ram_2gb`, for 2 GB.
+/// Returns the scripts' temp directory — keep it alive until cargo finishes —
+/// and the `CARGO_ENCODED_RUSTFLAGS` value.
 ///
 /// Config rustflags are always preserved (e.g. the reth guest's
 /// `--inline-threshold` tuning): since we set `CARGO_ENCODED_RUSTFLAGS`
@@ -184,23 +244,13 @@ pub fn guest_rustflags(
     program_dir: Option<&std::path::Path>,
     inherit_env_rustflags: bool,
     extra_flags: &[String],
-) -> anyhow::Result<(tempfile::NamedTempFile, String)> {
+    ram_2gb: bool,
+) -> anyhow::Result<(GuestLinkerScript, String)> {
     use anyhow::Context;
-    use std::io::Write;
 
-    // Write the linker script to a uniquely-named temp file. A predictable
-    // path (`$TMPDIR/zisk.ld`) can race across concurrent invocations and is
-    // exposed to temp-file symlink attacks. The caller keeps the handle alive
-    // until cargo finishes so the file is not removed while the linker still
-    // needs it.
-    let mut linker_script = tempfile::Builder::new()
-        .prefix("zisk-")
-        .suffix(".ld")
-        .tempfile()
-        .context("Failed to create temporary Zisk linker script")?;
-    linker_script
-        .write_all(ZISK_LINKER_SCRIPT)
-        .context("Failed to write Zisk linker script to temp file")?;
+    // The caller keeps the handle alive until cargo finishes so the scripts are
+    // not removed while the linker still needs them.
+    let linker_script = GuestLinkerScript::write(ram_2gb)?;
 
     // Resolve config rustflags with every rustflags env var filtered out: cargo
     // would otherwise let them override or shadow the program's config flags. We
@@ -254,6 +304,8 @@ pub fn guest_rustflags(
         "--cfg".to_string(),
         "zisk_guest".to_string(),
         "-C".to_string(),
+        format!("link-arg=-L{}", linker_script.dir().display()),
+        "-C".to_string(),
         format!("link-arg=-T{}", linker_script.path().display()),
     ]);
     // `Flags::encode` `\x1f`-joins (wins over plain RUSTFLAGS, survives spaces)
@@ -267,18 +319,19 @@ pub fn guest_rustflags(
 /// Configures `command` (a child `cargo` invocation) to build the guest with
 /// the correct rustflags: sets `CARGO_ENCODED_RUSTFLAGS` from `guest_rustflags`
 /// and scrubs the other rustflags env vars so cargo cannot re-apply them on top
-/// or shift precedence. Returns the linker-script temp file — the caller MUST
-/// keep it alive until `cargo` finishes. Pairing the set and scrub in one place
-/// keeps them from drifting apart across call sites. See `guest_rustflags` for
-/// `program_dir` / `inherit_env_rustflags` / `extra_flags`.
+/// or shift precedence. Returns the linker scripts' temp directory — the caller
+/// MUST keep it alive until `cargo` finishes. Pairing the set and scrub in one
+/// place keeps them from drifting apart across call sites. See `guest_rustflags`
+/// for `program_dir` / `inherit_env_rustflags` / `extra_flags` / `ram_2gb`.
 pub fn apply_guest_rustflags(
     command: &mut std::process::Command,
     program_dir: Option<&std::path::Path>,
     inherit_env_rustflags: bool,
     extra_flags: &[String],
-) -> anyhow::Result<tempfile::NamedTempFile> {
+    ram_2gb: bool,
+) -> anyhow::Result<GuestLinkerScript> {
     let (linker_script, encoded_rustflags) =
-        guest_rustflags(program_dir, inherit_env_rustflags, extra_flags)?;
+        guest_rustflags(program_dir, inherit_env_rustflags, extra_flags, ram_2gb)?;
     command.env("CARGO_ENCODED_RUSTFLAGS", encoded_rustflags);
     // `CARGO_ENCODED_RUSTFLAGS` is the value we just set; scrub the rest.
     for var in all_rustflags_vars().filter(|v| v != "CARGO_ENCODED_RUSTFLAGS") {
@@ -363,7 +416,7 @@ mod tests {
         )
         .unwrap();
 
-        let (script, encoded) = guest_rustflags(Some(dir.path()), false, &[]).unwrap();
+        let (script, encoded) = guest_rustflags(Some(dir.path()), false, &[], false).unwrap();
         let flags: Vec<&str> = encoded.split('\u{1f}').collect();
 
         let config_flag = flags
@@ -378,6 +431,29 @@ mod tests {
         assert!(config_flag < cfg_flag);
         // The temp file holds the Zisk linker script.
         assert_eq!(std::fs::read(script.path()).unwrap(), ZISK_LINKER_SCRIPT);
+    }
+
+    /// With `ram_2gb` the guest links with the 2 GB script, which includes the base one from the
+    /// same directory: both are written there and the directory is on the linker search path.
+    #[test]
+    fn guest_rustflags_ram_2gb_links_the_2gb_script() {
+        let dir = tempfile::tempdir().unwrap();
+        let _env = EnvVarGuard::hermetic(dir.path());
+
+        let (script, encoded) = guest_rustflags(Some(dir.path()), false, &[], true).unwrap();
+        let flags: Vec<&str> = encoded.split('\u{1f}').collect();
+
+        assert_eq!(std::fs::read(script.path()).unwrap(), ZISK_LINKER_SCRIPT_RAM2GB);
+        assert_eq!(
+            std::fs::read(script.dir().join(ZISK_LINKER_SCRIPT_NAME)).unwrap(),
+            ZISK_LINKER_SCRIPT
+        );
+        let include = format!("INCLUDE {ZISK_LINKER_SCRIPT_NAME}");
+        assert!(String::from_utf8_lossy(ZISK_LINKER_SCRIPT_RAM2GB).contains(&include));
+        let l_flag = format!("link-arg=-L{}", script.dir().display());
+        let t_flag = format!("link-arg=-T{}", script.path().display());
+        assert!(flags.contains(&l_flag.as_str()), "missing linker search path: {encoded:?}");
+        assert!(flags.contains(&t_flag.as_str()), "missing linker-script flag: {encoded:?}");
     }
 
     /// The default rustflag comes first, so the program's config (or env) can override it. rustc
@@ -396,7 +472,8 @@ mod tests {
         .unwrap();
 
         let features = target_features_from_features(None, false);
-        let (_script, encoded) = guest_rustflags(Some(dir.path()), false, &features).unwrap();
+        let (_script, encoded) =
+            guest_rustflags(Some(dir.path()), false, &features, false).unwrap();
         let flags: Vec<&str> = encoded.split('\u{1f}').collect();
 
         assert_eq!(flags[..2], ["-C", GUEST_DEFAULT_RUSTFLAG]);
@@ -421,7 +498,7 @@ mod tests {
         )
         .unwrap();
 
-        let (_script, encoded) = guest_rustflags(Some(dir.path()), false, &[]).unwrap();
+        let (_script, encoded) = guest_rustflags(Some(dir.path()), false, &[], false).unwrap();
         assert!(
             encoded.split('\u{1f}').all(|f| !f.is_empty()),
             "empty flag element in {encoded:?}"
@@ -440,7 +517,7 @@ mod tests {
         std::env::set_var("RUSTFLAGS", "-C target-cpu=native");
         std::env::set_var("CARGO_BUILD_RUSTFLAGS", "-C link-arg=--host-only-marker");
 
-        let (_script, encoded) = guest_rustflags(Some(dir.path()), false, &[]).unwrap();
+        let (_script, encoded) = guest_rustflags(Some(dir.path()), false, &[], false).unwrap();
         assert!(
             !encoded.contains("export-dynamic"),
             "host CARGO_ENCODED_RUSTFLAGS leaked into guest flags: {encoded:?}"
@@ -463,7 +540,7 @@ mod tests {
         let _env = EnvVarGuard::hermetic(dir.path());
         std::env::set_var("RUSTFLAGS", "--cfg my_guest_feature");
 
-        let (_script, encoded) = guest_rustflags(Some(dir.path()), true, &[]).unwrap();
+        let (_script, encoded) = guest_rustflags(Some(dir.path()), true, &[], false).unwrap();
         let flags: Vec<&str> = encoded.split('\u{1f}').collect();
         assert!(
             flags.contains(&"my_guest_feature"),
@@ -488,7 +565,7 @@ mod tests {
         .unwrap();
         std::env::set_var("RUSTFLAGS", "--cfg my_guest_feature");
 
-        let (_script, encoded) = guest_rustflags(Some(dir.path()), true, &[]).unwrap();
+        let (_script, encoded) = guest_rustflags(Some(dir.path()), true, &[], false).unwrap();
         let flags: Vec<&str> = encoded.split('\u{1f}').collect();
 
         let config_flag = flags
@@ -520,7 +597,7 @@ mod tests {
         .unwrap();
         std::env::set_var(guest_target_rustflags_var(), "--cfg per_target_feature");
 
-        let (_script, encoded) = guest_rustflags(Some(dir.path()), true, &[]).unwrap();
+        let (_script, encoded) = guest_rustflags(Some(dir.path()), true, &[], false).unwrap();
         let flags: Vec<&str> = encoded.split('\u{1f}').collect();
 
         let config_flag = flags
@@ -545,7 +622,7 @@ mod tests {
         std::env::set_var("RUSTFLAGS", "--cfg global_source");
         std::env::set_var(guest_target_rustflags_var(), "--cfg per_target_source");
 
-        let (_script, encoded) = guest_rustflags(Some(dir.path()), true, &[]).unwrap();
+        let (_script, encoded) = guest_rustflags(Some(dir.path()), true, &[], false).unwrap();
         let flags: Vec<&str> = encoded.split('\u{1f}').collect();
         assert!(flags.contains(&"global_source"), "global RUSTFLAGS dropped: {encoded:?}");
         assert!(
@@ -563,7 +640,7 @@ mod tests {
         let _env = EnvVarGuard::hermetic(dir.path());
         std::env::set_var("CARGO_BUILD_RUSTFLAGS", "--cfg build_source");
 
-        let (_script, encoded) = guest_rustflags(Some(dir.path()), true, &[]).unwrap();
+        let (_script, encoded) = guest_rustflags(Some(dir.path()), true, &[], false).unwrap();
         let flags: Vec<&str> = encoded.split('\u{1f}').collect();
         assert!(
             flags.contains(&"build_source"),

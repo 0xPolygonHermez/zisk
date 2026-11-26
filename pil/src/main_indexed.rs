@@ -40,7 +40,6 @@ indexed_trace_row!(MainTraceRow<F> {
     jmp_offset1: [u64; 4] @instr,
     jmp_offset2: [u64; 4] @instr,
     m32: [bit; 4] @instr,
-    addr1: [u32; 4],
     a_reg_prev_mem_step: [ubit(38); 4],
     b_reg_prev_mem_step: [ubit(38); 4],
     store_reg_prev_mem_step: [ubit(38); 4],

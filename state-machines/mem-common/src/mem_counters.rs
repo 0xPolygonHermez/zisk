@@ -8,6 +8,8 @@ use zisk_common::ChunkId;
 use crate::{MemAlignCounters, MemHelpers};
 use std::fmt;
 use zisk_common::{BusDevice, BusId, MemBusData, Metrics, MEM_BUS_DATA_SIZE, MEM_BUS_ID};
+#[cfg(feature = "save_mem_bus_data")]
+use zisk_core::FREE_INPUT_ADDR;
 use zisk_core::{RAM_ADDR, ROM_ADDR};
 
 const ST_BITS_OFFSET: u32 = 30;
@@ -34,14 +36,14 @@ impl fmt::Debug for MemCounters {
             for (mem_index, mem_area) in self.addr_sorted.iter().enumerate() {
                 write!(f, "[MEM_{},#:{} =>", mem_index, mem_area.len())?;
                 for (addr, count) in mem_area {
-                    write!(f, " 0x{:08X}:{}", addr * 8, count)?;
+                    write!(f, " 0x{:08X}:{}", (*addr as u64) * 8, count)?;
                 }
                 write!(f, "]")?;
             }
         } else {
             write!(f, "[HASH,#:{} =>", self.addr.len())?;
             for (addr, count) in self.addr.iter() {
-                write!(f, " 0x{:08X}:{}", addr * 8, count)?;
+                write!(f, " 0x{:08X}:{}", (*addr as u64) * 8, count)?;
             }
             write!(f, "]")?;
         }
@@ -265,15 +267,26 @@ impl MemCounters {
                     .unwrap(),
             );
         }
-        let values: [u32; 2] = [
-            MemBusData::get_addr(data),
-            // ((MemBusData::get_bytes(data) as u32) << 28)
-            MemBusData::get_bytes(data) as u32
-                + ((MemHelpers::is_write(MemBusData::get_op(data)) as u32) << 16),
-        ];
-        let bytes =
-            unsafe { slice::from_raw_parts(values.as_ptr() as *const u8, 2 * size_of::<u32>()) };
-        self.file.as_mut().unwrap().write_all(bytes).unwrap();
+        // One light-form MOPS header per access (mem-cpp/cpp/mops_format.hpp), the stream that
+        // mem-cpp's load_from_compact_file reads: tag at bit 63, 33-bit byte address at bits 0-32,
+        // mode at bit 33 (width, write flag 0x10), and NO_VALUE when no value follows: on writes
+        // and on reads of the free-input word, which are READ_8_VALUE (0x28), not plain reads.
+        const MOPS_TAG: u64 = 1 << 63;
+        const MOPS_MODE_SHIFT: u64 = 33;
+        const MOPS_WRITE_FLAG: u64 = 0x10;
+        const MOPS_READ_8_VALUE: u64 = 0x28;
+        const MOPS_NO_VALUE_BIT: u64 = 59;
+        let addr = MemBusData::get_addr(data);
+        let is_write = MemHelpers::is_write(MemBusData::get_op(data));
+        let (mode, no_value) = if is_write {
+            (MemBusData::get_bytes(data) as u64 | MOPS_WRITE_FLAG, 1)
+        } else if addr == FREE_INPUT_ADDR {
+            (MOPS_READ_8_VALUE, 1)
+        } else {
+            (MemBusData::get_bytes(data) as u64, 0)
+        };
+        let header = MOPS_TAG | addr | (mode << MOPS_MODE_SHIFT) | (no_value << MOPS_NO_VALUE_BIT);
+        self.file.as_mut().unwrap().write_all(&header.to_le_bytes()).unwrap();
     }
     #[allow(dead_code)]
     pub fn load_from_file(
@@ -325,7 +338,7 @@ impl MemCounters {
             if section.data.is_empty() {
                 continue;
             }
-            let addr = section.addr as u32;
+            let addr = section.addr;
             let mut addr_w = MemHelpers::get_addr_w(addr);
             if MemHelpers::is_dual(addr) {
                 for _value in section.data.iter() {

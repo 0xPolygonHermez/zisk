@@ -20,8 +20,10 @@ use crate::{
     BLAKE3_COST, DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST,
     DMA_MEMCPY_COST, DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, DOT_BF16_COST,
     DOT_F8_COST, EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST,
-    KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON2_KOALABEAR_COST, POSEIDON_COST, REG_A0, SHA256_COST,
-    SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR, TWISTED_EDWARDS_COST,
+    KECCAKF_MT_BYTES, KECCAKF_MT_WORDS, KECCAKF_XOR_LANES, KECCAKF_XOR_MT_BYTES,
+    KECCAKF_XOR_MT_WORDS, KECCAK_COST, KECCAK_XOR_COST, M64, MAX_INPUT_SIZE,
+    POSEIDON2_KOALABEAR_COST, POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST,
+    SLL_U_W_COST, SYS_ADDR, TWISTED_EDWARDS_COST,
 };
 use crate::{BLAKE2B_GAP_SHIFT, BLAKE2B_RD_CHAIN, BLAKE2B_WR_CHAIN};
 use paste::paste;
@@ -35,10 +37,7 @@ use std::{
     str::FromStr,
 };
 use tiny_keccak::keccakf;
-use ziskos::zisklib::{
-    keccakf_cache::KECCAKF_STATE_WORDS, FCALL_GET_KECCAKF_CACHE_INDEX_ID, FCALL_INPUT_READY_ID,
-    FCALL_RANDOM_SEED_ID, FCALL_SET_KECCAKF_CACHE_INDEX_ID, RANDOM_SEED_WORDS,
-};
+use ziskos::zisklib::{FCALL_INPUT_READY_ID, FCALL_RANDOM_SEED_ID, RANDOM_SEED_WORDS};
 
 use crate::ops_core::*;
 use crate::ops_core_context::*;
@@ -453,18 +452,13 @@ define_ops! {
     (CopyB, "copyb", Internal, INTERNAL_COST, 0x01, 0, 0, opc_copyb, op_copyb, ops_none),
 
     // Binary
-    //
-    // Binary proves an opcode and its m32 variant at opcode+0x10 with the same air: `mode32` is a
-    // free witness, so from `b_op` it can always also prove `b_op + 0x10`. Every opcode assigned
-    // to Binary therefore reserves opcode+0x10 as well, even when no m32 variant exists: giving
-    // that slot to a different operation would let Binary satisfy it with the wrong semantics.
     (Minu, "minu", Binary, BINARY_COST, 0x02, 0, 0, opc_minu, op_minu, ops_none),
     (Min, "min", Binary, BINARY_COST, 0x03, 0, 0, opc_min, op_min, ops_none),
     (Maxu, "maxu", Binary, BINARY_COST, 0x04, 0, 0, opc_maxu, op_maxu, ops_none),
     (Max, "max", Binary, BINARY_COST, 0x05, 0, 0, opc_max, op_max, ops_none),
     (Ltu, "ltu", Binary, BINARY_COST, 0x06, 0, 0, opc_ltu, op_ltu, ops_none),
     (Lt, "lt", Binary, BINARY_COST, 0x07, 0, 0, opc_lt, op_lt, ops_none),
-    // Opcode 0x08 is reserved for binary
+    // Opcode 0x08 is GT: internal and reserved for binary
     (Eq, "eq", Binary, BINARY_COST, 0x09, 0, 0, opc_eq, op_eq, ops_none),
     (Add, "add", Binary, BINARY_ADD_COST, 0x0a, 0, 0, opc_add, op_add, ops_none),
     (Sub, "sub", Binary, BINARY_COST, 0x0b, 0, 0, opc_sub, op_sub, ops_none),
@@ -480,13 +474,12 @@ define_ops! {
     (MaxW, "max_w", Binary, BINARY_COST, 0x15, 0, 0, opc_max_w, op_max_w, ops_none),
     (LtuW, "ltu_w", Binary, BINARY_COST, 0x16, 0, 0, opc_ltu_w, op_ltu_w, ops_none),
     (LtW, "lt_w", Binary, BINARY_COST, 0x17, 0, 0, opc_lt_w, op_lt_w, ops_none),
-    // Opcode 0x18 is reserved for binary
+    // Opcode 0x18 is GT_W: internal and reserved for binary
     (EqW, "eq_w", Binary, BINARY_COST, 0x19, 0, 0, opc_eq_w, op_eq_w, ops_none),
     (AddW, "add_w", Binary, BINARY_COST, 0x1a, 0, 0, opc_add_w, op_add_w, ops_none),
     (SubW, "sub_w", Binary, BINARY_COST, 0x1b, 0, 0, opc_sub_w, op_sub_w, ops_none),
     (LeuW, "leu_w", Binary, BINARY_COST, 0x1c, 0, 0, opc_leu_w, op_leu_w, ops_none),
     (LeW, "le_w", Binary, BINARY_COST, 0x1d, 0, 0, opc_le_w, op_le_w, ops_none),
-    // Opcodes 0x1e,0x1f,0x20 are reserved for binary
 
     // Binary Extension
     (Sll, "sll", BinaryE, BINARY_E_COST, 0x21, 0, 0, opc_sll, op_sll, ops_none),
@@ -522,11 +515,8 @@ define_ops! {
     (SllUW, "sll_u_w", BinaryE, SLL_U_W_COST, 0x43, 0, 0, opc_sll_u_w, op_sll_u_w, ops_none),
 
     // Bit manipulation extensions (Zbb, Zba, Zbs, Zbkb) - proved by Binary
-    //
-    // These have no m32 variant, so their opcode+0x10 shadow (0x62-0x68) must stay empty; see the
-    // note on the base binary block above. Opcodes 0x50,0x51 are LT_ABS_NP,LT_ABS_PN: internal
-    // comparisons that Arith assumes and Binary proves, so they are not ZisK opcodes, but they
-    // take up this space (and reserve their own shadows 0x60,0x61) all the same.
+    // Opcode 0x50 is LT_ABS_NP: internal and reserved for binary
+    // Opcode 0x51 is LT_ABS_PN: internal and reserved for binary
     (Brev8, "brev8", Binary, BINARY_COST, 0x52, 0, 0, opc_brev8, op_brev8, ops_none),
     (Andn, "andn", Binary, BINARY_COST, 0x53, 0, 0, opc_andn, op_andn, ops_none),
     (Orn, "orn", Binary, BINARY_COST, 0x54, 0, 0, opc_orn, op_orn, ops_none),
@@ -539,11 +529,9 @@ define_ops! {
     // ZisK-only alignment predicate (no RISC-V instruction, no m32 variant): c = flag = 1 iff a or b
     // is not a multiple of 8. Guards the fast path of the 8-byte aligned routines
     (Unal8, "unal8", Binary, BINARY_COST, 0x5a, 0, 0, opc_unal8, op_unal8, ops_none),
-    // Opcodes 0x5b-0x5f are reserved for binary
-    // Opcodes 0x60-0x6a are the m32 shadows of 0x50-0x5a and must stay empty. Only 0x62-0x6a come
-    // from ops with no m32 variant: shxadd_w does not exist in RISC-V, brev8_w / andn_w / orn_w /
-    // xnor_w are not opcodes either, unal8 has no 32-bit meaning, and 0x69 shadows the LTU_DIV tag
-    // Opcodes 0x6b-0x6f are the shadows of the reserved 0x5b-0x5f
+    // Opcode 0x5b is XOR_KECCAK: the bus tag of the XORs that KeccakfProxy injects for a keccak_xor
+    // (not a ZisK opcode, see state-machines/binary/src/binary_constants.rs)
+    // Opcodes 0x5c-0x5f are reserved for binary
 
     // "Software" opcodes (0x90 - 0x9F): these are not proved by any air. They are either never
     // emitted as a single instruction (the transpiler decomposes them, and the opcode only exists
@@ -589,11 +577,11 @@ define_ops! {
     // Experimental, emulator only: no state machine proves it yet (see operations/dot_f8.rs).
     // input_size = 56: the minimal-trace header (the 6-word parameter block and the result),
     // followed by both vectors via data_ext_len.
-    (DotF8, "dot_f8", DotF8, DOT_F8_COST, 0xc2, 56, 0, opc_dot_f8, op_dot_f8, ops_dot_f8),
+    (DotF8, "dot_f8", DotF8, DOT_F8_COST, 0xc3, 56, 0, opc_dot_f8, op_dot_f8, ops_dot_f8),
     // Experimental, emulator only (see operations/dot_bf16.rs). input_size = 56: the 6-word
     // parameter block and the result, followed by both vectors via data_ext_len.
-    (DotBf16, "dot_bf16", DotBf16, DOT_BF16_COST, 0xc3, 56, 0, opc_dot_bf16, op_dot_bf16, ops_dot_bf16),
-    // opcodes 0xc4-0xcf are available
+    (DotBf16, "dot_bf16", DotBf16, DOT_BF16_COST, 0xc4, 56, 0, opc_dot_bf16, op_dot_bf16, ops_dot_bf16),
+    // opcodes 0xc5-0xcf are available (0xc2 is keccak_xor)
 
     (DmaMemCpy, "dma_memcpy", Dma, DMA_MEMCPY_COST, 0xd0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
     (DmaMemCmp, "dma_memcmp", Dma, DMA_MEMCMP_COST, 0xd1, 16, 0, opc_dma_memcmp, op_dma_memcmp, ops_dma_memcmp),
@@ -616,7 +604,8 @@ define_ops! {
     (Add256, "add256", BigInt, ADD256_COST, 0xf0, 104, 32, opc_add256, op_add256, ops_add256),
     (BabyJubJubAdd, "babyjubjub_add", TwistedEdwards, TWISTED_EDWARDS_COST, 0xed, 128, 64, opc_babyjubjub_add, op_babyjubjub_add, ops_babyjubjub_add),
     (Ed25519Add, "ed25519_add", TwistedEdwards, TWISTED_EDWARDS_COST, 0xe1, 128, 64, opc_ed25519_add, op_ed25519_add, ops_ed25519_add),
-    (Keccak, "keccak", Keccak, KECCAK_COST, 0xf1, 200, 200, opc_keccak, op_keccak, ops_keccak),
+    (Keccak, "keccak", Keccak, KECCAK_COST, 0xf1, KECCAKF_MT_BYTES, 200, opc_keccak, op_keccak, ops_keccak),
+    (KeccakXor, "keccak_xor", Keccak, KECCAK_XOR_COST, 0xc2, KECCAKF_XOR_MT_BYTES, 200, opc_keccak_xor, op_keccak_xor, ops_keccak_xor),
     (Arith256, "arith256", ArithEq, ARITH_256_COST, 0xf2, 136, 64, opc_arith256, op_arith256, ops_arith256),
     (Arith256Mod, "arith256_mod", ArithEq, ARITH_256_COST, 0xf3, 168, 32, opc_arith256_mod, op_arith256_mod, ops_arith256_mod),
     (Secp256k1Add, "secp256k1_add", ArithEq, ARITH_SECP256K1_COST, 0xf4, 128, 64, opc_secp256k1_add, op_secp256k1_add, ops_secp256k1_add),
@@ -656,22 +645,12 @@ pub fn opc_keccak(ctx: &mut InstContext) {
     const WORDS: usize = 25;
     let mut data = [0u64; WORDS];
 
-    // Index this permutation must be cached under, if fcall_set_keccakf_cache_index() asked for
-    // it. It is consumed whatever the emulation mode is, so that a request always applies to the
-    // Keccak-f that follows it
-    let cache_index = ctx.keccakf_cache.take_pending_index();
-
     // Get input data from memory or from the precompiled context
     match ctx.emulation_mode {
         EmulationMode::Mem => {
             // Read data from the memory address
             for (i, d) in data.iter_mut().enumerate() {
                 *d = ctx.mem.read(address + (8 * i as u64), 8);
-            }
-
-            // Cache the input state, before it is overwritten by the permutation
-            if let Some(index) = cache_index {
-                ctx.keccakf_cache.store(&data, index);
             }
 
             // Call keccakf
@@ -694,13 +673,11 @@ pub fn opc_keccak(ctx: &mut InstContext) {
                 ctx.precompiled.input_data.push(*d);
             }
 
-            // Cache the input state, before it is overwritten by the permutation
-            if let Some(index) = cache_index {
-                ctx.keccakf_cache.store(&data, index);
-            }
-
-            // Call keccakf
-            keccakf(&mut data);
+            // Call keccakf, unless an earlier one had the same input state and its output is
+            // already known. The dedup word says which unique permutation this one is and
+            // whether it is a replica; it follows the input state in the minimal trace
+            let dedup_word = ctx.keccakf_dedup.run(&mut data, keccakf);
+            ctx.precompiled.input_data.push(dedup_word);
 
             // Write data to the memory address
             for (i, d) in data.iter().enumerate() {
@@ -714,12 +691,12 @@ pub fn opc_keccak(ctx: &mut InstContext) {
             }
         }
         EmulationMode::ConsumeMemReads => {
-            // Check input data has the expected length
-            if ctx.precompiled.input_data.len() != WORDS {
+            // Check input data has the expected length: the input state and the dedup word
+            if ctx.precompiled.input_data.len() != KECCAKF_MT_WORDS {
                 panic!(
                     "opc_keccak() found ctx.precompiled.input_data.len={} != {}",
                     ctx.precompiled.input_data.len(),
-                    WORDS
+                    KECCAKF_MT_WORDS
                 );
             }
         }
@@ -739,6 +716,88 @@ pub fn op_keccak(_a: u64, _b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn ops_keccak(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_direct_data(ctx, stats, 25, 25);
+}
+
+/// Performs one absorb step of the Keccak sponge: XORs the 17-lane block at address b into the
+/// 25-lane state at address a, applies Keccak-f to the result and stores it back at address a.
+///
+/// The minimal trace gets the state as it was before the XOR, the block and the dedup word of
+/// the permutation, whose input is the XORed state.
+#[inline(always)]
+pub fn opc_keccak_xor(ctx: &mut InstContext) {
+    const STATE: usize = 25;
+    const WORDS: usize = STATE + KECCAKF_XOR_LANES;
+
+    for (name, address) in [("a", ctx.a), ("b", ctx.b)] {
+        if address & 0x7 != 0 {
+            panic!(
+                "opc_keccak_xor() found address {name}=0x{address:08X} not aligned to 8 bytes \
+                 at PC:0x{:08X} STEP:{}",
+                ctx.pc, ctx.step
+            );
+        }
+    }
+
+    if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
+        // Check input data has the expected length: the state, the block and the dedup word
+        if ctx.precompiled.input_data.len() != KECCAKF_XOR_MT_WORDS {
+            panic!(
+                "opc_keccak_xor() found ctx.precompiled.input_data.len={} != {}",
+                ctx.precompiled.input_data.len(),
+                KECCAKF_XOR_MT_WORDS
+            );
+        }
+    } else {
+        // Read the state (a) and the block (b)
+        let mut data = [0u64; WORDS];
+        for (i, d) in data.iter_mut().enumerate().take(STATE) {
+            *d = ctx.mem.read(ctx.a + (8 * i as u64), 8);
+        }
+        for (i, d) in data.iter_mut().skip(STATE).enumerate() {
+            *d = ctx.mem.read(ctx.b + (8 * i as u64), 8);
+        }
+
+        // XOR the block into the state: the input of the permutation
+        let mut state: [u64; STATE] = data[..STATE].try_into().unwrap();
+        for (lane, block) in state.iter_mut().zip(&data[STATE..]) {
+            *lane ^= *block;
+        }
+
+        if let EmulationMode::GenerateMemReads = ctx.emulation_mode {
+            ctx.precompiled.input_data.clear();
+            ctx.precompiled.input_data.extend_from_slice(&data);
+            ctx.precompiled.step = ctx.step;
+
+            // Call keccakf, unless an earlier one had the same input state (see opc_keccak)
+            let dedup_word = ctx.keccakf_dedup.run(&mut state, keccakf);
+            ctx.precompiled.input_data.push(dedup_word);
+
+            ctx.precompiled.output_data.clear();
+            ctx.precompiled.output_data.extend_from_slice(&state);
+        } else {
+            keccakf(&mut state);
+        }
+
+        // The new state overwrites the old one (address a)
+        for (i, d) in state.iter().enumerate() {
+            ctx.mem.write(ctx.a + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  KeccakXor can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_keccak_xor(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_keccak_xor() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_keccak_xor(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_ab_data(ctx, stats, 25, KECCAKF_XOR_LANES, 25);
 }
 
 /// Performs a Sha256-f hash over the 256-bit state at address a and the 512-bit input block at
@@ -2387,29 +2446,6 @@ pub fn opc_fcall(ctx: &mut InstContext) {
             );
         }
         0
-    } else if function_id == FCALL_SET_KECCAKF_CACHE_INDEX_ID as u64 {
-        if ctx.fcall.parameters_size != 1 {
-            panic!(
-                "opc_fcall() FCALL_SET_KECCAKF_CACHE_INDEX_ID called with parameters_size={} != 1",
-                ctx.fcall.parameters_size
-            );
-        }
-
-        // The next keccak instruction will cache its input state under this index
-        ctx.keccakf_cache.set_pending_index(ctx.fcall.parameters[0]);
-        0
-    } else if function_id == FCALL_GET_KECCAKF_CACHE_INDEX_ID as u64 {
-        if ctx.fcall.parameters_size != KECCAKF_STATE_WORDS as u64 {
-            panic!(
-                "opc_fcall() FCALL_GET_KECCAKF_CACHE_INDEX_ID called with parameters_size={} != {}",
-                ctx.fcall.parameters_size, KECCAKF_STATE_WORDS
-            );
-        }
-
-        // Returns the index the state was cached under, or KECCAKF_CACHE_INDEX_NOT_FOUND
-        let index = ctx.keccakf_cache.get(&ctx.fcall.parameters[..KECCAKF_STATE_WORDS]);
-        ctx.fcall.result[0] = index;
-        1
     } else if function_id == FCALL_RANDOM_SEED_ID as u64 {
         if ctx.fcall.parameters_size != 0 {
             panic!(

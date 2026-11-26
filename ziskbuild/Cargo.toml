@@ -3,9 +3,9 @@ name = "zisk-build"
 description = "Build tooling for compiling guest programs to RISC-V ELF for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
-homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }

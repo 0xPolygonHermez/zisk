@@ -22,10 +22,10 @@ impl MemProcessor for Recorder {
     fn process_mem_data(&mut self, data: &[u64; 7]) {
         self.rows.push(*data);
     }
-    fn skip_addr(&mut self, _addr: u32) -> bool {
+    fn skip_addr(&mut self, _addr: u64) -> bool {
         false
     }
-    fn skip_addr_range(&mut self, _addr_from: u32, _addr_to: u32) -> bool {
+    fn skip_addr_range(&mut self, _addr_from: u64, _addr_to: u64) -> bool {
         false
     }
 }
@@ -47,18 +47,18 @@ fn check_add_mem_inputs(op: u8, curve: TwistedEdwardsCurve, data_size: usize) {
     // Reads of p1 at a, reads of p2 at b, and the result written back at a.
     let mut expected = Recorder::default();
     for (i, value) in p1.iter().enumerate() {
-        MemBusHelpers::mem_aligned_op(a as u32 + 8 * i as u32, step, *value, false, &mut expected);
+        MemBusHelpers::mem_aligned_op(a + 8 * i as u64, step, *value, false, &mut expected);
     }
     for (i, value) in p2.iter().enumerate() {
-        MemBusHelpers::mem_aligned_op(b as u32 + 8 * i as u32, step, *value, false, &mut expected);
+        MemBusHelpers::mem_aligned_op(b + 8 * i as u64, step, *value, false, &mut expected);
     }
     for (i, value) in p3.iter().enumerate() {
-        MemBusHelpers::mem_aligned_op(a as u32 + 8 * i as u32, step, *value, true, &mut expected);
+        MemBusHelpers::mem_aligned_op(a + 8 * i as u64, step, *value, true, &mut expected);
     }
 
     let mut recorder = Recorder::default();
     <TwistedEdwardsSM<Goldilocks> as PrecompileMemInputs>::generate(
-        data[B] as u32,
+        data[B],
         data[STEP],
         &data,
         false,

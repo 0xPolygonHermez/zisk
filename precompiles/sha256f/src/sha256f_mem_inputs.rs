@@ -15,13 +15,13 @@ const INPUT_OFFSET: usize = STATE_OFFSET + STATE_WORDS;
 
 impl<F: PrimeField64> PrecompileMemInputs for Sha256fSM<F> {
     fn generate<P: MemProcessor>(
-        addr_main: u32,
+        addr_main: u64,
         step_main: u64,
         data: &[u64],
         only_counters: bool,
         mem_processors: &mut P,
     ) {
-        let state_addr = data[A] as u32;
+        let state_addr = data[A];
         let input_addr = addr_main;
         let mut state: [u64; STATE_WORDS] =
             data[STATE_OFFSET..STATE_OFFSET + STATE_WORDS].try_into().unwrap();
@@ -31,7 +31,7 @@ impl<F: PrimeField64> PrecompileMemInputs for Sha256fSM<F> {
         // Reads: the state at a, then the input at b
         for (i, value) in state.iter().enumerate() {
             MemBusHelpers::mem_aligned_read(
-                state_addr + i as u32 * 8,
+                state_addr + i as u64 * 8,
                 step_main,
                 *value,
                 mem_processors,
@@ -39,7 +39,7 @@ impl<F: PrimeField64> PrecompileMemInputs for Sha256fSM<F> {
         }
         for (i, value) in input.iter().enumerate() {
             MemBusHelpers::mem_aligned_read(
-                input_addr + i as u32 * 8,
+                input_addr + i as u64 * 8,
                 step_main,
                 *value,
                 mem_processors,
@@ -54,7 +54,7 @@ impl<F: PrimeField64> PrecompileMemInputs for Sha256fSM<F> {
         }
         for (i, value) in state.iter().enumerate() {
             MemBusHelpers::mem_aligned_write(
-                state_addr + i as u32 * 8,
+                state_addr + i as u64 * 8,
                 step_main,
                 *value,
                 mem_processors,
@@ -62,15 +62,15 @@ impl<F: PrimeField64> PrecompileMemInputs for Sha256fSM<F> {
         }
     }
 
-    fn should_skip<P: MemProcessor>(addr_main: u32, data: &[u64], mem_processors: &mut P) -> bool {
-        let state_addr = data[A] as u32;
+    fn should_skip<P: MemProcessor>(addr_main: u64, data: &[u64], mem_processors: &mut P) -> bool {
+        let state_addr = data[A];
         for i in 0..STATE_WORDS {
-            if !mem_processors.skip_addr(state_addr + i as u32 * 8) {
+            if !mem_processors.skip_addr(state_addr + i as u64 * 8) {
                 return false;
             }
         }
         for i in 0..INPUT_WORDS {
-            if !mem_processors.skip_addr(addr_main + i as u32 * 8) {
+            if !mem_processors.skip_addr(addr_main + i as u64 * 8) {
                 return false;
             }
         }

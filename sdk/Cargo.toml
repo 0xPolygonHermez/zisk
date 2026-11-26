@@ -3,9 +3,9 @@ name = "zisk-sdk"
 description = "High-level client SDK for proving and verifying programs on the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
-homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
@@ -54,6 +54,10 @@ default = []
 # `zisk_core::frops`.
 debug_frops = ["zisk-prover-backend/debug_frops"]
 cpu-only = ["zisk-prover-backend/cpu-only"]
+# Memory the executors reserve: the whole 2GB input / RAM window instead of 1GB / 512MB (see
+# the features of zisk-core).
+input_2gb = ["zisk-core/input_2gb", "zisk-prover-backend/input_2gb"]
+ram_2gb = ["zisk-core/ram_2gb", "zisk-prover-backend/ram_2gb"]
 stats = ["zisk-prover-backend/stats"]
 witness_timers = ["zisk-prover-backend/witness_timers"]
 mem-witness-test = ["zisk-prover-backend/mem-witness-test"]

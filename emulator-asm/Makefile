@@ -25,6 +25,14 @@ else ifeq ($(TRACE_TARGET),RH)
     CFLAGS += -DTRACE_TARGET_RH
     ASMFLAGS += --defsym TRACE_TARGET=2
 endif
+# Memory reserved for the input and the RAM (zisk-core features input_2gb and ram_2gb, see
+# constants.hpp): 1GB and 512MB by default, the whole 2GB windows with INPUT_2GB=1 / RAM_2GB=1
+ifeq ($(INPUT_2GB),1)
+    CFLAGS += -DINPUT_2GB
+endif
+ifeq ($(RAM_2GB),1)
+    CFLAGS += -DRAM_2GB
+endif
 # Light memory-ops stream: one word per record, no values and no steps.
 ifeq ($(MOPS_LIGHT),1)
     ASMFLAGS += --defsym MOPS_LIGHT=1
@@ -111,12 +119,15 @@ build/dot_bf16_c.o: src/dot_bf16/dot_bf16.c src/dot_bf16/dot_bf16.h
 build/dot_bf16.o: build/dot_bf16_asm.o build/dot_bf16_c.o
 	ld -r build/dot_bf16_asm.o build/dot_bf16_c.o -o $@
 
-# Regenerated when this Makefile changes, so a stale script never keeps an old .zisk_region
+# Regenerated when this Makefile changes, so a stale script never keeps an old .zisk_region.
+# The region spans from the control pages (0x0FF00000) to the end of the trace window
+# (TRACE_ADDR + TRACE_MAX_SIZE = 0xA00000000, constants.hpp), covering the input, the ROM, the
+# guard, the RAM and the traces.
 build/zisk.ld: Makefile
 	mkdir -p build
 	ld --verbose 2>/dev/null | \
 	    awk '/^=+$$/{found++; next} found==1{print}' | \
-	    sed '/\/DISCARD\//i\  .zisk_region 0x0FF00000 (NOLOAD) : { . = . + 0x8C0100000; }' \
+	    sed '/\/DISCARD\//i\  .zisk_region 0x0FF00000 (NOLOAD) : { . = . + 0x9F0100000; }' \
 	    > build/zisk.ld
 
 # Compile the final executable

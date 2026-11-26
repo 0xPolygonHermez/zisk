@@ -32,7 +32,7 @@
 .equ MAX_DMA_BYTES_DIRECT_MTRACE, (MAX_BYTES_DIRECT_MTRACE - MAX_DMA_EXTRA_BYTES)
 .equ MAX_DMA_MT_MARGIN, (MAX_DMA_BYTES_DIRECT_MTRACE + MAX_DMA_EXTRA_BYTES)
 
-.equ EXTRA_PARAMETER_ADDR, 0xA0400F00
+.equ EXTRA_PARAMETER_ADDR, 0xC0400F00   # SYS_ADDR + 0xF00, core/src/mem.rs
 
 # ENCODE CONSTANTS
 #
@@ -90,15 +90,21 @@
 .equ DMA_LOOP_COUNT_RS,             35
 .equ DMA_PRE_AND_LOOP_BYTES_RS,     32
 .equ ALIGN_MASK,                0xFFFFFFFFFFFFFFF8
-.equ MOPS_BLOCK_WORDS_RS,       36
-.equ MOPS_BLOCK_ONE_WORD,       0x0000001000000000       
-.equ MOPS_BLOCK_READ,           0x0000000A00000000
-.equ MOPS_BLOCK_WRITE,          0x0000000B00000000
-.equ MOPS_ALIGNED_READ,         0x0000000C00000000
-.equ MOPS_ALIGNED_WRITE,        0x0000000D00000000
-.equ MOPS_ALIGNED_BLOCK_READ,   0x0000000E00000000
-.equ MOPS_ALIGNED_BLOCK_WRITE,  0x0000000F00000000
-.equ MOPS_NO_VALUE_BIT,         58                       # light form: single write without a value word
+# Memory-ops header layout (state-machines/mem-cpp/cpp/mops_format.hpp): the byte address takes
+# bits 0-32 (addresses are 33 bits wide), the mode starts at bit 33, a block's word count at bit 37
+# (25 bits: MOPS_REC_BLOCK_WORDS splits a longer block into several records).
+.equ MOPS_ADDR_MASK,            0x00000001FFFFFFFF
+.equ MOPS_MODE_SHIFT,           33
+.equ MOPS_BLOCK_WORDS_RS,       37
+.equ MOPS_BLOCK_WORDS_MAX,      0x1FFFFFF
+.equ MOPS_BLOCK_ONE_WORD,       (1 << MOPS_BLOCK_WORDS_RS)
+.equ MOPS_BLOCK_READ,           (0x0A << MOPS_MODE_SHIFT)
+.equ MOPS_BLOCK_WRITE,          (0x0B << MOPS_MODE_SHIFT)
+.equ MOPS_ALIGNED_READ,         (0x0C << MOPS_MODE_SHIFT)
+.equ MOPS_ALIGNED_WRITE,        (0x0D << MOPS_MODE_SHIFT)
+.equ MOPS_ALIGNED_BLOCK_READ,   (0x0E << MOPS_MODE_SHIFT)
+.equ MOPS_ALIGNED_BLOCK_WRITE,  (0x0F << MOPS_MODE_SHIFT)
+.equ MOPS_NO_VALUE_BIT,         59                       # light form: single write without a value word
 .equ MOPS_NO_PAYLOAD_BIT,       62                       # light form: block record without a step word
 
 .equ FCALL_PARAMS_LENGTH,       386
@@ -113,8 +119,12 @@
 .equ FCALL_RESULT_GOT,          FCALL_RESULT + FCALL_RESULT_LENGTH
 
 .equ MOPS_ALIGNED_READ_2W, ((2 << MOPS_BLOCK_WORDS_RS) + MOPS_ALIGNED_BLOCK_READ)
-.equ LOOP_COUNT_TO_MOPS_BLOCK, (MOPS_BLOCK_WORDS_RS - DMA_LOOP_COUNT_RS)
-.equ PRE_WRITES_TO_MOPS_BLOCK, (MOPS_BLOCK_WORDS_RS - DMA_PRE_WRITES_RS)
+# A recorder leaves its write block as a descriptor at the current index: the aligned address in
+# the low 33 bits and the word count above MOPS_DESC_WORDS_RS (no mode: it is not a record), which
+# MOPS_EXPAND_BLOCK_WRITE turns into records once the words are written. The wide count field
+# takes any DMA length.
+.equ MOPS_DESC_WORDS_RS,       33
+.equ PRE_WRITES_TO_DESC,       (MOPS_DESC_WORDS_RS - DMA_PRE_WRITES_RS)
 
 # Additional encode constants for fast_dma_encode
 .equ DMA_LPRE_COUNT_RS, 32
@@ -130,17 +140,18 @@
 # Every stream word carries a tag in bit 63: set on header words, clear on payload words. A read
 # is one header word (address | mode | step field << MOPS_STEP_SHIFT). Block records are a header
 # plus the step field as payload. A value block (MOPS_BLOCK_VALUES) is a header (aligned address | mode |
-# words << 36 | write step field << 42), a word with the values' bits 63, then up to 63 values
+# words << 37 | write step field << 43), a word with the values' bits 63, then up to 63 values
 # with bit 63 cleared. R_MOPS_R holds the read step field shifted into place.
 .set R_MOPS_R, r10
-.equ MOPS_STEP_SHIFT, 38
+.equ MOPS_STEP_SHIFT, 39
 .equ MOPS_TAG, 0x8000000000000000
-.equ MOPS_BLOCK_VALUES, 0x0000000700000000
-.equ MOPS_VALUES_STEP_SHIFT, 42
+.equ MOPS_BLOCK_VALUES, (0x07 << MOPS_MODE_SHIFT)
+.equ MOPS_VALUES_STEP_SHIFT, 43
 .equ MOPS_VALUES_MAX, 63
-# A recorder writing more than this many bytes checks the trace space first.
+# A recorder writing more than this many bytes checks the trace space first. The margin covers
+# the fixed records of an operation and the extra headers of its split blocks (up to 8 per block).
 .equ MAX_DMA_BYTES_DIRECT_MOPS, 256
-.equ MAX_DMA_MOPS_MARGIN, 8 * 16
+.equ MAX_DMA_MOPS_MARGIN, 8 * 48
 .extern chunk_size
 
 # \reg = address | non-block read mode: one tagged header word with the step field, appended.
@@ -154,7 +165,7 @@
 .ifdef MOPS_LIGHT
 # Light form: one word per record, no steps and no values. R_MOPS_R is zero so the read macro
 # stays shared; a block record is its header with MOPS_NO_PAYLOAD_BIT; the block-write descriptor
-# a recorder left at the current index is the record itself.
+# a recorder left at the current index becomes block records.
 .macro MOPS_STEP_HEADERS
     xor     R_MOPS_R, R_MOPS_R
 .endm
@@ -169,12 +180,13 @@
 .macro MOPS_EXPAND_BLOCK_WRITE
     mov     rdx, [R_MT_ADDR + R_MT_INDEX * 8]
     mov     rcx, rdx
-    shr     rcx, MOPS_BLOCK_WORDS_RS      # rcx = words
+    shr     rcx, MOPS_DESC_WORDS_RS       # rcx = words
     jz      9f
-    bts     rdx, 63
-    bts     rdx, MOPS_NO_PAYLOAD_BIT
-    mov     [R_MT_ADDR + R_MT_INDEX * 8], rdx
-    inc     R_MT_INDEX
+    mov     r11, MOPS_ADDR_MASK
+    and     rdx, r11                      # rdx = aligned address (33 bits)
+    mov     r11, MOPS_ALIGNED_BLOCK_WRITE
+    add     rdx, r11
+    MOPS_REC_BLOCK_WORDS rdx, rcx, r11
 9:
 .endm
 .else
@@ -195,18 +207,19 @@
 .endm
 
 # The 8-byte block-write descriptor a recorder left at the current index (aligned address in the
-# low 32 bits, word count above MOPS_BLOCK_WORDS_RS) becomes value blocks of up to 63 words, the
+# low 33 bits, word count above MOPS_DESC_WORDS_RS) becomes value blocks of up to 63 words, the
 # values read back from memory: the routine that wrote the words has run. Uses rcx, rdx, rsi,
 # rdi, r8, r9, r11; keeps rax. A zero count leaves no record.
 .macro MOPS_EXPAND_BLOCK_WRITE
     mov     rdx, [R_MT_ADDR + R_MT_INDEX * 8]
     mov     rcx, rdx
-    shr     rcx, MOPS_BLOCK_WORDS_RS      # rcx = words left
+    shr     rcx, MOPS_DESC_WORDS_RS       # rcx = words left
     jz      9f
     push    rax
-    mov     edx, edx                      # rdx = aligned address
+    mov     r11, MOPS_ADDR_MASK
+    and     rdx, r11                      # rdx = aligned address (33 bits)
     mov     r11, R_MOPS_R
-    shl     r11, 4                        # read step field moved to bit 42
+    shl     r11, 4                        # read step field moved to bit 43
     bts     r11, MOPS_VALUES_STEP_SHIFT   # slot 3, the write slot
     bts     r11, 63                       # tag
     mov     r8, MOPS_BLOCK_VALUES
@@ -246,4 +259,30 @@
 9:
 .endm
 .endif
+
+# \hdr = address | block mode (no count), \words = words of the block (> 0): one tagged record per
+# MOPS_BLOCK_WORDS_MAX words, the address advanced between them. \words is kept; a block longer
+# than one record clobbers \hdr and \tmp.
+.macro MOPS_REC_BLOCK_WORDS hdr, words, tmp
+    cmp     \words, MOPS_BLOCK_WORDS_MAX
+    ja      1f
+    mov     \tmp, \words
+    shl     \tmp, MOPS_BLOCK_WORDS_RS
+    add     \tmp, \hdr
+    MOPS_REC_BLOCK \tmp
+    jmp     3f
+1:  push    \words
+2:  mov     \tmp, MOPS_BLOCK_WORDS_MAX
+    cmp     \words, \tmp
+    cmovb   \tmp, \words
+    sub     \words, \tmp
+    shl     \tmp, MOPS_BLOCK_WORDS_RS
+    add     \tmp, \hdr
+    MOPS_REC_BLOCK \tmp
+    lea     \hdr, [\hdr + MOPS_BLOCK_WORDS_MAX * 8]
+    test    \words, \words
+    jnz     2b
+    pop     \words
+3:
+.endm
 .endif

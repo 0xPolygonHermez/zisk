@@ -11,14 +11,13 @@
 /// `d > b` signed; see `arith_full.rs` and the `assumes_operation` in `arith.pil`.
 pub const GT_OP: u8 = 0x08;
 
-/// `GT_W`: the m32 shadow of [`GT_OP`]. Nothing emits or proves it -- `Arith` only ever assumes the
-/// 64-bit comparisons -- so this constant exists purely to record that 0x18 is taken, which is what
-/// keeps a future opcode from being assigned to it.
+/// `GT_W`: the m32 variant of [`GT_OP`]. Nothing emits it -- `Arith` only ever assumes the 64-bit
+/// comparisons -- but `Binary` can prove it, since `GT` has a 32-bit variant in the binary table, so
+/// this constant records that 0x18 is taken and keeps a future opcode from being assigned to it.
 pub const GTW_OP: u8 = GT_OP + M32_OFFSET;
 
 /// `LT_ABS_NP`/`LT_ABS_PN`: absolute value comparisons, |a| < |b| for operands of opposite signs.
-/// They occupy the Binary opcode space and reserve their m32 shadows (0x60, 0x61) just the same,
-/// so `zisk_ops.rs` must never hand out any of those four codes.
+/// They occupy the Binary opcode space, so `zisk_ops.rs` must never hand out either code.
 pub const LT_ABS_NP_OP: u8 = 0x50;
 pub const LT_ABS_PN_OP: u8 = 0x51;
 
@@ -36,8 +35,18 @@ pub const LT_ABS_PN_OP: u8 = 0x51;
 /// Binary air per injected operation that would otherwise have been frequent.
 ///
 /// The code comes from the range `zisk_ops.rs` reserves for binary (0x59-0x5f); nothing may be
-/// assigned to it, nor to its m32 shadow 0x69, while this tag uses it.
+/// assigned to it while this tag uses it.
 pub const LTU_DIV_OP: u8 = 0x59;
+
+/// `XOR_KECCAK`: the bus tag for the `XOR` that `KeccakfProxy` assumes for every lane a
+/// `keccak_xor` absorbs.
+///
+/// Same idea as [`LTU_DIV_OP`]: those operations are injected by a precompile, not executed as
+/// instructions, so the ROM-histogram assembly never counts them and they must not become frequent
+/// operations (an absorbed lane often XORs two small values, e.g. a zero state with the padding).
+/// The collectors turn the tag back into [`ZiskOp::XOR`] when they build the input, so the air and
+/// the operation bus only ever see a plain `XOR`.
+pub const XOR_KECCAK_OP: u8 = 0x5B;
 
 /// The m32 offset: `Binary` proves `b_op + M32_OFFSET * mode32` (see `binary.pil`).
 pub const M32_OFFSET: u8 = 0x10;
@@ -78,23 +87,30 @@ mod tests {
         ops
     }
 
-    /// The division tag is a bus-level alias, so the only thing that must hold is that its code is
-    /// free: not a ZisK opcode, not one of the internal ones, and not the m32 shadow of either.
+    /// A bus tag is a bus-level alias, so the only thing that must hold is that its code is free:
+    /// not a ZisK opcode, not one of the internal ones and not another tag.
     #[test]
-    fn the_division_tag_uses_a_free_code() {
-        assert!(
-            ZiskOp::try_from_code(LTU_DIV_OP).is_err(),
-            "0x{LTU_DIV_OP:02x} is a ZisK opcode, it cannot also be the division tag"
-        );
-        assert!(!INTERNAL_OPS.contains(&LTU_DIV_OP));
-        let shadow = LTU_DIV_OP + M32_OFFSET;
-        assert!(
-            ZiskOp::try_from_code(shadow).is_err() && !INTERNAL_OPS.contains(&shadow),
-            "the m32 shadow 0x{shadow:02x} of the division tag is taken"
-        );
-        for op in binary_opcodes() {
-            assert_ne!(op, LTU_DIV_OP, "the division tag collides with a binary opcode");
-            assert_ne!(op + M32_OFFSET, LTU_DIV_OP, "the division tag is an m32 shadow");
+    fn the_bus_tags_use_free_codes() {
+        assert_ne!(LTU_DIV_OP, XOR_KECCAK_OP);
+        for tag in [LTU_DIV_OP, XOR_KECCAK_OP] {
+            assert!(
+                ZiskOp::try_from_code(tag).is_err(),
+                "0x{tag:02x} is a ZisK opcode, it cannot also be a bus tag"
+            );
+            assert!(!INTERNAL_OPS.contains(&tag));
+            for op in binary_opcodes() {
+                assert_ne!(op, tag, "the bus tag 0x{tag:02x} collides with a binary opcode");
+            }
+        }
+    }
+
+    /// The tags only work if no frequent-operation box exists for their codes.
+    #[test]
+    fn the_bus_tags_are_never_frequent_operations() {
+        for tag in [LTU_DIV_OP, XOR_KECCAK_OP] {
+            for (a, b) in [(0, 0), (0, 1), (1, 0), (34, 34), (u64::MAX, 0)] {
+                assert!(!crate::BinaryBasicFrops::is_frequent_op(tag, a, b), "0x{tag:02x}");
+            }
         }
     }
 
@@ -102,40 +118,6 @@ mod tests {
     fn m32_pairs_are_one_offset_apart() {
         for (op, op_w) in M32_PAIRS {
             assert_eq!(op + M32_OFFSET, op_w, "0x{op:02x} and 0x{op_w:02x} are not an m32 pair");
-        }
-    }
-
-    /// `mode32` is a free witness, so from any `b_op` the Binary air can also prove
-    /// `b_op + 0x10`. Every opcode it proves therefore reserves that slot: it must hold either
-    /// the operation's own m32 variant or nothing at all. Handing it to an unrelated operation
-    /// would let Binary satisfy that operation on the bus with the wrong semantics.
-    #[test]
-    fn no_binary_opcode_shadows_an_unrelated_operation() {
-        for op in binary_opcodes() {
-            // Skip the m32 variants themselves, they are the shadow of their 64-bit base.
-            if M32_PAIRS.iter().any(|&(_, op_w)| op_w == op) {
-                continue;
-            }
-
-            let Some(shadow) = op.checked_add(M32_OFFSET) else { continue };
-
-            // The slot is allowed to hold this very operation's m32 variant.
-            if M32_PAIRS.contains(&(op, shadow)) {
-                continue;
-            }
-
-            assert!(
-                !INTERNAL_OPS.contains(&shadow),
-                "0x{op:02x} shadows the internal binary opcode 0x{shadow:02x}"
-            );
-            if let Ok(taken) = ZiskOp::try_from_code(shadow) {
-                panic!(
-                    "0x{op:02x} ({}) shadows 0x{shadow:02x} ({}): the m32 slot of a binary \
-                     opcode must stay empty",
-                    ZiskOp::try_from_code(op).map(|o| o.name()).unwrap_or("internal"),
-                    taken.name(),
-                );
-            }
         }
     }
 }

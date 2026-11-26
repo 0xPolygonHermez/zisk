@@ -55,7 +55,7 @@ So `Bf16Accumulator`, its rounding and its tests are reused.
 - `y` holds `n` BF16 values, 8-byte aligned.
 - `block` is a multiple of the FP4 block dividing `n`, or 0 for one block; `out` works as for `flags` = 0.
 
-**In `ziskos`,** a second parameter struct, `SyscallDotBf16Fp4Params` (7 words, `flags` = 1 or 2), and a function `syscall_dot_bf16_fp4`, both on syscall `0x823`. The existing struct and function are unchanged.
+**In `ziskos`,** a second parameter struct, `SyscallDotBf16Fp4Params` (7 words, `flags` = 1 or 2), and a function `syscall_dot_bf16_fp4`, both on syscall `0x824`. The existing struct and function are unchanged.
 
 **The minimal trace** keeps `dot_bf16`'s 7-word header (the first 6 words of the parameter block and the result). The scales address is the first word of the data that follows, then the words of `x`, of the scales (rounded up to words) and of `y`.
 

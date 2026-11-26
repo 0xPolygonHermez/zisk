@@ -35,11 +35,11 @@ private:
     uint32_t to_page;
     uint32_t rows_available;
     uint32_t reference_addr_chunk;
-    uint32_t reference_addr;
+    uint64_t reference_addr;
     uint32_t reference_skip;
     uint32_t current_chunk;
-    uint32_t initial_last_addr;
-    uint32_t last_addr;
+    uint64_t initial_last_addr;
+    uint64_t last_addr;
     #ifndef MEM_CHECK_POINT_MAP
     uint32_t *chunk_table;
     uint32_t limit_pos;
@@ -67,35 +67,35 @@ private:
 
 
 public:
-    ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint32_t mb_size, bool intermediate_rows = true);
+    ImmutableMemPlanner(uint32_t rows, uint64_t from_addr, uint32_t mb_size, bool intermediate_rows = true);
     ~ImmutableMemPlanner();
     void execute(const std::vector<MemCounter *> &workers);
     void calculate_pages(const std::vector<MemCounter *> &workers);
     void get_offset_limits(const std::vector<MemCounter *> &workers, uint32_t page, uint32_t &first_offset, uint32_t &last_offset);
-    inline void add_to_current_segment(uint32_t chunk_id, uint32_t addr, uint32_t count);
-    inline void set_reference(uint32_t chunk_id, uint32_t addr);
+    inline void add_to_current_segment(uint32_t chunk_id, uint64_t addr, uint32_t count);
+    inline void set_reference(uint32_t chunk_id, uint64_t addr);
     inline void set_current_chunk(uint32_t chunk_id);
     inline void close_last_segment();
     void close_segment();
     void open_segment();
-    inline void add_next_addr_to_segment(uint32_t addr);
-    inline void add_chunk_to_segment(uint32_t chunk_id, uint32_t addr, uint32_t count, uint32_t skip);
-    void preopen_segment(uint32_t addr, uint32_t intermediate_rows);
-    void consume_rows(uint32_t addr, uint32_t row_count, uint32_t skip);
+    inline void add_next_addr_to_segment(uint64_t addr);
+    inline void add_chunk_to_segment(uint32_t chunk_id, uint64_t addr, uint32_t count, uint32_t skip);
+    void preopen_segment(uint64_t addr, uint32_t intermediate_rows);
+    void consume_rows(uint64_t addr, uint32_t row_count, uint32_t skip);
     void consume_intermediate_rows(uint32_t row_count);
     void add_intermediate_rows(uint32_t count);
-    void add_rows(uint32_t addr, uint32_t count);
-    uint32_t add_intermediate_addr(uint32_t from_addr, uint32_t to_addr);
-    uint32_t add_intermediates(uint32_t addr);
+    void add_rows(uint64_t addr, uint32_t count);
+    uint32_t add_intermediate_addr(uint64_t from_addr, uint64_t to_addr);
+    uint32_t add_intermediates(uint64_t addr);
     void collect_segments(MemSegments &mem_segments);
     void stats();
-    void set_last_addr(uint32_t addr) { initial_last_addr = addr; }
+    void set_last_addr(uint64_t addr) { initial_last_addr = addr; }
     void save_offsets_to_file(const std::string &filename, bool compact = true);
     MemOffsets* get_mem_offsets() { return mem_offsets; }
     void init_mem_offsets();
 };
 
-void ImmutableMemPlanner::add_to_current_segment(uint32_t chunk_id, uint32_t addr, uint32_t count) {
+void ImmutableMemPlanner::add_to_current_segment(uint32_t chunk_id, uint64_t addr, uint32_t count) {
     set_current_chunk(chunk_id);
     uint32_t intermediate_rows = add_intermediates(addr);
     preopen_segment(addr, intermediate_rows);
@@ -103,7 +103,7 @@ void ImmutableMemPlanner::add_to_current_segment(uint32_t chunk_id, uint32_t add
     add_rows(addr, count);
 }
 
-void ImmutableMemPlanner::set_reference(uint32_t chunk_id, uint32_t addr) {
+void ImmutableMemPlanner::set_reference(uint32_t chunk_id, uint64_t addr) {
     reference_addr_chunk = chunk_id;
     reference_addr = addr;
     reference_skip = 0;
@@ -121,11 +121,11 @@ void ImmutableMemPlanner::close_last_segment() {
     }*/
 }
 
-void ImmutableMemPlanner::add_next_addr_to_segment(uint32_t addr) {
+void ImmutableMemPlanner::add_next_addr_to_segment(uint64_t addr) {
     add_chunk_to_segment(current_chunk, addr, 1, 0);
 }
 
-void ImmutableMemPlanner::add_chunk_to_segment(uint32_t chunk_id, uint32_t addr, uint32_t count, uint32_t skip) {
+void ImmutableMemPlanner::add_chunk_to_segment(uint32_t chunk_id, uint64_t addr, uint32_t count, uint32_t skip) {
         #ifdef MEM_CHECK_POINT_MAP
     current_segment->add_or_update(chunk_id, addr, skip, count);
         #else

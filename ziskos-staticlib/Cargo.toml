@@ -3,9 +3,9 @@ name = "ziskos-staticlib"
 description = "Static library (libziskos.a) exposing the ziskos guest runtime for linking from C"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
-homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
@@ -26,3 +26,8 @@ ziskos = { workspace = true, features = ["staticlib"] }
 # Needed only to name the C-ABI types in the exported wrapper signatures
 # (see the `wrap_export!` macro in src/lib.rs).
 zisk-zkvm-interface = { workspace = true }
+
+[lints.cargo]
+# `ziskos` is only named under `cfg(zisk_guest)`, which build.rs sets for the guest targets, so on
+# a host build the dependency looks unused. It must stay unconditional for the `alloc-stats` feature.
+unused_dependencies = "allow"

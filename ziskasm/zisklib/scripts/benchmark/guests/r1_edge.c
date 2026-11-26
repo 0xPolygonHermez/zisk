@@ -38,7 +38,7 @@ int main(void) {
         if (c == 7) { set(pk.data, P); pk.data[31] -= 1; }
         ver(&SIG, &pk);
     }
-    volatile uint8_t *O = (volatile uint8_t *)0xA0410000ULL;
+    volatile uint8_t *O = (volatile uint8_t *)0xC0410000ULL;
     for (unsigned i = 0; i < k; i++) O[i] = o[i];
     return 0;
 }

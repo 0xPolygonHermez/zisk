@@ -26,12 +26,12 @@ TestDmaMemMops::~TestDmaMemMops(void) {
 }
 
 std::string TestDmaMemMops::decode(uint64_t value) {
-    uint32_t flags = value >> 32;
+    uint32_t flags = (value >> MOPS_MODE_SHIFT) & 0x1FFF'FFFF;
     uint8_t bytes = flags & 0x0F;
-    uint32_t addr = value & 0xFFFF'FFFF;
+    uint64_t addr = value & MOPS_ADDR_MASK;
     uint32_t count = flags >> MOPS_BLOCK_COUNT_SBITS;
     std::ostringstream oss;
-    oss << std::setfill('0') << std::setw(8) << std::hex << std::uppercase;
+    oss << std::setfill('0') << std::setw(9) << std::hex << std::uppercase;
     switch (bytes) {
         // byte
         case 1:
@@ -97,63 +97,63 @@ void TestDmaMemMops::dump(void) {
     }
 }
 
-uint64_t TestDmaMemMops::encode_read(uint32_t addr, uint8_t bytes) {    
+uint64_t TestDmaMemMops::encode_read(uint64_t addr, uint8_t bytes) {    
     switch (bytes) {
         case 1:
-            return (1ull << 32) | (uint64_t)addr;
+            return (1ull << MOPS_MODE_SHIFT) | (uint64_t)addr;
         case 2:
-            return (2ull << 32) | (uint64_t)addr;
+            return (2ull << MOPS_MODE_SHIFT) | (uint64_t)addr;
         case 4:
-            return (4ull << 32) | (uint64_t)addr;
+            return (4ull << MOPS_MODE_SHIFT) | (uint64_t)addr;
         case 8:
-            return (8ull << 32) | (uint64_t)addr;
+            return (8ull << MOPS_MODE_SHIFT) | (uint64_t)addr;
         default:
             throw std::runtime_error("encode_read: invalid bytes: " + std::to_string((int)bytes));
     }
 }
-uint64_t TestDmaMemMops::encode_write(uint32_t addr, uint8_t bytes) {
+uint64_t TestDmaMemMops::encode_write(uint64_t addr, uint8_t bytes) {
     switch (bytes) {
         case 1:
-            return ((1ull + MOPS_WRITE_FLAG) << 32) | (uint64_t)addr;
+            return ((1ull + MOPS_WRITE_FLAG) << MOPS_MODE_SHIFT) | (uint64_t)addr;
         case 2:
-            return ((2ull + MOPS_WRITE_FLAG) << 32) | (uint64_t)addr;
+            return ((2ull + MOPS_WRITE_FLAG) << MOPS_MODE_SHIFT) | (uint64_t)addr;
         case 4:
-            return ((4ull + MOPS_WRITE_FLAG) << 32) | (uint64_t)addr;
+            return ((4ull + MOPS_WRITE_FLAG) << MOPS_MODE_SHIFT) | (uint64_t)addr;
         case 8:
-            return ((8ull + MOPS_WRITE_FLAG) << 32) | (uint64_t)addr;
+            return ((8ull + MOPS_WRITE_FLAG) << MOPS_MODE_SHIFT) | (uint64_t)addr;
         default: 
             throw std::runtime_error("encode_write: invalid bytes: " + std::to_string((int)bytes));
     }
 }
-uint64_t TestDmaMemMops::encode_aligned_read(uint32_t addr) {
-    return ((uint64_t) MOPS_ALIGNED_READ << 32) | (uint64_t) addr;
+uint64_t TestDmaMemMops::encode_aligned_read(uint64_t addr) {
+    return ((uint64_t) MOPS_ALIGNED_READ << MOPS_MODE_SHIFT) | (uint64_t) addr;
 }
-uint64_t TestDmaMemMops::encode_aligned_x_read(uint32_t addr, uint32_t count) {
+uint64_t TestDmaMemMops::encode_aligned_x_read(uint64_t addr, uint32_t count) {
     if (count == 1) {
-        return ((uint64_t) MOPS_ALIGNED_READ << 32) | (uint64_t) addr;
+        return ((uint64_t) MOPS_ALIGNED_READ << MOPS_MODE_SHIFT) | (uint64_t) addr;
     }
     return encode_aligned_block_read(addr, count);
 }
-uint64_t TestDmaMemMops::encode_aligned_write(uint32_t addr) {
-    return ((uint64_t) MOPS_ALIGNED_WRITE << 32) | (uint64_t) addr;
+uint64_t TestDmaMemMops::encode_aligned_write(uint64_t addr) {
+    return ((uint64_t) MOPS_ALIGNED_WRITE << MOPS_MODE_SHIFT) | (uint64_t) addr;
 }
-uint64_t TestDmaMemMops::encode_block_read(uint32_t addr, uint32_t count) {
-    return ((uint64_t) MOPS_BLOCK_READ << 32) | ((uint64_t) count << (MOPS_BLOCK_COUNT_SBITS + 32)) | addr;
+uint64_t TestDmaMemMops::encode_block_read(uint64_t addr, uint32_t count) {
+    return ((uint64_t) MOPS_BLOCK_READ << MOPS_MODE_SHIFT) | ((uint64_t) count << MOPS_BLOCK_COUNT_SHIFT) | addr;
 }
-uint64_t TestDmaMemMops::encode_block_write(uint32_t addr, uint32_t count) {
-    return ((uint64_t) MOPS_BLOCK_WRITE << 32) | ((uint64_t) count << (MOPS_BLOCK_COUNT_SBITS + 32)) | addr;
+uint64_t TestDmaMemMops::encode_block_write(uint64_t addr, uint32_t count) {
+    return ((uint64_t) MOPS_BLOCK_WRITE << MOPS_MODE_SHIFT) | ((uint64_t) count << MOPS_BLOCK_COUNT_SHIFT) | addr;
 }
-uint64_t TestDmaMemMops::encode_aligned_block_read(uint32_t addr, uint32_t count) {
-    return ((uint64_t) MOPS_ALIGNED_BLOCK_READ << 32) | ((uint64_t) count << (MOPS_BLOCK_COUNT_SBITS + 32)) | addr;
+uint64_t TestDmaMemMops::encode_aligned_block_read(uint64_t addr, uint32_t count) {
+    return ((uint64_t) MOPS_ALIGNED_BLOCK_READ << MOPS_MODE_SHIFT) | ((uint64_t) count << MOPS_BLOCK_COUNT_SHIFT) | addr;
 }
-uint64_t TestDmaMemMops::encode_aligned_block_write(uint32_t addr, uint32_t count) {
-    return ((uint64_t) MOPS_ALIGNED_BLOCK_WRITE << 32) | ((uint64_t) count << (MOPS_BLOCK_COUNT_SBITS + 32)) | addr;
+uint64_t TestDmaMemMops::encode_aligned_block_write(uint64_t addr, uint32_t count) {
+    return ((uint64_t) MOPS_ALIGNED_BLOCK_WRITE << MOPS_MODE_SHIFT) | ((uint64_t) count << MOPS_BLOCK_COUNT_SHIFT) | addr;
 
 }
 
 
 bool TestDmaMemMops::check_record(size_t &w, uint64_t expected, const char *tag) {
-    const uint64_t mode = (expected >> 32) & 0x0F;
+    const uint64_t mode = (expected >> MOPS_MODE_SHIFT) & 0x0F;
     const bool block = (mode == MOPS_BLOCK_READ) || (mode == MOPS_BLOCK_WRITE) ||
                        (mode == MOPS_ALIGNED_BLOCK_READ) || (mode == MOPS_ALIGNED_BLOCK_WRITE);
 #ifdef MOPS_LIGHT
@@ -175,10 +175,20 @@ bool TestDmaMemMops::check_record(size_t &w, uint64_t expected, const char *tag)
     return true;
 }
 
+bool TestDmaMemMops::check_aligned_block_read(size_t &w, uint64_t addr, size_t words, const char *tag) {
+    while (words > 0) {
+        const size_t n = std::min<size_t>(words, MOPS_BLOCK_COUNT_MAX);
+        if (!check_record(w, encode_aligned_block_read(addr, n), tag)) return false;
+        addr += n * 8;
+        words -= n;
+    }
+    return true;
+}
+
 bool TestDmaMemMops::check_write_records(size_t &w, uint64_t addr, size_t words, const char *tag) {
 #ifdef MOPS_LIGHT
     // Light form: the block-write descriptor is the record, one word, no values.
-    const uint64_t header = addr | ((uint64_t)MOPS_ALIGNED_BLOCK_WRITE << 32) | ((uint64_t)words << 36)
+    const uint64_t header = addr | ((uint64_t)MOPS_ALIGNED_BLOCK_WRITE << MOPS_MODE_SHIFT) | ((uint64_t)words << MOPS_BLOCK_COUNT_SHIFT)
                             | (1ull << MOPS_NO_PAYLOAD_BIT) | TAG;
     if (mtrace[w] != header) {
         printf("\nERROR: %s block write at word %ld expected header 0x%016lX found 0x%016lX\n", tag, w, header, mtrace[w]);
@@ -187,11 +197,11 @@ bool TestDmaMemMops::check_write_records(size_t &w, uint64_t addr, size_t words,
     w += 1;
     return true;
 #endif
-    const uint64_t wstep = step_field(3) << 4;   // the value block keeps the step field at bit 42
+    const uint64_t wstep = step_field(3) << (MOPS_VALUES_STEP_SHIFT - MOPS_STEP_SHIFT);   // the value block keeps the step field at bit 43
     size_t k = 0;
     while (k < words) {
         const size_t n = std::min<size_t>(63, words - k);
-        const uint64_t header = (addr + k * 8) | ((uint64_t)MOPS_BLOCK_VALUES << 32) | ((uint64_t)n << 36) | wstep | TAG;
+        const uint64_t header = (addr + k * 8) | ((uint64_t)MOPS_BLOCK_VALUES << MOPS_MODE_SHIFT) | ((uint64_t)n << MOPS_BLOCK_COUNT_SHIFT) | wstep | TAG;
         if (mtrace[w] != header) {
             printf("\nERROR: %s block at word %ld expected header 0x%016lX found 0x%016lX\n", tag, w, header, mtrace[w]);
             return false;

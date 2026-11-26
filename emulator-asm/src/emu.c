@@ -1,4 +1,5 @@
 
+#include <string.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -8,12 +9,13 @@
 #include <stdlib.h>
 #include <assert.h>
 #include "emu.hpp"
+#include "constants.hpp"
 #include "log.hpp"
 #include "../../lib-c/c/src/bigint/add256.hpp"
 #include "../../lib-c/c/src/ec/ec.hpp"
 #include "../../lib-c/c/src/secp256r1/secp256r1.hpp"
 #include "../../lib-c/c/src/fcall/fcall.hpp"
-#include "../../lib-c/c/src/keccakf_cache/keccakf_cache.hpp"
+#include "../../lib-c/c/src/keccakf_dedup/keccakf_dedup.hpp"
 #include "../../lib-c/c/src/arith256/arith256.hpp"
 #include "../../lib-c/c/src/arith384/arith384.hpp"
 #include "../../lib-c/c/src/bn254/bn254.hpp"
@@ -99,8 +101,6 @@ static const char * asm_call_fcall_names[ASM_CALL_FCALL_IDS] = {
     [FCALL_UINT256_INV_ID] = "uint256_inv",
     [FCALL_UINT256_INV_MOD_ID] = "uint256_inv_mod",
     [FCALL_BIGINT_DIV_ID] = "bigint_div",
-    [FCALL_SET_KECCAKF_CACHE_INDEX_ID] = "set_keccakf_cache_index",
-    [FCALL_GET_KECCAKF_CACHE_INDEX_ID] = "get_keccakf_cache_index",
     [FCALL_ED25519_FP_SQRT_RATIO_ID] = "ed25519_fp_sqrt_ratio",
     [FCALL_RANDOM_SEED_ID] = "random_seed",
 };
@@ -400,7 +400,7 @@ uint64_t print_abcflag_counter = 0;
 
 extern int _print_abcflag(uint64_t a, uint64_t b, uint64_t c, uint64_t flag)
 {
-    uint64_t * pMem = (uint64_t *)0xa0012118;
+    uint64_t * pMem = (uint64_t *)(RAM_ADDR + 0x12118);
     asm_printf("counter=%lu a=%08lx b=%08lx c=%08lx flag=%08lx mem=%08lx\n", print_abcflag_counter, a, b, c, flag, *pMem);
     // uint64_t *pRegs = (uint64_t *)RAM_ADDR;
     // for (int i=0; i<32; i++)
@@ -485,10 +485,6 @@ extern int _opcode_keccak(uint64_t address)
 #endif
 #endif
 
-    // Cache the input state if fcall_set_keccakf_cache_index() asked for it, before the
-    // permutation overwrites it
-    keccakf_cache_on_keccakf((const uint64_t *)address);
-
 #ifdef ASM_PRECOMPILE_CACHE
     if (precompile_cache_storing)
     {
@@ -520,6 +516,91 @@ extern int _opcode_keccak(uint64_t address)
 #endif
     ASM_CALL_METRICS_STOP(ASM_CALL_KECCAK);
     return 0;
+}
+
+// Keccak-f as called by the minimal-trace emulator. It does what _opcode_keccak() does and
+// returns the dedup word of this Keccak-f (see keccakf_dedup.hpp), which the generated assembly
+// appends to the minimal trace after the 25 input words: the index of its unique permutation,
+// plus KECCAKF_DEDUP_REPLICA_FLAG when an earlier Keccak-f had the same input state. A replica
+// takes its output from the table of unique permutations, so it does not run the permutation.
+extern uint64_t _opcode_keccak_mt(uint64_t address)
+{
+    ASM_CALL_METRICS_START();
+
+    uint64_t * state = (uint64_t *)address;
+
+    uint64_t dedup_word;
+    uint64_t fingerprint;
+    uint64_t index = keccakf_dedup_find(state, &fingerprint);
+    if (index != KECCAKF_DEDUP_NOT_FOUND)
+    {
+        // Replica: the output state is already known
+        dedup_word = keccakf_dedup_replica(index, state);
+#ifdef ASM_PRECOMPILE_CACHE
+        // Keep the precompile cache in step with the emulators that run every permutation
+        if (precompile_cache_storing)
+        {
+            precompile_cache_store((uint8_t *)address, 25*8);
+        }
+        else if (precompile_cache_loading)
+        {
+            uint64_t cached[25];
+            precompile_cache_load((uint8_t *)cached, 25*8);
+        }
+#endif
+    }
+    else
+    {
+        // First Keccak-f with this input state: keep the input, which the permutation overwrites
+        uint64_t input[25];
+        memcpy(input, state, sizeof(input));
+
+#ifdef ASM_PRECOMPILE_CACHE
+        if (precompile_cache_storing)
+        {
+#endif
+            // Call keccak-f compression function
+            zisk_keccakf1600(state);
+
+#ifdef ASM_PRECOMPILE_CACHE
+            // Store result in cache
+            precompile_cache_store((uint8_t *)address, 25*8);
+        }
+        else if (precompile_cache_loading)
+        {
+            // Load result from cache
+            precompile_cache_load((uint8_t *)address, 25*8);
+        }
+#endif
+        dedup_word = keccakf_dedup_add(input, fingerprint, state);
+    }
+
+    ASM_CALL_METRICS_STOP(ASM_CALL_KECCAK);
+    return dedup_word;
+}
+
+// One absorb step of the Keccak sponge: XORs the 17-lane block into the state and permutes it
+#define KECCAKF_XOR_LANES 17
+
+extern int _opcode_keccak_xor(uint64_t * state, const uint64_t * block)
+{
+    for (uint64_t i=0; i<KECCAKF_XOR_LANES; i++)
+    {
+        state[i] ^= block[i];
+    }
+    return _opcode_keccak((uint64_t)state);
+}
+
+// keccak_xor as called by the minimal-trace emulator: the generated assembly has already copied the
+// state and the block to the minimal trace, and appends the dedup word this returns, which is
+// the one of the permutation of the XORed state (see _opcode_keccak_mt)
+extern uint64_t _opcode_keccak_xor_mt(uint64_t * state, const uint64_t * block)
+{
+    for (uint64_t i=0; i<KECCAKF_XOR_LANES; i++)
+    {
+        state[i] ^= block[i];
+    }
+    return _opcode_keccak_mt((uint64_t)state);
 }
 
 // Called with two direct operands: state (receives the result) and input, no parameter struct

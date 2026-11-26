@@ -7,7 +7,12 @@ use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, Setu
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
 use super::{keccakf_constants::*, KeccakfChiTableSM};
-use zisk_common::OperationKeccakData;
+use std::collections::VecDeque;
+use zisk_common::{
+    BusId, OperationBusData, OperationKeccakData, A, B, OP, OPERATION_PRECOMPILED_BUS_DATA_SIZE,
+    STEP,
+};
+use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType, KECCAKF_XOR_LANES};
 use zisk_pil::{KeccakfTraceRow, KeccakfTraceRowOps, KeccakfTraceRowPacked, ZISK_AIRGROUP_ID};
 
 use rayon::prelude::*;
@@ -16,17 +21,106 @@ use rayon::prelude::*;
 #[derive(Debug)]
 pub struct KeccakfInput {
     pub step_main: u64,
-    pub addr_main: u32,
+    /// Address of the state: read before the permutation, overwritten with its output.
+    pub addr_main: u64,
+    /// The state as read from memory.
     pub state: [u64; 25],
+    /// True for a `keccak_xor`: `block` is XORed into the state before the permutation.
+    pub is_xor: bool,
+    /// `keccak_xor` only: address of the block. 0 otherwise.
+    pub block_addr: u64,
+    /// `keccak_xor` only: the block. Zeros otherwise.
+    pub block: [u64; KECCAKF_XOR_LANES],
+    /// Dedup word of this Keccak-f: the index of its unique permutation, plus
+    /// `zisk_core::KECCAKF_DEDUP_REPLICA_FLAG` when an earlier Keccak-f had the same input state.
+    pub dedup_word: u64,
 }
 
 impl KeccakfInput {
     pub fn from(values: &OperationKeccakData<u64>) -> Self {
+        let is_xor = keccakf_is_xor(values);
+        let (addr_main, block_addr) = keccakf_addresses(values);
         Self {
-            step_main: values[4],
-            addr_main: values[3] as u32,
-            state: values[5..30].try_into().unwrap(),
+            step_main: values[STEP],
+            addr_main,
+            state: values[KECCAKF_PAYLOAD_STATE..KECCAKF_PAYLOAD_BLOCK].try_into().unwrap(),
+            is_xor,
+            block_addr,
+            block: values[KECCAKF_PAYLOAD_BLOCK..KECCAKF_PAYLOAD_DEDUP_WORD].try_into().unwrap(),
+            dedup_word: values[KECCAKF_PAYLOAD_DEDUP_WORD],
         }
+    }
+
+    /// A plain Keccak-f over `state`, with no block.
+    pub fn permutation(step_main: u64, addr_main: u64, state: [u64; 25], dedup_word: u64) -> Self {
+        Self {
+            step_main,
+            addr_main,
+            state,
+            is_xor: false,
+            block_addr: 0,
+            block: [0; KECCAKF_XOR_LANES],
+            dedup_word,
+        }
+    }
+
+    /// Input of the permutation: the state with the block XORed into its first lanes. The block
+    /// of a plain Keccak-f is zero, so this is the state itself.
+    #[inline(always)]
+    pub fn perm_in(&self) -> [u64; 25] {
+        let mut perm_in = self.state;
+        for (lane, block) in perm_in.iter_mut().zip(&self.block) {
+            *lane ^= *block;
+        }
+        perm_in
+    }
+}
+
+/// Bus payload of a Keccak-f operation (`OperationKeccakData`), the same for `keccak` and
+/// `keccak_xor`: after the common header, the state read from memory, the block (zeros for
+/// `keccak`) and the dedup word.
+pub const KECCAKF_PAYLOAD_STATE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE;
+pub const KECCAKF_PAYLOAD_BLOCK: usize = KECCAKF_PAYLOAD_STATE + 25;
+pub const KECCAKF_PAYLOAD_DEDUP_WORD: usize = KECCAKF_PAYLOAD_BLOCK + KECCAKF_XOR_LANES;
+
+/// Queues the Binary operations a `keccak_xor` relies on: KeccakfProxy assumes one XOR per
+/// lane of the block (`state[i] ^ block[i]`) from Binary, so Binary has to be handed them, both
+/// when counting and when collecting. Does nothing for a plain `keccak`.
+///
+/// They travel as `XOR_KECCAK_OP`, the bus tag Binary turns back into `XOR`: an injected operation
+/// is not an instruction, so it must never be a frequent operation (see the tag's documentation).
+#[inline(always)]
+pub fn keccakf_xor_binary_ops(data: &[u64], pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>) {
+    if !keccakf_is_xor(data) {
+        return;
+    }
+    let state = &data[KECCAKF_PAYLOAD_STATE..KECCAKF_PAYLOAD_BLOCK];
+    let block = &data[KECCAKF_PAYLOAD_BLOCK..KECCAKF_PAYLOAD_DEDUP_WORD];
+    for (lane, word) in state.iter().zip(block) {
+        OperationBusData::from_values(
+            zisk_sm_binary::XOR_KECCAK_OP,
+            ZiskOperationType::Binary as u64,
+            *lane,
+            *word,
+            pending,
+        );
+    }
+}
+
+/// True if the payload is a `keccak_xor`.
+#[inline(always)]
+pub fn keccakf_is_xor(data: &[u64]) -> bool {
+    data[OP] == ZiskOp::KeccakXor.code() as u64
+}
+
+/// Addresses of the state and of the block (0 if there is none) of a Keccak-f payload:
+/// `keccak(b = state)`, `keccak_xor(a = state, b = block)`.
+#[inline(always)]
+pub fn keccakf_addresses(data: &[u64]) -> (u64, u64) {
+    if keccakf_is_xor(data) {
+        (data[A], data[B])
+    } else {
+        (data[B], 0)
     }
 }
 
@@ -257,7 +351,12 @@ impl<F: PrimeField64> KeccakfSM<F> {
     /// output bits; op B has none, the AIR reads its bits as (v - a) / 8 off the
     /// round-0 and round-24 groups. The round groups hold the SLICED states
     /// a + 8·b together with the sliced column parities c. When op B is absent,
-    /// its half runs Keccak-f of the zero state (its memory and bus flags stay off).
+    /// its half runs Keccak-f of the zero state (its bus flag stays off).
+    ///
+    /// The four groups the AIR reads lanes from also commit them as 32-bit limbs: op A's
+    /// input and output at its boundary groups, op B's at the round-0 and round-24 groups.
+    /// The AIR ties the limbs to the bits on every row, so op B's limbs are written even
+    /// when it is absent.
     #[inline(always)]
     #[allow(clippy::needless_range_loop)]
     fn process_slot<R: KeccakfTraceWriter<F>>(
@@ -266,14 +365,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
         input_a: &KeccakfInput,
         input_b: Option<&KeccakfInput>,
     ) {
-        // Fill step and addr of both ops
-        trace[0].set_step_addr(input_a.step_main);
-        trace[1].set_step_addr(input_a.addr_main as u64);
-        if let Some(input_b) = input_b {
-            trace[2].set_step_addr(input_b.step_main);
-            trace[3].set_step_addr(input_b.addr_main as u64);
-        }
-
         // Fill the activation flags
         for i in 0..CLOCKS {
             trace[i].set_in_use_a(true);
@@ -282,11 +373,13 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
         // Keep the clean Keccak states in their native 25-lane representation.
         // The AIR still receives the identical bit-expanded cells below.
-        let mut state_a = input_a.state;
-        let mut state_b = input_b.map_or([0u64; 25], |b| b.state);
+        let mut state_a = input_a.perm_in();
+        let mut state_b = input_b.map_or([0u64; 25], |b| b.perm_in());
 
         // Boundary input group: op A's plain bits
         Self::set_lane_group(trace, GROUP_IN_A, &state_a);
+        Self::set_limb_group(trace, GROUP_IN_A, &state_a);
+        Self::set_limb_group(trace, GROUP_ROUND_0, &state_b);
 
         // Round groups
         let mut ta = [0u8; 5];
@@ -372,6 +465,26 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
         // Boundary output group: op A's plain bits of the final state
         Self::set_lane_group(trace, GROUP_OUT_A, &state_a);
+        Self::set_limb_group(trace, GROUP_OUT_A, &state_a);
+        Self::set_limb_group(trace, GROUP_ROUND_LAST, &state_b);
+    }
+
+    /// Writes the lanes of a state as 32-bit limbs, low limb first, along one group.
+    #[inline(always)]
+    fn set_limb_group<R: KeccakfTraceWriter<F>>(
+        trace: &mut [R],
+        first_row: usize,
+        state: &LaneState,
+    ) {
+        for row in 0..ROWS_PER_STATE {
+            let mut limbs = [0u32; LIMBS_PER_ROW];
+            for lane in 0..LANES_PER_ROW {
+                let value = state[row * LANES_PER_ROW + lane];
+                limbs[2 * lane] = value as u32;
+                limbs[2 * lane + 1] = (value >> 32) as u32;
+            }
+            trace[first_row + row].set_all_limbs(&limbs);
+        }
     }
 
     /// Writes a clean (bit-valued) state into one boundary group.
@@ -422,10 +535,11 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let num_rows_needed = num_slots_needed * CLOCKS;
 
         tracing::debug!(
-            "··· Creating Keccakf instance [{} / {} rows filled {:.2}%]",
+            "··· Creating Keccakf instance [{} / {} rows filled {:.2}%] [{} unique permutations]",
             num_rows_needed,
             num_rows,
-            num_rows_needed as f64 / num_rows as f64 * 100.0
+            num_rows_needed as f64 / num_rows as f64 * 100.0,
+            num_inputs,
         );
 
         timer_start_trace!(KECCAKF_TRACE);
@@ -538,9 +652,14 @@ mod tests {
                 seed
             })
         };
-        let input_a = KeccakfInput { step_main: 1, addr_main: 0x1000, state: lanes() };
-        let input_b = KeccakfInput { step_main: 2, addr_main: 0x2000, state: lanes() };
-        let (mut out_a, mut out_b) = (input_a.state, input_b.state);
+        // op A is a plain Keccak-f and op B a `keccak_xor`: the air proves the XORed state of B
+        let input_a = KeccakfInput::permutation(1, 0x1000, lanes(), 0);
+        let mut input_b = KeccakfInput::permutation(2, 0x2000, lanes(), 0);
+        input_b.is_xor = true;
+        input_b.block_addr = 0x3000;
+        input_b.block = core::array::from_fn(|i| lanes()[i]);
+        assert_ne!(input_b.perm_in(), input_b.state);
+        let (mut out_a, mut out_b) = (input_a.perm_in(), input_b.perm_in());
         tiny_keccak::keccakf(&mut out_a);
         tiny_keccak::keccakf(&mut out_b);
 
@@ -561,7 +680,7 @@ mod tests {
             assert_eq!(a_out, bit(&out_a, x, y, z), "op A output ({x},{y},{z})");
             assert_eq!(
                 (cell(GROUP_ROUND_0, x, y, z) - a_in) / SLOT as u64,
-                bit(&input_b.state, x, y, z)
+                bit(&input_b.perm_in(), x, y, z)
             );
             assert_eq!(
                 (cell(group_round_last, x, y, z) - a_out) / SLOT as u64,
@@ -584,6 +703,39 @@ mod tests {
                 }
             }
         }
+
+        // The four groups commit their lanes as limbs: op A's at the boundary groups, op B's at
+        // the round-0 and round-24 groups; every other row commits zeros
+        let limbs = |group: usize| -> [u64; 25] {
+            core::array::from_fn(|lane| {
+                let row = rows[group + lane / LANES_PER_ROW].get_all_limbs();
+                let l = 2 * (lane % LANES_PER_ROW);
+                row[l] as u64 | ((row[l + 1] as u64) << 32)
+            })
+        };
+        assert_eq!(limbs(GROUP_IN_A), input_a.state);
+        assert_eq!(limbs(GROUP_ROUND_0), input_b.perm_in());
+        assert_eq!(limbs(GROUP_ROUND_LAST), out_b);
+        assert_eq!(limbs(GROUP_OUT_A), out_a);
+        for row in &rows[GROUP_ROUND_0 + ROWS_PER_STATE..GROUP_ROUND_LAST] {
+            assert_eq!(row.get_all_limbs(), [0; LIMBS_PER_ROW]);
+        }
+
+        // Without op B its half is Keccak-f of the zero state, limbs included
+        let mut rows = vec![KeccakfTraceRow::<Goldilocks>::default(); CLOCKS];
+        KeccakfSM::<Goldilocks>::new().process_slot(&mut rows, &input_a, None);
+        let limbs = |group: usize| -> [u64; 25] {
+            core::array::from_fn(|lane| {
+                let row = rows[group + lane / LANES_PER_ROW].get_all_limbs();
+                let l = 2 * (lane % LANES_PER_ROW);
+                row[l] as u64 | ((row[l + 1] as u64) << 32)
+            })
+        };
+        let mut out_zero = [0u64; 25];
+        tiny_keccak::keccakf(&mut out_zero);
+        assert_eq!(limbs(GROUP_ROUND_0), [0; 25]);
+        assert_eq!(limbs(GROUP_ROUND_LAST), out_zero);
+        assert!(!rows[0].get_in_use_b());
     }
 
     #[test]
@@ -606,7 +758,6 @@ mod tests {
             for row in [&mut expected, &mut actual] {
                 row.set_in_use_a(true);
                 row.set_in_use_b(true);
-                row.set_step_addr(0x00ab_cdef_1234);
             }
 
             for row in 0..ROWS_PER_STATE {

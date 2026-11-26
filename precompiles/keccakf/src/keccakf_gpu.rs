@@ -6,21 +6,20 @@
 
 use super::KeccakfInput;
 
-/// One operation as the kernel consumes it. Mirrors `KeccakfGpuOp` in the `.cu`.
+/// One operation as the kernel consumes it: the input of the permutation, i.e. the state with
+/// the block of a `keccak_xor` already XORed in. Mirrors `KeccakfGpuOp` in the `.cu`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct GpuOp {
     pub state: [u64; 25],
-    pub step: u64,
-    pub addr: u64,
 }
 
-// SAFETY: repr(C), 27 u64 fields mirroring KeccakfGpuOp field for field: no padding, no pointers.
+// SAFETY: repr(C), 25 u64 fields mirroring KeccakfGpuOp field for field: no padding, no pointers.
 unsafe impl ::proofman_common::GpuWitnessOp for GpuOp {}
 
 impl From<&KeccakfInput> for GpuOp {
     fn from(input: &KeccakfInput) -> Self {
-        Self { state: input.state, step: input.step_main, addr: input.addr_main as u64 }
+        Self { state: input.perm_in() }
     }
 }
 

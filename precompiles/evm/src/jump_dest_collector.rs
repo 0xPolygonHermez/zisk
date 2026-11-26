@@ -145,7 +145,7 @@ mod tests {
     use crate::JUMP_DEST_ROWS_X_BLOCK;
 
     fn bus_data(count: u64) -> Vec<u64> {
-        vec![0xc0, ZiskOperationType::Evm as u64, 0xA000_0000, 0xA001_0000, 7, count]
+        vec![0xc0, ZiskOperationType::Evm as u64, 0xC000_0000, 0xC001_0000, 7, count]
     }
 
     /// Feeds `ops` operations of `count` bytes each into a collector with the

@@ -56,13 +56,19 @@ impl RunCmd {
 
                 // Guest rustflags + linker script; keep the temp file alive
                 // until cargo finishes. Env rustflags are inherited: they are
-                // user-exported in a direct CLI invocation.
+                // user-exported in a direct CLI invocation. The guest is linked
+                // for the RAM this CLI's emulator reserves (`ram_2gb` feature).
                 let target_features = zisk_build::target_features_from_features(
                     self.features.as_deref(),
                     self.all_features,
                 );
-                let _linker_script =
-                    zisk_build::apply_guest_rustflags(&mut command, None, true, &target_features)?;
+                let _linker_script = zisk_build::apply_guest_rustflags(
+                    &mut command,
+                    None,
+                    true,
+                    &target_features,
+                    cfg!(feature = "ram_2gb"),
+                )?;
 
                 command.stdout(Stdio::inherit());
                 command.stderr(Stdio::inherit());

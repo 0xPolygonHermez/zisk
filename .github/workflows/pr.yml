@@ -447,6 +447,12 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      # Pinned so that a new Rust release cannot break this job on its own
+      # (new clippy lints + -D warnings). To bump it, first run
+      # `tools/clippy.sh <new-version>` locally, fix what it reports, then
+      # update this value in the same PR. tools/clippy.sh reads its default
+      # version from this line.
+      CLIPPY_RUST_VERSION: "1.100.0"
     strategy:
       fail-fast: false
       matrix:
@@ -464,11 +470,9 @@ jobs:
           ref: ${{ env.TEST_REF }}
 
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: stable
-          profile: minimal
-          override: true
+          toolchain: ${{ env.CLIPPY_RUST_VERSION }}
           components: rustfmt, clippy
 
       - name: Install dependencies
@@ -477,28 +481,18 @@ jobs:
           ./install_deps.sh
 
       - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo +${{ env.CLIPPY_RUST_VERSION }} fmt --all -- --check
         env:
           CARGO_INCREMENTAL: 1
 
       - name: Build cargo-zisk
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --bin cargo-zisk
+        run: cargo +${{ env.CLIPPY_RUST_VERSION }} build --bin cargo-zisk
 
       - name: Install ZisK rust toolchain
         run: ./target/debug/cargo-zisk toolchain install
 
       - name: Run cargo clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          # args: --all-targets -- -D warnings
-          args: --all-features --all-targets -- -D warnings -A incomplete-features
+        run: tools/clippy.sh "$CLIPPY_RUST_VERSION"
         env:
           CARGO_INCREMENTAL: 1
 

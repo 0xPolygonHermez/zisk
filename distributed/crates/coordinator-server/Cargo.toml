@@ -3,9 +3,9 @@ name = "zisk-coordinator-server"
 description = "ZisK coordinator server — public API + embedded coordinator"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
-homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
@@ -75,3 +75,9 @@ tokio-stream = { workspace = true }
 uuid = { workspace = true }
 futures = { workspace = true }
 zisk-coordinator-client = { workspace = true }
+
+[features]
+default = []
+# Input limit of the jobs: the whole 2GB input window instead of 1GB (see the features of
+# zisk-core); the workers must be built with the same feature.
+input_2gb = ["zisk-core/input_2gb"]

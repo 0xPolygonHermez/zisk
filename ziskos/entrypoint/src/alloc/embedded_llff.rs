@@ -13,10 +13,12 @@ unsafe impl critical_section::Impl for CriticalSection {
     unsafe fn release(_token: RawRestoreState) {}
 }
 
+use super::kernel_heap::*;
+
 pub fn init() {
     unsafe {
-        let heap_start = &_heap_bottom as *const u8 as usize;
-        let heap_size = &_heap_size as *const u8 as usize;
+        let heap_start = heap_bottom();
+        let heap_size = heap_size();
         HEAP.init(heap_start, heap_size)
     }
 }

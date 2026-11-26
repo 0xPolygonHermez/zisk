@@ -3,9 +3,9 @@ name = "ziskemu"
 description = "RISC-V emulator that executes ZisK program ROMs and generates execution traces"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
-homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
@@ -83,4 +83,4 @@ debug_stats_trace = []
 minimal_trace_index_debug = []
 handle_stdout = []
 debug_call_stack = []
-# sp = []
+sp = ["zisk-core/sp", "zisk-transpiler-common/sp", "zisk-transpiler-wasm/sp"]

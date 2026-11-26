@@ -57,6 +57,7 @@ impl TwistedEdwardsData {
             assert!(self.qx[i] >= 0 && self.qx[i] <= max_range, "qx[{i}]:{}", self.qx[i]);
             assert!(self.qy[i] >= 0 && self.qy[i] <= max_range, "qy[{i}]:{}", self.qy[i]);
         }
+        #[allow(clippy::needless_range_loop)]
         for i in 0..31 {
             for j in 0..7 {
                 assert!(

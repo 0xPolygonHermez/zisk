@@ -25,7 +25,7 @@
 
 // ---------------------------------------------------------------- ZisK output
 // Word 0 of the output area is the word count, followed by the words themselves.
-static constexpr uint64_t OUTPUT_ADDR = 0xa0410000ULL;
+static constexpr uint64_t OUTPUT_ADDR = 0xC0410000ULL;
 
 static uint32_t *const out_n = reinterpret_cast<uint32_t *>(OUTPUT_ADDR);
 static uint32_t *const out_w = reinterpret_cast<uint32_t *>(OUTPUT_ADDR + 4);

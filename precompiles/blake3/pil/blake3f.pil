@@ -137,6 +137,11 @@ airtemplate Blake3f(const int N = 2**20, const int LANES = 1) {
     // Step and addresses of the operation, stored at the first rows of the cycle
     col witness bits(40) step_addr[LANES];
 
+    // The high limb (bit 32) of each address held in step_addr lives in a free row of step_addr
+    // itself (the *_HI positions). The operation bus carries an operand as two 32-bit limbs and
+    // this machine is the one that joins them into a 33-bit address, so it is the one that checks
+    // the high limb is a bit: the address is then below 2^33 and cannot wrap the field.
+
     // Per-op discriminator: the main step of the operation, broadcast to every row of the cycle
     col witness bits(40) op_step[LANES];
 
@@ -146,6 +151,12 @@ airtemplate Blake3f(const int N = 2**20, const int LANES = 1) {
     const int STEP_MAIN = 0;
     const int ADDR_STATE = STEP_MAIN + 1;   // main operand a
     const int ADDR_INPUT = ADDR_STATE + 1;  // main operand b
+    const int ADDR_STATE_HI = ADDR_INPUT + 1; // bit 32 of the state address
+    const int ADDR_INPUT_HI = ADDR_STATE_HI + 1; // bit 32 of the input address
+    for (int l = 0; l < LANES; l++) {
+        CLK_0 * step_addr[l]'(ADDR_STATE_HI) * (1 - step_addr[l]'(ADDR_STATE_HI)) === 0;
+        CLK_0 * step_addr[l]'(ADDR_INPUT_HI) * (1 - step_addr[l]'(ADDR_INPUT_HI)) === 0;
+    }
 
     // Selector latching: once activated, stays active for the full cycle
     const expr in_use_latched = clock_set(start: 1, end: CLOCKS);
@@ -455,7 +466,8 @@ airtemplate Blake3f(const int N = 2**20, const int LANES = 1) {
         // MAIN PROCESSOR INTEGRATION
         // ───────────────────────────────────────────────────────────────────────
 
-        proves_operation(op: OP_BLAKE3, a: [step_addr[l]'(ADDR_STATE), 0], b: [step_addr[l]'(ADDR_INPUT), 0],
+        proves_operation(op: OP_BLAKE3, a: [step_addr[l]'(ADDR_STATE) - 2**32 * step_addr[l]'(ADDR_STATE_HI), step_addr[l]'(ADDR_STATE_HI)],
+                         b: [step_addr[l]'(ADDR_INPUT) - 2**32 * step_addr[l]'(ADDR_INPUT_HI), step_addr[l]'(ADDR_INPUT_HI)],
                          main_step: step_addr[l]'(STEP_MAIN), mul: in_use_clk_0[l]);
     }
 

@@ -4,6 +4,7 @@ use crate::elf_extraction::{
     collect_elf_payload_from_bytes, merge_ro_sections, validate_entry_point, ElfPayload,
 };
 use crate::riscv2zisk_context::{add_zisk_code, zkvmcall_ids as zkvmcall_ids_in};
+use crate::rom_optimizer::{optimize_rom, RomOptPasses};
 use std::collections::HashMap;
 use std::error::Error;
 use zisk_core::mem::DataSection;
@@ -12,7 +13,7 @@ use zisk_core::rom_layout::{
     add_end_and_lib, add_entry_exit_jmp, normalize_rw_data_sections, InlineBody,
 };
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
-use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR};
+use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_RAM_ADDR_MAX, FLOAT_LIB_ROM_ADDR};
 
 /// Executes the ROM transpilation process: from a RISC-V ELF to Zisk.
 ///
@@ -160,10 +161,14 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
             } else if section.addr >= RAM_ADDR
                 && (section.addr + section.data.len() as u64) <= (RAM_ADDR + RAM_SIZE)
             {
-                // If this is a program section, it should not overlap with the float library region
-                // If this is a float library section, it should not overlap with the program region
+                // A program section must not overlap the float library RAM region, and a float
+                // library section must stay inside it (the region sits between the output data
+                // and the program data, see core/src/mem.rs)
+                let end = section.addr + section.data.len() as u64;
+                let overlaps_float_ram =
+                    section.addr <= FLOAT_LIB_RAM_ADDR_MAX && end > FLOAT_LIB_RAM_ADDR;
                 if i == elf_index {
-                    if section.addr + section.data.len() as u64 >= FLOAT_LIB_RAM_ADDR {
+                    if overlaps_float_ram {
                         return Err(format!(
                             "RAM program data section at address 0x{:x} with size {} overlaps with the ZisK float library region",
                             section.addr,
@@ -171,9 +176,9 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
                         )
                         .into());
                     }
-                } else if section.addr < FLOAT_LIB_RAM_ADDR {
+                } else if section.addr < FLOAT_LIB_RAM_ADDR || end > FLOAT_LIB_RAM_ADDR_MAX + 1 {
                     return Err(format!(
-                        "RAM float library data section at address 0x{:x} with size {} overlaps with the ZisK program region",
+                        "RAM float library data section at address 0x{:x} with size {} is outside the ZisK float library region",
                         section.addr,
                         section.data.len()
                     )
@@ -275,6 +280,11 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     if let Some(library) = library {
         merge_library(&mut rom, library)?;
     }
+
+    // ROM post-pass optimizations (simplification, constant indirect jumps, constant and address
+    // folding, jump threading), once the whole program (guest, ZisK library, float library) is in
+    // the ROM. See rom_optimizer.rs.
+    optimize_rom(&mut rom.insts, RomOptPasses::default());
 
     // Preprocess the ROM
     // Split the ROM instructions based on their address to improve performance when

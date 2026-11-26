@@ -22,6 +22,28 @@ fn main() {
         extra_defines.push_str(" -DSAVE_MEM_BUS_DATA_ASM");
     }
 
+    // Memory the executors reserve for the input and the RAM, which sizes the planner's address
+    // tables: the input_2gb and ram_2gb features of zisk-core, as its build script reports them
+    let mut mem_defines = String::new();
+    for (feature, define) in [("INPUT_2GB", "ZISK_INPUT_2GB"), ("RAM_2GB", "ZISK_RAM_2GB")] {
+        let var = format!("DEP_ZISK_CORE_{feature}");
+        println!("cargo:rerun-if-env-changed={var}");
+        if env::var(&var).as_deref() == Ok("1") {
+            mem_defines.push_str(&format!(" -D{define}"));
+        }
+    }
+    extra_defines.push_str(&mem_defines);
+
+    // make only rebuilds what changed, not what was built with other defines: start over when
+    // they change
+    let defines_stamp = Path::new(&out_dir).join("defines.stamp");
+    if fs::read_to_string(&defines_stamp).ok().as_deref() != Some(extra_defines.as_str()) {
+        let _ = fs::remove_dir_all(&build_dir);
+        let _ = fs::remove_dir_all(Path::new(&out_dir).join("memcpp_cu"));
+        fs::create_dir_all(&build_dir).unwrap();
+        fs::write(&defines_stamp, &extra_defines).unwrap();
+    }
+
     // Build CPU library
     let status = Command::new("make")
         .arg("all")
@@ -67,7 +89,10 @@ fn main() {
         sources: &["count_and_plan.cu", "count_and_plan_c.cu", "mem_fill.cu"],
         // The kernels include the CPU side's headers.
         extra_header_dirs: &["cpp"],
-        extra_nvcc_flags: if cfg!(feature = "mem-witness-test") { "-DZISK_MEM_TEST=1" } else { "" },
+        extra_nvcc_flags: &format!(
+            "{}{mem_defines}",
+            if cfg!(feature = "mem-witness-test") { "-DZISK_MEM_TEST=1" } else { "" }
+        ),
     });
 }
 

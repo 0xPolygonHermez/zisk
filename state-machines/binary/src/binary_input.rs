@@ -1,4 +1,4 @@
-use crate::LTU_DIV_OP;
+use crate::{LTU_DIV_OP, XOR_KECCAK_OP};
 use zisk_common::{ExtOperationData, OperationBusData};
 use zisk_core::zisk_ops::ZiskOp;
 
@@ -17,9 +17,11 @@ impl BinaryInput {
     pub fn from(data: &ExtOperationData<u64>) -> Self {
         // `Arith` tags the comparison it injects on every division so that it carries no FROPS
         // (see `LTU_DIV_OP`). It is a plain `LTU` to the air, and this is where the tag is spent:
-        // nothing downstream of the input, in Rust or in the PIL, knows it existed.
+        // nothing downstream of the input, in Rust or in the PIL, knows it existed. The same goes
+        // for the XORs `KeccakfProxy` assumes for a `keccak_xor` (see `XOR_KECCAK_OP`).
         let op = match OperationBusData::get_op(data) {
             LTU_DIV_OP => ZiskOp::LTU,
+            XOR_KECCAK_OP => ZiskOp::XOR,
             op => op,
         };
         Self { op, a: OperationBusData::get_a(data), b: OperationBusData::get_b(data) }

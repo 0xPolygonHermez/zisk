@@ -27,7 +27,7 @@ int main(void) {
     for (unsigned i = 0; i < 16; i++) t.data[i] = (uint8_t)(i * 3 + 2);
     for (unsigned r = 0; r < 25; r++) { st |= zkvm_blake2f(r, &s, &m, &t, (uint8_t)(r & 1)); fold(6, s.data, 64); }
     acc[7] = (uint64_t)st;
-    volatile uint64_t *o = (volatile uint64_t *)0xA0410000ULL;
+    volatile uint64_t *o = (volatile uint64_t *)0xC0410000ULL;
     for (int i = 0; i < 8; i++) o[i] = acc[i];
     return 0;
 }

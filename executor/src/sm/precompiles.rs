@@ -20,8 +20,8 @@ use zisk_core::{
 };
 use zisk_pil::{
     ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_384_LARGE_AIR_IDS, BLAKE_2_BR_AIR_IDS,
-    BLAKE_2_S_AIR_IDS, BLAKE_3_F_AIR_IDS, KECCAKF_AIR_IDS, POSEIDON_2_KOALA_BEAR_AIR_IDS,
-    POSEIDON_AIR_IDS, SHA_256_F_AIR_IDS, TWISTED_EDWARDS_AIR_IDS,
+    BLAKE_2_S_AIR_IDS, BLAKE_3_F_AIR_IDS, POSEIDON_2_KOALA_BEAR_AIR_IDS, POSEIDON_AIR_IDS,
+    SHA_256_F_AIR_IDS, TWISTED_EDWARDS_AIR_IDS,
 };
 
 /// Every height of the `ArithEq384` air, which the planner sizes as one ladder. Keep in step with
@@ -44,6 +44,7 @@ use zisk_precomp_blake2::{
 use zisk_precomp_blake3::{Blake3Collector, Blake3CounterInputGen, Blake3Instance, Blake3Manager};
 use zisk_precomp_keccakf::{
     KeccakfCollector, KeccakfCounterInputGen, KeccakfInstance, KeccakfManager,
+    KECCAKF_FAMILY_AIR_IDS,
 };
 use zisk_precomp_poseidon::{
     Poseidon2KoalaBearCollector, Poseidon2KoalaBearCounterInputGen, Poseidon2KoalaBearInstance,
@@ -61,7 +62,7 @@ use zisk_precomp_twisted_edwards::{
 crate::register_precompiles! {
     Keccakf [
         op: KECCAK_OP_TYPE_ID,
-        air: KECCAKF_AIR_IDS,
+        air: KECCAKF_FAMILY_AIR_IDS,
         rank_assign: true,
     ] => KeccakfManager<F>,
     Sha256f [
@@ -143,6 +144,15 @@ mod tests {
             registered,
             family(|n| n.starts_with("Arith") && n != "Arith" && !n.starts_with("ArithEq384"))
         );
+    }
+
+    /// Same pin for the Keccak-f family: `Keccakf` proves the permutations and `KeccakfProxy` the
+    /// invocations, and one manager builds the instances of both. The table airs are virtual.
+    #[test]
+    fn every_keccakf_air_in_the_pilout_has_a_state_machine() {
+        let mut registered = KECCAKF_FAMILY_AIR_IDS.to_vec();
+        registered.sort_unstable();
+        assert_eq!(registered, family(|n| n.starts_with("Keccakf") && !n.ends_with("Table")));
     }
 
     #[test]

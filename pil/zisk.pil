@@ -25,6 +25,7 @@ require "arith_eq/pil/arith_eq.pil"
 require "arith_eq_384/pil/arith_eq_384.pil"
 require "twisted_edwards/pil/twisted_edwards.pil"
 require "keccakf/pil/keccakf.pil"
+require "keccakf/pil/keccakf_proxy.pil"
 require "sha256f/pil/sha256f.pil"
 require "dma/pil/dma.pil"
 require "dma/pil/dma_rom.pil"
@@ -92,9 +93,9 @@ airgroup Zisk {
     Rom(N: 2**22);
 
     // Memory
-    Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1, lanes_x_row: 4);
-    Mem(N: 2**22, base_address: 0x1000_0000, size_mb: 2048, large_mem: 1, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
-    RomData(N: 2**22, base_address: 0x9000_0000, size_mb: 128, enable_flag: enable_rom_data, lanes_x_row: 2);
+    Mem(N: 2**22, base_address: 0xC000_0000, size_mb: 2048, large_mem: 1, dual_mem: 1, lanes_x_row: 4);
+    Mem(N: 2**22, base_address: 0x2000_0000, size_mb: 2048, large_mem: 1, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
+    RomData(N: 2**22, base_address: 0xA800_0000, size_mb: 128, enable_flag: enable_rom_data, lanes_x_row: 2);
 
     MemAlign(N: 2**21);
     MemAlign(N: 2**23) alias MemAlignLarge;
@@ -155,6 +156,7 @@ airgroup Zisk {
     virtual ArithEqLtTable(ARITH_EQ_LT_TABLE_SIZE);
 
     Keccakf(N: 2**21, lanes_per_row: 5);
+    KeccakfProxy(N: 2**21);
     virtual KeccakfChiTable(KECCAKF_CHI_TABLE_SIZE);
     virtual KeccakfXor5Table(KECCAKF_XOR5_TABLE_SIZE);
 

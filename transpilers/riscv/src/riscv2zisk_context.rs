@@ -13,8 +13,8 @@ use zisk_definitions::{
     SYSCALL_BLS12_381_CURVE_ADD_ID, SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID,
     SYSCALL_BN254_COMPLEX_MUL_ID, SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID,
     SYSCALL_BN254_CURVE_DBL_ID, SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID,
-    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_DOT_BF16_ID, SYSCALL_DOT_F8_ID, SYSCALL_ED25519_ADD_ID,
-    SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID,
+    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_DOT_BF16_ID, SYSCALL_DOT_F8_ID, SYSCALL_ED25519_ADD_ID, SYSCALL_JUMP_DEST_ID,
+    SYSCALL_KECCAKF_ID, SYSCALL_KECCAK_XOR_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID,
     SYSCALL_POSEIDON2_KOALABEAR_ID, SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID,
     SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID,
     SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END, ZKVMCALL_ADDR_START, ZKVMCALL_ARG_ADDR_END,
@@ -26,7 +26,6 @@ use zisk_core::zisk_inst::{SRC_IMM, SRC_REG};
 use zisk_core::zisk_rom::ZiskRom;
 use zisk_core::{
     convert_vector, ZiskInstBuilder, CSR_ADDR, EXTRA_PARAMS_ADDR, INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR,
-    ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
 };
 
 #[cfg(not(feature = "float"))]
@@ -39,7 +38,7 @@ use zisk_core::{FREG_F0, FREG_INST, FREG_RA, MTVEC, REG_X0};
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 // Important: The order should be the same as in such file.
-const CSR_PRECOMPILED: [&str; 36] = [
+const CSR_PRECOMPILED: [&str; 37] = [
     "keccak",
     "arith256",
     "arith256_mod",
@@ -74,6 +73,7 @@ const CSR_PRECOMPILED: [&str; 36] = [
     "blake2s",
     "ed25519_add",
     "poseidon2_koalabear",
+    "keccak_xor",
     "dot_f8",
     "dot_bf16",
 ];
@@ -128,22 +128,10 @@ impl<'a> Riscv2ZiskContext<'a> {
             //////////////////////////////////
 
             // I.1. Integer Computational (Register-Register)
-            RiscvInstName::Add => {
-                if riscv_instruction.rs1 == 0 {
-                    if !next_instructions.is_empty() {
-                        // rd = rs1(0) + rs2 = rs2 followed by ret
-                        self.copyb(riscv_instruction, 4, 2);
-                    } else {
-                        // rd = rs1(0) + rs2 = rs2
-                        self.copyb(riscv_instruction, 4, 2);
-                    }
-                } else if riscv_instruction.rs2 == 0 {
-                    // rd = rs1 + rs2(0) = rs1
-                    self.copyb(riscv_instruction, 4, 1);
-                } else {
-                    self.create_register_op(riscv_instruction, "add", 4);
-                }
-            }
+            // An add, or, xor or sub that only copies a register (an x0 operand, which reads as
+            // the immediate 0, or an immediate 0) becomes a copyb in the ROM optimizer's
+            // simplification pass (see rom_optimizer.rs), so these are lowered as they are.
+            RiscvInstName::Add => self.create_register_op(riscv_instruction, "add", 4),
             RiscvInstName::Sub => self.create_register_op(riscv_instruction, "sub", 4),
             RiscvInstName::Sll => self.create_register_op(riscv_instruction, "sll", 4),
             RiscvInstName::Slt => self.create_register_op(riscv_instruction, "lt", 4),
@@ -151,17 +139,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             RiscvInstName::Xor => self.create_register_op(riscv_instruction, "xor", 4),
             RiscvInstName::Srl => self.create_register_op(riscv_instruction, "srl", 4),
             RiscvInstName::Sra => self.create_register_op(riscv_instruction, "sra", 4),
-            RiscvInstName::Or => {
-                if riscv_instruction.rs1 == 0 {
-                    // rd = rs1(0) | rs2 = rs2
-                    self.copyb(riscv_instruction, 4, 2);
-                } else if riscv_instruction.rs2 == 0 {
-                    // rd = rs1 | rs2(0) = rs1
-                    self.copyb(riscv_instruction, 4, 1);
-                } else {
-                    self.create_register_op(riscv_instruction, "or", 4);
-                }
-            }
+            RiscvInstName::Or => self.create_register_op(riscv_instruction, "or", 4),
             RiscvInstName::And => self.create_register_op(riscv_instruction, "and", 4),
             RiscvInstName::Addw => self.create_register_op(riscv_instruction, "add_w", 4),
             RiscvInstName::Subw => self.create_register_op(riscv_instruction, "sub_w", 4),
@@ -178,22 +156,20 @@ impl<'a> Riscv2ZiskContext<'a> {
                     } else {
                         self.hint(riscv_instruction, 4);
                     }
-                } else if riscv_instruction.imm == 0 && riscv_instruction.rs1 != 0 {
-                    // rd = rs1 + imm(0) = rs1
-                    self.copyb(riscv_instruction, 4, 1);
                 } else {
-                    self.immediate_op_or_x0_copyb(riscv_instruction, "add", 4);
+                    // `mv` and `li` included: see the simplification pass
+                    self.immediate_op(riscv_instruction, "add", 4);
                 }
             }
             RiscvInstName::Slli => self.immediate_op(riscv_instruction, "sll", 4),
             RiscvInstName::Slti => self.immediate_op(riscv_instruction, "lt", 4),
             RiscvInstName::Sltiu => self.immediate_op(riscv_instruction, "ltu", 4),
-            RiscvInstName::Xori => self.immediate_op_or_x0_copyb(riscv_instruction, "xor", 4),
+            RiscvInstName::Xori => self.immediate_op(riscv_instruction, "xor", 4),
             RiscvInstName::Srli => self.immediate_op(riscv_instruction, "srl", 4),
             RiscvInstName::Srai => self.immediate_op(riscv_instruction, "sra", 4),
-            RiscvInstName::Ori => self.immediate_op_or_x0_copyb(riscv_instruction, "or", 4),
+            RiscvInstName::Ori => self.immediate_op(riscv_instruction, "or", 4),
             RiscvInstName::Andi => self.immediate_op(riscv_instruction, "and", 4),
-            RiscvInstName::Auipc => self.auipc(riscv_instruction, next_instructions),
+            RiscvInstName::Auipc => self.auipc(riscv_instruction),
             RiscvInstName::Addiw => {
                 if riscv_instruction.rd == 0
                     && riscv_instruction.rs1 == 0
@@ -364,16 +340,14 @@ impl<'a> Riscv2ZiskContext<'a> {
                     && riscv_instruction.rs2 == 0
                 {
                     self.nop(riscv_instruction, 2);
-                } else if riscv_instruction.imm == 0 && riscv_instruction.rs1 != 0 {
-                    // rd = rs1 + imm(0) = rs1
-                    self.copyb(riscv_instruction, 2, 1);
                 } else {
-                    self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
+                    // `c.mv`-like copies included: see the simplification pass
+                    self.immediate_op(riscv_instruction, "add", 2);
                 }
             }
             #[cfg(feature = "compressed")]
             RiscvInstName::CAddi4spn | RiscvInstName::CLi | RiscvInstName::CAddi16sp => {
-                self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
+                self.immediate_op(riscv_instruction, "add", 2);
             }
             #[cfg(feature = "compressed")]
             RiscvInstName::CSlli => self.immediate_op(riscv_instruction, "sll", 2),
@@ -1280,143 +1254,14 @@ impl<'a> Riscv2ZiskContext<'a> {
         zib.build(self.rom);
     }
 
-    // addi rd, rs1, imm
-    //      add([%rs1], imm) -> [%rd]
-
-    /// Creates a Zisk operation that loads a constant value using the specified operation and
-    /// stores the result in a register, if rs1 is x0, operation is replaced by copyb, only could
-    /// be use on operations that op(x0, imm) == imm (e.g. add, or, xor)
-    pub fn immediate_op_or_x0_copyb(&mut self, i: &RiscvInst, op: &str, inst_size: u64) {
-        assert!(inst_size == 2 || inst_size == 4);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
-        zib.src_a("reg", i.rs1 as u64, false);
-        zib.src_b("imm", i.imm as u64, false);
-        if i.rs1 == 0 {
-            zib.op("copyb").unwrap();
-            zib.verbose(&format!("{} r{}, r{}, 0x{:x} => copyb", i.inst_name, i.rd, i.rs1, i.imm));
-        } else {
-            zib.op(op).unwrap();
-            zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst_name, i.rd, i.rs1, i.imm));
-        }
-        zib.store("reg", i.rd as i64, false, false);
-        zib.j(inst_size as i64, inst_size as i64);
-        zib.build(self.rom);
-    }
-
-    pub fn copyb(&mut self, i: &RiscvInst, inst_size: u64, rs: u64) {
-        assert!(inst_size == 2 || inst_size == 4);
-        assert!(rs == 1 || rs == 2);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
-        zib.src_a("imm", 0, false);
-        zib.src_b("reg", if rs == 1 { i.rs1 } else { i.rs2 } as u64, false);
-        zib.op("copyb").unwrap();
-        zib.verbose(&format!("{} r{}, r{}, 0x{:x} => copyb", i.inst_name, i.rd, i.rs1, i.imm));
-        zib.store("reg", i.rd as i64, false, false);
-        zib.j(inst_size as i64, inst_size as i64);
-        zib.build(self.rom);
-    }
-
     // auipc rd, upimm
     //     c = pc+upimm<<12 -> [%rd]
-    pub fn auipc(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
-        // If the auipc is immediately followed by a jalr that uses the value of rd, we can directly
-        // store the result of auipc in the register and statically jump to the target of auipc,
-        // without needing to compute the target of auipc in the Zisk code and store it in rd, and
-        // then dynamically jump to it in the next instruction. This optimization allows us to save one instruction in the
-        // common case of auipc + jalr used for function calls, which is a common pattern in RISC-V
-        // code.
-        // Example:
-        // 80000010:    003c2097              auipc    ra,0x3c2
-        // 80000014:    b30080e7              jalr     ra, -1232(ra) # 803c1b40 <_zisk_main>
-
-        if !next_instructions.is_empty()
-            && next_instructions[0].inst_name == RiscvInstName::Jalr
-            && i.rd != 0
-            && next_instructions[0].rs1 == i.rd
-            && (next_instructions[0].rd == i.rd || next_instructions[0].rd == 0)
-        {
-            // return_pc = pc + len(auipc) + len(jalr)
-            // jump_pc = pc + auipc_imm + jalr_imm
-            let current_inst_size = if i.inst_name.as_str().starts_with("c.") { 2 } else { 4 };
-            let next_inst_size = 4;
-            let return_pc = i.rom_address + current_inst_size as u64 + next_inst_size as u64;
-            let auipc_result = i.rom_address as i64 + (i.imm as i64); // already shifted << 12 at decoding time
-            let jump_pc = (auipc_result + next_instructions[0].imm as i64) as u64 & JALR_MASK;
-            assert!(
-                (ROM_ADDR..=ROM_ADDR_MAX).contains(&jump_pc)
-                    || (ROM_ENTRY..=MAX_ZISK_OS_ROM_ADDR).contains(&jump_pc)
-            );
-
-            {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
-
-                // auipc part: write auipc result to rd, unless jalr also writes rd (link), in which case rd gets return_pc
-                zib.src_a("imm", 0, false);
-                zib.src_b(
-                    "imm",
-                    if next_instructions[0].rd == 0 { auipc_result as u64 } else { return_pc },
-                    false,
-                );
-                zib.op("copyb").unwrap();
-                zib.store("reg", i.rd as i64, false, false);
-
-                // jalr part: jump to jump_pc
-                let jump_offset = jump_pc as i64 - i.rom_address as i64;
-                zib.j(jump_offset, jump_offset);
-
-                zib.verbose(&format!(
-                    "auipc r{}, 0x{:x} + jalr r{}, r{}, {:#x} rpc=0x{:x}",
-                    i.rd,
-                    i.imm,
-                    next_instructions[0].rd,
-                    next_instructions[0].rs1,
-                    next_instructions[0].imm,
-                    jump_pc
-                ));
-                zib.set_meta_rs1_rd(next_instructions[0].rs1 as u8, next_instructions[0].rd as u8);
-                zib.build(self.rom);
-            }
-
-            return;
-        }
-
-        // auipc rd followed by addi rd, rd, imm (the `la`/`lla` pair GCC emits for the address
-        // of a global): rd = pc + auipc_imm + addi_imm is a constant, so one copyb writes it and
-        // jumps past the addi. The addi keeps its own ROM entry, so a jump that lands on it
-        // directly still runs it. Same idea as the auipc + jalr fusion above.
-        if let Some(next) = next_instructions.first() {
-            let next_size = match next.inst_name {
-                RiscvInstName::Addi => 4,
-                RiscvInstName::CAddi => 2,
-                _ => 0,
-            };
-            if next_size != 0
-                && i.rd != 0
-                && next.rd == i.rd
-                && next.rs1 == i.rd
-                && next.rom_address == i.rom_address + 4
-            {
-                let value = (i.rom_address as i64)
-                    .wrapping_add(i.imm as i64) // already shifted << 12 at decoding time
-                    .wrapping_add(next.imm as i64) as u64;
-                let skip = 4 + next_size;
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
-                zib.src_a("imm", 0, false);
-                zib.src_b("imm", value, false);
-                zib.op("copyb").unwrap();
-                zib.store("reg", i.rd as i64, false, false);
-                zib.j(skip, skip);
-                zib.verbose(&format!(
-                    "auipc r{}, 0x{:x} + addi r{}, r{}, {:#x} = 0x{:x}",
-                    i.rd, i.imm, next.rd, next.rs1, next.imm, value
-                ));
-                zib.build(self.rom);
-                return;
-            }
-        }
-
+    pub fn auipc(&mut self, i: &RiscvInst) {
+        // The pairs an auipc starts are not special-cased here: the ROM optimizer merges them
+        // once the whole program is in the ROM (see rom_optimizer.rs). An auipc + jalr through
+        // the same register (a call or a tail jump) becomes one instruction that jumps straight
+        // to the target, and an auipc + addi on the same register (the `la`/`lla` pair GCC emits
+        // for the address of a global) becomes one copyb of the constant.
         let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("imm", 0, false);
         zib.src_b("imm", (i.rom_address as i64 + (i.imm as i64)) as u64, false);
@@ -2054,7 +1899,8 @@ impl<'a> Riscv2ZiskContext<'a> {
                 | SYSCALL_SHA256F_ID
                 | SYSCALL_BLAKE3F_ID
                 | SYSCALL_BLAKE2SF_ID
-                | SYSCALL_ED25519_ADD_ID => {
+                | SYSCALL_ED25519_ADD_ID
+                | SYSCALL_KECCAK_XOR_ID => {
                     let precompiled =
                         CSR_PRECOMPILED[i.csr as usize - CSR_PRECOMPILED_ADDR_START as usize];
                     self.transpile_precompiled_ab_pattern(i, next_instructions, precompiled);
@@ -3403,9 +3249,73 @@ mod tests {
         }
     }
 
-    /// `auipc rd` + `addi rd, rd, imm` (or `c.addi`) becomes one copyb of the constant
-    /// pc + auipc_imm + addi_imm into rd that jumps past the addi; any other follower, or an
-    /// addi that reads or writes a different register, leaves the auipc on its own.
+    /// Transpiles `insts` (each one at the address after the previous one) and runs the ROM
+    /// optimizer with its default passes over the result, as `elf2rom` does
+    fn transpile_and_optimize(insts: &[RiscvInst]) -> ZiskRom {
+        let mut rom = ZiskRom::default();
+        let mut ctx = Riscv2ZiskContext::new(&mut rom);
+        for (k, inst) in insts.iter().enumerate() {
+            ctx.convert(inst, &insts[k + 1..]);
+        }
+        crate::rom_optimizer::optimize_rom(
+            &mut rom.insts,
+            crate::rom_optimizer::RomOptPasses::default(),
+        );
+        rom
+    }
+
+    /// `auipc rd` + `jalr` through rd (a call that links into rd, or a tail jump that links
+    /// nowhere) ends up as one copyb at the auipc that jumps straight to the target: rd gets the
+    /// return address when the jalr links into it, the auipc value otherwise.  The jalr stays in
+    /// place for any other predecessor.
+    #[test]
+    fn auipc_jalr_is_one_static_jump() {
+        let copyb = ZiskOp::try_from_name("copyb").unwrap().code();
+        let target = ROM_ADDR + 0x40;
+        let auipc = RiscvInst {
+            rom_address: ROM_ADDR,
+            inst_name: RiscvInstName::Auipc,
+            rd: 1,
+            imm: 0,
+            ..Default::default()
+        };
+        let jalr = |rd| RiscvInst {
+            rom_address: ROM_ADDR + 4,
+            inst_name: RiscvInstName::Jalr,
+            rd,
+            rs1: 1,
+            imm: 0x40,
+            ..Default::default()
+        };
+        // The target, so the jump lands on a ROM instruction
+        let nop =
+            RiscvInst { rom_address: target, inst_name: RiscvInstName::Addi, ..Default::default() };
+        // (link register, value rd holds afterwards)
+        for (rd, value) in [(1, ROM_ADDR + 8), (0, ROM_ADDR)] {
+            let mut rom = transpile_and_optimize(&[auipc.clone(), jalr(rd)]);
+            let mut ctx = Riscv2ZiskContext::new(&mut rom);
+            ctx.convert(&nop, &[]);
+            crate::rom_optimizer::optimize_rom(
+                &mut rom.insts,
+                crate::rom_optimizer::RomOptPasses::default(),
+            );
+
+            assert_eq!(rom.insts.len(), 3, "rd={rd}: the jalr stays in place");
+            let zi = &rom.insts[&ROM_ADDR].i;
+            assert_eq!(zi.op, copyb, "rd={rd}");
+            assert!(!zi.set_pc && !zi.store_pc, "rd={rd}: a static jump");
+            assert_eq!((zi.b_src, zi.b_offset_imm0), (SRC_IMM, value & 0xffff_ffff), "rd={rd}");
+            assert_eq!((zi.store, zi.store_offset), (STORE_REG, 1), "rd={rd}");
+            assert_eq!((zi.jmp_offset1, zi.jmp_offset2), (0x40, 0x40), "rd={rd}");
+            assert_eq!((zi.meta_rs1, zi.meta_rd), (Some(1), Some(rd as u8)), "rd={rd}");
+        }
+    }
+
+    /// `auipc rd` + `addi rd, rd, imm` (the `la`/`lla` pair) ends up as one copyb of the constant
+    /// pc + auipc_imm + addi_imm into rd that jumps past the addi, which stays in place for any
+    /// other predecessor.  The transpiler emits the two instructions; the ROM optimizer's
+    /// constant folding merges them.  An addi that writes another register (rd still live, as
+    /// nothing follows in this ROM) or reads another one leaves the auipc on its own.
     #[test]
     fn auipc_addi_same_rd_is_one_constant() {
         let copyb = ZiskOp::try_from_name("copyb").unwrap().code();
@@ -3426,18 +3336,18 @@ mod tests {
         };
         let base = ROM_ADDR as i64 + (0x10012 << 12);
         // (follower, fused value or None, jump past)
-        let cases = [
+        #[allow(unused_mut)]
+        let mut cases = vec![
             (addi(RiscvInstName::Addi, 5, 5, -400), Some(base - 400), 8),
-            (addi(RiscvInstName::CAddi, 5, 5, 12), Some(base + 12), 6),
             (addi(RiscvInstName::Addi, 6, 5, -400), None, 4), // writes another register
             (addi(RiscvInstName::Addi, 5, 6, -400), None, 4), // reads another register
-            (addi(RiscvInstName::Add, 5, 5, 0), None, 4),     // not an addi
         ];
+        #[cfg(feature = "compressed")]
+        cases.push((addi(RiscvInstName::CAddi, 5, 5, 12), Some(base + 12), 6));
         for (next, fused, skip) in cases {
-            let mut rom = ZiskRom::default();
-            Riscv2ZiskContext::new(&mut rom).auipc(&auipc, std::slice::from_ref(&next));
+            let rom = transpile_and_optimize(&[auipc.clone(), next.clone()]);
 
-            assert_eq!(rom.insts.len(), 1, "{next:?}: one instruction");
+            assert_eq!(rom.insts.len(), 2, "{next:?}: the addi stays in place");
             let zi = &rom.insts[&ROM_ADDR].i;
             assert_eq!(zi.op, copyb, "{next:?}");
             let value = fused.unwrap_or(base) as u64;

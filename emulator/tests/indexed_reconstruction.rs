@@ -71,7 +71,6 @@ fn indexed_reconstruction_matches_full_packing() {
                 );
             }
             assert_eq!(full.get_flag(lane), compact.get_flag(lane), "flag @{at}");
-            assert_eq!(full.get_addr1(lane), compact.get_addr1(lane), "addr1 @{at}");
             assert_eq!(
                 full.get_a_reg_prev_mem_step(lane),
                 compact.get_a_reg_prev_mem_step(lane),
@@ -128,7 +127,7 @@ fn indexed_descriptor_covers_every_column() {
     assert_eq!(Ix::LANES, MAIN_LANES);
     assert_eq!(Ix::INDEX_BITS, 32);
     assert_eq!(Ix::COL_SOURCE.len(), Ix::COL_LANE.len());
-    // 25 of the 34 declared fields are instruction-derived, one column per lane each.
+    // 25 of the 33 declared fields are instruction-derived, one column per lane each.
     assert_eq!(Ix::COL_SOURCE.iter().filter(|&&s| s == 1).count(), 25 * MAIN_LANES);
     // Every column names a lane the row carries, and runtime columns name lane 0.
     assert!(Ix::COL_LANE.iter().all(|&l| (l as usize) < MAIN_LANES));
@@ -147,4 +146,48 @@ fn indexed_descriptor_covers_every_column() {
         .2
         .unpack_info;
     assert_eq!(Ix::COL_SOURCE.len(), main_unpack_info.len());
+}
+
+/// A ROM of the single instruction `i` at the ROM entry, ready for the instruction table.
+fn one_inst_rom(mut i: zisk_core::ZiskInst) -> zisk_core::ZiskRom {
+    let mut rom = zisk_core::ZiskRom::default();
+    i.paddr = zisk_core::ROM_ENTRY;
+    rom.insts.insert(i.paddr, zisk_core::ZiskInstBuilder { i });
+    rom.optimize_instruction_lookup().unwrap();
+    rom
+}
+
+/// Signed offsets of i64::MIN become field elements without overflowing.
+#[test]
+fn instr_table_takes_i64_min_offsets() {
+    let i = zisk_core::ZiskInst {
+        a_src: zisk_core::SRC_IMM,
+        a_offset_imm0: i64::MIN as u64,
+        b_src: zisk_core::SRC_IMM,
+        b_offset_imm0: i64::MIN as u64,
+        store: zisk_core::STORE_MEM,
+        store_offset: i64::MIN,
+        jmp_offset1: i64::MIN,
+        jmp_offset2: i64::MIN,
+        ..Default::default()
+    };
+    Emu::build_main_instr_table::<Goldilocks>(&one_inst_rom(i));
+}
+
+/// An instruction that uses sp is refused with the stack_enabled message, also when its offset
+/// is i64::MIN (which used to overflow first).
+#[test]
+#[should_panic(expected = "does not support the sp register")]
+fn instr_table_refuses_sp_at_i64_min() {
+    let i = zisk_core::ZiskInst {
+        a_src: zisk_core::SRC_MEM,
+        a_offset_imm0: i64::MIN as u64,
+        a_use_sp_imm1: 1,
+        b_src: zisk_core::SRC_IMM,
+        store: zisk_core::STORE_MEM,
+        store_offset: i64::MIN,
+        store_use_sp: true,
+        ..Default::default()
+    };
+    Emu::build_main_instr_table::<Goldilocks>(&one_inst_rom(i));
 }

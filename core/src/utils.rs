@@ -1,10 +1,9 @@
 use crate::{
-    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
-    STORE_REG,
+    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
-// #[cfg(feature = "sp")]
-// use crate::SRC_SP;
+#[cfg(feature = "sp")]
+use crate::SRC_SP;
 
 /// Converts a u8 vector into a u16 vector
 /// The length of the input vector must be a multiple of 2
@@ -26,9 +25,8 @@ pub fn source_to_str(source: u64) -> &'static str {
         SRC_REG => "SRC_REG",
         SRC_MEM => "SRC_MEM",
         SRC_IMM => "SRC_IMM",
-        SRC_STEP => "SRC_STEP",
-        // #[cfg(feature = "sp")]
-        // SRC_SP => "SRC_SP",
+        #[cfg(feature = "sp")]
+        SRC_SP => "SRC_SP",
         SRC_IND => "SRC_IND",
         _ => panic!("source_to_str() unknown source({source})"),
     }

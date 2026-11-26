@@ -93,8 +93,8 @@ For BF16 models there are no scales, so each output of a matrix multiplication i
 
 ## Opcode, syscall and cost
 
-- **Opcode `0xc3`,** the next free one after `dot_f8` (`0xc3` to `0xcf` are free).
-- **Syscall `0x823`.** Syscall IDs must stay contiguous and in the same order as the list in `riscv2zisk_context.rs`.
+- **Opcode `0xc4`,** the next free one after `dot_f8` (`0xc3`; `0xc2` is `keccak_xor`, and `0xc5` to `0xcf` are free).
+- **Syscall `0x824`,** after `keccak_xor` (`0x822`) and `dot_f8` (`0x823`). Syscall IDs must stay contiguous and in the same order as the list in `riscv2zisk_context.rs`.
 - **Minimal-trace header (`input_size`):** 7 words, the 6-word parameter block plus the result, followed by both vectors (`data_ext_len`), as for `dot_f8`.
 - **Cost estimate, to replace once a state machine exists:**
   - one row per call, like DMA (`DOT_BF16_COST = DMA_COST`);
@@ -114,10 +114,10 @@ The same files as `dot_f8` (commit `df3c5a400`), in this order:
    - `dot_bf16_reference(x, y, n, block, out) -> u32`.
 
    This is the specification, and every other implementation is tested against it.
-2. **Syscall ID** `SYSCALL_DOT_BF16_ID = 0x823` in `definitions/src/syscall.rs`.
+2. **Syscall ID** `SYSCALL_DOT_BF16_ID = 0x824` in `definitions/src/syscall.rs`.
 3. **Core:**
    - `core/src/operations/dot_bf16.rs`: parameter checks (alignment, `n`, `block`, `flags` = 0), the operation for `ziskemu`, and the cost model;
-   - an entry in `core/src/zisk_ops.rs` (`DotBf16`, `0xc3`, `input_size` 56);
+   - an entry in `core/src/zisk_ops.rs` (`DotBf16`, `0xc4`, `input_size` 56);
    - `ZiskOperationType::DotBf16` in `zisk_inst.rs`;
    - constants in `zisk_ops_costs.rs`;
    - the translation in `zisk_rom_2_asm.rs`.

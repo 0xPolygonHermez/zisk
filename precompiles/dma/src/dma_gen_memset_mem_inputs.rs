@@ -10,7 +10,7 @@ pub fn generate_dma_memset_mem_inputs<P: MemProcessor>(
 ) {
     let dst = data[A];
     let encoded = data[DMA_ENCODED];
-    let dst64 = (dst & !0x07) as u32;
+    let dst64 = dst & !0x07;
     let dst_offset = dst & 0x07;
     let step = data[STEP];
     let pre_count = DmaInfo::get_pre_count(encoded) as u64;
@@ -36,7 +36,7 @@ pub fn generate_dma_memset_mem_inputs<P: MemProcessor>(
     let loop_count = DmaInfo::get_loop_count(encoded);
 
     if post_count > 0 {
-        let dst64_post = ((dst + pre_count) as usize + loop_count * 8) as u32;
+        let dst64_post = dst + pre_count + loop_count as u64 * 8;
 
         #[cfg(feature = "debug_dma_gen_mem_inputs")]
         println!("[dma_memset] INPUT POST DST:0x{dst64_post:08X} S:{step}");
@@ -67,7 +67,7 @@ pub fn generate_dma_memset_mem_inputs<P: MemProcessor>(
     }
 
     if loop_count > 0 {
-        let dst64_loop = dst as u32 + pre_count as u32;
+        let dst64_loop = dst + pre_count;
         #[cfg(feature = "debug_dma_gen_mem_inputs")]
         println!("[dma_memset] INPUT LOOP DST:0x{dst64_loop:08X} C:{loop_count} S:{step}");
         MemBusHelpers::mem_aligned_write_pattern(
@@ -79,7 +79,7 @@ pub fn generate_dma_memset_mem_inputs<P: MemProcessor>(
         );
     }
     if post_count > 0 {
-        let dst64_post = ((dst + pre_count) as usize + loop_count * 8) as u32;
+        let dst64_post = dst + pre_count + loop_count as u64 * 8;
         #[cfg(feature = "debug_dma_gen_mem_inputs")]
         println!("[dma_memset] INPUT POST WRITE DST:0x{dst64_post:08X} S:{step}");
         let mask = 0xFFFF_FFFF_FFFF_FFFFu64 >> (64 - post_count * 8);
@@ -91,8 +91,8 @@ pub fn generate_dma_memset_mem_inputs<P: MemProcessor>(
 pub fn skip_dma_memset_mem_inputs<P: MemProcessor>(data: &[u64], mem_processors: &mut P) -> bool {
     let dst = data[A];
     let encoded = data[DMA_ENCODED];
-    let dst64 = (dst & !0x07) as u32;
-    let dst64_to = (dst + DmaInfo::get_count(encoded) as u64 - 1) as u32 & !0x07;
+    let dst64 = dst & !0x07;
+    let dst64_to = (dst + DmaInfo::get_count(encoded) as u64 - 1) & !0x07;
 
     #[cfg(feature = "debug_dma_gen_mem_inputs")]
     let step = data[STEP];

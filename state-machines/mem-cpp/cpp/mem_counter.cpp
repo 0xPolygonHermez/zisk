@@ -1,5 +1,6 @@
 #include "mem_counter.hpp"
 #include <cstdio>
+#include <cstdlib>
 #include <cassert>
 #include <assert.h>
 #include <string.h>
@@ -136,7 +137,7 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
         const MemCountersBusData rec = mops_decode_record(words + w);
         const MemCountersBusData *chunk_data = &rec;
         const uint8_t bytes = chunk_data->flags & 0x0F;
-        const uint32_t addr = chunk_data->addr;
+        const uint64_t addr = chunk_data->addr;
         switch (bytes) {
             // byte
             case 1:
@@ -175,7 +176,7 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
                     }
                     incr_counter(addr, chunk_id, true, chunk_data->flags & MOPS_WRITE_FLAG);
                 } else {
-                    const uint32_t aligned_addr = addr & ALIGN_MASK;
+                    const uint64_t aligned_addr = addr & ALIGN_MASK;
 
                     if ((aligned_addr & ADDR_MASK) == addr_mask) {
                         incr_counter(aligned_addr, chunk_id, false, chunk_data->flags & MOPS_WRITE_FLAG);
@@ -207,8 +208,8 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
                 bool write = bytes == MOPS_BLOCK_WRITE;
                 const uint32_t count = chunk_data->flags >> MOPS_BLOCK_COUNT_SBITS;
                 if ((addr & 0x07) == 0) {
-                    uint32_t to_addr = addr + count * 8;
-                    uint32_t c_addr = (addr & ~ADDR_MASK) + addr_mask;
+                    uint64_t to_addr = addr + (uint64_t)count * 8;
+                    uint64_t c_addr = (addr & ~(uint64_t)ADDR_MASK) + addr_mask;
                     if (c_addr < addr) {
                         c_addr += (MAX_THREADS * 8);
                     }
@@ -217,18 +218,14 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
                         c_addr += (MAX_THREADS * 8);
                     }
                 } else {
-                    // increase range, because if width = 8 and not aligned means
-                    // each access is double, addr and addr + 8 
-                    const uint32_t from_addr = (addr & ~0x07);
-                    const uint32_t to_addr = from_addr + (count + 1) * 8;
-                    uint32_t c_addr = (from_addr & ~ADDR_MASK) + addr_mask;
-                    if (c_addr < from_addr) {
-                        c_addr += (MAX_THREADS * 8);
-                    }
-                    while (c_addr < to_addr) {                
-                        incr_counter(c_addr , chunk_id, false, write);
-                        c_addr += (MAX_THREADS * 8);
-                    }
+                    // Block bases are 8-aligned at every producer; the GPU planner relies on it
+                    // (it treats every block element as one word). An unaligned base here means a
+                    // new producer broke the invariant: fail loudly instead of diverging.
+                    fprintf(stderr,
+                            "MemCounter FATAL: unaligned block record (mode 0x%02X, addr 0x%09lX, count %u);"
+                            " block bases must be 8-aligned\n",
+                            bytes, (unsigned long)addr, count);
+                    abort();
                 }
                 break;
             }
@@ -238,8 +235,8 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
                 assert((addr & 0x07) == 0);
                 bool write = bytes == MOPS_ALIGNED_BLOCK_WRITE;
                 uint32_t count = chunk_data->flags >> 4;
-                uint32_t to_addr = addr + count * 8;
-                uint32_t c_addr = (addr & ~ADDR_MASK) + addr_mask;
+                uint64_t to_addr = addr + (uint64_t)count * 8;
+                uint64_t c_addr = (addr & ~(uint64_t)ADDR_MASK) + addr_mask;
                 if (c_addr < addr) {
                     c_addr += (MAX_THREADS * 8);
                 }
@@ -287,7 +284,7 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
 #endif // MEM_STATS_ACTIVE
 }
 
-void MemCounter::incr_counter(uint32_t addr, uint32_t chunk_id, bool is_aligned, bool is_write) {
+void MemCounter::incr_counter(uint64_t addr, uint32_t chunk_id, bool is_aligned, bool is_write) {
     uint32_t offset = addr_to_offset(addr, current_chunk);
     uint32_t pos = addr_count_table[offset].pos;    
     bool is_ram = (addr >= RAM_ADDR);

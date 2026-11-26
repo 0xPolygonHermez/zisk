@@ -146,7 +146,13 @@ ctor-style crates).
 
 ### Linker script
 
-Use ZisK's own [`ziskbuild/zisk_linker_script.ld`](../ziskbuild/zisk_linker_script.ld).
+Use ZisK's own [`ziskbuild/zisk_linker_script.ld`](../ziskbuild/zisk_linker_script.ld),
+or [`zisk_linker_script_ram2gb.ld`](../ziskbuild/zisk_linker_script_ram2gb.ld) (with
+`-L ../ziskbuild`, so it can include the first) for a prover built with its `ram_2gb`
+feature. The host owns the memory between `_heap_start` and `_heap_end`, and its
+allocator may write anywhere in it, the top included, so the guest must be linked for
+the RAM the prover reserves: 512 MB by default, 2 GB with `ram_2gb`. Beyond it the first
+access faults.
 It places `.init_array` / `.fini_array` (with `KEEP`) in the read-only ROM
 segment and defines `__init_array_start` / `__init_array_end` /
 `__fini_array_start` / `__fini_array_end`. The runtime references these bounds as
@@ -156,7 +162,7 @@ not a burden: stock GNU ld and LLD always provide these symbols automatically
 construction loops are no-ops.
 
 If you bring your own script, keep the ZisK memory windows (code and read-only
-data in ROM at `0x9000_0000`, writable data in RAM at `0xa000_0000`) — the ELF
+data in ROM at `0xA800_0000`, writable data in RAM at `0xC000_0000`) — the ELF
 interpreter rejects loadable segments outside them.
 
 ### Building a C++ host

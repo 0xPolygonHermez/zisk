@@ -3,9 +3,9 @@ name = "zisk-prover-backend"
 description = "Proving backend for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
-homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
@@ -59,5 +59,9 @@ compressed = ["zisk-transpiler-common/compressed"]
 witness_timers = ["zisk-executor/witness_timers"]
 mem-witness-test = ["zisk-executor/mem-witness-test"]
 cpu-only = ["proofman-common/cpu-only", "zisk-executor/cpu-only"]
+# Memory the executors reserve: the whole 2GB input / RAM window instead of 1GB / 512MB (see
+# the features of zisk-core).
+input_2gb = ["zisk-core/input_2gb"]
+ram_2gb = ["zisk-core/ram_2gb"]
 stats = []
 diagnostic = ["proofman/diagnostic"]

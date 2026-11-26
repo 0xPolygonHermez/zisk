@@ -10,6 +10,6 @@ static int cmp(const uint8_t*a,const uint8_t*b,int n){int d=0;for(int i=0;i<n;i+
 int main(void){
   zkvm_status s1=zkvm_bls12_map_fp_to_g1((const void*)u1,(void*)o1);
   zkvm_status s2=zkvm_bls12_map_fp2_to_g2((const void*)u2,(void*)o2);
-  volatile uint8_t *O=(volatile uint8_t*)(0xA0410000ULL);
+  volatile uint8_t *O=(volatile uint8_t*)(0xC0410000ULL);
   O[0]=(uint8_t)s1;O[1]=(uint8_t)cmp(o1,eg1,96);O[2]=(uint8_t)s2;O[3]=(uint8_t)cmp(o2,eg2,192);
   return 0;}

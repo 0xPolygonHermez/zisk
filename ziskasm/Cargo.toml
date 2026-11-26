@@ -7,6 +7,7 @@ name = "zisk-asm"
 description = "Parser and assembler that turns ZisK assembly (.zisk) source into ROMs for the ZisK zkVM"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 keywords.workspace = true
@@ -20,6 +21,7 @@ name = "ziskasm"
 # default: the Lean model only knows r0..r31, so the bin rejects any routine that uses
 # the main-trace registers r32..r39, which most of the ZisK library does.
 lean = []
+sp = ["zisk-core/sp", "ziskemu/sp"]
 
 [[bin]]
 name = "zisk2lean"

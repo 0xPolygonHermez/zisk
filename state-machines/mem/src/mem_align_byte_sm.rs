@@ -11,6 +11,7 @@ use zisk_pil::{
     MemAlignReadByteLargeTrace, MemAlignReadByteTrace, MemAlignReadByteTraceRowOps,
     MemAlignWriteByteAirValues, MemAlignWriteByteTrace, MemAlignWriteByteTraceRowOps,
 };
+use zisk_sm_mem_common::MemHelpers;
 
 pub trait MemAlignByteRow<F: PrimeField64, T> {
     #[allow(clippy::too_many_arguments)]
@@ -247,9 +248,6 @@ impl<F: PrimeField64, R: MemAlignWriteByteTraceRowOps<F>>
     );
 }
 
-const OFFSET_MASK: u32 = 0x07;
-const OFFSET_BITS: u32 = 3;
-
 pub struct MemAlignByteSM<F: PrimeField64> {
     _phantom: std::marker::PhantomData<F>,
 }
@@ -316,8 +314,8 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
 
         let high_value = (input.mem_values[0] >> 32) as u32;
         let low_value = (input.mem_values[0] & 0xFFFF_FFFF) as u32;
-        let offset = (addr & OFFSET_MASK) as u8;
-        let addr_w = addr >> OFFSET_BITS;
+        let offset = MemHelpers::get_byte_offset(addr);
+        let addr_w = MemHelpers::get_addr_w(addr);
         let step = input.step;
 
         let (

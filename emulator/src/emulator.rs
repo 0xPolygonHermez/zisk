@@ -26,7 +26,7 @@ use std::{
 use sysinfo::System;
 use zisk_common::{DataBusTrait, EmuTrace};
 use zisk_core::{
-    Mem, ZiskRom, GENERAL_RAM_ADDR, OUTPUT_ADDR, STACK_ADDR, SYS_ADDR, ZISKLIB_RAM_ADDR,
+    Mem, ZiskRom, GENERAL_RAM_ADDR, OUTPUT_ADDR, RAM_ADDR, RAM_SIZE, STACK_ADDR, SYS_ADDR,
 };
 use zisk_transpiler_common::ZiskTranspiler;
 
@@ -47,7 +47,9 @@ fn guest_buffer(mem: &Mem) -> Result<&[u8], ZiskEmulatorErr> {
     let len = mem.read(OUTPUT_ADDR + 40, 8);
     let invalid = || ZiskEmulatorErr::Unknown("Buffer range is outside guest RAM".into());
     let end = ptr.checked_add(len).ok_or_else(invalid)?;
-    if ![(STACK_ADDR, SYS_ADDR), (GENERAL_RAM_ADDR, ZISKLIB_RAM_ADDR)]
+    // The stack, and the general RAM, which runs from above the system regions (sys, output,
+    // float lib and zisklib RAM) to the end of the RAM
+    if ![(STACK_ADDR, SYS_ADDR), (GENERAL_RAM_ADDR, RAM_ADDR + RAM_SIZE)]
         .iter()
         .any(|&(lo, hi)| lo <= ptr && ptr < hi && end <= hi)
     {
@@ -490,7 +492,8 @@ mod guest_buffer_tests {
             (0, 7, None),
             (OUTPUT_ADDR, 8, None),
             (SYS_ADDR - 1, 2, None),
-            (ZISKLIB_RAM_ADDR - 1, 2, None),
+            (GENERAL_RAM_ADDR - 1, 2, None),
+            (RAM_ADDR + RAM_SIZE - 1, 2, None),
             (GENERAL_RAM_ADDR + 1, 8, None),
             (GENERAL_RAM_ADDR + 1, u64::MAX, None),
         ] {

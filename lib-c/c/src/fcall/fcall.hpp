@@ -31,8 +31,7 @@ extern "C" {
 #define FCALL_UINT256_INV_MOD_ID 21
 #define FCALL_BIGINT_DIV_ID 22
 // 23 = FCALL_INPUT_READY_ID, resolved at transpilation time, never reaches Fcall()
-#define FCALL_SET_KECCAKF_CACHE_INDEX_ID 24
-#define FCALL_GET_KECCAKF_CACHE_INDEX_ID 25
+// 24 and 25 are free: they were the Keccak-f software cache, replaced by the dedup of KeccakfProxy
 #define FCALL_ED25519_FP_SQRT_RATIO_ID 26
 #define FCALL_RANDOM_SEED_ID 27
 
@@ -135,12 +134,6 @@ int Secp256k1GlvDecomposeCtx (
     struct FcallContext * ctx  // fcall context
 );
 int Secp256r1FnInvCtx (
-    struct FcallContext * ctx  // fcall context
-);
-int KeccakfCacheSetIndexCtx (
-    struct FcallContext * ctx  // fcall context
-);
-int KeccakfCacheGetIndexCtx (
     struct FcallContext * ctx  // fcall context
 );
 int Ed25519FpSqrtRatioCtx (

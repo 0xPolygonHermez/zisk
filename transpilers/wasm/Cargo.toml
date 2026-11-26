@@ -3,9 +3,9 @@ name = "zisk-transpiler-wasm"
 description = "Transpiler from WebAssembly to the ZisK instruction set"
 version = { workspace = true }
 edition = { workspace = true }
+rust-version = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
-homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
@@ -28,3 +28,7 @@ wat = { workspace = true }
 [features]
 default = []
 float = ["zisk-riscv/float", "zisk-core/float"]
+# Lower the wasm frame onto the ZisK `sp` register (emulation only: the prover does not support
+# sp yet). Frame slots become `[sp + off]` operands that any instruction can read or write, so
+# operators work on them without loading them into registers first.
+sp = ["zisk-core/sp"]

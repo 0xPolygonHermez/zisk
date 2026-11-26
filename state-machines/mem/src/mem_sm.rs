@@ -20,7 +20,7 @@ use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 #[allow(unused_imports)]
 use zisk_common::{phase_end, phase_log, phase_ms, phase_start};
-use zisk_core::{RAM_ADDR, RAM_SIZE};
+use zisk_core::{RAM_ADDR, RAM_WINDOW_SIZE};
 
 use crate::mem_witness_split::{split_mem_slots, MemFillRange};
 use zisk_sm_mem_common::{
@@ -55,8 +55,9 @@ impl<F: PrimeField64> MemSM<F> {
         Arc::new(Self { _phantom: std::marker::PhantomData })
     }
 
-    pub fn get_to_addr() -> u32 {
-        (RAM_ADDR + RAM_SIZE - 1) as u32
+    /// Last byte address of the RAM window; above 4GB, so it does not fit a `u32`.
+    pub fn get_to_addr() -> u64 {
+        RAM_ADDR + RAM_WINDOW_SIZE - 1
     }
     #[cfg(feature = "debug_mem")]
     pub fn save_to_file<R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
@@ -196,7 +197,7 @@ impl<F: PrimeField64> MemSM<F> {
     ///
     /// File format: raw array of u32 little-endian values, one per qword slot.
     /// The number of entries is implicit (file_size / 4).
-    /// The base address is stored externally (segment->offsets_base_addr).
+    /// The base address is stored externally (segment->offsets_base_addr_w).
     ///
     /// offsets[i] = 1-based virtual row (row * lanes_x_row + lane) of the first
     ///              memory lane whose qword address equals (from_addr + i).  If
@@ -1290,7 +1291,7 @@ fn fill_mem_range<F: PrimeField64, R: MemTraceRowOps<F>>(
     // A range must not write past its own slots. With a single range this is `num_slots`, so the
     // guard below is the one the sequential fill had.
     let slot_limit = range.slot_to;
-    let offset_base_addr_w = seg.offsets_base_addr >> 3;
+    let offset_base_addr_w = seg.offsets_base_addr_w;
 
     #[cfg(feature = "debug_mem")]
     let mut filled_slots = vec![false; num_slots];

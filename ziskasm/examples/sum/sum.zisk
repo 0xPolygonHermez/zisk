@@ -24,7 +24,7 @@ const u64 TABLE = 10, 20, 30, 40      ; ROM array, sum = 100
 u64 count = 4                         ; RAM scalar
 u64 acc = 0                           ; RAM accumulator
 
-define OUTPUT_ADDR 0xa0410000
+define OUTPUT_ADDR 0xc0410000
 
 
 main:
