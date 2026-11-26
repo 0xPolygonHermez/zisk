@@ -34,8 +34,12 @@ static GLOBAL_ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 ///
 /// tikv-jemalloc-sys builds jemalloc with its symbols prefixed by `_rjem_`
 /// (we do not enable its `unprefixed_malloc_on_supported_platforms` feature),
-/// so jemalloc reads `_rjem_malloc_conf`, as a C `const char *`. Exported as
-/// plain `malloc_conf`, or as a Rust slice, it is never read.
+/// so jemalloc reads `_rjem_malloc_conf`: exported as plain `malloc_conf`, the
+/// configuration is never read.
+///
+/// jemalloc declares it as a C `const char *`, which is what [`MallocConf`]
+/// holds. A `&[u8]` works only because its data pointer happens to come
+/// first, a layout Rust does not guarantee.
 #[cfg(feature = "jemalloc")]
 #[allow(non_upper_case_globals)]
 #[export_name = "_rjem_malloc_conf"]
