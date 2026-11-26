@@ -7723,6 +7723,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "tikv-jemalloc-sys",
  "tikv-jemallocator",
  "tracing",
  "zisk-core",

@@ -37,6 +37,10 @@ paste = { workspace = true }
 crossbeam-queue = "0.3"
 tikv-jemallocator = { workspace = true, optional = true }
 
+[dev-dependencies]
+# Reads jemalloc's options in the allocator test.
+tikv-jemalloc-sys = "0.6"
+
 [features]
 default = ["jemalloc"]
 # Use jemalloc instead of the system allocator; see `src/allocator.rs`.
