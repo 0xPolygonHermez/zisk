@@ -119,7 +119,9 @@ static uint32_t acc_to_f32(const acc_t *a)
     if (top < 0) return 0;
 
     int lsb = top - 23 > F32_MIN_SUBNORMAL_BIT ? top - 23 : F32_MIN_SUBNORMAL_BIT;
-    uint64_t q = bits_at(m, lsb, top - lsb + 1);
+    // A sum below the smallest subnormal (top < lsb) has no bits from lsb up: q is 0, and the
+    // half and sticky bits below round it to 0 or to the smallest subnormal
+    uint64_t q = top >= lsb ? bits_at(m, lsb, top - lsb + 1) : 0;
     int half = lsb > 0 && bit_at(m, lsb - 1);
     int sticky = lsb > 1 && any_below(m, lsb - 1);
     if (half && (sticky || (q & 1)))
