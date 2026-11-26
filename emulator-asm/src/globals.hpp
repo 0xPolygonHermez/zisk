@@ -32,6 +32,7 @@ extern bool delete_semaphores; // Delete semaphores
 extern bool just_create_all_shm; // Just create all shared memories and exit, without doing any other setup or starting the server.
 extern bool just_create_non_input_shm; // Just create all shared memories except the input ones and exit, without doing any other setup or starting the server.
 extern char input_file[4096];
+extern char dump_guest_buffer_file[4096];
 extern bool redirect_output_to_file;
 extern bool server; // Indicates that this process is a server
 extern bool client; // Indicates that this process is a client (used for testing the server)
