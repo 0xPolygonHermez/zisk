@@ -150,7 +150,9 @@ impl Bf16Accumulator {
         };
         // Keep 24 significant bits, or fewer for an f32 subnormal, whose last bit is 2^-149.
         let mut lsb = (top - 23).max(F32_MIN_SUBNORMAL_BIT);
-        let mut q = bits(&mag, lsb, (top - lsb + 1) as u32);
+        // A sum below the smallest subnormal (top < lsb) has no bits from lsb up: q is 0, and the
+        // half and sticky bits below round it to 0 or to the smallest subnormal
+        let mut q = if top >= lsb { bits(&mag, lsb, (top - lsb + 1) as u32) } else { 0 };
         let half = lsb > 0 && bit(&mag, lsb - 1);
         let sticky = lsb > 1 && any_below(&mag, lsb - 1);
         if half && (sticky || q & 1 == 1) {
