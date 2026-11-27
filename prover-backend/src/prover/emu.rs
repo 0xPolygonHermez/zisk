@@ -23,7 +23,7 @@ use zisk_common::{
     StatsCostPerType, VadcopKind, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
-use zisk_executor::ZiskExecutor;
+use zisk_executor::{HostMemoryMargin, ZiskExecutor};
 use zisk_precomp_hints::HintsProcessor;
 use zisk_transpiler_common::ZiskTranspiler;
 
@@ -74,6 +74,7 @@ impl EmuProver {
         shared_tables: bool,
         options: ProofmanOptions,
         logging_config: Option<LoggingConfig>,
+        memory_margin: Option<HostMemoryMargin>,
     ) -> Result<Self> {
         let core_prover = EmuCoreProver::new(
             snark_wrapper,
@@ -83,6 +84,7 @@ impl EmuProver {
             shared_tables,
             options,
             logging_config,
+            memory_margin,
         )?;
 
         let program_cache = Arc::new(RwLock::new(HashMap::new()));
@@ -196,10 +198,9 @@ impl ProverEngine for EmuProver {
         stdin: ZiskStdin,
         seed: RandomSeed,
         debug_info: Option<Option<String>>,
-        minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        self.core_prover.backend.stats(stdin, seed, debug_info, minimal_memory, mpi_node)
+        self.core_prover.backend.stats(stdin, seed, debug_info, mpi_node)
     }
 
     fn get_instance_trace(
@@ -406,6 +407,7 @@ impl EmuCoreProver {
         shared_tables: bool,
         options: ProofmanOptions,
         logging_config: Option<LoggingConfig>,
+        memory_margin: Option<HostMemoryMargin>,
     ) -> Result<Self> {
         check_paths_exist(&proving_key)?;
         zisk_setup::check_setup_version(&proving_key)?;
@@ -444,6 +446,7 @@ impl EmuCoreProver {
             shared_tables,
             false,
             options.packed,
+            memory_margin,
         )?;
 
         // No ROM-histogram assembly here, so the collectors own the column. The executor would

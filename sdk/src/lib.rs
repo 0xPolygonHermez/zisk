@@ -75,6 +75,7 @@ pub use zisk_prover_backend::{
 };
 
 pub use opts::EmbeddedOpts;
+pub use zisk_prover_backend::{HostMemoryMargin, ParseHostMemoryMarginError};
 
 // Re-export result and data types from backend (public outputs)
 pub use zisk_prover_backend::{setup_logger, ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
@@ -84,7 +85,8 @@ pub use proofman_common::VerboseMode;
 
 // Re-export types from zisk_common
 pub use zisk_common::{
-    PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind, PublicValues, RandomSeed,
+    CollectMemoryReport, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind,
+    PublicValues, RandomSeed,
 };
 
 pub use zisk_build::*;

@@ -31,11 +31,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         builder = builder.gpu();
     }
 
-    // Tuning the embedded executor. Here every field is spelled out explicitly,
-    // but the same all-defaults struct can be obtained with
-    // `let mut opts = EmbeddedOpts::default();`.
-    let mut opts = EmbeddedOpts {
-        minimal_memory: false,
+    // Tuning the embedded executor. Here every option is spelled out with its default, but the
+    // same all-defaults struct can be obtained with `let opts = EmbeddedOpts::default();`. The
+    // None fields let ZisK pick sensible defaults.
+    let opts = EmbeddedOpts {
         proving_key: None,
         proving_key_snark: None,
         preload_snark: false,
@@ -43,10 +42,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         number_threads_witness: None,
         max_streams: None,
         max_recursive_streams: None,
+        memory_margin: None,
+        ..Default::default()
     };
-
-    // Minimize memory usage; the remaining None fields let ZisK pick sensible defaults.
-    opts = opts.minimal_memory();
 
     // Build the client with the embedded options applied.
     let client = builder.with_embedded_opts(opts).build()?;

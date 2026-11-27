@@ -216,6 +216,38 @@ mod tests {
         assert_eq!(c.next(A, false), CollectAction::Pass);
     }
 
+    /// The instance bounds its collectors' bytes with `ChunkCollect::total_count`, so the cursor
+    /// must never collect more than that, and collects exactly that once the chunk has carried the
+    /// instance's whole share. Derived operations (Arith's Binary ones) reach the cursor like any
+    /// other.
+    #[test]
+    fn collects_exactly_the_total_count() {
+        let kind = |skip, count, owns| KindCollect {
+            count,
+            skipper: CollectSkipper::new(skip),
+            owns_frops: owns,
+        };
+        let collect = ChunkCollect {
+            kinds: [kind(2, 3, true), kind(0, 2, false)],
+            force_execute_to_end: true,
+        };
+        let mut c = BinaryCollectCursor::new(collect);
+
+        // More operations of each kind than the instance's share, with frops interleaved.
+        let mut collected = 0;
+        for i in 0..20 {
+            for k in [A, B] {
+                if c.next(k, i % 3 == 0) == CollectAction::Collect {
+                    collected += 1;
+                }
+            }
+        }
+
+        assert_eq!(collect.total_count(), 5);
+        assert_eq!(collected, collect.total_count());
+        assert_eq!(c.total_collected(), collect.total_count());
+    }
+
     /// Two instances sharing a chunk take every operation exactly once, and exactly one of them
     /// accounts for each frop — whatever the interleaving.
     #[test]

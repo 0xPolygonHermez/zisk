@@ -17,14 +17,22 @@ pub struct MemAlignCollector {
 }
 
 impl MemAlignCollector {
+    /// Inputs a collector reserves for one chunk: every access the plan assigns it there.
+    pub fn reserved_inputs(mem_align_checkpoint: &MemAlignCheckPoint) -> usize {
+        mem_align_checkpoint.count() as usize
+    }
+
+    /// Heap bytes the collectors of one instance reserve, one collector per chunk checkpoint.
+    pub fn capacity_bytes<'a>(
+        checkpoints: impl IntoIterator<Item = &'a MemAlignCheckPoint>,
+    ) -> u64 {
+        let inputs: usize = checkpoints.into_iter().map(Self::reserved_inputs).sum();
+        (inputs * std::mem::size_of::<MemAlignInput>()) as u64
+    }
+
     pub fn new(mem_align_checkpoint: &MemAlignCheckPoint) -> Self {
-        let total_inputs = mem_align_checkpoint.full_2.count()
-            + mem_align_checkpoint.full_3.count()
-            + mem_align_checkpoint.full_5.count()
-            + mem_align_checkpoint.read_byte.count()
-            + mem_align_checkpoint.write_byte.count();
         Self {
-            inputs: Vec::with_capacity(total_inputs as usize),
+            inputs: Vec::with_capacity(Self::reserved_inputs(mem_align_checkpoint)),
             air_id: mem_align_checkpoint.air_id,
             chunk_id: mem_align_checkpoint.chunk_id,
             full_5: mem_align_checkpoint.full_5,
@@ -124,5 +132,46 @@ impl BusDevice<u64> for MemAlignCollector {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn check_point(counts: [u32; 5]) -> MemAlignCheckPoint {
+        let counter = |count| CollectCounter::new(0, count);
+        MemAlignCheckPoint {
+            air_id: 0,
+            chunk_id: ChunkId(0),
+            full_2: counter(counts[0]),
+            full_3: counter(counts[1]),
+            full_5: counter(counts[2]),
+            read_byte: counter(counts[3]),
+            write_byte: counter(counts[4]),
+        }
+    }
+
+    /// The instances bound their collectors' bytes with `reserved_inputs`, so `new` must reserve
+    /// exactly that.
+    #[test]
+    fn new_reserves_the_inputs_the_bound_counts() {
+        let check_point = check_point([1, 2, 3, 4, 5]);
+        assert_eq!(MemAlignCollector::reserved_inputs(&check_point), 15);
+        assert_eq!(
+            MemAlignCollector::new(&check_point).inputs.capacity(),
+            MemAlignCollector::reserved_inputs(&check_point)
+        );
+    }
+
+    #[test]
+    fn capacity_bytes_sums_every_chunk() {
+        let first = check_point([10, 0, 0, 0, 0]);
+        let second = check_point([0, 0, 0, 2, 3]);
+        assert_eq!(
+            MemAlignCollector::capacity_bytes([&first, &second]),
+            15 * std::mem::size_of::<MemAlignInput>() as u64
+        );
+        assert_eq!(MemAlignCollector::capacity_bytes(std::iter::empty()), 0);
     }
 }

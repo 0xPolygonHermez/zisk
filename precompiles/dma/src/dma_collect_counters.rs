@@ -26,6 +26,14 @@ impl DmaCollectCounters {
             self.memcmp.collect_count
         );
     }
+    /// Rows the instance collects through these counters, every operation together.
+    pub fn rows(&self) -> u64 {
+        [&self.memcpy, &self.inputcpy, &self.memset, &self.memcmp]
+            .iter()
+            .map(|counter| counter.collect_count as u64)
+            .sum()
+    }
+
     pub fn is_final_skip(&self) -> bool {
         self.memcpy.is_final_skip()
             && self.inputcpy.is_final_skip()

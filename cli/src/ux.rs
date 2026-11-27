@@ -1,7 +1,7 @@
 use colored::Colorize;
 use sysinfo::System;
-use tracing::info;
-use zisk_common::{RandomSeed, ZiskExecutorTime};
+use tracing::{info, warn};
+use zisk_common::{CollectMemoryReport, RandomSeed, ZiskExecutorTime};
 use zisk_sdk::ExecuteOutput;
 
 pub(crate) fn print_banner() {
@@ -101,6 +101,28 @@ pub(crate) fn print_execution_summary(
     );
 
     /*●⎿✔◼✽*/
+}
+
+/// Warn that `-m`/`--minimal-memory` was given: it no longer does anything. Straight to stderr,
+/// as the command's other early warnings: the logger is not set up yet.
+pub(crate) fn warn_minimal_memory(given: bool) {
+    if given {
+        eprintln!(
+            "{}",
+            "Warning: -m/--minimal-memory is deprecated and has no effect: the witness phase fits \
+             its work in the free memory by itself, and the run says when it ran short of it"
+                .yellow()
+                .bold()
+        );
+    }
+}
+
+/// Say when a proof ran short of memory, and what that took. Silent otherwise, and when the report
+/// did not come back.
+pub(crate) fn print_collect_memory(report: Option<&CollectMemoryReport>) {
+    if let Some(report) = report.filter(|report| report.constrained()) {
+        warn!("Short of memory, the proof took longer: {report}");
+    }
 }
 
 /// Report the seed a run used, so it can be replayed with `--random-seed`. Silent when the

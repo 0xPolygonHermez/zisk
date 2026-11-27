@@ -105,6 +105,14 @@ pub trait Instance<F: PrimeField64>: Any + Send + Sync {
         None
     }
 
+    /// Heap bytes the input collectors of this instance hold once they have collected, summed
+    /// over every chunk it collects from; `0` for an instance without input collectors.
+    ///
+    /// The witness phase compares it with the memory available, to bound what it collects at once,
+    /// so it must count every collector the instance builds: no default, so that no instance is
+    /// left out of that bound by omission. Each instance takes it from its own plan.
+    fn collector_capacity_bytes(&self) -> u64;
+
     /// Debugs the instance.
     ///
     /// # Arguments
@@ -183,6 +191,11 @@ macro_rules! table_instance {
         }
 
         impl<F: PrimeField64> Instance<F> for $InstanceName {
+            /// A table counts multiplicities in its state machine: it collects no inputs.
+            fn collector_capacity_bytes(&self) -> u64 {
+                0
+            }
+
             fn compute_witness(
                 &self,
                 pctx: &ProofCtx<F>,
@@ -293,6 +306,11 @@ macro_rules! table_instance_array {
         }
 
         impl<F: PrimeField64> Instance<F> for $InstanceName {
+            /// A table counts multiplicities in its state machine: it collects no inputs.
+            fn collector_capacity_bytes(&self) -> u64 {
+                0
+            }
+
             fn compute_witness(
                 &self,
                 pctx: &ProofCtx<F>,

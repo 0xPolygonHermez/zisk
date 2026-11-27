@@ -6,14 +6,17 @@
 //! The ROM-backend selection is read at runtime from the [`WitnessContext`]'s `is_asm_emulator` flag.
 
 pub mod air_classifier;
+pub mod collect_budget;
 pub mod collector;
 pub mod generator;
 pub mod handlers;
+pub mod host_memory;
 
 pub use air_classifier::*;
 pub use collector::*;
 pub use generator::*;
 pub use handlers::*;
+pub use host_memory::{HostMemoryMargin, ParseHostMemoryMarginError};
 
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
@@ -22,7 +25,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use proofman_common::{BufferPool, ProofCtx, SetupCtx};
+use proofman_common::{BufferPool, ProofCtx, SetupCtx, WitnessPriority};
 use proofman_fields::PrimeField64;
 use zisk_asm_runner::AsmRunnerRH;
 use zisk_common::{
@@ -91,6 +94,20 @@ impl<'a, F: PrimeField64> WitnessContext<'a, F> {
     }
 }
 
+/// How [`WitnessPhase::pre_calculate`] may collect the instances it is given.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CollectMode {
+    /// Within the memory budget ([`collect_budget`]): in one pass when everything fits, else in
+    /// waves, each waiting for proofman to compute what the earlier ones announced. Only for a
+    /// caller that holds nothing those computations need; it falls back to one pass where proofman
+    /// does not compute the announces while the call runs.
+    Waves,
+    /// What fits in the budget now, and nothing more: the rest stays uncollected and unannounced,
+    /// and proofman passes it again to a later call. Never waits. For the first registration
+    /// round, which collects inside the execution.
+    FittingPrefix,
+}
+
 /// Phase-4 actor — classifies each global id and dispatches to one
 /// of five [`handlers`] modules. Also owns the witness-time
 /// materialization of instances (formerly `InstancePopulator`).
@@ -111,10 +128,17 @@ pub struct WitnessPhase<F: PrimeField64> {
 
     /// The ROM witness may be recomputed in the same proof; the FROPS column is published once.
     frops_published: AtomicBool,
+
+    /// Host memory left out of what the collect may use; the default margin when `None`.
+    memory_margin: Option<HostMemoryMargin>,
 }
 
 impl<F: PrimeField64> WitnessPhase<F> {
-    pub fn new(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
+    pub fn new(
+        chunk_size: u64,
+        sm_bundle: Arc<StaticSMBundle<F>>,
+        memory_margin: Option<HostMemoryMargin>,
+    ) -> Self {
         let collector = ChunkDataCollector::new(sm_bundle.clone());
         let witness_generator = WitnessGenerator::new(chunk_size);
         let trace_buffer_rom = Mutex::new(vec![F::ZERO; RomTrace::<F>::NUM_ROWS]);
@@ -124,6 +148,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
             witness_generator,
             trace_buffer_rom,
             frops_published: AtomicBool::new(false),
+            memory_margin,
         }
     }
 
@@ -390,8 +415,9 @@ impl<F: PrimeField64> WitnessPhase<F> {
     /// Pre-calculates witnesses by determining which instances need collection.
     ///
     /// `pctx` is still required because [`ChunkDataCollector::collect`]
-    /// takes `&ProofCtx<F>` directly (cross-crate, library-coupled).
-    /// All other `pctx`-equivalent lookups (`instance_info`,
+    /// takes `&ProofCtx<F>` directly (cross-crate, library-coupled), and
+    /// because the [`CollectMode::Waves`] budget reads the proof's runtime
+    /// state from it. All other `pctx`-equivalent lookups (`instance_info`,
     /// `announce_witness_ready`) route through `registry`.
     pub fn pre_calculate(
         &self,
@@ -400,6 +426,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
         state: &ExecutionState<F>,
         global_ids: &[usize],
         is_asm_emulator: bool,
+        mode: CollectMode,
     ) -> ExecutorResult<()> {
         let secn_instances_guard =
             state.instance_set.secn_instances.read_or_poison("secn_instances")?;
@@ -439,11 +466,192 @@ impl<F: PrimeField64> WitnessPhase<F> {
             }
         }
 
-        // Collect all instances that need collection
-        if !instances_to_collect.is_empty() {
-            self.collector.collect(pctx, state, instances_to_collect)?;
+        if instances_to_collect.is_empty() {
+            return Ok(());
+        }
+        let plan = match mode {
+            // Waves wait for proofman to compute what earlier waves announced: only where it
+            // computes the announces on its own threads while this call runs (`witness_tx` set: its
+            // admission thread is live). Anywhere else nobody would compute them in time. A single
+            // instance makes a single wave, whatever its size.
+            CollectMode::Waves
+                if instances_to_collect.len() > 1
+                    && pctx.witness_tx.read_or_poison("witness_tx")?.is_some() =>
+            {
+                self.plan_waves(pctx, registry, &instances_to_collect, 0, "collect")?
+            }
+            CollectMode::Waves => None,
+            // Even a single instance: one that does not fit is left for later.
+            CollectMode::FittingPrefix => self.plan_waves(
+                pctx,
+                registry,
+                &instances_to_collect,
+                collect_budget::FIRST_ROUND_RESERVE,
+                "first-round collect",
+            )?,
+        };
+        let Some(plan) = plan else {
+            return self.collector.collect(pctx, state, instances_to_collect);
+        };
+        if mode == CollectMode::FittingPrefix {
+            return self.collect_fitting_prefix(pctx, state, &instances_to_collect, &plan);
+        }
+        // The waves wait for proofman's witness threads, which read the instances too: hold the
+        // instances only while each wave is collected, never across a wait.
+        drop(instances_to_collect);
+        drop(secn_instances_guard);
+        self.collect_waves(pctx, state, plan)
+    }
+
+    /// `instances` in the order to collect them within the budget, or `None` to collect them in one
+    /// pass: when they fit, or when there is no budget to keep. The automatic budget also leaves
+    /// `reserve` for work that runs alongside; `label` names the collect in the log.
+    fn plan_waves(
+        &self,
+        pctx: &ProofCtx<F>,
+        registry: &dyn Dctx,
+        instances: &HashMap<usize, &dyn Instance<F>>,
+        reserve: u64,
+        label: &str,
+    ) -> ExecutorResult<Option<collect_budget::WavePlan>> {
+        let node_processes = pctx.mpi_ctx.node_n_processes.max(1) as usize;
+        let host_share = || host_memory::host_memory_share(node_processes, self.memory_margin);
+        let Some(mut budget) = collect_budget::collect_budget(reserve, host_share) else {
+            return Ok(None);
+        };
+        let total: u64 = instances.values().map(|i| i.collector_capacity_bytes()).sum();
+        if total > budget && zisk_common::allocator::release_free_memory() {
+            // The allocator keeps the pages of the buffers freed so far resident, to serve its next
+            // allocations, and the OS counts them as used: hand them back and measure again.
+            let before = budget;
+            budget = collect_budget::collect_budget(reserve, host_share).unwrap_or(before);
+            tracing::info!(
+                "{label}: released the allocator's free pages: budget {:.1} -> {:.1} GiB",
+                collect_budget::gib(before),
+                collect_budget::gib(budget)
+            );
+        }
+        if total <= budget {
+            tracing::info!(
+                "{label}: {} instances reserve {:.1} GiB of a {:.1} GiB budget: one pass",
+                instances.len(),
+                collect_budget::gib(total),
+                collect_budget::gib(budget)
+            );
+            return Ok(None);
         }
 
+        // `Last` instances go last: proofman computes them only after every other instance, so a
+        // wave waiting on one would wait for itself. The memory instances, which touch chunks from
+        // the whole block, follow the rest, which go in block order to replay contiguous chunks.
+        let mut order = Vec::with_capacity(instances.len());
+        for (&global_id, instance) in instances {
+            let air_id = registry.instance_info(GlobalId(global_id))?.air_id;
+            let last = pctx.dctx_instance_priority(global_id) == WitnessPriority::Last;
+            let memory = AirClassifier::is_memory_related(air_id);
+            let first_chunk = match instance.check_point() {
+                CheckPoint::Single(chunk) => chunk.as_usize(),
+                CheckPoint::Multiple(chunks) => {
+                    chunks.iter().map(|c| c.as_usize()).min().unwrap_or(0)
+                }
+                CheckPoint::None => 0,
+            };
+            let pending =
+                collect_budget::Pending { global_id, bytes: instance.collector_capacity_bytes() };
+            order.push(((last, memory, first_chunk, global_id), pending));
+        }
+        order.sort_unstable_by_key(|(key, _)| *key);
+        let pending = order.into_iter().map(|(_, pending)| pending).collect();
+        Ok(Some(collect_budget::WavePlan { budget, total, pending }))
+    }
+
+    /// Collects the front of `plan` that fits in its budget, and leaves the rest uncollected and
+    /// unannounced for proofman to pass again to a later call. Never waits.
+    fn collect_fitting_prefix(
+        &self,
+        pctx: &ProofCtx<F>,
+        state: &ExecutionState<F>,
+        instances: &HashMap<usize, &dyn Instance<F>>,
+        plan: &collect_budget::WavePlan,
+    ) -> ExecutorResult<()> {
+        let take = collect_budget::fitting_prefix(&plan.pending, plan.budget);
+        let (now, later) = plan.pending.split_at(take);
+        let later_bytes: u64 = later.iter().map(|p| p.bytes).sum();
+        state.record_deferred_collect(later.len(), later_bytes);
+        tracing::warn!(
+            "first-round collect: {} instances reserve {:.1} GiB of a {:.1} GiB budget: {} now, {} ({:.1} GiB) left for later, \
+             as they do not fit in the memory free beside the execution",
+            plan.pending.len(),
+            collect_budget::gib(plan.total),
+            collect_budget::gib(plan.budget),
+            now.len(),
+            later.len(),
+            collect_budget::gib(later_bytes)
+        );
+        if now.is_empty() {
+            return Ok(());
+        }
+        let prefix = now.iter().map(|p| (p.global_id, instances[&p.global_id])).collect();
+        self.collector.collect(pctx, state, prefix)
+    }
+
+    /// Collects `plan` wave by wave, each one once the instances the earlier ones announced have
+    /// freed enough of the budget.
+    fn collect_waves(
+        &self,
+        pctx: &ProofCtx<F>,
+        state: &ExecutionState<F>,
+        plan: collect_budget::WavePlan,
+    ) -> ExecutorResult<()> {
+        let started = std::time::Instant::now();
+        let mut waited = std::time::Duration::ZERO;
+        let mut held = collect_budget::Held::default();
+        let mut waves = 0;
+        // What the largest instance takes alone, the waves may hold at all times.
+        let budget = collect_budget::holding_any(plan.budget, &plan.pending);
+        let mut rest = &plan.pending[..];
+        while !rest.is_empty() {
+            if !held.is_empty() {
+                let wait_started = std::time::Instant::now();
+                collect_budget::wait_for_room(
+                    &mut held,
+                    rest[0].bytes,
+                    budget,
+                    |global_id| pctx.dctx_witness_state(global_id),
+                    || pctx.is_cancelled(),
+                )?;
+                waited += wait_started.elapsed();
+            }
+            let take = collect_budget::next_wave(rest, budget.saturating_sub(held.bytes()));
+            let (wave, tail) = rest.split_at(take);
+            {
+                let secn_instances =
+                    state.instance_set.secn_instances.read_or_poison("secn_instances")?;
+                let wave_instances = wave
+                    .iter()
+                    .map(|p| {
+                        secn_instances
+                            .get(&p.global_id)
+                            .map(|instance| (p.global_id, &**instance))
+                            .ok_or(ExecutorError::InstanceNotFound { global_id: p.global_id })
+                    })
+                    .collect::<ExecutorResult<HashMap<_, _>>>()?;
+                self.collector.collect(pctx, state, wave_instances)?;
+            }
+            held.add(wave);
+            waves += 1;
+            rest = tail;
+        }
+        state.record_split_collect(waves, waited);
+        tracing::warn!(
+            "collect: {} instances reserve {}: {} waves in {:.1} s, {:.1} s waiting, as they \
+             do not fit in the memory free at once",
+            plan.pending.len(),
+            collect_budget::describe_waves(plan.total, plan.budget, budget),
+            waves,
+            started.elapsed().as_secs_f64(),
+            waited.as_secs_f64()
+        );
         Ok(())
     }
 

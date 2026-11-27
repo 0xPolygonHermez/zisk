@@ -7,10 +7,12 @@ use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::{ExecutorStatsHandle, RandomSeed, RandomSeedArgs, Stats};
 use zisk_pil::*;
 use zisk_prover_backend::GuestProgram;
-use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProverClientBuilder};
+use zisk_prover_backend::{AsmOptions, BackendProverOpts, HostMemoryMargin, ProverClientBuilder};
 
 use crate::common::detect_current_project_elf;
-use crate::ux::{print_banner, print_banner_command, print_banner_field, print_random_seed};
+use crate::ux::{
+    print_banner, print_banner_command, print_banner_field, print_random_seed, warn_minimal_memory,
+};
 
 /// What a stats run reports: world rank, number of processes, the stats (`None` on inactive
 /// ranks) and the host randomness seed.
@@ -62,9 +64,15 @@ pub(crate) struct StatsCmd {
     #[arg(short = 'x', long)]
     max_witness_stored: Option<usize>,
 
-    /// Reduce memory footprint during proving at the cost of speed
-    #[arg(short = 'm', long)]
+    /// Deprecated, no effect: the witness phase fits its work in the free memory by itself
+    #[arg(short = 'm', long, hide = true)]
     minimal_memory: bool,
+
+    /// Host memory left free for everything else while proving, out of what the witness phase
+    /// may use: a share of the total memory (`5%`) or a size (`4G`, `512M`). Default: the larger
+    /// of 2 GiB and 5 %
+    #[arg(long, value_name = "SHARE|SIZE")]
+    memory_margin: Option<HostMemoryMargin>,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
@@ -102,6 +110,7 @@ pub(crate) struct StatsCmd {
 
 impl StatsCmd {
     pub(crate) fn run(&mut self) -> Result<()> {
+        warn_minimal_memory(self.minimal_memory);
         // Check if the deprecated alias was used
         if std::env::args().any(|arg| arg == "--input") {
             eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
@@ -197,6 +206,9 @@ impl StatsCmd {
         if let Some(threads) = self.number_threads_witness {
             prover_options = prover_options.number_threads_witness(threads);
         }
+        if let Some(margin) = self.memory_margin {
+            prover_options = prover_options.memory_margin(margin);
+        }
 
         let prover = ProverClientBuilder::new()
             .emu()
@@ -212,7 +224,6 @@ impl StatsCmd {
             stdin,
             self.random_seed.provided(),
             self.debug.clone(),
-            self.minimal_memory,
             self.mpi_node.map(|n| n as u32),
         )
     }
@@ -243,6 +254,9 @@ impl StatsCmd {
         }
         if let Some(threads) = self.number_threads_witness {
             prover_options = prover_options.number_threads_witness(threads);
+        }
+        if let Some(margin) = self.memory_margin {
+            prover_options = prover_options.memory_margin(margin);
         }
 
         // ASM-specific options (only used if not emulator)
@@ -279,13 +293,7 @@ impl StatsCmd {
             job.register_hints_stream(hints_stream)?;
         }
         let mpi_node = self.mpi_node.map(|n| n as u32);
-        job.stats(
-            stdin,
-            self.random_seed.provided(),
-            self.debug.clone(),
-            self.minimal_memory,
-            mpi_node,
-        )
+        job.stats(stdin, self.random_seed.provided(), self.debug.clone(), mpi_node)
     }
 
     /// Prints stats individually and grouped, with aligned columns.

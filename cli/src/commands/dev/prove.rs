@@ -1,6 +1,9 @@
 use crate::common::{detect_current_project_elf, resolve_output_path};
 use crate::proof::{ensure_snark_key, select_prove_kind, SnarkArgs};
-use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
+use crate::ux::{
+    print_banner, print_banner_command, print_banner_field, print_collect_memory,
+    print_execution_summary, warn_minimal_memory,
+};
 use anyhow::Result;
 
 use colored::Colorize;
@@ -10,7 +13,9 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::{ProofKind, RandomSeedArgs, ZiskExecutorTime};
 use zisk_prover_backend::GuestProgram;
-use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProveOutput, ProverClientBuilder};
+use zisk_prover_backend::{
+    AsmOptions, BackendProverOpts, HostMemoryMargin, ProveOutput, ProverClientBuilder,
+};
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -81,9 +86,15 @@ pub(crate) struct ProveCmd {
     #[arg(short = 'x', long)]
     max_witness_stored: Option<usize>,
 
-    /// Reduce memory footprint during proving at the cost of speed
-    #[arg(short = 'm', long)]
+    /// Deprecated, no effect: the witness phase fits its work in the free memory by itself
+    #[arg(short = 'm', long, hide = true)]
     minimal_memory: bool,
+
+    /// Host memory left free for everything else while proving, out of what the witness phase
+    /// may use: a share of the total memory (`5%`) or a size (`4G`, `512M`). Default: the larger
+    /// of 2 GiB and 5 %
+    #[arg(long, value_name = "SHARE|SIZE")]
+    memory_margin: Option<HostMemoryMargin>,
 
     /// Use GPU acceleration
     #[cfg(not(feature = "cpu-only"))]
@@ -130,6 +141,7 @@ pub(crate) struct ProveCmd {
 
 impl ProveCmd {
     pub(crate) fn run(&mut self) -> Result<()> {
+        warn_minimal_memory(self.minimal_memory);
         if self.elf.is_none() {
             self.elf = match detect_current_project_elf()? {
                 Some(elf) => Some(elf),
@@ -168,9 +180,6 @@ impl ProveCmd {
         let mut prover_options =
             BackendProverOpts::default().aggregation(!self.no_aggregation).verbose(self.verbose);
 
-        if self.minimal_memory {
-            prover_options = prover_options.minimal_memory();
-        }
         if self.verify_proofs {
             prover_options = prover_options.verify_proofs();
         }
@@ -202,6 +211,9 @@ impl ProveCmd {
         }
         if let Some(max) = self.max_recursive_streams {
             prover_options = prover_options.max_recursive_streams(max);
+        }
+        if let Some(margin) = self.memory_margin {
+            prover_options = prover_options.memory_margin(margin);
         }
 
         // ASM-specific options (only used if not emulator)
@@ -268,6 +280,7 @@ impl ProveCmd {
         }
 
         info!("Proof Time: {:.3} seconds", result.get_proving_time() as f64 / 1000.0);
+        print_collect_memory(result.get_collect_memory());
 
         print_execution_summary(
             &executor_time,

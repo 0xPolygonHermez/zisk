@@ -13,8 +13,8 @@ use std::sync::{
     Arc, Mutex, PoisonError, RwLock,
 };
 use zisk_common::{
-    io::ZiskStdin, BusDevice, EmuTrace, ExecutorStatsHandle, InstanceType, RandomSeed, Stats,
-    ZiskExecutorSummary,
+    io::ZiskStdin, BusDevice, CollectMemoryReport, EmuTrace, ExecutorStatsHandle, InstanceType,
+    RandomSeed, Stats, ZiskExecutorSummary,
 };
 use zisk_core::ZiskRom;
 
@@ -60,6 +60,10 @@ pub struct ExecutionState<F: PrimeField64> {
     /// Execution result, including the number of executed steps.
     pub execution_result: Mutex<ZiskExecutorSummary>,
 
+    /// How the witness phase's collects fitted in memory. Apart from `execution_result`, which the
+    /// execution sets whole when it ends, as most collects come after it.
+    pub collect_memory: Mutex<CollectMemoryReport>,
+
     /// Statistics collected during the execution.
     pub stats: ExecutorStatsHandle,
 
@@ -78,6 +82,7 @@ impl<F: PrimeField64> ExecutionState<F> {
             instance_set: Arc::new(InstanceSet::new()),
             collector_store: Arc::new(ChunkCollectorStore::new()),
             execution_result: Mutex::new(ZiskExecutorSummary::default()),
+            collect_memory: Mutex::new(CollectMemoryReport::default()),
             stats: ExecutorStatsHandle::new(),
             use_hints: AtomicBool::new(false),
         }
@@ -134,6 +139,8 @@ impl<F: PrimeField64> ExecutionState<F> {
     pub fn reset(&self) {
         *self.execution_result.lock().unwrap_or_else(PoisonError::into_inner) =
             ZiskExecutorSummary::default();
+        *self.collect_memory.lock().unwrap_or_else(PoisonError::into_inner) =
+            CollectMemoryReport::default();
         *self.min_traces.write().unwrap_or_else(PoisonError::into_inner) = None;
         self.instance_set.reset();
         self.collector_store.reset();
@@ -142,7 +149,24 @@ impl<F: PrimeField64> ExecutionState<F> {
 
     /// Gets a clone of the execution result.
     pub fn get_execution_result(&self) -> ZiskExecutorSummary {
-        self.execution_result.lock().unwrap().clone()
+        let mut result = self.execution_result.lock().unwrap().clone();
+        result.collect_memory = *self.collect_memory.lock().unwrap_or_else(PoisonError::into_inner);
+        result
+    }
+
+    /// Records instances the first registration round left for later, reserving `bytes`.
+    pub fn record_deferred_collect(&self, instances: usize, bytes: u64) {
+        let mut report = self.collect_memory.lock().unwrap_or_else(PoisonError::into_inner);
+        report.deferred_instances += instances as u64;
+        report.deferred_bytes += bytes;
+    }
+
+    /// Records a collect that ran in `waves`, waiting `waited` for room.
+    pub fn record_split_collect(&self, waves: usize, waited: std::time::Duration) {
+        let mut report = self.collect_memory.lock().unwrap_or_else(PoisonError::into_inner);
+        report.split_collects += 1;
+        report.waves += waves as u64;
+        report.wave_wait_ms += waited.as_millis() as u64;
     }
 
     /// Sets the execution result.
@@ -238,6 +262,34 @@ mod tests {
 
         state.set_stdin_and_random_seed(ZiskStdin::new(), SEED);
         assert_eq!(state.get_random_seed().unwrap(), SEED);
+    }
+
+    /// Most collects run after the execution has set its summary whole: the report they record
+    /// must survive that, and go with the next job's reset.
+    #[test]
+    fn the_collect_report_outlives_the_execution_summary_until_the_next_job() {
+        let state = ExecutionState::<F>::new();
+        state.record_deferred_collect(44, 9 << 30);
+        state.set_execution_result(ZiskExecutorSummary { steps: 7, ..Default::default() });
+        state.record_split_collect(5, std::time::Duration::from_millis(200));
+        state.record_split_collect(3, std::time::Duration::from_millis(100));
+
+        let result = state.get_execution_result();
+        assert_eq!(result.steps, 7);
+        assert_eq!(
+            result.collect_memory,
+            CollectMemoryReport {
+                deferred_instances: 44,
+                deferred_bytes: 9 << 30,
+                split_collects: 2,
+                waves: 8,
+                wave_wait_ms: 300,
+            }
+        );
+        assert!(result.collect_memory.constrained());
+
+        state.reset();
+        assert_eq!(state.get_execution_result().collect_memory, CollectMemoryReport::default());
     }
 
     /// `execute_inner` resets the state after the caller has set the job's stdin and seed, so

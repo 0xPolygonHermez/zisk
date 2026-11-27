@@ -56,6 +56,24 @@ mod tests {
         );
     }
 
+    /// `-m`/`--minimal-memory` is deprecated and does nothing: still accepted, so scripts keep
+    /// working, and out of the help.
+    #[test]
+    fn minimal_memory_is_still_accepted_but_hidden() {
+        assert!(ZiskCliCmd::try_parse_from(["cargo-zisk", "prove", "--elf", "g.elf", "-m"]).is_ok());
+        assert!(ZiskCliDevCmd::try_parse_from([
+            "cargo-zisk-dev",
+            "prove",
+            "--elf",
+            "g.elf",
+            "--minimal-memory"
+        ])
+        .is_ok());
+        let mut cmd = ZiskCliCmd::command();
+        let help = cmd.find_subcommand_mut("prove").unwrap().render_long_help().to_string();
+        assert!(!help.contains("minimal-memory"), "hidden from the help");
+    }
+
     #[test]
     fn user_cli_rejects_unknown_command() {
         assert!(ZiskCliCmd::try_parse_from(["cargo-zisk", "not-a-command"]).is_err());

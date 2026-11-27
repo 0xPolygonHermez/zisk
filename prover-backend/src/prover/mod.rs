@@ -29,7 +29,7 @@ use zisk_common::{
     StatsCostPerType, VadcopKind, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
-use zisk_executor::AsmJob;
+use zisk_executor::{AsmJob, HostMemoryMargin};
 use zisk_precomp_hints::HintsProcessor;
 
 use crate::{ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
@@ -93,7 +93,6 @@ pub struct BackendProverOpts {
     pub(crate) aggregation: bool,
     pub(crate) verify_constraints: bool,
     pub(crate) verify_proofs: bool,
-    pub(crate) minimal_memory: bool,
     pub(crate) verbose: u8,
 
     // Proving keys
@@ -111,6 +110,7 @@ pub struct BackendProverOpts {
     pub(crate) number_threads_witness: Option<usize>,
     pub(crate) max_streams: Option<usize>,
     pub(crate) max_recursive_streams: Option<usize>,
+    pub(crate) memory_margin: Option<HostMemoryMargin>,
 
     // ASM-specific options
     pub(crate) asm_options: AsmOptions,
@@ -123,7 +123,6 @@ impl Default for BackendProverOpts {
             verify_constraints: false,
             verify_proofs: false,
 
-            minimal_memory: false,
             verbose: 0,
             proving_key: None,
             proving_key_snark: None,
@@ -136,6 +135,7 @@ impl Default for BackendProverOpts {
             number_threads_witness: None,
             max_streams: None,
             max_recursive_streams: None,
+            memory_margin: None,
             asm_options: AsmOptions::default(),
         }
     }
@@ -263,6 +263,11 @@ impl BackendProverOpts {
         self.cpu_mops
     }
 
+    /// The host memory margin given, if any (otherwise the default margin is used).
+    pub fn get_memory_margin(&self) -> Option<HostMemoryMargin> {
+        self.memory_margin
+    }
+
     // Builder methods for all configuration
     /// Enable or disable proof aggregation.
     pub fn aggregation(mut self, value: bool) -> Self {
@@ -289,9 +294,13 @@ impl BackendProverOpts {
         self
     }
 
-    /// Prefer lower memory usage at the cost of speed.
-    pub fn minimal_memory(mut self) -> Self {
-        self.minimal_memory = true;
+    /// No effect any more: the witness phase fits what it collects in the memory free, and a proof
+    /// says when it ran short of it ([`crate::ProveOutput::get_collect_memory`]).
+    #[deprecated(
+        note = "no effect: the witness phase fits its work in the free memory by itself; see \
+                `ProveOutput::get_collect_memory` and `memory_margin`"
+    )]
+    pub fn minimal_memory(self) -> Self {
         self
     }
 
@@ -373,6 +382,14 @@ impl BackendProverOpts {
     /// Cap the number of concurrent recursive (aggregation) streams.
     pub fn max_recursive_streams(mut self, max: usize) -> Self {
         self.max_recursive_streams = Some(max);
+        self
+    }
+
+    /// Set the host memory left free for everything else while proving, out of what the witness
+    /// phase may use, replacing the default margin (the larger of 2 GiB and 5 % of the total
+    /// memory).
+    pub fn memory_margin(mut self, margin: HostMemoryMargin) -> Self {
+        self.memory_margin = Some(margin);
         self
     }
 
@@ -484,7 +501,6 @@ pub trait ProverEngine {
         stdin: ZiskStdin,
         seed: RandomSeed,
         debug_info: Option<Option<String>>,
-        minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)>;
 
@@ -893,10 +909,9 @@ impl<C: ZiskBackend> ZiskProver<C> {
         stdin: ZiskStdin,
         seed: Option<RandomSeed>,
         debug_info: Option<Option<String>>,
-        minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>, RandomSeed)> {
-        self.begin_job(program)?.stats(stdin, seed, debug_info, minimal_memory, mpi_node)
+        self.begin_job(program)?.stats(stdin, seed, debug_info, mpi_node)
     }
 
     /// Get the instance trace for a given instance ID and row range.
@@ -1256,18 +1271,11 @@ impl<'a, C: ZiskBackend> ZiskJob<'a, C> {
         stdin: ZiskStdin,
         seed: Option<RandomSeed>,
         debug_info: Option<Option<String>>,
-        minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>, RandomSeed)> {
         let seed = self.zisk_prover.resolve_random_seed(seed)?;
-        let (world_rank, n_processes, stats) = self.zisk_prover.prover.stats(
-            &self.job,
-            stdin,
-            seed,
-            debug_info,
-            minimal_memory,
-            mpi_node,
-        )?;
+        let (world_rank, n_processes, stats) =
+            self.zisk_prover.prover.stats(&self.job, stdin, seed, debug_info, mpi_node)?;
         Ok((world_rank, n_processes, stats, seed))
     }
 

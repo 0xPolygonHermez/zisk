@@ -101,7 +101,6 @@ fn main() -> Result<()> {
     let handle = client
         .prove(&guest_program, stdin)
         .executor(Executor::Assembly)
-        .minimal_memory()
         .stark()
         .hints(hints)
         .timeout(std::time::Duration::from_secs(60))

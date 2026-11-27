@@ -6,13 +6,14 @@ use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::RandomSeedArgs;
 use zisk_sdk::{
-    AsmOptions, EmbeddedClientBuilder, EmbeddedOpts, GuestProgram, ProofKind, ZiskHints, ZiskStdin,
+    AsmOptions, EmbeddedClientBuilder, EmbeddedOpts, GuestProgram, HostMemoryMargin, ProofKind,
+    ZiskHints, ZiskStdin,
 };
 
 use super::validate_asm_hints;
 use crate::common::{resolve_elf, resolve_output_path, ElfSelectorArgs};
 use crate::proof::{select_prove_kind, SnarkArgs};
-use crate::ux::{print_job_banner, print_random_seed};
+use crate::ux::{print_collect_memory, print_job_banner, print_random_seed, warn_minimal_memory};
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -62,13 +63,19 @@ pub(crate) struct ZiskEmbeddedProve {
     #[arg(short = 'w', long, alias = "proving-key-plonk")]
     proving_key_snark: Option<PathBuf>,
 
-    /// Reduce memory footprint during proving at the cost of speed
-    #[arg(short = 'm', long)]
+    /// Deprecated, no effect: the witness phase fits its work in the free memory by itself
+    #[arg(short = 'm', long, hide = true)]
     minimal_memory: bool,
 
     /// Maximum memory (bytes) for witness storage during proving
     #[arg(short = 'x', long)]
     max_witness_stored: Option<usize>,
+
+    /// Host memory left free for everything else while proving, out of what the witness phase
+    /// may use: a share of the total memory (`5%`) or a size (`4G`, `512M`). Default: the larger
+    /// of 2 GiB and 5 %
+    #[arg(long, value_name = "SHARE|SIZE")]
+    memory_margin: Option<HostMemoryMargin>,
 
     /// Unlock the memory map for the ROM file. Only applies with `--asm`.
     #[arg(short = 'u', long, requires = "asm")]
@@ -102,6 +109,7 @@ pub(crate) struct ZiskEmbeddedProve {
 
 impl ZiskEmbeddedProve {
     pub(crate) fn run(&mut self) -> Result<()> {
+        warn_minimal_memory(self.minimal_memory);
         let elf = resolve_elf(self.elf.take(), self.selector.profile(), self.selector.bin())?;
         validate_asm_hints(self.asm, self.hints.as_deref())?;
 
@@ -143,11 +151,11 @@ impl ZiskEmbeddedProve {
         }
 
         let mut opts = EmbeddedOpts::default();
-        if self.minimal_memory {
-            opts = opts.minimal_memory();
-        }
         if let Some(max) = self.max_witness_stored {
             opts = opts.max_witness_stored(max);
+        }
+        if let Some(margin) = self.memory_margin {
+            opts = opts.memory_margin(margin);
         }
         builder = builder.with_embedded_opts(opts);
 
@@ -196,6 +204,7 @@ impl ZiskEmbeddedProve {
             result.get_execution_steps()
         );
         print_random_seed(result.get_random_seed());
+        print_collect_memory(result.get_collect_memory());
         if saved {
             info!("Proof saved to {}", output_file.display());
         } else if self.verify_proof {

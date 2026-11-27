@@ -252,6 +252,13 @@ TOML:
 | `-n`, `--number-threads-witness`| (none)                | Threads for witness computation          |
 | `-g`, `--gpu`                   | `false`               | Enable GPU mode (CUDA build only)        |
 | `-t`, `--max-streams`           | (none)                | Maximum GPU streams                      |
+| `--memory-margin`               | 2 GiB or 5 %, larger  | Host memory left free while proving: `5%` of the total or a size such as `4G` |
+
+The worker collects the witness inputs within the memory that margin
+leaves, in several passes when they do not fit at once. The
+`ZISK_COLLECT_BUDGET` environment variable overrides that: a size (`24G`,
+`512M`) fixes how much the collected inputs may hold at once, and `off`
+collects them in one pass whatever memory is free.
 
 CLI flags override the config file for one-off testing:
 

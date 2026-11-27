@@ -204,6 +204,11 @@ pub enum ExecutorError {
         message: String,
     },
 
+    /// The proof was cancelled while the witness phase waited for collectors to be freed before
+    /// collecting more instances: the ones it waited on will not be computed.
+    #[error("the proof was cancelled while witness inputs waited for memory to be collected")]
+    CollectCancelled,
+
     /// Aggregated failure across one or more MT-assembly chunks.
     #[error("MT assembly chunk processing failed ({count} errors):\n{message}")]
     MtChunkProcessing {

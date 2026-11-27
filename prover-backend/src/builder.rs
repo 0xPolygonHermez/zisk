@@ -188,6 +188,7 @@ impl ProverClientBuilder<EmuB> {
             true,
             options,
             self.logging_config,
+            self.prover_options.memory_margin,
         )?;
 
         Ok(ZiskProver::<Emu>::new(emu, self.prover_options))
@@ -273,6 +274,7 @@ impl ProverClientBuilder<AsmB> {
             self.prover_options.asm_options.is_distributed,
             self.logging_config,
             self.prover_options.cpu_mops,
+            self.prover_options.memory_margin,
         )?;
 
         Ok(ZiskProver::<Asm>::new(asm, self.prover_options))

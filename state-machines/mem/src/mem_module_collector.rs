@@ -48,6 +48,12 @@ pub struct MemModuleCollector {
 }
 
 impl MemModuleCollector {
+    /// Inputs a collector reserves for one chunk: a row can be dual, so up to two per counted row.
+    /// `new` sizes its inputs with it, and the instance sums it to bound its collectors' bytes.
+    pub fn reserved_inputs(mem_check_point: &MemModuleCheckPoint) -> usize {
+        mem_check_point.count as usize * 2
+    }
+
     pub fn new(
         mem_check_point: &MemModuleCheckPoint,
         min_addr: u32,
@@ -65,8 +71,7 @@ impl MemModuleCollector {
         let aligned_min_addr = std::cmp::max(min_addr, mem_check_point.from_addr);
         let aligned_max_addr = mem_check_point.to_addr;
         Self {
-            // rows could be dual, dual inputs by row
-            inputs: Vec::with_capacity(count as usize * 2),
+            inputs: Vec::with_capacity(Self::reserved_inputs(mem_check_point)),
             mem_check_point: mem_check_point.clone(),
             prev_segment: None,
             min_addr,
@@ -576,5 +581,20 @@ impl BusDevice<u64> for MemModuleCollector {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
+    }
+}
+
+#[cfg(all(test, not(feature = "save_addr_action")))]
+mod tests {
+    use super::*;
+
+    /// The instance bounds its collectors' bytes with `reserved_inputs`, so `new` must reserve
+    /// exactly that.
+    #[test]
+    fn new_reserves_the_inputs_the_bound_counts() {
+        let check_point = MemModuleCheckPoint::new(0x1000, 3, 700);
+        let collector = MemModuleCollector::new(&check_point, 0, SegmentId(0), true, false);
+        assert_eq!(MemModuleCollector::reserved_inputs(&check_point), 1400);
+        assert_eq!(collector.inputs.capacity(), MemModuleCollector::reserved_inputs(&check_point));
     }
 }

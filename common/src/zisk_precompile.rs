@@ -396,6 +396,17 @@ macro_rules! zisk_precompile_explicit {
             }
 
             impl<F: ::proofman_fields::PrimeField64> $crate::Instance<F> for [<$name Instance>]<F> {
+                fn collector_capacity_bytes(&self) -> u64 {
+                    let meta = self.ictx.plan.meta.as_ref().unwrap();
+                    let collect_info = meta
+                        .downcast_ref::<::std::collections::HashMap<
+                            $crate::ChunkId,
+                            (u64, $crate::CollectSkipper),
+                        >>()
+                        .unwrap();
+                    $crate::precompile_collector_bytes(collect_info, ::std::mem::size_of::<$input>())
+                }
+
                 fn compute_witness(
                     &self,
                     _pctx: &::proofman_common::ProofCtx<F>,
@@ -797,4 +808,31 @@ macro_rules! zisk_precompile {
             $( gpu_witness = { op = $gpu_op }, )?
         }
     };
+}
+
+/// Heap bytes the collectors of a [`zisk_precompile!`](crate::zisk_precompile) instance hold:
+/// each one reserves the operations its chunk has for the instance (`collect_info`, from the
+/// plan), `input_bytes` each. The inputs are plain values, with nothing behind them on the heap.
+#[doc(hidden)]
+pub fn precompile_collector_bytes(
+    collect_info: &std::collections::HashMap<crate::ChunkId, (u64, crate::CollectSkipper)>,
+    input_bytes: usize,
+) -> u64 {
+    collect_info.values().map(|(operations, _)| operations).sum::<u64>() * input_bytes as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ChunkId, CollectSkipper};
+
+    #[test]
+    fn a_precompile_instance_holds_its_chunks_operations() {
+        let info = std::collections::HashMap::from([
+            (ChunkId(3), (5u64, CollectSkipper::new(0))),
+            (ChunkId(4), (7u64, CollectSkipper::new(2))),
+        ]);
+        assert_eq!(precompile_collector_bytes(&info, 216), 12 * 216);
+        assert_eq!(precompile_collector_bytes(&std::collections::HashMap::new(), 216), 0);
+    }
 }

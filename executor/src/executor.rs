@@ -15,9 +15,13 @@
 //! maintaining clarity and modularity in the computation process.
 
 use crate::{
-    plan::MemPlanArtifacts, ports::GlobalId, ports::ProofRegistry, sm::MEM_POSITION,
-    witness::WitnessContext, AirClassifier, AsmJob, AsmResources, EmulatorAsm, ExecutionPhase,
-    ExecutionState, InstanceAssigner, NoopProofRegistry, PlanPhase, ProofmanAdapter,
+    plan::MemPlanArtifacts,
+    ports::GlobalId,
+    ports::ProofRegistry,
+    sm::MEM_POSITION,
+    witness::{CollectMode, WitnessContext},
+    AirClassifier, AsmJob, AsmResources, EmulatorAsm, ExecutionPhase, ExecutionState,
+    HostMemoryMargin, InstanceAssigner, NoopProofRegistry, PlanPhase, ProofmanAdapter,
     StaticSMBundle, WitnessPhase,
 };
 use proofman_common::{lease_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
@@ -114,12 +118,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// * `shared_tables` - Whether to use shared tables for execution.
     /// * `with_asm_emulator` - Whether the executor supports the ASM backend at runtime.
     /// * `packed` - Whether to use packed representation for witness computation.
+    /// * `memory_margin` - Host memory left out of what the witness phase may use; the default
+    ///   margin when `None`.
     pub fn new(
         wcm: &WitnessManager<F>,
         verbose_mode: proofman_common::VerboseMode,
         shared_tables: bool,
         with_asm_emulator: bool,
         packed: bool,
+        memory_margin: Option<HostMemoryMargin>,
     ) -> ExecutorResult<Arc<Self>> {
         let rank_info = wcm.get_rank_info();
         proofman_common::initialize_logger(verbose_mode, Some(&rank_info));
@@ -134,7 +141,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             state: ExecutionState::new(),
             execution: ExecutionPhase::new(CHUNK_SIZE, with_asm_emulator),
             plan: PlanPhase::new(CHUNK_SIZE),
-            witness: Some(WitnessPhase::new(CHUNK_SIZE, sm_bundle)),
+            witness: Some(WitnessPhase::new(CHUNK_SIZE, sm_bundle, memory_margin)),
             frops_from_asm_requested: AtomicBool::new(false),
         });
         executor.set_packed(packed);
@@ -537,12 +544,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             let collecting = match (self.witness.as_ref(), proofman_extras) {
                 (Some(witness), Some(extras)) if two_rounds && !first_round.is_empty() => {
                     Some(scope.spawn(|| {
+                        // Only what fits, never waiting: the execution ends only once this collect
+                        // returns. The rest is collected when proofman asks for it.
                         witness.pre_calculate(
                             extras.pctx(),
                             extras,
                             &self.state,
                             &first_round,
                             is_asm_emulator,
+                            CollectMode::FittingPrefix,
                         )
                     }))
                 }
@@ -806,7 +816,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let witness = self.witness_or_panic();
 
         pool.install(|| {
-            witness.pre_calculate(&pctx, &adapter, &self.state, global_ids, is_asm_emulator)
+            witness.pre_calculate(
+                &pctx,
+                &adapter,
+                &self.state,
+                global_ids,
+                is_asm_emulator,
+                CollectMode::Waves,
+            )
         })?;
 
         stats_end!(self.state.stats, &_pre_scope);

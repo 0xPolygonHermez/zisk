@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
-use zisk_prover_backend::{Asm, Emu};
+use zisk_prover_backend::{Asm, Emu, HostMemoryMargin};
 use zisk_worker::{
     config::{ProverServiceConfigDto, WorkerServiceConfig},
     ProverConfig, WorkerNode,
@@ -90,7 +90,14 @@ struct Cli {
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
-    #[clap(short = 'm', long, default_value_t = false)]
+    /// Host memory left free for everything else while proving, out of what the witness phase
+    /// may use: a share of the total memory (`5%`) or a size (`4G`, `512M`). Default: the larger
+    /// of 2 GiB and 5 %
+    #[clap(long, value_name = "SHARE|SIZE")]
+    pub memory_margin: Option<HostMemoryMargin>,
+
+    /// Deprecated, no effect: the witness phase fits its work in the free memory by itself
+    #[clap(short = 'm', long, default_value_t = false, hide = true)]
     pub minimal_memory: bool,
 
     #[cfg(not(feature = "cpu-only"))]
@@ -127,6 +134,15 @@ async fn main() -> Result<()> {
     .await?;
 
     println!("ZisK Worker v{}", env!("CARGO_PKG_VERSION"));
+    if cli.minimal_memory {
+        eprintln!(
+            "{}",
+            "Warning: -m/--minimal-memory is deprecated and has no effect: the witness phase fits \
+             its work in the free memory by itself"
+                .yellow()
+                .bold()
+        );
+    }
 
     #[cfg(not(feature = "cpu-only"))]
     let gpu = cli.gpu;
@@ -151,7 +167,7 @@ async fn main() -> Result<()> {
         max_recursive_streams: cli.max_recursive_streams,
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,
-        minimal_memory: cli.minimal_memory,
+        memory_margin: cli.memory_margin,
         preload_snark: cli.preload_snark,
         gpu,
         cpu_mops,
