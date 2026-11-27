@@ -266,6 +266,9 @@ impl ZiskStdin {
         let mut len_bytes = [0u8; 8];
         cursor.read_exact(&mut len_bytes)?;
         let len = usize::from_le_bytes(len_bytes);
+        if len > buf.len() - cursor.position() as usize {
+            return Err(std::io::ErrorKind::UnexpectedEof.into());
+        }
         let mut data = vec![0u8; len];
         cursor.read_exact(&mut data)?;
         // Padding is at most 7 bytes, so it reads into a stack buffer.

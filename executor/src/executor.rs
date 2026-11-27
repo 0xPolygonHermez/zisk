@@ -514,7 +514,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             mem_planning.insert(MEM_POSITION, mem_mt_plans);
         }
 
-        registry.write_pub_outs(&pub_outs.0);
+        registry.write_pub_outs(&pub_outs.0)?;
 
         stats_begin!(self.state.stats, &_exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
         // Two rounds, with the first collected early and every secondary placed on registration,

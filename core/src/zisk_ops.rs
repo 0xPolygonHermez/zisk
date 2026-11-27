@@ -825,6 +825,14 @@ pub fn ops_sha256(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_ab_data(ctx, stats, 4, 8, 4);
 }
 
+/// The Goldilocks Poseidon AIRs only prove lanes below p: fail here rather than reduce one.
+fn goldilocks_lanes(op: &str, data: &[u64; 16]) -> [Goldilocks; 16] {
+    if let Some(lane) = data.iter().position(|&w| w >= Goldilocks::ORDER_U64) {
+        panic!("{op}() found non-canonical field element at lane {lane}");
+    }
+    data.map(Goldilocks::new)
+}
+
 /// Performs a Poseidon2 hash over a 16 elements stored in memory at the address
 /// specified by register A0, and stores the output state in the same memory address
 #[inline(always)]
@@ -848,7 +856,7 @@ pub fn opc_poseidon2(ctx: &mut InstContext) {
             }
 
             // Call poseidon2
-            let data_gl = data.map(Goldilocks::new);
+            let data_gl = goldilocks_lanes("opc_poseidon2", &data);
             let res_gl = poseidon2_hash::<Goldilocks, Poseidon2_16, 16>(&data_gl);
             for (i, d) in data.iter_mut().enumerate() {
                 *d = res_gl[i].as_canonical_u64();
@@ -872,7 +880,7 @@ pub fn opc_poseidon2(ctx: &mut InstContext) {
             }
 
             // Call poseidon2
-            let data_gl = data.map(Goldilocks::new);
+            let data_gl = goldilocks_lanes("opc_poseidon2", &data);
             let res_gl = poseidon2_hash::<Goldilocks, Poseidon2_16, 16>(&data_gl);
             for (i, d) in data.iter_mut().enumerate() {
                 *d = res_gl[i].as_canonical_u64();
@@ -1007,7 +1015,7 @@ pub fn opc_poseidon1(ctx: &mut InstContext) {
             }
 
             // Call poseidon1
-            let data_gl = data.map(Goldilocks::new);
+            let data_gl = goldilocks_lanes("opc_poseidon1", &data);
             let res_gl = poseidon1_hash::<Goldilocks, Poseidon1_16, 16>(&data_gl);
             for (i, d) in data.iter_mut().enumerate() {
                 *d = res_gl[i].as_canonical_u64();
@@ -1031,7 +1039,7 @@ pub fn opc_poseidon1(ctx: &mut InstContext) {
             }
 
             // Call poseidon1
-            let data_gl = data.map(Goldilocks::new);
+            let data_gl = goldilocks_lanes("opc_poseidon1", &data);
             let res_gl = poseidon1_hash::<Goldilocks, Poseidon1_16, 16>(&data_gl);
             for (i, d) in data.iter_mut().enumerate() {
                 *d = res_gl[i].as_canonical_u64();

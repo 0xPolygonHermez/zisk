@@ -792,6 +792,17 @@ extern int _opcode_poseidon2_koalabear(uint64_t address)
     return 0;
 }
 
+// The Goldilocks Poseidon AIRs only prove lanes below p: fail rather than reduce one.
+static void require_canonical_lanes(uint64_t address, const char *name)
+{
+    for (int lane = 0; lane < 16; lane++)
+        if (((const uint64_t *)address)[lane] >= 0xFFFFFFFF00000001ULL)
+        {
+            asm_printf("_opcode_%s() found a non-canonical field element at lane %d;", name, lane);
+            exit(-1);
+        }
+}
+
 extern int _opcode_poseidon2(uint64_t address)
 {
     ASM_CALL_METRICS_START();
@@ -808,6 +819,7 @@ extern int _opcode_poseidon2(uint64_t address)
     {
 #endif
         // Call poseidon2 compression function
+        require_canonical_lanes(address, "poseidon2");
         poseidon2_hash((uint64_t *)address);
 
 #ifdef ASM_PRECOMPILE_CACHE
@@ -844,6 +856,7 @@ extern int _opcode_poseidon1(uint64_t address)
     {
 #endif
         // Call poseidon1 compression function
+        require_canonical_lanes(address, "poseidon1");
         poseidon1_hash((uint64_t *)address);
 
 #ifdef ASM_PRECOMPILE_CACHE
