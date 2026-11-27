@@ -49,7 +49,8 @@ impl CustomRom {
         Ok(rom)
     }
 
-    /// Builds a trace with one row per ROM instruction, padding the tail with zeros.
+    /// Builds a trace with one row per ROM instruction followed by the data rows, padding the
+    /// tail with copies of the first row.
     fn build_trace<F: PrimeField64>(rom: &ZiskRom) -> RomResult<RomRomTrace<F>> {
         let buffer = vec![F::ZERO; RomRomTrace::<F>::NUM_ROWS * RomRomTrace::<F>::ROW_SIZE];
         let mut trace = RomRomTrace::new_from_vec(buffer)
@@ -157,8 +158,11 @@ impl CustomRom {
                 data_row_index += 1;
             }
         }
-        // Pad remaining rows with zeroes
-        trace.buffer[data_row_index..].fill(RomRomTraceRow::default());
+        // Pad the remaining rows by repeating the first row (the first instruction). Without
+        // instructions the first row is a data row or no row at all, so the padding stays all
+        // zeros.
+        let padding_row = if rom.insts.is_empty() { RomRomTraceRow::default() } else { trace[0] };
+        trace.buffer[data_row_index..].fill(padding_row);
 
         Ok(trace)
     }
@@ -265,6 +269,50 @@ mod tests {
 
         // Instruction 2: Fcall opcode → remapped to CopyB in the trace.
         assert_eq!(trace[2].op, F::from_u8(ZiskOp::COPYB));
+    }
+
+    #[test]
+    fn build_trace_pads_with_the_first_row() {
+        let rom = rom_with_three_insts();
+
+        let trace = CustomRom::build_trace::<F>(&rom).expect("build_trace");
+
+        let first = trace[0];
+        for index in [3, 4, RomRomTrace::<F>::NUM_ROWS / 2, RomRomTrace::<F>::NUM_ROWS - 1] {
+            let row = trace[index];
+            assert_eq!(row.is_data, first.is_data, "row {index}: is_data");
+            assert_eq!(row.line, first.line, "row {index}: line");
+            assert_eq!(row.a_offset_imm0, first.a_offset_imm0, "row {index}: a_offset_imm0");
+            assert_eq!(row.a_imm1, first.a_imm1, "row {index}: a_imm1");
+            assert_eq!(row.b_offset_imm0, first.b_offset_imm0, "row {index}: b_offset_imm0");
+            assert_eq!(row.b_imm1, first.b_imm1, "row {index}: b_imm1");
+            assert_eq!(row.ind_width, first.ind_width, "row {index}: ind_width");
+            assert_eq!(row.op, first.op, "row {index}: op");
+            assert_eq!(row.store_offset, first.store_offset, "row {index}: store_offset");
+            assert_eq!(row.jmp_offset1, first.jmp_offset1, "row {index}: jmp_offset1");
+            assert_eq!(row.jmp_offset2, first.jmp_offset2, "row {index}: jmp_offset2");
+            assert_eq!(row.flags, first.flags, "row {index}: flags");
+        }
+        // The last instruction row is untouched by the padding.
+        assert_eq!(trace[2].line, F::from_u64(0x8000_0008));
+    }
+
+    #[test]
+    fn build_trace_pads_with_zeros_when_there_are_no_instructions() {
+        let rom = ZiskRom {
+            ro_data_64: vec![zisk_core::DataSection64 { addr: ROM_ADDR, data: vec![1, 2, 3, 4] }],
+            ..Default::default()
+        };
+
+        let trace = CustomRom::build_trace::<F>(&rom).expect("build_trace");
+
+        assert_eq!(trace[0].is_data, F::from_u64(1), "row 0 is the data row");
+        for index in [1, RomRomTrace::<F>::NUM_ROWS - 1] {
+            assert_eq!(trace[index].is_data, F::from_u64(0), "row {index}: is_data");
+            assert_eq!(trace[index].line, F::from_u64(0), "row {index}: line");
+            assert_eq!(trace[index].a_offset_imm0, F::from_u64(0), "row {index}: a_offset_imm0");
+            assert_eq!(trace[index].flags, F::from_u64(0), "row {index}: flags");
+        }
     }
 
     #[test]
