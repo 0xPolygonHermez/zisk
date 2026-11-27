@@ -32,7 +32,7 @@ use zisk_common::{
 use zisk_core::ZiskRom;
 use zisk_executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
 use zisk_precomp_hints::HintsProcessor;
-use zisk_rom_setup::{generate_assembly, get_output_path};
+use zisk_rom_setup::{generate_assembly, get_output_path, RomSetup};
 use zisk_transpiler_common::ZiskTranspiler;
 
 use anyhow::Result;
@@ -82,6 +82,8 @@ impl<'a> AsmSetupBuilder<'a> {
 struct ProgramEntry {
     zisk_rom: Arc<ZiskRom>,
     program_vk: ProgramVK,
+    /// Cache key of the program's ROM setup, which names its ROM custom commit.
+    rom_key: String,
     /// Keeps ASM resources (C processes + shmem) alive for the full worker lifetime.
     resources: Option<Arc<AsmResources>>,
 }
@@ -165,7 +167,7 @@ impl AsmProver {
         &self,
         elf: &GuestProgram,
         zisk_rom: Arc<ZiskRom>,
-        program_vk: &ProgramVK,
+        rom_setup: &RomSetup,
         asm_mt_path: PathBuf,
         with_hints: bool,
         pctx: &Arc<ProofCtx<Goldilocks>>,
@@ -282,7 +284,12 @@ impl AsmProver {
         self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
         self.program_cache.write().unwrap().insert(
             setup_key,
-            ProgramEntry { zisk_rom, resources: Some(resources), program_vk: program_vk.clone() },
+            ProgramEntry {
+                zisk_rom,
+                resources: Some(resources),
+                program_vk: rom_setup.vk.clone(),
+                rom_key: rom_setup.rom_key.clone(),
+            },
         );
 
         Ok(())
@@ -300,11 +307,12 @@ impl AsmProver {
         &self,
         program_id: &ProgramId,
         zisk_rom: Arc<ZiskRom>,
+        rom_key: &str,
         with_hints: bool,
         pctx: &ProofCtx<Goldilocks>,
     ) {
         timer_start_info!(REGISTERING_PROGRAM);
-        let registered = get_rom_bin_path(pctx, program_id).and_then(|rom_bin_path| {
+        let registered = get_rom_bin_path(pctx, program_id, rom_key).and_then(|rom_bin_path| {
             self.core_prover.backend.register_program(zisk_rom, &rom_bin_path, with_hints)
         });
         if let Err(e) = &registered {
@@ -318,14 +326,14 @@ impl AsmProver {
 
     fn register_program_for_emulator(&self, program_id: &ProgramId) -> Result<()> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
-        let rom = {
+        let (rom, rom_key) = {
             let guard = self.program_cache.read().unwrap();
             let full_key = SetupKey::new(&*program_id.hash_id, with_hints, false);
             let emu_key = SetupKey::new(&*program_id.hash_id, with_hints, true);
             guard
                 .get(&full_key)
                 .or_else(|| guard.get(&emu_key))
-                .map(|e| e.zisk_rom.clone())
+                .map(|e| (e.zisk_rom.clone(), e.rom_key.clone()))
                 .ok_or_else(|| {
                     anyhow::anyhow!(
                         "Program '{}' (with_hints={}) not found in cache. Call setup() first.",
@@ -342,7 +350,7 @@ impl AsmProver {
         self.core_prover.backend.reset()?;
 
         let pctx = self.core_prover.backend.get_pctx()?;
-        let rom_bin_path = get_rom_bin_path(&pctx, program_id)?;
+        let rom_bin_path = get_rom_bin_path(&pctx, program_id, &rom_key)?;
         self.core_prover.backend.register_program(rom, &rom_bin_path, with_hints)
     }
 
@@ -411,7 +419,7 @@ impl ProverEngine for AsmProver {
         let pctx = self.core_prover.backend.get_pctx()?;
 
         // Computes the verification key (VK) for an ELF: loads it from cache if present.
-        let program_vk = ensure_program_vk(&pctx, elf)?;
+        let rom_setup = ensure_program_vk(&pctx, elf)?;
 
         // Generate Zisk ROM from ELF
         let rv2zk = ZiskTranspiler::new(elf.elf());
@@ -421,10 +429,15 @@ impl ProverEngine for AsmProver {
         if emulator_only {
             self.program_cache.write().unwrap().insert(
                 SetupKey::new(&*elf.program_id.hash_id, with_hints, true),
-                ProgramEntry { zisk_rom, resources: None, program_vk: program_vk.clone() },
+                ProgramEntry {
+                    zisk_rom,
+                    resources: None,
+                    program_vk: rom_setup.vk.clone(),
+                    rom_key: rom_setup.rom_key.clone(),
+                },
             );
             self.current_with_hints.store(with_hints, Ordering::SeqCst);
-            return Ok(program_vk);
+            return Ok(rom_setup.vk);
         }
 
         // Registered once every rank has set it up; see `register_set_up_program`.
@@ -489,7 +502,7 @@ impl ProverEngine for AsmProver {
 
         // ASM Services startup + pool registration
         let setup_result =
-            self.start_asm_service(elf, zisk_rom, &program_vk, asm_mt_path, with_hints, &pctx);
+            self.start_asm_service(elf, zisk_rom, &rom_setup, asm_mt_path, with_hints, &pctx);
 
         // Synchronize all MPI ranks and check if all succeeded.
         let all_ok = pctx.mpi_ctx.all_finished_ok(setup_result.is_ok());
@@ -502,10 +515,16 @@ impl ProverEngine for AsmProver {
             return Err(anyhow::anyhow!("Setup failed on another MPI rank"));
         }
 
-        self.register_set_up_program(&elf.program_id, rom_to_register, with_hints, &pctx);
+        self.register_set_up_program(
+            &elf.program_id,
+            rom_to_register,
+            &rom_setup.rom_key,
+            with_hints,
+            &pctx,
+        );
 
         self.current_with_hints.store(with_hints, Ordering::SeqCst);
-        Ok(program_vk)
+        Ok(rom_setup.vk)
     }
 
     fn world_rank(&self) -> i32 {
@@ -559,13 +578,13 @@ impl ProverEngine for AsmProver {
     /// one for the same key; the latter's job holds no shared segments.
     fn begin_job_for(&self, program_id: &ProgramId, with_hints: bool) -> Result<ProverJob> {
         let guard = self.program_cache.read().unwrap();
-        let (resources, rom, emulator_only) = {
+        let (resources, rom, rom_key, emulator_only) = {
             let full_key = SetupKey::new(&*program_id.hash_id, with_hints, false);
             let emu_key = SetupKey::new(&*program_id.hash_id, with_hints, true);
             if let Some(entry) = guard.get(&full_key) {
-                (entry.resources.clone(), entry.zisk_rom.clone(), false)
+                (entry.resources.clone(), entry.zisk_rom.clone(), entry.rom_key.clone(), false)
             } else if let Some(entry) = guard.get(&emu_key) {
-                (entry.resources.clone(), entry.zisk_rom.clone(), true)
+                (entry.resources.clone(), entry.zisk_rom.clone(), entry.rom_key.clone(), true)
             } else {
                 return Err(anyhow::anyhow!(
                     "Program '{}' (with_hints={}) not found in cache. Call setup() first.",
@@ -587,7 +606,7 @@ impl ProverEngine for AsmProver {
 
         self.current_with_hints.store(with_hints, Ordering::SeqCst);
         let pctx = self.core_prover.backend.get_pctx()?;
-        let rom_bin_path = get_rom_bin_path(&pctx, program_id)?;
+        let rom_bin_path = get_rom_bin_path(&pctx, program_id, &rom_key)?;
         self.core_prover.backend.register_program(rom, &rom_bin_path, with_hints)?;
         Ok(ProverJob::new(program_id.clone(), emulator_only, asm_job))
     }

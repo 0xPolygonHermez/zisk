@@ -29,6 +29,8 @@ pub enum CoordinatorJobResult {
         vk: Vec<u8>,
         /// The hash mode the key was generated with.
         hash_mode: String,
+        /// Cache key the workers stored the program's ROM setup under.
+        rom_key: String,
     },
     /// Proof-generation result.
     Prove {

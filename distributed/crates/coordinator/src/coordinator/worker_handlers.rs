@@ -40,6 +40,32 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = JobId::from(ack.job_id.clone());
 
+        // A back-filled worker joins a program the cluster already set up: its setup must
+        // match the recorded one, or it would prove under another VK. One that does not is
+        // treated as a failed setup.
+        let mismatch = ack.success && {
+            let key = self
+                .setup_pending
+                .read()
+                .await
+                .get(&job_id)
+                .map(|s| SetupKey::new(s.hash_id.clone(), s.with_hints, s.emulator_only));
+            match key {
+                Some(key) => self.active_setups.read().await.get(&key).is_some_and(|a| {
+                    a.vk != ack.vk || a.hash_mode != ack.hash_mode || a.rom_key != ack.rom_key
+                }),
+                None => false,
+            }
+        };
+        if mismatch {
+            error!(
+                "[Setup] Worker {} set up hash_id {} under another VK or ROM key than the \
+                 cluster; withholding it",
+                ack.worker_id, ack.hash_id
+            );
+        }
+        let success = ack.success && !mismatch;
+
         if ack.success {
             info!(
                 "[Setup] Worker {} completed setup for job_id {} hash_id {}",
@@ -56,11 +82,16 @@ impl Coordinator {
         }
         // How long this worker took, if the setup was sent to it.
         let setup_seconds = self.take_setup_sent(&ack.worker_id, &ack.hash_id).await;
+        let error_message = if mismatch {
+            Some("VK or ROM key differs from the cluster's")
+        } else {
+            ack.error_message.as_deref()
+        };
         crate::metrics::record_setup_ack(
             &ack.worker_id,
             &ack.hash_id,
-            ack.success,
-            ack.error_message.as_deref(),
+            success,
+            error_message,
             setup_seconds,
         );
 
@@ -71,7 +102,7 @@ impl Coordinator {
         // keeps any pending_recovery entry.
         let worker_id = ack.worker_id.clone();
         if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp) {
-            if ack.success {
+            if success {
                 if self.pending_recovery.write().await.remove(&worker_id).is_some() {
                     warn!(
                         "[Recovery] Dropped stale pending_recovery for {} on SetupProgramAck",
@@ -98,8 +129,8 @@ impl Coordinator {
             let mut pending = self.setup_pending.write().await;
             if let Some(state) = pending.get_mut(&job_id) {
                 let was_pending = state.pending.remove(&ack.worker_id);
-                if was_pending && ack.success {
-                    state.vks.push((ack.worker_id.clone(), ack.vk, ack.hash_mode));
+                if was_pending && success {
+                    state.vks.push((ack.worker_id.clone(), ack.vk, (ack.hash_mode, ack.rom_key)));
                 }
                 if state.pending.is_empty() {
                     let vks = std::mem::take(&mut state.vks);
@@ -138,26 +169,31 @@ impl Coordinator {
     async fn finalize_setup(
         &self,
         job_id: &JobId,
-        vks: Vec<(WorkerId, Vec<u8>, String)>,
+        vks: Vec<(WorkerId, Vec<u8>, (String, String))>,
         key: SetupKey,
         program_name: String,
         backfill: bool,
     ) {
         let event = match validate_setup_vks(job_id.as_str(), vks) {
-            Ok((vk, hash_mode)) => {
+            Ok((vk, (hash_mode, rom_key))) => {
                 self.active_setups.write().await.insert(
                     key.clone(),
                     crate::coordinator::ActiveSetup {
                         program_name: program_name.clone(),
                         vk: vk.clone(),
                         hash_mode: hash_mode.clone(),
+                        rom_key: rom_key.clone(),
                     },
                 );
                 // Catch workers that registered Idle during this setup's window.
                 if backfill {
                     self.backfill_setup_to_idle(&key, &program_name).await;
                 }
-                CoordinatorJobEvent::Completed(CoordinatorJobResult::Setup { vk, hash_mode })
+                CoordinatorJobEvent::Completed(CoordinatorJobResult::Setup {
+                    vk,
+                    hash_mode,
+                    rom_key,
+                })
             }
             Err(e) => {
                 error!("[Setup] VK mismatch for job_id {}: {}", job_id, e);
@@ -1235,29 +1271,29 @@ impl Coordinator {
     }
 }
 
-/// Validates that all workers produced the same VK and hash mode, and returns them.
-/// Returns an error string if there are no VKs (all workers failed) or if either the
-/// VK bytes or the reported hash mode disagree across workers.
-fn validate_setup_vks(
+/// Validates that all workers produced the same VK and metadata (the hash mode, plus the
+/// ROM cache key for a program setup), and returns them. Returns an error string if there
+/// are no VKs (all workers failed) or if either disagrees across workers.
+fn validate_setup_vks<M: PartialEq + std::fmt::Debug>(
     job_id: &str,
-    vks: Vec<(WorkerId, Vec<u8>, String)>,
-) -> Result<(Vec<u8>, String), String> {
+    vks: Vec<(WorkerId, Vec<u8>, M)>,
+) -> Result<(Vec<u8>, M), String> {
     let mut iter = vks.into_iter();
-    let (_, first_vk, first_hash_mode) = iter
+    let (_, first_vk, first_meta) = iter
         .next()
         .ok_or_else(|| format!("job {job_id}: all workers failed setup, no VK received"))?;
-    for (worker_id, vk, hash_mode) in iter {
+    for (worker_id, vk, meta) in iter {
         if vk != first_vk {
             return Err(format!(
                 "job {job_id}: worker {worker_id} returned a different VK than the first worker"
             ));
         }
-        if hash_mode != first_hash_mode {
+        if meta != first_meta {
             return Err(format!(
-                "job {job_id}: worker {worker_id} reported hash mode {hash_mode:?} \
-                 but the first worker reported {first_hash_mode:?}"
+                "job {job_id}: worker {worker_id} reported {meta:?} \
+                 but the first worker reported {first_meta:?}"
             ));
         }
     }
-    Ok((first_vk, first_hash_mode))
+    Ok((first_vk, first_meta))
 }

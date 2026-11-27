@@ -196,6 +196,7 @@ impl CoordinatorGrpc {
                             },
                             vk: ack.vk,
                             hash_mode: ack.hash_mode,
+                            rom_key: ack.rom_key,
                         })
                         .await
                 }

@@ -98,8 +98,8 @@ fn coord_stats_to_domain(s: CoordinatorExecutionStats) -> DomainExecutionStats {
 
 fn coord_result_to_domain(result: CoordinatorJobResult, hash_id: &str) -> DomainJobKindResponse {
     match result {
-        CoordinatorJobResult::Setup { vk, hash_mode } => {
-            DomainJobKindResponse::Setup { vk, hash_mode }
+        CoordinatorJobResult::Setup { vk, hash_mode, rom_key } => {
+            DomainJobKindResponse::Setup { vk, hash_mode, rom_key }
         }
         CoordinatorJobResult::Prove { proof_bytes, stats, random_seed: seed } => {
             DomainJobKindResponse::Prove {

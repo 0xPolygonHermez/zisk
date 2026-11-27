@@ -4,7 +4,9 @@ use std::fs;
 use std::path::Path;
 use zisk_common::io::ZiskStdin;
 use zisk_common::{ProgramVK, RandomSeed};
-use zisk_rom_setup::{rom_merkle_setup_verkey, rom_merkle_setup_verkey_opt, HashMode};
+use zisk_rom_setup::{
+    missing_verkey_error, read_cached_verkey, rom_key, rom_merkle_setup_verkey, HashMode,
+};
 use zisk_transpiler_common::ZiskTranspiler;
 use ziskemu::ZiskEmulator;
 pub use ziskemu::{EmuOptions, ProfilingMode};
@@ -146,6 +148,12 @@ impl GuestProgram {
     pub fn hash(&self) -> &str {
         &self.program_id.hash_id
     }
+
+    /// Cache key of the program's ROM setup under `hash_mode`.
+    pub fn rom_key(&self, hash_mode: HashMode) -> Result<String> {
+        rom_key(self.elf(), hash_mode)
+    }
+
     /// Verkey from the ELF, under the local proving key's [`HashMode`].
     ///
     /// A verkey is only valid relative to a mode. With no local proving key -- a client
@@ -168,14 +176,15 @@ impl GuestProgram {
         // `?`, not `.ok()`: corruption must not pass as absence and fake a single match.
         let mut found: Vec<ProgramVK> = HashMode::ALL
             .iter()
-            .filter_map(|&mode| rom_merkle_setup_verkey_opt(self.elf(), &None, mode).transpose())
+            .filter_map(|&mode| {
+                self.rom_key(mode)
+                    .and_then(|key| read_cached_verkey(self.hash(), &key, &None, mode))
+                    .transpose()
+            })
             .collect::<Result<_>>()?;
         match found.len() {
             1 => Ok(found.remove(0)),
-            0 => Err(anyhow::anyhow!(
-                "no cached verkey for program {}; run setup for it first",
-                self.name()
-            )),
+            0 => Err(missing_verkey_error(self.hash(), &None)),
             _ => Err(anyhow::anyhow!(
                 "cached verkeys for program {} under several hash families ({}); call \
                  vk_with_mode to name the one the proofs came from",

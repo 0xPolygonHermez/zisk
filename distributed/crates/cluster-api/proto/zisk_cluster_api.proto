@@ -76,6 +76,7 @@ message SetupProgramAck {
   string error_message = 5;
   bytes vk = 6;
   string hash_mode = 7;
+  string rom_key = 8;
 }
 
 message NormalizeCircuit {

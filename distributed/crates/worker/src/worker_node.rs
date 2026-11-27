@@ -840,7 +840,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                             &hash_id,
                             with_hints,
                             emulator_only,
-                            program,
+                            program.clone(),
                             program_vk.clone(),
                         );
                         info!("[Setup] job_id {} Completed setup for hash_id {}", job_id, hash_id);
@@ -849,7 +849,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                             job_id.as_string(),
                             worker_id,
                             hash_id,
-                            Ok(&program_vk),
+                            Ok((&program_vk, &program)),
                         )
                     }
                     Err(e) => {
@@ -1548,23 +1548,29 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
     }
 
-    /// Builds a `SetupProgramAck`: `Ok(vk)` → success with the encoded VK,
-    /// `Err(msg)` → failure with the error message. Shared by the setup fast
-    /// path, the off-loop completion, and the reconnection setup path.
+    /// Builds a `SetupProgramAck`: `Ok((vk, program))` → success with the encoded VK
+    /// and the ROM cache key, `Err(msg)` → failure with the error message. Shared by the
+    /// setup fast path, the off-loop completion, and the reconnection setup path.
     fn build_setup_program_ack(
         job_id: String,
         worker_id: String,
         hash_id: String,
-        result: std::result::Result<&ProgramVK, String>,
+        result: std::result::Result<(&ProgramVK, &GuestProgram), String>,
     ) -> WorkerMessage {
-        let (success, error_message, vk, hash_mode) = match result {
-            Ok(program_vk) => (
+        // The program was just set up, so its ROM digest is already computed.
+        let result = result.and_then(|(program_vk, program)| {
+            let rom_key = program.rom_key(program_vk.hash_mode).map_err(|e| e.to_string())?;
+            Ok((program_vk, rom_key))
+        });
+        let (success, error_message, vk, hash_mode, rom_key) = match result {
+            Ok((program_vk, rom_key)) => (
                 true,
                 String::new(),
                 program_vk.vk.iter().flat_map(|w| w.to_le_bytes()).collect(),
                 program_vk.hash_mode.as_str().to_string(),
+                rom_key,
             ),
-            Err(error_message) => (false, error_message, Vec::new(), String::new()),
+            Err(error_message) => (false, error_message, Vec::new(), String::new(), String::new()),
         };
         WorkerMessage {
             payload: Some(worker_message::Payload::SetupProgramAck(SetupProgramAck {
@@ -1575,6 +1581,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 error_message,
                 vk,
                 hash_mode,
+                rom_key,
             })),
         }
     }
@@ -1954,16 +1961,17 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         setup: &SetupProgram,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
     ) -> bool {
-        let Some(program_vk) =
-            self.worker.program_vk(&setup.hash_id, setup.with_hints, setup.emulator_only)
-        else {
+        let (Some(program_vk), Some(program)) = (
+            self.worker.program_vk(&setup.hash_id, setup.with_hints, setup.emulator_only),
+            self.worker.guest_program(&setup.hash_id),
+        ) else {
             return false;
         };
         let ack = Self::build_setup_program_ack(
             setup.job_id.clone(),
             self.worker_config.worker.worker_id.as_string(),
             setup.hash_id.clone(),
-            Ok(&program_vk),
+            Ok((&program_vk, &program)),
         );
         if let Err(e) = message_sender.send(ack) {
             warn!("Failed to send SetupProgramAck: {}", e);

@@ -54,12 +54,15 @@ impl<'a> EmuSetupBuilder<'a> {
     }
 }
 
+/// Each program's ROM and the cache key of its ROM setup.
+type ProgramCache = HashMap<ProgramId, (Arc<ZiskRom>, String)>;
+
 /// Proving engine for the EMU backend. Wraps an [`EmuCoreProver`] and caches
 /// each program's parsed `ZiskRom` so repeated proofs of the same program skip
 /// ELF parsing.
 pub struct EmuProver {
     pub(crate) core_prover: EmuCoreProver,
-    program_cache: Arc<RwLock<HashMap<ProgramId, Arc<ZiskRom>>>>,
+    program_cache: Arc<RwLock<ProgramCache>>,
 }
 
 impl EmuProver {
@@ -107,15 +110,18 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.forget_registered_program();
         let pctx = self.core_prover.backend.get_pctx()?;
 
-        let program_vk = ensure_program_vk(&pctx, elf)?;
+        let rom_setup = ensure_program_vk(&pctx, elf)?;
 
         let rv2zk = ZiskTranspiler::new(elf.elf());
 
         let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
         let zisk_rom = Arc::new(zisk_rom);
 
-        self.program_cache.write().unwrap().insert(elf.program_id.clone(), zisk_rom);
-        Ok(program_vk)
+        self.program_cache
+            .write()
+            .unwrap()
+            .insert(elf.program_id.clone(), (zisk_rom, rom_setup.rom_key));
+        Ok(rom_setup.vk)
     }
 
     fn world_rank(&self) -> i32 {
@@ -135,16 +141,19 @@ impl ProverEngine for EmuProver {
     }
 
     fn begin_job_for(&self, program_id: &ProgramId, _with_hints: bool) -> Result<ProverJob> {
-        let rom = self
+        let (rom, rom_key) = self
             .program_cache
             .read()
             .ok()
             .and_then(|cache| cache.get(program_id).cloned())
             .ok_or_else(|| {
-            anyhow::anyhow!("Program '{}' not found in cache. Call setup() first.", program_id.name)
-        })?;
+                anyhow::anyhow!(
+                    "Program '{}' not found in cache. Call setup() first.",
+                    program_id.name
+                )
+            })?;
         let pctx = self.core_prover.backend.get_pctx()?;
-        let rom_bin_path = get_rom_bin_path(&pctx, program_id)?;
+        let rom_bin_path = get_rom_bin_path(&pctx, program_id, &rom_key)?;
         self.core_prover.backend.register_program(rom, &rom_bin_path, false)?;
         Ok(ProverJob::new(program_id.clone(), false, None))
     }

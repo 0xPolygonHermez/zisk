@@ -329,6 +329,9 @@ pub enum DomainJobKindResponse {
         vk: Vec<u8>,
         /// The hash mode the key was generated with.
         hash_mode: String,
+        /// Cache key the cluster stored the program's ROM setup under; clients store the
+        /// verkey under it too.
+        rom_key: String,
     },
     /// Proof-generation result.
     Prove {

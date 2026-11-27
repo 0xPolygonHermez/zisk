@@ -1,13 +1,14 @@
 use anyhow::{Context, Result};
-use proofman_common::{write_custom_commit_trace, ProofCtx, ProofmanError, ProofmanResult};
 use proofman_fields::{Goldilocks, PrimeField64};
+use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
 use zisk_common::{ZiskPaths, PROGRAM_VK_LEN};
 use zisk_core::{MAX_INPUT_SIZE, RAM_SIZE};
-use zisk_pil::{RomRomTrace, PILOUT_HASH};
+use zisk_pil::PILOUT_HASH;
 use zisk_sm_rom::CustomRom;
 
 pub use zisk_common::HashMode;
@@ -31,24 +32,58 @@ pub fn get_output_path(output_dir: &Option<PathBuf>) -> Result<PathBuf> {
     Ok(output_path)
 }
 
-/// Build the ROM custom-commit trace for `elf`, write it to `rom_buffer_path`,
-/// and return its Merkle root (the raw material for the verkey).
-pub fn gen_elf_hash<F: PrimeField64>(
-    pctx: &ProofCtx<F>,
-    elf: &[u8],
-    rom_buffer_path: &Path,
-    hash_mode: HashMode,
-) -> ProofmanResult<Vec<F>> {
-    let mut custom_rom_trace =
-        CustomRom::build::<F>(elf).map_err(|e| ProofmanError::InvalidParameters(e.to_string()))?;
+/// blake3 digest of a ROM custom-commit trace: the exact data the verkey commits to.
+type RomDigest = [u8; 32];
 
-    write_custom_commit_trace(
-        pctx,
-        &mut custom_rom_trace,
-        hash_mode.blowup_factor(),
-        hash_mode.merkle_tree_arity(),
-        rom_buffer_path,
-    )
+/// Digest of the ROM trace `elf` transpiles to. Building it transpiles the ELF, so each ELF's
+/// is computed once per process.
+fn rom_digest(elf: &[u8]) -> Result<RomDigest> {
+    static DIGESTS: LazyLock<Mutex<HashMap<String, RomDigest>>> = LazyLock::new(Default::default);
+
+    let elf_hash = get_elf_data_hash(elf);
+    if let Some(digest) = DIGESTS.lock().unwrap().get(&elf_hash) {
+        return Ok(*digest);
+    }
+    let mut trace =
+        CustomRom::build::<Goldilocks>(elf).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let mut hasher = blake3::Hasher::new();
+    for chunk in trace.get_buffer::<Goldilocks>().chunks(1 << 13) {
+        let bytes: Vec<u8> =
+            chunk.iter().flat_map(|x| x.as_canonical_u64().to_le_bytes()).collect();
+        hasher.update(&bytes);
+    }
+    let digest = *hasher.finalize().as_bytes();
+    DIGESTS.lock().unwrap().insert(elf_hash, digest);
+    Ok(digest)
+}
+
+/// Cache key of `elf`'s ROM custom commit and verkey under `hash_mode`.
+///
+/// Derived from the ROM trace itself (so from the ELF, the transpiler and the trace layout,
+/// padding included), the PIL and the commit parameters: a change to any of them is a cache
+/// miss rather than a stale verkey.
+pub fn rom_key(elf: &[u8], hash_mode: HashMode) -> Result<String> {
+    Ok(rom_cache_key(&rom_digest(elf)?, hash_mode))
+}
+
+/// Check that `key` has the form of a [`rom_key`] (32 lowercase hex digits), so one received
+/// from elsewhere is safe to put in a file name.
+pub fn check_rom_key(key: &str) -> Result<()> {
+    if key.len() == 32 && key.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+        Ok(())
+    } else {
+        anyhow::bail!("invalid ROM key {key:?}")
+    }
+}
+
+pub(crate) fn rom_cache_key(digest: &RomDigest, hash_mode: HashMode) -> String {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(digest);
+    hasher.update(PILOUT_HASH.as_bytes());
+    hasher.update(hash_mode.file_tag().as_bytes());
+    hasher.update(&hash_mode.blowup_factor().to_le_bytes());
+    hasher.update(&hash_mode.merkle_tree_arity().to_le_bytes());
+    hasher.finalize().to_hex()[..32].to_string()
 }
 
 /// Read a verification key (a `PROGRAM_VK_LEN` array of little-endian `u64`s)
@@ -94,58 +129,32 @@ pub fn mem_config_tag() -> String {
     format!("_in{}m_ram{}m", MAX_INPUT_SIZE >> 20, RAM_SIZE >> 20)
 }
 
-/// Build the cache path of the ROM custom-commit binary for `hash`.
-///
-/// The filename encodes the ELF hash, PILOUT hash, row count, and hash-mode
-/// parameters (plus a `_gpu` suffix when `gpu` is set) so incompatible setups
-/// never collide.
-pub fn get_elf_bin_file_path_with_hash(
-    hash: &str,
-    default_cache_path: &Path,
-    gpu: bool,
-    hash_mode: HashMode,
-) -> Result<PathBuf> {
-    let pilout_hash = PILOUT_HASH;
-
-    let n = RomRomTrace::<Goldilocks>::NUM_ROWS;
-
-    let gpu_suffix = if gpu { "_gpu" } else { "" };
-    let rom_cache_file_name = format!(
-        "{}_{}_{}_{}_{}_{}{}.bin",
-        hash,
-        pilout_hash,
-        n,
-        hash_mode.file_tag(),
-        hash_mode.blowup_factor(),
-        hash_mode.merkle_tree_arity(),
-        gpu_suffix
-    );
-
-    Ok(default_cache_path.join(rom_cache_file_name))
+/// File stem of a program's ROM artifacts: `{elf_hash}_{mode}_{rom_key}`. The ELF hash
+/// leads so `clean-cache --elf` finds them; the mode is there for whoever reads the name.
+fn rom_file_stem(elf_hash: &str, rom_key: &str, hash_mode: HashMode) -> String {
+    format!("{elf_hash}_{}_{rom_key}", hash_mode.file_tag())
 }
 
-/// Build the cache path of the verkey (`.verkey.bin`) file for `hash`,
-/// mirroring the naming scheme of [`get_elf_bin_file_path_with_hash`].
-pub fn get_elf_bin_verkey_file_path_with_hash(
-    hash: &str,
-    default_cache_path: &Path,
+/// Cache path of the ROM custom-commit binary (`_gpu` for the GPU layout).
+pub fn get_rom_bin_file_path(
+    cache_dir: &Path,
+    elf_hash: &str,
+    rom_key: &str,
     hash_mode: HashMode,
-) -> Result<PathBuf> {
-    let pilout_hash = PILOUT_HASH;
+    gpu: bool,
+) -> PathBuf {
+    let gpu_suffix = if gpu { "_gpu" } else { "" };
+    cache_dir.join(format!("{}{gpu_suffix}.bin", rom_file_stem(elf_hash, rom_key, hash_mode)))
+}
 
-    let n = RomRomTrace::<Goldilocks>::NUM_ROWS;
-
-    let rom_cache_file_name = format!(
-        "{}_{}_{}_{}_{}_{}.verkey.bin",
-        hash,
-        pilout_hash,
-        n,
-        hash_mode.file_tag(),
-        hash_mode.blowup_factor(),
-        hash_mode.merkle_tree_arity(),
-    );
-
-    Ok(default_cache_path.join(rom_cache_file_name))
+/// Cache path of the verkey file, shared by the CPU and GPU layouts.
+pub fn get_rom_verkey_file_path(
+    cache_dir: &Path,
+    elf_hash: &str,
+    rom_key: &str,
+    hash_mode: HashMode,
+) -> PathBuf {
+    cache_dir.join(format!("{}.verkey.bin", rom_file_stem(elf_hash, rom_key, hash_mode)))
 }
 
 /// Create `path` (and any missing parents) if it does not already exist.

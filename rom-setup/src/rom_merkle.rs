@@ -1,14 +1,24 @@
 use anyhow::{Context, Result};
-use proofman_common::ProofCtx;
+use proofman_common::{write_custom_commit_trace, ProofCtx};
 use proofman_fields::{Goldilocks, PrimeField64};
 use std::path::{Path, PathBuf};
 use zisk_common::ProgramVK;
 use zisk_pil::RomRomTrace;
+use zisk_sm_rom::CustomRom;
 
 use crate::{
-    gen_elf_hash, get_elf_bin_file_path_with_hash, get_elf_bin_verkey_file_path_with_hash,
-    get_elf_data_hash, get_elf_vk, get_output_path, HashMode,
+    get_elf_data_hash, get_elf_vk, get_output_path, get_rom_bin_file_path,
+    get_rom_verkey_file_path, rom_key, HashMode,
 };
+
+/// A program's ROM setup.
+#[derive(Debug, Clone)]
+pub struct RomSetup {
+    /// The program verification key.
+    pub vk: ProgramVK,
+    /// The cache key its ROM artifacts are stored under (see [`rom_key`]).
+    pub rom_key: String,
+}
 
 fn validate_custom_commit_file_size(elf_bin_path: &Path, hash_mode: HashMode) -> Result<()> {
     let n = RomRomTrace::<Goldilocks>::NUM_ROWS as u64;
@@ -27,23 +37,21 @@ fn validate_custom_commit_file_size(elf_bin_path: &Path, hash_mode: HashMode) ->
     })
 }
 
-/// Resolve the path of the cached ROM custom-commit binary for `elf_hash`.
+/// Resolve the path of the cached ROM custom-commit binary for `elf_hash` under `rom_key`.
 ///
 /// Errors if the ROM binary or its verkey file has not been generated yet (run
 /// [`rom_merkle_setup`] first).
 pub fn get_rom_path<F: PrimeField64>(
     pctx: &ProofCtx<F>,
     elf_hash: &str,
+    rom_key: &str,
     output_dir: &Option<PathBuf>,
     hash_mode: HashMode,
 ) -> Result<PathBuf> {
     let output_path = get_output_path(output_dir)?;
 
-    let elf_bin_path =
-        get_elf_bin_file_path_with_hash(elf_hash, &output_path, pctx.gpu, hash_mode)?;
-
-    let elf_verkey_bin_path =
-        get_elf_bin_verkey_file_path_with_hash(elf_hash, &output_path, hash_mode)?;
+    let elf_bin_path = get_rom_bin_file_path(&output_path, elf_hash, rom_key, hash_mode, pctx.gpu);
+    let elf_verkey_bin_path = get_rom_verkey_file_path(&output_path, elf_hash, rom_key, hash_mode);
 
     if !elf_bin_path.exists() || !elf_verkey_bin_path.exists() {
         return Err(anyhow::anyhow!(
@@ -56,28 +64,28 @@ pub fn get_rom_path<F: PrimeField64>(
 
     Ok(elf_bin_path)
 }
-/// Perform the ROM Merkle setup for `elf` and return its program verification
-/// key.
+
+/// Perform the ROM Merkle setup for `elf` and return its verkey and cache key.
 ///
-/// Builds the ROM custom commit and derives the verkey from its Merkle root,
-/// writing both to the cache. When `force` is false and valid cached artifacts
-/// already exist, the cached verkey is returned instead of regenerating.
+/// Builds the ROM custom commit and derives the verkey from its Merkle root, writing both to
+/// the cache. When `force` is false and valid cached artifacts already exist, the cached
+/// verkey is returned instead of regenerating.
 pub fn rom_merkle_setup<F: PrimeField64>(
     pctx: &ProofCtx<F>,
     elf: &[u8],
     output_dir: &Option<PathBuf>,
     force: bool,
     hash_mode: HashMode,
-) -> Result<ProgramVK, anyhow::Error> {
+) -> Result<RomSetup> {
     let output_path = get_output_path(output_dir)?;
 
     let elf_hash = get_elf_data_hash(elf);
+    let rom_key = rom_key(elf, hash_mode)?;
 
     let elf_bin_path =
-        get_elf_bin_file_path_with_hash(&elf_hash, &output_path, pctx.gpu, hash_mode)?;
-
+        get_rom_bin_file_path(&output_path, &elf_hash, &rom_key, hash_mode, pctx.gpu);
     let elf_verkey_bin_path =
-        get_elf_bin_verkey_file_path_with_hash(&elf_hash, &output_path, hash_mode)?;
+        get_rom_verkey_file_path(&output_path, &elf_hash, &rom_key, hash_mode);
 
     // A cached ROM that no longer matches the current layout (one written before the packed
     // custom-commit format, say) is a cache MISS, not an error: fall through and rebuild it.
@@ -93,12 +101,21 @@ pub fn rom_merkle_setup<F: PrimeField64>(
         };
 
     if reuse_cached {
+        tracing::info!("Using cached ROM setup {}", elf_bin_path.display());
         let vk = get_elf_vk(elf_verkey_bin_path.as_path())?
             .ok_or_else(|| anyhow::anyhow!("Failed to read existing verkey file"))?;
-        return Ok(ProgramVK { vk, hash_mode });
+        return Ok(RomSetup { vk: ProgramVK { vk, hash_mode }, rom_key });
     }
 
-    let root = gen_elf_hash::<F>(pctx, elf, elf_bin_path.as_path(), hash_mode)?;
+    tracing::info!("Generating ROM setup {}", elf_bin_path.display());
+    let mut trace = CustomRom::build::<F>(elf).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let root = write_custom_commit_trace(
+        pctx,
+        &mut trace,
+        hash_mode.blowup_factor(),
+        hash_mode.merkle_tree_arity(),
+        &elf_bin_path,
+    )?;
 
     tracing::info!("Root hash: {:?}", root);
 
@@ -107,7 +124,62 @@ pub fn rom_merkle_setup<F: PrimeField64>(
     let vk_bytes: Vec<u8> = vk.iter().flat_map(|w| w.to_le_bytes()).collect();
     std::fs::write(&elf_verkey_bin_path, &vk_bytes)?;
 
-    Ok(ProgramVK { vk, hash_mode })
+    Ok(RomSetup { vk: ProgramVK { vk, hash_mode }, rom_key })
+}
+
+/// Read the cached verkey for `elf_hash` under `rom_key`. `Ok(None)` when there is none; one
+/// that exists and will not read stays an error, so callers probing modes cannot read it as
+/// absence.
+pub fn read_cached_verkey(
+    elf_hash: &str,
+    rom_key: &str,
+    output_dir: &Option<PathBuf>,
+    hash_mode: HashMode,
+) -> Result<Option<ProgramVK>> {
+    let output_path = get_output_path(output_dir)?;
+    let path = get_rom_verkey_file_path(&output_path, elf_hash, rom_key, hash_mode);
+
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let vk = get_elf_vk(&path)
+        .with_context(|| format!("Failed to read verkey at {}", path.display()))?
+        .ok_or_else(|| anyhow::anyhow!("Empty verkey file at {}", path.display()))?;
+
+    Ok(Some(ProgramVK { vk, hash_mode }))
+}
+
+/// The error for a verkey not found under the key this build computes. When the cache holds
+/// one for the same ELF under another key, it was set up by a ZisK whose ROM differs from
+/// this one (another transpiler, ROM layout or proving key), and that verkey is not this
+/// build's.
+pub fn missing_verkey_error(elf_hash: &str, output_dir: &Option<PathBuf>) -> anyhow::Error {
+    let prefix = format!("{elf_hash}_");
+    let mut others: Vec<PathBuf> = get_output_path(output_dir)
+        .and_then(|dir| Ok(std::fs::read_dir(dir)?))
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.starts_with(&prefix) && n.ends_with(".verkey.bin"))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    others.sort();
+    if others.is_empty() {
+        anyhow::anyhow!("ROM setup has not been performed yet for ELF {elf_hash}")
+    } else {
+        anyhow::anyhow!(
+            "no verkey for ELF {elf_hash} from this ZisK version; the cached ones ({}) were set \
+             up by a version whose ROM differs. Run setup again",
+            others.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")
+        )
+    }
 }
 
 /// Read the program verification key for `elf` from the cache.
@@ -118,32 +190,42 @@ pub fn rom_merkle_setup_verkey(
     elf: &[u8],
     output_dir: &Option<PathBuf>,
     hash_mode: HashMode,
-) -> Result<ProgramVK, anyhow::Error> {
-    rom_merkle_setup_verkey_opt(elf, output_dir, hash_mode)?
-        .ok_or_else(|| anyhow::anyhow!("ROM merkle setup has not been performed yet"))
+) -> Result<ProgramVK> {
+    let elf_hash = get_elf_data_hash(elf);
+    let rom_key = rom_key(elf, hash_mode)?;
+    read_cached_verkey(&elf_hash, &rom_key, output_dir, hash_mode)?
+        .ok_or_else(|| missing_verkey_error(&elf_hash, output_dir))
 }
 
-/// [`rom_merkle_setup_verkey`], but `Ok(None)` when this mode has no cached artifact. One that
-/// exists and will not read stays an error, so callers probing modes cannot read it as absence.
-pub fn rom_merkle_setup_verkey_opt(
-    elf: &[u8],
-    output_dir: &Option<PathBuf>,
-    hash_mode: HashMode,
-) -> Result<Option<ProgramVK>, anyhow::Error> {
-    let output_path = get_output_path(output_dir)?;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let elf_hash = get_elf_data_hash(elf);
-
-    let elf_verkey_bin_path =
-        get_elf_bin_verkey_file_path_with_hash(&elf_hash, &output_path, hash_mode)?;
-
-    if !elf_verkey_bin_path.exists() {
-        return Ok(None);
+    #[test]
+    fn rom_key_tracks_its_inputs() {
+        let a = crate::rom_cache_key(&[1; 32], HashMode::Poseidon2);
+        assert_eq!(a, crate::rom_cache_key(&[1; 32], HashMode::Poseidon2));
+        assert_ne!(a, crate::rom_cache_key(&[2; 32], HashMode::Poseidon2));
+        assert_ne!(a, crate::rom_cache_key(&[1; 32], HashMode::Poseidon1));
+        crate::check_rom_key(&a).unwrap();
+        assert!(crate::check_rom_key("../../etc/passwd").is_err());
+        assert!(crate::check_rom_key(&a.to_uppercase()).is_err());
     }
 
-    let vk = get_elf_vk(elf_verkey_bin_path.as_path())
-        .with_context(|| format!("Failed to read verkey at {}", elf_verkey_bin_path.display()))?
-        .ok_or_else(|| anyhow::anyhow!("Empty verkey file at {}", elf_verkey_bin_path.display()))?;
+    #[test]
+    fn missing_verkey_names_a_stale_one() {
+        let dir = std::env::temp_dir().join(format!("rom-setup-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let out = Some(dir.clone());
+        let err = missing_verkey_error("abc", &out).to_string();
+        assert!(err.contains("has not been performed"), "{err}");
 
-    Ok(Some(ProgramVK { vk, hash_mode }))
+        let stale = get_rom_verkey_file_path(&dir, "abc", "oldkey", HashMode::Poseidon2);
+        std::fs::write(&stale, [0u8; 32]).unwrap();
+        let err = missing_verkey_error("abc", &out).to_string();
+        assert!(err.contains("oldkey") && err.contains("Run setup again"), "{err}");
+        assert!(read_cached_verkey("abc", "newkey", &out, HashMode::Poseidon2).unwrap().is_none());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

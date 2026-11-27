@@ -595,6 +595,7 @@ fn synthesize_result(kind: &DomainJobKind) -> DomainJobKindResponse {
             DomainJobKindResponse::Setup {
                 vk: vec![],
                 hash_mode: HashMode::default().as_str().to_string(),
+                rom_key: "0".repeat(32),
             }
         }
         DomainJobKind::Execute(_) => DomainJobKindResponse::Execute {

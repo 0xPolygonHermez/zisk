@@ -819,6 +819,8 @@ pub struct SetupProgramAckDto {
     pub vk: Vec<u8>,
     /// The hash mode the key was generated with.
     pub hash_mode: String,
+    /// Cache key of the program's ROM setup on the worker.
+    pub rom_key: String,
 }
 
 /// Worker → coordinator error report.

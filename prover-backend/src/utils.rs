@@ -3,14 +3,13 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use anyhow::{Context, Result};
-use zisk_common::ProgramVK;
 
 use crate::{GuestProgram, ProgramId};
 use proofman_common::{
     initialize_logger, json_to_debug_instances_map, DebugInfo, ProofCtx, ProofmanResult,
     VerboseMode,
 };
-use zisk_rom_setup::{get_elf_data_hash, get_rom_path, rom_merkle_setup, HashMode};
+use zisk_rom_setup::{get_elf_data_hash, get_rom_path, rom_merkle_setup, HashMode, RomSetup};
 
 fn hash_mode_from_pctx<F: PrimeField64>(pctx: &ProofCtx<F>) -> Result<HashMode> {
     HashMode::from_str(&pctx.global_info.hash).with_context(|| {
@@ -22,23 +21,24 @@ fn hash_mode_from_pctx<F: PrimeField64>(pctx: &ProofCtx<F>) -> Result<HashMode> 
 }
 
 /// Build the ROM Merkle setup for `elf` and return its program verification
-/// key, using the hash mode declared in the proving key's global info.
+/// key and cache key, using the hash mode declared in the proving key's global info.
 pub fn ensure_program_vk<F: PrimeField64>(
     pctx: &ProofCtx<F>,
     elf: &GuestProgram,
-) -> Result<ProgramVK> {
+) -> Result<RomSetup> {
     let hash_mode = hash_mode_from_pctx(pctx)?;
     rom_merkle_setup(pctx, elf.elf(), &None, false, hash_mode)
 }
 
-/// Resolve the on-disk path of the compiled ROM binary for `program_id`,
-/// using the hash mode declared in the proving key's global info.
+/// Resolve the on-disk path of the compiled ROM binary for `program_id`, set up
+/// under `rom_key`, using the hash mode declared in the proving key's global info.
 pub fn get_rom_bin_path<F: PrimeField64>(
     pctx: &ProofCtx<F>,
     program_id: &ProgramId,
+    rom_key: &str,
 ) -> Result<PathBuf> {
     let hash_mode = hash_mode_from_pctx(pctx)?;
-    let rom_bin_path = get_rom_path(pctx, program_id.get_hash(), &None, hash_mode)?;
+    let rom_bin_path = get_rom_path(pctx, program_id.get_hash(), rom_key, &None, hash_mode)?;
     Ok(rom_bin_path)
 }
 
