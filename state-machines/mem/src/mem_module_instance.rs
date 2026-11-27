@@ -1,5 +1,5 @@
 use crate::{
-    mem_module_collector::MemModuleCollector, MemInput, MemModule, MemOps, MemPreviousSegment,
+    mem_module_collector::MemModuleCollector, MemInputs, MemModule, MemOps, MemPreviousSegment,
 };
 use proofman_common::{ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
@@ -15,6 +15,8 @@ use zisk_common::{
 };
 use zisk_sm_mem_common::MemModuleSegmentCheckPoint;
 
+#[cfg(feature = "legacy_mem_count_and_plan")]
+use crate::MemInput;
 #[cfg(feature = "legacy_mem_count_and_plan")]
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 #[cfg(feature = "legacy_mem_count_and_plan")]
@@ -77,6 +79,7 @@ impl<F: PrimeField64> MemModuleInstance<F> {
             self.ictx.plan.segment_id.unwrap(),
             Some(chunk_id) == self.check_point.first_chunk_id,
             self.module.is_dual(),
+            !self.module.derives_read_values(),
             #[cfg(feature = "save_addr_action")]
             self.module.get_mem_name(),
             #[cfg(feature = "save_addr_action")]
@@ -121,7 +124,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         #[cfg(feature = "witness_timers")]
         let n_collectors = collectors.len();
         let mut prev_segment: Option<MemPreviousSegment> = None;
-        let inputs: Vec<_> = collectors
+        let inputs: Vec<MemInputs> = collectors
             .into_iter()
             .map(|(_, collector)| {
                 let mem_module_collector =
@@ -141,11 +144,13 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         // it is flattened into a single chunk.
         #[cfg(feature = "legacy_mem_count_and_plan")]
         let inputs = {
-            let mut flat = inputs.into_iter().flatten().collect::<Vec<_>>();
+            let keep_read_values = inputs.iter().all(|c| c.keeps_read_values());
+            let mut flat = inputs.iter().flat_map(|c| c.iter()).collect::<Vec<MemInput>>();
+            drop(inputs);
             let parallelize = self.ictx.plan.air_id == MemTrace::<F>::AIR_ID
                 && self.ictx.plan.airgroup_id == MemTrace::<F>::AIRGROUP_ID;
             self.prepare_inputs(&mut flat, parallelize);
-            vec![flat]
+            vec![MemInputs::from_inputs(flat, keep_read_values)]
         };
         let mem_ops = MemOps::new(&inputs);
 
@@ -204,6 +209,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
             self.ictx.plan.segment_id.unwrap(),
             Some(chunk_id) == self.check_point.first_chunk_id,
             self.module.is_dual(),
+            !self.module.derives_read_values(),
             #[cfg(feature = "save_addr_action")]
             self.module.get_mem_name(),
             #[cfg(feature = "save_addr_action")]
@@ -217,15 +223,16 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         Some(Box::new(collector))
     }
 
-    /// One collector, with one buffer, per chunk ([`MemModuleCollector::new`]).
+    /// One collector per chunk, with a buffer of packed accesses and one of values
+    /// ([`MemModuleCollector::reserved_bytes`]).
     fn collector_capacity_bytes(&self) -> CollectorBytes {
+        let is_dual = self.module.is_dual();
+        let keep_read_values = !self.module.derives_read_values();
         self.check_point
             .chunks
             .values()
-            .map(|cp| {
-                CollectorBytes::of_buffer(
-                    MemModuleCollector::reserved_inputs(cp) * std::mem::size_of::<MemInput>(),
-                )
+            .map(|check_point| {
+                MemModuleCollector::reserved_bytes(check_point, is_dual, keep_read_values)
             })
             .sum()
     }
