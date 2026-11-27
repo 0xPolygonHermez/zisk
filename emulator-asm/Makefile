@@ -94,6 +94,31 @@ build/evm/%.o: src/evm/%.asm src/evm/jump_dest_macro.inc src/dma/dma_constants.i
 build/evm.o: $(EVM_OBJS)
 	ld -r $(EVM_OBJS) -o $@
 
+# The experimental dot_f8 precompile: assembly wrappers, which also use dma_constants.inc (the
+# mtrace thresholds), around the C code in dot_f8.c
+build/dot_f8_asm.o: src/dot_f8/dot_f8.asm src/dma/dma_constants.inc
+	mkdir -p build
+	as $(ASMFLAGS) -I./src/dma -o $@ $<
+
+build/dot_f8_c.o: src/dot_f8/dot_f8.c src/dot_f8/dot_f8.h
+	mkdir -p build
+	gcc $(CFLAGS) -c -o $@ $<
+
+build/dot_f8.o: build/dot_f8_asm.o build/dot_f8_c.o
+	ld -r build/dot_f8_asm.o build/dot_f8_c.o -o $@
+
+# The experimental dot_bf16 precompile, built like dot_f8
+build/dot_bf16_asm.o: src/dot_bf16/dot_bf16.asm src/dma/dma_constants.inc
+	mkdir -p build
+	as $(ASMFLAGS) -I./src/dma -o $@ $<
+
+build/dot_bf16_c.o: src/dot_bf16/dot_bf16.c src/dot_bf16/dot_bf16.h
+	mkdir -p build
+	gcc $(CFLAGS) -c -o $@ $<
+
+build/dot_bf16.o: build/dot_bf16_asm.o build/dot_bf16_c.o
+	ld -r build/dot_bf16_asm.o build/dot_bf16_c.o -o $@
+
 # Regenerated when this Makefile changes, so a stale script never keeps an old .zisk_region.
 # The region spans from the control pages (0x0FF00000) to the end of the trace window
 # (TRACE_ADDR + TRACE_MAX_SIZE = 0xA00000000, constants.hpp), covering the input, the ROM, the
@@ -106,9 +131,9 @@ build/zisk.ld: Makefile
 	    > build/zisk.ld
 
 # Compile the final executable
-$(OUT_PATH): build/zisk.ld build/emu.o src/main.c src/constants.hpp src/globals.c src/globals.hpp src/configuration.c src/configuration.hpp src/trace_logs.c src/trace_logs.hpp src/server.c src/server.hpp src/client.c src/client.hpp src/c_provided.c src/c_provided.hpp src/asm_provided.hpp src/trace.c src/trace.hpp src/log.c src/log.hpp src/emu.c src/emu.hpp build/dma.o build/arith_eq.o build/evm.o
+$(OUT_PATH): build/zisk.ld build/emu.o src/main.c src/constants.hpp src/globals.c src/globals.hpp src/configuration.c src/configuration.hpp src/trace_logs.c src/trace_logs.hpp src/server.c src/server.hpp src/client.c src/client.hpp src/c_provided.c src/c_provided.hpp src/asm_provided.hpp src/trace.c src/trace.hpp src/log.c src/log.hpp src/emu.c src/emu.hpp build/dma.o build/arith_eq.o build/evm.o build/dot_f8.o build/dot_bf16.o
 	mkdir -p $(OUT_DIR)
-	gcc $(CFLAGS)  -Wl,-T,build/zisk.ld src/main.c src/globals.c src/configuration.c src/trace_logs.c src/server.c src/client.c src/c_provided.c src/trace.c src/log.c src/emu.c -L../target/zisk-libs -L../target/release -L../target/debug -L../../bin -lc build/emu.o -lc build/dma.o build/arith_eq.o build/evm.o -lziskc -lziskclib -lgmp -lstdc++ -lgmpxx -o $@
+	gcc $(CFLAGS)  -Wl,-T,build/zisk.ld src/main.c src/globals.c src/configuration.c src/trace_logs.c src/server.c src/client.c src/c_provided.c src/trace.c src/log.c src/emu.c -L../target/zisk-libs -L../target/release -L../target/debug -L../../bin -lc build/emu.o -lc build/dma.o build/arith_eq.o build/evm.o build/dot_f8.o build/dot_bf16.o -lziskc -lziskclib -lgmp -lstdc++ -lgmpxx -o $@
 
 clean:
 	rm -rf build

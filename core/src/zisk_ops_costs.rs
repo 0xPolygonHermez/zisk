@@ -78,6 +78,25 @@ pub const DMA_MEMSET_COST: u64 = DMA_COST;
 // Cost for computing the jumpdest bitmap of 1 64-bit source word: one op of JumpDest (2 ops x row)
 pub const JUMP_DEST_COST: u64 = 68_u64.div_ceil(2);
 
+// Costs for the experimental dot_f8 precompile (emulator only, no air yet). Estimates for the
+// planned air: one row per 8 multiply-adds, which reads the words of both vectors that hold
+// them, decodes each value with a lookup into its format's table (int8, FP8 or FP4) and adds the
+// 8 products to the accumulator (~16 value columns, two addresses, the accumulator, a counter
+// and flags, plus the memory bus), close to the 50 columns of Dma64AlignedMem. The call itself
+// pays one row, like a Dma call; the block sums are memory writes.
+pub const DOT_F8_COST: u64 = DMA_COST;
+pub const DOT_F8_ROW_COST: u64 = 40;
+pub const DOT_F8_MACS_PER_ROW: u64 = 8;
+
+// Costs for the experimental dot_bf16 precompile (emulator only, no air yet). Placeholder
+// estimates for the planned air (see precompiles/dot_bf16/README.md): one row per 64-bit word of
+// each vector, that is 4 multiply-adds, holding the 4 significand products (8 by 8 bits), their
+// exponents, the alignment of each product into the exact accumulator (~550 bits) and its limbs
+// and carries: about 120 columns. The call itself pays one row, like a Dma call.
+pub const DOT_BF16_COST: u64 = DMA_COST;
+pub const DOT_BF16_ROW_COST: u64 = 120;
+pub const DOT_BF16_MACS_PER_ROW: u64 = 4;
+
 // Costs for DMA PrePost (a single instance proves every operation)
 
 pub const DMA_PRE_POST_COST: u64 = 104;

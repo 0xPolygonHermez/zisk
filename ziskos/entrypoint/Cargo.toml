@@ -37,6 +37,8 @@ bincode = { version = "2", default-features = false, features = [
 ] }
 
 [target.'cfg(not(any(all(target_os = "zkvm", target_vendor = "zisk"), all(target_arch = "riscv64", target_os = "none"))))'.dependencies]
+# The experimental dot_f8 and dot_bf16 syscalls use the reference semantics off the guest too
+zisk-definitions = { workspace = true }
 zisk-lib-c = { workspace = true }
 num-bigint = { workspace = true }
 num-integer = { workspace = true }

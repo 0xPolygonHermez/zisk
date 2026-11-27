@@ -27,6 +27,9 @@ bool delete_semaphores = true;
 bool just_create_all_shm = false;
 bool just_create_non_input_shm = false;
 char input_file[4096] = {0};
+// Server: after each successful emulation, write the guest buffer described by public output
+// bytes 32..48 (address, then length) to this file, if set (--dump-guest-buffer)
+char dump_guest_buffer_file[4096] = {0};
 bool redirect_output_to_file = false;
 bool server = false;
 bool client = false;

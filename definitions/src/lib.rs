@@ -3,6 +3,12 @@
 mod syscall;
 pub use syscall::*;
 
+mod dot_f8;
+pub use dot_f8::*;
+
+mod dot_bf16;
+pub use dot_bf16::*;
+
 mod zkvmcall;
 pub use zkvmcall::*;
 

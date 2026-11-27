@@ -34,6 +34,7 @@ void print_usage (void)
     asm_printf("\t--mt <number_of_mt_requests>\n");
     asm_printf("\t-o output on\n");
     asm_printf("\t--output_riscof output riscof on\n");
+    asm_printf("\t--dump-guest-buffer <file> (server: after each successful emulation, write the guest buffer whose address and length are public output bytes 32..40 and 40..48 to <file>; as ziskemu --dump-guest-buffer)\n");
     asm_printf("\t--silent silent on\n");
     asm_printf("\t--random_seed <seed> (host randomness seed: 32 bytes as 64 hex digits; client: sent through the control input; server: used when the control input carries none)\n");
     asm_printf("\t--shm_prefix <prefix> (default: \"ZISK\")\n");
@@ -177,6 +178,24 @@ void parse_arguments(int argc, char *argv[])
                     exit(-1);
                 }
                 strcpy(input_file, argv[i]);
+                continue;
+            }
+            if (strcmp(argv[i], "--dump-guest-buffer") == 0)
+            {
+                i++;
+                if (i >= argc)
+                {
+                    asm_printf("ERROR: Detected argument --dump-guest-buffer in the last position; please provide a file after it\n");
+                    print_usage();
+                    exit(-1);
+                }
+                if (strlen(argv[i]) > 4095)
+                {
+                    asm_printf("ERROR: Detected argument --dump-guest-buffer but next argument is too long\n");
+                    print_usage();
+                    exit(-1);
+                }
+                strcpy(dump_guest_buffer_file, argv[i]);
                 continue;
             }
             if (strcmp(argv[i], "--random_seed") == 0)

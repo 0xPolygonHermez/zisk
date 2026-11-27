@@ -1,0 +1,9 @@
+[package]
+name = "llama2-guest"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ziskos = { workspace = true }
+llama2-common = { path = "../common" }
+sha2 = { version = "0.10.9", default-features = false }

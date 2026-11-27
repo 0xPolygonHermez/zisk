@@ -120,6 +120,7 @@ void server_signal_handler(void)
 
 // ROM histogram
 static void save_rom_histogram_to_file (void);
+static void dump_guest_buffer (void);
 
 // Reserves [addr, addr + size) PROT_NONE, as the guard region below, so that any access faults
 // and no later mmap(NULL, ...) or large malloc can be placed there. Used for the part of the
@@ -1254,6 +1255,12 @@ void server_run (void)
         fflush(stderr);
     }
 
+    // Write the guest buffer the program published, as ziskemu --dump-guest-buffer does
+    if ((dump_guest_buffer_file[0] != 0) && MEM_END && !MEM_ERROR)
+    {
+        dump_guest_buffer();
+    }
+
     // Complete output header data
     if ((gen_method == MinimalTrace) ||
         (gen_method == RomHistogram) ||
@@ -1354,6 +1361,47 @@ void server_run (void)
 // Dumps the whole ROM histogram output region (control header, instruction multiplicity and FROPS
 // multiplicity, see get_rom_histogram_trace_address() in core/src/zisk_rom_2_asm.rs) to
 // /tmp/<shm_prefix>_RH_output.bin, so it can be compared against the same tables computed in Rust.
+// The guest regions a dumped buffer may lie in, as in ziskemu's guest_buffer(): the stack,
+// [STACK_ADDR, SYS_ADDR), and the general RAM, [GENERAL_RAM_ADDR, RAM_ADDR + RAM_SIZE), above
+// the output (OUTPUT_MAX_SIZE = 128K), float lib (64K) and zisklib (192K) RAM. The values must
+// match core/src/mem.rs
+#define DUMP_STACK_ADDR       RAM_ADDR
+#define DUMP_GENERAL_RAM_ADDR (OUTPUT_ADDR + 0x20000 + 0x10000 + 0x30000)
+#define DUMP_RAM_END          (RAM_ADDR + RAM_SIZE)
+
+// Writes the buffer whose guest address and length are public output bytes 32..40 and 40..48 to
+// dump_guest_buffer_file. On an invalid range or a write error, reports it and leaves no file, so
+// the caller notices the missing output
+static void dump_guest_buffer (void)
+{
+    uint64_t * pOutput = (uint64_t *)OUTPUT_ADDR;
+    uint64_t ptr = pOutput[4];
+    uint64_t len = pOutput[5];
+    uint64_t end = ptr + len;
+    bool in_stack = (end >= ptr) && (ptr >= DUMP_STACK_ADDR) && (ptr < SYS_ADDR) && (end <= SYS_ADDR);
+    bool in_ram = (end >= ptr) && (ptr >= DUMP_GENERAL_RAM_ADDR) && (ptr < DUMP_RAM_END) && (end <= DUMP_RAM_END);
+    unlink(dump_guest_buffer_file);
+    if (!in_stack && !in_ram)
+    {
+        asm_printf("ERROR: dump_guest_buffer() buffer 0x%lx + %lu B is outside guest RAM\n", ptr, len);
+        return;
+    }
+    FILE * file = fopen(dump_guest_buffer_file, "wb");
+    if (file == NULL)
+    {
+        asm_printf("ERROR: dump_guest_buffer() failed calling fopen(%s) errno=%d=%s\n", dump_guest_buffer_file, errno, strerror(errno));
+        return;
+    }
+    size_t written = fwrite((void *)ptr, 1, len, file);
+    if ((fclose(file) != 0) || (written != len))
+    {
+        asm_printf("ERROR: dump_guest_buffer() failed writing %lu B to %s errno=%d=%s\n", len, dump_guest_buffer_file, errno, strerror(errno));
+        unlink(dump_guest_buffer_file);
+        return;
+    }
+    if (verbose) asm_printf("dump_guest_buffer() wrote 0x%lx + %lu B to %s\n", ptr, len, dump_guest_buffer_file);
+}
+
 static void save_rom_histogram_to_file (void)
 {
     char file_name[256];

@@ -18,6 +18,10 @@ members = [
   "primes/guest",
   "collatz/host",
   "collatz/guest",
+  "mlp/host",
+  "mlp/guest",
+  "llama2/host",
+  "llama2/guest",
   "recurser/l2/host",
   "recurser/hash/host",
   "utils"

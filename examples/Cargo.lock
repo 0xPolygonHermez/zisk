@@ -3048,6 +3048,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 
 [[package]]
+name = "llama2-common"
+version = "0.1.0"
+dependencies = [
+ "libm",
+ "zisk-definitions",
+]
+
+[[package]]
+name = "llama2-guest"
+version = "0.1.0"
+dependencies = [
+ "llama2-common",
+ "sha2 0.10.9",
+ "ziskos",
+]
+
+[[package]]
+name = "llama2-host"
+version = "0.1.0"
+dependencies = [
+ "llama2-common",
+ "sha2 0.10.9",
+ "zisk-sdk",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3148,6 +3174,26 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "mlp-common"
+version = "0.1.0"
+
+[[package]]
+name = "mlp-guest"
+version = "0.1.0"
+dependencies = [
+ "mlp-common",
+ "ziskos",
+]
+
+[[package]]
+name = "mlp-host"
+version = "0.1.0"
+dependencies = [
+ "mlp-common",
+ "zisk-sdk",
 ]
 
 [[package]]

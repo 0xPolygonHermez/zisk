@@ -40,6 +40,11 @@ pub struct EmuOptions {
     /// Sets the output data file path
     #[clap(short, long, value_name = "OUTPUT_FILE")]
     pub output: Option<String>,
+    /// After successful halt, write a buffer from the guest stack or general-purpose RAM to FILE.
+    /// Public output bytes 32..40 hold the little-endian u64 guest address. Bytes 40..48
+    /// hold the little-endian u64 byte length.
+    #[clap(long, value_name = "FILE")]
+    pub dump_guest_buffer: Option<String>,
     /// Sets the maximum number of steps to execute.  Default value is 1000000000.  Configured with
     /// `-n`.
     #[clap(short = 'n', long, value_name = "MAX_STEPS", default_value = DEFAULT_MAX_STEPS_STR)]
@@ -379,6 +384,7 @@ impl Default for EmuOptions {
             zisk: None,
             inputs: None,
             output: None,
+            dump_guest_buffer: None,
             max_steps: DEFAULT_MAX_STEPS,
             print_step: None,
             trace: None,

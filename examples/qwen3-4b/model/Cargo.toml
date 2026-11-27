@@ -1,0 +1,12 @@
+[package]
+name = "qwen-model"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+libm = "=0.2.16"
+sha2 = "0.10.9"
+
+[build-dependencies]
+libm = "=0.2.16"

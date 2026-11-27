@@ -22,6 +22,11 @@
 //! - [`syscall_poseidon2_koalabear`] — Poseidon2 permutation over KoalaBear, width 16
 //! - [`syscall_sha256_f`] — SHA-256 compression function
 //!
+//! ### Experimental (emulator only, cannot be proven yet)
+//! - [`syscall_dot_f8`] — Exact dot product of two int8, FP8 or FP4 vectors
+//! - [`syscall_dot_bf16`] — Exact dot product of two BF16 vectors, rounded once to `f32`
+//! - [`syscall_dot_bf16_fp4`] — The same with MXFP4 or NVFP4 weights
+//!
 //! ### Elliptic curve (secp256k1)
 //! - [`syscall_secp256k1_add`] — Point addition on secp256k1
 //! - [`syscall_secp256k1_dbl`] — Point doubling on secp256k1
@@ -61,6 +66,8 @@ mod bn254_complex_sub;
 mod bn254_curve_add;
 mod bn254_curve_dbl;
 mod complex;
+mod dot_bf16;
+mod dot_f8;
 mod ed25519_add;
 mod keccak_xor;
 mod keccakf;
@@ -93,6 +100,8 @@ pub use bn254_complex_sub::*;
 pub use bn254_curve_add::*;
 pub use bn254_curve_dbl::*;
 pub use complex::*;
+pub use dot_bf16::*;
+pub use dot_f8::*;
 pub use ed25519_add::*;
 pub use keccak_xor::*;
 pub use keccakf::*;
