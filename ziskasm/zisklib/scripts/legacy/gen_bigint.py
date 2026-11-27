@@ -293,7 +293,7 @@ w("bi_rs_setres:")
 raw("copyb(0, BI_REM) -> r10"); raw("copyb(0, BI_RS_RES) -> r11"); raw("copyb(r11, 8[a + 0]) -> r11"); raw("copyb(0, 4) -> r12"); raw("call bn254_memcpy")
 raw("pop r1"); raw("ret")
 w("bi_rs_bad:")
-raw("copyb(0, 0) -> r10, end"); w("")
+raw("halt(0, 0), j(0, 0), end"); w("")
 
 setf("modexp")
 # ---------- bin_decomp(exp r10, len_e_u64 r11) -> r10 = len_bits ; bits in BI_BITS ----------
@@ -355,7 +355,7 @@ raw("copyb(0, BI_RECEXP) -> r10"); raw("copyb(0, BI_EXPP) -> r11"); raw("copyb(r
 raw("copyb(0, BI_NBITS) -> r5"); raw("copyb(r5, 8[a + 0]) -> r10")
 raw("pop r1"); raw("ret")
 w("bi_bc_bad:")
-raw("copyb(0, 0) -> r10, end"); w("")
+raw("halt(0, 0), j(0, 0), end"); w("")
 
 # ---------- modexp_short(base r10, lenb_u256 r11, exp r12, lene_u64 r13, mod r14, result r15) ----------
 w("; void zisklib_modexp_short(const u64* base, u64 lenb_u256, const u64* exp, u64 lene, const u64* mod, u64* result)")
@@ -615,7 +615,7 @@ w("bi_rl_setres:")
 raw("copyb(0, BI_REM) -> r10"); raw("copyb(0, BI_RL_RES) -> r11"); raw("copyb(r11, 8[a + 0]) -> r11"); raw("copyb(0, BI_RL_RLEN) -> r12"); raw("copyb(r12, 8[a + 0]) -> r12"); raw("sll(r12, 2) -> r12"); raw("call bn254_memcpy")
 raw("copyb(0, BI_RL_RLEN) -> r5"); raw("copyb(r5, 8[a + 0]) -> r10"); raw("pop r1"); raw("ret")
 w("bi_rl_bad:")
-raw("copyb(0, 0) -> r10, end"); w("")
+raw("halt(0, 0), j(0, 0), end"); w("")
 
 setf("mul_long")
 # ---------- mul_and_reduce_long(a r10, lena r11, b r12, lenb r13, mod r14, lenm r15, out r16) -> r10 outlen ----------

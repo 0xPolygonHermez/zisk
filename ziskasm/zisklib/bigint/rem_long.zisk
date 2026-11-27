@@ -138,5 +138,5 @@ bi_rl_setres:
 	pop r1
 	ret
 bi_rl_bad:
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end
 

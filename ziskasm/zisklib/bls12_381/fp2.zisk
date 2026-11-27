@@ -122,7 +122,7 @@ lf2_inv_vfy:
 	dma_xmemcmp(BLS_F2_PROD, BLS_F2_ONE) -> r5, j(96, 4)
 	eq(r5, 0), j(lf2_inv_wr)
 lf2_inv_panic:
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end
 lf2_inv_wr:
 	dma_xmemcpy(r11, BLS_F2_INV) -> r5, j(96, 4)
 	ret
@@ -179,7 +179,7 @@ lf2_sq_qr:
 	dma_xmemcmp(BLS_F2_PROD, r10) -> r5, j(96, 4)
 	eq(r5, 0), j(lf2_sq_wr1)
 lf2_sq_panic:
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end
 ; Normalize to exactly 0/1: the verification above takes the QR branch only for a
 ; flag of exactly 1 and the non-QR branch (sqrt^2 == x*NQR) otherwise, so returning
 ; the raw hint word would let a prover-supplied 2 pass the non-QR check and still

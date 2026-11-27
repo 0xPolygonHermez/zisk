@@ -176,7 +176,7 @@ zuldm_ok:
 	ret
 
 zuld_panic:                             ; a hint that failed verification
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end
 
 ; zkvm_status zkvm_u256_le_sdiv(a, b, quotient) : signed a / b, toward zero;
 ; b == 0 -> 0. The signed routines run the unsigned check on |a| and |b| (a

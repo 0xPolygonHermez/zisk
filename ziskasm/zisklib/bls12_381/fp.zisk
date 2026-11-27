@@ -198,7 +198,7 @@ lfp_inv_wrl:
 lfp_inv_ret:
 	ret
 lfp_inv_panic:
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end
 
 ; u64 zisklib_sqrt_fp_bls12_381(const u64* x, u64* result)  [r10=x, r11=result]
 ;   -> r10 = 1 if x is a QR (result = sqrt), else 0 (result = sqrt of x·NQR).
@@ -331,4 +331,4 @@ lfp_sq_ret1:
 	pop r1
 	ret
 lfp_sq_panic:
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end

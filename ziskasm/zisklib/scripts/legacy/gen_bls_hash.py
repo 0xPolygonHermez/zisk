@@ -174,7 +174,7 @@ raw("jump(lh_em_loop)")
 w("lh_em_done:")
 raw("pop r1"); raw("ret"); w("")
 w("lh_em_toolong:")
-raw("copyb(0, 0) -> r10, end")   # halt: out-of-spec msg/dst length would overflow BLS_H_MSGP/DSTP
+raw("halt(0, 0), j(0, 0), end")   # halt: out-of-spec msg/dst length would overflow BLS_H_MSGP/DSTP
 w("")
 
 # ---------- hash_to_field_g2 (msg,msglen,dst,dstlen) -> BLS_H_U[24] ----------

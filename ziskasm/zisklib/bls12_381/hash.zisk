@@ -244,7 +244,7 @@ lh_em_done:
 	pop r1
 	ret
 lh_em_toolong:
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end
 
 ; void zisklib_hash_to_field_g2(msg,msglen,dst,dstlen) -> BLS_H_U[24] (2 Fp2)
 zisklib_hash_to_field_g2_bls12_381:

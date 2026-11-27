@@ -168,4 +168,4 @@ bfp_inv_wrl:
 bfp_inv_ret:
 	ret
 bfp_inv_panic:
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end

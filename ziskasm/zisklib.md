@@ -177,8 +177,9 @@ Two recurring shapes are worth knowing (both used throughout the `zisklib/uint25
 - **Hint-then-verify.** For results that are cheap to *check* but expensive to
   *compute* (division, inverses), an `fcall` supplies an untrusted answer that the
   routine then verifies with a precompile (e.g. `div_rem256` hints `(q, r)`, then
-  checks `q·b + r == a` and `r < b`); a bad hint halts via `copyb(...) , end`,
-  mirroring the reference `assert!`. **The fcall passthrough throwaway must target a
+  checks `q·b + r == a` and `r < b`); a bad hint exits via `halt(0, 0), j(0, 0), end`,
+  mirroring the reference `assert!`. The exit must be a `halt`: `end` alone stops only the
+  emulators, and in a proof the row would continue to the code after it. **The fcall passthrough throwaway must target a
   caller-saved register** (e.g. `r14`), never `r4` (`tp`), which is callee-saved.
 
 ### 2. Register it in the library — `ziskasm/src/zisklib.rs`
