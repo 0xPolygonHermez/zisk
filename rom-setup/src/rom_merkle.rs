@@ -6,6 +6,7 @@ use zisk_common::ProgramVK;
 use zisk_pil::RomRomTrace;
 use zisk_sm_rom::CustomRom;
 
+use crate::{cached_rom_digest, rom_cache_key, rom_trace_with_digest};
 use crate::{
     get_elf_data_hash, get_elf_vk, get_output_path, get_rom_bin_file_path,
     get_rom_verkey_file_path, rom_key, HashMode,
@@ -80,7 +81,15 @@ pub fn rom_merkle_setup<F: PrimeField64>(
     let output_path = get_output_path(output_dir)?;
 
     let elf_hash = get_elf_data_hash(elf);
-    let rom_key = rom_key(elf, hash_mode)?;
+    // The key needs the trace's digest; keep the trace if it is built for it, for a miss.
+    let (trace, digest) = match cached_rom_digest(elf) {
+        Some(digest) => (None, digest),
+        None => {
+            let (trace, digest) = rom_trace_with_digest::<F>(elf)?;
+            (Some(trace), digest)
+        }
+    };
+    let rom_key = rom_cache_key(&digest, hash_mode);
 
     let elf_bin_path =
         get_rom_bin_file_path(&output_path, &elf_hash, &rom_key, hash_mode, pctx.gpu);
@@ -108,7 +117,10 @@ pub fn rom_merkle_setup<F: PrimeField64>(
     }
 
     tracing::info!("Generating ROM setup {}", elf_bin_path.display());
-    let mut trace = CustomRom::build::<F>(elf).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let mut trace = match trace {
+        Some(trace) => trace,
+        None => CustomRom::build::<F>(elf).map_err(|e| anyhow::anyhow!(e.to_string()))?,
+    };
     let root = write_custom_commit_trace(
         pctx,
         &mut trace,
@@ -150,11 +162,14 @@ pub fn read_cached_verkey(
     Ok(Some(ProgramVK { vk, hash_mode }))
 }
 
-/// The error for a verkey not found under the key this build computes. When the cache holds
-/// one for the same ELF under another key, it was set up by a ZisK whose ROM differs from
-/// this one (another transpiler, ROM layout or proving key), and that verkey is not this
-/// build's.
-pub fn missing_verkey_error(elf_hash: &str, output_dir: &Option<PathBuf>) -> anyhow::Error {
+/// The error for a verkey not found under `rom_keys`, the keys this build computes. Verkeys
+/// cached for the same ELF under other keys are listed: they belong to another hash mode, or
+/// to a ZisK version whose ROM differs, and are not the one asked for.
+pub fn missing_verkey_error(
+    elf_hash: &str,
+    rom_keys: &[String],
+    output_dir: &Option<PathBuf>,
+) -> anyhow::Error {
     let prefix = format!("{elf_hash}_");
     let mut others: Vec<PathBuf> = get_output_path(output_dir)
         .and_then(|dir| Ok(std::fs::read_dir(dir)?))
@@ -171,12 +186,14 @@ pub fn missing_verkey_error(elf_hash: &str, output_dir: &Option<PathBuf>) -> any
         })
         .unwrap_or_default();
     others.sort();
+    let keys = rom_keys.join(", ");
     if others.is_empty() {
-        anyhow::anyhow!("ROM setup has not been performed yet for ELF {elf_hash}")
+        anyhow::anyhow!("ROM setup has not been performed yet for ELF {elf_hash} (ROM key {keys})")
     } else {
         anyhow::anyhow!(
-            "no verkey for ELF {elf_hash} from this ZisK version; the cached ones ({}) were set \
-             up by a version whose ROM differs. Run setup again",
+            "no verkey for ELF {elf_hash} under ROM key {keys}; the cache has it only under \
+             other keys ({}), from another hash mode or a ZisK version whose ROM differs. Run \
+             setup for this one",
             others.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")
         )
     }
@@ -194,7 +211,7 @@ pub fn rom_merkle_setup_verkey(
     let elf_hash = get_elf_data_hash(elf);
     let rom_key = rom_key(elf, hash_mode)?;
     read_cached_verkey(&elf_hash, &rom_key, output_dir, hash_mode)?
-        .ok_or_else(|| missing_verkey_error(&elf_hash, output_dir))
+        .ok_or_else(|| missing_verkey_error(&elf_hash, std::slice::from_ref(&rom_key), output_dir))
 }
 
 #[cfg(test)]
@@ -217,13 +234,14 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("rom-setup-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let out = Some(dir.clone());
-        let err = missing_verkey_error("abc", &out).to_string();
-        assert!(err.contains("has not been performed"), "{err}");
+        let keys = ["newkey".to_string()];
+        let err = missing_verkey_error("abc", &keys, &out).to_string();
+        assert!(err.contains("has not been performed") && err.contains("newkey"), "{err}");
 
         let stale = get_rom_verkey_file_path(&dir, "abc", "oldkey", HashMode::Poseidon2);
         std::fs::write(&stale, [0u8; 32]).unwrap();
-        let err = missing_verkey_error("abc", &out).to_string();
-        assert!(err.contains("oldkey") && err.contains("Run setup again"), "{err}");
+        let err = missing_verkey_error("abc", &keys, &out).to_string();
+        assert!(err.contains("oldkey") && err.contains("other keys"), "{err}");
         assert!(read_cached_verkey("abc", "newkey", &out, HashMode::Poseidon2).unwrap().is_none());
 
         std::fs::remove_dir_all(&dir).unwrap();

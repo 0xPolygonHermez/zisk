@@ -173,18 +173,23 @@ impl GuestProgram {
     /// mode. Remote setup writes one file per mode, tagged with it, so a single match is
     /// unambiguous and several are not.
     fn vk_from_cache(&self) -> Result<ProgramVK> {
-        // `?`, not `.ok()`: corruption must not pass as absence and fake a single match.
-        let mut found: Vec<ProgramVK> = HashMode::ALL
+        let keys: Vec<(HashMode, String)> = HashMode::ALL
             .iter()
-            .filter_map(|&mode| {
-                self.rom_key(mode)
-                    .and_then(|key| read_cached_verkey(self.hash(), &key, &None, mode))
-                    .transpose()
+            .map(|&mode| Ok((mode, self.rom_key(mode)?)))
+            .collect::<Result<_>>()?;
+        // `?`, not `.ok()`: corruption must not pass as absence and fake a single match.
+        let mut found: Vec<ProgramVK> = keys
+            .iter()
+            .filter_map(|(mode, key)| {
+                read_cached_verkey(self.hash(), key, &None, *mode).transpose()
             })
             .collect::<Result<_>>()?;
         match found.len() {
             1 => Ok(found.remove(0)),
-            0 => Err(missing_verkey_error(self.hash(), &None)),
+            0 => {
+                let keys: Vec<String> = keys.into_iter().map(|(_, key)| key).collect();
+                Err(missing_verkey_error(self.hash(), &keys, &None))
+            }
             _ => Err(anyhow::anyhow!(
                 "cached verkeys for program {} under several hash families ({}); call \
                  vk_with_mode to name the one the proofs came from",
