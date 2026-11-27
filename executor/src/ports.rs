@@ -145,8 +145,8 @@ pub trait ProofRegistry: Dctx {
 
     /// Writes public-output values into the proof context's publics.
     /// Each entry is `(index, value32)`; the adapter handles any
-    /// field-specific conversion (e.g. `F::from_u32`). The indexes come from the guest.
-    fn write_pub_outs(&self, pub_outs: &[(u64, u32)]) -> ExecutorResult<()>;
+    /// field-specific conversion (e.g. `F::from_u32`).
+    fn write_pub_outs(&self, pub_outs: &[(u64, u32)]);
 
     /// Per-`(airgroup_id, air_id)` count of instances registered during planning.
     /// Used to build the execution plan summary. Defaults to empty for registries
@@ -288,9 +288,8 @@ pub(crate) mod fakes {
         fn set_chunks(&self, gid: GlobalId, chunks: &[usize], is_memory_related: bool) {
             self.set_chunks_calls.borrow_mut().push((gid, chunks.to_vec(), is_memory_related));
         }
-        fn write_pub_outs(&self, pub_outs: &[(u64, u32)]) -> ExecutorResult<()> {
+        fn write_pub_outs(&self, pub_outs: &[(u64, u32)]) {
             self.pub_outs.borrow_mut().extend_from_slice(pub_outs);
-            Ok(())
         }
     }
 }
@@ -378,8 +377,8 @@ mod tests {
     #[test]
     fn fake_registry_accumulates_pub_outs() {
         let reg = FakeProofRegistry::new();
-        reg.write_pub_outs(&[(0, 0xAA), (1, 0xBB)]).unwrap();
-        reg.write_pub_outs(&[(2, 0xCC)]).unwrap();
+        reg.write_pub_outs(&[(0, 0xAA), (1, 0xBB)]);
+        reg.write_pub_outs(&[(2, 0xCC)]);
         assert_eq!(*reg.pub_outs.borrow(), vec![(0, 0xAA), (1, 0xBB), (2, 0xCC)]);
     }
 }

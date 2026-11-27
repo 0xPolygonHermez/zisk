@@ -366,12 +366,14 @@ impl<S: StreamSink> HintsProcessor<S> {
                 }
                 HintCode::Ctrl(CtrlHint::Cancel) => {
                     // Cancel current stream: set error and notify
+                    let _queue = self.state.queue.lock().unwrap(); // a waiting producer can't miss it
                     self.state.error_flag.store(true, Ordering::Release);
                     self.state.drain_signal.notify_all();
                     return Err(anyhow::anyhow!("Stream cancelled"));
                 }
                 HintCode::Ctrl(CtrlHint::Error) => {
                     // External error signal
+                    let _queue = self.state.queue.lock().unwrap(); // a waiting producer can't miss it
                     self.state.error_flag.store(true, Ordering::Release);
                     self.state.drain_signal.notify_all();
                     return Err(anyhow::anyhow!("Stream error signalled"));

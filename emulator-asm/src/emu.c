@@ -814,12 +814,13 @@ extern int _opcode_poseidon2(uint64_t address)
 #endif
 #endif
 
+    require_canonical_lanes(address, "poseidon2");
+
 #ifdef ASM_PRECOMPILE_CACHE
     if (precompile_cache_storing)
     {
 #endif
         // Call poseidon2 compression function
-        require_canonical_lanes(address, "poseidon2");
         poseidon2_hash((uint64_t *)address);
 
 #ifdef ASM_PRECOMPILE_CACHE
@@ -851,12 +852,13 @@ extern int _opcode_poseidon1(uint64_t address)
 #endif
 #endif
 
+    require_canonical_lanes(address, "poseidon1");
+
 #ifdef ASM_PRECOMPILE_CACHE
     if (precompile_cache_storing)
     {
 #endif
         // Call poseidon1 compression function
-        require_canonical_lanes(address, "poseidon1");
         poseidon1_hash((uint64_t *)address);
 
 #ifdef ASM_PRECOMPILE_CACHE

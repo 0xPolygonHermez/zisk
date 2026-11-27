@@ -93,7 +93,10 @@ impl VerifyCmd {
             };
 
         let program_vk = match &self.program_vk {
-            Some(s) => Some(ProgramVK { vk: serde_json::from_str(s)?, hash_mode: proof.program_vk.hash_mode }),
+            Some(s) => Some(ProgramVK {
+                vk: serde_json::from_str(s)?,
+                hash_mode: proof.program_vk.hash_mode,
+            }),
             None => None,
         };
         let mut builder = proof.verify_builder();
@@ -132,7 +135,10 @@ impl VerifyCmd {
         tracing::info!("{}", "--- VERIFICATION SUMMARY ---".bright_green().bold());
         if result.is_ok() {
             let pinned = if program_vk.is_some() { "pinned" } else { "NOT pinned" };
-            tracing::info!("   program: {:?} ({pinned})", program_vk.unwrap_or_else(|| proof.get_program_vk()).vk);
+            tracing::info!(
+                "   program: {:?} ({pinned})",
+                program_vk.unwrap_or_else(|| proof.get_program_vk()).vk
+            );
         }
         tracing::info!("      time: {} milliseconds", elapsed.as_millis());
         tracing::info!("{}", "----------------------------".bright_green().bold());

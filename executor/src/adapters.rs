@@ -13,7 +13,7 @@ use zisk_pil::{
     ZISK_AIRGROUP_ID,
 };
 
-use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
+use crate::error::{ExecutorResult, RwLockExt};
 use crate::ports::{Dctx, GlobalId, InstanceInfo, ProofRegistry};
 use crate::state::ExecutionState;
 
@@ -174,15 +174,11 @@ impl<F: PrimeField64> ProofRegistry for ProofmanAdapter<'_, F> {
         self.pctx.dctx_set_chunks(gid.0, chunks.to_vec(), is_memory_related);
     }
 
-    fn write_pub_outs(&self, pub_outs: &[(u64, u32)]) -> ExecutorResult<()> {
+    fn write_pub_outs(&self, pub_outs: &[(u64, u32)]) {
         let mut publics = ZiskPublicValues::from_vec_guard(self.pctx.get_publics());
         for &(index, value) in pub_outs {
-            let slot = publics.inputs.get_mut(index as usize).ok_or_else(|| {
-                ExecutorError::Internal(format!("public output index {index} past the public inputs"))
-            })?;
-            *slot = F::from_u32(value);
+            publics.inputs[index as usize] = F::from_u32(value);
         }
-        Ok(())
     }
 }
 
@@ -254,9 +250,8 @@ impl ProofRegistry for NoopProofRegistry {
         Ok(GlobalId(0))
     }
     fn set_chunks(&self, _gid: GlobalId, _chunks: &[usize], _is_memory_related: bool) {}
-    fn write_pub_outs(&self, pub_outs: &[(u64, u32)]) -> ExecutorResult<()> {
+    fn write_pub_outs(&self, pub_outs: &[(u64, u32)]) {
         self.pub_outs.lock().expect("pub_outs mutex").extend_from_slice(pub_outs);
-        Ok(())
     }
     fn instance_counts(&self) -> std::collections::HashMap<(usize, usize), usize> {
         self.instance_counts.lock().expect("instance_counts mutex").clone()

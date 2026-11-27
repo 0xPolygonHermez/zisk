@@ -5,6 +5,8 @@
 use zisk_common::{A, B, OP_TYPE};
 use zisk_core::ZiskOperationType;
 
+use crate::error::{ExecutorError, ExecutorResult};
+
 const MAX_PUBOUTS: usize = 64; // Maximum number of public outputs.
 
 /// Public outputs accumulated, one `(index, value32)` pair per low/high half of each `PubOut`.
@@ -39,6 +41,16 @@ impl PubOutsCollector {
 
         self.0.push((pub_index, (pub_value & 0xFFFFFFFF) as u32));
         self.0.push((pub_index + 1, ((pub_value >> 32) & 0xFFFFFFFF) as u32));
+    }
+
+    /// Fails on an index past the public inputs: the index comes from the guest.
+    pub fn check_indexes(&self) -> ExecutorResult<()> {
+        match self.0.iter().find(|&&(index, _)| index >= MAX_PUBOUTS as u64) {
+            Some(&(index, _)) => Err(ExecutorError::Internal(format!(
+                "public output index {index} past the {MAX_PUBOUTS} public inputs"
+            ))),
+            None => Ok(()),
+        }
     }
 }
 
@@ -119,5 +131,14 @@ mod tests {
         assert_eq!(coll.0[1], (1, 0));
         assert_eq!(coll.0[2], (2, 0));
         assert_eq!(coll.0[3], (3, 0xBB));
+    }
+
+    #[test]
+    fn check_indexes_rejects_an_index_past_the_public_inputs() {
+        let mut coll = PubOutsCollector::new();
+        coll.process_data(&pubout_data(31, 0)); // indexes 62, 63: the last two
+        assert!(coll.check_indexes().is_ok());
+        coll.process_data(&pubout_data(32, 0)); // indexes 64, 65
+        assert!(coll.check_indexes().is_err());
     }
 }
