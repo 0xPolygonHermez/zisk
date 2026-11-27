@@ -21,6 +21,9 @@ use zisk_common::{
 
 use crate::hint_handlers::HintHandlers;
 
+/// Most hints dispatched and not yet drained; `process_hints` waits at this many.
+const MAX_PENDING_HINTS: usize = 1024;
+
 /// Ordered result buffer with drain state.
 ///
 /// This structure maintains a VecDeque that holds processed results in order,
@@ -404,6 +407,13 @@ impl<S: StreamSink> HintsProcessor<S> {
             // Atomically reserve slot - use Relaxed for seq since mutex provides ordering
             let seq_id = {
                 let mut queue = self.state.queue.lock().unwrap();
+                // Backpressure: an untrusted stream faster than its sink must not grow the buffer.
+                while queue.buffer.len() >= MAX_PENDING_HINTS {
+                    if self.state.error_flag.load(Ordering::Acquire) {
+                        return Err(anyhow::anyhow!("Processing stopped due to previous error"));
+                    }
+                    queue = self.state.drain_signal.wait(queue).unwrap();
+                }
                 let seq = self.state.next_seq.fetch_add(1, Ordering::Relaxed);
 
                 // Handle pass-through hints immediately
@@ -588,6 +598,7 @@ impl<S: StreamSink> HintsProcessor<S> {
 
                         if let Err(e) = hints_sink.submit(&data_to_submit) {
                             tracing::error!("Error submitting to sink: {e}");
+                            let _queue = state.queue.lock().unwrap(); // a waiting producer can't miss it
                             state.error_flag.store(true, Ordering::Release);
                             state.drain_signal.notify_all();
                         } else if let Some(broadcast_fn) = &mpi_broadcast_fn {
