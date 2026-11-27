@@ -262,6 +262,9 @@ impl<S: StreamSink> HintsProcessor<S> {
     /// * `Err` - If a previous error occurred or hints are malformed
     pub fn process_hints(&self, hints: &[u64], first_batch: bool) -> Result<bool> {
         let mut has_ctrl_end = false;
+        // The stream this batch belongs to: a reset during the call ends it, it must not carry on
+        // into the next stream.
+        let generation = self.state.generation.load(Ordering::SeqCst);
 
         // Take any pending partial hint from previous batch
         let mut pending_partial = self.pending_partial.lock().unwrap().take();
@@ -272,6 +275,9 @@ impl<S: StreamSink> HintsProcessor<S> {
             // Check for error before processing each hint
             if self.state.error_flag.load(Ordering::Acquire) {
                 return Err(anyhow::anyhow!("Processing stopped due to previous error"));
+            }
+            if self.state.generation.load(Ordering::SeqCst) != generation {
+                return Err(anyhow::anyhow!("Hint stream reset while processing"));
             }
             let (parsed_hint, consumed) =
                 PrecompileHint::from_u64_slice(hints, idx, true, pending_partial.take())?;
@@ -406,8 +412,6 @@ impl<S: StreamSink> HintsProcessor<S> {
                 continue;
             }
 
-            let generation = self.state.generation.load(Ordering::SeqCst);
-
             // Atomically reserve slot - use Relaxed for seq since mutex provides ordering
             let seq_id = {
                 let mut queue = self.state.queue.lock().unwrap();
@@ -418,7 +422,8 @@ impl<S: StreamSink> HintsProcessor<S> {
                     }
                     queue = self.state.drain_signal.wait(queue).unwrap();
                 }
-                // A reset empties the buffer, ending the wait: this hint belongs to the old stream.
+                // Again under the lock: a reset during the wait (or since the check above) empties the
+                // buffer, so the wait alone would not notice it.
                 if self.state.generation.load(Ordering::SeqCst) != generation {
                     return Err(anyhow::anyhow!("Hint stream reset while processing"));
                 }
