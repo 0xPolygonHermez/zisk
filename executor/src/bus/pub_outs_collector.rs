@@ -36,11 +36,12 @@ impl PubOutsCollector {
             return;
         }
 
-        let pub_index = data[A] << 1;
+        // Saturating: a guest index that overflows must stay out of range for `check_indexes`.
+        let pub_index = data[A].saturating_mul(2);
         let pub_value = data[B];
 
         self.0.push((pub_index, (pub_value & 0xFFFFFFFF) as u32));
-        self.0.push((pub_index + 1, ((pub_value >> 32) & 0xFFFFFFFF) as u32));
+        self.0.push((pub_index.saturating_add(1), ((pub_value >> 32) & 0xFFFFFFFF) as u32));
     }
 
     /// Fails on an index past the public inputs: the index comes from the guest.
@@ -140,5 +141,9 @@ mod tests {
         assert!(coll.check_indexes().is_ok());
         coll.process_data(&pubout_data(32, 0)); // indexes 64, 65
         assert!(coll.check_indexes().is_err());
+
+        let mut wrapping = PubOutsCollector::new();
+        wrapping.process_data(&pubout_data(1 << 63, 0)); // would wrap to 0 with a plain shift
+        assert!(wrapping.check_indexes().is_err());
     }
 }

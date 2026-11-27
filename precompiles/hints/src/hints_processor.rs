@@ -64,12 +64,14 @@ impl HintProcessorState {
     }
 
     fn reset(&self) {
+        // Under the queue lock, so a producer parked on a full buffer sees the new generation.
+        let mut queue = self.queue.lock().unwrap();
         self.error_flag.store(false, Ordering::Release);
         self.next_seq.store(0, Ordering::Relaxed);
         self.generation.fetch_add(1, Ordering::SeqCst);
-        let mut queue = self.queue.lock().unwrap();
         queue.buffer.clear();
         queue.next_drain_seq = 0;
+        self.drain_signal.notify_all();
     }
 }
 
@@ -415,6 +417,10 @@ impl<S: StreamSink> HintsProcessor<S> {
                         return Err(anyhow::anyhow!("Processing stopped due to previous error"));
                     }
                     queue = self.state.drain_signal.wait(queue).unwrap();
+                }
+                // A reset empties the buffer, ending the wait: this hint belongs to the old stream.
+                if self.state.generation.load(Ordering::SeqCst) != generation {
+                    return Err(anyhow::anyhow!("Hint stream reset while processing"));
                 }
                 let seq = self.state.next_seq.fetch_add(1, Ordering::Relaxed);
 
@@ -1016,6 +1022,61 @@ mod tests {
         assert_eq!(received.len(), 2);
         assert_eq!(received[0], vec![0xAAA, 0xBBB]);
         assert_eq!(received[1], vec![0xCCC]);
+    }
+
+    #[test]
+    fn test_reset_wakes_a_producer_parked_on_a_full_buffer() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        use std::time::{Duration, Instant};
+
+        /// Blocks every submit until opened, so the buffer fills up behind the first one.
+        struct GatedSink {
+            open: Arc<AtomicBool>,
+        }
+
+        impl StreamSink for GatedSink {
+            fn submit(&self, _processed: &[u64]) -> Result<(), StreamError> {
+                while !self.open.load(Ordering::Acquire) {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                Ok(())
+            }
+        }
+
+        let open = Arc::new(AtomicBool::new(false));
+        let sink = GatedSink { open: Arc::clone(&open) };
+        let p = Arc::new(
+            HintsProcessor::builder(Arc::new(sink), None::<Arc<GatedSink>>)
+                .num_threads(2)
+                .build()
+                .unwrap(),
+        );
+
+        let mut data = Vec::new();
+        for i in 0..(MAX_PENDING_HINTS as u64 + 8) {
+            data.push(make_header(TEST_PASSTHROUGH_HINT, 8));
+            data.push(i);
+        }
+        let producer = {
+            let p = Arc::clone(&p);
+            std::thread::spawn(move || p.process_hints(&data, false))
+        };
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while p.state.queue.lock().unwrap().buffer.len() < MAX_PENDING_HINTS {
+            assert!(Instant::now() < deadline, "the buffer never filled up");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        p.reset_state();
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !producer.is_finished() {
+            assert!(Instant::now() < deadline, "the producer stayed parked after the reset");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        open.store(true, Ordering::Release);
+        assert!(producer.join().unwrap().is_err(), "a hint of the old stream must not be queued");
     }
 
     #[test]
