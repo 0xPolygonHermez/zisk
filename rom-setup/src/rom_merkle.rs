@@ -6,11 +6,11 @@ use zisk_common::ProgramVK;
 use zisk_pil::RomRomTrace;
 use zisk_sm_rom::CustomRom;
 
-use crate::{cached_rom_digest, rom_cache_key, rom_trace_with_digest};
 use crate::{
     get_elf_data_hash, get_elf_vk, get_output_path, get_rom_bin_file_path,
     get_rom_verkey_file_path, rom_key, HashMode,
 };
+use crate::{rom_cache_key, rom_digest_and_trace};
 
 /// A program's ROM setup.
 #[derive(Debug, Clone)]
@@ -81,14 +81,8 @@ pub fn rom_merkle_setup<F: PrimeField64>(
     let output_path = get_output_path(output_dir)?;
 
     let elf_hash = get_elf_data_hash(elf);
-    // The key needs the trace's digest; keep the trace if it is built for it, for a miss.
-    let (trace, digest) = match cached_rom_digest(elf) {
-        Some(digest) => (None, digest),
-        None => {
-            let (trace, digest) = rom_trace_with_digest::<F>(elf)?;
-            (Some(trace), digest)
-        }
-    };
+    // The key needs the trace's digest; a trace built for it is kept for a miss.
+    let (digest, trace) = rom_digest_and_trace::<F>(elf)?;
     let rom_key = rom_cache_key(&digest, hash_mode);
 
     let elf_bin_path =

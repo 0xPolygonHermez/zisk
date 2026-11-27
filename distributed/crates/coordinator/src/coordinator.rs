@@ -3527,6 +3527,51 @@ mod tests {
         assert_eq!(active.rom_key, recorded.rom_key);
     }
 
+    /// A setup replayed to a registering or reconnecting worker has a job id no
+    /// `setup_pending` entry tracks; its ack is checked against the cluster's record all
+    /// the same, and a mismatched worker is not made `Ready`.
+    #[tokio::test]
+    async fn test_replayed_setup_ack_rejects_mismatch() {
+        use crate::test_utils::register_test_worker;
+
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        let hash_id = coordinator.register_guest_program(b"replay-elf".to_vec()).unwrap();
+        coordinator.active_setups.write().await.insert(
+            SetupKey::new(hash_id.clone(), true, false),
+            ActiveSetup {
+                program_name: "p".into(),
+                vk: vec![1],
+                hash_mode: "Poseidon1".into(),
+                rom_key: "k".into(),
+            },
+        );
+        let (worker_id, _msgs) = register_test_worker(&coordinator.workers_pool, "w").await;
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(&worker_id, WorkerState::SettingUp)
+            .await
+            .unwrap();
+
+        coordinator
+            .handle_stream_setup_program_ack(zisk_cluster_common::SetupProgramAckDto {
+                job_id: JobId::new().as_string(),
+                worker_id: worker_id.clone(),
+                hash_id,
+                success: true,
+                error_message: None,
+                vk: vec![1],
+                hash_mode: "Poseidon1".into(),
+                rom_key: "other".into(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&worker_id).await,
+            Some(WorkerState::Idle)
+        );
+    }
+
     /// Back-fill must refuse while a worker is `Computing`: flipping an Idle
     /// worker to `SettingUp` during a running job would break the invariant
     /// (enforced by `setup_program`) that setup never overlaps computation.

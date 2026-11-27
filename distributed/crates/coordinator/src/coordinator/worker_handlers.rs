@@ -40,23 +40,15 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = JobId::from(ack.job_id.clone());
 
-        // A back-filled worker joins a program the cluster already set up: its setup must
-        // match the recorded one, or it would prove under another VK. One that does not is
-        // treated as a failed setup.
-        let mismatch = ack.success && {
-            let key = self
-                .setup_pending
-                .read()
-                .await
-                .get(&job_id)
-                .map(|s| SetupKey::new(s.hash_id.clone(), s.with_hints, s.emulator_only));
-            match key {
-                Some(key) => self.active_setups.read().await.get(&key).is_some_and(|a| {
-                    a.vk != ack.vk || a.hash_mode != ack.hash_mode || a.rom_key != ack.rom_key
-                }),
-                None => false,
-            }
-        };
+        // A worker setting up a program the cluster already set up (back-filled, registering
+        // or reconnecting) must match the recorded setup, or it would prove under another VK;
+        // one that does not is treated as a failed setup. The VK and ROM key do not depend on
+        // the hints or emulator-only mode, so any record of the program will do.
+        let mismatch = ack.success
+            && self.active_setups.read().await.iter().any(|(key, a)| {
+                key.hash_id == ack.hash_id
+                    && (a.vk != ack.vk || a.hash_mode != ack.hash_mode || a.rom_key != ack.rom_key)
+            });
         if mismatch {
             error!(
                 "[Setup] Worker {} set up hash_id {} under another VK or ROM key than the \

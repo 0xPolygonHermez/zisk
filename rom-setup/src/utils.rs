@@ -5,7 +5,7 @@ use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use zisk_common::{ZiskPaths, PROGRAM_VK_LEN};
 use zisk_core::{MAX_INPUT_SIZE, RAM_SIZE};
 use zisk_pil::{RomRomTrace, PILOUT_HASH};
@@ -35,19 +35,21 @@ pub fn get_output_path(output_dir: &Option<PathBuf>) -> Result<PathBuf> {
 /// blake3 digest of a ROM custom-commit trace: the exact data the verkey commits to.
 type RomDigest = [u8; 32];
 
-/// Digests of the ROM traces built in this process, by ELF hash. Building one transpiles the
-/// ELF, so each ELF's is computed once.
-static DIGESTS: LazyLock<Mutex<HashMap<String, RomDigest>>> = LazyLock::new(Default::default);
+/// Digests of the ROM traces built in this process, one slot per ELF hash. Building one
+/// transpiles the ELF; a slot's lock is held while it does, so each ELF's is built once.
+type DigestSlot = Arc<Mutex<Option<RomDigest>>>;
+static DIGESTS: LazyLock<Mutex<HashMap<String, DigestSlot>>> = LazyLock::new(Default::default);
 
-/// The digest of `elf`'s ROM trace, if this process has built it.
-pub(crate) fn cached_rom_digest(elf: &[u8]) -> Option<RomDigest> {
-    DIGESTS.lock().unwrap().get(&get_elf_data_hash(elf)).copied()
-}
-
-/// Build `elf`'s ROM trace and its digest (over the canonical values of its elements).
-pub(crate) fn rom_trace_with_digest<F: PrimeField64>(
+/// `elf`'s ROM digest (over the canonical values of the trace's elements), with the trace when
+/// this call is the one that built it.
+pub(crate) fn rom_digest_and_trace<F: PrimeField64>(
     elf: &[u8],
-) -> Result<(RomRomTrace<F>, RomDigest)> {
+) -> Result<(RomDigest, Option<RomRomTrace<F>>)> {
+    let slot = DIGESTS.lock().unwrap().entry(get_elf_data_hash(elf)).or_default().clone();
+    let mut slot = slot.lock().unwrap();
+    if let Some(digest) = *slot {
+        return Ok((digest, None));
+    }
     let mut trace = CustomRom::build::<F>(elf).map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let buffer = trace.get_buffer::<F>();
     let mut hasher = blake3::Hasher::new();
@@ -57,16 +59,13 @@ pub(crate) fn rom_trace_with_digest<F: PrimeField64>(
         hasher.update(&bytes);
     }
     let digest = *hasher.finalize().as_bytes();
-    DIGESTS.lock().unwrap().insert(get_elf_data_hash(elf), digest);
+    *slot = Some(digest);
     let trace = RomRomTrace::new_from_vec(buffer).map_err(|e| anyhow::anyhow!("{e}"))?;
-    Ok((trace, digest))
+    Ok((digest, Some(trace)))
 }
 
 fn rom_digest(elf: &[u8]) -> Result<RomDigest> {
-    match cached_rom_digest(elf) {
-        Some(digest) => Ok(digest),
-        None => Ok(rom_trace_with_digest::<Goldilocks>(elf)?.1),
-    }
+    Ok(rom_digest_and_trace::<Goldilocks>(elf)?.0)
 }
 
 /// Cache key of `elf`'s ROM custom commit and verkey under `hash_mode`.
