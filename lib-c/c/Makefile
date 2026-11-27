@@ -245,7 +245,7 @@ $(BUILD_DIR)/add256.o: $(SRC_DIR)/bigint/add256.cpp $(SRC_DIR)/bigint/add256.hpp
 $(BUILD_DIR)/globals.o: $(SRC_DIR)/common/globals.cpp $(SRC_DIR)/common/globals.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
-$(BUILD_DIR)/goldilocks_base_field.o: $(SRC_DIR)/poseidon2/goldilocks_base_field.cpp $(SRC_DIR)/poseidon2/goldilocks_base_field.hpp | $(BUILD_DIR)
+$(BUILD_DIR)/goldilocks_base_field.o: $(SRC_DIR)/poseidon2/goldilocks_base_field.cpp $(SRC_DIR)/poseidon2/goldilocks_base_field.hpp $(SRC_DIR)/poseidon2/goldilocks_prime.h | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/poseidon2_goldilocks.o: $(SRC_DIR)/poseidon2/poseidon2_goldilocks.cpp $(SRC_DIR)/poseidon2/poseidon2_goldilocks.hpp $(SRC_DIR)/poseidon2/poseidon2_goldilocks_constants.hpp | $(BUILD_DIR)
