@@ -395,6 +395,20 @@ zisklib_modexp_u64_c:
 	ltu(132, r11), j(bi_bc_bad)
 	ltu(132, r13), j(bi_bc_bad)
 	ltu(132, r15), j(bi_bc_bad)
+	; Drop the modulus' leading zero words (keeping one): the cores compare lengths
+	; first, so a zero-padded modulus would let an unreduced remainder hint pass.
+bi_dp_tm:
+	ltu(1, r15), j(bi_dp_tm1)
+	jump(bi_dp_tmd)
+bi_dp_tm1:
+	sub(r15, 1) -> r5
+	sll(r5, 3) -> r5
+	add(r14, r5) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	ltu(0, r5), j(bi_dp_tmd)
+	sub(r15, 1) -> r15
+	jump(bi_dp_tm)
+bi_dp_tmd:
 	copyb(0, BI_APTR) -> r5
 	copyb(r5, r10) -> 8[a + 0]
 	copyb(0, BI_LEN) -> r5

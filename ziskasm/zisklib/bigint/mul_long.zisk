@@ -94,9 +94,15 @@ bi_mll_nocarry:
 	copyb(r7, r17) -> 8[a + 24]
 	jump(bi_mll_i)
 bi_mll_id:
-	; out_len = lena + lenb, less one if the top digit (at r14 + (lenb-1)*32) is zero
+	; out_len = lena + lenb less every zero top digit, keeping one: a zero product
+	; must come back as one digit, the form modexp's zero test checks
 	sub(r15, r12) -> r6
-	add(r14, r6) -> r14
+	add(r14, r6) -> r14                 ; r14 = &out[lena+lenb-1]
+	copyb(0, BI_LEN) -> r6
+	copyb(r6, 8[a + 0]) -> r10
+bi_mll_trim:
+	copyb(0, 1) -> r6
+	eq(r10, r6), j(bi_mll_ret)
 	copyb(r14, 8[a + 0]) -> r5
 	copyb(r14, 8[a + 8]) -> r7
 	or(r5, r7) -> r5
@@ -104,10 +110,10 @@ bi_mll_id:
 	or(r5, r7) -> r5
 	copyb(r14, 8[a + 24]) -> r7
 	or(r5, r7) -> r5
-	copyb(0, BI_LEN) -> r6
-	copyb(r6, 8[a + 0]) -> r10
 	ltu(0, r5), j(bi_mll_ret)
 	sub(r10, 1) -> r10
+	sub(r14, 32) -> r14
+	jump(bi_mll_trim)
 bi_mll_ret:
 	ret
 

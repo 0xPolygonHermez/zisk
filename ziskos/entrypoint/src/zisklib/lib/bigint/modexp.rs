@@ -313,6 +313,8 @@ pub(crate) unsafe fn modexp_bytes_c(
 /// # Safety
 /// - `base_ptr` points to `base_len` u64s (little-endian), `base_len` non-zero
 /// - `exp_ptr` points to `exp_len` u64s (little-endian), `exp_len` non-zero
+/// - `base` has no leading zero words (zero is one word), or the call may panic; `exp` and
+///   the modulus may have them
 /// - `modulus_ptr` points to `modulus_len` u64s (little-endian)
 /// - `result_ptr` points to a writable region of at least `modulus_len` u64s
 ///
@@ -352,6 +354,9 @@ pub unsafe extern "C" fn modexp_u64_c(
 
     let base = U256::flat_to_slice(&base_padded);
     let modulus = U256::flat_to_slice(&modulus_padded);
+    // Drop the modulus' leading zero limbs (keeping one): the division checks compare lengths
+    // first, so a zero-padded modulus would let an unreduced remainder hint pass.
+    let modulus = &modulus[..modulus.iter().rposition(|l| !l.is_zero()).map_or(1, |top| top + 1)];
 
     let result_u256 = modexp(
         base,

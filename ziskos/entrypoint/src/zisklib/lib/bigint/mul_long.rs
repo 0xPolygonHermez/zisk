@@ -154,11 +154,13 @@ pub fn mul_long(
         out[i + len_b] = U256::from_u64s(params_arith.dh);
     }
 
-    if out[len_a + len_b - 1].is_zero() {
-        len_a + len_b - 1
-    } else {
-        len_a + len_b
+    // Drop the leading zero limbs: at most one for non-zero operands, all but one when an operand is
+    // zero. Callers test zero on a single limb (`modexp_long`), so `[0, 0]` would pass for non-zero.
+    let mut len = len_a + len_b;
+    while len > 1 && out[len - 1].is_zero() {
+        len -= 1;
     }
+    len
 }
 
 /// Multiplies two large numbers and reduces modulo a large modulus: out = (a · b) mod modulus

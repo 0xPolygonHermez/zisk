@@ -2,7 +2,7 @@
 //! the one-limb (short) and multi-limb (long) modulus paths.
 
 use num_bigint::BigUint;
-use ziskos::zisklib::{modexp, U256};
+use ziskos::zisklib::{modexp, modexp_u64_c, U256};
 
 /// A splitmix64 stream, so the cases are the same on every run.
 struct Rng(u64);
@@ -105,4 +105,27 @@ fn modexp_matches_num_bigint_on_edge_cases() {
             }
         }
     }
+    // The running value reaches zero before the last exponent bit: the product must come back as
+    // one zero limb, not [0, 0], or the next squaring's honest division hint fails.
+    check(&two_to(260), &BigUint::from(7u32), &two_to(300));
+}
+
+/// A modulus with leading zero words gets the result its value calls for.
+#[test]
+fn modexp_u64_c_takes_a_zero_padded_modulus() {
+    // 10^3 mod 7, the modulus given as 8 words: an unreduced 1000 must not come back.
+    let mut out = [u64::MAX; 8];
+    let written = unsafe {
+        modexp_u64_c(
+            [10u64].as_ptr(),
+            1,
+            [3u64].as_ptr(),
+            1,
+            [7u64, 0, 0, 0, 0, 0, 0, 0].as_ptr(),
+            8,
+            out.as_mut_ptr(),
+        )
+    };
+    assert_eq!(written, 8);
+    assert_eq!(out, [6, 0, 0, 0, 0, 0, 0, 0]);
 }

@@ -842,7 +842,8 @@ pub const MODEXP_MAX_LIMBS: usize = 132;
 /// to `result` and returns the number of limbs written (edge cases and single-U256
 /// moduli return 4; larger moduli return `ceil(modulus_len/4) * 4`).
 ///
-/// Each operand must be non-empty and at most [`MODEXP_MAX_LIMBS`] limbs.
+/// Each operand must be non-empty and at most [`MODEXP_MAX_LIMBS`] limbs. `base` must have
+/// no leading zero limbs (zero is one limb) or the program may end; `exp` and `modulus` may.
 ///
 /// # Panics
 /// - If `result` is too small for the maximum the callee can write

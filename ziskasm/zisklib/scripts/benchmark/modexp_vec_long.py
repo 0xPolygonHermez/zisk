@@ -29,6 +29,7 @@ add(b'', rnd(9), odd(rnd(70), 1))                       # base empty
 add(bytes(80), rnd(9), odd(rnd(70), 1))                 # base 0
 add(rnd(70), rnd(9), b'\xff' * 70)                     # all-ones modulus
 add(rnd(70), rnd(9), bytes(5) + b'\x80' + bytes(62) + b'\x01')  # sparse modulus with leading zeros
+add(b'\x10' + bytes(32), bytes([7]), b'\x01' + bytes(50))  # (2^260)^7 mod 2^400: the running value hits 0 mid-loop
 def arr(name, b): return f"static const uint8_t {name}[{max(len(b),1)}] = {{{','.join(map(str, b)) or '0'}}};"
 o = ['#include "zkvm_accelerators.h"']
 for i, (b, e, m, r) in enumerate(cases):

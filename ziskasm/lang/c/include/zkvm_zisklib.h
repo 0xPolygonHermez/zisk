@@ -134,8 +134,9 @@ uint64_t zkvm_zisklib_verify_kzg_proof_bls12_381(const uint8_t *z, const uint8_t
  * 4; larger moduli return ceil(modulus_len/4)*4).
  * Requires 1 <= base_len, exp_len, modulus_len <= 132 (1056 bytes): a zero-length
  * modulus aborts the emulator, and a zero-length base or an operand over 132
- * limbs ends the program. `result` must hold max(4, ceil(modulus_len/4)*4)
- * limbs. */
+ * limbs ends the program. `base` must have no leading zero limbs (zero is one
+ * limb) or the program may end; `exp` and `modulus` may have them. `result`
+ * must hold max(4, ceil(modulus_len/4)*4) limbs. */
 size_t zkvm_zisklib_modexp_u64_c(const uint64_t *base, size_t base_len,
                                  const uint64_t *exp, size_t exp_len,
                                  const uint64_t *modulus, size_t modulus_len,
