@@ -27,9 +27,9 @@ use proofman_common::{ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use zisk_common::{
     plan_ladder, BusDevice, BusDeviceMetrics, BusDeviceMode, BusId, CheckPoint, ChunkId,
-    CollectSkipper, ComponentBuilder, ComponentPlanBuilder, ExtOperationData, InstCount, Instance,
-    InstanceCtx, InstanceType, Metrics, PayloadType, Plan, Planner, StatsType, B, OPERATION_BUS_ID,
-    OP_TYPE, STEP,
+    CollectSkipper, CollectorBytes, ComponentBuilder, ComponentPlanBuilder, ExtOperationData,
+    InstCount, Instance, InstanceCtx, InstanceType, Metrics, PayloadType, Plan, Planner, StatsType,
+    B, OPERATION_BUS_ID, OP_TYPE, STEP,
 };
 use zisk_core::{keccakf_dedup_index, keccakf_dedup_is_replica, ZiskOperationType};
 use zisk_pil::{
@@ -364,9 +364,9 @@ impl<F: PrimeField64> KeccakfInstance<F> {
 
 impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
     /// Its collectors reserve their window's invocations ([`KeccakfCollector::new`]).
-    fn collector_capacity_bytes(&self) -> u64 {
+    fn collector_capacity_bytes(&self) -> CollectorBytes {
         let invocations: u64 = self.meta().windows.values().map(|(count, _)| count).sum();
-        invocations * std::mem::size_of::<KeccakfInput>() as u64
+        CollectorBytes::heap(invocations * std::mem::size_of::<KeccakfInput>() as u64)
     }
 
     fn compute_witness(

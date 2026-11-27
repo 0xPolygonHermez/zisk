@@ -1,7 +1,9 @@
 use crate::MemAlignInput;
 use zisk_sm_mem_common::{MemAlignCheckPoint, MemHelpers};
 
-use zisk_common::{BusDevice, BusId, ChunkId, CollectCounter, MemBusData, MEM_BUS_ID};
+use zisk_common::{
+    BusDevice, BusId, ChunkId, CollectCounter, CollectorBytes, MemBusData, MEM_BUS_ID,
+};
 
 pub struct MemAlignCollector {
     /// Collected inputs
@@ -22,17 +24,24 @@ impl MemAlignCollector {
         mem_align_checkpoint.count() as usize
     }
 
-    /// Heap bytes the collectors of one instance reserve, one collector per chunk checkpoint.
+    /// Bytes the collectors of one instance reserve: one collector, with one buffer, per chunk
+    /// checkpoint.
     pub fn capacity_bytes<'a>(
         checkpoints: impl IntoIterator<Item = &'a MemAlignCheckPoint>,
-    ) -> u64 {
-        let inputs: usize = checkpoints.into_iter().map(Self::reserved_inputs).sum();
-        (inputs * std::mem::size_of::<MemAlignInput>()) as u64
+    ) -> CollectorBytes {
+        checkpoints
+            .into_iter()
+            .map(|cp| {
+                CollectorBytes::of_buffer(
+                    Self::reserved_inputs(cp) * std::mem::size_of::<MemAlignInput>(),
+                )
+            })
+            .sum()
     }
 
     pub fn new(mem_align_checkpoint: &MemAlignCheckPoint) -> Self {
         Self {
-            inputs: Vec::with_capacity(Self::reserved_inputs(mem_align_checkpoint)),
+            inputs: zisk_common::lent_memory::lent_vec(Self::reserved_inputs(mem_align_checkpoint)),
             air_id: mem_align_checkpoint.air_id,
             chunk_id: mem_align_checkpoint.chunk_id,
             full_5: mem_align_checkpoint.full_5,
@@ -168,10 +177,16 @@ mod tests {
     fn capacity_bytes_sums_every_chunk() {
         let first = check_point([10, 0, 0, 0, 0]);
         let second = check_point([0, 0, 0, 2, 3]);
+        // One buffer per chunk, classified on its own.
+        let bytes = |inputs: usize| {
+            CollectorBytes::of_buffer(inputs * std::mem::size_of::<MemAlignInput>())
+        };
+        let capacity = MemAlignCollector::capacity_bytes([&first, &second]);
+        assert_eq!(capacity, bytes(10) + bytes(5));
+        assert_eq!(capacity.total(), 15 * std::mem::size_of::<MemAlignInput>() as u64);
         assert_eq!(
-            MemAlignCollector::capacity_bytes([&first, &second]),
-            15 * std::mem::size_of::<MemAlignInput>() as u64
+            MemAlignCollector::capacity_bytes(std::iter::empty()),
+            CollectorBytes::default()
         );
-        assert_eq!(MemAlignCollector::capacity_bytes(std::iter::empty()), 0);
     }
 }

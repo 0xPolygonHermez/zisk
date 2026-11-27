@@ -71,7 +71,7 @@ impl MemModuleCollector {
         let aligned_min_addr = std::cmp::max(min_addr, mem_check_point.from_addr);
         let aligned_max_addr = mem_check_point.to_addr;
         Self {
-            inputs: Vec::with_capacity(Self::reserved_inputs(mem_check_point)),
+            inputs: zisk_common::lent_memory::lent_vec(Self::reserved_inputs(mem_check_point)),
             mem_check_point: mem_check_point.clone(),
             prev_segment: None,
             min_addr,

@@ -15,9 +15,9 @@ use proofman_common::{ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use zisk_common::{
     BusDevice, BusDeviceMetrics, BusDeviceMode, BusId, CheckPoint, ChunkId, CollectCounter,
-    ComponentBuilder, ComponentPlanBuilder, ExtOperationData, Instance, InstanceCtx, InstanceType,
-    Metrics, PayloadType, Plan, Planner, SegmentId, StatsType, B, OP, OPERATION_BUS_ID, OP_TYPE,
-    STEP,
+    CollectorBytes, ComponentBuilder, ComponentPlanBuilder, ExtOperationData, Instance,
+    InstanceCtx, InstanceType, Metrics, PayloadType, Plan, Planner, SegmentId, StatsType, B, OP,
+    OPERATION_BUS_ID, OP_TYPE, STEP,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ZISK_AIRGROUP_ID;
@@ -463,9 +463,9 @@ impl<F: PrimeField64> ArithEqInstance<F> {
 
 impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
     /// Its collectors reserve their window's operations ([`ArithEqCollector::new`]).
-    fn collector_capacity_bytes(&self) -> u64 {
+    fn collector_capacity_bytes(&self) -> CollectorBytes {
         let operations: u64 = self.checkpoint.0.iter().map(|window| window.count() as u64).sum();
-        operations * std::mem::size_of::<ArithEqInput>() as u64
+        CollectorBytes::heap(operations * std::mem::size_of::<ArithEqInput>() as u64)
     }
 
     fn compute_witness(

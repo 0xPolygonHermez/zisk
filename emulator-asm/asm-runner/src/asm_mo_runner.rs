@@ -137,6 +137,22 @@ pub struct MOShmemReader {
 }
 
 impl MOShmemReader {
+    /// The part of the trace output another user may borrow until the next run is requested:
+    /// everything this process has mapped but the first page, whose header a service starting
+    /// between jobs rewrites. `None` when the mapping is read-only, as it is outside GPU builds.
+    ///
+    /// Nobody reads the output once a run has been consumed, and the next run writes it again from
+    /// the start, so a borrower must be done before that run is requested.
+    pub fn lendable_region(&self) -> Option<(usize, usize)> {
+        if !self.output_shmem.is_writable() {
+            return None;
+        }
+        // SAFETY: sysconf has no preconditions.
+        let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) }.max(4096) as usize;
+        let mapped = self.output_shmem.total_mapped_size();
+        (mapped > page).then(|| (self.output_shmem.mapped_ptr() as usize + page, mapped - page))
+    }
+
     /// Creates a new `MOShmemReader` by opening and mapping the shared memory for the MO trace output.
     pub fn new(
         shm_prefix: &str,

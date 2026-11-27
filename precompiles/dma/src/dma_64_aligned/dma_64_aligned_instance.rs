@@ -17,7 +17,9 @@ use proofman_fields::PrimeField64;
 use std::sync::Arc;
 use zisk_common::ChunkId;
 use zisk_common::StatsType;
-use zisk_common::{BusDevice, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType};
+use zisk_common::{
+    BusDevice, CheckPoint, CollectorBytes, Instance, InstanceCtx, InstanceType, PayloadType,
+};
 use zisk_pil::{
     Dma64AlignedLargeTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemLargeTrace,
     Dma64AlignedMemSetTrace, Dma64AlignedMemTrace, Dma64AlignedTrace,
@@ -108,9 +110,13 @@ fn collector_bytes(inputs: u64, rows: u64, ops_by_row: usize) -> u64 {
 impl<F: PrimeField64> Instance<F> for Dma64AlignedInstance<F> {
     /// The inputs and the source words of the rows the instance was given
     /// ([`crate::Dma64AlignedInput::from`] keeps those only).
-    fn collector_capacity_bytes(&self) -> u64 {
+    fn collector_capacity_bytes(&self) -> CollectorBytes {
         let checkpoint = DmaCheckPoint::of(&self.ictx);
-        collector_bytes(checkpoint.inputs(), checkpoint.rows(), self.ops_by_row())
+        CollectorBytes::heap(collector_bytes(
+            checkpoint.inputs(),
+            checkpoint.rows(),
+            self.ops_by_row(),
+        ))
     }
 
     /// Computes the witness for the Dma execution plan.

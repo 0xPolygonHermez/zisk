@@ -6,6 +6,8 @@
 
 /// Global allocator selection.
 pub mod allocator;
+/// Memory lent to the allocator while its owner does not need it.
+pub mod lent_memory;
 #[macro_use]
 pub mod witness_timers;
 mod bus;

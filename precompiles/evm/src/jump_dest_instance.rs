@@ -32,8 +32,8 @@ use std::sync::Arc;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, ProofmanResult, SetupCtx};
 use proofman_fields::PrimeField64;
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType, SegmentId,
-    StatsType,
+    BusDevice, CheckPoint, ChunkId, CollectorBytes, Instance, InstanceCtx, InstanceType,
+    PayloadType, SegmentId, StatsType,
 };
 use zisk_pil::{
     JumpDestAirValues, JumpDestTrace, JumpDestTraceRow, JumpDestTraceRowOps, JumpDestTraceRowPacked,
@@ -387,12 +387,14 @@ impl<F: PrimeField64> Instance<F> for JumpDestInstance<F> {
     /// instance shares with the previous or the next one keeps all its source words
     /// ([`JumpDestCollector`]), not only those of its rows here: at most those two operations go
     /// beyond this.
-    fn collector_capacity_bytes(&self) -> u64 {
-        Self::checkpoint(&self.ictx)
-            .chunks
-            .values()
-            .map(|(rows, _)| chunk_collector_bytes(*rows))
-            .sum()
+    fn collector_capacity_bytes(&self) -> CollectorBytes {
+        CollectorBytes::heap(
+            Self::checkpoint(&self.ictx)
+                .chunks
+                .values()
+                .map(|(rows, _)| chunk_collector_bytes(*rows))
+                .sum(),
+        )
     }
 
     fn compute_witness(

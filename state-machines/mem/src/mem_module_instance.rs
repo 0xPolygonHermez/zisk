@@ -10,7 +10,8 @@ use zisk_common::StatsType;
 #[allow(unused_imports)]
 use zisk_common::{phase_end, phase_log, phase_ms, phase_start};
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
+    BusDevice, CheckPoint, ChunkId, CollectorBytes, Instance, InstanceCtx, InstanceType,
+    PayloadType,
 };
 use zisk_sm_mem_common::MemModuleSegmentCheckPoint;
 
@@ -216,10 +217,17 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         Some(Box::new(collector))
     }
 
-    fn collector_capacity_bytes(&self) -> u64 {
-        let inputs: usize =
-            self.check_point.chunks.values().map(MemModuleCollector::reserved_inputs).sum();
-        (inputs * std::mem::size_of::<MemInput>()) as u64
+    /// One collector, with one buffer, per chunk ([`MemModuleCollector::new`]).
+    fn collector_capacity_bytes(&self) -> CollectorBytes {
+        self.check_point
+            .chunks
+            .values()
+            .map(|cp| {
+                CollectorBytes::of_buffer(
+                    MemModuleCollector::reserved_inputs(cp) * std::mem::size_of::<MemInput>(),
+                )
+            })
+            .sum()
     }
 
     fn check_point(&self) -> &CheckPoint {

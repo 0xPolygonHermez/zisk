@@ -64,6 +64,14 @@ impl EmulatorAsm {
         self.transport.reset()
     }
 
+    /// The memory-operations output that may be lent until the next run is requested, as
+    /// `(address, length)`; `None` when its mapping is read-only.
+    pub fn mo_lendable_region(&self) -> ExecutorResult<Option<(usize, usize)>> {
+        let resources = self.transport.resources()?;
+        let mo = resources.readers().mo.lock_or_poison("mo_shmem")?;
+        Ok(mo.lendable_region())
+    }
+
     /// Poke the ASM children so any thread blocked on shmem semaphores
     /// unwinds promptly.
     pub fn signal_cancellation(&self) -> ExecutorResult<()> {
