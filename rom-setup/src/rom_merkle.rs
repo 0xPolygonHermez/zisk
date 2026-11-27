@@ -8,18 +8,9 @@ use zisk_sm_rom::CustomRom;
 
 use crate::{
     get_elf_data_hash, get_elf_vk, get_output_path, get_rom_bin_file_path,
-    get_rom_verkey_file_path, rom_key, HashMode,
+    get_rom_verkey_file_path, memoized_rom_digest, rom_cache_key, rom_digest_and_trace, rom_key,
+    HashMode,
 };
-use crate::{rom_cache_key, rom_digest_and_trace};
-
-/// A program's ROM setup.
-#[derive(Debug, Clone)]
-pub struct RomSetup {
-    /// The program verification key.
-    pub vk: ProgramVK,
-    /// The cache key its ROM artifacts are stored under (see [`rom_key`]).
-    pub rom_key: String,
-}
 
 fn validate_custom_commit_file_size(elf_bin_path: &Path, hash_mode: HashMode) -> Result<()> {
     let n = RomRomTrace::<Goldilocks>::NUM_ROWS as u64;
@@ -38,21 +29,23 @@ fn validate_custom_commit_file_size(elf_bin_path: &Path, hash_mode: HashMode) ->
     })
 }
 
-/// Resolve the path of the cached ROM custom-commit binary for `elf_hash` under `rom_key`.
+/// Resolve the path of the cached ROM custom-commit binary for `elf_hash`.
 ///
-/// Errors if the ROM binary or its verkey file has not been generated yet (run
-/// [`rom_merkle_setup`] first).
+/// Errors if the ROM setup has not run for it in this process (run [`rom_merkle_setup`]
+/// first): its cache key comes from the ROM digest that setup computed.
 pub fn get_rom_path<F: PrimeField64>(
     pctx: &ProofCtx<F>,
     elf_hash: &str,
-    rom_key: &str,
     output_dir: &Option<PathBuf>,
     hash_mode: HashMode,
 ) -> Result<PathBuf> {
+    let digest = memoized_rom_digest(elf_hash)
+        .ok_or_else(|| anyhow::anyhow!("ROM setup has not run for ELF hash {elf_hash}"))?;
+    let rom_key = rom_cache_key(&digest, hash_mode);
     let output_path = get_output_path(output_dir)?;
 
-    let elf_bin_path = get_rom_bin_file_path(&output_path, elf_hash, rom_key, hash_mode, pctx.gpu);
-    let elf_verkey_bin_path = get_rom_verkey_file_path(&output_path, elf_hash, rom_key, hash_mode);
+    let elf_bin_path = get_rom_bin_file_path(&output_path, elf_hash, &rom_key, hash_mode, pctx.gpu);
+    let elf_verkey_bin_path = get_rom_verkey_file_path(&output_path, elf_hash, &rom_key, hash_mode);
 
     if !elf_bin_path.exists() || !elf_verkey_bin_path.exists() {
         return Err(anyhow::anyhow!(
@@ -66,7 +59,7 @@ pub fn get_rom_path<F: PrimeField64>(
     Ok(elf_bin_path)
 }
 
-/// Perform the ROM Merkle setup for `elf` and return its verkey and cache key.
+/// Perform the ROM Merkle setup for `elf` and return its program verification key.
 ///
 /// Builds the ROM custom commit and derives the verkey from its Merkle root, writing both to
 /// the cache. When `force` is false and valid cached artifacts already exist, the cached
@@ -77,7 +70,7 @@ pub fn rom_merkle_setup<F: PrimeField64>(
     output_dir: &Option<PathBuf>,
     force: bool,
     hash_mode: HashMode,
-) -> Result<RomSetup> {
+) -> Result<ProgramVK> {
     let output_path = get_output_path(output_dir)?;
 
     let elf_hash = get_elf_data_hash(elf);
@@ -107,7 +100,7 @@ pub fn rom_merkle_setup<F: PrimeField64>(
         tracing::info!("Using cached ROM setup {}", elf_bin_path.display());
         let vk = get_elf_vk(elf_verkey_bin_path.as_path())?
             .ok_or_else(|| anyhow::anyhow!("Failed to read existing verkey file"))?;
-        return Ok(RomSetup { vk: ProgramVK { vk, hash_mode }, rom_key });
+        return Ok(ProgramVK { vk, hash_mode });
     }
 
     tracing::info!("Generating ROM setup {}", elf_bin_path.display());
@@ -130,7 +123,7 @@ pub fn rom_merkle_setup<F: PrimeField64>(
     let vk_bytes: Vec<u8> = vk.iter().flat_map(|w| w.to_le_bytes()).collect();
     std::fs::write(&elf_verkey_bin_path, &vk_bytes)?;
 
-    Ok(RomSetup { vk: ProgramVK { vk, hash_mode }, rom_key })
+    Ok(ProgramVK { vk, hash_mode })
 }
 
 /// Read the cached verkey for `elf_hash` under `rom_key`. `Ok(None)` when there is none; one

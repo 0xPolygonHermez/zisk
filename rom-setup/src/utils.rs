@@ -64,6 +64,13 @@ pub(crate) fn rom_digest_and_trace<F: PrimeField64>(
     Ok((digest, Some(trace)))
 }
 
+/// `elf_hash`'s ROM digest, if this process has built it.
+pub(crate) fn memoized_rom_digest(elf_hash: &str) -> Option<RomDigest> {
+    let slot = DIGESTS.lock().unwrap().get(elf_hash).cloned()?;
+    let digest = *slot.lock().unwrap();
+    digest
+}
+
 fn rom_digest(elf: &[u8]) -> Result<RomDigest> {
     Ok(rom_digest_and_trace::<Goldilocks>(elf)?.0)
 }
