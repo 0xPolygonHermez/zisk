@@ -245,16 +245,22 @@ $(BUILD_DIR)/add256.o: $(SRC_DIR)/bigint/add256.cpp $(SRC_DIR)/bigint/add256.hpp
 $(BUILD_DIR)/globals.o: $(SRC_DIR)/common/globals.cpp $(SRC_DIR)/common/globals.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
-$(BUILD_DIR)/goldilocks_base_field.o: $(SRC_DIR)/poseidon2/goldilocks_base_field.cpp $(SRC_DIR)/poseidon2/goldilocks_base_field.hpp $(SRC_DIR)/poseidon2/goldilocks_prime.h | $(BUILD_DIR)
+# Every header goldilocks_base_field.hpp pulls in: what includes it depends on all of them.
+GOLDILOCKS_FIELD_HDRS = $(SRC_DIR)/poseidon2/goldilocks_base_field.hpp \
+                        $(SRC_DIR)/poseidon2/goldilocks_base_field_scalar.hpp \
+                        $(SRC_DIR)/poseidon2/goldilocks_base_field_tools.hpp \
+                        $(SRC_DIR)/poseidon2/goldilocks_prime.h
+
+$(BUILD_DIR)/goldilocks_base_field.o: $(SRC_DIR)/poseidon2/goldilocks_base_field.cpp $(GOLDILOCKS_FIELD_HDRS) | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
-$(BUILD_DIR)/poseidon2_goldilocks.o: $(SRC_DIR)/poseidon2/poseidon2_goldilocks.cpp $(SRC_DIR)/poseidon2/poseidon2_goldilocks.hpp $(SRC_DIR)/poseidon2/poseidon2_goldilocks_constants.hpp | $(BUILD_DIR)
+$(BUILD_DIR)/poseidon2_goldilocks.o: $(SRC_DIR)/poseidon2/poseidon2_goldilocks.cpp $(SRC_DIR)/poseidon2/poseidon2_goldilocks.hpp $(SRC_DIR)/poseidon2/poseidon2_goldilocks_constants.hpp $(GOLDILOCKS_FIELD_HDRS) | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/poseidon2_non_native.o: $(SRC_DIR)/poseidon2/poseidon2_non_native.cpp $(SRC_DIR)/poseidon2/poseidon2_non_native.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
-$(BUILD_DIR)/poseidon1_goldilocks.o: $(SRC_DIR)/poseidon1/poseidon1_goldilocks.cpp $(SRC_DIR)/poseidon1/poseidon1_goldilocks.hpp $(SRC_DIR)/poseidon1/poseidon1_goldilocks_constants.hpp | $(BUILD_DIR)
+$(BUILD_DIR)/poseidon1_goldilocks.o: $(SRC_DIR)/poseidon1/poseidon1_goldilocks.cpp $(SRC_DIR)/poseidon1/poseidon1_goldilocks.hpp $(SRC_DIR)/poseidon1/poseidon1_goldilocks_constants.hpp $(GOLDILOCKS_FIELD_HDRS) | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -I$(SRC_DIR)/poseidon2 -c $< -o $@
 
 $(BUILD_DIR)/blake2.o: $(SRC_DIR)/blake2/blake2.cpp $(SRC_DIR)/blake2/blake2.hpp | $(BUILD_DIR)
