@@ -80,14 +80,31 @@ impl SecondaryWitnessHandler {
                 }
             }
         }
-        let (_, air_id) = pctx.dctx_get_instance_info(global_id)?;
-        if AirClassifier::is_memory_related(air_id) || AirClassifier::is_mem_align(air_id) {
-            Self::collect_mem_pass(collector, state, pctx, &secn_instances, global_id, instance)?;
-        } else if !has_collectors(global_id)? {
-            collector.collect_single(pctx, state, global_id, instance)?;
-        }
-        let collectors: Collectors =
-            state.take_collectors_for_instance(global_id, instance.instance_type())?;
+        // From here a failure gives the buffer it holds back to the pool, which never replaces one
+        // it lost: its next reset, and every one after, would report the job as short of a buffer.
+        let collect_inputs = || -> ExecutorResult<Collectors> {
+            let (_, air_id) = pctx.dctx_get_instance_info(global_id)?;
+            if AirClassifier::is_memory_related(air_id) || AirClassifier::is_mem_align(air_id) {
+                Self::collect_mem_pass(
+                    collector,
+                    state,
+                    pctx,
+                    &secn_instances,
+                    global_id,
+                    instance,
+                )?;
+            } else if !has_collectors(global_id)? {
+                collector.collect_single(pctx, state, global_id, instance)?;
+            }
+            state.take_collectors_for_instance(global_id, instance.instance_type())
+        };
+        let collectors = match collect_inputs() {
+            Ok(collectors) => collectors,
+            Err(e) => {
+                Self::give_back(buffer_pool, trace_buffer, global_id);
+                return Err(e);
+            }
+        };
         let trace_buffer = trace_buffer.unwrap_or_else(|| buffer_pool.take_buffer());
 
         generator
@@ -101,7 +118,23 @@ impl SecondaryWitnessHandler {
                 trace_buffer,
                 stats_scope_id,
             )
-            .map_err(|(e, _)| e)
+            .map_err(|(e, buffer)| {
+                Self::give_back(buffer_pool, buffer, global_id);
+                e
+            })
+    }
+
+    /// Returns to the pool the trace buffer a failed computation handed back, if it did.
+    fn give_back<F: PrimeField64>(
+        buffer_pool: &dyn BufferPool<F>,
+        buffer: Option<Vec<F>>,
+        global_id: usize,
+    ) {
+        if let Some(buffer) = buffer {
+            if let Err(e) = buffer_pool.release_buffer(buffer) {
+                tracing::error!("instance {global_id}: its trace buffer was not returned: {e}");
+            }
+        }
     }
 
     /// Collects, when `global_id` has no collectors yet, every memory instance of the block this
