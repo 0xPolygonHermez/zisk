@@ -208,6 +208,6 @@ else:
     raw(f'dma_xmemcpy({B}TMP, {P}F) -> r5, j({FW * 8}, 4)')
 raw('pop r1'); raw('ret')
 w(f'{L}_bad:')
-raw('copyb(0, 0) -> r10, end')
+raw('halt(0, 0), j(0, 0), end')
 w()
 print('\n'.join(out))

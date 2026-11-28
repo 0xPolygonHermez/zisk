@@ -252,7 +252,7 @@ raw("copyb(0, ML_F) -> r10"); raw("copyb(0, ML_L) -> r11"); raw("copyb(0, ML_F) 
 raw("copyb(0, ML_F) -> r10"); raw("copyb(0, ML_PR) -> r11"); raw("copyb(r11, 8[a + 0]) -> r11"); raw("copyb(0, 48) -> r12"); raw("call bn254_memcpy")
 raw("pop r1"); raw("ret")
 w("ml_bad:")
-raw("copyb(0, 0) -> r10, end"); w("")
+raw("halt(0, 0), j(0, 0), end"); w("")
 
 open(_OUT+"/bn254/miller_loop.zisk","w").write("\n".join(out)+"\n")
 print("wrote miller_loop.zisk,", len(out), "lines")

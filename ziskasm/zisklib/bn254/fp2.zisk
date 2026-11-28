@@ -116,7 +116,7 @@ bf2_inv_vfy:
 	dma_xmemcmp(BN_F2_PROD, BN_F2_ONE) -> r5, j(64, 4)
 	eq(r5, 0), j(bf2_inv_wr)
 bf2_inv_panic:
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end
 bf2_inv_wr:
 	dma_xmemcpy(r11, BN_F2_INV) -> r5, j(64, 4)
 	ret

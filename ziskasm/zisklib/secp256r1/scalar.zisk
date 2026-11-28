@@ -202,4 +202,4 @@ rfn_inv_wrl:
 rfn_inv_ret:
 	ret
 rfn_inv_panic:
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end

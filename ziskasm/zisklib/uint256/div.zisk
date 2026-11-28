@@ -142,4 +142,4 @@ ud_done:
 
 ud_panic:
 	; b == 0 or a hint that failed verification: halt (mirrors the Rust asserts)
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end

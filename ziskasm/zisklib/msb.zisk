@@ -53,7 +53,7 @@ msb_next:
 	ltu(0, r6), j(msb_val)
 	eq(r15, 1), j(msb_ok)
 msb_bad:
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end
 msb_ok:
 	copyb(0, r12) -> r10
 	copyb(0, r13) -> r11

@@ -224,7 +224,7 @@ w("lml_final:")
 raw("copyb(0, BLS_ML_F) -> r10"); raw("copyb(0, BLS_ML_PR) -> r11"); raw("copyb(r11, 8[a + 0]) -> r11"); raw(f"call zisklib_conjugate_fp12{S}")
 raw("pop r1"); raw("ret")
 w("lml_bad:")
-raw("copyb(0, 0) -> r10, end"); w("")
+raw("halt(0, 0), j(0, 0), end"); w("")
 
 open(_OUT+"/bls12_381/miller_loop.zisk","w").write("\n".join(out)+"\n")
 print("wrote bls miller_loop.zisk,", len(out), "lines")

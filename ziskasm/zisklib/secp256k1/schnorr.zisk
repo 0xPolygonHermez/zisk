@@ -197,4 +197,4 @@ sv_true:
 	ret
 sv_toolong:
 	; msg_len > 256: the challenge prefix||msg does not fit SECP_SCH_BUF.
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end

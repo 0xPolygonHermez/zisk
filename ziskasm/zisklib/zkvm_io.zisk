@@ -155,4 +155,4 @@ io_wo_ret:
 io_wo_toobig:
 	; slot index reached the 64-word public-output limit; set_output() panics on
 	; id >= 64, so halt rather than writing past the public output set.
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end

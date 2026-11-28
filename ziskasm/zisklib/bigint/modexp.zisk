@@ -157,7 +157,7 @@ bi_bc_recd:
 	pop r1
 	ret
 bi_bc_bad:
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end
 
 ; void zisklib_modexp_short(const u64* base, u64 lenb_u256, const u64* exp, u64 lene, const u64* mod, u64* result)
 ;   result = base^exp mod mod  (mod is one U256, result is one U256).

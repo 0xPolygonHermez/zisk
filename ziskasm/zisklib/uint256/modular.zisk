@@ -436,4 +436,4 @@ im_ret0:
 	ret
 
 im_panic:
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end

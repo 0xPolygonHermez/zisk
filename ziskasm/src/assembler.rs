@@ -742,6 +742,11 @@ fn encode_op(
         zib.inc_sp(op.inc_sp);
     }
     if op.end {
+        // `end` stops only the emulators: the AIR never sees it, so a proof runs on past the row.
+        // Only a `halt`, which the AIR cannot prove, may end a run.
+        if op.op != "halt" {
+            return Err(format!("`end` on `{}`: only `halt` may carry `end`", op.op));
+        }
         zib.end();
     }
     Ok(())

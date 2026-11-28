@@ -1122,7 +1122,7 @@ zubsdivmod_rdone:
 	ret
 
 zubd_panic:                             ; a hint that failed verification
-	copyb(0, 0) -> r10, end
+	halt(0, 0), j(0, 0), end
 
 ; zkvm_status zkvm_u256_lt(a, b, result) : a < b (unsigned). Inline zkvmcall:
 ; from the most significant limb down, the first that differs decides.
