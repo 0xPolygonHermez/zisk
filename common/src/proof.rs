@@ -1029,6 +1029,10 @@ impl<'a> ZiskVerifyBuilder<'a> {
         // A successful verify() is the signal callers trust before reading
         // `publics()`, and `Proof::new` builds bodies the ingest checks never see.
         ensure_stored_body(&self.proof_with_values.body)?;
+        // The statement's key comes from the publics; a stored copy that differs must not verify.
+        if self.override_program_vk.is_none() {
+            self.proof_with_values.ensure_program_vk_committed()?;
+        }
 
         let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_values.program_vk);
 
@@ -1491,7 +1495,8 @@ impl Proof {
     ///
     /// Returns [`CommonError::Deserialization`] if the bytes do not hold a proof.
     pub fn from_bincode(bytes: &[u8]) -> Result<Self> {
-        let config = bincode::config::standard();
+        // Bounded: proofs come from peers, and a claimed length is otherwise allocated up front.
+        let config = bincode::config::standard().with_limit::<{ 64 << 20 }>();
         let err = |e: bincode::error::DecodeError| CommonError::Deserialization(e.to_string());
         // bincode encodes a struct as the tuple of its fields, so this reads the fields every
         // encoding starts with, including those written before `random_seed` existed.
@@ -2149,7 +2154,7 @@ mod tests {
 
     /// A flag-free Vadcop proof whose publics are well-shaped, for the guard tests.
     fn vadcop_proof(kind: VadcopKind, publics_full: Vec<u64>) -> Proof {
-        Proof::new(
+        let mut proof = Proof::new(
             ProofBody::Vadcop {
                 proof: vec![0u64; 8],
                 zisk_vk: vec![1, 2, 3, 4],
@@ -2157,8 +2162,10 @@ mod tests {
                 hash: "Poseidon2".to_string(),
                 publics_full,
             },
-            ProgramVK::new_from_publics_with_mode(&[1, 2, 3, 4], HashMode::Poseidon2),
-        )
+            ProgramVK { vk: vec![], hash_mode: HashMode::Poseidon2 },
+        );
+        proof.program_vk = proof.get_program_vk(); // the committed key, as producers build it
+        proof
     }
 
     fn flag_free_publics(vk: [u64; PROGRAM_VK_LEN]) -> Vec<u64> {
@@ -2441,7 +2448,7 @@ mod tests {
     }
 
     fn plonk_proof(publics_full: Vec<u64>, rootc: Vec<u64>, hash_mode: HashMode) -> Proof {
-        Proof::new(
+        let mut proof = Proof::new(
             ProofBody::Plonk {
                 proof_bytes: vec![5; PLONK_PROOF_BYTES],
                 plonk_vk: Box::new(PlonkVkBlob {
@@ -2452,8 +2459,10 @@ mod tests {
                 publics_full,
                 rootc,
             },
-            ProgramVK { vk: vec![0u64; PROGRAM_VK_LEN], hash_mode },
-        )
+            ProgramVK { vk: vec![], hash_mode },
+        );
+        proof.program_vk = proof.get_program_vk(); // the committed key, as producers build it
+        proof
     }
 
     /// The release publishes no PLONK key, so a PLONK proof needs the caller's.

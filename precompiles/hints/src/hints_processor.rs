@@ -21,6 +21,9 @@ use zisk_common::{
 
 use crate::hint_handlers::HintHandlers;
 
+/// Most hints dispatched and not yet drained; `process_hints` waits at this many.
+const MAX_PENDING_HINTS: usize = 1024;
+
 /// Ordered result buffer with drain state.
 ///
 /// This structure maintains a VecDeque that holds processed results in order,
@@ -61,12 +64,14 @@ impl HintProcessorState {
     }
 
     fn reset(&self) {
+        // Under the queue lock, so a producer parked on a full buffer sees the new generation.
+        let mut queue = self.queue.lock().unwrap();
         self.error_flag.store(false, Ordering::Release);
         self.next_seq.store(0, Ordering::Relaxed);
         self.generation.fetch_add(1, Ordering::SeqCst);
-        let mut queue = self.queue.lock().unwrap();
         queue.buffer.clear();
         queue.next_drain_seq = 0;
+        self.drain_signal.notify_all();
     }
 }
 
@@ -257,6 +262,9 @@ impl<S: StreamSink> HintsProcessor<S> {
     /// * `Err` - If a previous error occurred or hints are malformed
     pub fn process_hints(&self, hints: &[u64], first_batch: bool) -> Result<bool> {
         let mut has_ctrl_end = false;
+        // The stream this batch belongs to: a reset during the call ends it, it must not carry on
+        // into the next stream.
+        let generation = self.state.generation.load(Ordering::SeqCst);
 
         // Take any pending partial hint from previous batch
         let mut pending_partial = self.pending_partial.lock().unwrap().take();
@@ -267,6 +275,9 @@ impl<S: StreamSink> HintsProcessor<S> {
             // Check for error before processing each hint
             if self.state.error_flag.load(Ordering::Acquire) {
                 return Err(anyhow::anyhow!("Processing stopped due to previous error"));
+            }
+            if self.state.generation.load(Ordering::SeqCst) != generation {
+                return Err(anyhow::anyhow!("Hint stream reset while processing"));
             }
             let (parsed_hint, consumed) =
                 PrecompileHint::from_u64_slice(hints, idx, true, pending_partial.take())?;
@@ -363,12 +374,14 @@ impl<S: StreamSink> HintsProcessor<S> {
                 }
                 HintCode::Ctrl(CtrlHint::Cancel) => {
                     // Cancel current stream: set error and notify
+                    let _queue = self.state.queue.lock().unwrap(); // a waiting producer can't miss it
                     self.state.error_flag.store(true, Ordering::Release);
                     self.state.drain_signal.notify_all();
                     return Err(anyhow::anyhow!("Stream cancelled"));
                 }
                 HintCode::Ctrl(CtrlHint::Error) => {
                     // External error signal
+                    let _queue = self.state.queue.lock().unwrap(); // a waiting producer can't miss it
                     self.state.error_flag.store(true, Ordering::Release);
                     self.state.drain_signal.notify_all();
                     return Err(anyhow::anyhow!("Stream error signalled"));
@@ -399,11 +412,21 @@ impl<S: StreamSink> HintsProcessor<S> {
                 continue;
             }
 
-            let generation = self.state.generation.load(Ordering::SeqCst);
-
             // Atomically reserve slot - use Relaxed for seq since mutex provides ordering
             let seq_id = {
                 let mut queue = self.state.queue.lock().unwrap();
+                // Backpressure: an untrusted stream faster than its sink must not grow the buffer.
+                while queue.buffer.len() >= MAX_PENDING_HINTS {
+                    if self.state.error_flag.load(Ordering::Acquire) {
+                        return Err(anyhow::anyhow!("Processing stopped due to previous error"));
+                    }
+                    queue = self.state.drain_signal.wait(queue).unwrap();
+                }
+                // Again under the lock: a reset during the wait (or since the check above) empties the
+                // buffer, so the wait alone would not notice it.
+                if self.state.generation.load(Ordering::SeqCst) != generation {
+                    return Err(anyhow::anyhow!("Hint stream reset while processing"));
+                }
                 let seq = self.state.next_seq.fetch_add(1, Ordering::Relaxed);
 
                 // Handle pass-through hints immediately
@@ -588,6 +611,7 @@ impl<S: StreamSink> HintsProcessor<S> {
 
                         if let Err(e) = hints_sink.submit(&data_to_submit) {
                             tracing::error!("Error submitting to sink: {e}");
+                            let _queue = state.queue.lock().unwrap(); // a waiting producer can't miss it
                             state.error_flag.store(true, Ordering::Release);
                             state.drain_signal.notify_all();
                         } else if let Some(broadcast_fn) = &mpi_broadcast_fn {
@@ -1003,6 +1027,61 @@ mod tests {
         assert_eq!(received.len(), 2);
         assert_eq!(received[0], vec![0xAAA, 0xBBB]);
         assert_eq!(received[1], vec![0xCCC]);
+    }
+
+    #[test]
+    fn test_reset_wakes_a_producer_parked_on_a_full_buffer() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        use std::time::{Duration, Instant};
+
+        /// Blocks every submit until opened, so the buffer fills up behind the first one.
+        struct GatedSink {
+            open: Arc<AtomicBool>,
+        }
+
+        impl StreamSink for GatedSink {
+            fn submit(&self, _processed: &[u64]) -> Result<(), StreamError> {
+                while !self.open.load(Ordering::Acquire) {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                Ok(())
+            }
+        }
+
+        let open = Arc::new(AtomicBool::new(false));
+        let sink = GatedSink { open: Arc::clone(&open) };
+        let p = Arc::new(
+            HintsProcessor::builder(Arc::new(sink), None::<Arc<GatedSink>>)
+                .num_threads(2)
+                .build()
+                .unwrap(),
+        );
+
+        let mut data = Vec::new();
+        for i in 0..(MAX_PENDING_HINTS as u64 + 8) {
+            data.push(make_header(TEST_PASSTHROUGH_HINT, 8));
+            data.push(i);
+        }
+        let producer = {
+            let p = Arc::clone(&p);
+            std::thread::spawn(move || p.process_hints(&data, false))
+        };
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while p.state.queue.lock().unwrap().buffer.len() < MAX_PENDING_HINTS {
+            assert!(Instant::now() < deadline, "the buffer never filled up");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        p.reset_state();
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !producer.is_finished() {
+            assert!(Instant::now() < deadline, "the producer stayed parked after the reset");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        open.store(true, Ordering::Release);
+        assert!(producer.join().unwrap().is_err(), "a hint of the old stream must not be queued");
     }
 
     #[test]
