@@ -303,6 +303,8 @@ pub struct SetupProgramDto {
     pub with_hints: bool,
     /// Whether to set up for emulation only.
     pub emulator_only: bool,
+    /// Set it up only from the worker's cache, for the proving key it runs, or refuse it.
+    pub cached_only: bool,
 }
 
 /// The kind of a stream-data message.
@@ -819,6 +821,8 @@ pub struct SetupProgramAckDto {
     pub vk: Vec<u8>,
     /// The hash mode the key was generated with.
     pub hash_mode: String,
+    /// A cached-only setup refused: the worker's cache had none, and nothing on it changed.
+    pub not_cached: bool,
 }
 
 /// Worker → coordinator error report.
