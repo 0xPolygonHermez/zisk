@@ -66,7 +66,8 @@ use zisk_common::{AirInstanceCount, RandomSeed, SetupKey, ZiskExecutorTime, Zisk
 
 struct SetupPendingState {
     pending: HashSet<WorkerId>,
-    vks: Vec<(WorkerId, Vec<u8>, String)>,
+    /// Per worker: its VK and `(hash_mode, rom_key)`.
+    vks: Vec<(WorkerId, Vec<u8>, (String, String))>,
     hash_id: String,
     program_name: String,
     with_hints: bool,
@@ -79,6 +80,7 @@ pub(crate) struct ActiveSetup {
     pub program_name: String,
     pub vk: Vec<u8>,
     pub hash_mode: String,
+    pub rom_key: String,
 }
 
 /// Recurser analog of `SetupPendingState`: pending acks + accumulated VKs.
@@ -549,6 +551,7 @@ impl Coordinator {
         )) {
             let vk = setup.vk.clone();
             let hash_mode = setup.hash_mode.clone();
+            let rom_key = setup.rom_key.clone();
             self.alloc_job_events(&job_id).await;
             self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
             self.fire_job_event(
@@ -556,6 +559,7 @@ impl Coordinator {
                 CoordinatorJobEvent::Completed(crate::job_events::CoordinatorJobResult::Setup {
                     vk,
                     hash_mode,
+                    rom_key,
                 }),
             )
             .await;
@@ -3393,6 +3397,7 @@ mod tests {
                 program_name: "p".into(),
                 vk: cached_vk.clone(),
                 hash_mode: "Poseidon1".into(),
+                rom_key: "k".into(),
             },
         );
 
@@ -3472,6 +3477,99 @@ mod tests {
         let pending = coordinator.setup_pending.read().await;
         let tracked = pending.values().any(|s| s.pending.contains(&late_id));
         assert!(tracked, "back-filled worker must be tracked in setup_pending");
+    }
+
+    /// A back-filled worker whose setup differs from the cluster's (another VK or ROM key,
+    /// e.g. another ZisK version) is withheld from dispatch, and the cluster's record is
+    /// kept rather than overwritten by it.
+    #[tokio::test]
+    async fn test_backfill_rejects_mismatched_setup() {
+        use crate::test_utils::register_test_worker;
+
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        let hash_id = coordinator.register_guest_program(b"backfill-elf".to_vec()).unwrap();
+        let key = SetupKey::new(hash_id.clone(), false, false);
+        let recorded = ActiveSetup {
+            program_name: "p".into(),
+            vk: vec![1],
+            hash_mode: "Poseidon1".into(),
+            rom_key: "k".into(),
+        };
+        coordinator.active_setups.write().await.insert(key.clone(), recorded.clone());
+
+        let (late_id, _msgs) = register_test_worker(&coordinator.workers_pool, "late").await;
+        coordinator.backfill_setup_to_idle(&key, "p").await;
+        let job_id = coordinator
+            .setup_pending
+            .read()
+            .await
+            .iter()
+            .find(|(_, s)| s.pending.contains(&late_id))
+            .map(|(id, _)| id.clone())
+            .expect("back-fill job");
+
+        coordinator
+            .handle_stream_setup_program_ack(zisk_cluster_common::SetupProgramAckDto {
+                job_id: job_id.as_string(),
+                worker_id: late_id.clone(),
+                hash_id: hash_id.clone(),
+                success: true,
+                error_message: None,
+                vk: vec![1],
+                hash_mode: "Poseidon1".into(),
+                rom_key: "other".into(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(coordinator.workers_pool.worker_state(&late_id).await, Some(WorkerState::Idle));
+        let active = coordinator.active_setups.read().await.get(&key).cloned().unwrap();
+        assert_eq!(active.rom_key, recorded.rom_key);
+    }
+
+    /// A setup replayed to a registering or reconnecting worker has a job id no
+    /// `setup_pending` entry tracks; its ack is checked against the cluster's record all
+    /// the same, and a mismatched worker is not made `Ready`.
+    #[tokio::test]
+    async fn test_replayed_setup_ack_rejects_mismatch() {
+        use crate::test_utils::register_test_worker;
+
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        let hash_id = coordinator.register_guest_program(b"replay-elf".to_vec()).unwrap();
+        coordinator.active_setups.write().await.insert(
+            SetupKey::new(hash_id.clone(), true, false),
+            ActiveSetup {
+                program_name: "p".into(),
+                vk: vec![1],
+                hash_mode: "Poseidon1".into(),
+                rom_key: "k".into(),
+            },
+        );
+        let (worker_id, _msgs) = register_test_worker(&coordinator.workers_pool, "w").await;
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(&worker_id, WorkerState::SettingUp)
+            .await
+            .unwrap();
+
+        coordinator
+            .handle_stream_setup_program_ack(zisk_cluster_common::SetupProgramAckDto {
+                job_id: JobId::new().as_string(),
+                worker_id: worker_id.clone(),
+                hash_id,
+                success: true,
+                error_message: None,
+                vk: vec![1],
+                hash_mode: "Poseidon1".into(),
+                rom_key: "other".into(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&worker_id).await,
+            Some(WorkerState::Idle)
+        );
     }
 
     /// Back-fill must refuse while a worker is `Computing`: flipping an Idle
@@ -3710,7 +3808,12 @@ mod tests {
         let proven = "proven-hash".to_string();
         coordinator.active_setups.write().await.insert(
             SetupKey::new(proven.clone(), false, false),
-            ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() },
+            ActiveSetup {
+                program_name: "p".into(),
+                vk: vec![1],
+                hash_mode: "Poseidon1".into(),
+                rom_key: "k".into(),
+            },
         );
 
         let coord_a = coordinator.clone();
@@ -4394,6 +4497,7 @@ mod tests {
                 error_message: None,
                 vk: vec![1, 2, 3],
                 hash_mode: "Poseidon1".into(),
+                rom_key: "k".into(),
             })
             .await
             .unwrap();
@@ -4469,6 +4573,7 @@ mod tests {
             error_message: (!success).then(|| "'make' failed with exit code: Some(2)".to_string()),
             vk: if success { vec![1, 2, 3] } else { Vec::new() },
             hash_mode: if success { "Poseidon1".into() } else { String::new() },
+            rom_key: if success { "k".into() } else { String::new() },
         };
 
         // w1's build failed — it must be parked out of the dispatchable pool.
@@ -4795,6 +4900,7 @@ mod tests {
                 error_message: None,
                 vk: vec![0xFF, 0xFF],
                 hash_mode: "Poseidon1".into(),
+                rom_key: "k".into(),
             })
             .await
             .unwrap();
@@ -4809,6 +4915,7 @@ mod tests {
                 error_message: None,
                 vk: vec![1, 2, 3],
                 hash_mode: "Poseidon1".into(),
+                rom_key: "k".into(),
             })
             .await
             .unwrap();
@@ -4900,6 +5007,7 @@ mod tests {
                 CoordinatorJobEvent::Completed(crate::job_events::CoordinatorJobResult::Setup {
                     vk: vec![0xAB],
                     hash_mode: "Poseidon1".into(),
+                    rom_key: "k".into(),
                 }),
             )
             .await;
@@ -5396,6 +5504,7 @@ mod tests {
                 error_message: None,
                 vk: vec![1, 2, 3],
                 hash_mode: "Poseidon1".into(),
+                rom_key: "k".into(),
             })
             .await
             .unwrap();
@@ -5514,6 +5623,7 @@ mod tests {
                 error_message: None,
                 vk: vec![1, 2, 3],
                 hash_mode: "Poseidon1".into(),
+                rom_key: "k".into(),
             })
             .await
             .unwrap();
@@ -5783,7 +5893,12 @@ mod tests {
         add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
         coordinator.active_setups.write().await.insert(
             SetupKey::new("another-program".to_string(), false, false),
-            ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() },
+            ActiveSetup {
+                program_name: "p".into(),
+                vk: vec![1],
+                hash_mode: "Poseidon1".into(),
+                rom_key: "k".into(),
+            },
         );
 
         let result = coordinator.launch_proof(capacity_request(None, None)).await;
@@ -6018,7 +6133,12 @@ mod tests {
         add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
         coordinator.active_setups.write().await.insert(
             SetupKey::new("hash".to_string(), false, false),
-            ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() },
+            ActiveSetup {
+                program_name: "p".into(),
+                vk: vec![1],
+                hash_mode: "Poseidon1".into(),
+                rom_key: "k".into(),
+            },
         );
         *coordinator.snark_protocol.lock().await = Some(cluster);
         coordinator

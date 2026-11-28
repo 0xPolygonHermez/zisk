@@ -11,7 +11,7 @@ use zisk_coordinator_api::dto::{
 use zisk_prover_backend::GuestProgram;
 
 use crate::{Result, SdkError};
-use zisk_rom_setup::{get_elf_bin_verkey_file_path_with_hash, get_output_path, HashMode};
+use zisk_rom_setup::{check_rom_key, get_output_path, get_rom_verkey_file_path, HashMode};
 
 impl RemoteClient {
     pub(crate) fn do_setup(
@@ -135,14 +135,16 @@ impl<'a> SetupByIdRequest<'a> {
         let hash_id = self.hash_id.clone();
         let output_dir = self.output_dir.clone();
         handle.set_pre_process(move |status: &TerminalStatus| {
-            if let TerminalStatus::Completed(DomainJobKindResponse::Setup { vk, hash_mode }) =
-                status
+            if let TerminalStatus::Completed(DomainJobKindResponse::Setup {
+                vk,
+                hash_mode,
+                rom_key,
+            }) = status
             {
                 let hash_mode = hash_mode.parse::<HashMode>().map_err(SdkError::backend)?;
+                check_rom_key(rom_key).map_err(SdkError::backend)?;
                 let output_path = get_output_path(&output_dir).map_err(SdkError::backend)?;
-                let path =
-                    get_elf_bin_verkey_file_path_with_hash(&hash_id, &output_path, hash_mode)
-                        .map_err(SdkError::backend)?;
+                let path = get_rom_verkey_file_path(&output_path, &hash_id, rom_key, hash_mode);
                 std::fs::write(&path, vk).map_err(SdkError::backend)?;
             }
             Ok(())

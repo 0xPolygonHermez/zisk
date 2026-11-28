@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use crate::{Result, SdkError};
 use zisk_coordinator_api::dto::{DomainJobKindResponse, TerminalStatus};
-use zisk_rom_setup::{get_elf_bin_verkey_file_path_with_hash, get_output_path, HashMode};
+use zisk_rom_setup::{check_rom_key, get_output_path, get_rom_verkey_file_path, HashMode};
 
 use crate::job_handle::{new_subscriber_list, JobHandle, JobId};
 use crate::lifecycle::SetupTarget;
@@ -96,20 +96,17 @@ impl<'a, C: Client> SetupRequest<'a, C> {
                     if let TerminalStatus::Completed(DomainJobKindResponse::Setup {
                         vk,
                         hash_mode,
+                        rom_key,
                     }) = status
                     {
-                        // The hash mode is dictated by the worker's proving key, not
-                        // the client; use the authoritative value returned with the
-                        // setup to name the verkey artifact.
+                        // The hash mode and ROM key come from the worker's setup, not
+                        // the client: name the verkey artifact with them.
                         let hash_mode = hash_mode.parse::<HashMode>().map_err(SdkError::backend)?;
+                        check_rom_key(rom_key).map_err(SdkError::backend)?;
                         let output_path =
                             get_output_path(&output_dir).map_err(SdkError::backend)?;
-                        let path = get_elf_bin_verkey_file_path_with_hash(
-                            &hash_id,
-                            &output_path,
-                            hash_mode,
-                        )
-                        .map_err(SdkError::backend)?;
+                        let path =
+                            get_rom_verkey_file_path(&output_path, &hash_id, rom_key, hash_mode);
                         std::fs::write(&path, vk)?;
                     }
                     Ok(())

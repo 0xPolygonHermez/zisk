@@ -15,10 +15,12 @@
 //!   key (verkey) derived from it. See [`rom_merkle_setup`] and
 //!   [`rom_merkle_setup_verkey`].
 //!
-//! All artifacts are content-addressed by the blake3 hash of the ELF (see
-//! [`get_elf_data_hash`]) and cached under the ZisK cache directory, so a given
-//! program is set up only once. The [`HashMode`] selects the Merkle hash family
-//! and must match the one the proving key was generated with.
+//! Artifacts are cached under the ZisK cache directory, so a given program is
+//! set up only once. The ASM binaries are keyed by the blake3 hash of the ELF
+//! (see [`get_elf_data_hash`]); the ROM setup by [`rom_key`], derived from the
+//! ROM trace itself, so a change to the transpiler or the trace layout is a
+//! cache miss rather than a stale verkey. The [`HashMode`] selects the Merkle
+//! hash family and must match the one the proving key was generated with.
 
 mod asm_setup;
 mod rom_merkle;
